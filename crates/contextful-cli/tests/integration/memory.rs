@@ -267,7 +267,7 @@ fn a_scheduled_synthesize_job_replaces_the_operator_triggered_pass() {
     assert_eq!(endpoint.bodies.lock().unwrap().len(), 1, "no run past the cursor, no model call");
 }
 
-const SETTLEMENT: &str = "\n[[table]]\nname = \"memory/predictions\"\nshape = \"predictions\"\ncolumns = [\"prediction_id\", \"subject\", \"predicted_at\", \"horizon_secs\", \"deadline_at\", \"resolution_source\", \"comparator\"]\n\n[[table]]\nname = \"memory/outcomes\"\nshape = \"outcomes\"\ncolumns = [\"prediction_id\", \"observed_at\", \"verdict\", \"resolution_source\", \"signal\", \"settling_citation\"]\n";
+const SETTLEMENT: &str = "\n[[table]]\nname = \"memory/predictions\"\nshape = \"predictions\"\ncolumns = [\"prediction_id\", \"subject\", \"predicted_at\", \"horizon_secs\", \"deadline_at\", \"resolution_source\", \"comparator\", \"statement\", \"metric\"]\n\n[[table]]\nname = \"memory/outcomes\"\nshape = \"outcomes\"\ncolumns = [\"prediction_id\", \"observed_at\", \"verdict\", \"resolution_source\", \"signal\", \"settling_citation\", \"metric\"]\n";
 
 /// A project declaring a `predictions` and an `outcomes` table, admitting a minted token.
 struct Settling {
@@ -336,6 +336,36 @@ fn predict_lands_a_registration_and_prints_its_id() {
     assert_eq!(s.owner_rows("SELECT prediction_id, resolution_source, CAST(deadline_at AS VARCHAR) FROM \"memory/predictions\""), json!([[claim_id, "adjudicator", "2030-01-02 00:00:00+00"]]));
     let unformed = json!({ "prediction_id": "p3", "subject": "acme", "predicted_at": "2030-01-01T00:00:00Z", "watch": true, "horizon_secs": 60, "resolution_source": "manual" });
     s.refused(&["predict", "--into", "memory/predictions", "--registration", &unformed.to_string()], "OutcomeRegistrationInvalid");
+
+    // A metric prediction names its series and statement; a bare-date deadline runs through that day.
+    let metric = json!({ "prediction_id": "m1", "subject": "acme", "predicted_at": "2030-01-01T00:00:00Z", "deadline_at": "2030-03-31",
+        "resolution_source": "metric", "comparator": ">= 1000000", "metric": "metrics/revenue:acme-q1", "statement": "Acme books at least 1M in Q1" });
+    assert_eq!(stdout(&s.memory(&["predict", "--into", "memory/predictions", "--registration", &metric.to_string()])), "prediction_id: m1");
+    assert_eq!(
+        s.owner_rows("SELECT metric, statement, CAST(deadline_at AS VARCHAR) FROM \"memory/predictions\" WHERE prediction_id = 'm1'"),
+        json!([["metrics/revenue:acme-q1", "Acme books at least 1M in Q1", "2030-04-01 00:00:00+00"]])
+    );
+    let mut restated = metric.clone();
+    restated["deadline_at"] = json!("2030-04-01T00:00:00Z");
+    assert_eq!(stdout(&s.memory(&["predict", "--into", "memory/predictions", "--registration", &restated.to_string()])), "prediction_id: m1");
+    let mut reworded = metric.clone();
+    reworded["statement"] = json!("Acme books at least 2M in Q1");
+    s.refused(&["predict", "--into", "memory/predictions", "--registration", &reworded.to_string()], "OutcomeRegistrationConflict");
+    let mut judged = metric.clone();
+    judged["prediction_id"] = json!("m2");
+    judged["resolution_source"] = json!("manual");
+    judged.as_object_mut().unwrap().remove("comparator");
+    s.refused(&["predict", "--into", "memory/predictions", "--registration", &judged.to_string()], "OutcomeMetricReferenceInvalid");
+    let mut long = metric.clone();
+    long["prediction_id"] = json!("m3");
+    long["statement"] = json!("x".repeat(4097));
+    s.refused(&["predict", "--into", "memory/predictions", "--registration", &long.to_string()], "OutcomeStatementTooLong");
+    let other_series = json!({ "prediction_id": "m1", "observed_at": "2030-04-01T00:00:00Z", "verdict": true, "resolution_source": "metric", "metric": "metrics/revenue:acme-q2" });
+    s.refused(&["observe", "--into", "memory/outcomes", "--observation", &other_series.to_string()], "OutcomeSourceMismatch");
+    let wrong_source = json!({ "prediction_id": "m1", "observed_at": "2030-04-01T00:00:00Z", "verdict": true, "resolution_source": "manual", "settling_citation": "https://example.org/r" });
+    let out = s.memory(&["observe", "--into", "memory/outcomes", "--observation", &wrong_source.to_string()]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("`metric`") && !stderr.contains("Metric"), "wire names only: {stderr}");
 }
 
 /// `contextful memory observe --into <table> --observation <json>` reads the prediction's stored registration through the writer's session, checks {{read.settle.source-mismatch}} and {{read.settle.settling-citation}}, lands it in that `outcomes` table, and prints its label row.
@@ -380,16 +410,24 @@ fn settlement_rows_carry_the_token_subject() {
     }
 }
 
-/// `contextful memory calibration --table <claims>` joins label rows carrying a verdict to that claims table on `prediction_id` equal to `claim_id`, through the caller's session, and prints {{read.settle.calibration-report}}, as JSON under `--json`.
-// spec: read.settle.calibration-verb@70b31710
+/// `contextful memory calibration --table <claims>` joins label rows carrying a verdict to that claims table on `prediction_id` equal to `claim_id`, through the caller's session, and prints {{read.settle.calibration-report}} with the count of joined predictions, as JSON under `--json`.
+// spec: read.settle.calibration-verb@a972ef09
 #[test]
 fn calibration_reports_the_settled_claims_of_a_table() {
     let s = Settling::new();
     s.settled_claim();
+    let empty = Settling::new();
+    assert_eq!(stdout(&empty.memory(&["calibration", "--table", "memory/facts"])), "0 settled predictions joined a claim in memory/facts");
+    let none: Value = serde_json::from_str(&stdout(&empty.memory(&["calibration", "--table", "memory/facts", "--json"]))).unwrap();
+    assert_eq!(none, json!({ "joined": 0, "groups": [] }));
+
     let report: Value = serde_json::from_str(&stdout(&s.memory(&["calibration", "--table", "memory/facts", "--json"]))).unwrap();
-    assert_eq!(report.as_array().unwrap().len(), 1, "{report}");
-    assert_eq!((&report[0]["shape"], &report[0]["predicate"], &report[0]["samples"]), (&json!("memory_facts"), &json!("cfo"), &json!(1)));
-    assert_eq!(report[0]["brier"], json!(0.0), "a claim at confidence 1.0 that held");
+    assert_eq!(report["joined"], json!(1), "{report}");
+    let groups = &report["groups"];
+    assert_eq!(groups.as_array().unwrap().len(), 1, "{report}");
+    assert_eq!((&groups[0]["shape"], &groups[0]["predicate"], &groups[0]["samples"]), (&json!("memory_facts"), &json!("cfo"), &json!(1)));
+    assert_eq!(groups[0]["brier"], json!(0.0), "a claim at confidence 1.0 that held");
     let text = stdout(&s.memory(&["calibration", "--table", "memory/facts"]));
+    assert!(text.starts_with("1 settled predictions joined a claim in memory/facts"), "{text}");
     assert!(text.contains("memory_facts cfo: 1 samples"), "{text}");
 }

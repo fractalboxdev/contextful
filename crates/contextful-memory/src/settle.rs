@@ -74,6 +74,8 @@ fn registration_of(row: &Map<String, Value>) -> Option<Registration> {
         watch: horizon_secs.is_none() && deadline_at.is_none(),
         resolution_source: text(row, "resolution_source"),
         comparator: text(row, "comparator"),
+        statement: text(row, "statement"),
+        metric: text(row, "metric"),
     })
     .ok()
 }
@@ -87,6 +89,7 @@ fn observation_of(row: &Map<String, Value>) -> Option<Observation> {
         resolution_source: text(row, "resolution_source"),
         signal: text(row, "signal"),
         settling_citation: text(row, "settling_citation"),
+        metric: text(row, "metric"),
     })
 }
 
@@ -128,6 +131,7 @@ pub fn predict(
         "prediction_id": id, "subject": registration.subject, "predicted_at": registration.predicted_at.to_rfc3339_nanos(),
         "horizon_secs": raw.horizon_secs, "deadline_at": registration.deadline().map(|d| d.to_rfc3339_nanos()),
         "resolution_source": raw.resolution_source, "comparator": registration.comparator,
+        "statement": registration.statement, "metric": registration.metric,
     });
     let column_types = types(&[
         ("prediction_id", ColumnType::Utf8),
@@ -137,6 +141,8 @@ pub fn predict(
         ("deadline_at", ColumnType::Timestamp),
         ("resolution_source", ColumnType::Utf8),
         ("comparator", ColumnType::Utf8),
+        ("statement", ColumnType::Utf8),
+        ("metric", ColumnType::Utf8),
     ]);
     let writer = Writer::of(authority);
     let run_id = format!("memory-predict-{}", now.unix_nanos());
@@ -181,6 +187,7 @@ pub fn observe(
     let row = json!({
         "prediction_id": id, "observed_at": observation.observed_at.to_rfc3339_nanos(), "verdict": observation.verdict,
         "resolution_source": observation.resolution_source, "signal": observation.signal, "settling_citation": observation.settling_citation,
+        "metric": observation.metric,
     });
     let column_types = types(&[
         ("prediction_id", ColumnType::Utf8),
@@ -189,6 +196,7 @@ pub fn observe(
         ("resolution_source", ColumnType::Utf8),
         ("signal", ColumnType::Utf8),
         ("settling_citation", ColumnType::Utf8),
+        ("metric", ColumnType::Utf8),
     ]);
     let writer = Writer::of(authority);
     let run_id = format!("memory-observe-{}", now.unix_nanos());
@@ -214,10 +222,18 @@ pub fn labels(face: &Face, session: &Session, predictions: &str, outcomes: &str,
     Ok(face.query_with(session, &sql, &parameters, ReadOptions::default())?)
 }
 
+/// What a calibration read found: the settled predictions that joined a claim, and the
+/// report over them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CalibrationReport {
+    pub joined: usize,
+    pub groups: Vec<GroupReport>,
+}
+
 /// The calibration report over `claims`: label rows carrying a verdict joined to the claim
 /// whose `claim_id` is their `prediction_id`, through `session`, in `prediction_id` order
 /// (`read.settle.calibration-verb`).
-pub fn calibration(face: &Face, session: &Session, claims: &str, predictions: &str, outcomes: &str) -> Result<Vec<GroupReport>, MemoryFault> {
+pub fn calibration(face: &Face, session: &Session, claims: &str, predictions: &str, outcomes: &str) -> Result<CalibrationReport, MemoryFault> {
     let claims_table = face
         .memory()
         .table(claims)
@@ -225,7 +241,7 @@ pub fn calibration(face: &Face, session: &Session, claims: &str, predictions: &s
         .ok_or_else(|| MemoryFault::Undeclared(format!("`{claims}` is no `{}` table the manifest declares", Shape::Facts.name())))?;
     for t in [claims, predictions, outcomes] {
         if face.store().try_schema(t)?.is_none() {
-            return Ok(Vec::new());
+            return Ok(CalibrationReport { joined: 0, groups: Vec::new() });
         }
     }
     let quoted = format!("\"{}\"", claims_table.name.replace('"', "\"\""));
@@ -238,6 +254,7 @@ pub fn calibration(face: &Face, session: &Session, claims: &str, predictions: &s
         ),
     );
     let rows = face.query(session, &sql, ReadOptions::default())?;
+    let joined = rows.rows.len();
     let samples: Vec<Settled> = objects(&rows)
         .iter()
         .filter_map(|r| {
@@ -249,7 +266,7 @@ pub fn calibration(face: &Face, session: &Session, claims: &str, predictions: &s
             })
         })
         .collect();
-    Ok(calibrate::report(&samples))
+    Ok(CalibrationReport { joined, groups: calibrate::report(&samples) })
 }
 
 /// One group's figures as JSON (`read.settle.calibration-report`).

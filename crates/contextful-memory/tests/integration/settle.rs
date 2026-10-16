@@ -18,12 +18,12 @@ const SETTLEMENT: &str = r#"
 [[table]]
 name = "memory/predictions"
 shape = "predictions"
-columns = ["prediction_id", "subject", "predicted_at", "horizon_secs", "deadline_at", "resolution_source", "comparator"]
+columns = ["prediction_id", "subject", "predicted_at", "horizon_secs", "deadline_at", "resolution_source", "comparator", "statement", "metric"]
 
 [[table]]
 name = "memory/outcomes"
 shape = "outcomes"
-columns = ["prediction_id", "observed_at", "verdict", "resolution_source", "signal", "settling_citation"]
+columns = ["prediction_id", "observed_at", "verdict", "resolution_source", "signal", "settling_citation", "metric"]
 "#;
 
 fn settling() -> Fixture {
@@ -42,6 +42,8 @@ fn registration(id: &str, source: &str) -> RawRegistration {
         watch: false,
         resolution_source: Some(source.into()),
         comparator: None,
+        statement: Some("acme ships v2 by the deadline".into()),
+        metric: None,
     }
 }
 
@@ -53,6 +55,7 @@ fn observation(id: &str, verdict: bool, citation: Option<&str>) -> Observation {
         resolution_source: Some("adjudicator".into()),
         signal: None,
         settling_citation: citation.map(str::to_string),
+        metric: None,
     }
 }
 
@@ -137,6 +140,9 @@ fn a_reused_prediction_id_with_other_fields_refuses() {
     predict(&f.face, &writer, "memory/predictions", registration("p1", "adjudicator"), &node(), now, &super::synthesize::admit).unwrap();
     let refused = predict(&f.face, &writer, "memory/predictions", registration("p1", "manual"), &node(), now.plus_secs(1), &super::synthesize::admit);
     assert_eq!(identifier(refused.unwrap_err()), "OutcomeRegistrationConflict");
+    let restated = RawRegistration { statement: Some("acme ships v3 by the deadline".into()), ..registration("p1", "adjudicator") };
+    let refused = predict(&f.face, &writer, "memory/predictions", restated, &node(), now.plus_secs(2), &super::synthesize::admit);
+    assert_eq!(identifier(refused.unwrap_err()), "OutcomeRegistrationConflict", "the statement takes part in the conflict");
     assert_eq!(raw_rows(&f, "SELECT resolution_source FROM \"memory/predictions\""), json!([["adjudicator"]]));
 }
 

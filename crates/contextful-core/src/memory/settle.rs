@@ -8,6 +8,21 @@ use serde::Deserialize;
 /// (`read.settle.grace-window`).
 pub const GRACE_WINDOW_SECS: u64 = 86_400;
 
+/// The longest registration `statement`, in bytes (`read.settle.statement-bound`).
+pub const STATEMENT_MAX_BYTES: usize = 4096;
+
+/// A `deadline_at` as an RFC 3339 instant, or a bare `YYYY-MM-DD` resolved to the next
+/// UTC midnight (`read.settle.deadline-date`, `store.bound-time.instant-comparison`).
+fn deadline<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Instant>, D::Error> {
+    let s: Option<String> = Option::deserialize(d)?;
+    s.map(|s| crate::store::bound_time::Bound::parse(&s).map(|b| b.at).map_err(serde::de::Error::custom)).transpose()
+}
+
+/// A metric reference's table and series (`read.settle.metric-reference`).
+fn metric_parts(reference: &str) -> Option<(&str, &str)> {
+    reference.split_once(':').filter(|(table, series)| !table.trim().is_empty() && !series.trim().is_empty())
+}
+
 // One text for both the join body and the view statement.
 macro_rules! label_select {
     () => {
@@ -86,7 +101,7 @@ pub struct RawRegistration {
     pub predicted_at: Instant,
     #[serde(default)]
     pub horizon_secs: Option<u64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deadline")]
     pub deadline_at: Option<Instant>,
     #[serde(default)]
     pub watch: bool,
@@ -94,6 +109,13 @@ pub struct RawRegistration {
     pub resolution_source: Option<String>,
     #[serde(default)]
     pub comparator: Option<String>,
+    /// The falsifiable claim the prediction scores (`read.settle.statement-bound`).
+    #[serde(default)]
+    pub statement: Option<String>,
+    /// The series a `metric` source resolves against, `<table>:<series_id>`
+    /// (`read.settle.metric-reference`).
+    #[serde(default)]
+    pub metric: Option<String>,
 }
 
 /// A checked registration.
@@ -105,6 +127,8 @@ pub struct Registration {
     pub form: Form,
     pub source: Source,
     pub comparator: Option<String>,
+    pub statement: Option<String>,
+    pub metric: Option<String>,
 }
 
 impl Registration {
@@ -128,7 +152,28 @@ impl Registration {
             (Source::Adjudicator | Source::Manual, Some(_)) => return Err(invalid("only a `metric` source carries a comparator".into())),
             _ => {}
         }
+        if let Some(statement) = &raw.statement {
+            if statement.len() > STATEMENT_MAX_BYTES {
+                return Err(MemoryError::OutcomeStatementTooLong(format!(
+                    "prediction `{}`: the statement holds {} B, over {STATEMENT_MAX_BYTES} B",
+                    raw.prediction_id,
+                    statement.len()
+                )));
+            }
+        }
+        if let Some(metric) = &raw.metric {
+            let why = match (source, metric_parts(metric)) {
+                (Source::Metric, Some(_)) => None,
+                (Source::Metric, None) => Some(format!("`{metric}` is no `<table>:<series_id>` reference")),
+                (other, _) => Some(format!("a `{}` source names no metric series", other.name())),
+            };
+            if let Some(why) = why {
+                return Err(MemoryError::OutcomeMetricReferenceInvalid(format!("prediction `{}`: {why}", raw.prediction_id)));
+            }
+        }
         Ok(Registration {
+            statement: raw.statement.clone(),
+            metric: raw.metric.clone(),
             form: *form,
             source,
             comparator: raw.comparator.clone(),
@@ -155,6 +200,8 @@ impl Registration {
             watch: self.form == Form::Watch,
             resolution_source: Some(self.source.name().to_string()),
             comparator: self.comparator.clone(),
+            statement: self.statement.clone(),
+            metric: self.metric.clone(),
         }
     }
 
@@ -182,21 +229,32 @@ pub struct Observation {
     pub signal: Option<String>,
     #[serde(default)]
     pub settling_citation: Option<String>,
+    /// The series the observation read, `<table>:<series_id>` (`read.settle.source-mismatch`).
+    #[serde(default)]
+    pub metric: Option<String>,
 }
 
 /// Check an observation against its registration. A verdict whose source is absent or
 /// differs refuses (`read.settle.source-mismatch`); an `adjudicator` or `manual` verdict
 /// carries an `http` or `https` settling citation (`read.settle.settling-citation`).
 pub fn observe(registration: &Registration, obs: &Observation) -> Result<(), MemoryError> {
+    if let (Some(registered), Some(observed)) = (&registration.metric, &obs.metric) {
+        if registered != observed {
+            return Err(MemoryError::OutcomeSourceMismatch(format!(
+                "prediction `{}` settles against the `metric` series `{registered}`; the observation names `{observed}`",
+                registration.prediction_id
+            )));
+        }
+    }
     if obs.verdict.is_none() {
         return Ok(());
     }
     let source = obs.resolution_source.as_deref().and_then(Source::parse);
     if source != Some(registration.source) {
         return Err(MemoryError::OutcomeSourceMismatch(format!(
-            "prediction `{}` settles by {:?}; the verdict names {}",
+            "prediction `{}` settles by `{}`; the verdict names {}",
             registration.prediction_id,
-            registration.source,
+            registration.source.name(),
             obs.resolution_source.as_deref().map_or("no source".to_string(), |s| format!("`{s}`"))
         )));
     }

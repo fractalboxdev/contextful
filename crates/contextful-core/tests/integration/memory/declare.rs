@@ -34,12 +34,12 @@ fn a_shaped_table_omitting_a_canonical_column_is_refused() {
     assert!(matches!(MemoryDeclarations::parse(&manifest("memory_notes", FACT_COLUMNS)), Err(DeclareError::Malformed(_))));
 }
 
-/// The `predictions` and `outcomes` shapes carry the columns the label join reads, each keyed on `prediction_id`.
-// spec: read.declare.settlement-shapes@a358ca53
+/// The `predictions` shape carries one column per registration field, `deadline_at` resolved for a horizon; the `outcomes` shape carries one column per observation field. Both key on `prediction_id`.
+// spec: read.declare.settlement-shapes@6a955d1b
 #[test]
 fn predictions_and_outcomes_are_shapes_keyed_on_the_prediction() {
-    let predictions = ["prediction_id", "subject", "predicted_at", "horizon_secs", "deadline_at", "resolution_source", "comparator"];
-    let outcomes = ["prediction_id", "observed_at", "verdict", "resolution_source", "signal", "settling_citation"];
+    let predictions = ["prediction_id", "subject", "predicted_at", "horizon_secs", "deadline_at", "resolution_source", "comparator", "statement", "metric"];
+    let outcomes = ["prediction_id", "observed_at", "verdict", "resolution_source", "signal", "settling_citation", "metric"];
     for (name, columns) in [("predictions", &predictions[..]), ("outcomes", &outcomes[..])] {
         let d = MemoryDeclarations::parse(&manifest(name, &format!("{columns:?}"))).unwrap();
         assert_eq!(d.tables[0].shape.name(), name);

@@ -232,14 +232,13 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
             let predictions = settle::shaped(&face, predictions.as_deref(), Shape::Predictions)?;
             let outcomes = settle::shaped(&face, outcomes.as_deref(), Shape::Outcomes)?;
             let session = face.session(&authority, &Request::default(), Default::default())?;
-            let groups = settle::calibration(&face, &session, &table, predictions, outcomes)?;
+            let report = settle::calibration(&face, &session, &table, predictions, outcomes)?;
             if json {
-                let report: Vec<serde_json::Value> = groups.iter().map(settle::report_json).collect();
-                println!("{}", serde_json::to_string(&report)?);
-            } else if groups.is_empty() {
-                println!("{table}: no settled prediction");
+                let groups: Vec<serde_json::Value> = report.groups.iter().map(settle::report_json).collect();
+                println!("{}", serde_json::json!({ "joined": report.joined, "groups": groups }));
             } else {
-                for g in &groups {
+                println!("{} settled predictions joined a claim in {table}", report.joined);
+                for g in &report.groups {
                     let held_out = g.held_out_brier.map_or("none".to_string(), |b| format!("{b:.4}"));
                     println!(
                         "{} {}: {} samples, brier {:.4}, ece {:.4}, held-out brier {held_out}, {}",

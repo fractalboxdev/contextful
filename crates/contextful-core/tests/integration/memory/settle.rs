@@ -14,6 +14,8 @@ fn raw(source: Option<&str>, comparator: Option<&str>) -> RawRegistration {
         watch: false,
         resolution_source: source.map(str::to_string),
         comparator: comparator.map(str::to_string),
+        statement: None,
+        metric: None,
     }
 }
 
@@ -29,6 +31,7 @@ fn obs(verdict: Option<bool>, source: Option<&str>, citation: Option<&str>) -> O
         resolution_source: source.map(str::to_string),
         signal: None,
         settling_citation: citation.map(str::to_string),
+        metric: None,
     }
 }
 
@@ -50,15 +53,73 @@ fn a_registration_names_one_form_one_source_and_a_metric_comparator() {
     invalid(raw(Some("manual"), Some("x > 1")));
 }
 
-/// An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`.
-// spec: read.settle.source-mismatch@9bab79ec
+/// An observation carrying a verdict whose resolution source is absent or differs from the registration's, or naming a `metric` series other than the registration's, raises `OutcomeSourceMismatch`, naming each source by its wire name.
+// spec: read.settle.source-mismatch@b116f64e
 #[test]
 fn a_verdict_from_another_source_is_refused() {
     let reg = Registration::check(raw(Some("metric"), Some("revenue >= 1e6"))).unwrap();
     assert_eq!(observe(&reg, &obs(Some(true), Some("metric"), None)), Ok(()));
     assert_eq!(observe(&reg, &obs(None, None, None)), Ok(()), "a self-rated outcome carries no verdict");
     assert!(matches!(observe(&reg, &obs(Some(true), None, None)), Err(MemoryError::OutcomeSourceMismatch(_))));
-    assert!(matches!(observe(&reg, &obs(Some(true), Some("manual"), Some("https://x"))), Err(MemoryError::OutcomeSourceMismatch(_))));
+    match observe(&reg, &obs(Some(true), Some("manual"), Some("https://x"))) {
+        Err(e @ MemoryError::OutcomeSourceMismatch(_)) => {
+            let text = e.to_string();
+            assert!(text.contains("`metric`") && text.contains("`manual`") && !text.contains("Metric"), "{text}");
+        }
+        other => panic!("{other:?}"),
+    }
+    let series = Registration::check(RawRegistration { metric: Some("metrics/revenue:acme-q3".into()), ..raw(Some("metric"), Some(">= 1e6")) }).unwrap();
+    let on = |metric: Option<&str>| Observation { metric: metric.map(str::to_string), ..obs(Some(true), Some("metric"), None) };
+    assert_eq!(observe(&series, &on(Some("metrics/revenue:acme-q3"))), Ok(()));
+    assert_eq!(observe(&series, &on(None)), Ok(()), "an observation naming no series is held to the source alone");
+    match observe(&series, &on(Some("metrics/revenue:acme-q4"))) {
+        Err(MemoryError::OutcomeSourceMismatch(why)) => assert!(why.contains("acme-q4"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// A registration's optional `statement`, the falsifiable claim it scores, holds at most 4096 B; a longer one raises `OutcomeStatementTooLong`, and the statement takes part in {{read.settle.registration-conflict}}.
+// spec: read.settle.statement-bound@0a5e2164
+#[test]
+fn a_statement_over_the_bound_is_refused() {
+    use contextful_core::memory::settle::STATEMENT_MAX_BYTES;
+    assert_eq!(STATEMENT_MAX_BYTES, 4096);
+    let with = |n: usize| RawRegistration { statement: Some("x".repeat(n)), ..raw(Some("manual"), None) };
+    assert_eq!(Registration::check(with(4096)).unwrap().statement.map(|s| s.len()), Some(4096));
+    assert!(matches!(Registration::check(with(4097)), Err(MemoryError::OutcomeStatementTooLong(_))));
+    let checked = Registration::check(with(10)).unwrap();
+    assert_eq!(checked.raw().statement, Some("x".repeat(10)), "the statement round-trips with the registration");
+    assert_ne!(checked, Registration::check(with(11)).unwrap(), "a changed statement is a changed registration");
+}
+
+/// A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.
+// spec: read.settle.metric-reference@ab4dc525
+#[test]
+fn a_metric_reference_names_a_table_and_series_under_a_metric_source() {
+    let with = |metric: &str, source: &str, comparator: Option<&str>| RawRegistration { metric: Some(metric.into()), ..raw(Some(source), comparator) };
+    assert_eq!(Registration::check(with("metrics/revenue:acme-q3", "metric", Some(">= 1e6"))).unwrap().metric.as_deref(), Some("metrics/revenue:acme-q3"));
+    for bad in ["metrics/revenue", ":acme", "metrics/revenue:", " : "] {
+        assert!(matches!(Registration::check(with(bad, "metric", Some(">= 1e6"))), Err(MemoryError::OutcomeMetricReferenceInvalid(_))), "{bad}");
+    }
+    assert!(matches!(Registration::check(with("metrics/revenue:acme-q3", "manual", None)), Err(MemoryError::OutcomeMetricReferenceInvalid(_))));
+}
+
+/// A `deadline_at` given as a bare `YYYY-MM-DD` resolves as {{store.bound-time.instant-comparison}} resolves a date: the deadline is the next UTC midnight, so the whole named day precedes it.
+// spec: read.settle.deadline-date@81a7c3f4
+#[test]
+fn a_bare_date_deadline_runs_through_the_named_day() {
+    let parse = |deadline: &str| -> RawRegistration {
+        serde_json::from_value(serde_json::json!({ "prediction_id": "p1", "subject": "acme", "predicted_at": "2030-01-01T00:00:00Z",
+            "deadline_at": deadline, "resolution_source": "manual" }))
+        .unwrap()
+    };
+    let dated = Registration::check(parse("2030-02-01")).unwrap();
+    assert_eq!(dated.deadline(), Some(at("2030-02-02T00:00:00Z")));
+    assert_eq!(dated, Registration::check(parse("2030-02-02T00:00:00Z")).unwrap(), "a date and its next midnight are one deadline");
+    assert_eq!(Registration::check(parse("2030-02-01T12:00:00Z")).unwrap().deadline(), Some(at("2030-02-01T12:00:00Z")));
+    let malformed: Result<RawRegistration, _> = serde_json::from_value(serde_json::json!({ "prediction_id": "p1", "subject": "acme",
+        "predicted_at": "2030-01-01T00:00:00Z", "deadline_at": "Feb 1", "resolution_source": "manual" }));
+    assert!(malformed.is_err());
 }
 
 /// An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.

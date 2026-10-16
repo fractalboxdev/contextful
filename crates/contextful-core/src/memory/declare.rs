@@ -50,8 +50,10 @@ impl Shape {
             Shape::Entities => &["entity_id", "kind", "name", "aliases"],
             Shape::Edges => &["edge_id", "rel_type", "source_id", "target_id", "evidence"],
             Shape::Preferences => &["preference_id", "subject", "key", "value", "scope"],
-            Shape::Predictions => &["prediction_id", "subject", "predicted_at", "horizon_secs", "deadline_at", "resolution_source", "comparator"],
-            Shape::Outcomes => &["prediction_id", "observed_at", "verdict", "resolution_source", "signal", "settling_citation"],
+            Shape::Predictions => &[
+                "prediction_id", "subject", "predicted_at", "horizon_secs", "deadline_at", "resolution_source", "comparator", "statement", "metric",
+            ],
+            Shape::Outcomes => &["prediction_id", "observed_at", "verdict", "resolution_source", "signal", "settling_citation", "metric"],
         }
     }
 

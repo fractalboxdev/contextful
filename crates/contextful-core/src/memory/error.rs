@@ -42,6 +42,12 @@ pub enum MemoryError {
     /// An observation differs from a stored outcome that already carries a verdict. (`read.settle.outcome-settled`)
     #[error("OutcomeAlreadySettled: {0}")]
     OutcomeAlreadySettled(String),
+    /// A registration's metric reference is malformed or sits under a non-metric source. (`read.settle.metric-reference`)
+    #[error("OutcomeMetricReferenceInvalid: {0}")]
+    OutcomeMetricReferenceInvalid(String),
+    /// A registration's statement exceeds its byte bound. (`read.settle.statement-bound`)
+    #[error("OutcomeStatementTooLong: {0}")]
+    OutcomeStatementTooLong(String),
     /// A judgment verdict carries no http or https settling citation. (`read.settle.settling-citation`)
     #[error("OutcomeCitationMissing: {0}")]
     OutcomeCitationMissing(String),
@@ -76,6 +82,8 @@ impl MemoryError {
             MemoryError::UndeclaredRelation(_) => "MemoryUndeclaredRelation",
             MemoryError::OutcomeAlreadySettled(_) => "OutcomeAlreadySettled",
             MemoryError::OutcomeCitationMissing(_) => "OutcomeCitationMissing",
+            MemoryError::OutcomeMetricReferenceInvalid(_) => "OutcomeMetricReferenceInvalid",
+            MemoryError::OutcomeStatementTooLong(_) => "OutcomeStatementTooLong",
             MemoryError::OutcomePredictionUnregistered(_) => "OutcomePredictionUnregistered",
             MemoryError::OutcomeRegistrationConflict(_) => "OutcomeRegistrationConflict",
             MemoryError::OutcomeRegistrationInvalid(_) => "OutcomeRegistrationInvalid",
