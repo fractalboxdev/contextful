@@ -151,6 +151,7 @@ fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)
         Err(e) => return Err(e).with_context(|| format!("reading `{}`", seed.display())),
     };
     let key_set = Some(l.project.dir.join(contextful_core::revoke::KeySetLedger::PATH));
+    let redistribution = contextful_sync::Redistribution { withheld: decls.iter().filter(|d| withheld(d)).map(|d| d.name.clone()).collect() };
     let syncer = Syncer {
         store,
         bucket,
@@ -162,8 +163,16 @@ fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)
         control_dir,
         signer,
         key_set,
+        redistribution,
     };
     Ok((syncer, decls))
+}
+
+/// Whether a table's redistribution flag is cleared: `replicate = false` on the table block
+/// or under its `policy.redistribution` (`authority.bound-redistribution.withhold`).
+fn withheld(decl: &TableDecl) -> bool {
+    let policy = decl.policy.as_ref().and_then(|p| p.get("redistribution")).and_then(|r| r.get("replicate")).and_then(serde_json::Value::as_bool);
+    decl.replicate == Some(false) || policy == Some(false)
 }
 
 fn control_dir(text: &str, project_dir: &std::path::Path, project: &str) -> Result<Option<PathBuf>> {

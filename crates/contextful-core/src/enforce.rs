@@ -44,9 +44,15 @@ pub enum EnforceError {
     /// Write-time removal on a surface whose allow-set admits a public cloud. (`authority.place.removal-with-public-cloud`)
     #[error("EnforceRemovalWithPublicCloud: {0}")]
     RemovalWithPublicCloud(String),
+    /// A root-level object pushed outside the allowlist while a table is withheld. (`authority.bound-redistribution.root-not-allowlisted`)
+    #[error("EnforceRootObjectNotAllowlisted: {0}")]
+    RootObjectNotAllowlisted(String),
     /// A read of another tenant's rows on a granted table. (`authority.refuse.scope-denied`)
     #[error("EnforceScopeDenied: {0}")]
     ScopeDenied(String),
+    /// Objects an earlier push left addressable for a now-withheld table. (`authority.bound-redistribution.left-behind`)
+    #[error("EnforceStaleRedistributedObjects: {0}")]
+    StaleRedistributedObjects(String),
     /// A mask strategy a binary or vector column's type does not admit. (`authority.mask.typed-strategy`)
     #[error("EnforceStrategyOutsideType: {0}")]
     StrategyOutsideType(String),
@@ -90,7 +96,9 @@ impl EnforceError {
             EnforceError::PredicateOutsideGrammar(_) => "EnforcePredicateOutsideGrammar",
             EnforceError::ProtectedFloorWidened(_) => "EnforceProtectedFloorWidened",
             EnforceError::RemovalWithPublicCloud(_) => "EnforceRemovalWithPublicCloud",
+            EnforceError::RootObjectNotAllowlisted(_) => "EnforceRootObjectNotAllowlisted",
             EnforceError::ScopeDenied(_) => "EnforceScopeDenied",
+            EnforceError::StaleRedistributedObjects(_) => "EnforceStaleRedistributedObjects",
             EnforceError::StrategyOutsideType(_) => "EnforceStrategyOutsideType",
             EnforceError::TruncationCutsNothing(_) => "EnforceTruncationCutsNothing",
             EnforceError::TruncationTooWide(_) => "EnforceTruncationTooWide",

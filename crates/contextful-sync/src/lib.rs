@@ -14,4 +14,4 @@ pub use fs_bucket::{FsBucket, VolumeClass};
 #[cfg(feature = "s3-sync")]
 pub use s3_bucket::{S3Bucket, S3Credentials};
 pub use run_state::{CursorMark, RunMark, RunState};
-pub use sync::{plan_manifest, Held, ManifestPlan, PullScope, SiteResidency, SyncError, Syncer};
+pub use sync::{plan_manifest, Held, ManifestPlan, PullScope, Redistribution, SiteResidency, SyncError, Syncer};
