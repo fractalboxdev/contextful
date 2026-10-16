@@ -466,18 +466,47 @@ fn a_stop_arriving_once_the_last_batch_is_home_lets_it_land_and_records_the_stop
 }
 
 /// Each run holds one cancellation token that every await selects on: a stop marked on the row ends the run's
-/// retry sleep, and the same token ends the subprocess wait inside its pull.
+/// awakeable wait, and the same token ends the subprocess wait inside its pull. The retry sleep's half is
+/// `a_stop_in_the_retry_sleep_closes_canceled_and_holds_the_position`.
 // spec: run.cancel.one-token@3a7be5ee
 #[cfg(unix)]
 #[test]
-fn one_stop_ends_the_retry_sleep_and_the_subprocess_wait_of_its_run() {
-    // A 60 s retry sleep ends at the stop.
+fn one_stop_ends_the_awakeable_wait_and_the_subprocess_wait_of_its_run() {
+    // An awaitEvent with a 1 h deadline ends at a stop marked while the run waits.
+    struct NoConnectors;
+    impl contextful_engine::nodes::Connectors for NoConnectors {
+        fn source(&self, node: &str, _: &contextful_core::run::plan::ConnectorSpec) -> Result<Box<dyn Source + '_>, Failure> {
+            panic!("the plan pulls nothing, yet `{node}` asked for a source")
+        }
+    }
     let rig = Rig::new();
-    let mut source = StopsItself { rig_catalog: rig.engine.catalog.clone(), engine: rig.engine.clone(), serve_first: false, calls: 0 };
+    let store = Arc::new(contextful_engine::stores::FileAwakeableStore::open(rig.dir.path()));
+    let engine = contextful_engine::Engine { awakeables: Some(store), ..rig.engine.clone() };
+    let plan = contextful_core::run::nodes::NodePlan::compile(
+        serde_json::json!({ "id": "approve", "nodes": [{ "id": "approve", "kind": "awaitEvent", "timeout": "1h" }] }).to_string().as_bytes(),
+    )
+    .unwrap();
+    let fire = contextful_engine::nodes::PlanFire {
+        job: "approve".into(),
+        plan: &plan,
+        run_id: "run-0".into(),
+        site_id: "site-a".into(),
+        pid: 4242,
+        boot_id: "boot-a".into(),
+        poll: Duration::from_millis(20),
+    };
+    let stopper = rig.engine.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        while stopper.cancel("run-0", Scope::Run, None).is_err() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    });
     let started = std::time::Instant::now();
-    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut Sink::default()).unwrap();
-    assert!(started.elapsed() < Duration::from_secs(10), "the retry sleep ran {:?}", started.elapsed());
-    assert_eq!((row.status, row.error_kind), (RunStatus::Canceled, Some(FailureTag::Canceled)));
+    let row = engine.run_plan(&fire, &NoConnectors).unwrap();
+    assert!(started.elapsed() < Duration::from_secs(10), "the awakeable wait ran {:?}", started.elapsed());
+    assert_eq!((row.status, row.error_kind), (RunStatus::Canceled, Some(FailureTag::Canceled)), "{:?}", row.error_message);
+    assert!(row.error_message.as_deref().is_some_and(|m| m.contains("stopped while awaiting")), "{:?}", row.error_message);
 
     // A pull whose child sleeps 60 s ends at a stop marked while the child runs: the run handed its token to the
     // pull, so nothing but the catalog carried the stop.

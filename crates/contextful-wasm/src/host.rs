@@ -150,9 +150,6 @@ pub struct LogLine {
     pub message: String,
 }
 
-/// The store's resource budget. Linear memory is one budget across every memory the
-/// component instantiates (`connector.package.linear-memory`), so a component splitting
-/// its heap over several memories or core instances gets no more than one would.
 /// A growth refused at the connector's linear-memory cap: the bound a trap carrying it
 /// struck (`run.retry.bound-hit-is-transient`).
 #[derive(Debug)]
@@ -169,6 +166,9 @@ impl std::fmt::Display for MemoryCapStruck {
 
 impl std::error::Error for MemoryCapStruck {}
 
+/// The store's resource budget. Linear memory is one budget across every memory the
+/// component instantiates (`connector.package.linear-memory`), so a component splitting
+/// its heap over several memories or core instances gets no more than one would.
 struct Budget {
     memory_cap: usize,
     memory_used: usize,

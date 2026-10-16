@@ -613,6 +613,18 @@ fn history_selects_its_window_over_an_indexed_start_column() {
     assert!(page.runs.is_empty() && !page.truncated);
     drop(c);
 
+    // A binary predating the column writes a row after the migration: its start stays NULL until the next open.
+    {
+        let older = rusqlite::Connection::open(&path).unwrap();
+        let mut late = run_row("run-6", "feed", RunStatus::Success);
+        late.started_at = at("2030-01-05T00:00:00Z");
+        older.execute("INSERT INTO run (run_id, pipeline_id, row) VALUES (?1, ?2, ?3)", rusqlite::params![late.run_id, late.pipeline_id, serde_json::to_string(&late).unwrap()]).unwrap();
+    }
+    let c = MachineCatalog::open(&path, Arc::new(SetClock::new())).unwrap();
+    let page = c.history(Some("feed"), &History { since: Some(at("2030-01-04T00:00:00Z")), ceiling: 10 }).unwrap();
+    assert_eq!(ids(&page), ["run-6"], "a row written without the column is filled on the next open");
+    drop(c);
+
     let db = rusqlite::Connection::open(&path).unwrap();
     let plan: Vec<String> = db
         .prepare("EXPLAIN QUERY PLAN SELECT row FROM run WHERE pipeline_id = 'feed' AND started_ns >= 0 ORDER BY started_ns DESC, run_id DESC LIMIT 3")

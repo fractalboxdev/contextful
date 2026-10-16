@@ -170,9 +170,7 @@ fn put_lease_row(tx: &Transaction, key: &str, row: &LeaseRow, fail: Fail) -> Res
     Ok(())
 }
 
-/// Create the scope-keyed `scope` table, or rebuild one keyed on `(pipeline_id, tbl)`
-/// alone into it. Every stored row becomes a table scope with its pipeline, table, cursor
-/// and owner text unchanged, so a pending table owner resumes as it was.
+/// Every migration a machine catalog runs at open.
 fn migrate(tx: &Transaction, fail: Fail) -> Result<(), Failure> {
     migrate_scope_keys(tx, fail)?;
     migrate_run_start(tx, fail)
@@ -185,21 +183,22 @@ fn start_ns(at: Instant) -> i64 {
 }
 
 /// The indexed start column a history window's bound reads (`run.record.history-window`).
-/// A run table predating it gains the column, filled from each row's start instant.
+/// A run table predating it gains the column, and every open fills each row still lacking
+/// it from the row's start instant, so a row an older binary writes enters a window.
 fn migrate_run_start(tx: &Transaction, fail: Fail) -> Result<(), Failure> {
     let has: bool = tx
         .query_row("SELECT EXISTS (SELECT 1 FROM pragma_table_info('run') WHERE name = 'started_ns')", [], |r| r.get(0))
         .map_err(|e| fail(&e))?;
     if !has {
         tx.execute_batch("ALTER TABLE run ADD COLUMN started_ns INTEGER;").map_err(|e| fail(&e))?;
-        let rows: Vec<(String, String)> = tx
-            .prepare("SELECT run_id, row FROM run")
-            .and_then(|mut q| q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect())
-            .map_err(|e| fail(&e))?;
-        for (run_id, text) in rows {
-            let row: RunRow = from_text(&text, fail)?;
-            tx.execute("UPDATE run SET started_ns = ?2 WHERE run_id = ?1", params![run_id, start_ns(row.started_at)]).map_err(|e| fail(&e))?;
-        }
+    }
+    let rows: Vec<(String, String)> = tx
+        .prepare("SELECT run_id, row FROM run WHERE started_ns IS NULL")
+        .and_then(|mut q| q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect())
+        .map_err(|e| fail(&e))?;
+    for (run_id, text) in rows {
+        let row: RunRow = from_text(&text, fail)?;
+        tx.execute("UPDATE run SET started_ns = ?2 WHERE run_id = ?1", params![run_id, start_ns(row.started_at)]).map_err(|e| fail(&e))?;
     }
     tx.execute_batch(
         "CREATE INDEX IF NOT EXISTS run_by_pipeline_start ON run (pipeline_id, started_ns);
@@ -208,6 +207,9 @@ fn migrate_run_start(tx: &Transaction, fail: Fail) -> Result<(), Failure> {
     .map_err(|e| fail(&e))
 }
 
+/// Create the scope-keyed `scope` table, or rebuild one keyed on `(pipeline_id, tbl)`
+/// alone into it. Every stored row becomes a table scope with its pipeline, table, cursor
+/// and owner text unchanged, so a pending table owner resumes as it was.
 fn migrate_scope_keys(tx: &Transaction, fail: Fail) -> Result<(), Failure> {
     let columns: Vec<String> = tx
         .prepare("SELECT name FROM pragma_table_info('scope')")

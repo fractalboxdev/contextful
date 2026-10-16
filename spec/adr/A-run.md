@@ -461,10 +461,10 @@ Decision: the host names the struck bound on the failure. The step's retry loop 
 
 Context: a meter acquire is a blocking HTTP call, so it cannot select on a run's cancellation token. Criteria: a stop lands within a bounded time; one wait per retry; the blocking transport stays.
 
-Decision: each limiter call is bounded, and a reservation never sleeps. A denial surfaces as `RateLimited` with its retry-after, and the run's retry sleep, which selects on the token, performs the wait. A stop arriving during a limiter call lands when that call returns.
+Decision: each limiter call is bounded, and a reservation never sleeps. A denial surfaces as `RateLimited` with its retry-after, and the run's retry sleep, which selects on the token, performs the wait. A reservation makes at most two calls, an owed report and the acquire, and a stop arriving during either lands when the reservation returns.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| A bounded call, the wait in the retry sleep *(chosen)* | — | A stop waits out at most one limiter call. |
+| A bounded call, the wait in the retry sleep *(chosen)* | — | A stop waits out at most the owed report and one acquire. |
 | An interruptible transport selecting on the token | Blocking transport | An async client inside a blocking adapter, saving at most one call. |
 | A sleep on denial inside the reservation | One wait per retry | A second sleep for the token to reach, stacked on the schedule. |
