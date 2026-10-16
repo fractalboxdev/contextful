@@ -16,7 +16,8 @@ use contextful_core::read::respond::{Cell, Internals, Response};
 use contextful_core::read::template::{bind_query, parse_templates, Bindings, Bound, ParamType, QueryTemplate};
 use contextful_core::read::ReadError;
 use contextful_core::enforce::EnforceError;
-use contextful_core::disclosure::declare::{Binding, Fidelity};
+use contextful_core::disclosure::declare::{Binding, Fidelity, OnStale};
+use contextful_core::disclosure::stale::Posture;
 use contextful_core::disclosure::reach::{self, ReachCache, ReachError, ReachKey};
 use contextful_core::disclosure::{DisclosureError, VisibilityError};
 use contextful_core::memory::declare::{DeclareError, MemoryDeclarations};
@@ -87,10 +88,42 @@ pub struct Face {
     /// Tables declared `federated`, which register on no read face
     /// (`disclosure.declare-fidelity.federated-registered`).
     federated: BTreeSet<String>,
+    /// Each mapped table's source levels onto read, write and admin, from its pack mapping
+    /// (`disclosure.reach.read-level`).
+    levels: BTreeMap<String, BTreeMap<String, String>>,
+    /// Each bound source's principal kinds onto the access tables' kinds, merged from the
+    /// pack mappings of its tables (`disclosure.reach.public-grant`).
+    kinds: BTreeMap<String, BTreeMap<String, String>>,
     /// Reachable sets by subject and source epochs (`disclosure.reach.cache-epochs`).
     reach: std::sync::Mutex<ReachCache>,
     /// The instant a staleness check reads as now (`disclosure.bound-staleness.clock-offset`).
     clock: std::sync::Arc<dyn Fn() -> contextful_core::time::Instant + Send + Sync>,
+}
+
+/// A table's `level` and `principal_kind` tables, by table.
+type PackTables = BTreeMap<String, BTreeMap<String, String>>;
+
+/// Each table a pack maps, with the `level` table of its mapping
+/// (`disclosure.reach.read-level`), and each bound source with the `principal_kind` tables of
+/// its tables' mappings merged (`disclosure.reach.public-grant`), across the manifest and the
+/// `pipelines/` files. A pack that does not load refuses the face.
+fn pack_levels(manifest: &str, pipelines: &[ManifestFile], bindings: &BTreeMap<String, Binding>) -> Result<(PackTables, PackTables), ReadFault> {
+    use contextful_core::disclosure::pack::{Pack, PackError};
+    let fault = |e: PackError| match e {
+        PackError::Visibility(v) => ReadFault::Refused(v.into()),
+        PackError::Malformed(m) => ReadFault::Policy(m.into()),
+    };
+    let mut packs = Pack::parse_manifest(manifest).map_err(fault)?;
+    packs.extend(Pack::parse_set(pipelines).map_err(fault)?);
+    let mut levels = BTreeMap::new();
+    let mut kinds: PackTables = BTreeMap::new();
+    for (table, m) in packs.into_iter().flat_map(|p| p.access) {
+        if let Some(b) = bindings.get(&table) {
+            kinds.entry(b.source.clone()).or_default().extend(m.principal_kind);
+        }
+        levels.insert(table, m.level);
+    }
+    Ok((levels, kinds))
 }
 
 /// The system clock's instant.
@@ -178,8 +211,26 @@ impl Face {
             decls.insert(d.name.clone(), d);
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
+        let (levels, kinds) = pack_levels(manifest, pipelines, &bindings)?;
         let fulltext = crate::fulltext::SidecarCache::new(contextful_core::read::rank::LEXICAL_INDEX_CACHE_ENTRIES);
-        let face = Face { store, lexicon, decls, policies, templates, memory, pepper, fulltext, pool: SessionPool::default(), results: None, bindings, federated, reach: Default::default(), clock: std::sync::Arc::new(system_now) };
+        let face = Face {
+            store,
+            lexicon,
+            decls,
+            policies,
+            templates,
+            memory,
+            pepper,
+            fulltext,
+            pool: SessionPool::default(),
+            results: None,
+            bindings,
+            federated,
+            levels,
+            kinds,
+            reach: Default::default(),
+            clock: std::sync::Arc::new(system_now),
+        };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
         for t in &face.templates {
@@ -253,7 +304,10 @@ impl Face {
         let started = std::time::Instant::now();
         let frontier = self.store.frontier_stamp()?;
         self.ensure_session_frontier(session)?;
-        let cache = self.results.as_ref().and_then(|c| Some((c, self.cache_ttl(touched)?))).filter(|_| !results::volatile(tree));
+        // A result read under the narrowing posture is never retained
+        // (`disclosure.reach.degraded-uncached`).
+        let narrowed = touched.iter().any(|t| session.narrowed(t));
+        let cache = self.results.as_ref().and_then(|c| Some((c, self.cache_ttl(touched)?))).filter(|_| !results::volatile(tree) && !narrowed);
         if cache.is_none() {
             if let Some(c) = &self.results {
                 c.bypass();
@@ -558,9 +612,13 @@ impl Face {
         }
         // A sweep advances its source's epoch, which joins the key, so no pooled session
         // keeps a reachable set its source has since replaced (`disclosure.reach.cache-epochs`).
+        // The tables served narrowed and the count of lapsed openings join it too, so a
+        // pooled session retires when a posture changes or an opening expires.
         let epochs = self.source_epochs(&granted)?;
+        let (reach, expired) = self.reach_filters(authority, &granted, &epochs, (self.clock)())?;
         if !epochs.is_empty() {
-            principal = Sha256::new().chain_update(principal).chain_update(format!("{epochs:?}").as_bytes()).finalize().into();
+            let narrowed: Vec<&String> = reach.iter().filter(|(_, f)| f.narrowed).map(|(t, _)| t).collect();
+            principal = Sha256::new().chain_update(principal).chain_update(format!("{epochs:?}{narrowed:?}{expired}").as_bytes()).finalize().into();
         }
         let state = pool::store_state(&self.store, &tables, &granted)?;
         // Under a horizon an unpinned model table reads its newest build within it
@@ -579,7 +637,6 @@ impl Face {
                 .iter()
                 .map(|t| self.source(t, carried_bounds(bounds, carried, t).for_table(&self.decl(t)), pins.build(t).or(within.get(t).map(String::as_str)), horizon))
                 .collect::<Result<Vec<_>, _>>()?;
-            let reach = self.reach_filters(authority, &granted, &epochs)?;
             Ok(Session::open_reaching(authority, request, sources, reach, &self.pepper)?)
         })
     }
@@ -597,58 +654,94 @@ impl Face {
         Ok(epochs)
     }
 
-    /// The mirrored-permission semi-join of each granted bound table: the reader's reachable
-    /// set on the table's source, from the cache under the subject and that source's epoch,
-    /// else resolved and retained (`disclosure.reach.semi-join`). A table at a level served
-    /// from no store reaches nothing. A set that does not resolve — a closure past its bound,
-    /// a refused identity link — admits no row and carries its refusal, which a read
-    /// touching that table alone raises. Directory rows land in their source's run, so the
-    /// source epoch covers them and the directory epoch is constant.
-    fn reach_filters(&self, authority: &AdmittedAuthority, granted: &[String], epochs: &BTreeMap<String, u64>) -> Result<BTreeMap<String, ReachFilter>, ReadFault> {
+    /// The posture `b`'s table reads under at `now` (`disclosure.bound-staleness.public-only`):
+    /// fresh inside its budget, else narrowed or refused. The source's rows are read only for
+    /// a `public_only` table past its budget.
+    fn posture(&self, b: &Binding, now: contextful_core::time::Instant) -> Result<Posture, ReadFault> {
+        let freshness = crate::visibility::freshness(&self.store, &b.source)?;
+        match contextful_core::disclosure::stale::check_fresh(b, freshness.as_ref(), now) {
+            Ok(()) => Ok(Posture::Fresh),
+            Err(refused) if b.on_stale != OnStale::PublicOnly => Err(ReadFault::Refused(refused.into())),
+            Err(_) => {
+                let state = crate::visibility::state(&self.store, &b.source)?;
+                contextful_core::disclosure::stale::posture(b, &state, self.levels.get(&b.table), self.kinds.get(&b.source), now).map_err(|v| ReadFault::Refused(v.into()))
+            }
+        }
+    }
+
+    /// The mirrored-permission semi-join of each granted bound table at `now`, and the count
+    /// of openings lapsed in the sets it read. A table reads the resources its reachable set
+    /// admits — through a read-conferring, unexpired grant under the table's pack levels
+    /// (`disclosure.reach.semi-join`) — from the cache under the subject and the source's
+    /// epoch, else resolved and retained. A `public_only` table past its budget reads its
+    /// public resources alone, resolved fresh and never retained
+    /// (`disclosure.bound-staleness.public-only`). A table at a level served from no store
+    /// reaches nothing. A set that does not resolve — a closure past its bound, a refused
+    /// identity link — admits no row and carries its refusal, which a read touching that
+    /// table alone raises; a stale table's refusal is raised at the read
+    /// ([`Face::bind_visibility`]). Directory rows land in their source's run, so the source
+    /// epoch covers them and the directory epoch is constant.
+    fn reach_filters(
+        &self,
+        authority: &AdmittedAuthority,
+        granted: &[String],
+        epochs: &BTreeMap<String, u64>,
+        now: contextful_core::time::Instant,
+    ) -> Result<(BTreeMap<String, ReachFilter>, usize), ReadFault> {
         let subject = authority.subject();
         let mut filters = BTreeMap::new();
+        let mut expired = 0;
         for t in granted {
             let Some(b) = self.bindings.get(t) else { continue };
-            let resources = if b.fidelity.is_servable() {
-                let key = ReachKey {
-                    subject: subject.identity().unwrap_or("").to_string(),
-                    directory_epoch: 0,
-                    sources: BTreeMap::from([(b.source.clone(), epochs.get(&b.source).copied().unwrap_or(0))]),
-                };
-                let cached = self.reach.lock().expect("the reach cache lock").get(&key);
-                match cached {
-                    Some(set) => set,
-                    None => {
-                        let state = crate::visibility::state(&self.store, &b.source)?;
-                        match reach::resolve(&b.source, subject, &state, reach::ClosureBound::default()) {
-                            Ok(set) => {
-                                let resources = set.resources.clone();
-                                self.reach.lock().expect("the reach cache lock").insert(key, set).map_err(|v| ReadFault::Refused(v.into()))?;
-                                resources
-                            }
-                            Err(e) => {
-                                filters.insert(t.clone(), ReachFilter { resource_key: b.resource_key.clone(), resources: BTreeSet::new(), refused: Some(e) });
-                                continue;
-                            }
+            let filter = |resources: BTreeSet<String>, refused: Option<ReachError>, narrowed: bool| ReachFilter { resource_key: b.resource_key.clone(), resources, refused, narrowed };
+            if !b.fidelity.is_servable() {
+                filters.insert(t.clone(), filter(BTreeSet::new(), None, false));
+                continue;
+            }
+            let (levels, kinds) = (self.levels.get(t), self.kinds.get(&b.source));
+            if let Ok(Posture::Narrowed) = self.posture(b, now) {
+                let state = crate::visibility::state(&self.store, &b.source)?;
+                // A lapsed opening leaves the narrowed set, so its count joins the key.
+                expired += reach::expired_public(&state, kinds, now);
+                filters.insert(t.clone(), filter(reach::public_resources(&state, levels, kinds, now).into_keys().collect(), None, true));
+                continue;
+            }
+            let key = ReachKey {
+                subject: subject.identity().unwrap_or("").to_string(),
+                directory_epoch: 0,
+                sources: BTreeMap::from([(b.source.clone(), epochs.get(&b.source).copied().unwrap_or(0))]),
+            };
+            let cached = self.reach.lock().expect("the reach cache lock").get(&key);
+            let set = match cached {
+                Some(set) => set,
+                None => {
+                    let state = crate::visibility::state(&self.store, &b.source)?;
+                    match reach::resolve_mapped(&b.source, subject, &state, reach::ClosureBound::default(), kinds) {
+                        Ok(set) => self.reach.lock().expect("the reach cache lock").insert(key, set).map_err(|v| ReadFault::Refused(v.into()))?,
+                        Err(e) => {
+                            filters.insert(t.clone(), filter(BTreeSet::new(), Some(e), false));
+                            continue;
                         }
                     }
                 }
-            } else {
-                BTreeSet::new()
             };
-            filters.insert(t.clone(), ReachFilter { resource_key: b.resource_key.clone(), resources, refused: None });
+            expired += set.expired(now);
+            filters.insert(t.clone(), filter(set.admitted(levels, now), None, false));
         }
-        Ok(filters)
+        Ok((filters, expired))
     }
 
     /// Refuse a read touching a bound table whose source lags past the table's budget at
     /// the face's now (`disclosure.bound-staleness.access-stale`), or whose reachable set did
-    /// not resolve when the session opened (`disclosure.reach.closure-overflow`).
+    /// not resolve when the session opened (`disclosure.reach.closure-overflow`). A table
+    /// narrowed at the face's now reads only through a session that narrowed it.
     fn bind_visibility(&self, session: &Session, touched: &BTreeSet<String>) -> Result<(), ReadFault> {
         let now = (self.clock)();
         for (t, b) in touched.iter().filter_map(|t| self.bindings.get(t).map(|b| (t, b))) {
-            let freshness = crate::visibility::freshness(&self.store, &b.source)?;
-            contextful_core::disclosure::stale::check_fresh(b, freshness.as_ref(), now).map_err(|v| ReadFault::Refused(v.into()))?;
+            if self.posture(b, now)? == Posture::Narrowed && !session.narrowed(t) {
+                let freshness = crate::visibility::freshness(&self.store, &b.source)?;
+                contextful_core::disclosure::stale::check_fresh(b, freshness.as_ref(), now).map_err(|v| ReadFault::Refused(v.into()))?;
+            }
             match session.reach_refusal(t) {
                 Some(ReachError::Authority(a)) => return Err(ReadFault::Authority(a.clone())),
                 Some(ReachError::Visibility(v)) => return Err(ReadFault::Refused(v.clone().into())),
@@ -762,6 +855,12 @@ impl Face {
     }
 
     pub(crate) fn finish_budget(&self, session: &Session, touched: &BTreeSet<String>, request: ReadOptions, template: Option<u64>, ceiling: u64, mut response: Response) -> Result<Response, ReadFault> {
+        // A read touching a narrowed table answers degraded, naming the narrowed tables
+        // (`disclosure.bound-staleness.degraded-block`).
+        let narrowed: Vec<&String> = touched.iter().filter(|t| session.narrowed(t)).collect();
+        if !narrowed.is_empty() {
+            response.blocks.insert("contextful.visibility".into(), json!({ "degraded": true, "narrowed": narrowed }));
+        }
         if response.truncated {
             response.blocks.insert("contextful.truncation".into(), json!({ "by": "rows", "ceiling": ceiling, "source": self.row_source(session, touched, request.limit, template, ceiling) }));
         }

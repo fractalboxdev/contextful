@@ -80,7 +80,7 @@ The subject tuple, its per-member attestation, hygiene at the mint, and the iden
   *A-authority*
 - `directory-link` — Directory provisioning from the identity provider writes source-account links. A value a source's profile interface returns at request time is data, not a link.
   *A-authority*
-- `unlinked-principal` — A subject whose source principal resolves to no link reads nothing from that source.
+- `unlinked-principal` — A subject whose source principal resolves to no link reads from that source only the resources {{disclosure.reach.public-grant}} opens.
   *because a source principal is the source's spelling; the `user` principal {{disclosure.reach.subject-principals}} spells is the subject's own and needs no link*
 - `agent-ceiling` — A sub-agent's reachable set equals or narrows its parent's; no agent reads beyond the principal it acts for.
   *A-authority*

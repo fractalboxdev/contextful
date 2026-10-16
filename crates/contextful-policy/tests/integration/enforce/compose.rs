@@ -85,7 +85,7 @@ fn the_semi_join_opens_a_bound_relation_and_carries_its_ids_as_rows() {
     let token = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
     let authority = admit(&token, &signer, DURING).unwrap();
     let pepper = Pepper::resolve(|_| None);
-    let filter = |ids: &[&str]| ReachFilter { resource_key: "x".into(), resources: ids.iter().map(|s| s.to_string()).collect(), refused: None };
+    let filter = |ids: &[&str]| ReachFilter { resource_key: "x".into(), resources: ids.iter().map(|s| s.to_string()).collect(), refused: None, narrowed: false };
     let reach = std::collections::BTreeMap::from([("research/pages".to_string(), filter(&["p1", "p2"])), ("hr/salaries".to_string(), filter(&["s1"]))]);
     let session = Session::open_reaching(&authority, &Request::default(), vec![source("research/pages"), source("research/notes"), source("hr/salaries")], reach, &pepper).unwrap();
     let sql = session.relation("research/pages").unwrap().sql().to_string();
@@ -136,4 +136,20 @@ fn a_relation_carrying_key_state_is_refused() {
         other => panic!("{other:?}"),
     }
     assert!(session.relation_over("research/notes", "'ordinary.parquet'", vec![]).unwrap().is_some());
+}
+
+/// A session records which bound tables it serves narrowed to their public rows, so a read
+/// touching one marks its answer degraded and retains nothing.
+#[test]
+fn a_session_records_the_tables_it_serves_narrowed() {
+    let signer = issuer();
+    let token = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
+    let authority = admit(&token, &signer, DURING).unwrap();
+    let pepper = Pepper::resolve(|_| None);
+    let filter = |narrowed: bool| ReachFilter { resource_key: "x".into(), resources: ["p1".to_string()].into(), refused: None, narrowed };
+    let reach = std::collections::BTreeMap::from([("research/pages".to_string(), filter(true)), ("research/notes".to_string(), filter(false))]);
+    let session = Session::open_reaching(&authority, &Request::default(), vec![source("research/pages"), source("research/notes")], reach, &pepper).unwrap();
+    assert!(session.narrowed("research/pages"));
+    assert!(!session.narrowed("research/notes"));
+    assert!(!session.narrowed("research/absent"));
 }

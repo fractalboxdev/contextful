@@ -107,6 +107,8 @@ Per-request resolution of a subject to the resources it reaches, the bounded gro
 - `degraded-uncached` — Retaining a reachable set or result produced past a budget, or under the narrowing posture, raises `VisibilityDegradedCached`.
   *A-disclosure*
 - `semi-join` — The semi-join opening {{authority.compose.relation-order}} admits a row of a bound table when its `resource_key` value names a resource with a read-conferring, unexpired, untombstoned grant in the reader's reachable set.
+- `read-level` — A grant confers read when its `level`, mapped through the `level` table of the pack mapping its table, or taken verbatim where no pack maps that table, is `read`, `write` or `admin`.
+- `public-grant` — A grant whose `principal_kind`, mapped through the `principal_kind` table of the pack mapping its table, or taken verbatim where that table names no such kind, is `public` joins every subject's reachable set.
 - `closure-projection` — The group closure is a projection in `derived.sqlite`, rebuilt from the `_visibility` rows after each sweep and on a replica after each pull; no replica opens closure files.
   *A-disclosure*
 - `cache-epochs` — The reachable-set cache keys on the subject, the directory epoch and the epoch of each source the read touches, so a sweep invalidates only sets reading its source.
@@ -125,6 +127,8 @@ flowchart LR
   RSET -->|"keyed by source epochs"| CACHE[("reachable-set cache")]
 ```
 
+unsettled: Where does a read replica keep the closure projection, when the edge profile links no SQLite adapter and an encrypted store holds `derived.sqlite` in memory? owner: disclosure affects: disclosure.reach
+
 ## bound-staleness
 
 The declared age budget on mirrored authorization, the refusal past it, and the one narrowing posture.
@@ -138,6 +142,10 @@ The declared age budget on mirrored authorization, the refusal past it, and the 
 - `clock-offset` — `CONTEXTFUL_NOW_OFFSET_SECS`, a non-negative integer, moves the instant a staleness check reads as now that many seconds later, so it can refuse a read and never extends a budget.
   *because a test observes a budget elapse without waiting, and an offset that only ages state cannot admit a read*
 - `offset-malformed` — A `CONTEXTFUL_NOW_OFFSET_SECS` value other than a non-negative integer stops the process before it serves, naming the variable.
+- `public-watermark` — A table's public-status watermark is the oldest `acl_observed_at` among its source's resources holding a read-conferring, unexpired `public` grant; with no such resource it lags zero.
+  *because an incremental run over the public resources refreshes each one's observation, so public status stays current while the full watermark lags*
+- `public-only` — Past its budget, a `public_only` table whose source has a completed full run and a public-status watermark within budget serves only rows whose resource holds a read-conferring, unexpired `public` grant.
+- `degraded-block` — A read touching a table served under {{disclosure.bound-staleness.public-only}} answers with a `contextful.visibility` block holding `degraded` true and the narrowed tables under `narrowed`.
 
 ## declare-fidelity
 

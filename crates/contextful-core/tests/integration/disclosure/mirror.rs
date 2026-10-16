@@ -27,7 +27,7 @@ fn governed(ids: &[&str]) -> Vec<Governed> {
 
 /// The resources `subject` reaches through `state`, resolved as a read resolves them.
 fn reachable(subject: &NormalizedSubject, state: &SourceState) -> Result<std::collections::BTreeSet<String>, ReachError> {
-    resolve("drive", subject, state, ClosureBound::default()).map(|set| set.resources)
+    resolve("drive", subject, state, ClosureBound::default()).map(|set| set.held.into_keys().collect())
 }
 
 fn subject(on_behalf_of: &str) -> NormalizedSubject {

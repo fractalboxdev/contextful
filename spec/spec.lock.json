@@ -18657,7 +18657,7 @@
       "operation": "identify",
       "subject": "unlinked-principal",
       "kind": "behavior",
-      "statement": "A subject whose source principal resolves to no link reads nothing from that source.",
+      "statement": "A subject whose source principal resolves to no link reads from that source only the resources {{disclosure.reach.public-grant}} opens.",
       "why": "because a source principal is the source's spelling; the `user` principal {{disclosure.reach.subject-principals}} spells is the subject's own and needs no link",
       "file": "spec/50-authority.md",
       "line": 83
@@ -22139,6 +22139,28 @@
       "line": 109
     },
     {
+      "id": "disclosure.reach.read-level",
+      "contract": "disclosure",
+      "operation": "reach",
+      "subject": "read-level",
+      "kind": "behavior",
+      "statement": "A grant confers read when its `level`, mapped through the `level` table of the pack mapping its table, or taken verbatim where no pack maps that table, is `read`, `write` or `admin`.",
+      "why": "",
+      "file": "spec/60-visibility.md",
+      "line": 110
+    },
+    {
+      "id": "disclosure.reach.public-grant",
+      "contract": "disclosure",
+      "operation": "reach",
+      "subject": "public-grant",
+      "kind": "behavior",
+      "statement": "A grant whose `principal_kind`, mapped through the `principal_kind` table of the pack mapping its table, or taken verbatim where that table names no such kind, is `public` joins every subject's reachable set.",
+      "why": "",
+      "file": "spec/60-visibility.md",
+      "line": 111
+    },
+    {
       "id": "disclosure.reach.closure-projection",
       "contract": "disclosure",
       "operation": "reach",
@@ -22147,7 +22169,7 @@
       "statement": "The group closure is a projection in `derived.sqlite`, rebuilt from the `_visibility` rows after each sweep and on a replica after each pull; no replica opens closure files.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 110
+      "line": 112
     },
     {
       "id": "disclosure.reach.cache-epochs",
@@ -22158,7 +22180,7 @@
       "statement": "The reachable-set cache keys on the subject, the directory epoch and the epoch of each source the read touches, so a sweep invalidates only sets reading its source.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 112
+      "line": 114
     },
     {
       "id": "disclosure.bound-staleness.budget-grammar",
@@ -22169,7 +22191,7 @@
       "statement": "`max_acl_staleness` is a positive integer with one suffix from `s`, `m`, `h`, `d`. A compound form, a bare number or another suffix raises `VisibilityBudgetMalformed`, naming the table and the text read.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 132
+      "line": 136
     },
     {
       "id": "disclosure.bound-staleness.access-stale",
@@ -22180,7 +22202,7 @@
       "statement": "A read raises `VisibilityAccessStale` (HTTP 503, carrying source, lag, budget and last observation) when a touched table's source lag exceeds its budget, the source has no completed full run, or the public-status watermark is past budget.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 134
+      "line": 138
     },
     {
       "id": "disclosure.bound-staleness.budget-below-cadence",
@@ -22191,7 +22213,7 @@
       "statement": "A budget tighter than the sweep cadence its source sustains raises `VisibilityBudgetUnreachable` at diagnose, naming both figures.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 136
+      "line": 140
     },
     {
       "id": "disclosure.bound-staleness.clock-offset",
@@ -22202,7 +22224,7 @@
       "statement": "`CONTEXTFUL_NOW_OFFSET_SECS`, a non-negative integer, moves the instant a staleness check reads as now that many seconds later, so it can refuse a read and never extends a budget.",
       "why": "because a test observes a budget elapse without waiting, and an offset that only ages state cannot admit a read",
       "file": "spec/60-visibility.md",
-      "line": 138
+      "line": 142
     },
     {
       "id": "disclosure.bound-staleness.offset-malformed",
@@ -22213,7 +22235,40 @@
       "statement": "A `CONTEXTFUL_NOW_OFFSET_SECS` value other than a non-negative integer stops the process before it serves, naming the variable.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 140
+      "line": 144
+    },
+    {
+      "id": "disclosure.bound-staleness.public-watermark",
+      "contract": "disclosure",
+      "operation": "bound-staleness",
+      "subject": "public-watermark",
+      "kind": "behavior",
+      "statement": "A table's public-status watermark is the oldest `acl_observed_at` among its source's resources holding a read-conferring, unexpired `public` grant; with no such resource it lags zero.",
+      "why": "because an incremental run over the public resources refreshes each one's observation, so public status stays current while the full watermark lags",
+      "file": "spec/60-visibility.md",
+      "line": 145
+    },
+    {
+      "id": "disclosure.bound-staleness.public-only",
+      "contract": "disclosure",
+      "operation": "bound-staleness",
+      "subject": "public-only",
+      "kind": "behavior",
+      "statement": "Past its budget, a `public_only` table whose source has a completed full run and a public-status watermark within budget serves only rows whose resource holds a read-conferring, unexpired `public` grant.",
+      "why": "",
+      "file": "spec/60-visibility.md",
+      "line": 147
+    },
+    {
+      "id": "disclosure.bound-staleness.degraded-block",
+      "contract": "disclosure",
+      "operation": "bound-staleness",
+      "subject": "degraded-block",
+      "kind": "behavior",
+      "statement": "A read touching a table served under {{disclosure.bound-staleness.public-only}} answers with a `contextful.visibility` block holding `degraded` true and the narrowed tables under `narrowed`.",
+      "why": "",
+      "file": "spec/60-visibility.md",
+      "line": 148
     },
     {
       "id": "disclosure.declare-fidelity.family-bound",
@@ -22224,7 +22279,7 @@
       "statement": "A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound`, and the manifest declaring it does not load.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 146
+      "line": 154
     },
     {
       "id": "disclosure.declare-fidelity.family-undeclared",
@@ -22235,7 +22290,7 @@
       "statement": "A mapping landing a table without naming its `family` raises `VisibilityFamilyUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 148
+      "line": 156
     },
     {
       "id": "disclosure.declare-fidelity.federated-registered",
@@ -22246,7 +22301,7 @@
       "statement": "Registering a `federated` table on a read face raises `VisibilityFederatedRegistered`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 150
+      "line": 158
     },
     {
       "id": "disclosure.declare-fidelity.federated-cache",
@@ -22257,7 +22312,7 @@
       "statement": "Retaining a federated result under a key omitting the subject raises `VisibilityFederatedCacheShared`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 152
+      "line": 160
     },
     {
       "id": "disclosure.declare-fidelity.computed-inputs",
@@ -22268,7 +22323,7 @@
       "statement": "A source that computes access with a sharing engine is queried live. A mapping projecting that engine's inputs into the `grants` table raises `VisibilityComputedInputsMirrored`, naming the source.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 154
+      "line": 162
     },
     {
       "id": "disclosure.declare-fidelity.roster-from-payload",
@@ -22279,7 +22334,7 @@
       "statement": "A mapping deriving grants from a people list inside content — attendees, invitees, recipients, contacts — rather than from the source's permission endpoint raises `VisibilityRosterFromPayload`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 156
+      "line": 164
     },
     {
       "id": "disclosure.declare-fidelity.federated-credential",
@@ -22290,7 +22345,7 @@
       "statement": "A federated leg runs under a credential the read obtains by token exchange for the reader's subject, never under the sweep's `credential` or the store owner's.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 158
+      "line": 166
     },
     {
       "id": "disclosure.declare-fidelity.federated-citation",
@@ -22301,7 +22356,7 @@
       "statement": "A federated result with no store row cites the source URL it fetched and the instant of that fetch.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 160
+      "line": 168
     },
     {
       "id": "disclosure.pack.mapping-absent",
@@ -22312,7 +22367,7 @@
       "statement": "A pack landing a table with neither an access mapping nor `excluded` raises `VisibilityMappingAbsent` at diagnose, naming the pack and the table.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 167
+      "line": 175
     },
     {
       "id": "disclosure.pack.asserts-access",
@@ -22323,7 +22378,7 @@
       "statement": "An access-shaped key the mapping schema does not define raises `VisibilityPackAssertsAccess` by name. Fields outside the mapping are fetch inputs and reach no authorization decision.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 169
+      "line": 177
     },
     {
       "id": "disclosure.pack.any-of-allowlist",
@@ -22334,7 +22389,7 @@
       "statement": "An allowlist evaluated as any-of raises `VisibilityAllowlistAnyOf` at load.",
       "why": "P1",
       "file": "spec/60-visibility.md",
-      "line": 171
+      "line": 179
     },
     {
       "id": "disclosure.pack.unsupported-coarse",
@@ -22345,7 +22400,7 @@
       "statement": "Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 173
+      "line": 181
     },
     {
       "id": "disclosure.pack.pack-block",
@@ -22356,7 +22411,7 @@
       "statement": "A `[pack.<name>]` block names the `tables` it lands, its `excluded` tables, one `access.<table>` mapping per mapped table, and an optional container `allowlist` of `containers` with `evaluate = \"all-of\"`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 175
+      "line": 183
     },
     {
       "id": "disclosure.pack.mapping-keys",
@@ -22367,7 +22422,7 @@
       "statement": "An access mapping holds `resource_key`, `resource_kind`, `family`, `fidelity`, `container_key`, `principal_kind` and `level`, and no other key.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 176
+      "line": 184
     },
     {
       "id": "disclosure.set-mode.check-verb",
@@ -31210,6 +31265,10 @@
       "authority.identify.value-hygiene"
     ],
     [
+      "authority.identify.unlinked-principal",
+      "disclosure.reach.public-grant"
+    ],
+    [
       "authority.profile.evaluator-bound",
       "authority.profile.fact-ceiling"
     ],
@@ -31440,6 +31499,10 @@
     [
       "disclosure.reach.semi-join",
       "authority.compose.relation-order"
+    ],
+    [
+      "disclosure.bound-staleness.degraded-block",
+      "disclosure.bound-staleness.public-only"
     ],
     [
       "disclosure.set-mode.policy-absent",
