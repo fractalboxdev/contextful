@@ -309,3 +309,18 @@ fn a_public_key_prints_under_its_scheme_tag_and_parses_back() {
         assert!(bad.parse::<SignerKey>().is_err(), "{bad}");
     }
 }
+
+/// One ES256 key in either SEC1 encoding has one canonical form; an Ed25519 key is its bytes.
+#[test]
+fn a_signer_key_canonical_form_is_one_per_key() {
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    let es256 = SeedSigner::generate(SignatureAlgorithm::Es256);
+    let point = p256::PublicKey::from_sec1_bytes(&SignerKey::of(&es256).public_key).unwrap();
+    let encoded = |compress: bool| SignerKey { algorithm: SignatureAlgorithm::Es256, public_key: point.to_encoded_point(compress).as_bytes().to_vec() };
+    assert_ne!(encoded(true), encoded(false));
+    assert_eq!(encoded(true).canonical(), encoded(false).canonical());
+    assert_eq!(encoded(false).canonical().public_key.len(), 33);
+
+    let ed = SignerKey::of(&SeedSigner::generate(SignatureAlgorithm::Ed25519));
+    assert_eq!(ed.canonical(), ed);
+}

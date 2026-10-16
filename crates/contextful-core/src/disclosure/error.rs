@@ -182,6 +182,12 @@ pub enum DisclosureError {
     /// A published column is forbidden. (`disclosure.release.forbidden-column`)
     #[error("DisclosureForbiddenColumnPublished: {0}")]
     ForbiddenColumnPublished(String),
+    /// A cross-owner store lacks a per-owner boundary below the engine. (`disclosure.set-mode.clean-room-preconditions`)
+    #[error("DisclosureCleanRoomPreconditionUnmet: {0}")]
+    CleanRoomPreconditionUnmet(String),
+    /// A cross-owner hashed join presents a pepper already joined under. (`disclosure.set-mode.hashed-join`)
+    #[error("DisclosureStaticPepper: {0}")]
+    StaticPepper(String),
 }
 
 impl DisclosureError {
@@ -204,6 +210,8 @@ impl DisclosureError {
             DisclosureError::GroupKeyNotPermitted(_) => "DisclosureGroupKeyNotPermitted",
             DisclosureError::ContributorKeyAbsent(_) => "DisclosureContributorKeyAbsent",
             DisclosureError::ForbiddenColumnPublished(_) => "DisclosureForbiddenColumnPublished",
+            DisclosureError::CleanRoomPreconditionUnmet(_) => "DisclosureCleanRoomPreconditionUnmet",
+            DisclosureError::StaticPepper(_) => "DisclosureStaticPepper",
         }
     }
 }
