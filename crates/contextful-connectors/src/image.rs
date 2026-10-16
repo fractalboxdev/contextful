@@ -376,9 +376,6 @@ impl Source for ImageSource {
             }
             rows.push(json!({"path": path, "sha256": format!("{:x}", hash.finalize()), "width": width,
                 "height": height, "capture_at": if path.to_ascii_lowercase().ends_with(".png") { png_capture_at(&all) } else { None::<String> }, "modified_at": modified_at, "modality": "image", "body": null, "quotability": null}));
-            if let Some(row) = rows.last() {
-                check_quotability(row).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
-            }
         }
         serde_json::to_vec(&json!({"rows": rows, "more": false, "types": {
             "path": "utf8", "sha256": "utf8", "width": "int64", "height": "int64",

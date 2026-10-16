@@ -139,6 +139,38 @@ fn the_run_id_commits_on_creation_and_an_expired_run_recreates_for_its_window() 
 }
 
 #[test]
+fn a_run_expiring_between_reads_recreates_for_its_window_and_restarts_its_pages() {
+    let (vendor, log) = Vendor::new(vec![("a1", Script { pages: pages(2), polls: VecDeque::from([RunState::Expired]), ..Script::default() })]);
+    let mut source = ReportSource::new(config(&["a1"], json!({})), vendor, TODAY).unwrap();
+    let held = json!({"version": 1, "partitions": {key("a1"): {"run": {"id": "run-0", "start": "2030-01-01", "end": TODAY}, "cursor": "c1"}}});
+    let batches = read(&mut source, Some(held));
+    let log = log.lock().unwrap();
+    assert_eq!(log.creates.len(), 1);
+    assert_eq!(log.creates[0].1, Window { start: "2030-01-01".into(), end: TODAY.into() }, "the recreated run covers the held window");
+    assert_eq!(log.pages, vec![("a1".to_string(), None), ("a1".to_string(), Some("c1".to_string()))], "the recreated run restarts from its first page");
+    assert_eq!(rows(&batches).len(), 2);
+    assert_eq!(batches.last().unwrap()["cursor"]["partitions"][key("a1")]["watermark"], json!(TODAY));
+}
+
+#[test]
+fn a_vendor_answering_expired_again_recreates_once_per_read_and_holds_the_partition() {
+    let (vendor, log) = Vendor::new(vec![
+        ("a1", Script { pages: pages(1), polls: VecDeque::from(vec![RunState::Expired; 50]), ..Script::default() }),
+        ("a2", Script { pages: pages(1), ..Script::default() }),
+    ]);
+    let mut source = ReportSource::new(config(&["a1", "a2"], json!({})), vendor, TODAY).unwrap();
+    let batches = read(&mut source, None);
+    let creates: Vec<String> = log.lock().unwrap().creates.iter().map(|(a, _)| a.clone()).collect();
+    assert_eq!(creates.iter().filter(|a| *a == "a1").count(), 2, "one creation and one recreation");
+    let position = &batches.last().unwrap()["cursor"]["partitions"];
+    assert_eq!(position[key("a1")]["run"]["id"], json!("run-2"), "the partition holds its committed run");
+    assert_eq!(position[key("a2")]["watermark"], json!(TODAY));
+    let audit: Vec<Value> = batches.iter().flat_map(|b| b["audit"].as_array().cloned().unwrap_or_default()).collect();
+    assert_eq!(audit.len(), 1, "{audit:?}");
+    assert!(audit[0].as_str().unwrap().contains(&key("a1")), "{audit:?}");
+}
+
+#[test]
 fn an_exhausted_polling_budget_ends_the_read_successfully() {
     let polls = VecDeque::from(vec![RunState::Pending; 10]);
     let (vendor, log) = Vendor::new(vec![("a1", Script { pages: pages(1), polls, ..Script::default() })]);
@@ -229,6 +261,10 @@ fn a_retryable_failure_on_one_partition_keeps_the_pages_others_drained() {
     let landed = rows(&batches);
     assert_eq!(landed.iter().filter(|r| r["report_partition"] == json!(key("a2"))).count(), 2);
     assert_eq!(landed.iter().filter(|r| r["report_partition"] == json!(key("a1"))).count(), 1);
+    let audit: Vec<Value> = batches.iter().flat_map(|b| b["audit"].as_array().cloned().unwrap_or_default()).collect();
+    assert_eq!(audit.len(), 1, "the held partition is recorded on the run's audit: {audit:?}");
+    let entry = audit[0].as_str().unwrap();
+    assert!(entry.contains(&key("a1")) && entry.contains("503"), "{entry}");
 }
 
 // spec: connector.source.metric-grain@2642031a
@@ -328,12 +364,19 @@ fn report_rows_stay_untyped_json_and_a_throttle_code_in_the_body_is_recognized()
         let mut source = ReportSource::new(config(&["a1", "a2"], json!({"throttle_codes": [17]})), vendor, TODAY).unwrap();
         read(&mut source, None).last().unwrap()["cursor"]["partitions"].clone()
     };
-    for fault in [VendorFault { status: 400, body: json!({"error": {"code": 17}}) }, VendorFault { status: 429, body: json!({}) }] {
+    for fault in [
+        VendorFault { status: 400, body: json!({"error": {"code": 17}}) },
+        VendorFault { status: 403, body: json!({"error": {"code": 17}}) },
+        VendorFault { status: 429, body: json!({}) },
+    ] {
         let held = throttled(fault);
         assert_eq!(held[key("a1")]["watermark"], Value::Null);
         assert_eq!(held[key("a2")]["watermark"], json!(TODAY));
     }
-    assert_eq!(ReportSource::<Vendor>::classify(&config(&["a1"], json!({"throttle_codes": [17]})), &VendorFault { status: 400, body: json!({"error": {"code": 17}}) }).tag, FailureTag::RateLimited);
+    for status in [400, 401, 403] {
+        let fault = VendorFault { status, body: json!({"error": {"code": 17}}) };
+        assert_eq!(ReportSource::<Vendor>::classify(&config(&["a1"], json!({"throttle_codes": [17]})), &fault).tag, FailureTag::RateLimited, "{status}");
+    }
 }
 
 // spec: connector.source.report-auth@f3a74c26

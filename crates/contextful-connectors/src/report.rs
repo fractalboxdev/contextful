@@ -244,6 +244,8 @@ enum Step {
     Pending,
     /// One page of rows.
     Page(Value),
+    /// The vendor answered `Expired` for a run this read already recreated.
+    ExpiredAgain,
 }
 
 /// The async-report source over one vendor.
@@ -253,6 +255,12 @@ pub struct ReportSource<V> {
     today: i64,
     pages: usize,
     finished: BTreeSet<String>,
+    /// Partitions whose held run this read has polled.
+    polled: BTreeSet<String>,
+    /// Partitions whose run this read has recreated.
+    recreated: BTreeSet<String>,
+    /// Audit entries the next batch carries.
+    audit: Vec<String>,
 }
 
 fn day_of(text: &str) -> Option<i64> {
@@ -270,22 +278,33 @@ impl<V: ReportVendor> ReportSource<V> {
     /// A source over `vendor`, reading windows that end on `today` (`YYYY-MM-DD`).
     pub fn new(config: ReportConfig, vendor: V, today: &str) -> Result<Self, RunError> {
         let today = day_of(today).filter(|_| today.len() == 10).ok_or_else(|| RunError::Invalid(format!("`{today}` is not a YYYY-MM-DD day")))?;
-        Ok(ReportSource { config, vendor, today, pages: 0, finished: BTreeSet::new() })
+        Ok(ReportSource {
+            config,
+            vendor,
+            today,
+            pages: 0,
+            finished: BTreeSet::new(),
+            polled: BTreeSet::new(),
+            recreated: BTreeSet::new(),
+            audit: Vec::new(),
+        })
     }
 
-    /// Classify a vendor fault: an authentication status is terminal, a throttle status
-    /// or a throttle code in the error body is rate limiting, a `5xx` is transient.
+    /// Classify a vendor fault: a throttle code in the error body or a throttle status is
+    /// rate limiting, whatever the status; an authentication status is terminal; a `5xx` is
+    /// transient.
     pub fn classify(config: &ReportConfig, fault: &VendorFault) -> Failure {
         let code = fault.body.pointer(&config.error_code).and_then(Value::as_i64);
         match fault.status {
+            _ if code.is_some_and(|c| config.throttle_codes.contains(&c)) => Failure::new(
+                FailureTag::RateLimited,
+                format!("the report vendor throttled the read ({}, code {})", fault.status, code.unwrap_or_default()),
+            ),
+            429 => Failure::new(FailureTag::RateLimited, "the report vendor throttled the read (429)"),
             401 | 403 => Failure::deterministic(
                 FailureTag::Permanent,
                 ConnectorError::ConnectorAuthTerminal(format!("the report vendor answered {}", fault.status)).to_string(),
             ),
-            429 => Failure::new(FailureTag::RateLimited, "the report vendor throttled the read (429)"),
-            _ if code.is_some_and(|c| config.throttle_codes.contains(&c)) => {
-                Failure::new(FailureTag::RateLimited, format!("the report vendor throttled the read (code {})", code.unwrap_or_default()))
-            }
             500..=599 => Failure::new(FailureTag::Transient, format!("the report vendor answered {}", fault.status)),
             status => Failure::new(FailureTag::Permanent, format!("the report vendor answered {status}: {}", fault.body)),
         }
@@ -303,7 +322,11 @@ impl<V: ReportVendor> ReportSource<V> {
         Window { start: date_of(start), end: date_of(self.today) }
     }
 
+    /// One advance of a partition. A held run is polled before its first page this read,
+    /// cursor or not, so a run that expired between reads is recreated over its window and
+    /// restarts from its first page; a second expiry in one read holds the partition.
     fn step(&mut self, partition: &Partition, held: &mut Held) -> Result<Step, VendorFault> {
+        let key = partition.key();
         let run = match held.run.clone() {
             None => {
                 let window = self.window(held);
@@ -314,7 +337,8 @@ impl<V: ReportVendor> ReportSource<V> {
             }
             Some(run) => run,
         };
-        if held.cursor.is_none() {
+        if held.cursor.is_none() || !self.polled.contains(&key) {
+            self.polled.insert(key.clone());
             let mut ready = false;
             for _ in 0..self.config.poll_budget {
                 match self.vendor.poll(partition, &run.id)? {
@@ -324,8 +348,12 @@ impl<V: ReportVendor> ReportSource<V> {
                     }
                     RunState::Pending => {}
                     RunState::Expired => {
+                        if !self.recreated.insert(key) {
+                            return Ok(Step::ExpiredAgain);
+                        }
                         let id = self.vendor.create(partition, &run.window)?;
                         held.run = Some(HeldRun { id, window: run.window });
+                        held.cursor = None;
                         return Ok(Step::Created);
                     }
                 }
@@ -383,8 +411,16 @@ impl<V: ReportVendor> ReportSource<V> {
             .collect()
     }
 
-    fn batch(rows: Vec<Value>, position: &Position, more: bool) -> Result<Vec<u8>, Failure> {
-        serde_json::to_vec(&json!({"rows": rows, "cursor": position, "more": more})).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+    /// A batch carrying the audit entries recorded since the last one.
+    fn batch(&mut self, rows: Vec<Value>, position: &Position, more: bool) -> Result<Vec<u8>, Failure> {
+        let audit = std::mem::take(&mut self.audit);
+        serde_json::to_vec(&json!({"rows": rows, "cursor": position, "more": more, "audit": audit})).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+    }
+
+    /// Record a partition held at its committed position.
+    fn hold(&mut self, key: String, reason: &str) {
+        self.audit.push(format!("report partition `{key}` held at its committed position: {reason}"));
+        self.finished.insert(key);
     }
 }
 
@@ -407,10 +443,10 @@ impl<V: ReportVendor> Source for ReportSource<V> {
                 return Err(Failure::canceled("stopped during report read"));
             }
             if self.pages >= self.config.pages_per_read {
-                return Self::batch(Vec::new(), &position, false);
+                return self.batch(Vec::new(), &position, false);
             }
             let Some(partition) = self.config.partitions.iter().find(|p| !self.finished.contains(&p.key())).cloned() else {
-                return Self::batch(Vec::new(), &position, false);
+                return self.batch(Vec::new(), &position, false);
             };
             let key = partition.key();
             let committed = position.partitions.get(&key).cloned().unwrap_or_default();
@@ -418,9 +454,10 @@ impl<V: ReportVendor> Source for ReportSource<V> {
             match self.step(&partition, &mut held) {
                 Ok(Step::Created) => {
                     position.partitions.insert(key, held);
-                    return Self::batch(Vec::new(), &position, true);
+                    return self.batch(Vec::new(), &position, true);
                 }
-                Ok(Step::Pending) => return Self::batch(Vec::new(), &position, false),
+                Ok(Step::Pending) => return self.batch(Vec::new(), &position, false),
+                Ok(Step::ExpiredAgain) => self.hold(key, "the vendor answered Expired for a run this read recreated"),
                 Ok(Step::Page(page)) => {
                     let next = self.next_cursor(&page)?;
                     let rows = self.rows(&partition, &page);
@@ -435,14 +472,14 @@ impl<V: ReportVendor> Source for ReportSource<V> {
                     position.partitions.insert(key, held);
                     self.pages += 1;
                     let more = self.pages < self.config.pages_per_read;
-                    return Self::batch(rows, &position, more);
+                    return self.batch(rows, &position, more);
                 }
                 Err(fault) => {
                     let failure = Self::classify(&self.config, &fault);
                     if !retryable(&failure) {
                         return Err(failure);
                     }
-                    self.finished.insert(key);
+                    self.hold(key, &failure.to_string());
                 }
             }
         }
