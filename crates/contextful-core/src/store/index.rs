@@ -78,7 +78,8 @@ pub fn partition_warnings(by: &[String], sizes: &[u64]) -> Vec<String> {
 }
 
 /// A sidecar kind a declaration names.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum IndexKind {
     Vector,
@@ -86,7 +87,8 @@ pub enum IndexKind {
 }
 
 /// How a full-text sidecar splits text into terms (`store.index.tokenizer`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Tokenizer {
     /// Each lowercased alphanumeric run is one term.
@@ -149,7 +151,8 @@ fn cjk_terms(run: &str, out: &mut Vec<String>) {
 }
 
 /// A vector sidecar's distance.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Metric {
     #[default]
@@ -159,7 +162,8 @@ pub enum Metric {
 /// One `[[pipeline.tables.indexes]]` block (`store.index.declaration`): a `vector` block
 /// takes `model`, `dim`, `metric`, `m` and `ef_construction`, a `fulltext` block a
 /// `tokenizer`, and a key of the other kind refuses the block.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(try_from = "IndexBlock")]
 pub struct IndexDecl {
     pub kind: IndexKind,
@@ -181,7 +185,8 @@ pub struct IndexDecl {
 }
 
 /// An index block as written, before its keys are held to its kind.
-#[derive(Deserialize, schemars::JsonSchema)]
+#[derive(Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 struct IndexBlock {
     kind: IndexKind,

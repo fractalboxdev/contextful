@@ -26,7 +26,8 @@ const CONTROL_KEYS: [&str; 9] = ["if", "unless", "when", "while", "until", "loop
 const CONTROL_KINDS: [&str; 8] = ["if", "switch", "while", "until", "loop", "repeat", "for", "forEach"];
 
 /// One node's kind and the fields that kind declares.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum NodeKind {
     /// One connector pull, recorded once, under an optional retry schedule.
@@ -69,17 +70,18 @@ impl NodeKind {
 }
 
 /// One plan node: its id, its predecessor edges and its kind.
-#[derive(Debug, Clone, PartialEq, Eq, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema), serde(deny_unknown_fields))]
 pub struct Node {
     pub id: String,
-    #[serde(default)]
+    #[cfg_attr(feature = "schema", serde(default))]
     pub after: Vec<String>,
-    #[serde(flatten)]
+    #[cfg_attr(feature = "schema", serde(flatten))]
     pub kind: NodeKind,
 }
 
 /// Plan JSON as the run path reads it: `{id, nodes}` (`run.compile.plan-schema`).
+#[cfg(feature = "schema")]
 #[derive(schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(title = "Plan", description = "A compiled plan: a flat node list with predecessor edges.")]
@@ -91,6 +93,7 @@ struct PlanDocument {
 
 /// The JSON Schema of plan JSON, derived from [`Node`] and [`NodeKind`], the types
 /// [`NodePlan::compile`] deserializes (`run.compile.plan-schema`).
+#[cfg(feature = "schema")]
 pub fn plan_schema() -> Value {
     serde_json::to_value(schemars::schema_for!(PlanDocument)).unwrap_or(Value::Null)
 }

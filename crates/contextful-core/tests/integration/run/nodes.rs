@@ -2,7 +2,9 @@
 //! refusals at compile.
 
 use contextful_core::run::journal::sha256_hex;
-use contextful_core::run::nodes::{canonical, plan_schema, NodeKind, NodePlan, PLAN_VERSION_CHARS};
+#[cfg(feature = "schema")]
+use contextful_core::run::nodes::plan_schema;
+use contextful_core::run::nodes::{canonical, NodeKind, NodePlan, PLAN_VERSION_CHARS};
 use contextful_core::run::RunError;
 use serde_json::{json, Value};
 
@@ -133,6 +135,7 @@ fn a_conditional_or_a_loop_in_a_plan_raises_pipeline_undeclared_control_flow() {
 }
 
 /// Every `"kind"` constant a schema's subschemas fix, in document order.
+#[cfg(feature = "schema")]
 fn kind_constants(schema: &Value, out: &mut Vec<String>) {
     match schema {
         Value::Object(map) => {
@@ -149,6 +152,7 @@ fn kind_constants(schema: &Value, out: &mut Vec<String>) {
 /// The plan type is defined once in a schema library; its JSON Schema is the contract every language binds to, and
 /// the run path deserializes plan JSON against it.
 // spec: run.compile.plan-schema@db8d70e3
+#[cfg(feature = "schema")]
 #[test]
 fn the_plan_json_schema_derives_from_the_types_compile_deserializes() {
     let schema = plan_schema();

@@ -14,7 +14,7 @@ publish = false
 base64 = "0.22"
 regex-automata = "0.4"
 regex-syntax = "0.8"
-schemars = "1"
+schemars = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }
 # The decision module parses a case with the same float reader native and on
 # `wasm32-unknown-unknown`, where no other package unifies the feature in.
@@ -26,6 +26,12 @@ time = { version = "0.3", features = ["parsing", "formatting", "macros", "serde"
 toml = "0.8"
 url = "2"
 zeroize = { version = "1", features = ["derive"] }
+
+[features]
+# The JSON Schema derives behind `contextful schema export`; off in every package but the
+# binary, so the store write half links no schema library
+# (topology.package.store-write-engine-free).
+schema = ["dep:schemars"]
 
 [dev-dependencies]
 trybuild = "1"
