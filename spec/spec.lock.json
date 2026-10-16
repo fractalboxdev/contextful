@@ -28660,6 +28660,20 @@
       "line": 522
     },
     {
+      "id": "assurance.measure.run-report",
+      "contract": "assurance",
+      "operation": "measure",
+      "subject": "run-report",
+      "kind": "behavior",
+      "statement": "`contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — and a run id is an integer or a FlareDispatch execution id, each read back from history.",
+      "why": "because the Dispatcher names a run by its execution id, and an unreadable note hides every older baseline",
+      "file": "spec/81-engineering.md",
+      "line": 524,
+      "scenarios": [
+        "WHEN the baseline note's run id is `contextful-measures_2026-10-14`, THEN the report's annotation names that run id as its baseline."
+      ]
+    },
+    {
       "id": "assurance.measure.scheduled",
       "contract": "assurance",
       "operation": "measure",
@@ -28668,7 +28682,29 @@
       "statement": "The FlareDispatch nightly run executes every tier against the default-branch head and reports one check per run.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 524
+      "line": 526
+    },
+    {
+      "id": "assurance.measure.note-credential",
+      "contract": "assurance",
+      "operation": "measure",
+      "subject": "note-credential",
+      "kind": "behavior",
+      "statement": "The Dispatcher appends the run report through the Git data API under its GitHub App installation token, which holds contents write on this repository; the measure container receives no write credential.",
+      "why": "because the container executes the measured tree's code, and a write token inside it lets any commit rewrite history",
+      "file": "spec/81-engineering.md",
+      "line": 527
+    },
+    {
+      "id": "assurance.measure.remote-attest",
+      "contract": "assurance",
+      "operation": "measure",
+      "subject": "remote-attest",
+      "kind": "behavior",
+      "statement": "Status pins only the commands this tree ships; the Dispatcher's schedule and note write pin no test here, and each note commit on `refs/notes/measures` names its measured commit and writer.",
+      "why": "because a pin demonstrates code in this tree, and the Dispatcher's code lives in its own repository",
+      "file": "spec/81-engineering.md",
+      "line": 529
     },
     {
       "id": "assurance.measure.measured-basis",
@@ -28679,7 +28715,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 525
+      "line": 531
     },
     {
       "id": "assurance.release.version",
@@ -28690,7 +28726,7 @@
       "statement": "A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 555,
+      "line": 559,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -28704,7 +28740,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 557
+      "line": 561
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -28715,7 +28751,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/81-engineering.md",
-      "line": 559
+      "line": 563
     },
     {
       "id": "assurance.release.off-branch",
@@ -28726,7 +28762,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 561
+      "line": 565
     },
     {
       "id": "assurance.release.version-regressed",
@@ -28737,7 +28773,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 563,
+      "line": 567,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -28751,7 +28787,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 565
+      "line": 569
     },
     {
       "id": "assurance.release.gate-failed",
@@ -28762,7 +28798,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 567
+      "line": 571
     },
     {
       "id": "assurance.release.release-run",
@@ -28773,7 +28809,7 @@
       "statement": "A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.",
       "why": "because distributed builds and formula generation share one tag identity",
       "file": "spec/81-engineering.md",
-      "line": 569
+      "line": 573
     },
     {
       "id": "assurance.release.release-dry-run",
@@ -28784,7 +28820,7 @@
       "statement": "A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.",
       "why": "because a packaging rehearsal must not claim a released version",
       "file": "spec/81-engineering.md",
-      "line": 571
+      "line": 575
     },
     {
       "id": "assurance.consumer.suite",

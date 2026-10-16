@@ -283,6 +283,26 @@ fn run_probe(root: &Path, name: &str, records: &Path) -> Result<()> {
     Ok(())
 }
 
+/// A run's identifier in a note: an integer from a numbered run, or a FlareDispatch
+/// execution id. Each keeps its JSON shape, so earlier notes parse unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RunId {
+    Number(u64),
+    Text(String),
+}
+
+impl std::str::FromStr for RunId {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        if s.trim().is_empty() {
+            return Err("a run id names a run".into());
+        }
+        Ok(s.parse().map_or_else(|_| RunId::Text(s.to_string()), RunId::Number))
+    }
+}
+
 /// One annotation in a default-branch report; the baseline names its earlier run.
 #[derive(Debug, Serialize, Deserialize)]
 struct TrendAnnotation {
@@ -292,7 +312,7 @@ struct TrendAnnotation {
     #[serde(skip_serializing_if = "Option::is_none")]
     worse_percent: Option<f64>,
     baseline_commit: String,
-    baseline_run_id: u64,
+    baseline_run_id: RunId,
     annotation: String,
 }
 
@@ -300,7 +320,7 @@ struct TrendAnnotation {
 #[derive(Debug, Serialize, Deserialize)]
 struct RunReport {
     commit: String,
-    run_id: u64,
+    run_id: RunId,
     run_attempt: u64,
     exit_code: i32,
     records: Vec<Record>,
@@ -318,7 +338,7 @@ fn git_text(root: &Path, args: &[&str]) -> Result<String> {
 
 struct Baseline {
     commit: String,
-    run_id: u64,
+    run_id: RunId,
     record: Record,
 }
 
@@ -369,7 +389,7 @@ fn earlier_baselines(root: &Path, commit: &str, current: &[&Record]) -> Result<B
             for old in &report.records {
                 if remaining.get(old.id.as_str()).is_some_and(|now| now.seed == old.seed && now.run == old.run) {
                     remaining.remove(old.id.as_str());
-                    baselines.insert(old.id.clone(), Baseline { commit: report.commit.clone(), run_id: report.run_id, record: old.clone() });
+                    baselines.insert(old.id.clone(), Baseline { commit: report.commit.clone(), run_id: report.run_id.clone(), record: old.clone() });
                 }
             }
             if remaining.is_empty() {
@@ -395,7 +415,7 @@ fn earlier_baselines(root: &Path, commit: &str, current: &[&Record]) -> Result<B
 
 /// Write one JSON-line run report, annotating a trend only against matching earlier
 /// successful history. The measure's exit status remains a separate workflow verdict.
-pub fn report(root: &Path, commit: &str, run_id: u64, run_attempt: u64, exit_code: i32, out: &Path) -> Result<()> {
+pub fn report(root: &Path, commit: &str, run_id: RunId, run_attempt: u64, exit_code: i32, out: &Path) -> Result<()> {
     let dir = root.join(RECORDS_DIR);
     let mut records = Vec::new();
     match std::fs::read_dir(&dir) {
@@ -436,7 +456,7 @@ pub fn report(root: &Path, commit: &str, run_id: u64, run_attempt: u64, exit_cod
                 current: current.value,
                 worse_percent: worse_percent.is_finite().then_some(worse_percent),
                 baseline_commit: past.commit.clone(),
-                baseline_run_id: past.run_id,
+                baseline_run_id: past.run_id.clone(),
                 annotation: comparison.annotation().unwrap_or_default(),
             });
         }

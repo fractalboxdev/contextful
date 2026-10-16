@@ -521,7 +521,13 @@ The target ledger: each tracked target, the clause it serves, how it is measured
 - `absolute-threshold` — A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.
 - `history` — A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.
   *A-assurance*
+- `run-report` — `contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — and a run id is an integer or a FlareDispatch execution id, each read back from history.
+  *because the Dispatcher names a run by its execution id, and an unreadable note hides every older baseline*
 - `scheduled` — The FlareDispatch nightly run executes every tier against the default-branch head and reports one check per run.
+- `note-credential` — The Dispatcher appends the run report through the Git data API under its GitHub App installation token, which holds contents write on this repository; the measure container receives no write credential.
+  *because the container executes the measured tree's code, and a write token inside it lets any commit rewrite history*
+- `remote-attest` — Status pins only the commands this tree ships; the Dispatcher's schedule and note write pin no test here, and each note commit on `refs/notes/measures` names its measured commit and writer.
+  *because a pin demonstrates code in this tree, and the Dispatcher's code lives in its own repository*
 - `measured-basis` — A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.
 
 A ledger entry's path from the tree to a verdict:
@@ -538,14 +544,12 @@ flowchart LR
   HOLDS -->|"no"| RED["red evaluate stage"]
 ```
 
-unsettled: Which GitHub App credential pushes `refs/notes/measures` from the scheduled dispatch? owner: build affects: assurance.measure
-unsettled: How does corpus status attest FlareDispatch's external schedule and note write? owner: build affects: assurance.measure
-
 #### Scenarios
 
 - `assurance.measure.unresolved-entry`: WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs.
 - `assurance.measure.trend-band`: WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes.
 - `assurance.measure.trend-baseline`: WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes.
+- `assurance.measure.run-report`: WHEN the baseline note's run id is `contextful-measures_2026-10-14`, THEN the report's annotation names that run id as its baseline.
 - `assurance.measure.open-entry`: WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it.
 
 ## release

@@ -210,8 +210,9 @@ enum Cmd {
     MeasureReport {
         #[arg(long)]
         commit: String,
+        /// An integer run number or a FlareDispatch execution id.
         #[arg(long)]
-        run_id: u64,
+        run_id: measure::RunId,
         #[arg(long)]
         run_attempt: u64,
         #[arg(long)]
