@@ -15,6 +15,7 @@ fn claim() -> ReceiptClaim {
         affected_counts: BTreeMap::from([("orders".to_string(), 2), ("events".to_string(), 1)]),
         coverage: Coverage::of_version(RECEIPT_VERSION).unwrap(),
         issued_at: "2030-01-01T00:05:00+00:00".into(),
+        prior_request_id: None,
     }
 }
 
@@ -108,4 +109,25 @@ fn a_version_one_receipt_covers_the_canonical_store_and_excludes_replicas_and_th
     let receipt = TenantReceipt::sign(claim(), "acme-tenant", &signer).unwrap();
     assert_eq!(receipt.coverage, declared);
     assert_eq!(receipt.receipt_version, 1);
+}
+
+#[test]
+fn a_prior_request_id_is_signed_and_a_first_receipt_omits_the_field() {
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let trusted = [SignerKey::of(&signer)];
+    let first = TenantReceipt::sign(claim(), "acme-tenant", &signer).unwrap();
+    assert!(!serde_json::to_value(&first).unwrap().as_object().unwrap().contains_key("prior_request_id"));
+    let mut repeat = claim();
+    repeat.prior_request_id = Some(first.request_id.clone());
+    let second = TenantReceipt::sign(repeat, "acme-tenant", &signer).unwrap();
+    assert_eq!(second.prior_request_id.as_deref(), Some(first.request_id.as_str()));
+    second.verify("acme-tenant", &trusted).unwrap();
+    let parsed: TenantReceipt = serde_json::from_str(&serde_json::to_string(&second).unwrap()).unwrap();
+    parsed.verify("acme-tenant", &trusted).unwrap();
+    let mut altered = second.clone();
+    altered.prior_request_id = None;
+    assert!(altered.verify("acme-tenant", &trusted).is_err(), "a dropped prior request verifies");
+    let mut leaking = claim();
+    leaking.prior_request_id = Some("acme-tenant".into());
+    assert_eq!(TenantReceipt::sign(leaking, "acme-tenant", &signer).unwrap_err(), ErasureError::ReceiptIdentifierLeak);
 }

@@ -23675,6 +23675,28 @@
       "line": 299
     },
     {
+      "id": "disclosure.receipt.prior-request",
+      "contract": "disclosure",
+      "operation": "receipt",
+      "subject": "prior-request",
+      "kind": "behavior",
+      "statement": "A purge's receipt entry records the tenant's HMAC-SHA-256 under the project audit key beside its `request_id`; a later purge of that tenant signs the latest such `request_id` as `prior_request_id`.",
+      "why": "because the audit chain already orders every receipt, and a keyed digest links repeat purges without a cleartext identifier or a second record",
+      "file": "spec/62-accountability.md",
+      "line": 301
+    },
+    {
+      "id": "disclosure.receipt.zero-rows",
+      "contract": "disclosure",
+      "operation": "receipt",
+      "subject": "zero-rows",
+      "kind": "behavior",
+      "statement": "A purge whose tenant holds no retained row rewrites nothing and signs a receipt with a zero count for every declared table and an empty `transaction_id`.",
+      "why": "because an owner proves a tenant's absence with one artifact whether or not rows existed",
+      "file": "spec/62-accountability.md",
+      "line": 303
+    },
+    {
       "id": "surface.arm.unreadable-schedule",
       "contract": "surface",
       "operation": "arm",

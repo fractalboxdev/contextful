@@ -431,3 +431,13 @@ fn an_owner_purge_rewrites_the_tenant_out_and_prints_a_verifying_receipt() {
     let rows: serde_json::Value = serde_json::from_str(&ok(run(root, &["query", "--json", "--project", "research", "SELECT id FROM global"], None, Some(&pins)))).unwrap();
     assert_eq!(rows["rows"], serde_json::json!([["g1"]]));
 }
+
+/// A purge of a tenant holding no retained row prints that nothing was rewritten and names the signed receipt.
+#[test]
+fn a_zero_row_purge_prints_that_the_tenant_holds_no_rows() {
+    let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+    let pins = tenant_project(root);
+    let printed = ok(run(root, &["context", "erase", "--project", "research", "--tenant", "initech", "--issuer-key", ".contextful/issuer.seed"], None, Some(&pins)));
+    assert!(printed.starts_with("purge: tenant holds no retained rows; receipt "), "{printed}");
+    assert!(!printed.contains("physical collection"), "{printed}");
+}
