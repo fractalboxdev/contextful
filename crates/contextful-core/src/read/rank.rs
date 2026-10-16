@@ -70,8 +70,8 @@ pub const SIDECAR_RESTRICTED_FACTOR: u64 = 4;
 /// (`read.retrieve.sidecar-size-cap`).
 pub const SIDECAR_SIZE_CAP_BYTES: u64 = 64 * 1024 * 1024;
 
-/// Resident bytes a mapped plaintext vector sidecar counts per graph node: the visited mark
-/// one probe holds for it (`read.retrieve.sidecar-size-cap`).
+/// Resident bytes a vector sidecar counts per graph node: the visited mark one probe holds
+/// for it (`read.retrieve.sidecar-size-cap`).
 pub const SIDECAR_NODE_MARK_BYTES: u64 = 4;
 
 /// Candidates one sidecar probe requests: the larger of 4 times the limit and 64 rows,

@@ -315,7 +315,7 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 - `sidecar-oversampling` — One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.
 - `adaptive-over-fetch` — Where the rows a reader can see under-fill the requested limit, the probe doubles its size and probes again, for at most 4 rounds, then answers and reports the under-fill in the retrieval block.
   *A-read*
-- `sidecar-size-cap` — A vector sidecar past 64 MiB of resident bytes stays unloaded and the arm takes the exact scan: a sealed sidecar's stored vectors, or a mapped plaintext one's 4 B probe mark per graph node.
+- `sidecar-size-cap` — A vector sidecar past 64 MiB of resident bytes stays unloaded and the arm takes the exact scan: its 4 B probe mark per graph node, plus a sealed one's graph file.
   *A-store*
 - `fulltext-sealed-cap` — A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.
   *A-store*

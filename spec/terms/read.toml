@@ -88,7 +88,7 @@ read-sidecar-restricted-factor = { clause = "read.retrieve.sidecar-oversampling"
 read-over-fetch-rounds        = { clause = "read.retrieve.adaptive-over-fetch", value = 4, unit = "rounds", basis = "chosen", gloss = "Most probe rounds one sidecar arm runs while visible rows under-fill the limit." }
 read-bytes-per-token         = { clause = "read.register.size-estimate", value = 4, unit = "B", basis = "chosen", gloss = "Serialized bytes counted as one estimated token in a table description." }
 read-sidecar-size-cap        = { clause = "read.retrieve.sidecar-size-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Resident bytes past which a vector sidecar stays unloaded." }
-read-sidecar-node-mark       = { clause = "read.retrieve.sidecar-size-cap", value = 4, unit = "B", basis = "chosen", gloss = "Resident bytes a mapped plaintext vector sidecar counts per graph node, its probe's visited mark." }
+read-sidecar-node-mark       = { clause = "read.retrieve.sidecar-size-cap", value = 4, unit = "B", basis = "chosen", gloss = "Resident bytes a vector sidecar counts per graph node, its probe's visited mark." }
 read-fulltext-sealed-cap     = { clause = "read.retrieve.fulltext-sealed-cap", value = 256, unit = "MiB", basis = "chosen", gloss = "Sealed full-text sidecar size past which it stays unopened." }
 read-window-anchor-tolerance = { clause = "read.rank.window-anchor-tolerance", value = 24, unit = "h", basis = "chosen", gloss = "How far past the anchor a publication instant still counts in-window." }
 read-fusion-vector-weight    = { clause = "read.rank.fusion", value = 60, unit = "percent", basis = "chosen", gloss = "Default weight of the clamped cosine leg in fusion." }

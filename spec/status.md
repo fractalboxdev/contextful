@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 151 | 0 | 151 |
 | `read` | 2 | 19 | 277 | 45 | 28 | 13 | 235 | 0 | 235 |
 | `run` | 3 | 29 | 529 | 116 | 45 | 14 | 497 | 0 | 497 |
-| `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
+| `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 168 | 2578 | 654 | 211 | 76 | 2247 | 0 | |
+| **total** | 22 | 168 | 2578 | 654 | 211 | 75 | 2247 | 0 | |
 
 Decision records: 18.
 
@@ -1278,7 +1278,7 @@ Unscheduled operations: 12.
 | `read.retrieve.sidecar-falls-back` | `crates/contextful-context/tests/integration/read/retrieve.rs::every_failed_precondition_falls_back_to_the_exact_scan` | performed |
 | `read.retrieve.sidecar-generates-candidates` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores` | performed |
 | `read.retrieve.sidecar-oversampling` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_probe_oversamples_the_limit_and_widens_under_restriction` | performed |
-| `read.retrieve.sidecar-size-cap` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_sidecar_past_64_mib_of_vectors_stays_unloaded` | performed |
+| `read.retrieve.sidecar-size-cap` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_sidecar_past_64_mib_of_resident_bytes_stays_unloaded` | performed |
 | `read.retrieve.snippet` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_snippet_leads_with_label_columns` | performed |
 | `read.retrieve.text-free-table-scores-null` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_row_with_no_snippet_scores_null_and_passes_the_floor` | performed |
 | `read.retrieve.token-cap` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_token_set_is_capped_and_an_empty_set_omits_the_floor` | performed |

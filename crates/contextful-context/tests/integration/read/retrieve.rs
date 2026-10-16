@@ -564,7 +564,7 @@ fn every_failed_precondition_falls_back_to_the_exact_scan() {
 }
 
 /// A vector sidecar past 64 MiB of resident bytes stays unloaded and the arm takes the exact scan: a sealed sidecar's stored vectors, or a mapped plaintext one's 4 B probe mark per graph node.
-// spec: read.retrieve.sidecar-size-cap@ff46409d
+// spec: read.retrieve.sidecar-size-cap@6eca0df3
 #[test]
 fn a_sidecar_past_64_mib_of_resident_bytes_stays_unloaded() {
     use arrow_array::builder::{FixedSizeListBuilder, Float32Builder};
@@ -649,8 +649,7 @@ fn a_sidecar_past_64_mib_of_resident_bytes_stays_unloaded() {
     names.iter().for_each(|n| graph.extend(n.as_bytes()));
     entry.row_count = count as u64;
     assert!(entry.stored_vector_bytes() > SIDECAR_SIZE_CAP_BYTES);
-    assert_eq!(entry.resident_bytes(true), count as u64 * SIDECAR_NODE_MARK_BYTES);
-    assert_eq!(entry.resident_bytes(false), entry.stored_vector_bytes());
+    assert_eq!(entry.resident_bytes(None), count as u64 * SIDECAR_NODE_MARK_BYTES);
 
     let lay = |root: &Path, entry: &VectorEntry, sealing: &Sealing<'_>| {
         let dir = root.join(&entry.path);
@@ -673,13 +672,26 @@ fn a_sidecar_past_64_mib_of_resident_bytes_stays_unloaded() {
     assert_eq!(found[0].id, format!("row-{}", count - 1));
     assert!((found[0].similarity - 1.0).abs() < 1e-6);
 
-    // Sealed: the same graph would open whole into memory, so its stored vectors count.
+    // Sealed: a graph decrypts whole into memory, so its sealed file counts beside its
+    // marks. Stored vectors of 4 MiB fit; a file one byte past the rest of the bound does
+    // not. The file is sparse zeros that open as no graph, so OverCap proves it is unread.
     let sealed = tempfile::tempdir().unwrap();
     let mut sealed_entry = entry.clone();
     sealed_entry.key_version = Xor.key_version();
-    lay(sealed.path(), &sealed_entry, &Sealing::Sealed(&Xor));
-    let opened = VectorSidecar::open(sealed.path(), "passages", &IndexEntry::Vector(sealed_entry), &Sealing::Sealed(&Xor));
+    sealed_entry.row_count = 1024;
+    assert!(sealed_entry.stored_vector_bytes() < SIDECAR_SIZE_CAP_BYTES / 8);
+    let sealed_dir = sealed.path().join(&sealed_entry.path);
+    std::fs::create_dir_all(&sealed_dir).unwrap();
+    std::fs::write(sealed_dir.join(MANIFEST_FILE), Xor.seal(&serde_json::to_vec_pretty(&sealed_entry).unwrap()).unwrap()).unwrap();
+    let file_len = SIDECAR_SIZE_CAP_BYTES - sealed_entry.row_count * SIDECAR_NODE_MARK_BYTES + 1;
+    std::fs::File::create(sealed_dir.join(GRAPH_FILE)).unwrap().set_len(file_len).unwrap();
+    assert_eq!(sealed_entry.resident_bytes(Some(file_len)), SIDECAR_SIZE_CAP_BYTES + 1);
+    let opened = VectorSidecar::open(sealed.path(), "passages", &IndexEntry::Vector(sealed_entry.clone()), &Sealing::Sealed(&Xor));
     assert_eq!(opened.err(), Some(Fallback::OverCap));
+    // A sealed sidecar with no graph file has nothing to measure and is unreadable.
+    std::fs::remove_file(sealed_dir.join(GRAPH_FILE)).unwrap();
+    let opened = VectorSidecar::open(sealed.path(), "passages", &IndexEntry::Vector(sealed_entry), &Sealing::Sealed(&Xor));
+    assert_eq!(opened.err(), Some(Fallback::Unreadable));
 
     // A mapped graph one node past the resident bound stays unloaded; its graph is never read.
     let mut past = entry.clone();

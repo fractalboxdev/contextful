@@ -241,18 +241,23 @@ impl VectorSidecar {
         if entry.table != table || entry.builder != VECTOR_BUILDER || entry.builder_version != VECTOR_BUILDER_VERSION {
             return Err(Fallback::ManifestMismatch);
         }
-        // Checked before any sidecar byte is read, so an oversized graph is never loaded to
-        // learn it is oversized. A plaintext graph is mapped and counts its probe marks; a
-        // sealed one opens whole into memory and counts its stored vectors.
-        if sidecar_over_cap(entry.resident_bytes(matches!(sealing, Sealing::Plaintext))) {
-            return Err(Fallback::OverCap);
-        }
         // A manifest path that leaves the snapshot directory names no sidecar of it.
         let rel = Path::new(&entry.path);
         if rel.as_os_str().is_empty() || rel.components().any(|c| !matches!(c, Component::Normal(_))) {
             return Err(Fallback::ManifestMismatch);
         }
         let dir = snapshot_dir.join(rel);
+        // Checked before any sidecar byte is read, so an oversized graph is never loaded to
+        // learn it is oversized. A plaintext graph is mapped and counts its probe marks; a
+        // sealed one opens whole into memory and adds its sealed graph file, at least as long
+        // as the decrypted bytes.
+        let sealed_graph_file_bytes = match sealing {
+            Sealing::Plaintext => None,
+            Sealing::Sealed(_) => Some(fs::metadata(dir.join(GRAPH_FILE)).map_err(|_| Fallback::Unreadable)?.len()),
+        };
+        if sidecar_over_cap(entry.resident_bytes(sealed_graph_file_bytes)) {
+            return Err(Fallback::OverCap);
+        }
         let read = |name: &str| -> std::result::Result<Vec<u8>, Fallback> {
             let raw = fs::read(dir.join(name)).map_err(|_| Fallback::Unreadable)?;
             match sealing {
