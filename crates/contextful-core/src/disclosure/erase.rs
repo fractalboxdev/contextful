@@ -39,7 +39,7 @@ pub fn select_subject(
             return Err(ErasureError::ErasureSubjectUndeclared(table.clone()));
         }
     }
-    select(declarations, rows, requested, &|decl, row| {
+    select(declarations, rows, requested, Direct::HonourSurvival, &|decl, row| {
         let column = decl.subject_id.as_ref().ok_or_else(|| ErasureError::ErasureSubjectUndeclared(decl.name.clone()))?;
         let value = row.get(column).ok_or_else(|| ErasureError::ErasureScopeUnsupported("incomplete erasure subject column".into()))?;
         Ok(value.as_str() == Some(subject))
@@ -80,7 +80,7 @@ pub fn select_tenant(
 ) -> Result<ErasureSelection, ErasureError> {
     if tenant.is_empty() { return Err(ErasureError::ErasureScopeUnsupported("a purge names no tenant identifier".into())); }
     let requested: Vec<String> = columns.keys().cloned().collect();
-    select(declarations, rows, &requested, &|decl, row| {
+    select(declarations, rows, &requested, Direct::Every, &|decl, row| {
         let column = columns.get(&decl.name).ok_or(ErasureError::PurgeTenantUndeclared)?;
         Ok(row.get(column).and_then(Value::as_str) == Some(tenant))
     })
@@ -139,7 +139,7 @@ pub fn select_keys(
 
 fn select_key_rows(declarations: &[TableDecl], rows: &RetainedRows, keys: &RetainedRows) -> Result<ErasureSelection, ErasureError> {
     let unsupported = || ErasureError::ErasureScopeUnsupported("incomplete declared erasure key set".into());
-    select(declarations, rows, &keys.keys().cloned().collect::<Vec<_>>(), &|decl, row| {
+    select(declarations, rows, &keys.keys().cloned().collect::<Vec<_>>(), Direct::HonourSurvival, &|decl, row| {
         let selectors = keys.get(&decl.name).ok_or_else(unsupported)?;
         for selector in selectors {
             if selector.keys().any(|key| !row.contains_key(key)) { return Err(unsupported()); }
@@ -148,10 +148,19 @@ fn select_key_rows(declarations: &[TableDecl], rows: &RetainedRows, keys: &Retai
     })
 }
 
+/// Whether a requested table declared `on_erase = "survive"` keeps its directly matched
+/// rows. A tenant's own rows never survive its purge; survival governs the cascade alone.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Direct {
+    HonourSurvival,
+    Every,
+}
+
 fn select(
     declarations: &[TableDecl],
     rows: &RetainedRows,
     requested: &[String],
+    direct: Direct,
     choose: &impl Fn(&TableDecl, &Map<String, Value>) -> Result<bool, ErasureError>,
 ) -> Result<ErasureSelection, ErasureError> {
     let unsupported = || ErasureError::ErasureScopeUnsupported("incomplete erasure reference universe".into());
@@ -181,7 +190,7 @@ fn select(
     }
     for table in requested {
         let decl = declared.get(table.as_str()).ok_or_else(unsupported)?;
-        if decl.on_erase == Some(ErasureSurvival::Survive) {
+        if direct == Direct::HonourSurvival && decl.on_erase == Some(ErasureSurvival::Survive) {
             continue;
         }
         for (mask, row) in removed.get_mut(table).ok_or_else(unsupported)?.iter_mut().zip(&rows[table]) {

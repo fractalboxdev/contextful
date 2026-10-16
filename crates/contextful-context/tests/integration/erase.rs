@@ -1166,6 +1166,11 @@ struct Tenanted {
 
 #[cfg(feature = "read")]
 fn tenanted(orders_tenant_type: contextful_core::store::reconcile::ColumnType) -> Tenanted {
+    tenanted_as(orders_tenant_type, "acme-purged-tenant")
+}
+
+#[cfg(feature = "read")]
+fn tenanted_as(orders_tenant_type: contextful_core::store::reconcile::ColumnType, purged: &str) -> Tenanted {
     use contextful_core::store::reconcile::ColumnType;
     let fixture = Fixture::new();
     let orders = decl("name = \"orders\"\nprimary_key = [\"id\"]\npartition_by = [\"tenant\"]\nretain_runs = \"90d\"");
@@ -1173,11 +1178,11 @@ fn tenanted(orders_tenant_type: contextful_core::store::reconcile::ColumnType) -
     let global = decl("name = \"global\"\nprimary_key = [\"id\"]");
     let tenant = |value: &str| if orders_tenant_type == ColumnType::Utf8 { json!(value) } else { json!(7) };
     fixture.land_typed(&orders, "run-0001", json!([
-        { "id":"o1", "tenant":tenant("acme-purged-tenant"), "note":"acme-purged-tenant order" },
+        { "id":"o1", "tenant":tenant(purged), "note":format!("{purged} order") },
         { "id":"o2", "tenant":tenant("globex"), "note":"globex order" },
     ]), "2030-01-01T00:00:00Z", &[("tenant", orders_tenant_type)]).unwrap();
     fixture.land(&events, "run-0001", json!([
-        { "id":"e1", "org":"acme-purged-tenant", "kind":"login" },
+        { "id":"e1", "org":purged, "kind":"login" },
         { "id":"e2", "org":"globex", "kind":"login" },
     ]), "2030-01-01T00:00:00Z").unwrap();
     fixture.land(&global, "run-0001", json!([{ "id":"g1", "label":"shared" }]), "2030-01-01T00:00:00Z").unwrap();
@@ -1255,5 +1260,35 @@ fn a_tenant_purge_over_a_reconciled_non_string_tenant_column_refuses_before_sign
     let store = t.fixture.store.with_erasure_verifier(audit_dir.clone(), vec![SignerKey::of(signer.as_ref())]).unwrap();
     let refusal = purge(&t, &store, &signer, "acme-purged-tenant").err().expect("a non-string tenant column purges");
     assert!(refusal.to_string().contains("PurgeTenantColumnType"), "{refusal}");
+    assert!(contextful_policy::audit::entries(&audit_dir).unwrap_or_default().is_empty(), "a refused purge signs an audit entry");
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn a_short_tenant_identifier_matching_engine_fields_purges_and_a_refused_purge_keeps_every_row() {
+    use contextful_core::{issue::SignatureAlgorithm, store::reconcile::ColumnType};
+    use contextful_policy::issue::{SeedSigner, SignerKey};
+    let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+    let ids = |t: &Tenanted, store: &contextful_context::Store, name: &str| {
+        let mut ids: Vec<String> = serde_json::to_value(contextful_context::rows::table_rows(store, t.tables.iter().find(|table| table.name == name).unwrap(), &["id"]).unwrap()).unwrap()
+            .as_array().unwrap().iter().map(|row| row["id"].as_str().unwrap().to_string()).collect();
+        ids.sort();
+        ids
+    };
+    let t = tenanted_as(ColumnType::Utf8, "2030");
+    let audit_dir = t.project.audit_dir();
+    let store = t.fixture.store.with_erasure_verifier(audit_dir.clone(), vec![SignerKey::of(signer.as_ref())]).unwrap();
+    let purged = purge(&t, &store, &signer, "2030").expect("a tenant named like the issuing year purges");
+    assert!(purged.receipt.issued_at.starts_with("2030-01-01T00:05:00"));
+    purged.receipt.verify("2030", &[SignerKey::of(signer.as_ref())]).unwrap();
+    assert_eq!(ids(&t, &purged.store, "orders"), ["o2"]);
+    assert_eq!(ids(&t, &purged.store, "events"), ["e2"]);
+    let t = tenanted_as(ColumnType::Utf8, "orders");
+    let audit_dir = t.project.audit_dir();
+    let store = t.fixture.store.with_erasure_verifier(audit_dir.clone(), vec![SignerKey::of(signer.as_ref())]).unwrap();
+    let refusal = purge(&t, &store, &signer, "orders").err().expect("a tenant equal to an affected table name signs a receipt");
+    assert!(refusal.to_string().contains("ReceiptIdentifierLeak"), "{refusal}");
+    assert_eq!(ids(&t, &store, "orders"), ["o1", "o2"], "a refused purge rewrote the tenant's rows");
+    assert_eq!(ids(&t, &store, "events"), ["e1", "e2"], "a refused purge rewrote the tenant's rows");
     assert!(contextful_policy::audit::entries(&audit_dir).unwrap_or_default().is_empty(), "a refused purge signs an audit entry");
 }

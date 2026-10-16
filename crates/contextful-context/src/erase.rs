@@ -144,7 +144,8 @@ const RECEIPT_OPERATION: &str = "tenant-receipt";
 
 /// Rewrite every row whose bare outermost partition column holds the tenant's exact bytes
 /// out of every table through one signed publication, then sign a fresh salted receipt
-/// and record its digest on the audit chain.
+/// and record its digest on the audit chain. The receipt's leak and coverage checks run
+/// on the prospective claim before the rewrite, so a refusal leaves every row in place.
 pub fn purge_tenant(store: &Store, request: PurgeRequest<'_>) -> Result<Purged> {
     let signer = request.signer.as_ref().ok_or_else(|| incomplete("no purge signing port is configured"))?;
     if request.audit_key.is_empty() { return Err(incomplete("no project audit key is configured")); }
@@ -155,21 +156,33 @@ pub fn purge_tenant(store: &Store, request: PurgeRequest<'_>) -> Result<Purged> 
         }
     }
     let columns = tenant_columns(request.declarations, &types)?;
+    let mut nonce = [0; 32]; getrandom::fill(&mut nonce).map_err(|_| incomplete("the receipt request identity is unavailable"))?;
+    let request_id = crate::store::etag(&nonce);
+    let store_id = crate::project::store_id(store.root()).map_err(|_| incomplete("the purge store identity is unavailable"))?;
+    let coverage = Coverage::of_version(RECEIPT_VERSION).ok_or_else(|| incomplete("the receipt version declares no coverage"))?;
+    let issued_at = request.clock.now().to_rfc3339();
+    let prospective = ReceiptClaim {
+        request_id: request_id.clone(),
+        transaction_id: String::new(),
+        store_id: store_id.clone(),
+        affected_counts: request.declarations.iter().map(|decl| (decl.name.clone(), 0)).collect(),
+        coverage: coverage.clone(),
+        issued_at: issued_at.clone(),
+    };
+    TenantReceipt::screen(&prospective, request.tenant, &ConfiguredSigner(signer.clone()))?;
     let select = |rows: &RetainedRows| -> Result<(ErasureSelection, String)> {
         Ok((select_tenant(request.declarations, rows, &columns, request.tenant)?,
             audit::query_digest(request.audit_key, &format!("contextful.erasure.tenant\n{}", request.tenant))))
     };
     let guard = || Ok(());
     let erased = publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select })?;
-    let mut nonce = [0; 32]; getrandom::fill(&mut nonce).map_err(|_| incomplete("the receipt request identity is unavailable"))?;
-    let store_id = crate::project::store_id(erased.store.root()).map_err(|_| incomplete("the purge store identity is unavailable"))?;
     let claim = ReceiptClaim {
-        request_id: crate::store::etag(&nonce),
+        request_id,
         transaction_id: erased.transaction_id.clone(),
         store_id,
         affected_counts: erased.affected_counts.clone(),
-        coverage: Coverage::of_version(RECEIPT_VERSION).ok_or_else(|| incomplete("the receipt version declares no coverage"))?,
-        issued_at: request.clock.now().to_rfc3339(),
+        coverage,
+        issued_at,
     };
     let receipt = TenantReceipt::sign(claim, request.tenant, &ConfiguredSigner(signer.clone()))?;
     receipt.check_fresh(&issued_receipts(request.audit_dir)?)?;

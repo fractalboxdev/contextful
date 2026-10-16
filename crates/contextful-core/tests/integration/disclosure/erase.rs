@@ -333,4 +333,9 @@ fn a_tenant_selection_removes_matching_rows_from_every_partitioned_table() {
     assert_eq!(selection.removes("events"), &[false, true]);
     assert_eq!(selection.removes("global"), &[false]);
     assert!(select_tenant(&tables, &rows, &columns, "").is_err(), "an empty tenant identifier selects nothing");
+    let surviving = tenant_pack("[[pipeline.tables]]\nname = \"ledger\"\npartition_by = [\"tenant\"]\non_erase = \"survive\"\n");
+    let columns = BTreeMap::from([("ledger".to_string(), "tenant".to_string())]);
+    let rows: RetainedRows = BTreeMap::from([("ledger".to_string(), objects(json!([{"tenant":"acme"}, {"tenant":"globex"}])))]);
+    let selection = select_tenant(&surviving, &rows, &columns, "acme").unwrap();
+    assert_eq!(selection.removes("ledger"), &[true, false], "a survival declaration keeps a tenant's own rows through its purge");
 }

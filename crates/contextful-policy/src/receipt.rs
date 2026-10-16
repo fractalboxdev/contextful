@@ -82,33 +82,54 @@ impl TenantReceipt {
         format!("sha256:{}", hex::encode(digest.finalize()))
     }
 
+    /// Refuse a claim before any rewrite runs: a coverage block outside its version, or
+    /// an identifier equal to a field the claim already fixes, refuses as signing would.
+    pub fn screen(claim: &ReceiptClaim, tenant: &str, signer: &dyn SigningPort) -> Result<(), ErasureError> {
+        Self::draft(claim.clone(), &[0u8; 32], tenant, signer).map(|_| ())
+    }
+
     /// Sign a fresh receipt under a new random 32-byte salt. A coverage block outside its
     /// version, or an identifier in cleartext, refuses before the port signs.
     pub fn sign(claim: ReceiptClaim, tenant: &str, signer: &dyn SigningPort) -> Result<Self, ErasureError> {
-        claim.coverage.within(RECEIPT_VERSION)?;
         let mut salt = [0u8; 32];
         rand::rngs::OsRng.fill_bytes(&mut salt);
-        let mut receipt = TenantReceipt {
+        let mut receipt = Self::draft(claim, &salt, tenant, signer)?;
+        let signature = sign_through(signer, &receipt.message())
+            .map_err(|error| ErasureError::ErasureTransactionIncomplete(format!("the receipt did not sign: {error}")))?;
+        receipt.signature = hex::encode(signature);
+        Ok(receipt)
+    }
+
+    fn draft(claim: ReceiptClaim, salt: &[u8; 32], tenant: &str, signer: &dyn SigningPort) -> Result<Self, ErasureError> {
+        claim.coverage.within(RECEIPT_VERSION)?;
+        let receipt = TenantReceipt {
             receipt_version: RECEIPT_VERSION,
             request_id: claim.request_id,
             transaction_id: claim.transaction_id,
             store_id: claim.store_id,
             salt: hex::encode(salt),
-            tenant_hash: Self::tenant_hash(&salt, tenant),
+            tenant_hash: Self::tenant_hash(salt, tenant),
             affected_counts: claim.affected_counts,
             coverage: claim.coverage,
             issued_at: claim.issued_at,
             signer: SignerKey::of(signer).to_string(),
             signature: String::new(),
         };
-        let unsigned = serde_json::to_value(&receipt).expect("a receipt encodes");
-        if carries(&unsigned, tenant) {
+        if receipt.carries(tenant) {
             return Err(ErasureError::ReceiptIdentifierLeak);
         }
-        let signature = sign_through(signer, &receipt.message())
-            .map_err(|error| ErasureError::ErasureTransactionIncomplete(format!("the receipt did not sign: {error}")))?;
-        receipt.signature = hex::encode(signature);
         Ok(receipt)
+    }
+
+    /// Whether a field value or an affected table name equals the identifier. Every field
+    /// is engine-formatted, so a value merely containing the identifier carries nothing.
+    fn carries(&self, tenant: &str) -> bool {
+        [&self.request_id, &self.transaction_id, &self.store_id, &self.salt, &self.tenant_hash, &self.issued_at, &self.signer]
+            .into_iter()
+            .chain(self.affected_counts.keys())
+            .chain(self.coverage.covered.iter())
+            .chain(self.coverage.excluded.iter())
+            .any(|value| value == tenant)
     }
 
     /// The domain-separated canonical JSON of every field but the signature.
@@ -155,20 +176,5 @@ impl TenantReceipt {
             return Err(ErasureError::ReceiptReplayed);
         }
         Ok(())
-    }
-}
-
-/// Whether any key or string value carries the identifier: equal to it, or holding it
-/// inside text that is not a hex digest.
-fn carries(value: &serde_json::Value, tenant: &str) -> bool {
-    let text = |s: &str| {
-        let hex = s.strip_prefix("sha256:").unwrap_or(s);
-        s == tenant || (s.contains(tenant) && !hex.bytes().all(|b| b.is_ascii_hexdigit()))
-    };
-    match value {
-        serde_json::Value::String(s) => text(s),
-        serde_json::Value::Array(items) => items.iter().any(|item| carries(item, tenant)),
-        serde_json::Value::Object(map) => map.iter().any(|(key, item)| text(key) || carries(item, tenant)),
-        _ => false,
     }
 }

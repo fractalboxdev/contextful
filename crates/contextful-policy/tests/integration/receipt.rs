@@ -47,8 +47,14 @@ fn the_tenant_hash_is_salted_per_receipt_and_a_cleartext_identifier_refuses_befo
     leaking.affected_counts.insert("acme-tenant".into(), 1);
     assert_eq!(TenantReceipt::sign(leaking, "acme-tenant", &signer).unwrap_err(), ErasureError::ReceiptIdentifierLeak);
     let mut leaking = claim();
-    leaking.issued_at = "purged acme-tenant".into();
+    leaking.issued_at = "acme-tenant".into();
+    assert_eq!(TenantReceipt::screen(&leaking, "acme-tenant", &signer).unwrap_err(), ErasureError::ReceiptIdentifierLeak);
     assert_eq!(TenantReceipt::sign(leaking, "acme-tenant", &signer).unwrap_err(), ErasureError::ReceiptIdentifierLeak);
+    for short in ["1", "2030", "10", "ed25519", "store", "id", "canonical", "order", "receipt_version"] {
+        TenantReceipt::screen(&claim(), short, &signer).unwrap();
+        TenantReceipt::sign(claim(), short, &signer).unwrap().verify(short, &[SignerKey::of(&signer)])
+            .unwrap_or_else(|error| panic!("tenant `{short}` collides with an engine-formatted field: {error}"));
+    }
 }
 
 /// A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.
