@@ -448,8 +448,9 @@ impl Writer {
                         let strategy = match operation {
                             Operation::Hash => "hash".to_string(),
                             Operation::Tokenize => "tokenize".to_string(),
-                            Operation::Truncate => {
-                                format!("truncate:{}", rule.argument.as_ref().and_then(|v| v.as_u64()).ok_or_else(|| invalid("truncate names its width"))?)
+                            Operation::Truncate | Operation::Bucket | Operation::Range => {
+                                let name = match operation { Operation::Truncate => "truncate", Operation::Bucket => "bucket", _ => "range" };
+                                format!("{name}:{}", rule.argument.as_ref().and_then(|v| v.as_u64()).ok_or_else(|| invalid(format!("{name} names its width")))?)
                             }
                             _ => unreachable!(),
                         };

@@ -787,3 +787,50 @@ fn prepared_clock_admission_checks_derived_json_path_and_relational_removal_auth
     std::fs::write(&path, "[[pipeline.tables]]\nname='messages'\n").unwrap();
     Store::open(dir.path(), "research").unwrap().validate_recording_clock("messages", &fields("public_clock"), Some(normalize)).unwrap();
 }
+
+#[test]
+// spec: authority.redact.write-time@1d4b334c
+fn each_operation_lands_its_policy_substitute_and_no_raw_value_reaches_the_encoded_part() {
+    use contextful_policy::enforce::mask::Pepper;
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), r#"
+[project]
+name = "research"
+[[pipeline.tables]]
+name = "people"
+redaction = [
+  { table = "people", column = "note", operation = "drop" },
+  { table = "people", column = "email", operation = "hash" },
+  { table = "people", column = "handle", operation = "tokenize" },
+  { table = "people", column = "postcode", operation = "truncate", argument = 3 },
+  { table = "people", column = "age", operation = "bucket", argument = 10 },
+  { table = "people", column = "income", operation = "range", argument = 1000 },
+]
+"#).unwrap();
+    let store = Store::open(dir.path(), "research").unwrap();
+    let raw = json!({"note":"private-note-canary","email":"canary@example.test","handle":"canary-handle-77","postcode":"SW1A2AA","age":37,"income":52345,"public":"unchanged"});
+    let batch = Batch { rows: vec![raw.as_object().unwrap().clone()], types: Default::default() };
+    let ctx = context();
+    let part = stage_part(&store, &TableDecl::named("people"), &batch, &ctx.node, &ctx.injection, 0, 0).unwrap();
+    let path = store.table_dir("people").unwrap().join("data/runs/run-a/ingest-a/stage.staging").join(part.name);
+    let mut reader = ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(&path).unwrap()).unwrap().build().unwrap();
+    let landed = reader.next().unwrap().unwrap();
+    assert_eq!(landed.num_rows(), 1);
+    let cell = |column: &str| {
+        let values = landed.column_by_name(column).unwrap_or_else(|| panic!("{column} is encoded"));
+        (values.logical_null_count() == 0).then(|| arrow_cast::display::array_value_to_string(values, 0).unwrap())
+    };
+    let pepper = Pepper::resolve(|key| std::env::var(key).ok());
+    assert_eq!(cell("note"), None, "drop leaves no value");
+    assert_eq!(cell("email").as_deref(), Some(pepper.digest("canary@example.test").as_str()), "hash lands the keyed digest");
+    assert_eq!(cell("handle").as_deref(), Some(pepper.token("canary-handle-77").as_str()), "tokenize lands the keyed token");
+    assert_eq!(cell("postcode").as_deref(), Some("SW1"), "truncate lands the prefix");
+    assert_eq!(cell("age").as_deref(), Some("30"), "bucket lands the band's lower edge");
+    assert_eq!(cell("income").as_deref(), Some("52000-53000"), "range lands the generalized band");
+    assert_eq!(cell("public").as_deref(), Some("unchanged"), "a column no rule names lands verbatim");
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
+    for canary in ["private-note-canary", "canary@example.test", "canary-handle-77", "SW1A2AA", "52345"] {
+        assert!(!bytes.windows(canary.len()).any(|window| window == canary.as_bytes()), "{canary} reached the columnar bytes");
+    }
+}

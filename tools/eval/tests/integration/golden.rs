@@ -129,6 +129,22 @@ fn a_golden_passes_write_time_redaction_or_refuses() {
     // A keyed substitute needs a pepper the harness never holds.
     let keyed = GoldenRedaction::new(vec![rule("people", "notes", json!({ "pattern": "[0-9]{3}-[0-9]{2}-[0-9]{4}" }), "hash", None)]).unwrap();
     assert_eq!(keyed.redact(mined.clone()).unwrap_err().code(), "GoldenRedactionFailed");
+    // A numeric band generalizes a matched span that parses as a number, as the writer does.
+    let aged = case(json!({ "id": "a1", "corpus": "c", "question": "Is Ada age 37?",
+        "expected": { "answer": "Ada is 37", "artifacts": ["people#e1"] } }));
+    for (operation, band) in [("bucket", "30"), ("range", "30-40")] {
+        let rules = vec![rule("people", "notes", json!({ "pattern": "[0-9]+" }), operation, Some(json!(10)))];
+        let clean = GoldenRedaction::new(rules).unwrap().redact(aged.clone()).unwrap();
+        assert_eq!(clean.question, format!("Is Ada age {band}?"));
+        assert_eq!(clean.expected.answer.as_deref(), Some(format!("Ada is {band}").as_str()));
+    }
+    // A matched span that does not parse as a number refuses, as the writer does.
+    for operation in ["bucket", "range"] {
+        let band = GoldenRedaction::new(vec![rule("people", "notes", json!({ "pattern": "[0-9]{3}-[0-9]{2}-[0-9]{4}" }), operation, Some(json!(10)))]).unwrap();
+        let e = band.redact(mined.clone()).unwrap_err();
+        assert_eq!(e.code(), "GoldenRedactionFailed");
+        assert!(e.to_string().contains("number"), "{e}");
+    }
     // A question redacted to nothing leaves no case.
     let blank = GoldenRedaction::new(vec![rule("people", "notes", json!({ "pattern": ".+" }), "drop", None)]).unwrap();
     assert_eq!(blank.redact(mined.clone()).unwrap_err().code(), "GoldenRedactionFailed");
