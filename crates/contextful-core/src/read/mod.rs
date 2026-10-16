@@ -13,6 +13,7 @@ pub mod horizon;
 pub mod pin;
 pub mod rank;
 pub mod respond;
+pub mod subscribe;
 pub mod template;
 pub mod tokens;
 

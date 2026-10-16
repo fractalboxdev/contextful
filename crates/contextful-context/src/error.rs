@@ -14,6 +14,9 @@ pub enum ContextError {
     /// A registered `authority` refusal: an identity link's.
     #[error(transparent)]
     Authority(#[from] contextful_core::AuthorityError),
+    /// A registered `read` refusal: a subscription's.
+    #[error(transparent)]
+    Read(#[from] contextful_core::read::ReadError),
     #[error(transparent)]
     Erasure(#[from] contextful_core::disclosure::erase::ErasureError),
     /// A registered `disclosure` aggregate refusal: a release's.

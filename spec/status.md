@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 10 | 242 | 0 | 242 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 277 | 0 | 277 |
-| `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
+| `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 151 | 0 | 151 |
-| `read` | 2 | 19 | 277 | 45 | 28 | 13 | 235 | 0 | 235 |
+| `read` | 2 | 20 | 287 | 46 | 29 | 15 | 244 | 0 | 244 |
 | `run` | 3 | 29 | 529 | 116 | 45 | 14 | 497 | 0 | 497 |
-| `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
+| `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
-| `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 168 | 2578 | 654 | 211 | 75 | 2247 | 0 | |
+| `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
+| **total** | 22 | 169 | 2587 | 655 | 212 | 78 | 2253 | 0 | |
 
 Decision records: 18.
 
@@ -30,12 +30,12 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 275 | 264 | passing | closed |
 | 4 — Ingest | 25 | 586 | 473 | passing | closed |
-| 5 — The read face under enforcement | 17 | 308 | 257 | passing | open |
+| 5 — The read face under enforcement | 17 | 308 | 256 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 91 | 84 | passing | closed |
 | 9 — Visibility | 6 | 50 | 40 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 100 | 88 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 100 | 86 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 43 | passing | open |
 | 13 — Disclosure | 5 | 36 | 27 | passing | open |
@@ -45,7 +45,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
 | 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
 
-Unscheduled operations: 12.
+Unscheduled operations: 13.
 
 ## Pins
 
@@ -924,7 +924,6 @@ Unscheduled operations: 12.
 | `corpus.targets.function-profile` | `spec/pins.toml` | performed |
 | `corpus.targets.incomplete` | `spec/pins.toml` | performed |
 | `corpus.targets.page` | `spec/pins.toml` | performed |
-| `corpus.targets.primitives` | `tools/spec/tests/integration/targets.rs::a_target_file_lists_its_primitives_and_each_shape_the_ones_it_uses` | performed |
 | `corpus.targets.roles` | `tools/spec/tests/integration/targets.rs::a_shape_fills_eight_roles_and_may_fill_a_realtime_projection` | performed |
 | `disclosure.attest.anchor-verb` | `crates/contextful-cli/tests/integration/audit.rs::anchor_signs_an_unanchored_chain_so_it_verifies_under_the_issuer_pin` | performed |
 | `disclosure.attest.broken-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken` | performed |
@@ -1209,7 +1208,6 @@ Unscheduled operations: 12.
 | `read.register.per-request-revocation` | `crates/contextful-agent/tests/integration/http.rs::a_credential_revoked_between_requests_is_refused_on_the_next` | performed |
 | `read.register.quiet-table` | `crates/contextful-context/tests/integration/read/register.rs::a_quiet_table_reads_empty` | performed |
 | `read.register.request-body` | `crates/contextful-agent/tests/integration/http.rs::a_body_over_one_mebibyte_answers_413` | performed |
-| `read.register.reserved-relation` | `crates/contextful-context/tests/integration/read/register.rs::the_run_record_and_the_access_tables_register_as_ordinary_relations` | performed |
 | `read.register.scoped-ledger` | `crates/contextful-context/tests/integration/read/register.rs::a_tenant_scoped_read_naming_the_ledger_is_refused` | performed |
 | `read.register.serve-declaration` | `crates/contextful-agent/tests/integration/http.rs::a_missing_audience_or_ceiling_refuses_the_face` | performed |
 | `read.register.size-estimate` | `crates/contextful-context/tests/integration/read/register.rs::describe_estimates_the_size_of_the_callers_restricted_rows` | performed |
@@ -1278,7 +1276,7 @@ Unscheduled operations: 12.
 | `read.retrieve.sidecar-falls-back` | `crates/contextful-context/tests/integration/read/retrieve.rs::every_failed_precondition_falls_back_to_the_exact_scan` | performed |
 | `read.retrieve.sidecar-generates-candidates` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores` | performed |
 | `read.retrieve.sidecar-oversampling` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_probe_oversamples_the_limit_and_widens_under_restriction` | performed |
-| `read.retrieve.sidecar-size-cap` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_sidecar_past_64_mib_of_resident_bytes_stays_unloaded` | performed |
+| `read.retrieve.sidecar-size-cap` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_sidecar_past_64_mib_of_vectors_stays_unloaded` | performed |
 | `read.retrieve.snippet` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_snippet_leads_with_label_columns` | performed |
 | `read.retrieve.text-free-table-scores-null` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_row_with_no_snippet_scores_null_and_passes_the_floor` | performed |
 | `read.retrieve.token-cap` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_token_set_is_capped_and_an_empty_set_omits_the_floor` | performed |
@@ -1303,6 +1301,16 @@ Unscheduled operations: 12.
 | `read.settle.registration` | `crates/contextful-core/tests/integration/memory/settle.rs::a_registration_names_one_form_one_source_and_a_metric_comparator` | performed |
 | `read.settle.settling-citation` | `crates/contextful-core/tests/integration/memory/settle.rs::a_judged_verdict_carries_a_web_citation` | performed |
 | `read.settle.source-mismatch` | `crates/contextful-core/tests/integration/memory/settle.rs::a_verdict_from_another_source_is_refused` | performed |
+| `read.subscribe.after-commit` | `crates/contextful-context/tests/integration/subscribe.rs::a_logged_run_absent_from_its_commit_log_never_notifies` | performed |
+| `read.subscribe.commit-order` | `crates/contextful-core/tests/integration/read/subscribe.rs::notifications_arrive_in_commit_order_once_each` | performed |
+| `read.subscribe.durable-source` | `crates/contextful-cli/tests/integration/context.rs::a_following_subscriber_receives_a_run_another_process_lands` | performed |
+| `read.subscribe.frontier-covers-run` | `crates/contextful-context/tests/integration/subscribe.rs::a_read_at_the_notified_frontier_covers_the_run` | performed |
+| `read.subscribe.no-content` | `crates/contextful-core/tests/integration/read/subscribe.rs::a_notification_carries_no_rows_and_no_count` | performed |
+| `read.subscribe.notification` | `crates/contextful-core/tests/integration/read/subscribe.rs::a_notification_names_its_run_and_the_frontier_including_it` | performed |
+| `read.subscribe.operator-verb` | `crates/contextful-cli/tests/integration/context.rs::subscribe_prints_the_replay_after_a_position_and_ends` | performed |
+| `read.subscribe.overrun` | `crates/contextful-core/tests/integration/read/subscribe.rs::past_the_bound_a_terminal_overrun_names_the_last_delivered_position` | performed |
+| `read.subscribe.position-unavailable` | `crates/contextful-core/tests/integration/read/subscribe.rs::an_unresolvable_position_names_the_oldest_resolvable_one` | performed |
+| `read.subscribe.resume` | `crates/contextful-context/tests/integration/subscribe.rs::resuming_replays_later_runs_once_across_a_fold_then_continues_live` | performed |
 | `read.synthesize.attribution` | `crates/contextful-memory/tests/integration/synthesize.rs::a_landed_claim_names_the_grant_that_wrote_it` | performed |
 | `read.synthesize.cadence` | `crates/contextful-cli/tests/integration/memory.rs::a_scheduled_synthesize_job_replaces_the_operator_triggered_pass` | performed |
 | `read.synthesize.claim-taint` | `crates/contextful-memory/tests/integration/synthesize.rs::a_batch_lands_under_its_least_trusted_row` | performed |
@@ -2260,8 +2268,6 @@ Unscheduled operations: 12.
 | `topology.coordinate.no-clustered-catalog` | `tools/ci/tests/integration/topology.rs::the_catalog_port_has_exactly_the_known_implementors_and_postgres_alone_clusters` | performed |
 | `topology.coordinate.primitive` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.coordinate.weak-backend` | `spec/pins.toml` | performed |
-| `topology.deploy.parity-divergence` | `tools/ci/tests/integration/parity.rs::a_flipped_byte_names_the_target_the_table_and_the_first_differing_part` | performed |
-| `topology.deploy.unsupported-shape` | `tools/spec/tests/integration/targets.rs::a_shape_claiming_containers_on_a_provider_without_them_is_refused` | performed |
 | `topology.package.apply-home` | `tools/ci/tests/integration/topology.rs::the_snapshot_directory_has_one_home_both_callers_share` | performed |
 | `topology.package.canonical-toml` | `crates/contextful-control/tests/integration/plane.rs::apply_claims_canonical_toml_with_every_comment_kept` | performed |
 | `topology.package.capability-absent` | `crates/contextful-cli/tests/integration/profile.rs::a_data_plane_subcommand_on_a_build_without_it_is_refused_by_name` | performed |

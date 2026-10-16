@@ -25,6 +25,7 @@ pub mod rows;
 pub mod run_record;
 pub mod scan;
 pub mod store;
+pub mod subscribe;
 mod redaction;
 pub mod vector;
 pub mod visibility;

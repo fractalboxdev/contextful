@@ -3489,7 +3489,7 @@
       "statement": "At-rest encryption is per project, off unless `[encryption] key_source` names `env:<NAME>` or a key-management service.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 411
+      "line": 413
     },
     {
       "id": "store.encrypt.key-unbound",
@@ -3500,7 +3500,7 @@
       "statement": "A `key_source` naming a binding the process lacks raises `StoreEncryptionKeyUnbound` at startup, with no cleartext fallback.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 412
+      "line": 414
     },
     {
       "id": "store.encrypt.cipher",
@@ -3511,7 +3511,7 @@
       "statement": "Parquet, footers included, encrypts through Parquet modular encryption; every sidecar and ledger file encrypts with AES-256-GCM under a per-file data key wrapped by the project key.",
       "why": "because a cleartext vector graph admits nearest-neighbour search over the embedding space",
       "file": "spec/10-store.md",
-      "line": 414
+      "line": 416
     },
     {
       "id": "store.encrypt.metadata-envelope",
@@ -3522,7 +3522,7 @@
       "statement": "With a bound key, schema, manifest, pointer, counter and commit-log files hold their canonical JSON or text inside an authenticated versioned envelope; without encryption they retain their canonical bytes.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 416
+      "line": 418
     },
     {
       "id": "store.encrypt.run-state-envelope",
@@ -3533,7 +3533,7 @@
       "statement": "With a bound key, a node's synced run-state JSON holds its canonical bytes inside an authenticated envelope, and a reader refuses a file sealed under another key.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 418
+      "line": 420
     },
     {
       "id": "store.encrypt.machine-catalog-sealing",
@@ -3544,7 +3544,7 @@
       "statement": "A bound `machine.sqlite` holds an authenticated SQLite snapshot; each catalog transaction reads it into process memory under a file lock and seals committed bytes before releasing the lock.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 420
+      "line": 422
     },
     {
       "id": "store.encrypt.password-kdf",
@@ -3555,7 +3555,7 @@
       "statement": "A password-derived project key uses Argon2id with 64 MiB memory, 3 iterations and 4 lanes.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 422
+      "line": 424
     },
     {
       "id": "store.encrypt.transport-separate",
@@ -3566,7 +3566,7 @@
       "statement": "At-rest encryption covers files and TLS covers bucket transport; a cleartext endpoint carries no encrypted-at-rest claim.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 423
+      "line": 425
     },
     {
       "id": "store.encrypt.redacted-index",
@@ -3577,7 +3577,7 @@
       "statement": "An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.",
       "why": "A-authority",
       "file": "spec/10-store.md",
-      "line": 424
+      "line": 426
     },
     {
       "id": "store.encrypt.at-rest-scope",
@@ -3588,7 +3588,7 @@
       "statement": "A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 426
+      "line": 428
     },
     {
       "id": "store.encrypt.sidecar-reader",
@@ -3599,7 +3599,7 @@
       "statement": "In an unencrypted project a reader memory-maps a sidecar read-only; in an encrypted one it decrypts each sealed sidecar file into anonymous process memory and writes no cleartext to disk.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 427
+      "line": 429
     },
     {
       "id": "store.encrypt.rotation",
@@ -3610,7 +3610,7 @@
       "statement": "Rotation writes forward: new files take the new key version, published files keep theirs until collected, and a key version retires once no retained file names it.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 429
+      "line": 431
     },
     {
       "id": "store.endpoint.schemes",
@@ -3621,7 +3621,7 @@
       "statement": "`[sync] endpoint` opens `file://<directory>` as a filesystem bucket, `s3://<region>` as that region's AWS S3 endpoint, `r2://<account-id>` as that account's R2 endpoint at region `auto`, and `https://<host>` at `[sync] region`, default `us-east-1`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 437
+      "line": 439
     },
     {
       "id": "store.endpoint.unsupported-scheme",
@@ -3632,7 +3632,7 @@
       "statement": "Any other scheme, or an S3 or R2 endpoint in a build without the `s3-sync` feature, raises `SyncEndpointUnsupported`, naming the endpoint.",
       "why": "because a bucket the binary cannot reach refuses when it opens, before a push uploads anything",
       "file": "spec/10-store.md",
-      "line": 438
+      "line": 440
     },
     {
       "id": "store.endpoint.plaintext",
@@ -3643,7 +3643,7 @@
       "statement": "An `http://` endpoint opens on a loopback host alone; any other host raises `SyncEndpointInsecure`, naming it.",
       "why": "because objects and signed requests crossing a network in plaintext are readable and replayable by anyone on the path",
       "file": "spec/10-store.md",
-      "line": 440
+      "line": 442
     },
     {
       "id": "store.endpoint.addressing",
@@ -3654,7 +3654,7 @@
       "statement": "An S3 or R2 bucket addresses each object path-style, `<endpoint>/<bucket>/<key>` with every key segment percent-encoded, and signs every request with AWS Signature Version 4 for service `s3` at the endpoint's region.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 442
+      "line": 444
     },
     {
       "id": "store.endpoint.credentials",
@@ -3665,7 +3665,7 @@
       "statement": "`[sync] access_key_id`, `secret_access_key` and the optional `session_token` each bind `secret://<name>`, hydrated as {{connector.reference.whole-value-reference}}, or `env://NAME`, read whole from the process environment, as the bucket opens.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 443
+      "line": 445
     },
     {
       "id": "store.endpoint.credential-unbound",
@@ -3676,7 +3676,7 @@
       "statement": "An S3 or R2 endpoint whose `[sync]` omits `access_key_id` or `secret_access_key`, binds a credential key to anything but a reference, or names an unset variable raises `SyncCredentialUnbound`, naming the key.",
       "why": "because a literal key in `config.toml` sits in plaintext on every disk and backup holding the store root",
       "file": "spec/10-store.md",
-      "line": 444
+      "line": 446
     },
     {
       "id": "store.endpoint.conditional-answers",
@@ -3687,7 +3687,7 @@
       "statement": "A `412` or `409`, or a `404` naming `NoSuchKey` to an `If-Match` put, answers a failed condition; a `501` answers an unsupported method and a `403` a forbidden credential, both read by {{store.probe.inconclusive}}.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 446
+      "line": 448
     },
     {
       "id": "store.endpoint.missing-bucket",
@@ -3698,7 +3698,7 @@
       "statement": "A `404` naming any code but `NoSuchKey`, `NoSuchBucket` among them, answers no absent object and no failed condition: the get, put, delete or list fails as transport, naming the code.",
       "why": "because a mistyped or deleted bucket otherwise reads as an empty bucket, a free lease or a lost compare-and-set",
       "file": "spec/10-store.md",
-      "line": 447
+      "line": 449
     },
     {
       "id": "store.endpoint.list-pages",
@@ -3709,7 +3709,7 @@
       "statement": "A list follows each continuation token until the backend reports the listing complete, and returns every key under the prefix sorted.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 449
+      "line": 451
     },
     {
       "id": "store.emit.plan",
@@ -3720,7 +3720,7 @@
       "statement": "`contextful sync manifest --emit` prints, as a bucket manifest in JSON, each key a push of the store commits with its sha256, size and owner, and reads and writes no bucket object.",
       "why": "because a pre-push check and a dry run need the commit's content without a credential or a network",
       "file": "spec/10-store.md",
-      "line": 457
+      "line": 459
     },
     {
       "id": "store.emit.plan-scope",
@@ -3731,7 +3731,7 @@
       "statement": "The plan lists every key {{store.push.wire-format}} uploads and each `schema.json` at its local digest; a key another node owns stays out.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 459
+      "line": 461
     },
     {
       "id": "store.push.prefix-escape",
@@ -3742,7 +3742,7 @@
       "statement": "A key resolving outside the prefix raises `SyncPrefixEscape`, naming the key and the prefix.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 465
+      "line": 467
     },
     {
       "id": "store.push.prefix-unbound",
@@ -3753,7 +3753,7 @@
       "statement": "An unset variable named by `prefix_from` raises `SyncPrefixUnbound` at startup, with no bucket-root fallback.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 467
+      "line": 469
     },
     {
       "id": "store.push.prefix-overspecified",
@@ -3764,7 +3764,7 @@
       "statement": "Declaring `prefix` and `prefix_from` together raises `SyncPrefixOverspecified`.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 469
+      "line": 471
     },
     {
       "id": "store.push.in-flight",
@@ -3775,7 +3775,7 @@
       "statement": "A second push of one store on one machine raises `SyncPushInFlight`, naming the holder of the push guard.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 471
+      "line": 473
     },
     {
       "id": "store.push.wire-format",
@@ -3786,7 +3786,7 @@
       "statement": "A push uploads each file it owns, or no node owns, whose digest the bucket lacks under `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks and staging directories stay local, and table pointers travel by {{store.push.pointer-carry}}.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 473
+      "line": 475
     },
     {
       "id": "store.push.schema-cas",
@@ -3797,7 +3797,7 @@
       "statement": "A table's `schema.json` commits by merging into the bucket's copy through the one-promotion lattice and replacing it on the ETag read; no copy overwrites another.",
       "why": "because two nodes landing different columns into one table both keep them",
       "file": "spec/10-store.md",
-      "line": 474
+      "line": 476
     },
     {
       "id": "store.push.manifest-commit",
@@ -3808,7 +3808,7 @@
       "statement": "A push commits when the bucket manifest, `<prefix>/manifest.json` listing each key's sha256, size and owner, replaces the copy it read under `If-Match` on that copy's ETag.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 476
+      "line": 478
     },
     {
       "id": "store.push.manifest-format",
@@ -3819,7 +3819,7 @@
       "statement": "The bucket manifest and every generation manifest carry `format`, `1` for this layout; a manifest without `format` reads as `1`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 478
+      "line": 480
     },
     {
       "id": "store.push.format-unsupported",
@@ -3830,7 +3830,7 @@
       "statement": "A bucket or generation manifest whose `format` exceeds 1 raises `SyncManifestFormatUnsupported`, naming the key and its format, before the push commits or the pull writes a file.",
       "why": "because a reader rewriting a manifest it parses only in part drops the fields a newer writer added",
       "file": "spec/10-store.md",
-      "line": 479
+      "line": 481
     },
     {
       "id": "store.push.generation",
@@ -3841,7 +3841,7 @@
       "statement": "Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under `If-None-Match`.",
       "why": "because a restore or a pre-push gate names one committed state, and the live manifest and pointers move on",
       "file": "spec/10-store.md",
-      "line": 481
+      "line": 483
     },
     {
       "id": "store.push.generation-floor",
@@ -3852,7 +3852,7 @@
       "statement": "A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.",
       "why": "because a format-1 writer predating the field drops `generation`, and reusing a taken number collides with its immutable copy",
       "file": "spec/10-store.md",
-      "line": 483
+      "line": 485
     },
     {
       "id": "store.push.generation-heal",
@@ -3863,7 +3863,7 @@
       "statement": "Before each manifest commit, a push finding no `gen-<N>.json` for the generation of the manifest it read creates it from the bytes it read.",
       "why": "because a commit of N+1 landing while `gen-<N>.json` is absent leaves a gap no later push sees",
       "file": "spec/10-store.md",
-      "line": 485
+      "line": 487
     },
     {
       "id": "store.push.generation-conflict",
@@ -3874,7 +3874,7 @@
       "statement": "A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after its manifest commit applied.",
       "why": "because the immutable copy keeps the first commit, and a push reporting success names a state `pull --generation` does not restore",
       "file": "spec/10-store.md",
-      "line": 487
+      "line": 489
     },
     {
       "id": "store.push.run-state",
@@ -3885,7 +3885,7 @@
       "statement": "`sync push` and `sync manifest --emit` first write the node's run state to `nodes/<node-id>/run-state.json`: each pipeline's newest run and each cursor row with its commit marker.",
       "why": "because run history and cursors live outside the store root, and a node starting cold otherwise sees neither",
       "file": "spec/10-store.md",
-      "line": 489
+      "line": 491
     },
     {
       "id": "store.push.control-version",
@@ -3896,7 +3896,7 @@
       "statement": "`sync push` and `sync manifest --emit` record the default local applied control version in each node's run state; a replica uses it only as a verification input.",
       "why": "because a cold node needs the version a writer applied, while an unverified snapshot must not arm work",
       "file": "spec/10-store.md",
-      "line": 491
+      "line": 493
     },
     {
       "id": "store.push.run-state-format",
@@ -3907,7 +3907,7 @@
       "statement": "A run state carries `format`, `1` for this layout; one whose `format` exceeds 1 contributes no run or cursor to a reader.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 493
+      "line": 495
     },
     {
       "id": "store.push.control-artifact",
@@ -3918,7 +3918,7 @@
       "statement": "A push uploads each immutable applied control snapshot and its {{surface.apply.synced-attestation}} receipt under `<project>/control/`, then commits their digests and the project-scoped head in the bucket manifest.",
       "why": "A-surface",
       "file": "spec/10-store.md",
-      "line": 494
+      "line": 496
     },
     {
       "id": "store.push.control-diverged",
@@ -3929,7 +3929,7 @@
       "statement": "A push whose signed control head does not descend from the bucket head raises `SyncControlDiverged`, names both heads and leaves the bucket head unchanged.",
       "why": "A-surface",
       "file": "spec/10-store.md",
-      "line": 496,
+      "line": 498,
       "scenarios": [
         "WHEN two signed control heads name the same predecessor, THEN the second push refuses and keeps the first head."
       ]
@@ -3943,7 +3943,7 @@
       "statement": "After its manifest commit, a push publishes each local table pointer whose snapshot is whole and whose {{store.lay-out.ancestors}} name the bucket pointer's, or the bucket pointer names none, by a conditional put keeping the bucket's fence.",
       "why": "because a snapshot a local fold or a build publishes reads on no other node until its pointer reaches the bucket",
       "file": "spec/10-store.md",
-      "line": 498
+      "line": 500
     },
     {
       "id": "store.push.pointer-leased",
@@ -3954,7 +3954,7 @@
       "statement": "A push publishes no pointer for a table whose compaction lease a holder keeps unexpired; that holder publishes under its fence.",
       "why": "because the holder publishes under the fence its acquisition raised, and a publish beside it races that commit",
       "file": "spec/10-store.md",
-      "line": 500
+      "line": 502
     },
     {
       "id": "store.push.pointer-fenced",
@@ -3965,7 +3965,7 @@
       "statement": "A local pointer carrying a fence below the bucket pointer's stays local, and the push reports it as a warning beside its commit.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 502
+      "line": 504
     },
     {
       "id": "store.push.pointer-unrooted",
@@ -3976,7 +3976,7 @@
       "statement": "A local pointer whose snapshot's ancestry ends at a collected manifest before reaching the bucket pointer's snapshot or a root stays local, and the push reports it as a warning beside its commit.",
       "why": "because a publish over a snapshot it may not descend from drops rows the bucket reaches, and a silent keep leaves every other node reading the older snapshot",
       "file": "spec/10-store.md",
-      "line": 504
+      "line": 506
     },
     {
       "id": "store.push.pointer-recommit",
@@ -3987,7 +3987,7 @@
       "statement": "A push whose pointer publish the bucket took commits the manifest again, so a generation names a carried pointer only once the bucket's pointer holds it.",
       "why": "because a generation naming a pointer the bucket never held restores a state no node read",
       "file": "spec/10-store.md",
-      "line": 506
+      "line": 508
     },
     {
       "id": "store.push.stranded",
@@ -3998,7 +3998,7 @@
       "statement": "A push names on stderr, per owning node, each local key another node owns that the committed bucket manifest neither lists nor tombstones, with the `CONTEXTFUL_NODE_ID` that pushes it.",
       "why": "because a moved store root re-derives the node id, and runs landed under the old one otherwise stay local without a message",
       "file": "spec/10-store.md",
-      "line": 508
+      "line": 510
     },
     {
       "id": "store.push.after-run",
@@ -4009,7 +4009,7 @@
       "statement": "With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, and a failed push fails the command.",
       "why": "because a push spends bucket writes and network on every fire, and an operator syncing on a schedule pays nothing for an undeclared key",
       "file": "spec/10-store.md",
-      "line": 510
+      "line": 512
     },
     {
       "id": "store.pull.digest-mismatch",
@@ -4020,7 +4020,7 @@
       "statement": "A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 550
+      "line": 552
     },
     {
       "id": "store.pull.identity-conflict",
@@ -4031,7 +4031,7 @@
       "statement": "A pull into a store holding a different {{store.init.store-identity}} raises `StoreIdentityConflict` before downloading files.",
       "why": "because importing another UUID lets that store's owner credential read local rows",
       "file": "spec/10-store.md",
-      "line": 552
+      "line": 554
     },
     {
       "id": "store.pull.convergence",
@@ -4042,7 +4042,7 @@
       "statement": "When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 554
+      "line": 556
     },
     {
       "id": "store.pull.unconverged",
@@ -4053,7 +4053,7 @@
       "statement": "Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 555
+      "line": 557
     },
     {
       "id": "store.pull.unconverged-resume",
@@ -4064,7 +4064,7 @@
       "statement": "A pull refused by {{store.pull.unconverged}} keeps each object it verified, so the next `sync pull` downloads only the keys still differing; no pull retries past its attempts.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 557
+      "line": 559
     },
     {
       "id": "store.pull.pointer-last",
@@ -4075,7 +4075,7 @@
       "statement": "A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader meets a pointer ahead of its data.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 559
+      "line": 561
     },
     {
       "id": "store.pull.tombstone-applied",
@@ -4086,7 +4086,7 @@
       "statement": "A pull deletes the local copy of each key a tombstone names and no entry lists.",
       "why": "because a deletion that never reaches a consumer resurrects once its tombstone ages out",
       "file": "spec/10-store.md",
-      "line": 561
+      "line": 563
     },
     {
       "id": "store.pull.pointer-advance",
@@ -4097,7 +4097,7 @@
       "statement": "A pull advances a local pointer only to a bucket pointer carrying a higher fence, or the same fence and a later snapshot, and verifies every advancing table before writing any pointer.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 563
+      "line": 565
     },
     {
       "id": "store.pull.schema-merge",
@@ -4108,7 +4108,7 @@
       "statement": "A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.",
       "why": "because rows landed locally carry columns the bucket's copy may lack",
       "file": "spec/10-store.md",
-      "line": 565
+      "line": 567
     },
     {
       "id": "store.pull.before-run",
@@ -4119,7 +4119,7 @@
       "statement": "With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the bucket into the store before their first read, and a failed pull stops the command.",
       "why": "because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs",
       "file": "spec/10-store.md",
-      "line": 567
+      "line": 569
     },
     {
       "id": "store.pull.generation",
@@ -4130,7 +4130,7 @@
       "statement": "`contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads each listed key in scope at its listed digest, and writes exactly that generation's pointers, whatever their fence.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 569
+      "line": 571
     },
     {
       "id": "store.pull.generation-absent",
@@ -4141,7 +4141,7 @@
       "statement": "A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.",
       "why": "because a restore falling back to another generation reads a state nobody named",
       "file": "spec/10-store.md",
-      "line": 570
+      "line": 572
     },
     {
       "id": "store.pull.generation-diverged",
@@ -4152,7 +4152,7 @@
       "statement": "A generation pull into a store holding a syncable file in scope that the generation does not list raises `SyncGenerationDiverged`, naming the file, and writes nothing.",
       "why": "because a kept unlisted run adds rows the generation never held, and deleting it loses unpushed work",
       "file": "spec/10-store.md",
-      "line": 572
+      "line": 574
     },
     {
       "id": "store.pull.generation-schema",
@@ -4163,7 +4163,7 @@
       "statement": "A generation pull takes each `schema.json` as the bucket holds it, merged per {{store.pull.schema-merge}}, never refusing on its generation digest.",
       "why": "because the lattice keeps every column an earlier generation carried, and the merged copy replaces the old one in the bucket",
       "file": "spec/10-store.md",
-      "line": 574
+      "line": 576
     },
     {
       "id": "store.pull.generation-run-state",
@@ -4174,7 +4174,7 @@
       "statement": "A generation pull holds no `nodes/<node-id>/run-state.json` to {{store.pull.generation-diverged}}: one the generation does not list stays as it is, and any other unlisted file under `nodes/` meets that refusal.",
       "why": "because a run state summarizes history outside the store root, and a restore predating it otherwise refuses every node that pushed since",
       "file": "spec/10-store.md",
-      "line": 576
+      "line": 578
     },
     {
       "id": "store.pull.run-state-cursor",
@@ -4185,7 +4185,7 @@
       "statement": "A run opening where a pulled run state records a commit marker for its pipeline and table newer than every local one resumes from that marker's cursor.",
       "why": "because a collected run takes its manifest's cursor out of the bucket, and a cold node otherwise re-reads the source from its start",
       "file": "spec/10-store.md",
-      "line": 578
+      "line": 580
     },
     {
       "id": "store.pull.control-head",
@@ -4196,7 +4196,7 @@
       "statement": "A pull downloads the bucket manifest's project-scoped control head, its snapshot and receipt ancestry under their listed digests, leaving the local applied pointer untouched for {{surface.reconcile.pulled-control}}.",
       "why": "A-surface",
       "file": "spec/10-store.md",
-      "line": 580,
+      "line": 582,
       "scenarios": [
         "WHEN a cold node pulls a signed control head, THEN its local applied pointer stays absent until reconciliation verifies the head."
       ]
@@ -4210,7 +4210,7 @@
       "statement": "An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 617
+      "line": 619
     },
     {
       "id": "store.probe.unproven",
@@ -4221,7 +4221,7 @@
       "statement": "Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 619
+      "line": 621
     },
     {
       "id": "store.probe.sentinel",
@@ -4232,7 +4232,7 @@
       "statement": "The probe creates a sentinel under `_contextful/cas-probe/` and demonstrates `cas` when a second create and a stale `If-Match` both fail and a current `If-Match` replaces it, deleting the sentinel after.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 621
+      "line": 623
     },
     {
       "id": "store.probe.network-volume",
@@ -4243,7 +4243,7 @@
       "statement": "A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves `single-writer` without the sentinel, naming the mount type, and a declared `cas` there meets {{store.probe.unproven}}.",
       "why": "because the bucket's advisory lock is not a guarantee across the clients of a network share, and a sentinel run from one client cannot observe another",
       "file": "spec/10-store.md",
-      "line": 622
+      "line": 624
     },
     {
       "id": "store.merge.tombstone-owner",
@@ -4254,7 +4254,7 @@
       "statement": "A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 629
+      "line": 631
     },
     {
       "id": "store.merge.tombstone-signed",
@@ -4265,7 +4265,7 @@
       "statement": "A push signs each tombstone it writes with its node's issuer key, recording `signer` and `signature` over the key, owner and `deleted_at`; a node holding no issuer key writes it unsigned.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 631
+      "line": 633
     },
     {
       "id": "store.merge.tombstone-unverified",
@@ -4276,7 +4276,7 @@
       "statement": "A tombstone unsigned, failing its signature, or signed by a key the key-set ledger does not record as verifying at its `deleted_at` raises `SyncTombstoneUnverified`; a merge keeps the entry it names and a pull deletes nothing.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 633
+      "line": 635
     },
     {
       "id": "store.merge.tombstone-ttl",
@@ -4287,7 +4287,7 @@
       "statement": "A tombstone leaves the manifest 30 d after its `deleted_at`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 635
+      "line": 637
     },
     {
       "id": "store.merge.retries",
@@ -4298,7 +4298,7 @@
       "statement": "`[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 636
+      "line": 638
     },
     {
       "id": "store.merge.exhausted",
@@ -4309,7 +4309,7 @@
       "statement": "Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 637
+      "line": 639
     },
     {
       "id": "store.merge.cursor-recency",
@@ -4320,7 +4320,7 @@
       "statement": "Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 639
+      "line": 641
     },
     {
       "id": "store.merge.scoped-union",
@@ -4331,7 +4331,7 @@
       "statement": "A merge takes each local entry this writer owns or no node owns, and from the remote every other entry; a remote entry it owns and no longer holds leaves with a tombstone.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 641
+      "line": 643
     },
     {
       "id": "store.merge.ownership",
@@ -4342,7 +4342,7 @@
       "statement": "A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 643
+      "line": 645
     },
     {
       "id": "store.lease.ttl",
@@ -4353,7 +4353,7 @@
       "statement": "A lease is granted for 10 min.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 650
+      "line": 652
     },
     {
       "id": "store.lease.renewal",
@@ -4364,7 +4364,7 @@
       "statement": "A holder renews every 200 s by `If-Match` replace on the ETag it holds.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 651
+      "line": 653
     },
     {
       "id": "store.lease.clock-skew",
@@ -4375,7 +4375,7 @@
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
       "why": "because correctness rests on the fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
-      "line": 652
+      "line": 654
     },
     {
       "id": "store.lease.held",
@@ -4386,7 +4386,7 @@
       "statement": "A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 654
+      "line": 656
     },
     {
       "id": "store.lease.stale-fence",
@@ -4397,7 +4397,7 @@
       "statement": "A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises `LeaseFenced`, and the run or snapshot it carried stays unreadable.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 656
+      "line": 658
     },
     {
       "id": "store.lease.not-held",
@@ -4408,7 +4408,7 @@
       "statement": "Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 658
+      "line": 660
     },
     {
       "id": "store.lease.cursor-kind",
@@ -4419,7 +4419,7 @@
       "statement": "A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 660
+      "line": 662
     },
     {
       "id": "store.lease.local-node",
@@ -4430,7 +4430,7 @@
       "statement": "A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 662
+      "line": 664
     },
     {
       "id": "store.lease.acquire",
@@ -4441,7 +4441,7 @@
       "statement": "Acquisition creates the lease object under `If-None-Match`, or replaces an expired or released one under `If-Match` on its ETag, the fence one past the object's.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 664
+      "line": 666
     },
     {
       "id": "store.lease.pointer-fence",
@@ -4452,7 +4452,7 @@
       "statement": "Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 666
+      "line": 668
     },
     {
       "id": "store.lease.network-volume",
@@ -4463,7 +4463,7 @@
       "statement": "Taking a compaction lease on a bucket {{store.probe.network-volume}} resolves to `single-writer` meets {{store.probe.unproven}} naming the mount type, and writes no lease object and no pointer fence.",
       "why": "because a conditional put holding on one machine only lets two machines each take the lease",
       "file": "spec/10-store.md",
-      "line": 668
+      "line": 670
     },
     {
       "id": "store.lease.commit-log",
@@ -4474,7 +4474,7 @@
       "statement": "Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`, and an acquisition creates one carrying its fence; a manifest marked `logged` is readable once that log records it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 670
+      "line": 672
     },
     {
       "id": "store.replicate.write-refused",
@@ -4485,7 +4485,7 @@
       "statement": "A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 688
+      "line": 690
     },
     {
       "id": "store.replicate.partial-parquet",
@@ -4496,7 +4496,7 @@
       "statement": "A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 690
+      "line": 692
     },
     {
       "id": "store.replicate.descriptor",
@@ -4507,7 +4507,7 @@
       "statement": "A replica's pull writes `replica.json` beside `derived.sqlite`, naming per table each snapshot it holds with that snapshot's parts and sidecar paths present on disk; no push carries it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 692
+      "line": 694
     },
     {
       "id": "store.replicate.missing-index",
@@ -4518,7 +4518,7 @@
       "statement": "A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 694
+      "line": 696
     },
     {
       "id": "store.replicate.sensitive-refused",
@@ -4529,7 +4529,7 @@
       "statement": "A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 696
+      "line": 698
     },
     {
       "id": "store.snapshot.capture",
@@ -4984,7 +4984,7 @@
       "statement": "A session's connection issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}, once per connection; statements reuse it under {{read.cache.session-pool}}. No view directory exists on disk.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 65
+      "line": 66
     },
     {
       "id": "read.register.declaration-set",
@@ -4995,7 +4995,7 @@
       "statement": "The face registers the tables of {{store.declare.declaration-set}}, so a `primary_key` a pipeline file declares reaches {{store.declare.dedup-view}} on the operator verb and the tool server alike.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 66
+      "line": 67
     },
     {
       "id": "read.register.engine",
@@ -5006,7 +5006,7 @@
       "statement": "The executor is an embedded columnar SQL engine, linked into every profile that serves reads, reading Parquet natively in standard SQL. An external process reads the same files with the engine uninstalled.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 67
+      "line": 68
     },
     {
       "id": "read.register.quiet-table",
@@ -5017,7 +5017,7 @@
       "statement": "A quiet table registers as {{store.declare.empty-run}}. A read of it returns an empty result, never a missing-relation fault.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 69
+      "line": 70
     },
     {
       "id": "read.register.bare-name",
@@ -5028,7 +5028,7 @@
       "statement": "A bare table name in any read — a caller statement, a template body, a ranking arm, a file preview — resolves to the caller's registered relation, which carries the caller's restriction.",
       "why": "P5",
       "file": "spec/20-read.md",
-      "line": 71
+      "line": 72
     },
     {
       "id": "read.register.tool-set",
@@ -5039,7 +5039,7 @@
       "statement": "The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `corpus.retrieve` and `memory.recall` as its closed tool set.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 73
+      "line": 74
     },
     {
       "id": "read.register.bound-arguments",
@@ -5050,7 +5050,7 @@
       "statement": "Every read tool but `memory.recall`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.",
       "why": "because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it",
       "file": "spec/20-read.md",
-      "line": 75
+      "line": 76
     },
     {
       "id": "read.register.bound-listing",
@@ -5061,7 +5061,7 @@
       "statement": "`context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.",
       "why": "because valid time narrows rows, and a listing returns files and table names, never rows",
       "file": "spec/20-read.md",
-      "line": 77
+      "line": 78
     },
     {
       "id": "read.register.available-bound-argument",
@@ -5072,7 +5072,7 @@
       "statement": "Every read tool {{read.register.bound-arguments}} names also admits `available_as_of` and echoes it under {{store.available-time.bound-echo}}; {{store.available-time.available-as-of}} wraps only the tables the read touches.",
       "why": "because a session registers every granted table, and wrapping one declaring no availability time refuses reads that never name it",
       "file": "spec/20-read.md",
-      "line": 79
+      "line": 80
     },
     {
       "id": "read.register.available-bound-listing",
@@ -5083,7 +5083,7 @@
       "statement": "A listing {{read.register.bound-listing}} names ignores `available_as_of` and echoes no `available_as_of` part.",
       "why": "because availability time narrows rows, and a listing returns files and table names, never rows",
       "file": "spec/20-read.md",
-      "line": 81
+      "line": 82
     },
     {
       "id": "read.register.describe-payload",
@@ -5094,7 +5094,7 @@
       "statement": "`context.describe` returns row count, {{read.register.size-estimate}}, schema fingerprint, description, {{read.register.column-hints}}, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 83
+      "line": 84
     },
     {
       "id": "read.register.size-estimate",
@@ -5105,7 +5105,7 @@
       "statement": "`context.describe` reports `bytes`, the serialized JSON length of the caller's restricted rows, and `estimated_tokens`, one per 4 B of that length, rounded up.",
       "why": "because a client choosing between a full-context read and a ranked one compares the corpus against its context window before reading it",
       "file": "spec/20-read.md",
-      "line": 84
+      "line": 85
     },
     {
       "id": "read.register.join-route",
@@ -5116,7 +5116,7 @@
       "statement": "A cross-table join runs as one `context.query` statement over registered relations, or through a published model the describe payload lists; no tool joins on a caller's behalf.",
       "why": "because a statement already composes each relation's restriction, and a join tool restates that composition outside the guard",
       "file": "spec/20-read.md",
-      "line": 86
+      "line": 87
     },
     {
       "id": "read.register.column-hints",
@@ -5127,7 +5127,7 @@
       "statement": "A table's `column_hints` map supplies optional per-column hints; `context.describe` includes each hint only with a column the session registers.",
       "why": "because a hint for an absent column describes a relation the registered schema cannot query",
       "file": "spec/20-read.md",
-      "line": 88
+      "line": 89
     },
     {
       "id": "read.register.describe-zone",
@@ -5138,7 +5138,7 @@
       "statement": "`context.describe` reports the session zone as `session_zone`, and per table, listed or described, `zone_admitted`: whether the table's effective allow-set admits that zone.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 90
+      "line": 91
     },
     {
       "id": "read.register.advertised-is-enforced",
@@ -5149,7 +5149,7 @@
       "statement": "A table's published `limits` block lists a bound exactly when the engine applies it.",
       "why": "because a published number and a delivered guarantee cannot disagree when one derives from the other",
       "file": "spec/20-read.md",
-      "line": 92
+      "line": 93
     },
     {
       "id": "read.register.budget-arguments",
@@ -5160,7 +5160,7 @@
       "statement": "Every read tool accepts optional `max_duration_ms` and `max_response_bytes` request fields, each with no default.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 94
+      "line": 95
     },
     {
       "id": "read.register.duration-no-statement",
@@ -5171,7 +5171,7 @@
       "statement": "A read tool running no SQL statement accepts `max_duration_ms` without triggering {{read.respond.duration-ceiling}}.",
       "why": "because no connection executes a statement for its deadline to interrupt",
       "file": "spec/20-read.md",
-      "line": 95
+      "line": 96
     },
     {
       "id": "read.register.budget-advertisement",
@@ -5182,7 +5182,7 @@
       "statement": "`context.describe` lists a table's `limits.max_duration_ms` and `limits.max_response_bytes` under {{read.register.advertised-is-enforced}} and omits each undeclared limit.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 97
+      "line": 98
     },
     {
       "id": "read.register.template-projection",
@@ -5193,7 +5193,7 @@
       "statement": "Every manifest template projects into a tool named by its identifier, whose declared positional parameters form a typed schema with every field required.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 98
+      "line": 99
     },
     {
       "id": "read.register.file-listing",
@@ -5204,7 +5204,7 @@
       "statement": "`context.files` returns store-root-relative paths for the tables the caller reads, and a table outside that set contributes no path.",
       "why": "P5",
       "file": "spec/20-read.md",
-      "line": 99
+      "line": 100
     },
     {
       "id": "read.register.file-preview-target",
@@ -5215,7 +5215,7 @@
       "statement": "`context.file` resolves a path to its `(table, run_id)` and reads it through that table's registered relation. A snapshot part, a traversal, an absolute path or a ledger file raises `FilePreviewNotATable`.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 101
+      "line": 102
     },
     {
       "id": "read.register.ledger-relation",
@@ -5226,7 +5226,7 @@
       "statement": "Each table's per-run request ledger registers as the child relation `<table>__requests`, holding identifiers, connector, method, host, status and timing of mediated outbound calls.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 103
+      "line": 104
     },
     {
       "id": "read.register.scoped-ledger",
@@ -5237,7 +5237,7 @@
       "statement": "The child relation registers on the owner read alone: a credential carrying no tenant scope, over a table carrying no row policy. Naming a closed ledger raises `LedgerNotTenantScoped`, stating what closed the relation.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 104
+      "line": 105
     },
     {
       "id": "read.register.no-tenant-ledger",
@@ -5248,7 +5248,7 @@
       "statement": "No tenant-scoped projection of a request ledger registers; {{read.register.scoped-ledger}} is the ledger's one read path.",
       "why": "because ledger rows carry no tenant column, and a projection filtering on a dimension its rows lack discloses every tenant's calls",
       "file": "spec/20-read.md",
-      "line": 106
+      "line": 107
     },
     {
       "id": "read.register.lexicon-surface",
@@ -5259,7 +5259,7 @@
       "statement": "The describe payload carries the store's numeric-identifier and badge vocabulary. Aliases, time-window phrases and distillation examples stay on the serving side.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 108
+      "line": 109
     },
     {
       "id": "read.register.reserved-relation",
@@ -5270,7 +5270,7 @@
       "statement": "The engine's reserved table namespaces register like any other relation, with no privileged path underneath.",
       "why": "P5",
       "file": "spec/20-read.md",
-      "line": 109
+      "line": 110
     },
     {
       "id": "read.register.network-transport",
@@ -5281,7 +5281,7 @@
       "statement": "`contextful serve --http <addr> --audience <aud> --max-in-flight <n>` answers MCP Streamable HTTP at `POST /mcp`: one JSON-RPC message per request, answered as `application/json` by the tool server the stdio transport runs.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 111
+      "line": 112
     },
     {
       "id": "read.register.concurrent-statements",
@@ -5292,7 +5292,7 @@
       "statement": "Requests on any number of connections run concurrently, each statement on its own engine connection under {{read.cache.pool-connections}}; a slow statement delays no other request.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 113
+      "line": 114
     },
     {
       "id": "read.register.serve-declaration",
@@ -5303,7 +5303,7 @@
       "statement": "A serve with no `--audience`, or no positive `--max-in-flight`, raises `ServeDeclarationMissing` naming the flag and binds no listener; neither ships a default.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 115
+      "line": 116
     },
     {
       "id": "read.register.past-ceiling",
@@ -5314,7 +5314,7 @@
       "statement": "A request arriving while the ceiling's count of requests is in flight answers `503` with a `Retry-After` of 1 s and admits nothing.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 117
+      "line": 118
     },
     {
       "id": "read.register.connection-ceiling",
@@ -5325,7 +5325,7 @@
       "statement": "An accepted connection holds one of the ceiling's slots from accept until its answer is written; a connection accepted with every slot held answers as {{read.register.past-ceiling}} before its request is parsed, and starts no thread.",
       "why": "because a request head arrives before admission, and a slot taken only after reading it lets an unadmitted caller hold one thread per connection",
       "file": "spec/20-read.md",
-      "line": 119
+      "line": 120
     },
     {
       "id": "read.register.per-request-admission",
@@ -5336,7 +5336,7 @@
       "statement": "Each request carries `Authorization: Bearer <credential>`, or `DPoP <credential>` with a `DPoP` proof header, admitted per request under {{authority.verify.possession-binding}} and {{authority.verify.network-bearer}}, so one listener serves many credentials, each reading its own grants.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 121
+      "line": 122
     },
     {
       "id": "read.register.credential-missing",
@@ -5347,7 +5347,7 @@
       "statement": "A request carrying no `Authorization` credential raises `HttpCredentialMissing` with `401` and reads no row.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 123
+      "line": 124
     },
     {
       "id": "read.register.admission-refused",
@@ -5358,7 +5358,7 @@
       "statement": "A request its admission refuses answers `401` carrying the refusal's identifier, except a full nonce cache, which answers `503` under {{authority.verify.nonce-cache}}.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 125
+      "line": 126
     },
     {
       "id": "read.register.per-request-revocation",
@@ -5369,7 +5369,7 @@
       "statement": "Each request re-reads the `--denylist` file, so a credential revoked between two requests is refused on the next with no restart; an unreadable denylist answers `503` and admits nothing.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 127
+      "line": 128
     },
     {
       "id": "read.register.stateless-session",
@@ -5380,7 +5380,7 @@
       "statement": "A notification answers `202` with no body. The face holds no protocol session and opens no server stream: a `GET` or `DELETE` on `/mcp` answers `405`, any other path `404`.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 129
+      "line": 130
     },
     {
       "id": "read.register.request-body",
@@ -5391,7 +5391,7 @@
       "statement": "A request body over 1 MiB answers `413` and is read no further.",
       "why": "because the listener reads the body before admission, and an unbounded body lets an unadmitted caller hold memory",
       "file": "spec/20-read.md",
-      "line": 131
+      "line": 132
     },
     {
       "id": "read.register.health",
@@ -5402,7 +5402,7 @@
       "statement": "`GET /health` answers `200` with the build identity of {{read.embed.build-identity}}, admitting no credential and reading no row.",
       "why": "because a container runtime probes readiness before any caller holds a credential",
       "file": "spec/20-read.md",
-      "line": 133
+      "line": 134
     },
     {
       "id": "read.guard.single-read-only-statement",
@@ -5413,7 +5413,7 @@
       "statement": "Admitted text parses to exactly one read-only SELECT. Attach, copy, install, load, pragma, set, any schema change, any data modification and a piggybacked second statement raise `StatementNotReadOnly`.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 140
+      "line": 141
     },
     {
       "id": "read.guard.engine-own-parse",
@@ -5424,7 +5424,7 @@
       "statement": "The guard walks the syntax tree the engine itself serializes for the statement; read-only-ness is a property of that tree, not a keyword blocklist.",
       "why": "because guard and executor cannot disagree about what a text means when they share one parse",
       "file": "spec/20-read.md",
-      "line": 142
+      "line": 143
     },
     {
       "id": "read.guard.relation-allowlist",
@@ -5435,7 +5435,7 @@
       "statement": "Every base relation names a view registered for this caller or a common table expression the statement declares. A bare file path is a base relation and falls under this rule.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 144
+      "line": 145
     },
     {
       "id": "read.guard.whole-tree-walk",
@@ -5446,7 +5446,7 @@
       "statement": "The walk covers the entire tree — select-list subqueries, union arms, pivot sources — and a common-table-expression name resolves only within the scope that declares it and the scopes beneath.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 146
+      "line": 147
     },
     {
       "id": "read.guard.unregistered-relation",
@@ -5457,7 +5457,7 @@
       "statement": "A base relation naming nothing this connection registered is refused by {{authority.refuse.ungranted-table}}, echoing what the statement asked for and no relation of another caller.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 147
+      "line": 148
     },
     {
       "id": "read.guard.table-function",
@@ -5468,7 +5468,7 @@
       "statement": "A table function anywhere in the tree, and a schema-qualified reach into a system catalog, raise `TableFunctionRefused`.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 149
+      "line": 150
     },
     {
       "id": "read.guard.statement-provenance",
@@ -5479,7 +5479,7 @@
       "statement": "Admission binds on who authored the text. Operator text — the local command line, template bodies, engine-composed reads — runs raw; capability-token caller text is gated. The raw surface is reachable from no network face.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 151
+      "line": 152
     },
     {
       "id": "read.guard.quoted-identifiers",
@@ -5490,7 +5490,7 @@
       "statement": "Every schema- or manifest-derived identifier is double-quoted where rendered, admitting any UTF-8 vendor field name as an identifier and never as an expression.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 153
+      "line": 154
     },
     {
       "id": "read.guard.template-declaration",
@@ -5501,7 +5501,7 @@
       "statement": "A template declares an identifier, one SQL statement, positional parameters written `name:type` over integer, float, string, timestamp and boolean, and an optional row ceiling.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 154
+      "line": 155
     },
     {
       "id": "read.guard.template-reserved-parameter",
@@ -5512,7 +5512,7 @@
       "statement": "A template parameter named `as_of`, `valid_as_of`, `zone` or `pin` refuses the manifest; those names carry the read's bounds, zone and pin map on every template tool.",
       "why": "because a parameter sharing a read argument's name hides that bound from the template tool",
       "file": "spec/20-read.md",
-      "line": 155
+      "line": 156
     },
     {
       "id": "read.guard.available-reserved-parameter",
@@ -5523,7 +5523,7 @@
       "statement": "A template parameter named `available_as_of` refuses the manifest as {{read.guard.template-reserved-parameter}} refuses the other reserved names; that name carries the read's availability bound on every template tool.",
       "why": "because a parameter sharing a read argument's name hides that bound from the template tool",
       "file": "spec/20-read.md",
-      "line": 157
+      "line": 158
     },
     {
       "id": "read.guard.template-relation-shape",
@@ -5534,7 +5534,7 @@
       "statement": "Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, or whose identifier opens with a built-in tool prefix — `context.`, `corpus.` or `memory.` — raising `TemplateNamesForeignRelation`.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 159
+      "line": 160
     },
     {
       "id": "read.guard.template-binding",
@@ -5545,7 +5545,7 @@
       "statement": "A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders are `$1`…`$n` or `?` in declaration order, or exactly the declared names.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 161
+      "line": 162
     },
     {
       "id": "read.guard.query-binding",
@@ -5556,7 +5556,7 @@
       "statement": "`context.query` binds `$name` or contiguous `$1`…`$n` placeholders from `parameters` typed by {{read.guard.template-declaration}} without coercion; positional `?`, missing, unused, untyped or mismatched parameters raise `QueryParameterRejected` before execution; bound values reach {{authority.refuse.scope-guard}}.",
       "why": "because a value bound to a placeholder reaches no parser, and the tenant guard decides a bound value as it decides a literal",
       "file": "spec/20-read.md",
-      "line": 163
+      "line": 164
     },
     {
       "id": "read.guard.startup-time-check",
@@ -5567,7 +5567,7 @@
       "statement": "Template checks are caller-independent and run once at startup; a request pays nothing for them.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 165
+      "line": 166
     },
     {
       "id": "read.respond.one-projection",
@@ -5578,7 +5578,7 @@
       "statement": "The command line's JSON output, the HTTP face and the tool protocol serialize one projection: `columns`, `rows`, `truncated`, and the optional restriction, resolved-build, provenance, retrieval and time-bound blocks.",
       "why": "because a guarantee landing on one transport and missing on another is worse than a guarantee on none",
       "file": "spec/20-read.md",
-      "line": 194
+      "line": 195
     },
     {
       "id": "read.respond.row-ceiling",
@@ -5589,7 +5589,7 @@
       "statement": "A per-table row ceiling published as `limits.max_rows` bounds rows delivered, applied at execution with an over-fetch of 1 rows. It bounds no work performed.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 196
+      "line": 197
     },
     {
       "id": "read.respond.face-ceiling",
@@ -5600,7 +5600,7 @@
       "statement": "Every read on every face, `corpus.retrieve` included, delivers at most 10000 rows: the face ceiling is always a component of {{authority.grant.row-ceiling}}, declared or not, and bounds the candidate window.",
       "why": "because an undeclared ceiling otherwise streams a whole table into one response, and a caller learns of the cut from `truncated` rather than from memory exhaustion",
       "file": "spec/20-read.md",
-      "line": 197
+      "line": 198
     },
     {
       "id": "read.respond.engine-composed-ceiling",
@@ -5611,7 +5611,7 @@
       "statement": "An engine-composed table read, a derive source or a memory read, takes the least of its grant's and tables' declared row ceilings and no face ceiling; with none declared it delivers every row.",
       "why": "because a derive or memory pass over a silently cut table records partial input as complete",
       "file": "spec/20-read.md",
-      "line": 199
+      "line": 200
     },
     {
       "id": "read.respond.truncation-is-exact",
@@ -5622,7 +5622,7 @@
       "statement": "For a row ceiling, `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 201
+      "line": 202
     },
     {
       "id": "read.respond.cell-encoding",
@@ -5633,7 +5633,7 @@
       "statement": "SQL NULL is JSON `null` and nothing else is. Non-finite floats are `\"NaN\"`, `\"inf\"`, `\"-inf\"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; a union is its text form.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 203
+      "line": 204
     },
     {
       "id": "read.respond.bytes-and-vectors",
@@ -5644,7 +5644,7 @@
       "statement": "Binary is padded base64, and a fixed-size float array, a vector column included, is a JSON array holding each element as a float cell.",
       "why": "A-store",
       "file": "spec/20-read.md",
-      "line": 204
+      "line": 205
     },
     {
       "id": "read.respond.nested-values",
@@ -5655,7 +5655,7 @@
       "statement": "A list is a JSON array, and a struct or a map a JSON object keyed by field name or key text, each item, field or value encoded as its own cell.",
       "why": "A-store",
       "file": "spec/20-read.md",
-      "line": 206
+      "line": 207
     },
     {
       "id": "read.respond.wide-number-shape",
@@ -5666,7 +5666,7 @@
       "statement": "A column's JSON encoding follows its SQL type alone: integers of 32 bits or fewer, finite floats and decimals of 15 digits or fewer are numbers; wider integers and decimals are exact decimal strings.",
       "why": "because a wire type that varies with the values on one page breaks a typed client on the next",
       "file": "spec/20-read.md",
-      "line": 208
+      "line": 209
     },
     {
       "id": "read.respond.type-is-the-cell",
@@ -5677,7 +5677,7 @@
       "statement": "No separate type list rides the envelope; a cell's JSON type is the declaration.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 210
+      "line": 211
     },
     {
       "id": "read.respond.one-response-shape",
@@ -5688,7 +5688,7 @@
       "statement": "Every read answers with one complete result set in one response; no read tool streams partial rows.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 211
+      "line": 212
     },
     {
       "id": "read.respond.zero-rows-is-success",
@@ -5699,7 +5699,7 @@
       "statement": "Fewer rows than the requested limit, zero included, is a success.",
       "why": "P2",
       "file": "spec/20-read.md",
-      "line": 213
+      "line": 214
     },
     {
       "id": "read.respond.match-count",
@@ -5710,7 +5710,7 @@
       "statement": "Match counts ride outside the internals opt-in, reporting how many rows the ranker scored as matching in the same call.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 215
+      "line": 216
     },
     {
       "id": "read.respond.coverage-is-a-count",
@@ -5721,7 +5721,7 @@
       "statement": "A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback, never from a ranked top score.",
       "why": "because the calibrated lexical leg scores the best row 1.0 and IDF lifts one incidental rare-term mention",
       "file": "spec/20-read.md",
-      "line": 216
+      "line": 217
     },
     {
       "id": "read.respond.internals-opt-in",
@@ -5732,7 +5732,7 @@
       "statement": "Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 218
+      "line": 219
     },
     {
       "id": "read.respond.query-internals-parameters",
@@ -5743,7 +5743,7 @@
       "statement": "Under `internals: true`, {{read.guard.query-binding}} includes the validated typed parameter map beside executed SQL in the internals object.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 219
+      "line": 220
     },
     {
       "id": "read.respond.duration-ceiling",
@@ -5754,7 +5754,7 @@
       "statement": "Under {{authority.grant.duration-ceiling}}, the engine interrupts the statement's connection at its deadline; `ReadDurationExceeded` names the ceiling, source and elapsed milliseconds, delivers no rows, and leaves other statements running.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 220
+      "line": 221
     },
     {
       "id": "read.respond.byte-ceiling",
@@ -5765,7 +5765,7 @@
       "statement": "Under {{authority.grant.byte-ceiling}}, the serialized response holds whole rows within the selected byte ceiling; an envelope or first row exceeding it raises `ReadResponseTooLarge` and delivers no rows.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 222
+      "line": 223
     },
     {
       "id": "read.respond.truncation-cause",
@@ -5776,7 +5776,7 @@
       "statement": "A truncated response carries `contextful.truncation` with `by`, `ceiling` and `source`: `rows` admits grant, table, request, template or face; `bytes` admits grant, table or request.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 224
+      "line": 225
     },
     {
       "id": "read.respond.truncation-tie",
@@ -5787,7 +5787,7 @@
       "statement": "When both ceilings cut the same next row, bytes takes precedence; equal ceilings within one dimension choose the first eligible source in grant, table, request, template, face order.",
       "why": "because one cut needs one deterministic cause for a client to branch on",
       "file": "spec/20-read.md",
-      "line": 225
+      "line": 226
     },
     {
       "id": "read.respond.operator-metadata",
@@ -5798,7 +5798,7 @@
       "statement": "Operator-surface table metadata carries column count and backing file list; a row count is an ordinary count query, never a stored field.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 227
+      "line": 228
     },
     {
       "id": "read.respond.restriction-block",
@@ -5809,7 +5809,7 @@
       "statement": "The restriction block carries the session zone, the incognito flag and one entry per touched relation the zone excludes or column-masks: `table`, `excluded`, `rows_dropped` and `columns_masked`. A read withholding no touched relation omits the block.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 229
+      "line": 230
     },
     {
       "id": "read.respond.in-band-error",
@@ -5820,7 +5820,7 @@
       "statement": "On the tool protocol a refusal arrives in-band, as a protocol error object or a result flagged as an error under transport success.",
       "why": "P2",
       "file": "spec/20-read.md",
-      "line": 231
+      "line": 232
     },
     {
       "id": "read.respond.paths-stay-inside",
@@ -5831,7 +5831,7 @@
       "statement": "An ordinary read's result carries no store path. Provenance arrives as columns naming table, run, connector version, ingestion instant and authoring subject.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 233
+      "line": 234
     },
     {
       "id": "read.query.operator-verb",
@@ -5842,7 +5842,7 @@
       "statement": "`contextful query --json [--project <name>] [--declaration <path>] [--limit <n>] <sql>` runs one operator statement raw under {{read.guard.statement-provenance}} and prints the {{read.respond.one-projection}} envelope as one JSON line on standard output.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 240
+      "line": 241
     },
     {
       "id": "read.query.one-statement",
@@ -5853,7 +5853,7 @@
       "statement": "Text the engine's parser splits into other than exactly one statement raises `QueryNotOneStatement` before any statement runs.",
       "why": "because preparing multi-statement text executes every statement but the last and answers only the last, dropping the earlier results and side effects unseen",
       "file": "spec/20-read.md",
-      "line": 241
+      "line": 242
     },
     {
       "id": "read.query.project-relations",
@@ -5864,7 +5864,7 @@
       "statement": "Under a project, every table the store holds or the manifest declares registers under its bare name as its unrestricted base relation at the latest committed state; a quiet table reads as {{read.register.quiet-table}}.",
       "why": "because operator text is the store owner's own, and a restriction bounds a capability-token caller",
       "file": "spec/20-read.md",
-      "line": 243
+      "line": 244
     },
     {
       "id": "read.query.discovered-project",
@@ -5875,7 +5875,7 @@
       "statement": "Without `--project`, the project {{store.init.discovery}} finds is the verb's project. When discovery finds none, or the found project's store is absent, no relation registers and the statement runs over no store.",
       "why": "because every other verb reads the nearest `contextful.toml`, and a statement over files or literals needs no store",
       "file": "spec/20-read.md",
-      "line": 245
+      "line": 246
     },
     {
       "id": "read.query.project-store",
@@ -5886,7 +5886,7 @@
       "statement": "A `--project` whose `.contextful/context/<project>/` store is absent raises `QueryProjectAbsent`.",
       "why": "because every declared table of an absent store registers as quiet, and an operator reads its zero rows as an answer",
       "file": "spec/20-read.md",
-      "line": 247
+      "line": 248
     },
     {
       "id": "read.query.declaration-default",
@@ -5897,7 +5897,7 @@
       "statement": "`--declaration <path>` names the manifest whose declared tables register; without it, the {{store.init.default-declaration}} file does when present, and no manifest otherwise. With no project, `--declaration` refuses by {{store.init.undiscovered}}.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 249
+      "line": 250
     },
     {
       "id": "read.query.limit-truncates",
@@ -5908,7 +5908,7 @@
       "statement": "`--limit <n>` bounds rows delivered with the over-fetch of {{read.respond.row-ceiling}}, and sets `truncated` per {{read.respond.truncation-is-exact}}. Without it every row {{read.query.raw-row-ceiling}} admits is delivered.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 250
+      "line": 251
     },
     {
       "id": "read.query.raw-row-ceiling",
@@ -5919,7 +5919,7 @@
       "statement": "An operator's raw read delivers at most the least `limits.max_rows` among the relations its parsed statement names, and at most `--limit` beside it.",
       "why": "because a published bound the owner's own verb ignores advertises a guarantee one face breaks",
       "file": "spec/20-read.md",
-      "line": 251
+      "line": 252
     },
     {
       "id": "read.query.json-only",
@@ -5930,7 +5930,7 @@
       "statement": "The verb prints the JSON projection alone; it carries no text rendering, and a call omitting `--json` is a usage error.",
       "why": "because a second rendering is a second projection a script must reconcile with the first",
       "file": "spec/20-read.md",
-      "line": 253
+      "line": 254
     },
     {
       "id": "read.query.engine-fault",
@@ -5941,7 +5941,7 @@
       "statement": "A statement the engine rejects exits non-zero with the engine's message on standard error and nothing on standard output.",
       "why": "because a caller parsing standard output never mistakes a partial or empty envelope for an answer",
       "file": "spec/20-read.md",
-      "line": 255
+      "line": 256
     },
     {
       "id": "read.reference.call",
@@ -5952,7 +5952,7 @@
       "statement": "`context.reference` accepts one table, run identifier and row sequence; `contextful context reference` invokes the same resolver under Read admission and returns {{read.respond.one-projection}} without selecting a filesystem path.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 263
+      "line": 264
     },
     {
       "id": "read.reference.admission",
@@ -5963,7 +5963,7 @@
       "statement": "Resolution applies {{read.guard.unregistered-relation}}, the caller's registered row and column restrictions, and {{read.respond.duration-ceiling}}, {{read.respond.byte-ceiling}} and {{disclosure.record.read-entry}} before publishing its verdict.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 265
+      "line": 266
     },
     {
       "id": "read.reference.erased-verdict",
@@ -5974,7 +5974,7 @@
       "statement": "An admitted reference recorded in the independently verified cumulative erasure index returns `available: false` with `reason: erased`; an absent reference outside that index returns `reason: missing` and exposes no source payload.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 267
+      "line": 268
     },
     {
       "id": "read.reference.index-visibility",
@@ -5985,7 +5985,7 @@
       "statement": "A tenant-scoped, row-policy-restricted, zone-excluded or column-masked caller receives an unreadable verdict before erasure-index access; only the owner metadata eligibility of {{read.register.scoped-ledger}} admits an erased verdict.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 269
+      "line": 270
     },
     {
       "id": "read.reference.frontier",
@@ -5996,7 +5996,7 @@
       "statement": "The resolver validates the same signed store frontier before resolution and before response publication; its erasure index binds store identity and cumulative reference versions through {{disclosure.erase.store-binding}}.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 271
+      "line": 272
     },
     {
       "id": "read.retrieve.ranked-call",
@@ -6007,7 +6007,7 @@
       "statement": "`corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 278
+      "line": 279
     },
     {
       "id": "read.retrieve.rerank-argument",
@@ -6018,7 +6018,7 @@
       "statement": "The ranked call also takes `query_embedding_model?`, naming the model behind `query_embedding`, and `rerank_with?`, naming the reranker {{read.rank.rerank}} applies.",
       "why": "because a caller-supplied vector and a reranked order are each meaningful only with the model that produced them",
       "file": "spec/20-read.md",
-      "line": 279
+      "line": 280
     },
     {
       "id": "read.retrieve.relevance-floor",
@@ -6029,7 +6029,7 @@
       "statement": "A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 281
+      "line": 282
     },
     {
       "id": "read.retrieve.content-tokens",
@@ -6040,7 +6040,7 @@
       "statement": "The query text is lowercased and split on non-alphanumeric characters. Stop tokens drop, non-ASCII runs of two or more characters stay, and survivors deduplicate in order.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 282
+      "line": 283
     },
     {
       "id": "read.retrieve.token-length-floor",
@@ -6051,7 +6051,7 @@
       "statement": "An ASCII run shorter than 2 chars leaves the content-token set.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 283
+      "line": 284
     },
     {
       "id": "read.retrieve.token-cap",
@@ -6062,7 +6062,7 @@
       "statement": "The content-token set holds at most 12 tokens. An empty set omits the relevance predicate.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 284
+      "line": 285
     },
     {
       "id": "read.retrieve.script-split-matching",
@@ -6073,7 +6073,7 @@
       "statement": "An all-lowercase-alphanumeric token matches on an ASCII word boundary with an optional plural suffix; a token with any non-ASCII character matches by containment.",
       "why": "because no ASCII word boundary occurs beside an ideograph",
       "file": "spec/20-read.md",
-      "line": 285
+      "line": 286
     },
     {
       "id": "read.retrieve.plural-suffix-floor",
@@ -6084,7 +6084,7 @@
       "statement": "A token under 4 chars takes no optional plural suffix.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 287
+      "line": 288
     },
     {
       "id": "read.retrieve.text-free-table-scores-null",
@@ -6095,7 +6095,7 @@
       "statement": "A table with no snippet-worthy text column scores lexically null, never zero, and its rows enter by vector score alone.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 288
+      "line": 289
     },
     {
       "id": "read.retrieve.candidate-window",
@@ -6106,7 +6106,7 @@
       "statement": "The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 290
+      "line": 291
     },
     {
       "id": "read.retrieve.reserved-columns-project-null",
@@ -6117,7 +6117,7 @@
       "statement": "Reserved projected columns — modality, language, prompt hash, kind — render null for a table lacking them, and its rows stay in the union.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 292
+      "line": 293
     },
     {
       "id": "read.retrieve.unsatisfiable-arm-drops",
@@ -6128,7 +6128,7 @@
       "statement": "`filter` maps each caller-named column to a value, an equality, or a value list, a membership, and a row matches every condition. A table lacking a named column drops its arm, never emitting it unfiltered.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 293
+      "line": 294
     },
     {
       "id": "read.retrieve.filter-values",
@@ -6139,7 +6139,7 @@
       "statement": "A filter value is a string, a number or a boolean, and a membership list is non-empty; a null, a nested object or list, or an empty list is a malformed condition.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 295
+      "line": 296
     },
     {
       "id": "read.retrieve.kinds",
@@ -6150,7 +6150,7 @@
       "statement": "`kinds` lists artifact kind strings and joins the filter as one membership condition on the `kind` column, so a table without that column drops its arm by {{read.retrieve.unsatisfiable-arm-drops}}.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 296
+      "line": 297
     },
     {
       "id": "read.retrieve.engine-resolved-date",
@@ -6161,7 +6161,7 @@
       "statement": "The engine resolves each table's publication column itself, outside the caller's filter.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 297
+      "line": 298
     },
     {
       "id": "read.retrieve.since",
@@ -6172,7 +6172,7 @@
       "statement": "`since` is the inclusive lower bound of the question's timeframe over the publication instant {{read.retrieve.engine-resolved-date}} resolves; the anchor is `as_of`, else the read's clock. A date-only value means midnight UTC, and omitting `since` leaves every row in window.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 298,
+      "line": 299,
       "scenarios": [
         "WHEN `corpus.retrieve` carries `since: \"2030-01-01\"` and a matching row's publication column holds `2029-12-31`, THEN the row still returns, its in-window flag false, ordered below every in-window row."
       ]
@@ -6186,7 +6186,7 @@
       "statement": "A filter holds at most 32 conditions, each membership list at most 256 entries, and its serialized JSON, `kinds` included, at most 16 KiB.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 299
+      "line": 300
     },
     {
       "id": "read.retrieve.filter-budget-refusal",
@@ -6197,7 +6197,7 @@
       "statement": "The budget is checked over the whole filter ahead of building any arm; an oversized or malformed condition raises `FilterBudgetExceeded` for the whole read.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 300
+      "line": 301
     },
     {
       "id": "read.retrieve.row-key-dedup",
@@ -6208,7 +6208,7 @@
       "statement": "A ranked read keeps per `(table, row key)` only the newest ingestion, and no older copy when the newest misses the relevance floor. The row key is the declared content-hash column, else null, never a digest over projected values.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 302
+      "line": 303
     },
     {
       "id": "read.retrieve.row-key-under-mask",
@@ -6219,7 +6219,7 @@
       "statement": "A content-hash column the session masks by `drop`, `truncate`, `bucket`, `range` or any combine keys every row null; one masked by `hash` or `tokenize` alone keys by its digest.",
       "why": "because a mask merging distinct hashes lets a reader's grants decide which rows a table holds",
       "file": "spec/20-read.md",
-      "line": 303
+      "line": 304
     },
     {
       "id": "read.retrieve.row-key-stays-internal",
@@ -6230,7 +6230,7 @@
       "statement": "The row key is absent from the outer projection.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 305
+      "line": 306
     },
     {
       "id": "read.retrieve.dedup-is-gated",
@@ -6241,7 +6241,7 @@
       "statement": "The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 306
+      "line": 307
     },
     {
       "id": "read.retrieve.excluded-arm",
@@ -6252,7 +6252,7 @@
       "statement": "An arm whose table the session's zone excludes contributes no candidate, and the ranked response names that table in {{read.respond.restriction-block}}.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 307
+      "line": 308
     },
     {
       "id": "read.retrieve.snippet",
@@ -6263,7 +6263,7 @@
       "statement": "A snippet concatenates up to three text columns: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 309
+      "line": 310
     },
     {
       "id": "read.retrieve.identifiers-never-snippet",
@@ -6274,7 +6274,7 @@
       "statement": "Content hashes, URLs, identifiers and instant-valued columns never qualify for a snippet.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 310
+      "line": 311
     },
     {
       "id": "read.retrieve.sidecar-generates-candidates",
@@ -6285,7 +6285,7 @@
       "statement": "Each sidecar arm, vector over a query embedding and full-text over the content tokens, adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.",
       "why": "P5",
       "file": "spec/20-read.md",
-      "line": 311
+      "line": 312
     },
     {
       "id": "read.retrieve.fulltext-probe",
@@ -6296,7 +6296,7 @@
       "statement": "A full-text probe ranks the whole snapshot by BM25 over one should-clause per content token; a token the sidecar's tokenizer splits into several terms matches them at consecutive positions, and an ASCII word token matches its plural as {{read.retrieve.script-split-matching}} does.",
       "why": "because a term outside the recency window is found only by a probe that reads every row's postings",
       "file": "spec/20-read.md",
-      "line": 313
+      "line": 314
     },
     {
       "id": "read.retrieve.sidecar-oversampling",
@@ -6307,7 +6307,7 @@
       "statement": "One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 315
+      "line": 316
     },
     {
       "id": "read.retrieve.adaptive-over-fetch",
@@ -6318,7 +6318,7 @@
       "statement": "Where the rows a reader can see under-fill the requested limit, the probe doubles its size and probes again, for at most 4 rounds, then answers and reports the under-fill in the retrieval block.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 316
+      "line": 317
     },
     {
       "id": "read.retrieve.sidecar-size-cap",
@@ -6326,10 +6326,10 @@
       "operation": "retrieve",
       "subject": "sidecar-size-cap",
       "kind": "limit",
-      "statement": "A vector sidecar past 64 MiB of resident bytes stays unloaded and the arm takes the exact scan: its 4 B probe mark per graph node, plus a sealed one's graph file.",
-      "why": "A-store",
+      "statement": "A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan.",
+      "why": "",
       "file": "spec/20-read.md",
-      "line": 318
+      "line": 319
     },
     {
       "id": "read.retrieve.fulltext-sealed-cap",
@@ -7117,6 +7117,122 @@
       "why": "because a build over current inputs carries later rows into every horizon",
       "file": "spec/20-read.md",
       "line": 524
+    },
+    {
+      "id": "read.subscribe.durable-source",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "durable-source",
+      "kind": "behavior",
+      "statement": "A subscription reads run manifests and commit logs on disk, never the {{run.project.emission-never-blocks}} channel, so a run one process commits reaches a subscriber in another.",
+      "why": "because an in-process hub ties every reader to the landing process and loses its state on restart",
+      "file": "spec/20-read.md",
+      "line": 539
+    },
+    {
+      "id": "read.subscribe.after-commit",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "after-commit",
+      "kind": "behavior",
+      "statement": "A run notifies only once {{store.lay-out.uncommitted-run}} no longer holds it: a run with no manifest, or a logged run absent from its node's commit log, never notifies.",
+      "why": "P4",
+      "file": "spec/20-read.md",
+      "line": 541,
+      "scenarios": [
+        "WHEN a leased pipeline's run writes its manifest and its commit-log entry is absent, THEN no subscription notifies it."
+      ]
+    },
+    {
+      "id": "read.subscribe.notification",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "notification",
+      "kind": "behavior",
+      "statement": "A notification carries `table`, `run_id`, `node_id`, `committed_at` and `frontier`, the pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows carry.",
+      "why": "",
+      "file": "spec/20-read.md",
+      "line": 543
+    },
+    {
+      "id": "read.subscribe.frontier-covers-run",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "frontier-covers-run",
+      "kind": "behavior",
+      "statement": "A read of the table bounded `as_of` a notification's frontier covers the notified run's files.",
+      "why": "P4",
+      "file": "spec/20-read.md",
+      "line": 544
+    },
+    {
+      "id": "read.subscribe.commit-order",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "commit-order",
+      "kind": "behavior",
+      "statement": "Notifications of one table arrive in ascending `commit_seq`, the order {{store.reserve.commit-order}} makes runs readable, and each committed run notifies exactly once per subscription.",
+      "why": "because a subscriber applying notifications in order rebuilds the table's commit sequence",
+      "file": "spec/20-read.md",
+      "line": 546
+    },
+    {
+      "id": "read.subscribe.no-content",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "no-content",
+      "kind": "behavior",
+      "statement": "A notification carries no row content and no row count.",
+      "why": "because a count over a table under row policy or tenant scope discloses rows the reader cannot see",
+      "file": "spec/20-read.md",
+      "line": 548
+    },
+    {
+      "id": "read.subscribe.resume",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "resume",
+      "kind": "behavior",
+      "statement": "`after` maps a table to a `<run-id>/<node-id>` position; the subscription replays every later committed run of that table once, then continues live, a fold between leaving the replay unchanged.",
+      "why": "because a fold leaves run manifests in place until retention collects them",
+      "file": "spec/20-read.md",
+      "line": 550,
+      "scenarios": [
+        "WHEN runs `r1`, `r2` and `r3` commit to `events` and a subscription names `after` `events=r1/ingest-a`, THEN it sends `r2` then `r3`, and a fold before the call changes neither."
+      ]
+    },
+    {
+      "id": "read.subscribe.position-unavailable",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "position-unavailable",
+      "kind": "refusal",
+      "statement": "An `after` position naming no committed run of its table raises `SubscriptionPositionUnavailable`, naming the table's oldest resolvable position.",
+      "why": "because a replay from a collected position cannot tell which later runs retention also removed",
+      "file": "spec/20-read.md",
+      "line": 552
+    },
+    {
+      "id": "read.subscribe.overrun",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "overrun",
+      "kind": "limit",
+      "statement": "A subscription holding more than 1000 notifications undelivered sends 1000, then a terminal `overrun` message naming each table's last delivered position, and ends.",
+      "why": "because a bounded queue never drops a notification silently, and the terminal position resumes the stream",
+      "file": "spec/20-read.md",
+      "line": 554
+    },
+    {
+      "id": "read.subscribe.operator-verb",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "operator-verb",
+      "kind": "behavior",
+      "statement": "`contextful context subscribe <table>... [--after <table>=<run-id>/<node-id>] [--follow]` prints one JSON notification per line; without `--follow` it ends once the replay is sent.",
+      "why": "",
+      "file": "spec/20-read.md",
+      "line": 556
     },
     {
       "id": "read.declare.canonical-column",
@@ -28903,7 +29019,8 @@
       "resolve-pin",
       "embed",
       "as-of-join",
-      "horizon"
+      "horizon",
+      "subscribe"
     ],
     "spec/21-memory.md": [
       "declare",
@@ -29151,6 +29268,7 @@
     "read.retrieve": "Candidate generation for a ranked read: content tokens, the relevance floor, per-table arms, dedup, snippet.",
     "read.revise": "Supersession within one validity line, confidence decay, the direct write and its anchor, expiry, retention, promotion.",
     "read.settle": "Predictions, observations, the registration, the citation a verdict owes, and the label views.",
+    "read.subscribe": "The stream of one notification per committed run of each named table, read from the store's durable commit record, resumable from a run position, and the operator verb carrying it.",
     "read.synthesize": "Extract, Resolve and Consolidate; the dedup key, evidence support, the audit record and coverage gaps.",
     "read.traverse": "A bounded walk over admitted memory edges from a seed entity, under one frozen anchor and the caller's enforced session.",
     "run.advance": "Committing an incremental read position under its declared kind, and the boundary a poll re-reads.",
@@ -29877,6 +29995,18 @@
     [
       "read.horizon.build-resolution",
       "run.model.build-horizon"
+    ],
+    [
+      "read.subscribe.durable-source",
+      "run.project.emission-never-blocks"
+    ],
+    [
+      "read.subscribe.after-commit",
+      "store.lay-out.uncommitted-run"
+    ],
+    [
+      "read.subscribe.commit-order",
+      "store.reserve.commit-order"
     ],
     [
       "read.declare.serving-taint",
@@ -31816,6 +31946,10 @@
       },
       "nodes": {
         "gloss": "graph nodes",
+        "aliases": []
+      },
+      "notifications": {
+        "gloss": "subscription notifications",
         "aliases": []
       },
       "participants": {
@@ -34656,6 +34790,10 @@
             "gloss": "",
             "aliases": []
           },
+          "subscribe": {
+            "gloss": "",
+            "aliases": []
+          },
           "synthesize": {
             "gloss": "",
             "aliases": []
@@ -34833,6 +34971,10 @@
           "StatementNotReadOnly": {
             "clause": "read.guard.single-read-only-statement",
             "gloss": "Admitted text did not parse to exactly one read-only SELECT."
+          },
+          "SubscriptionPositionUnavailable": {
+            "clause": "read.subscribe.position-unavailable",
+            "gloss": "A subscription's `after` position names no committed run of its table."
           },
           "TableFunctionRefused": {
             "clause": "read.guard.table-function",
@@ -35079,13 +35221,6 @@
             "basis": "chosen",
             "gloss": "Resolved sessions one read face pools."
           },
-          "read-sidecar-node-mark": {
-            "clause": "read.retrieve.sidecar-size-cap",
-            "value": 4,
-            "unit": "B",
-            "basis": "chosen",
-            "gloss": "Resident bytes a vector sidecar counts per graph node, its probe's visited mark."
-          },
           "read-sidecar-probe-factor": {
             "clause": "read.retrieve.sidecar-oversampling",
             "value": 4,
@@ -35112,7 +35247,14 @@
             "value": 64,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Resident bytes past which a vector sidecar stays unloaded."
+            "gloss": "Stored-vector size past which a sidecar stays unloaded."
+          },
+          "read-subscribe-queue": {
+            "clause": "read.subscribe.overrun",
+            "value": 1000,
+            "unit": "notifications",
+            "basis": "chosen",
+            "gloss": "Most notifications a subscription holds undelivered before its terminal overrun message."
           },
           "read-token-length-floor": {
             "clause": "read.retrieve.token-length-floor",
