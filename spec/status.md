@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 154 | 0 | 154 |
 | `read` | 2 | 20 | 287 | 46 | 29 | 15 | 245 | 0 | 245 |
-| `run` | 3 | 29 | 530 | 117 | 45 | 14 | 498 | 0 | 498 |
+| `run` | 3 | 29 | 534 | 118 | 45 | 16 | 502 | 0 | 502 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2597 | 656 | 212 | 72 | 2302 | 0 | |
+| **total** | 22 | 169 | 2601 | 657 | 212 | 74 | 2306 | 0 | |
 
 Decision records: 18.
 
@@ -36,7 +36,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 8 — Accountability | 5 | 91 | 84 | passing | closed |
 | 9 — Visibility | 6 | 50 | 40 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 100 | 88 | passing | closed |
-| 11 — The derive tier | 7 | 94 | 93 | passing | closed |
+| 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 56 | 43 | passing | open |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
 | 14 — Assurance | 7 | 170 | 135 | passing | closed |
@@ -1398,6 +1398,7 @@ Unscheduled operations: 13.
 | `run.bind.endpoint-host-bare` | `crates/contextful-core/tests/integration/run/derive.rs::a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts` | performed |
 | `run.bind.engine-unavailable` | `crates/contextful-core/tests/integration/run/derive.rs::an_unavailable_transcriber_ends_the_run_and_an_unavailable_link_reader_costs_one_unit` | performed |
 | `run.bind.host-task` | `crates/contextful-core/tests/integration/run/host_task.rs::a_registered_task_resolves_by_name_and_a_taken_name_refuses` | performed |
+| `run.bind.join-repeated` | `crates/contextful-core/tests/integration/run/host_task.rs::a_task_joining_one_table_twice_refuses_at_registration` | performed |
 | `run.bind.locality-wider` | `crates/contextful-core/tests/integration/run/derive.rs::an_engine_reaching_past_its_source_tables_zones_refuses` | performed |
 | `run.bind.media-root` | `crates/contextful-connectors/tests/integration/derive.rs::media_outside_the_root_fails_that_unit_alone` | performed |
 | `run.bind.media-unreadable` | `crates/contextful-connectors/tests/integration/derive.rs::unreadable_media_fails_that_unit_alone` | performed |
@@ -1816,6 +1817,8 @@ Unscheduled operations: 13.
 | `run.select.dry-run` | `crates/contextful-cli/tests/integration/derive.rs::a_dry_run_prints_the_selection_counts_and_lands_nothing` | performed |
 | `run.select.foreign-output-table` | `crates/contextful-core/tests/integration/run/derive.rs::a_key_naming_another_pipelines_output_refuses` | performed |
 | `run.select.incomplete-unit` | `spec/pins.toml` | performed |
+| `run.select.join-absent` | `crates/contextful-cli/tests/integration/derive.rs::a_joined_table_never_landed_fails_the_tick_and_settles_no_unit` | performed |
+| `run.select.join-keyed` | `crates/contextful-cli/tests/integration/derive.rs::a_host_unit_joins_the_latest_version_of_a_keyed_row` | performed |
 | `run.select.journaled-pull` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_pipeline_journaling_its_pulls_refuses` | performed |
 | `run.select.key-change` | `crates/contextful-core/tests/integration/run/derive.rs::a_changed_key_rederives_and_a_key_changed_back_derives_again` | performed |
 | `run.select.latest-marker` | `crates/contextful-core/tests/integration/run/derive.rs::a_units_latest_marker_decides_its_standing` | performed |
@@ -1826,6 +1829,7 @@ Unscheduled operations: 13.
 | `run.select.required-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_missing_or_blank_required_key_refuses` | performed |
 | `run.select.rows-per-run` | `crates/contextful-core/tests/integration/run/derive.rs::a_run_takes_25_units_by_default_after_the_anti_join` | performed |
 | `run.select.seconds-per-run` | `crates/contextful-core/tests/integration/run/derive.rs::link_preview_holds_300_s_and_transcribe_carries_no_default` | performed |
+| `run.select.unit-parents` | `crates/contextful-connectors/tests/integration/derive.rs::a_host_unit_carries_its_joined_rows_read_once_before_it_derives` | performed |
 | `run.select.unmetered-grant` | `spec/pins.toml` | performed |
 | `run.suspend.awakeable` | `crates/contextful-engine/tests/integration/suspend.rs::a_minted_token_persists_a_pending_row_and_resumes_on_post` | performed |
 | `run.suspend.caller-binding` | `crates/contextful-cli/tests/integration/serve.rs::a_bound_token_answers_unknown_to_every_other_subject` | performed |

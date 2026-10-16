@@ -489,3 +489,41 @@ fn a_unit_carries_every_joined_row_sharing_its_key() {
     assert_eq!(units[1].joined["tags"], rows(json!([{"doc": "d2", "tag": "red"}])));
     assert_eq!(notes.read_columns(), ["doc_id", "note"]);
 }
+
+struct Edges;
+
+impl DeriveTask for Edges {
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn columns(&self) -> Vec<String> {
+        Vec::new()
+    }
+    fn joins(&self) -> Vec<Join> {
+        ["from_id", "to_id"]
+            .into_iter()
+            .map(|key| Join { table: "edges".into(), key_column: key.into(), columns: vec!["weight".into()] })
+            .collect()
+    }
+    fn marker_table(&self) -> String {
+        "units".into()
+    }
+    fn content_tables(&self) -> Vec<String> {
+        vec!["degrees".into()]
+    }
+    fn derive(&self, _unit: &HostUnit) -> Result<Derived, RunError> {
+        Ok(Derived::new())
+    }
+}
+
+/// A host task whose joins name one table twice raises `DeriveJoinRepeated` at registration, since its unit holds one joined list per table.
+// spec: run.bind.join-repeated@e62036c9
+#[test]
+fn a_task_joining_one_table_twice_refuses_at_registration() {
+    let mut t = Tasks::default();
+    match t.register("edges", Arc::new(Edges)) {
+        Err(RunError::DeriveJoinRepeated(m)) => assert!(m.contains("edges") && m.contains("from_id") && m.contains("to_id"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    assert!(t.names().is_empty());
+}

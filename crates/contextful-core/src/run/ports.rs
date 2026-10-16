@@ -280,6 +280,13 @@ pub trait TableReader {
     fn row_batches(&self, table: &str, columns: &[&str], each: &mut dyn FnMut(Vec<Row>) -> Result<(), Failure>) -> Result<(), Failure> {
         each(self.rows(table, columns)?)
     }
+
+    /// Every row of `table` as its keyed read shows it, one survivor per key, holding the
+    /// named columns; a store reader refuses a table it holds no schema for. A reader whose
+    /// `rows` already answers through the keyed read hands those rows.
+    fn latest_rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure> {
+        self.rows(table, columns)
+    }
 }
 
 /// Where journal rows persist (`run.journal.storage-ports`). Each call is atomic against

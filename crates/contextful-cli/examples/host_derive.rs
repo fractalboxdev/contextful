@@ -6,6 +6,7 @@
 //! `WORD_SPLIT_VERSION` sets the task's version, `1` by default; `WORD_SPLIT_SKIP` names,
 //! comma-separated, the content tables the task returns no rows for. `WORD_SPLIT_FAIL`
 //! exits the parent process with a failed run outcome in the chained-failure fixture.
+//! `DOC_JOIN_NOTES` names the table `doc-join` reads as `notes`, `notes` by default.
 
 use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Join, Tasks};
 use contextful_core::run::ports::Row;
@@ -52,6 +53,10 @@ impl DeriveTask for WordCopy {
 
 struct DocJoin;
 
+fn notes_table() -> String {
+    std::env::var("DOC_JOIN_NOTES").unwrap_or_else(|_| "notes".into())
+}
+
 impl DeriveTask for DocJoin {
     fn version(&self) -> &str {
         "1"
@@ -61,7 +66,7 @@ impl DeriveTask for DocJoin {
     }
     fn joins(&self) -> Vec<Join> {
         vec![
-            Join { table: "notes".into(), key_column: "doc_id".into(), columns: vec!["note".into()] },
+            Join { table: notes_table(), key_column: "doc_id".into(), columns: vec!["note".into()] },
             Join { table: "tags".into(), key_column: "doc_id".into(), columns: vec!["tag".into()] },
         ]
     }
@@ -81,7 +86,7 @@ impl DeriveTask for DocJoin {
         let mut out = Derived::new();
         out.insert(
             "digests".into(),
-            vec![row(json!({ "notes": texts("notes", "note"), "tags": texts("tags", "tag") }))],
+            vec![row(json!({ "notes": texts(&notes_table(), "note"), "tags": texts("tags", "tag") }))],
         );
         Ok(out)
     }

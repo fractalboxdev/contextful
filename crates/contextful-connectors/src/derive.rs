@@ -881,23 +881,25 @@ impl HostDerive {
     }
 
     /// Read each table the task joins once, after the driving table's selection and before
-    /// the first unit derives, keeping the rows whose join column holds an outstanding unit's
-    /// key (`run.select.unit-parents`).
+    /// the first unit derives, through its keyed read, keeping the rows whose join column
+    /// holds an outstanding unit's key (`run.select.unit-parents`, `run.select.join-keyed`);
+    /// a joined table the store holds no schema for fails the tick (`run.select.join-absent`).
     fn join(&self, units: &mut [HostUnit]) -> Result<(), Failure> {
         if units.is_empty() {
             return Ok(());
         }
         let keys: std::collections::BTreeSet<String> = units.iter().map(|u| u.key.clone()).collect();
         for join in self.task.joins() {
-            let mut kept = Vec::new();
-            scan_parents(self.reader.as_ref(), &join.table, &join.read_columns(), &mut |rows| {
-                kept.extend(rows.into_iter().filter(|r| match r.get(&join.key_column) {
+            let kept: Vec<Row> = self
+                .reader
+                .latest_rows(&join.table, &join.read_columns())?
+                .into_iter()
+                .filter(|r| match r.get(&join.key_column) {
                     Some(serde_json::Value::String(k)) => keys.contains(k),
                     Some(serde_json::Value::Number(n)) => keys.contains(&n.to_string()),
                     _ => false,
-                }));
-                Ok(())
-            })?;
+                })
+                .collect();
             join_units(units, &join, kept);
         }
         Ok(())

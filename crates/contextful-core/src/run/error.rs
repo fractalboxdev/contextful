@@ -150,6 +150,9 @@ pub enum RunError {
     /// A host task registered under a name already taken. (`run.bind.host-task`)
     #[error("DeriveTaskNameTaken: {0}")]
     DeriveTaskNameTaken(String),
+    /// A host task whose joins name one table twice. (`run.bind.join-repeated`)
+    #[error("DeriveJoinRepeated: {0}")]
+    DeriveJoinRepeated(String),
     /// A host-task pipeline's tables, or a unit's rows, outside its task's tables. (`run.emit.output-tables`)
     #[error("DeriveOutputTablesMismatch: {0}")]
     DeriveOutputTablesMismatch(String),

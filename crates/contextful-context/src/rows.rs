@@ -165,3 +165,70 @@ pub fn table_rows(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<V
     }
     Ok(out)
 }
+
+/// Every row of `decl`'s table as its keyed read shows it, holding the named columns: one
+/// survivor per dedup line, ranked by `order_by`, then `_ingested_at`, `_run_id` and
+/// `_row_seq`, each descending (`store.declare.dedup-view`); an unkeyed table reads every
+/// row. `None` for a table with no `schema.json`.
+pub fn table_rows_latest(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<Option<Vec<Map<String, Value>>>> {
+    if store.try_schema(&decl.name)?.is_none() {
+        return Ok(None);
+    }
+    let line = decl.dedup_line();
+    if line.is_empty() {
+        return table_rows(store, decl, columns).map(Some);
+    }
+    let rank: Vec<&str> = std::iter::once(decl.order_by()).chain(contextful_core::store::reserve::TIEBREAK).collect();
+    let mut read: Vec<&str> = columns.to_vec();
+    for c in line.iter().map(String::as_str).chain(rank.iter().copied()) {
+        if !read.contains(&c) {
+            read.push(c);
+        }
+    }
+    let mut kept: Vec<Map<String, Value>> = Vec::new();
+    let mut at: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for row in table_rows(store, decl, &read)? {
+        let key = Value::Array(line.iter().map(|c| row.get(c).cloned().unwrap_or(Value::Null)).collect()).to_string();
+        match at.get(&key) {
+            Some(&i) if ranks_below(&row, &kept[i], &rank) => {}
+            Some(&i) => kept[i] = row,
+            None => {
+                at.insert(key, kept.len());
+                kept.push(row);
+            }
+        }
+    }
+    Ok(Some(kept.into_iter().map(|mut row| {
+        row.retain(|c, _| columns.contains(&c.as_str()));
+        row
+    }).collect()))
+}
+
+/// Whether `row` ranks strictly below `standing` on `rank`, compared column by column; a
+/// tie keeps the row read later.
+fn ranks_below(row: &Map<String, Value>, standing: &Map<String, Value>, rank: &[&str]) -> bool {
+    for c in rank {
+        match compare(row.get(*c), standing.get(*c)) {
+            std::cmp::Ordering::Equal => continue,
+            o => return o == std::cmp::Ordering::Less,
+        }
+    }
+    false
+}
+
+/// Null below any value, numbers by value, text by bytes: instants render fixed-width, so
+/// text order is time order.
+fn compare(a: Option<&Value>, b: Option<&Value>) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match (a.unwrap_or(&Value::Null), b.unwrap_or(&Value::Null)) {
+        (Value::Null, Value::Null) => Ordering::Equal,
+        (Value::Null, _) => Ordering::Less,
+        (_, Value::Null) => Ordering::Greater,
+        (Value::Number(x), Value::Number(y)) => match (x.as_i64(), y.as_i64()) {
+            (Some(x), Some(y)) => x.cmp(&y),
+            _ => x.as_f64().unwrap_or(0.0).total_cmp(&y.as_f64().unwrap_or(0.0)),
+        },
+        (Value::String(x), Value::String(y)) => x.cmp(y),
+        (x, y) => x.to_string().cmp(&y.to_string()),
+    }
+}

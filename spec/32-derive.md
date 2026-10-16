@@ -71,6 +71,10 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-run*
 - `unit-parents` — A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each joined table read once after selection and before the first unit derives, so a row landing later is absent.
   *A-run*
+- `join-keyed` — A joined table declaring `primary_key` reads through {{store.declare.dedup-view}}, so a unit joins one survivor per key and never a superseded version.
+  *because a raw file read hands a re-landed row in both versions, and the admitted read hands one*
+- `join-absent` — A joined table the store holds no schema for fails the tick with a `Config` failure, settling no unit, so the next tick selects every unit again.
+  *because an absent table read as empty settles each unit `ok` on a partial join that the anti-join never revisits*
 - `latest-marker` — A unit's standing under a key is its latest marker under that key by `_ingested_at`, `_run_id` and `_row_seq`, never its highest attempt count.
   *because an `empty` marker records 1 attempt, so ranking by count lets an older retry revive a settled unit*
 - `key-change` — Rows under the current key landed before the unit's latest `ok` or `empty` landing under another key count for nothing, so a key changed and changed back derives the unit again.
@@ -91,6 +95,9 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-run*
 - `available-select` — A derive run carrying `available_as_of` selects only parent rows {{store.available-time.available-as-of}} admits at that bound, and each derived row lands its parent row's availability instant.
   *because a passage derived from a later filing otherwise answers an earlier horizon*
+
+unsettled: Does a joined row's content enter the unit's {{run.emit.derivation-key}}, so a joined row landing after its unit settles derives it again (issue 95)? owner: derive affects: run.select
+unsettled: Does a host task joining another derive pipeline's output table run after that pipeline, as {{run.select.derive-order}} orders a driving table's reader (issue 95)? owner: derive affects: run.select
 
 
 #### Scenarios
@@ -113,6 +120,8 @@ Where a derive engine's definition lives, the port every engine implements, and 
   *A-run*
 - `host-task` — An embedding binary registers each compiled derive task under a name before build, and configuration names that symbol, never a command; a name repeating a built-in or registered task raises `DeriveTaskNameTaken`.
   *A-run*
+- `join-repeated` — A host task whose joins name one table twice raises `DeriveJoinRepeated` at registration.
+  *because a unit holds one joined list per table, so the second join's rows replace the first's*
 - `driver-mismatch` — `driver` is `exec` or `"none"` behind `transcribe` and `fetch` behind `link_preview`, and a host task names no `engine`; any other pairing raises `DeriveDriverMismatch`.
   *A-run*
 - `endpoint-host-bare` — An `endpoint_host` carrying a path, query, port or scheme raises `DeriveEndpointHostNotBare`.

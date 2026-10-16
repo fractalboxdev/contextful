@@ -87,7 +87,8 @@ impl std::fmt::Debug for Tasks {
 }
 
 impl Tasks {
-    /// Register `task` under `name`; a built-in or already registered name refuses.
+    /// Register `task` under `name`; a built-in or already registered name refuses, and so
+    /// does a task whose joins name one table twice (`run.bind.join-repeated`).
     pub fn register(&mut self, name: &str, task: Arc<dyn DeriveTask>) -> Result<(), RunError> {
         if name.trim().is_empty() || BUILT_IN_TASKS.contains(&name) || self.tasks.contains_key(name)
         {
@@ -100,6 +101,15 @@ impl Tasks {
                     .collect::<Vec<_>>()
                     .join(", ")
             )));
+        }
+        let joins = task.joins();
+        for (i, join) in joins.iter().enumerate() {
+            if let Some(again) = joins[..i].iter().find(|j| j.table == join.table) {
+                return Err(RunError::DeriveJoinRepeated(format!(
+                    "task `{name}` joins `{}` on `{}` and again on `{}`; a unit holds one joined list per table",
+                    join.table, again.key_column, join.key_column
+                )));
+            }
         }
         self.tasks.insert(name.to_string(), task);
         Ok(())
