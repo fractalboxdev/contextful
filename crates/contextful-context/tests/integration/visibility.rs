@@ -224,10 +224,10 @@ fn links_come_from_the_directory_read_alone() {
     assert!(reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().is_empty());
 }
 
-/// A subject whose source principal resolves to no link reads nothing from that source.
-// spec: authority.identify.unlinked-principal@3f9b6d5d
+/// A subject whose source principal resolves to no link reads from that source only the resources {{disclosure.reach.public-grant}} opens.
+// spec: authority.identify.unlinked-principal@98585b08
 #[test]
-fn a_subject_with_no_link_reaches_nothing_from_the_source() {
+fn a_subject_with_no_link_reaches_only_the_public_resources_of_the_source() {
     let d = drive();
     let grants = vec![drive_grant("f1", "g-finance", "group"), drive_grant("f2", "u-1002", "user"), drive_grant("f3", "u-1003", "user")];
     d.sweep(SweepKind::Full, grants, Some(DIRECTORY), "2030-01-01T00:10:00Z");
@@ -235,6 +235,10 @@ fn a_subject_with_no_link_reaches_nothing_from_the_source() {
     assert_eq!(reach(&d.f.store, "drive", &reader("user://erin@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f2"]);
     // `u-1003` holds a grant on f3, and no link maps it onto fay: she reaches nothing.
     assert!(reach(&d.f.store, "drive", &reader("user://fay@acme.example")).unwrap().is_empty());
+    // A grant to the `public` principal opens f3 to her, and nothing else.
+    let opened = vec![drive_grant("f1", "g-finance", "group"), drive_grant("f2", "u-1002", "user"), drive_grant("f3", "u-1003", "user"), drive_grant("f3", "anyone", "public")];
+    d.sweep(SweepKind::Full, opened, None, "2030-01-01T00:20:00Z");
+    assert_eq!(reach(&d.f.store, "drive", &reader("user://fay@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f3"]);
     // A source with no committed run reaches nothing either.
     assert!(reach(&d.f.store, "wiki", &reader("user://dana@acme.example")).unwrap().is_empty());
 }

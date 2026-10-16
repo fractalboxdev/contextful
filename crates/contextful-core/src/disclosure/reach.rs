@@ -100,6 +100,14 @@ pub fn closure(
 /// The principal kind a grant open to anyone names (`disclosure.reach.public-grant`).
 pub const PUBLIC_KIND: &str = "public";
 
+/// Whether a grant of the source principal kind `kind` names the `public` principal: its
+/// projection through `kinds`, the `principal_kind` table of the packs mapping the source's
+/// tables, or the kind verbatim where that table holds no entry for it
+/// (`disclosure.reach.public-grant`).
+pub fn is_public(kind: &str, kinds: Option<&BTreeMap<String, String>>) -> bool {
+    kinds.and_then(|k| k.get(kind)).map_or(kind, String::as_str) == PUBLIC_KIND
+}
+
 /// The levels a pack mapping projects onto that confer read (`disclosure.reach.read-level`).
 pub const READ_LEVELS: [&str; 3] = ["read", "write", "admin"];
 
@@ -161,13 +169,20 @@ impl ReachSet {
 /// principals (`disclosure.reach.subject-principals`), their bounded group closure, then
 /// each resource of a known class a current grant names a closure principal, or the
 /// `public` principal, on (`disclosure.reach.public-grant`). A grant the run withdrew is
-/// absent from the current rows, so it confers nothing.
+/// absent from the current rows, so it confers nothing. [`resolve_mapped`] under no pack's
+/// kind mapping.
 pub fn resolve(origin: &str, subject: &NormalizedSubject, state: &SourceState, bound: ClosureBound) -> Result<ReachSet, ReachError> {
+    resolve_mapped(origin, subject, state, bound, None)
+}
+
+/// [`resolve`], a grant naming the `public` principal when its kind projects onto `public`
+/// through `kinds` ([`is_public`]).
+pub fn resolve_mapped(origin: &str, subject: &NormalizedSubject, state: &SourceState, bound: ClosureBound, kinds: Option<&BTreeMap<String, String>>) -> Result<ReachSet, ReachError> {
     let principals = closure(origin, subject, sweep::seeds(subject, state)?, &state.members, bound)?;
     let known: BTreeSet<&str> = state.resources.iter().filter(|r| r.visibility_class != UNKNOWN_CLASS).map(|r| r.resource_id.as_str()).collect();
     let mut held: BTreeMap<String, BTreeSet<Held>> = BTreeMap::new();
     for g in state.grants.iter().filter(|g| known.contains(g.resource_id.as_str())) {
-        if g.principal_kind == PUBLIC_KIND || principals.contains(&(g.principal_kind.clone(), g.principal.clone())) {
+        if is_public(&g.principal_kind, kinds) || principals.contains(&(g.principal_kind.clone(), g.principal.clone())) {
             held.entry(g.resource_id.clone()).or_default().insert(Held { level: g.level.clone(), expires_at: g.expires_at });
         }
     }
@@ -175,12 +190,13 @@ pub fn resolve(origin: &str, subject: &NormalizedSubject, state: &SourceState, b
 }
 
 /// The resources of a known class holding a read-conferring grant to the `public`
-/// principal that is unexpired at `now`, each with the instant the sweep observed it.
-pub fn public_resources(state: &SourceState, levels: Option<&BTreeMap<String, String>>, now: Instant) -> BTreeMap<String, Instant> {
+/// principal, under the level mapping `levels` and the kind mapping `kinds`, that is
+/// unexpired at `now`, each with the instant the sweep observed it.
+pub fn public_resources(state: &SourceState, levels: Option<&BTreeMap<String, String>>, kinds: Option<&BTreeMap<String, String>>, now: Instant) -> BTreeMap<String, Instant> {
     let public: BTreeSet<&str> = state
         .grants
         .iter()
-        .filter(|g| g.principal_kind == PUBLIC_KIND && Held { level: g.level.clone(), expires_at: g.expires_at }.reads(levels, now))
+        .filter(|g| is_public(&g.principal_kind, kinds) && Held { level: g.level.clone(), expires_at: g.expires_at }.reads(levels, now))
         .map(|g| g.resource_id.as_str())
         .collect();
     state
@@ -189,6 +205,12 @@ pub fn public_resources(state: &SourceState, levels: Option<&BTreeMap<String, St
         .filter(|r| r.visibility_class != UNKNOWN_CLASS && public.contains(r.resource_id.as_str()))
         .map(|r| (r.resource_id.clone(), r.observed_at))
         .collect()
+}
+
+/// How many `public` openings of `state`, under the kind mapping `kinds`, have expired at
+/// `now`. It rises exactly when one lapses, so a narrowed session keyed on it retires with it.
+pub fn expired_public(state: &SourceState, kinds: Option<&BTreeMap<String, String>>, now: Instant) -> usize {
+    state.grants.iter().filter(|g| is_public(&g.principal_kind, kinds) && g.expires_at.is_some_and(|e| e <= now)).count()
 }
 
 /// The key a reachable set is cached under: the subject, the directory epoch, and the epoch

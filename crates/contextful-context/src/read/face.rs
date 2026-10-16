@@ -91,16 +91,23 @@ pub struct Face {
     /// Each mapped table's source levels onto read, write and admin, from its pack mapping
     /// (`disclosure.reach.read-level`).
     levels: BTreeMap<String, BTreeMap<String, String>>,
+    /// Each bound source's principal kinds onto the access tables' kinds, merged from the
+    /// pack mappings of its tables (`disclosure.reach.public-grant`).
+    kinds: BTreeMap<String, BTreeMap<String, String>>,
     /// Reachable sets by subject and source epochs (`disclosure.reach.cache-epochs`).
     reach: std::sync::Mutex<ReachCache>,
     /// The instant a staleness check reads as now (`disclosure.bound-staleness.clock-offset`).
     clock: std::sync::Arc<dyn Fn() -> contextful_core::time::Instant + Send + Sync>,
 }
 
-/// Each table a pack maps, with the `level` table of its mapping, across the manifest and the
-/// `pipelines/` files (`disclosure.reach.read-level`). A pack that does not load refuses the
-/// face.
-fn pack_levels(manifest: &str, pipelines: &[ManifestFile]) -> Result<BTreeMap<String, BTreeMap<String, String>>, ReadFault> {
+/// A table's `level` and `principal_kind` tables, by table.
+type PackTables = BTreeMap<String, BTreeMap<String, String>>;
+
+/// Each table a pack maps, with the `level` table of its mapping
+/// (`disclosure.reach.read-level`), and each bound source with the `principal_kind` tables of
+/// its tables' mappings merged (`disclosure.reach.public-grant`), across the manifest and the
+/// `pipelines/` files. A pack that does not load refuses the face.
+fn pack_levels(manifest: &str, pipelines: &[ManifestFile], bindings: &BTreeMap<String, Binding>) -> Result<(PackTables, PackTables), ReadFault> {
     use contextful_core::disclosure::pack::{Pack, PackError};
     let fault = |e: PackError| match e {
         PackError::Visibility(v) => ReadFault::Refused(v.into()),
@@ -108,7 +115,15 @@ fn pack_levels(manifest: &str, pipelines: &[ManifestFile]) -> Result<BTreeMap<St
     };
     let mut packs = Pack::parse_manifest(manifest).map_err(fault)?;
     packs.extend(Pack::parse_set(pipelines).map_err(fault)?);
-    Ok(packs.into_iter().flat_map(|p| p.access.into_iter().map(|(table, m)| (table, m.level))).collect())
+    let mut levels = BTreeMap::new();
+    let mut kinds: PackTables = BTreeMap::new();
+    for (table, m) in packs.into_iter().flat_map(|p| p.access) {
+        if let Some(b) = bindings.get(&table) {
+            kinds.entry(b.source.clone()).or_default().extend(m.principal_kind);
+        }
+        levels.insert(table, m.level);
+    }
+    Ok((levels, kinds))
 }
 
 /// The system clock's instant.
@@ -196,7 +211,7 @@ impl Face {
             decls.insert(d.name.clone(), d);
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
-        let levels = pack_levels(manifest, pipelines)?;
+        let (levels, kinds) = pack_levels(manifest, pipelines, &bindings)?;
         let fulltext = crate::fulltext::SidecarCache::new(contextful_core::read::rank::LEXICAL_INDEX_CACHE_ENTRIES);
         let face = Face {
             store,
@@ -212,6 +227,7 @@ impl Face {
             bindings,
             federated,
             levels,
+            kinds,
             reach: Default::default(),
             clock: std::sync::Arc::new(system_now),
         };
@@ -648,7 +664,7 @@ impl Face {
             Err(refused) if b.on_stale != OnStale::PublicOnly => Err(ReadFault::Refused(refused.into())),
             Err(_) => {
                 let state = crate::visibility::state(&self.store, &b.source)?;
-                contextful_core::disclosure::stale::posture(b, &state, self.levels.get(&b.table), now).map_err(|v| ReadFault::Refused(v.into()))
+                contextful_core::disclosure::stale::posture(b, &state, self.levels.get(&b.table), self.kinds.get(&b.source), now).map_err(|v| ReadFault::Refused(v.into()))
             }
         }
     }
@@ -682,10 +698,12 @@ impl Face {
                 filters.insert(t.clone(), filter(BTreeSet::new(), None, false));
                 continue;
             }
-            let levels = self.levels.get(t);
+            let (levels, kinds) = (self.levels.get(t), self.kinds.get(&b.source));
             if let Ok(Posture::Narrowed) = self.posture(b, now) {
                 let state = crate::visibility::state(&self.store, &b.source)?;
-                filters.insert(t.clone(), filter(reach::public_resources(&state, levels, now).into_keys().collect(), None, true));
+                // A lapsed opening leaves the narrowed set, so its count joins the key.
+                expired += reach::expired_public(&state, kinds, now);
+                filters.insert(t.clone(), filter(reach::public_resources(&state, levels, kinds, now).into_keys().collect(), None, true));
                 continue;
             }
             let key = ReachKey {
@@ -698,7 +716,7 @@ impl Face {
                 Some(set) => set,
                 None => {
                     let state = crate::visibility::state(&self.store, &b.source)?;
-                    match reach::resolve(&b.source, subject, &state, reach::ClosureBound::default()) {
+                    match reach::resolve_mapped(&b.source, subject, &state, reach::ClosureBound::default(), kinds) {
                         Ok(set) => self.reach.lock().expect("the reach cache lock").insert(key, set).map_err(|v| ReadFault::Refused(v.into()))?,
                         Err(e) => {
                             filters.insert(t.clone(), filter(BTreeSet::new(), Some(e), false));

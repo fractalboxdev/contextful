@@ -63,17 +63,23 @@ pub enum Posture {
 }
 
 /// A table's public-status watermark at `now`: the oldest observation among its source's
-/// resources holding a read-conferring, unexpired `public` grant under `levels`, or `now`
-/// when none does (`disclosure.bound-staleness.public-watermark`).
-pub fn public_watermark(state: &SourceState, levels: Option<&BTreeMap<String, String>>, now: Instant) -> Instant {
-    public_resources(state, levels, now).into_values().min().unwrap_or(now)
+/// resources holding a read-conferring, unexpired `public` grant under `levels` and
+/// `kinds`, or `now` when none does (`disclosure.bound-staleness.public-watermark`).
+pub fn public_watermark(state: &SourceState, levels: Option<&BTreeMap<String, String>>, kinds: Option<&BTreeMap<String, String>>, now: Instant) -> Instant {
+    public_resources(state, levels, kinds, now).into_values().min().unwrap_or(now)
 }
 
 /// The posture a read serves `binding`'s table under at `now`. Inside its budget the table
 /// reads whole. Past it, a `public_only` table whose source has a completed full run and a
 /// public-status watermark within the budget narrows (`disclosure.bound-staleness.public-only`);
 /// any other table refuses (`disclosure.bound-staleness.access-stale`).
-pub fn posture(binding: &Binding, state: &SourceState, levels: Option<&BTreeMap<String, String>>, now: Instant) -> Result<Posture, VisibilityError> {
+pub fn posture(
+    binding: &Binding,
+    state: &SourceState,
+    levels: Option<&BTreeMap<String, String>>,
+    kinds: Option<&BTreeMap<String, String>>,
+    now: Instant,
+) -> Result<Posture, VisibilityError> {
     let refused = match check_fresh(binding, state.freshness.as_ref(), now) {
         Ok(()) => return Ok(Posture::Fresh),
         Err(e) => e,
@@ -82,7 +88,7 @@ pub fn posture(binding: &Binding, state: &SourceState, levels: Option<&BTreeMap<
     if f.last_full_sweep_at.is_none() {
         return Err(refused);
     }
-    let watermark = public_watermark(state, levels, now);
+    let watermark = public_watermark(state, levels, kinds, now);
     let lag = watermark.secs_until(now);
     if lag > budget {
         return Err(VisibilityError::AccessStale {

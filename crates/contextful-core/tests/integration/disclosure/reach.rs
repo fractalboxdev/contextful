@@ -2,7 +2,7 @@
 //! reachable set over a source's current rows, and the reachable-set cache.
 
 use contextful_core::disclosure::reach::{
-    closure, confers_read, resolve, ClosureBound, Held, ReachCache, ReachError, ReachKey, ReachSet, MAX_CLOSURE_NODES, MAX_GROUP_DEPTH, REACH_CACHE_ENTRIES,
+    closure, confers_read, expired_public, resolve, resolve_mapped, ClosureBound, Held, ReachCache, ReachError, ReachKey, ReachSet, MAX_CLOSURE_NODES, MAX_GROUP_DEPTH, REACH_CACHE_ENTRIES,
 };
 use contextful_core::disclosure::sweep::{commit, parse_directory, Governed, GrantRow, MemberRow, Observation, ResourceRow, SourceState, SweepKind};
 use contextful_core::disclosure::VisibilityError;
@@ -272,8 +272,8 @@ fn a_level_confers_read_through_the_pack_mapping_or_verbatim() {
     }
 }
 
-/// A grant to a `public` principal joins every subject's reachable set.
-// spec: disclosure.reach.public-grant@15b1f754
+/// A grant whose `principal_kind`, mapped through the `principal_kind` table of the pack mapping its table, or taken verbatim where that table names no such kind, is `public` joins every subject's reachable set.
+// spec: disclosure.reach.public-grant@85175e28
 #[test]
 fn a_public_grant_joins_every_subject_reachable_set() {
     let state = SourceState {
@@ -285,4 +285,37 @@ fn a_public_grant_joins_every_subject_reachable_set() {
     let reach = |s: &str| admitted(&resolve("wiki", &subject(s), &state, ClosureBound::default()).unwrap(), None, now);
     assert_eq!(reach("user://dana@acme.example"), ["p1", "p2"]);
     assert_eq!(reach("user://erin@acme.example"), ["p1"]);
+
+    // A pack mapping the source kind `anyone` onto `public` opens its grant to everyone; with
+    // no mapping, `anyone` names no principal any subject holds.
+    let anyone = SourceState { grants: vec![graded("p1", "everyone", "anyone", "read", None), graded("p2", "dana@acme.example", "user", "read", None)], ..state };
+    let kinds = BTreeMap::from([("anyone".to_string(), "public".to_string()), ("user".to_string(), "user".to_string())]);
+    let mapped = |s: &str| admitted(&resolve_mapped("wiki", &subject(s), &anyone, ClosureBound::default(), Some(&kinds)).unwrap(), None, now);
+    assert_eq!(mapped("user://erin@acme.example"), ["p1"]);
+    assert_eq!(mapped("user://dana@acme.example"), ["p1", "p2"]);
+    assert!(admitted(&resolve("wiki", &subject("user://erin@acme.example"), &anyone, ClosureBound::default()).unwrap(), None, now).is_empty());
+}
+
+/// The count of lapsed `public` openings rises exactly when one lapses, under the source's
+/// kind mapping, so a narrowed session keyed on it retires with the opening.
+#[test]
+fn the_lapsed_public_opening_count_rises_when_an_opening_expires() {
+    let state = SourceState {
+        resources: ["p1", "p2", "p3"].iter().map(|r| resource(r, "mirrored")).collect(),
+        grants: vec![
+            graded("p1", "anyone", "public", "read", None),
+            graded("p2", "anyone", "public", "read", Some("2030-01-01T00:22:00Z")),
+            graded("p3", "dana@acme.example", "user", "read", Some("2030-01-01T00:21:00Z")),
+            graded("p3", "everyone", "anyone", "read", Some("2030-01-01T00:21:00Z")),
+        ],
+        ..SourceState::default()
+    };
+    assert_eq!(expired_public(&state, None, at("2030-01-01T00:20:00Z")), 0);
+    // The user opening on p3 lapses at 00:21 and counts for nothing; `anyone` is no public
+    // kind without a mapping.
+    assert_eq!(expired_public(&state, None, at("2030-01-01T00:21:30Z")), 0);
+    assert_eq!(expired_public(&state, None, at("2030-01-01T00:22:00Z")), 1);
+    let kinds = BTreeMap::from([("anyone".to_string(), "public".to_string())]);
+    assert_eq!(expired_public(&state, Some(&kinds), at("2030-01-01T00:21:30Z")), 1);
+    assert_eq!(expired_public(&state, Some(&kinds), at("2030-01-01T00:22:00Z")), 2);
 }

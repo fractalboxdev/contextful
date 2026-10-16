@@ -65,12 +65,21 @@ impl Wiki {
 
     /// [`Wiki::new`] under `manifest`.
     fn declared(manifest: &str) -> Wiki {
+        Wiki::opened(manifest, None)
+    }
+
+    /// [`Wiki::declared`], its face holding a result cache of `cache` bytes when given.
+    fn opened(manifest: &str, cache: Option<u64>) -> Wiki {
         let mut reads = Reads::with_manifest(manifest);
         land_rows(&reads.store, "wiki/pages", "run-0001", json!([{ "page_id": "p1" }, { "page_id": "p2" }, { "page_id": "p3" }]));
         land_rows(&reads.store, "wiki/notes", "run-0001", json!([{ "note": "n1" }]));
         let now = Arc::new(Mutex::new(at("2030-01-01T00:00:00Z")));
         let clock = now.clone();
-        reads.face = Face::open(reads.store.clone(), manifest, pepper()).unwrap().with_clock(move || *clock.lock().unwrap());
+        let face = Face::open(reads.store.clone(), manifest, pepper()).unwrap().with_clock(move || *clock.lock().unwrap());
+        reads.face = match cache {
+            Some(budget) => face.with_result_cache(budget),
+            None => face,
+        };
         let block = SweepBlock::parse_manifest(manifest).unwrap().remove(0);
         let bindings = TableDecl::parse_pipeline(manifest).unwrap().iter().filter_map(|d| Binding::of(d).unwrap()).collect();
         Wiki { reads, now, block, bindings }
@@ -304,23 +313,32 @@ fn a_bound_table_admits_rows_by_mapped_level_and_public_grant() {
 // spec: disclosure.bound-staleness.degraded-block@19246301
 #[test]
 fn a_public_only_table_past_its_budget_serves_its_public_rows_marked_degraded() {
-    let manifest = WIKI.replace("max_acl_staleness = \"15m\"", "max_acl_staleness = \"15m\"\non_stale          = \"public_only\"");
-    let w = Wiki::declared(&manifest);
+    let manifest = WIKI
+        .replace("max_acl_staleness = \"15m\"", "max_acl_staleness = \"15m\"\non_stale          = \"public_only\"")
+        .replace("name = \"wiki/pages\"\n", "name = \"wiki/pages\"\nresult_cache = \"10m\"\n");
+    let w = Wiki::opened(&manifest, Some(1 << 20));
     let grants = || vec![graded("p1", "anyone", "public", "viewer"), grant("p2", "dana@acme.example"), grant("p3", "erin@acme.example")];
     w.sweep(SweepKind::Full, "2030-01-01T00:00:00Z", grants());
+    // An incremental run re-observes the public p1 alone; the watermark holds at midnight.
+    w.sweep_only("2030-01-01T00:12:00Z", &["p1"], vec![graded("p1", "anyone", "public", "viewer")]);
     let dana = w.authority("user://dana@acme.example");
-    w.at("2030-01-01T00:10:00Z");
+    w.at("2030-01-01T00:13:00Z");
     let whole = w.page_read(&dana).unwrap();
     assert_eq!(column(&whole, "page_id"), [json!("p1"), json!("p2")]);
     assert!(!whole.blocks.contains_key("contextful.visibility"), "{:?}", whole.blocks);
+    let cache = w.reads.face.results().unwrap();
+    let before = cache.counts();
+    assert_eq!(before.entries, 1);
 
-    // An incremental run re-observes the public p1 alone; the watermark holds at midnight.
-    w.sweep_only("2030-01-01T00:12:00Z", &["p1"], vec![graded("p1", "anyone", "public", "viewer")]);
-    // Past the budget, with p1 observed 8 minutes ago, the read narrows to the public rows.
+    // Past the budget, with p1 observed 8 minutes ago and no run since the whole read, the
+    // read narrows to the public rows through a fresh session, and the result cache holds
+    // none of it.
     w.at("2030-01-01T00:20:00Z");
     let narrowed = w.page_read(&dana).unwrap();
     assert_eq!(column(&narrowed, "page_id"), [json!("p1")]);
     assert_eq!(narrowed.blocks.get("contextful.visibility"), Some(&json!({ "degraded": true, "narrowed": ["wiki/pages"] })));
+    let after = cache.counts();
+    assert_eq!((after.bypassed, after.entries, after.hits), (before.bypassed + 1, before.entries, before.hits));
     // A read touching no narrowed table carries no block.
     let session = w.reads.face.session(&dana, &Request::default(), Bounds::default()).unwrap();
     let notes = w.reads.query(&session, r#"SELECT note FROM "wiki/notes""#).unwrap();

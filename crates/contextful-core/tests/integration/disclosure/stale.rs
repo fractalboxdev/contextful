@@ -2,6 +2,7 @@
 //! the budget a sweep cadence cannot meet, and the clock offset.
 
 use contextful_core::disclosure::declare::Binding;
+use contextful_core::disclosure::reach::public_resources;
 use contextful_core::disclosure::stale::{check_cadence, check_fresh, now_offset, posture, public_watermark, OffsetMalformed, Posture, NOW_OFFSET_VAR};
 use contextful_core::disclosure::sweep::{Freshness, GrantRow, ResourceRow, SourceState, SweepBlock};
 use std::collections::BTreeMap;
@@ -154,14 +155,14 @@ fn the_public_status_watermark_is_the_oldest_observation_of_a_public_resource() 
     let levels = levels();
     let state = public_state("2030-01-01T00:50:00Z", "2030-01-01T00:40:00Z", None);
     // p3 holds no public grant and p4's public level confers no read, so neither ages it.
-    assert_eq!(public_watermark(&state, Some(&levels), now), at("2030-01-01T00:40:00Z"));
+    assert_eq!(public_watermark(&state, Some(&levels), None, now), at("2030-01-01T00:40:00Z"));
     // An expired public grant leaves its resource out.
     let mut expired = state.clone();
     expired.grants[1].expires_at = Some(at("2030-01-01T00:59:00Z"));
-    assert_eq!(public_watermark(&expired, Some(&levels), now), at("2030-01-01T00:50:00Z"));
+    assert_eq!(public_watermark(&expired, Some(&levels), None, now), at("2030-01-01T00:50:00Z"));
     // With no public resource, the watermark is now.
     let private = SourceState { grants: vec![grant("p3", "dana", "user", "anyone")], ..state };
-    assert_eq!(public_watermark(&private, Some(&levels), now), now);
+    assert_eq!(public_watermark(&private, Some(&levels), None, now), now);
 }
 
 fn public_only(budget: &str) -> Binding {
@@ -181,18 +182,26 @@ fn a_public_only_table_past_its_budget_narrows_while_public_status_is_within_it(
     let state = public_state("2030-01-01T00:50:00Z", "2030-01-01T00:46:00Z", swept.clone());
 
     // Inside the budget the table reads whole.
-    assert_eq!(posture(&pages, &state, Some(&levels), at("2030-01-01T00:10:00Z")), Ok(Posture::Fresh));
+    assert_eq!(posture(&pages, &state, Some(&levels), None, at("2030-01-01T00:10:00Z")), Ok(Posture::Fresh));
     // Past it, the public resources were observed 14 minutes ago: the read narrows.
     let now = at("2030-01-01T01:00:00Z");
     assert!(check_fresh(&pages, swept.as_ref(), now).is_err());
-    assert_eq!(posture(&pages, &state, Some(&levels), now), Ok(Posture::Narrowed));
+    assert_eq!(posture(&pages, &state, Some(&levels), None, now), Ok(Posture::Narrowed));
+    // Narrowed, it serves p1 and p2: p3 holds a user grant alone and p4's public level
+    // confers no read.
+    let served = |s: &SourceState| public_resources(s, Some(&levels), None, now).into_keys().collect::<Vec<_>>();
+    assert_eq!(served(&state), ["p1", "p2"]);
+    // An expired public grant leaves its resource out.
+    let mut lapsed = state.clone();
+    lapsed.grants[1].expires_at = Some(at("2030-01-01T00:59:00Z"));
+    assert_eq!(served(&lapsed), ["p1"]);
 
     // A public-status watermark past the budget refuses, naming it.
-    let e = stale(posture(&pages, &state, Some(&levels), at("2030-01-01T01:01:01Z")).map(|_| ()));
+    let e = stale(posture(&pages, &state, Some(&levels), None, at("2030-01-01T01:01:01Z")).map(|_| ()));
     assert!(e.to_string().contains("public-status watermark") && e.to_string().contains("lag 901s"), "{e}");
     // A source with no completed full run refuses.
     let never_full = public_state("2030-01-01T00:50:00Z", "2030-01-01T00:46:00Z", Some(fresh(Some("2030-01-01T00:00:00Z"), None)));
-    assert!(stale(posture(&pages, &never_full, Some(&levels), now).map(|_| ())).to_string().contains("no completed full run"));
+    assert!(stale(posture(&pages, &never_full, Some(&levels), None, now).map(|_| ())).to_string().contains("no completed full run"));
     // A table declaring `refuse` refuses past its budget.
-    assert!(posture(&binding("mirrored", "15m"), &state, Some(&levels), now).is_err());
+    assert!(posture(&binding("mirrored", "15m"), &state, Some(&levels), None, now).is_err());
 }

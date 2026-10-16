@@ -108,7 +108,7 @@ Per-request resolution of a subject to the resources it reaches, the bounded gro
   *A-disclosure*
 - `semi-join` — The semi-join opening {{authority.compose.relation-order}} admits a row of a bound table when its `resource_key` value names a resource with a read-conferring, unexpired, untombstoned grant in the reader's reachable set.
 - `read-level` — A grant confers read when its `level`, mapped through the `level` table of the pack mapping its table, or taken verbatim where no pack maps that table, is `read`, `write` or `admin`.
-- `public-grant` — A grant to a `public` principal joins every subject's reachable set.
+- `public-grant` — A grant whose `principal_kind`, mapped through the `principal_kind` table of the pack mapping its table, or taken verbatim where that table names no such kind, is `public` joins every subject's reachable set.
 - `closure-projection` — The group closure is a projection in `derived.sqlite`, rebuilt from the `_visibility` rows after each sweep and on a replica after each pull; no replica opens closure files.
   *A-disclosure*
 - `cache-epochs` — The reachable-set cache keys on the subject, the directory epoch and the epoch of each source the read touches, so a sweep invalidates only sets reading its source.

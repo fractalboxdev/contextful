@@ -18657,7 +18657,7 @@
       "operation": "identify",
       "subject": "unlinked-principal",
       "kind": "behavior",
-      "statement": "A subject whose source principal resolves to no link reads nothing from that source.",
+      "statement": "A subject whose source principal resolves to no link reads from that source only the resources {{disclosure.reach.public-grant}} opens.",
       "why": "because a source principal is the source's spelling; the `user` principal {{disclosure.reach.subject-principals}} spells is the subject's own and needs no link",
       "file": "spec/50-authority.md",
       "line": 83
@@ -22155,7 +22155,7 @@
       "operation": "reach",
       "subject": "public-grant",
       "kind": "behavior",
-      "statement": "A grant to a `public` principal joins every subject's reachable set.",
+      "statement": "A grant whose `principal_kind`, mapped through the `principal_kind` table of the pack mapping its table, or taken verbatim where that table names no such kind, is `public` joins every subject's reachable set.",
       "why": "",
       "file": "spec/60-visibility.md",
       "line": 111
@@ -31263,6 +31263,10 @@
     [
       "authority.identify.malformed-value",
       "authority.identify.value-hygiene"
+    ],
+    [
+      "authority.identify.unlinked-principal",
+      "disclosure.reach.public-grant"
     ],
     [
       "authority.profile.evaluator-bound",
