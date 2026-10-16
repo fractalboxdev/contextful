@@ -586,7 +586,7 @@ The declared behavior of each source compiled into the engine.
 - `search-degradation` — An absent provider key and a provider `5xx` are transient failures yielding a zero-row outcome, and a replay returns the journaled result set.
 - `poll-only-increments` — Incremental loading is a scheduled poll. A replication socket held open is not a source read.
   *because its output is unbounded and has no recorded exchange to replay*
-- `receive-form` — A `receive` source declares `format = "jsonl"`, a positive `max_batch_bytes` and a positive `max_queue_depth`, neither defaulted; it serves every declared table and requests nothing from outside.
+- `receive-form` — A `receive` source declares `format = "jsonl"`, a positive `max_batch_bytes`, a positive `max_queue_depth` and a positive `key_retention_secs`, none defaulted; it serves every declared table and requests nothing from outside.
   *because a ceiling the sender fills must be the operator's choice, not a guess the binary carries*
 - `receive-recorded` — A delivered batch is bounded and recorded before it lands, so {{connector.source.poll-only-increments}} reaches no `receive` source.
 - `receive-unscheduled` — A `receive` pipeline declaring a `schedule` fails validation.

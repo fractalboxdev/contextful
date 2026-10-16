@@ -54,6 +54,20 @@ const RUNS_PREFIX: &str = "/runs/";
 const STOP_SUFFIX: &str = "/stop";
 const STREAM_SUFFIX: &str = "/stream";
 
+/// The receive route, `POST /receive/:pipeline`, and the header naming the batch key
+/// (`run.land.receive-endpoint`).
+pub const RECEIVE_PREFIX: &str = "/receive/";
+pub const BATCH_KEY_HEADER: &str = "Contextful-Batch-Key";
+
+/// Reads a receive route's body once, given the bound the pipeline declares: `Ok(None)`
+/// when the announced length passes the bound, with no body byte read, and an answer when
+/// the body does not arrive whole or its possession proof does not cover it.
+pub type BodyReader<'r> = dyn FnMut(u64) -> Result<Option<Vec<u8>>, HttpResponse> + 'r;
+
+/// The receive route's handler: the request head, the authority admitted on it before any
+/// body byte is read, the pipeline id and the body reader.
+pub type ReceiveHandler<'h> = dyn Fn(&HttpRequest, &AdmittedAuthority, &str, &mut BodyReader<'_>) -> HttpResponse + Sync + 'h;
+
 /// The key a websocket handshake appends before hashing (RFC 6455, section 1.3).
 const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -279,6 +293,7 @@ pub struct HttpFace<'a, C> {
     claim_write: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)>,
     runs: Option<RunRoutes<'a>>,
     awake: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &str) -> HttpResponse + Sync)>,
+    receive: Option<&'a ReceiveHandler<'a>>,
     hydration: Option<&'a Hydration>,
 }
 
@@ -334,7 +349,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, hydration: None })
+        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, receive: None, hydration: None })
     }
 
     /// Report `build` at the handshake and `/health` in place of this package's linked
@@ -383,6 +398,13 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         self
     }
 
+    /// Attach the receive route, `POST /receive/:pipeline`, called once the credential on
+    /// the request head admits and before any body byte is read (`run.land.receive-endpoint`).
+    pub fn with_receive(mut self, receive: &'a ReceiveHandler<'a>) -> Self {
+        self.receive = Some(receive);
+        self
+    }
+
     /// Accept connections on `listener` until it fails. Each accepted connection takes a
     /// slot before its thread starts and holds it until its answer is written, so at most
     /// the ceiling's count of connection threads run. One accepted with every slot held
@@ -422,16 +444,76 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     fn connection(&self, mut stream: TcpStream, slot: Slot<'_>) -> std::io::Result<()> {
         stream.set_read_timeout(Some(REQUEST_READ_TIMEOUT))?;
         stream.set_write_timeout(Some(REQUEST_READ_TIMEOUT))?;
-        let response = match read_request_preflight(&mut stream, |head| {
-            (self.exchange_unconfigured && head.path() == "/auth/exchange").then(|| self.answer(head))
-        }) {
-            Ok(request) => self.answer(&request),
+        let mut unread = false;
+        let response = match read_head(&mut stream) {
             Err(response) => response,
+            Ok((head, _)) if self.exchange_unconfigured && head.path() == "/auth/exchange" => self.answer(&head),
+            Ok((head, rest)) => match receive_route(head.path()).filter(|_| self.receive.is_some()) {
+                Some(pipeline) => {
+                    let pipeline = pipeline.to_string();
+                    let (response, read) = self.receive_request(&head, rest, &mut stream, &pipeline);
+                    unread = !read;
+                    response
+                }
+                None => match read_body(&mut stream, head, rest, REQUEST_BODY_BYTES) {
+                    Ok(request) => self.answer(&request),
+                    Err(response) => response,
+                },
+            },
         };
         let written = response.write_to(&mut stream);
         drop(slot);
         written?;
-        stream.shutdown(std::net::Shutdown::Write)
+        stream.shutdown(std::net::Shutdown::Write)?;
+        if unread {
+            // A delivery refused on its head leaves its body unread; discarding what the
+            // sender still writes keeps the close from resetting the answer away.
+            discard(&mut stream)?;
+        }
+        Ok(())
+    }
+
+    /// The receive route: admit the credential on the head, then hand the handler a reader
+    /// for the body. The second value tells whether the body was read.
+    fn receive_request(&self, head: &HttpRequest, rest: Vec<u8>, stream: &mut TcpStream, pipeline: &str) -> (HttpResponse, bool) {
+        if self.hydration.map_or("complete", Hydration::state) == "warming" {
+            return (HttpResponse::unavailable("the snapshot set is hydrating; deliveries answer once it is local"), false);
+        }
+        if head.method != "POST" {
+            return (HttpResponse::message(405, "`/receive/:pipeline` answers POST").with("Allow", "POST"), false);
+        }
+        if head.header("Transfer-Encoding").is_some() {
+            return (HttpResponse::message(411, "the receive route reads a `Content-Length` body"), false);
+        }
+        let length = match head.header("Content-Length").map(|v| v.trim().parse::<usize>()) {
+            None => 0,
+            Some(Ok(n)) => n,
+            Some(Err(_)) => return (HttpResponse::message(400, "`Content-Length` is not a count"), false),
+        };
+        // The credential admits before any body byte is read; a holder-bound credential's
+        // proof covers the body, so it is checked once the body arrives.
+        let authority = match self.admit(head, true) {
+            Ok(a) => a,
+            Err(response) => return (response, false),
+        };
+        let mut rest = Some(rest);
+        let mut consumed = false;
+        let response = {
+            let mut read = |bound: u64| -> Result<Option<Vec<u8>>, HttpResponse> {
+                let Some(rest) = rest.take() else {
+                    return Err(HttpResponse::message(500, "a receive body is read once"));
+                };
+                if length as u64 > bound {
+                    return Ok(None);
+                }
+                let request = read_body(stream, head.clone(), rest, length)?;
+                consumed = true;
+                self.admit(&request, false)?;
+                Ok(Some(request.body))
+            };
+            self.receive.expect("the route is installed only with a receive handler")(head, &authority, pipeline, &mut read)
+        };
+        (response, consumed)
     }
 
     /// Answer `503` on a connection past the ceiling without parsing its request, then
@@ -441,16 +523,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         stream.set_write_timeout(Some(SHED_LINGER))?;
         HttpResponse::unavailable(format!("{} requests are in flight, the declared ceiling", self.ceiling)).write_to(&mut stream)?;
         stream.shutdown(std::net::Shutdown::Write)?;
-        let deadline = std::time::Instant::now() + SHED_LINGER;
-        let mut discard = [0u8; 4096];
-        while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()).filter(|d| !d.is_zero()) {
-            stream.set_read_timeout(Some(left))?;
-            match stream.read(&mut discard) {
-                Ok(n) if n > 0 => continue,
-                _ => break,
-            }
-        }
-        Ok(())
+        discard(&mut stream)
     }
 
     /// Take a slot under the ceiling, or none when the ceiling's count is in flight
@@ -580,48 +653,62 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     }
 
     fn admitted(&self, request: &HttpRequest, answer: impl FnOnce(&AdmittedAuthority, &Admission<'_>) -> HttpResponse) -> HttpResponse {
-        let Some(credential) = request.credential() else {
-            let missing = ReadError::HttpCredentialMissing(
-                "a request carries `Authorization: Bearer <credential>`, or `Authorization: DPoP <credential>` with a `DPoP` proof from the credential's holder key".into(),
-            );
-            return HttpResponse::json(401, &payload(&Refusal::Read(missing))).with("WWW-Authenticate", CHALLENGE);
-        };
         let revocation = match (self.admitting.revocation)() {
             Ok(r) => r,
             Err(why) => return HttpResponse::unavailable(format!("the revocation denylist is unreadable: {why}")),
         };
         let admission = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
+        match self.admit_under(request, &admission, false) {
+            Ok(authority) => answer(&authority, &admission),
+            Err(response) => response,
+        }
+    }
+
+    /// Admit the request's credential; with `defer_proof`, a holder-bound credential admits
+    /// on a present `DPoP` header whose check waits for the body the proof covers.
+    fn admit(&self, request: &HttpRequest, defer_proof: bool) -> Result<AdmittedAuthority, HttpResponse> {
+        let revocation = (self.admitting.revocation)().map_err(|why| HttpResponse::unavailable(format!("the revocation denylist is unreadable: {why}")))?;
+        let admission = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
+        self.admit_under(request, &admission, defer_proof)
+    }
+
+    fn admit_under(&self, request: &HttpRequest, admission: &Admission<'_>, defer_proof: bool) -> Result<AdmittedAuthority, HttpResponse> {
+        let Some(credential) = request.credential() else {
+            let missing = ReadError::HttpCredentialMissing(
+                "a request carries `Authorization: Bearer <credential>`, or `Authorization: DPoP <credential>` with a `DPoP` proof from the credential's holder key".into(),
+            );
+            return Err(HttpResponse::json(401, &payload(&Refusal::Read(missing))).with("WWW-Authenticate", CHALLENGE));
+        };
         let covered = ProofRequest { method: &request.method, target: &request.target, body: &request.body };
         let checkpoint = self.admitting.checkpoint;
-        let keys = match checkpoint.keys() {
-            Ok(k) => k,
-            Err(e) => return HttpResponse::unavailable(e.to_string()),
-        };
-        let authority = verify_network(credential, &keys, &admission, |jkt| match request.header("DPoP") {
+        let keys = checkpoint.keys().map_err(|e| HttpResponse::unavailable(e.to_string()))?;
+        let authority = verify_network(credential, &keys, admission, |jkt| match request.header("DPoP") {
+            Some(_) if defer_proof => Ok(()),
             Some(proof) => checkpoint.verify_request(jkt, proof, &covered),
             None => Err(ProofRefusal::Refused(AuthorityError::PossessionProofInvalid(
                 "the credential binds a holder key, and the request carries no `DPoP` proof".into(),
             ))),
         });
-        let authority = match authority {
-            Ok(a) => a,
-            Err(ProofRefusal::NonceCacheFull) => return HttpResponse::unavailable(ProofRefusal::NonceCacheFull.to_string()),
-            Err(ProofRefusal::Refused(e)) => return unadmitted(&e),
-        };
-        answer(&authority, &admission)
+        match authority {
+            Ok(a) => Ok(a),
+            Err(ProofRefusal::NonceCacheFull) => Err(HttpResponse::unavailable(ProofRefusal::NonceCacheFull.to_string())),
+            Err(ProofRefusal::Refused(e)) => Err(unadmitted(&e)),
+        }
     }
 }
 
 /// Read one request: the head, then a `Content-Length` body of at most
 /// [`REQUEST_BODY_BYTES`]. A malformed or oversized request is answered, not read on.
 pub fn read_request(stream: &mut impl Read) -> Result<HttpRequest, HttpResponse> {
-    read_request_preflight(stream, |_| None)
+    let (request, rest) = read_head(stream)?;
+    read_body(stream, request, rest, REQUEST_BODY_BYTES)
 }
 
-fn read_request_preflight(stream: &mut impl Read, preflight: impl Fn(&HttpRequest) -> Option<HttpResponse>) -> Result<HttpRequest, HttpResponse> {
+/// Read one request head; the bytes read past it start the body.
+fn read_head(stream: &mut impl Read) -> Result<(HttpRequest, Vec<u8>), HttpResponse> {
     let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 4096];
-    let (mut request, head_len) = loop {
+    loop {
         let n = match stream.read(&mut chunk) {
             Ok(0) => return Err(HttpResponse::message(400, "the connection closed before a request head")),
             Ok(n) => n,
@@ -645,7 +732,7 @@ fn read_request_preflight(stream: &mut impl Read, preflight: impl Fn(&HttpReques
                         .collect(),
                     body: Vec::new(),
                 };
-                break (request, len);
+                return Ok((request, buf.split_off(len)));
             }
             Ok(httparse::Status::Partial) if buf.len() > REQUEST_HEAD_BYTES => {
                 return Err(HttpResponse::message(431, format!("the request head exceeds {REQUEST_HEAD_BYTES} B")))
@@ -653,10 +740,12 @@ fn read_request_preflight(stream: &mut impl Read, preflight: impl Fn(&HttpReques
             Ok(httparse::Status::Partial) => continue,
             Err(e) => return Err(HttpResponse::message(400, format!("the request head does not parse: {e}"))),
         }
-    };
-    if let Some(response) = preflight(&request) {
-        return Err(response);
     }
+}
+
+/// Read the `Content-Length` body of `request`, of at most `limit` bytes, `rest` holding
+/// the bytes already read past its head.
+fn read_body(stream: &mut impl Read, mut request: HttpRequest, rest: Vec<u8>, limit: usize) -> Result<HttpRequest, HttpResponse> {
     if request.header("Transfer-Encoding").is_some() {
         return Err(HttpResponse::message(411, "the face reads a `Content-Length` body"));
     }
@@ -664,10 +753,11 @@ fn read_request_preflight(stream: &mut impl Read, preflight: impl Fn(&HttpReques
         None => 0,
         Some(v) => v.trim().parse::<usize>().map_err(|_| HttpResponse::message(400, "`Content-Length` is not a count"))?,
     };
-    if length > REQUEST_BODY_BYTES {
-        return Err(HttpResponse::message(413, format!("the request body exceeds {REQUEST_BODY_BYTES} B")));
+    if length > limit {
+        return Err(HttpResponse::message(413, format!("the request body exceeds {limit} B")));
     }
-    let mut body = buf.split_off(head_len);
+    let mut chunk = [0u8; 4096];
+    let mut body = rest;
     body.truncate(length);
     while body.len() < length {
         let want = (length - body.len()).min(chunk.len());
@@ -682,6 +772,25 @@ fn read_request_preflight(stream: &mut impl Read, preflight: impl Fn(&HttpReques
     }
     request.body = body;
     Ok(request)
+}
+
+/// Discard what the caller still sends until it closes or [`SHED_LINGER`] passes.
+fn discard(stream: &mut TcpStream) -> std::io::Result<()> {
+    let deadline = std::time::Instant::now() + SHED_LINGER;
+    let mut discard = [0u8; 4096];
+    while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()).filter(|d| !d.is_zero()) {
+        stream.set_read_timeout(Some(left))?;
+        match stream.read(&mut discard) {
+            Ok(n) if n > 0 => continue,
+            _ => break,
+        }
+    }
+    Ok(())
+}
+
+/// The pipeline of a `/receive/:pipeline` path: one non-empty segment; `None` for any other path.
+fn receive_route(path: &str) -> Option<&str> {
+    path.strip_prefix(RECEIVE_PREFIX).filter(|p| !p.is_empty() && !p.contains('/'))
 }
 
 /// The token of an `/awake/:token` path: one non-empty segment; `None` for any other path.

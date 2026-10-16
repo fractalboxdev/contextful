@@ -273,6 +273,12 @@ pub enum RunError {
     /// A delivered batch arriving while every queue slot of its pipeline is held. (`run.land.receive-backpressure`)
     #[error("ReceiveBackpressure: {0}")]
     ReceiveBackpressure(String),
+    /// A delivered batch under a credential lacking `write` over one of its pipeline's tables. (`run.land.receive-write-not-granted`)
+    #[error("ReceiveWriteNotGranted: {0}")]
+    ReceiveWriteNotGranted(String),
+    /// A batch under a key whose first attempt is older than its source's `key_retention_secs`. (`run.land.receive-key-expired`)
+    #[error("ReceiveBatchKeyExpired: {0}")]
+    ReceiveBatchKeyExpired(String),
     /// A non-zero exit or fatal signal from the decode process. (`run.land.parse-crashed`)
     #[error("PipelineParseCrashed: {0}")]
     PipelineParseCrashed(String),

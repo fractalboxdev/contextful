@@ -396,6 +396,28 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     };
     #[cfg(feature = "data-plane")]
     let http = http.with_awake(&awake);
+    #[cfg(feature = "data-plane")]
+    let receive_ledger = Arc::new(LedgerFile::at(&root, args.keyset.as_deref()));
+    #[cfg(feature = "data-plane")]
+    let receive = |head: &HttpRequest, authority: &AdmittedAuthority, pipeline: &str, read: &mut contextful_agent::http::BodyReader<'_>| {
+        let author = crate::admit::Author::served(authority.clone(), args.denylist.clone(), receive_ledger.clone());
+        let key = head.header(contextful_agent::http::BATCH_KEY_HEADER);
+        match crate::receive::served(&run_project, &located.declaration, tasks, author, key, pipeline, read) {
+            Ok(served) => {
+                let answer = HttpResponse::json(served.status, &served.body);
+                if served.retry_after {
+                    let mut answer = answer;
+                    answer.headers.push(("Retry-After".into(), contextful_agent::http::RETRY_AFTER_SECS.to_string()));
+                    answer
+                } else {
+                    answer
+                }
+            }
+            Err(response) => response,
+        }
+    };
+    #[cfg(feature = "data-plane")]
+    let http = http.with_receive(&receive);
     let hydrated = |set: contextful_context::read::MappedSnapshotSet| {
         let (files, bytes) = (set.files().count(), set.bytes());
         *mapped.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(set);

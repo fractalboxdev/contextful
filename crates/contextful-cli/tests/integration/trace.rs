@@ -123,7 +123,7 @@ fn a_run_records_the_callers_trace_or_a_fresh_one() {
     assert_ne!(fresh, malformed);
 
     // A pushed batch's run continues the caller's trace too.
-    let dir = project("[[pipeline]]\nid = \"otel\"\ntables = [\"spans\"]\n[pipeline.source]\nname = \"receive\"\nconfig = { format = \"jsonl\", max_batch_bytes = 4096, max_queue_depth = 2 }\n");
+    let dir = project("[[pipeline]]\nid = \"otel\"\ntables = [\"spans\"]\n[pipeline.source]\nname = \"receive\"\nconfig = { format = \"jsonl\", max_batch_bytes = 4096, max_queue_depth = 2, key_retention_secs = 3600 }\n");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful"));
     cmd.args(["pipeline", "receive", "otel", "--key", "k1", "--project", "research", "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"])
         .current_dir(dir.path())
