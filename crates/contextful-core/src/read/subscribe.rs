@@ -6,7 +6,7 @@ use super::error::ReadError;
 use crate::store::lay_out::RunManifest;
 use crate::time::Instant;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// Most notifications a subscription holds undelivered before it sends its terminal
 /// overrun message (`read.subscribe.overrun`).
@@ -66,13 +66,23 @@ fn order(run: &RunManifest) -> Order {
     (run.commit_seq.unwrap_or(0), run.committed_at, run.key())
 }
 
-/// One table's position in a subscription: the run it resumed after, and every run
-/// delivered since, so a run notifies exactly once.
+/// The runs a reader following commit order may deliver: those below `held`, the lowest
+/// `commit_seq` among the table's grouped manifests still awaiting their group marker, so
+/// delivery follows the table's readable prefix (`read.subscribe.commit-order`).
+pub fn readable_prefix(runs: Vec<RunManifest>, held: Option<i64>) -> Vec<RunManifest> {
+    match held {
+        None => runs,
+        Some(held) => runs.into_iter().filter(|r| r.commit_seq.unwrap_or(0) < held).collect(),
+    }
+}
+
+/// One table's position in a subscription: the commit order of the run it last delivered,
+/// or resumed after. Delivery follows the readable prefix in commit order, so every run at
+/// or below the floor has notified (`read.subscribe.commit-order`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cursor {
     table: String,
     floor: Option<Order>,
-    delivered: BTreeSet<String>,
     last: Option<String>,
 }
 
@@ -93,7 +103,7 @@ impl Cursor {
                 }
             },
         };
-        Ok(Cursor { table: table.to_string(), floor, delivered: BTreeSet::new(), last: after.map(str::to_string) })
+        Ok(Cursor { table: table.to_string(), floor, last: after.map(str::to_string) })
     }
 
     /// The table this cursor follows.
@@ -106,18 +116,15 @@ impl Cursor {
         self.last.as_deref()
     }
 
-    /// The readable runs after the floor not yet delivered, in commit order.
+    /// The readable runs after the floor, in commit order.
     fn pending<'a>(&self, runs: &'a [RunManifest]) -> Vec<&'a RunManifest> {
-        let mut out: Vec<&RunManifest> = runs
-            .iter()
-            .filter(|r| self.floor.as_ref().is_none_or(|floor| order(r) > *floor) && !self.delivered.contains(&r.key()))
-            .collect();
+        let mut out: Vec<&RunManifest> = runs.iter().filter(|r| self.floor.as_ref().is_none_or(|floor| order(r) > *floor)).collect();
         out.sort_by_key(|r| order(r));
         out
     }
 
     fn deliver(&mut self, run: &RunManifest) {
-        self.delivered.insert(run.key());
+        self.floor = Some(order(run));
         self.last = Some(run.key());
     }
 }

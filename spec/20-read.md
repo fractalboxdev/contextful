@@ -560,6 +560,7 @@ The stream of one notification per committed run of each named table, read from 
 
 - `read.subscribe.resume`: WHEN runs `r1`, `r2` and `r3` commit to `events` and a subscription names `after` `events=r1/ingest-a`, THEN it sends `r2` then `r3`, and a fold before the call changes neither.
 - `read.subscribe.after-commit`: WHEN a leased pipeline's run writes its manifest and its commit-log entry is absent, THEN no subscription notifies it.
+- `read.subscribe.commit-order`: WHEN a relational run commits `events` at `commit_seq` 5 before its group marker lands and a plain run commits at 6, THEN a subscription sends neither until the marker lands, then 5 before 6.
 
 unsettled: Does `context.subscribe` ride the tool protocol as a paged poll returning the next position, or as server notifications over a held stream? owner: read-path affects: read.subscribe
 

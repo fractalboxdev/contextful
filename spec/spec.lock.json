@@ -7174,7 +7174,10 @@
       "statement": "Notifications of one table arrive in ascending `commit_seq`, the order {{store.reserve.commit-order}} makes runs readable, and each committed run notifies exactly once per subscription.",
       "why": "because a subscriber applying notifications in order rebuilds the table's commit sequence",
       "file": "spec/20-read.md",
-      "line": 546
+      "line": 546,
+      "scenarios": [
+        "WHEN a relational run commits `events` at `commit_seq` 5 before its group marker lands and a plain run commits at 6, THEN a subscription sends neither until the marker lands, then 5 before 6."
+      ]
     },
     {
       "id": "read.subscribe.no-content",

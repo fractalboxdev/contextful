@@ -527,7 +527,9 @@ fn subscribe(args: &StoreArgs, tables: &[String], after: &[String], follow: bool
     let mut positions = std::collections::BTreeMap::new();
     for a in after {
         let (table, position) = a.split_once('=').with_context(|| format!("`--after {a}` is not <table>=<run-id>/<node-id>"))?;
-        positions.insert(table.to_string(), position.to_string());
+        if positions.insert(table.to_string(), position.to_string()).is_some() {
+            bail!("`--after` names table `{table}` twice");
+        }
     }
     let mut subscription = contextful_context::subscribe::Subscription::open(&o.store, tables, &positions)?;
     let stdout = std::io::stdout();

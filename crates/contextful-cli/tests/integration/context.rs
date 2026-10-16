@@ -335,3 +335,14 @@ fn a_following_subscriber_receives_a_run_another_process_lands() {
     let line = line.expect("the follower prints the run another process landed");
     assert_eq!(subscribed(&line), ["events:run-2/ingest-a"]);
 }
+
+/// `context subscribe` refuses a second `--after` for one table rather than keep the last.
+#[test]
+fn subscribe_refuses_a_table_resumed_twice() {
+    let p = project();
+    land(p.path(), "events", "run-1", "2030-01-01T00:00:00Z");
+    land(p.path(), "events", "run-2", "2030-01-01T00:01:00Z");
+    let twice = run(p.path(), &["context", "subscribe", "events", "--project", "research", "--after", "events=run-1/ingest-a", "--after", "events=run-2/ingest-a"]);
+    assert!(!twice.status.success(), "a second `--after` for one table refuses");
+    assert!(String::from_utf8_lossy(&twice.stderr).contains("events"));
+}

@@ -570,8 +570,17 @@ impl Store {
     }
 
     pub fn committed_runs(&self, table: &str) -> Result<Vec<RunManifest>> {
+        Ok(self.committed_runs_held(table)?.0)
+    }
+
+    /// The table's committed runs, and the lowest `commit_seq` among its grouped manifests
+    /// still awaiting their group marker: a run at or above it is readable before a run
+    /// below it, so a reader following commit order holds back from there
+    /// (`read.subscribe.commit-order`).
+    pub fn committed_runs_held(&self, table: &str) -> Result<(Vec<RunManifest>, Option<i64>)> {
         let runs_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR);
         let mut out = Vec::new();
+        let mut held: Option<i64> = None;
         // One read of each (pipeline, node) commit log per call.
         let mut logs: std::collections::HashMap<(String, String), Vec<commit_log::CommitEntry>> = std::collections::HashMap::new();
         for run_dir in sorted_dirs(&runs_dir)? {
@@ -596,7 +605,12 @@ impl Store {
                     let marker = self.table_dir(root)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&m.run_id).join(&m.node_id).join("_group.json");
                     let bytes = match fs::read(&marker) {
                         Ok(bytes) => bytes,
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                            if let Some(seq) = m.commit_seq {
+                                held = Some(held.map_or(seq, |h| h.min(seq)));
+                            }
+                            continue;
+                        }
                         Err(e) => return Err(ContextError::Io { path: marker, source: e }),
                     };
                     let tables: Vec<String> = serde_json::from_slice(&bytes).map_err(|e| unreadable(format!("group marker: {e}")))?;
@@ -617,7 +631,7 @@ impl Store {
                 out.push(m);
             }
         }
-        Ok(out)
+        Ok((out, held))
     }
 
     /// The pointer and the ETag of its bytes, or `None` before the first fold.

@@ -121,3 +121,38 @@ fn a_run_another_store_handle_commits_reaches_the_subscriber() {
     let unknown = Subscription::open(&reader, &tables(&["events"]), &after("other", "r1/ingest-a"));
     assert!(unknown.is_err(), "an `after` table the subscription does not name refuses");
 }
+
+/// Notifications of one table arrive in ascending `commit_seq`, the order
+/// {{store.reserve.commit-order}} makes runs readable, and each committed run notifies exactly
+/// once per subscription.
+#[test]
+fn a_run_committed_after_an_unpublished_group_waits_for_the_group() {
+    use contextful_context::land::{commit_parts_group, publish_group};
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    land(&f, "r1", 1);
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "grouped".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
+        committed_at: at("2030-01-01T00:02:00Z"),
+    };
+    let grouped = commit_parts_group(&f.store, &d, &[], &ctx, &Position::default(), "events", &[], &|| Ok(()), &|_| Ok(())).unwrap();
+    land(&f, "plain", 3);
+    let mut sub = Subscription::open(&f.store, &tables(&["events"]), &after("events", "r1/ingest-a")).unwrap();
+    assert!(sub.poll().unwrap().is_empty(), "a run above an unpublished group's commit_seq waits");
+    publish_group(&f.store, "events", &tables(&["events"]), &ctx).unwrap();
+    assert_eq!(notified(&sub.poll().unwrap()), ["events:grouped/ingest-a", "events:plain/ingest-a"]);
+    assert!(sub.poll().unwrap().is_empty());
+    let resumed = Subscription::open(&f.store, &tables(&["events"]), &after("events", "r1/ingest-a")).unwrap().poll().unwrap();
+    assert_eq!(notified(&resumed), ["events:grouped/ingest-a", "events:plain/ingest-a"]);
+    assert!(grouped.commit_seq.is_some());
+}
+
+/// Each committed run notifies exactly once per subscription: a table named twice refuses.
+#[test]
+fn a_table_named_twice_refuses() {
+    let f = Fixture::new();
+    land(&f, "r1", 1);
+    let twice = Subscription::open(&f.store, &tables(&["events", "events"]), &BTreeMap::new());
+    assert!(matches!(twice, Err(contextful_context::ContextError::Invalid(_))), "a table named twice refuses");
+}

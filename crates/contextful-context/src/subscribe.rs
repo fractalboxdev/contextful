@@ -4,7 +4,7 @@
 //! (`read.subscribe.after-commit`).
 
 use crate::{ContextError, Result, Store};
-use contextful_core::read::subscribe::{deliver, Cursor, Message, QUEUE_BOUND};
+use contextful_core::read::subscribe::{deliver, readable_prefix, Cursor, Message, QUEUE_BOUND};
 use std::collections::BTreeMap;
 
 /// A subscription to the committed runs of named tables.
@@ -19,10 +19,14 @@ impl Subscription {
     /// Open a subscription over `tables`, each resuming after its `after` position when one
     /// is named (`read.subscribe.resume`). An unknown table refuses
     /// (`store.lay-out.unknown-table`); a position naming no committed run refuses
-    /// (`read.subscribe.position-unavailable`).
+    /// (`read.subscribe.position-unavailable`); a table named twice refuses, so each run
+    /// notifies once (`read.subscribe.commit-order`).
     pub fn open(store: &Store, tables: &[String], after: &BTreeMap<String, String>) -> Result<Subscription> {
         if let Some(table) = after.keys().find(|t| !tables.contains(t)) {
             return Err(ContextError::Invalid(format!("`after` names table `{table}`, which the subscription does not name")));
+        }
+        if let Some((_, table)) = tables.iter().enumerate().find(|(i, t)| tables[..*i].contains(t)) {
+            return Err(ContextError::Invalid(format!("the subscription names table `{table}` twice")));
         }
         let mut cursors = Vec::with_capacity(tables.len());
         for table in tables {
@@ -40,7 +44,11 @@ impl Subscription {
         if self.ended {
             return Ok(Vec::new());
         }
-        let runs = self.cursors.iter().map(|c| self.store.committed_runs(c.table())).collect::<Result<Vec<_>>>()?;
+        let runs = self
+            .cursors
+            .iter()
+            .map(|c| self.store.committed_runs_held(c.table()).map(|(runs, held)| readable_prefix(runs, held)))
+            .collect::<Result<Vec<_>>>()?;
         let messages = deliver(&mut self.cursors, &runs, self.bound);
         self.ended = messages.iter().any(|m| matches!(m, Message::Overrun { .. }));
         Ok(messages)

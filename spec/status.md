@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 277 | 0 | 277 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 151 | 0 | 151 |
-| `read` | 2 | 20 | 287 | 46 | 29 | 15 | 244 | 0 | 244 |
+| `read` | 2 | 20 | 287 | 46 | 29 | 15 | 245 | 0 | 245 |
 | `run` | 3 | 29 | 529 | 116 | 45 | 14 | 497 | 0 | 497 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 169 | 2587 | 655 | 212 | 78 | 2253 | 0 | |
+| **total** | 22 | 169 | 2587 | 655 | 212 | 78 | 2254 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 275 | 264 | passing | closed |
 | 4 — Ingest | 25 | 586 | 473 | passing | closed |
-| 5 — The read face under enforcement | 17 | 308 | 256 | passing | open |
+| 5 — The read face under enforcement | 17 | 308 | 257 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 91 | 84 | passing | closed |
@@ -1208,6 +1208,7 @@ Unscheduled operations: 13.
 | `read.register.per-request-revocation` | `crates/contextful-agent/tests/integration/http.rs::a_credential_revoked_between_requests_is_refused_on_the_next` | performed |
 | `read.register.quiet-table` | `crates/contextful-context/tests/integration/read/register.rs::a_quiet_table_reads_empty` | performed |
 | `read.register.request-body` | `crates/contextful-agent/tests/integration/http.rs::a_body_over_one_mebibyte_answers_413` | performed |
+| `read.register.reserved-relation` | `crates/contextful-context/tests/integration/read/register.rs::the_run_record_and_the_access_tables_register_as_ordinary_relations` | performed |
 | `read.register.scoped-ledger` | `crates/contextful-context/tests/integration/read/register.rs::a_tenant_scoped_read_naming_the_ledger_is_refused` | performed |
 | `read.register.serve-declaration` | `crates/contextful-agent/tests/integration/http.rs::a_missing_audience_or_ceiling_refuses_the_face` | performed |
 | `read.register.size-estimate` | `crates/contextful-context/tests/integration/read/register.rs::describe_estimates_the_size_of_the_callers_restricted_rows` | performed |
