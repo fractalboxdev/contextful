@@ -282,6 +282,7 @@ fn toml_and_json_read_into_one_specification_whose_schema_is_derived_from_it() {
     keys.sort_unstable();
     let mut written: Vec<String> = serde_json::to_value(&from_toml).unwrap().as_object().unwrap().keys().cloned().collect();
     written.sort_unstable();
+    assert!(!written.is_empty(), "the exclusion below ranges over no element");
     assert!(written.iter().all(|k| keys.contains(&k.as_str())), "{written:?} ⊄ {keys:?}");
     for key in ["destination", "schedule", "incremental", "transforms", "redaction", "normalize", "backfill", "seed", "queries", "on_table_error"] {
         assert!(keys.contains(&key), "{key}: {keys:?}");
