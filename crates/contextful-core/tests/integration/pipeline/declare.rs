@@ -1,7 +1,7 @@
 //! `run.declare`: the specification, manifest reading, the content hash and table names.
 
 use contextful_core::pipeline::canonical::canonical_json;
-use contextful_core::pipeline::declare::{collect, dependent_runs, read_manifest, table_name, ManifestFile, OnTableError, PipelineSpec, TableEntry};
+use contextful_core::pipeline::declare::{collect, dependent_runs, pipeline_schema, read_manifest, table_name, ManifestFile, OnTableError, PipelineSpec, TableEntry};
 use contextful_core::run::RunError;
 use contextful_core::store::declare::{TableDecl, WriteMode};
 use serde_json::json;
@@ -262,4 +262,31 @@ fn the_journal_default_reads_the_one_opt_out_constant() {
     let mut explicit = named("http");
     explicit.journal = Some(false);
     assert!(!explicit.journals());
+}
+
+/// TOML and JSON read into one specification, and its JSON Schema derives from that type.
+#[test]
+fn toml_and_json_read_into_one_specification_whose_schema_is_derived_from_it() {
+    let toml = "id = \"shop\"\nincremental = \"updated_at\"\non_table_error = \"continue\"\ntables = [\"orders\", { name = \"items\", primary_key = [\"id\"], write_mode = \"replace\" }]\n[source]\nname = \"http\"\nconfig = { endpoint = \"https://vendor.test/{table}\" }\n";
+    let json = r#"{"id":"shop","incremental":"updated_at","on_table_error":"continue","tables":["orders",{"name":"items","primary_key":["id"],"write_mode":"replace"}],"source":{"name":"http","config":{"endpoint":"https://vendor.test/{table}"}}}"#;
+    let from_toml = read_manifest(&manifest("pipelines/shop.toml", toml)).unwrap().remove(0).spec;
+    let from_json = read_manifest(&manifest("pipelines/shop.json", json)).unwrap().remove(0).spec;
+    assert_eq!(from_toml, from_json);
+    assert_eq!(from_toml.content_hash(), from_json.content_hash());
+
+    let schema = pipeline_schema();
+    assert_eq!(schema["title"], "PipelineSpec");
+    assert_eq!(schema["required"], json!(["id", "source", "tables"]));
+    assert_eq!(schema["additionalProperties"], json!(false), "a key outside the specification is refused");
+    let mut keys: Vec<&str> = schema["properties"].as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    let mut written: Vec<String> = serde_json::to_value(&from_toml).unwrap().as_object().unwrap().keys().cloned().collect();
+    written.sort_unstable();
+    assert!(!written.is_empty(), "the exclusion below ranges over no element");
+    assert!(written.iter().all(|k| keys.contains(&k.as_str())), "{written:?} ⊄ {keys:?}");
+    for key in ["destination", "schedule", "incremental", "transforms", "redaction", "normalize", "backfill", "seed", "queries", "on_table_error"] {
+        assert!(keys.contains(&key), "{key}: {keys:?}");
+    }
+    assert_eq!(schema["$defs"]["OnTableError"]["enum"], json!(["abort", "continue"]));
+    assert_eq!(schema["$defs"]["TableEntry"]["anyOf"][0]["type"], "string", "a bare name or a table block");
 }

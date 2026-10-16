@@ -2659,3 +2659,145 @@ fn the_boundary_re_land_dedups_under_a_key_and_accumulates_without_one() {
     assert_eq!(count("bare_items"), "3", "a keyless table accumulates each re-land");
     assert!(vendor.targets().iter().filter(|t| t.ends_with("since=5")).count() >= 4, "every later poll re-reads the boundary instant");
 }
+
+/// A vendor answering each request to a path with the next body of `bodies`, the last repeating.
+fn sequenced(bodies: &'static [&'static str]) -> Vendor {
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    Vendor::start(move |_| {
+        let n = served.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        (200, bodies[n.min(bodies.len() - 1)].to_string())
+    })
+}
+
+fn rows(dir: &Path, sql: &str) -> serde_json::Value {
+    json(&cf(dir, &["query", "--json", "--project", "research", sql]))["rows"].clone()
+}
+
+/// Under continue, `run` exits non-zero naming the failed runs, and a scheduled fire appends its failure count to its log line.
+// spec: run.declare.table-error-exit@db011c3b
+#[test]
+fn a_continued_fire_with_a_failed_table_exits_non_zero_and_its_scheduled_line_counts_the_failures() {
+    let serve = |t: &str| if t.starts_with("/v1/bad") { (404, "{}".to_string()) } else { (200, "[{\"id\":\"g\"}]".to_string()) };
+    let vendor = Vendor::start(serve);
+    let dir = two_tables(&vendor, "continue");
+    let out = fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z");
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("1 table(s) failed: r1.shop_bad"), "{}", stderr(&out));
+
+    let vendor = Vendor::start(serve);
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", pipeline("shop", &vendor.url("/v1/{table}"), "on_table_error = \"continue\"\nschedule = \"every 1h\"", "tables = [\"bad\", \"good\"]")));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
+    assert_eq!(answer(&out)["failed"], serde_json::json!(["shop"]));
+    let line = stderr(&out).lines().find(|l| l.starts_with("fire shop: failed")).map(str::to_string).unwrap_or_else(|| panic!("{}", stderr(&out)));
+    assert!(line.contains("1 table(s) failed"), "{line}");
+    assert_eq!(vendor.targets(), ["/v1/bad", "/v1/good"], "the other table landed");
+}
+
+/// `order_by` defaults to the injected ingest stamp and is inert on a keyless table; key semantics are {{store.declare.unkeyed-union}}.
+// spec: run.declare.order-by-default@f577ce6c
+#[test]
+fn order_by_defaults_to_the_ingest_stamp_and_a_keyless_table_keeps_every_row() {
+    static BODIES: [&str; 2] = [r#"[{"id":"a","v":1,"rank":9}]"#, r#"[{"id":"a","v":2,"rank":1}]"#];
+    let vendor = sequenced(&BODIES);
+    let dir = project(&pipeline("shop", &vendor.url("/v1/{table}"), "", "[[pipeline.tables]]\nname = \"keyed\"\nprimary_key = [\"id\"]"));
+    ok(&fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z"));
+    ok(&fire(dir.path(), "shop", "r2", "2030-01-01T00:01:00Z"));
+    assert_eq!(rows(dir.path(), "SELECT id, v FROM shop_keyed"), serde_json::json!([["a", "2"]]), "the later ingest survives per key");
+
+    let vendor = sequenced(&BODIES);
+    let dir = project(&pipeline("shop", &vendor.url("/v1/{table}"), "", "[[pipeline.tables]]\nname = \"keyless\"\norder_by = \"rank\""));
+    ok(&fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z"));
+    ok(&fire(dir.path(), "shop", "r2", "2030-01-01T00:01:00Z"));
+    assert_eq!(rows(dir.path(), "SELECT id, v FROM shop_keyless ORDER BY v"), serde_json::json!([["a", "1"], ["a", "2"]]), "no key, so no row is picked over another");
+}
+
+/// `write_mode` is `append`, the default, or `replace`. Under `append` a run adds rows and no key retires; under `replace` the landing run is the table's whole current state.
+// spec: run.declare.write-mode@3b582937
+#[test]
+fn append_retires_no_key_and_replace_lands_the_whole_current_state() {
+    static BODIES: [&str; 2] = [r#"[{"id":"a","v":1},{"id":"b","v":1}]"#, r#"[{"id":"b","v":2}]"#];
+    let land = |mode: &str| {
+        let vendor = sequenced(&BODIES);
+        let table = format!("[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\n{mode}");
+        let dir = project(&pipeline("shop", &vendor.url("/v1/{table}"), "", &table));
+        ok(&fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z"));
+        ok(&fire(dir.path(), "shop", "r2", "2030-01-01T00:01:00Z"));
+        rows(dir.path(), "SELECT id, v FROM shop_items ORDER BY id")
+    };
+    assert_eq!(land(""), serde_json::json!([["a", "1"], ["b", "2"]]), "append is the default and retires no key");
+    assert_eq!(land("write_mode = \"append\""), serde_json::json!([["a", "1"], ["b", "2"]]));
+    assert_eq!(land("write_mode = \"replace\""), serde_json::json!([["b", "2"]]), "the replacing run is the whole state");
+}
+
+/// `incremental = "<field>"` names the stream clock on the pipeline. Declared, the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}; undeclared, it refetches in full.
+// spec: run.declare.incremental-field@6f26f764
+#[test]
+fn a_declared_clock_resumes_past_its_watermark_and_an_undeclared_one_refetches_in_full() {
+    let body = r#"[{"id":"a","at":5},{"id":"b","at":9}]"#;
+    let endpoint = |vendor: &Vendor| format!("[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", since_param = \"since\" }}\n", vendor.url("/v1/{table}"));
+    let vendor = Vendor::start(move |_| (200, body.to_string()));
+    let dir = project(&format!("[[pipeline]]\nid = \"shop\"\nincremental = \"at\"\ntables = [\"items\"]\n{}", endpoint(&vendor)));
+    ok(&fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z"));
+    ok(&fire(dir.path(), "shop", "r2", "2030-01-01T00:01:00Z"));
+    assert_eq!(vendor.targets(), ["/v1/items", "/v1/items?since=9"], "the second pull resumes past the committed watermark");
+
+    let vendor = Vendor::start(move |_| (200, body.to_string()));
+    let dir = project(&format!("[[pipeline]]\nid = \"shop\"\ntables = [\"items\"]\n{}", endpoint(&vendor)));
+    ok(&fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z"));
+    ok(&fire(dir.path(), "shop", "r2", "2030-01-01T00:01:00Z"));
+    assert_eq!(vendor.targets(), ["/v1/items", "/v1/items"], "no clock, so every pull is a full refetch");
+}
+
+/// A filter dropping a root row drops that row's nested children with it.
+// spec: run.transform.filter@8d1d9250
+#[test]
+fn a_filtered_root_row_lands_none_of_its_nested_children() {
+    let body = r#"[{"id":"a","status":"open","lines":[{"sku":"a1"},{"sku":"a2"}]},{"id":"b","status":"closed","lines":[{"sku":"b1"}]}]"#;
+    let vendor = Vendor::start(move |_| (200, body.to_string()));
+    let extra = "normalize = \"relational\"\ntransforms = [{ op = \"filter\", column = \"status\", equals = \"open\" }]";
+    let dir = project(&pipeline("shop", &vendor.url("/v1/{table}"), extra, "tables = [\"orders\"]"));
+    ok(&fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z"));
+    assert_eq!(rows(dir.path(), "SELECT id FROM shop_orders"), serde_json::json!([["a"]]));
+    assert_eq!(rows(dir.path(), "SELECT sku FROM shop_orders_lines ORDER BY sku"), serde_json::json!([["a1"], ["a2"]]), "the dropped row's children never land");
+    let parents = rows(dir.path(), "SELECT count(*) FROM shop_orders_lines l LEFT JOIN shop_orders o ON l.parent_id = o.row_id WHERE o.row_id IS NULL");
+    assert_eq!(parents, serde_json::json!([["0"]]), "no child references a parent that did not land");
+}
+
+/// TOML and JSON deserialize into one `PipelineSpec`; the JSON Schema derived from it is the contract, and `contextful schema export` writes it to `.contextful/schema/pipeline.json`.
+// spec: run.declare.serialization@f7abd47c
+#[test]
+fn schema_export_writes_the_pipeline_and_plan_schemas_under_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = ok(&cf(dir.path(), &["schema", "export"]));
+    let pipeline: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.path().join(".contextful/schema/pipeline.json")).unwrap()).unwrap();
+    let plan: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.path().join(".contextful/schema/plan.json")).unwrap()).unwrap();
+    assert_eq!(pipeline, contextful_core::pipeline::declare::pipeline_schema());
+    assert_eq!(plan, contextful_core::run::nodes::plan_schema());
+    assert!(out.contains(".contextful/schema/pipeline.json") && out.contains(".contextful/schema/plan.json"), "{out}");
+    // A rerun rewrites the same bytes.
+    let before = std::fs::read(dir.path().join(".contextful/schema/pipeline.json")).unwrap();
+    ok(&cf(dir.path(), &["schema", "export"]));
+    assert_eq!(std::fs::read(dir.path().join(".contextful/schema/pipeline.json")).unwrap(), before);
+
+    // The pipeline schema is the specification's contract: its title, its required keys and no stray key.
+    assert_eq!(pipeline["title"], "PipelineSpec");
+    assert_eq!(pipeline["additionalProperties"], serde_json::json!(false));
+    assert_eq!(pipeline["required"], serde_json::json!(["id", "source", "tables"]));
+    assert_eq!(pipeline["$defs"]["TableDecl"]["properties"]["columns"]["type"], "object", "`columns` admits no null the reader refuses");
+
+    // TOML and JSON both read into that one specification.
+    let project = project("");
+    let p = project.path();
+    std::fs::create_dir_all(p.join("pipelines")).unwrap();
+    std::fs::write(p.join("pipelines/a.toml"), "id = \"a\"\ntables = [\"orders\"]\n[source]\nname = \"http\"\nconfig = { endpoint = \"https://vendor.test\" }\n").unwrap();
+    std::fs::write(p.join("pipelines/b.json"), r#"{"id":"b","tables":["orders"],"source":{"name":"http","config":{"endpoint":"https://vendor.test"}}}"#).unwrap();
+    let valid = ok(&cf(p, &["pipeline", "validate"]));
+    assert!(valid.contains('a') && valid.contains('b'), "{valid}");
+
+    // Run from a subdirectory, the export lands under the project root.
+    std::fs::create_dir_all(p.join("sub")).unwrap();
+    ok(&cf(&p.join("sub"), &["schema", "export"]));
+    assert!(p.join(".contextful/schema/pipeline.json").is_file() && p.join(".contextful/schema/plan.json").is_file());
+    assert!(!p.join("sub/.contextful").exists(), "the export writes under the project root, not the working directory");
+}

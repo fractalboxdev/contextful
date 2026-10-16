@@ -20,8 +20,13 @@ pub const PLAN_VERSION_CHARS: usize = 16;
 /// The keys a `step` node carries beside its connector reference.
 const STEP_KEYS: [&str; 5] = ["id", "kind", "after", "connector", "retry"];
 
+/// Node keys guarding a node on data, and node kinds looping or switching on data: control
+/// flow a plan declares only as `branch` and `parallel` (`run.compile.control-flow`).
+const CONTROL_KEYS: [&str; 9] = ["if", "unless", "when", "while", "until", "loop", "repeat", "forEach", "condition"];
+const CONTROL_KINDS: [&str; 8] = ["if", "switch", "while", "until", "loop", "repeat", "for", "forEach"];
+
 /// One node's kind and the fields that kind declares.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub enum NodeKind {
     /// One connector pull, recorded once, under an optional retry schedule.
@@ -64,11 +69,30 @@ impl NodeKind {
 }
 
 /// One plan node: its id, its predecessor edges and its kind.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Node {
     pub id: String,
+    #[serde(default)]
     pub after: Vec<String>,
+    #[serde(flatten)]
     pub kind: NodeKind,
+}
+
+/// Plan JSON as the run path reads it: `{id, nodes}` (`run.compile.plan-schema`).
+#[derive(schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(title = "Plan", description = "A compiled plan: a flat node list with predecessor edges.")]
+#[allow(dead_code)]
+struct PlanDocument {
+    id: String,
+    nodes: Vec<Node>,
+}
+
+/// The JSON Schema of plan JSON, derived from [`Node`] and [`NodeKind`], the types
+/// [`NodePlan::compile`] deserializes (`run.compile.plan-schema`).
+pub fn plan_schema() -> Value {
+    serde_json::to_value(schemars::schema_for!(PlanDocument)).unwrap_or(Value::Null)
 }
 
 /// A compiled node plan: its nodes as written, its version, and the order the executor
@@ -157,6 +181,11 @@ impl NodePlan {
     fn check(&mut self) -> Result<(), RunError> {
         let ids: BTreeSet<&str> = self.nodes.iter().map(|n| n.id.as_str()).collect();
         let known = |from: &str, to: &str, edge: &str| -> Result<(), RunError> {
+            if to == from && matches!(edge, "predecessor" | "arm") {
+                return Err(RunError::PipelineUndeclaredControlFlow(format!(
+                    "node `{from}` loops onto itself as its {edge}; a plan declares branching as `branch` and fan-out as `parallel`"
+                )));
+            }
             if to == from {
                 return Err(invalid(format!("node `{from}` names itself as its {edge}")));
             }
@@ -268,7 +297,11 @@ impl NodePlan {
             });
             let Some(i) = next else {
                 let stuck: Vec<&str> = top.iter().map(|i| self.nodes[*i].id.as_str()).filter(|id| !placed.contains(id)).collect();
-                return Err(invalid(format!("plan `{}` holds a cycle through {}", self.id, stuck.join(", "))));
+                return Err(RunError::PipelineUndeclaredControlFlow(format!(
+                    "plan `{}` loops through {}; fan-out travels as `parallel` and an arm as `branch`",
+                    self.id,
+                    stuck.join(", ")
+                )));
             };
             placed.insert(&self.nodes[i].id);
             order.push(i);
@@ -284,6 +317,12 @@ fn parse_node(position: usize, value: &Value) -> Result<Node, RunError> {
         None => Vec::new(),
         Some(v) => serde_json::from_value(v.clone()).map_err(|_| invalid(format!("node `{id}`: `after` lists node ids")))?,
     };
+    if let Some(kind) = map.get("kind").and_then(Value::as_str).filter(|k| CONTROL_KINDS.contains(k)) {
+        return Err(RunError::PipelineUndeclaredControlFlow(format!("node `{id}` is a `{kind}`; a plan declares branching as `branch` and fan-out as `parallel`")));
+    }
+    if let Some(key) = map.keys().find(|k| CONTROL_KEYS.contains(&k.as_str())) {
+        return Err(RunError::PipelineUndeclaredControlFlow(format!("node `{id}` carries `{key}`; a plan declares branching as `branch` and fan-out as `parallel`")));
+    }
     if map.get("kind").and_then(Value::as_str) == Some("step") {
         if let Some(key) = map.keys().find(|k| !STEP_KEYS.contains(&k.as_str())) {
             return Err(RunError::PipelineInlineStepBody(format!("step `{id}` carries `{key}`; a step body is a connector reference alone")));

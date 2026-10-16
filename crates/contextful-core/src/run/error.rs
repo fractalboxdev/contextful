@@ -219,6 +219,9 @@ pub enum RunError {
     /// A plan step whose body is not a connector reference. (`run.compile.inline-step-body`)
     #[error("PipelineInlineStepBody: {0}")]
     PipelineInlineStepBody(String),
+    /// A data-dependent conditional or loop in a workflow body. (`run.compile.control-flow`)
+    #[error("PipelineUndeclaredControlFlow: {0}")]
+    PipelineUndeclaredControlFlow(String),
     /// One node id repeated in a plan. (`run.compile.node-id-collision`)
     #[error("PipelineNodeIdCollision: {0}")]
     PipelineNodeIdCollision(String),

@@ -55,6 +55,7 @@ mod reside;
 #[cfg(feature = "data-plane")]
 mod run;
 mod root;
+mod schema;
 #[cfg(feature = "data-plane")]
 mod secrets;
 #[cfg(feature = "data-plane")]
@@ -235,6 +236,9 @@ enum Cmd {
     /// Elaborate and audit the Lean models under `formal/`.
     #[command(subcommand)]
     Formal(formal::FormalCmd),
+    /// Export the JSON Schemas of the pipeline specification and the plan.
+    #[command(subcommand)]
+    Schema(schema::SchemaCmd),
     /// The decode worker a compiled-in source runs behind the process boundary
     /// (`run.land.parse-boundary`): standard input in, decoded JSON out.
     #[cfg(feature = "pdf")]
@@ -322,6 +326,7 @@ pub fn main_host(host: Host) {
         #[cfg(feature = "data-plane")]
         Cmd::Eval(c) => eval::run(c),
         Cmd::Formal(c) => formal::run(c),
+        Cmd::Schema(c) => schema::run(c),
         #[cfg(not(feature = "data-plane"))]
         Cmd::Absent(argv) => absent(&argv),
         #[cfg(feature = "pdf")]
