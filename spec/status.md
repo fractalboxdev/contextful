@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 154 | 0 | 154 |
 | `read` | 2 | 20 | 287 | 46 | 29 | 15 | 245 | 0 | 245 |
-| `run` | 3 | 29 | 529 | 116 | 45 | 14 | 497 | 0 | 497 |
+| `run` | 3 | 29 | 530 | 117 | 45 | 14 | 498 | 0 | 498 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2594 | 655 | 212 | 73 | 2275 | 0 | |
+| **total** | 22 | 169 | 2595 | 656 | 212 | 73 | 2276 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 246 | 243 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
-| 3 — The run path | 12 | 275 | 264 | passing | closed |
+| 3 — The run path | 12 | 276 | 265 | passing | closed |
 | 4 — Ingest | 25 | 586 | 474 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 257 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
@@ -1550,6 +1550,7 @@ Unscheduled operations: 13.
 | `run.journal.d1-guard` | `spec/pins.toml` | performed |
 | `run.journal.d1-profile` | `spec/pins.toml` | performed |
 | `run.journal.d1-recovery` | `spec/pins.toml` | performed |
+| `run.journal.d1-transport` | `spec/pins.toml` | performed |
 | `run.journal.effect-boundary` | `crates/contextful-engine/tests/integration/execution.rs::a_body_resumed_across_a_step_and_an_awakeable_commits_what_an_uninterrupted_one_commits` | performed |
 | `run.journal.entry-key` | `crates/contextful-engine/tests/integration/journal.rs::a_racing_caller_waits_for_the_first_callers_value` | performed |
 | `run.journal.escape-hatch` | `crates/contextful-engine/tests/integration/execution.rs::an_unsafe_read_reruns_on_every_replay_and_each_hatch_states_its_argument` | performed |

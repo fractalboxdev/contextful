@@ -1,6 +1,6 @@
 import { Container } from "@cloudflare/containers";
 import { handleExecutionBinding, type ExecutionBindings } from "./binding.ts";
-import { completeConformanceReport, type ReleaseProvenance } from "./conformance.ts";
+import { admitConformanceRun, completeConformanceReport, type ReleaseProvenance } from "./conformance.ts";
 
 /** The Container's outbound virtual host resolves D1 and R2 inside its Worker. */
 export class D1ExecutionContainer extends Container<ContextfulExecutionEnv> {
@@ -29,6 +29,7 @@ export class D1ExecutionContainer extends Container<ContextfulExecutionEnv> {
     const container = this.ctx.container;
     if (!container) throw new Error("ConformanceContainerUnavailable");
     if (!container.running) await this.start();
+    await admitConformanceRun(async (argv) => ({ exitCode: (await (await container.exec(argv)).output()).exitCode }));
     const reportPath = `/work/conformance-${crypto.randomUUID()}.json`;
     const process = await container.exec([
       "/usr/local/bin/contextful-conformance",
