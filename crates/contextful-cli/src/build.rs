@@ -80,7 +80,7 @@ fn parse_duration(s: &str) -> std::result::Result<u64, String> {
     duration_secs(s).ok_or_else(|| format!("`{s}` is not an integer above zero followed by s, m, h or d"))
 }
 
-fn now(flag: &Option<String>) -> Result<Instant> {
+pub(crate) fn now(flag: &Option<String>) -> Result<Instant> {
     match flag {
         Some(s) => Ok(Instant::parse(s)?),
         None => {
@@ -110,7 +110,7 @@ fn model(declaration: &Path, id: &str) -> Result<ModelSpec> {
 
 /// The declared model `id`, refused while the declared models hold a cycle
 /// (`run.model.model-cycle`), before any store is read.
-fn buildable(declaration: &Path, id: &str) -> Result<ModelSpec> {
+pub(crate) fn buildable(declaration: &Path, id: &str) -> Result<ModelSpec> {
     let spec = model(declaration, id)?;
     let files = manifests(declaration)?;
     let mut specs = Vec::new();

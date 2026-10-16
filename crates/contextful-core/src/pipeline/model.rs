@@ -184,6 +184,50 @@ pub struct DisclosureDecl {
     pub forbidden_columns: Vec<String>,
     #[serde(default)]
     pub metric_bounds: BTreeMap<String, MetricBounds>,
+    /// The epsilon one release reserves from each contributing unit
+    /// (`disclosure.release.spend-declaration`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub per_run_spend: Option<f64>,
+}
+
+/// A project manifest's top-level `[disclosure]` block (`disclosure.release.lifetime-cap`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectDisclosureDecl {
+    /// The epsilon each contributing unit spends across every release.
+    #[serde(default)]
+    pub unit_lifetime_cap: Option<f64>,
+}
+
+impl ProjectDisclosureDecl {
+    /// Each unit's lifetime cap in micro-epsilon; zero when undeclared.
+    pub fn cap_micros(&self) -> u64 {
+        self.unit_lifetime_cap.and_then(crate::disclosure::noise::Spend::from_epsilon).map_or(0, |s| s.micros())
+    }
+}
+
+/// The `[disclosure]` block the manifest files declare; at most one file declares it, and
+/// a cap that is negative, not finite, or beyond the micro-epsilon range refuses as
+/// `PipelineSpecInvalid`.
+pub fn project_disclosure(files: &[ManifestFile]) -> Result<ProjectDisclosureDecl, RunError> {
+    let mut found: Option<(&str, ProjectDisclosureDecl)> = None;
+    for file in files {
+        let value: toml::Value = toml::from_str(&file.text).map_err(|e| RunError::PipelineSpecInvalid(format!("{}: {e}", file.path)))?;
+        let Some(block) = value.get("disclosure") else { continue };
+        let decl: ProjectDisclosureDecl =
+            block.clone().try_into().map_err(|e| RunError::PipelineSpecInvalid(format!("{}: `[disclosure]`: {e}", file.path)))?;
+        if decl.unit_lifetime_cap.is_some_and(|cap| !(cap.is_finite() && cap >= 0.0)) {
+            return Err(RunError::PipelineSpecInvalid(format!("{}: `[disclosure]` `unit_lifetime_cap` is not a finite epsilon at least 0", file.path)));
+        }
+        if decl.unit_lifetime_cap.is_some_and(|cap| (cap * crate::disclosure::noise::MICROS_PER_EPSILON as f64).round() >= u64::MAX as f64) {
+            return Err(RunError::PipelineSpecInvalid(format!("{}: `[disclosure]` `unit_lifetime_cap` exceeds the micro-epsilon range", file.path)));
+        }
+        if let Some((first, _)) = found {
+            return Err(RunError::PipelineSpecInvalid(format!("`[disclosure]` is declared in both {first} and {}", file.path)));
+        }
+        found = Some((&file.path, decl));
+    }
+    Ok(found.map(|(_, d)| d).unwrap_or_default())
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -609,13 +653,14 @@ pub fn regenerate<T: Clone>(existing: &[T], derived: &[T], key: impl Fn(&T) -> S
 }
 
 /// The top-level keys a manifest file holds (`run.model.top-level-block`).
-pub const MANIFEST_BLOCKS: [&str; 25] = [
+pub const MANIFEST_BLOCKS: [&str; 26] = [
     "acl_sweep",
     "authoring_posture",
     "capabilities",
     "connector",
     "control",
     "derive",
+    "disclosure",
     "export",
     "job",
     "limiters",

@@ -29,6 +29,13 @@ impl Spend {
         whole.checked_mul(MICROS_PER_EPSILON).and_then(Spend::from_micros)
     }
 
+    /// `epsilon` rounded to micro-epsilon; `None` unless finite and at least one
+    /// micro-epsilon.
+    pub fn from_epsilon(epsilon: f64) -> Option<Spend> {
+        let micros = (epsilon * MICROS_PER_EPSILON as f64).round();
+        (micros.is_finite() && micros >= 1.0 && micros < u64::MAX as f64).then(|| Spend::from_micros(micros as u64)).flatten()
+    }
+
     pub fn micros(self) -> u64 {
         self.0.get()
     }

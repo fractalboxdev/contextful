@@ -112,6 +112,38 @@ impl BudgetLedger for MemoryLedger {
     }
 }
 
+/// The per-run spend a policy declares (`disclosure.release.spend-declaration`).
+pub fn spend_of(policy: &DisclosureDecl) -> Result<Spend, DisclosureError> {
+    match policy.per_run_spend {
+        Some(epsilon) => Spend::from_epsilon(epsilon).ok_or_else(|| {
+            DisclosureError::SpendUndeclared(format!("`per_run_spend` = {epsilon} is not a finite epsilon of at least one micro-epsilon"))
+        }),
+        None => Err(DisclosureError::SpendUndeclared("`[model.disclosure]` declares no `per_run_spend`".into())),
+    }
+}
+
+/// What a release request asks to publish (`disclosure.release.lookalike-refusal`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReleaseOutput {
+    /// One derived table of noised aggregate figures.
+    #[default]
+    Table,
+    ActivationHandle,
+    LookalikeSegment,
+}
+
+impl ReleaseOutput {
+    /// Admit the request; an activation handle or lookalike segment has no release path
+    /// until an audience and consent contract exists.
+    pub fn admit(self) -> Result<(), DisclosureError> {
+        match self {
+            ReleaseOutput::Table => Ok(()),
+            ReleaseOutput::ActivationHandle => Err(DisclosureError::LookalikeUnsupported("a release publishes no activation handle".into())),
+            ReleaseOutput::LookalikeSegment => Err(DisclosureError::LookalikeUnsupported("a release publishes no lookalike segment".into())),
+        }
+    }
+}
+
 /// A governed statement's output: one row per group and contributor.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Breakdown {

@@ -48,6 +48,7 @@ DisclosureStaticPepper               = { clause = "disclosure.set-mode.hashed-jo
 DisclosureMetricBoundsAbsent         = { clause = "disclosure.release.metric-bounds", gloss = "A noised sum has no finite contributor bounds or positive quantum." }
 DisclosureLookalikeUnsupported       = { clause = "disclosure.release.lookalike-refusal", gloss = "A release requests an activation handle or lookalike segment." }
 DisclosureUnitBudgetExhausted        = { clause = "disclosure.release.budget-reservation", gloss = "A contributing unit's budget reservation failed; nothing is published." }
+DisclosureSpendUndeclared            = { clause = "disclosure.release.spend-declaration", gloss = "A released model's policy declares no positive per-run spend." }
 DisclosureDuplicateGrain             = { clause = "disclosure.release.duplicate-grain", gloss = "A carried non-grain column is not constant within its group." }
 DisclosureGroupKeyNotPermitted       = { clause = "disclosure.release.group-key", gloss = "A group key is not a subset of the permitted grouping columns." }
 DisclosureContributorKeyAbsent       = { clause = "disclosure.release.contributor-key", gloss = "A governed statement omits the contributor key." }
