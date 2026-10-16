@@ -37,7 +37,7 @@ sequenceDiagram
   end
 ```
 
-Ranked reads go through `corpus.retrieve` ({{read.retrieve.ranked-call}}): content tokens ({{read.retrieve.content-tokens}}), a recency-ordered window per table ({{read.retrieve.candidate-window}}) that sidecars widen without changing scores ({{read.retrieve.sidecar-generates-candidates}}), a full-text probe over the snapshot ({{read.retrieve.fulltext-probe}}) and a relevance floor ({{read.retrieve.relevance-floor}}). Ranking fuses cosine with BM25 ({{read.rank.fusion}}); a question's timeframe is a tier, not a filter ({{read.rank.question-window-is-a-tier}}). A missing lexical backend changes the order, never the answer ({{read.rank.degradation-not-error}}).
+Ranked reads use `corpus.retrieve` ({{read.retrieve.ranked-call}}) over a prefix and table list ({{read.retrieve.table-list}}): content tokens ({{read.retrieve.content-tokens}}), a per-table recency window ({{read.retrieve.candidate-window}}) that sidecars widen ({{read.retrieve.sidecar-generates-candidates}}), a full-text probe ({{read.retrieve.fulltext-probe}}) and a relevance floor ({{read.retrieve.relevance-floor}}). Ranking fuses cosine with BM25 ({{read.rank.fusion}}); a question's timeframe is a tier, not a filter ({{read.rank.question-window-is-a-tier}}). A missing lexical backend changes the order, never the answer ({{read.rank.degradation-not-error}}).
 
 ```mermaid
 sequenceDiagram

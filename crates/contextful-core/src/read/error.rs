@@ -22,6 +22,9 @@ pub enum ReadError {
     /// A ranked read's filter exceeded its value, condition or byte budget. (`read.retrieve.filter-budget-refusal`)
     #[error("FilterBudgetExceeded: {0}")]
     FilterBudgetExceeded(String),
+    /// A ranked read listed a table name outside the session's relations. (`read.retrieve.table-list`)
+    #[error("RetrieveTableUnavailable: {0}")]
+    RetrieveTableUnavailable(String),
     /// A tenant-scoped token named the request-ledger child relation. (`read.register.scoped-ledger`)
     #[error("LedgerNotTenantScoped: {0}")]
     LedgerNotTenantScoped(String),
@@ -89,6 +92,7 @@ impl ReadError {
             ReadError::ReadResponseTooLarge(_) => "ReadResponseTooLarge",
             ReadError::FilePreviewNotATable(_) => "FilePreviewNotATable",
             ReadError::FilterBudgetExceeded(_) => "FilterBudgetExceeded",
+            ReadError::RetrieveTableUnavailable(_) => "RetrieveTableUnavailable",
             ReadError::LedgerNotTenantScoped(_) => "LedgerNotTenantScoped",
             ReadError::PinnedBuildUnavailable(_) => "PinnedBuildUnavailable",
             ReadError::QueryParameterRejected(_) => "QueryParameterRejected",

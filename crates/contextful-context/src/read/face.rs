@@ -1604,6 +1604,7 @@ fn builtin_tool(name: &str) -> Value {
                     }
                 },
                 "kinds": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+                "tables": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
                 "limit": { "type": "integer" }, "as_of": { "type": "string" }, "since": { "type": "string" },
                 "min_score": { "type": "integer" }, "internals": { "type": "boolean" }, "zone": { "type": "string" }
             }),

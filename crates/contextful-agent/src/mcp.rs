@@ -640,7 +640,16 @@ impl<'a> Tools<'a> {
                 })
             }
             "corpus.retrieve" => {
-                only(args, name, &["prefix", "query", "query_embedding", "filter", "kinds", "limit", "since", "min_score", "internals"])?;
+                only(args, name, &["prefix", "tables", "query", "query_embedding", "filter", "kinds", "limit", "since", "min_score", "internals"])?;
+                let tables = match arg(args, "tables") {
+                    None => None,
+                    Some(Value::Array(xs)) if !xs.is_empty() => Some(
+                        xs.iter()
+                            .map(|x| x.as_str().map(str::to_string).ok_or_else(|| invalid("`tables` lists strings")))
+                            .collect::<Result<Vec<String>, _>>()?,
+                    ),
+                    Some(_) => return Err(invalid("`tables` is a non-empty list of strings")),
+                };
                 let kinds = match arg(args, "kinds") {
                     None => None,
                     Some(Value::Array(xs)) => Some(
@@ -665,6 +674,7 @@ impl<'a> Tools<'a> {
                     // The face checks the filter's shape and budget in-band
                     // (`read.retrieve.filter-budget-refusal`).
                     filter: arg(args, "filter").cloned(),
+                    tables,
                     kinds,
                     limit: integer(args, "limit")?,
                     max_duration_ms: integer(args, "max_duration_ms")?,

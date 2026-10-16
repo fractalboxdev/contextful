@@ -276,7 +276,9 @@ Resolution of one stored citation through the caller's registered relation, incl
 
 Candidate generation for a ranked read: content tokens, the relevance floor, per-table arms, dedup, snippet.
 
-- `ranked-call` — `corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.
+- `ranked-call` — `corpus.retrieve({prefix, tables?, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns ranked rows across item and artifact genres under `prefix` and `tables`, each with a snippet and provenance, composing the query surface and memory recall, storing nothing.
+- `table-list` — `tables` lists relation names and intersects `prefix`: an arm runs for each session relation matching both. A listed name outside the session's relations raises `RetrieveTableUnavailable` naming it, identically for an absent and an ungranted table, keeping {{authority.filter-rows.default-deny}}.
+  *because one identical refusal for an absent and an ungranted table confirms neither exists, and a silently skipped typo answers a different question*
 - `rerank-argument` — The ranked call also takes `query_embedding_model?`, naming the model behind `query_embedding`, and `rerank_with?`, naming the reranker {{read.rank.rerank}} applies.
   *because a caller-supplied vector and a reranked order are each meaningful only with the model that produced them*
 - `relevance-floor` — A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.
