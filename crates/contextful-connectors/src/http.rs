@@ -677,6 +677,8 @@ pub struct HttpSource {
     /// The client the scope probe takes: the page client's mediation, the probe endpoint's
     /// origin, and no body read.
     probe_client: Option<Client>,
+    /// The client a fingerprint HEAD takes: the page client's mediation and no body read.
+    head_client: Client,
     probed: bool,
     /// Whether a pull walks every page: under a monotonic cursor the position is a
     /// watermark, which carries no page token.
@@ -705,8 +707,9 @@ impl HttpSource {
             }
             None => None,
         };
+        let head_client = mediation.client(allow.clone(), origin.clone(), config.limiter.as_ref()).without_body();
         let client = Arc::new(mediation.client(allow.clone(), origin, config.limiter.as_ref()));
-        Ok(HttpSource { config, table: table.to_string(), resolver, client, allow, probe_client, probed: false, watermarked: false, clock_field: None, seen: Vec::new(), requests: 0 })
+        Ok(HttpSource { config, table: table.to_string(), resolver, client, allow, probe_client, head_client, probed: false, watermarked: false, clock_field: None, seen: Vec::new(), requests: 0 })
     }
 
     /// The source serving a monotonic cursor: one pull walks every page from the watermark.
@@ -737,6 +740,24 @@ impl HttpSource {
             out.push((name.clone(), if t.has_reference() { HeaderValue::Sensitive(v.into()) } else { HeaderValue::Plain(v.reveal().to_string()) }));
         }
         Ok(out)
+    }
+
+    /// A cheap fingerprint of the table's resource: one HEAD of its URL under the declared
+    /// headers, reading no body, spelling the answer's `ETag`, `Last-Modified` and
+    /// `Content-Length` (`run.seed.fingerprint`). `None` when the HEAD fails, answers outside
+    /// 2xx, or carries none of the three.
+    pub fn fingerprint(&self) -> Option<String> {
+        let url = self.config.table_url(&self.table).ok()?;
+        let headers = self.headers("fingerprint").ok()?;
+        let resp = self.head_client.send("HEAD", &url, &headers, None).ok()?;
+        if !(200..300).contains(&resp.status) {
+            return None;
+        }
+        let parts: Vec<String> = [("etag", "etag"), ("last-modified", "last-modified"), ("content-length", "length")]
+            .iter()
+            .filter_map(|(header, name)| resp.header(header).map(|v| format!("{name}={}", v.trim())))
+            .collect();
+        (!parts.is_empty()).then(|| parts.join(";"))
     }
 
     /// Run the declared scope probe once, ahead of the source's first request

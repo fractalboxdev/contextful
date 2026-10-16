@@ -235,6 +235,17 @@ impl Catalog for LocalCatalog {
         replace(&self.scope_path(&at), &to_json(&scope)?)
     }
 
+    fn delete_chunks(&self, pipeline_id: &str, table: &str) -> Result<Vec<ChunkRow>, Failure> {
+        let _lock = self.lock()?;
+        let removed = self.chunks(pipeline_id, table)?;
+        let dir = self.root.join("scopes").join(segment(pipeline_id)).join("%chunk").join(segment(table));
+        match std::fs::remove_dir_all(&dir) {
+            Ok(()) => Ok(removed),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(removed),
+            Err(e) => Err(crate::fsutil::storage(&dir, e)),
+        }
+    }
+
     fn update_chunk(&self, at: &OwnerScope, retire: Option<&str>, f: &mut dyn FnMut(&mut ChunkRow)) -> Result<Option<ChunkRow>, Failure> {
         let _lock = self.lock()?;
         let mut scope = self.scope(at)?;

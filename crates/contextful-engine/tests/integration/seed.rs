@@ -6,7 +6,7 @@ use crate::support::{plan, Pages, Rig, Sink};
 use contextful_core::pipeline::normalize::{Mode, Normalize};
 use contextful_core::pipeline::seed::{Ceiling, SeedCeiling};
 use contextful_core::run::advance::CursorKind;
-use contextful_core::run::backfill::{Bound, ChunkStatus, Window};
+use contextful_core::run::backfill::{Bound, ChunkStatus, PipelinePhase, Window};
 use contextful_core::run::own::{ConnectorPin, OwnerScope};
 use contextful_core::run::plan::Plan;
 use contextful_core::run::ports::{Row, Shape, Unshaped};
@@ -323,4 +323,109 @@ fn a_moved_fingerprint_refuses_and_an_absent_one_skips_with_a_warning() {
     assert_eq!(rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-4"), &mut source, &Unshaped, &mut sink, &probe(Some("f1"))).unwrap(), SeedOutcome::Unchanged);
     assert!(source.calls().is_empty(), "no skipped or refused run pulls the source");
     assert_eq!(sink.commits.len(), 1);
+}
+
+/// Seeded rows travel {{run.land.stage-order}} unchanged; attribution survives only in the load id and a run recorded
+/// under the `seeding` phase.
+// spec: run.seed.one-land-path@e297356e
+#[test]
+fn a_seed_chunk_lands_in_the_live_table_under_the_seeding_phase() {
+    let rig = Rig::new();
+    chunks(&rig, 1);
+    let mut sink = Sink::default();
+    let row = ran(rig.engine.seeding().run_next(&load(json!(100), CursorKind::OpaqueToken), &spec(&seed_plan(), "seed-1"), &mut Pages::new(vec![vec![stamped("a", 10)]]), &Unshaped, &mut sink, &probe(None)));
+    assert_eq!(row.status, RunStatus::Success, "{:?}", row.error_message);
+    assert_eq!(row.pipeline_phase, Some(PipelinePhase::Seeding));
+    assert_eq!(rig.row("seed-1").pipeline_phase, Some(PipelinePhase::Seeding), "the catalog row records the phase");
+    assert_eq!(serde_json::to_value(rig.row("seed-1")).unwrap()["pipeline_phase"], json!("seeding"));
+    assert_eq!((sink.commits[0].table.as_str(), sink.commits[0].run_id.as_str()), (TABLE, "seed-1"), "the live table receives the rows under the seed's load id");
+    assert_eq!(sink.commits[0].batches, [vec![stamped("a", 10).as_object().unwrap().clone()]], "the rows land as pulled");
+
+    let live = rig.run(&seed_plan(), "1.0.0", "live-1", &mut Pages::new(vec![vec![stamped("b", 200)]]), &mut sink).unwrap();
+    assert_eq!(live.status, RunStatus::Success, "{:?}", live.error_message);
+    assert_eq!(live.pipeline_phase, None, "a live run records no seeding phase");
+    assert!(serde_json::to_value(&live).unwrap().get("pipeline_phase").is_none());
+}
+
+/// A seeding run is exempt from {{run.own.pinned-plan-changed}} and records its connector identity as provenance.
+// spec: run.seed.connector-pin@835c66e9
+#[test]
+fn a_pending_seed_owner_resumes_under_a_moved_connector_and_records_it() {
+    let rig = Rig::new();
+    chunks(&rig, 1);
+    let bound = load(json!(100), CursorKind::OpaqueToken);
+    let mut sink = Sink::default();
+    let mut source = Pages::new(vec![vec![stamped("a", 10)], vec![stamped("b", 20)]]);
+    source.die_after = Some(0);
+    let died = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-1"), &mut source, &Unshaped, &mut sink, &probe(None))
+    }));
+    assert!(died.is_err(), "the seed run dies mid-chunk");
+    let chunk = OwnerScope::chunk(PIPELINE, SEED_TABLE, "c0");
+    let held = rig.catalog().owner_at(&chunk).unwrap().expect("the dead run leaves its owner pending");
+    rig.clock.advance(400);
+
+    let mut moved = spec(&seed_plan(), "seed-2");
+    moved.connector.version = "2.0.0".into();
+    let row = ran(rig.engine.seeding().run_next(&bound, &moved, &mut source, &Unshaped, &mut sink, &probe(None)));
+    assert_eq!(row.status, RunStatus::Success, "{:?}", row.error_message);
+    assert_eq!(row.execution_id, held.execution_id, "the seed resumes its pending execution");
+    assert_eq!((row.connector_id.as_str(), row.connector_version.as_str()), ("dump", "2.0.0"), "the row records the build it ran");
+    assert_eq!(rig.row("seed-1").connector_version, "1.0.0", "the first attempt keeps its own provenance");
+    assert!(rig.catalog().owner_at(&chunk).unwrap().is_none(), "the completed chunk retires its owner");
+}
+
+/// A chunk a killed seed run left running idles while that run's owner lease holds, then settles failed and runs
+/// to the seed commit once the lease lapses.
+#[test]
+fn a_chunk_a_dead_seed_run_left_running_is_retaken_once_its_lease_lapses() {
+    let rig = Rig::new();
+    chunks(&rig, 1);
+    let bound = load(json!(100), CursorKind::OpaqueToken);
+    let mut sink = Sink::default();
+    let mut source = Pages::new(vec![vec![stamped("a", 10)], vec![stamped("b", 20)]]);
+    source.die_after = Some(0);
+    let died = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-1"), &mut source, &Unshaped, &mut sink, &probe(Some("f1")))
+    }));
+    assert!(died.is_err(), "the seed run dies mid-chunk");
+    let chunk = OwnerScope::chunk(PIPELINE, SEED_TABLE, "c0");
+    assert_eq!(rig.catalog().chunk_at(&chunk).unwrap().unwrap().status, ChunkStatus::Running, "the dead run leaves its chunk running");
+    let mut idle = Pages::new(vec![vec![stamped("z", 1)]]);
+    assert_eq!(rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-2"), &mut idle, &Unshaped, &mut sink, &probe(Some("f1"))).unwrap(), SeedOutcome::Idle, "a held lease keeps the chunk");
+    assert!(idle.calls().is_empty());
+
+    rig.clock.advance(400);
+    let row = ran(rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-3"), &mut source, &Unshaped, &mut sink, &probe(Some("f1"))));
+    assert_eq!(row.status, RunStatus::Success, "{:?}", row.error_message);
+    assert_eq!(rig.catalog().chunk_at(&chunk).unwrap().unwrap().status, ChunkStatus::Done);
+    assert!(rig.engine.seeding().state(PIPELINE, TABLE).unwrap().committed(), "the retaken chunk completes the seed");
+}
+
+/// `seed reset` clears the seed's chunk plan and commit stamp; the next run plans and loads the seed again, and rows
+/// the seed landed stay.
+#[test]
+fn a_reset_clears_the_seed_plan_and_stamp_so_the_next_run_reloads() {
+    let rig = Rig::new();
+    chunks(&rig, 1);
+    let bound = load(json!(100), CursorKind::OpaqueToken);
+    let mut sink = Sink::default();
+    ran(rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-1"), &mut Pages::new(vec![vec![stamped("a", 10)]]), &Unshaped, &mut sink, &probe(Some("f1"))));
+    assert!(rig.engine.seeding().state(PIPELINE, TABLE).unwrap().committed());
+
+    let removed = rig.engine.seeding().reset(PIPELINE, TABLE).unwrap();
+    assert_eq!(removed.iter().map(|c| c.chunk.as_str()).collect::<Vec<_>>(), ["c0"]);
+    let state = rig.engine.seeding().state(PIPELINE, TABLE).unwrap();
+    assert!(state.chunks.is_empty() && !state.committed(), "{state:?}");
+    assert_eq!(rig.catalog().cursor_at(&OwnerScope::chunk(PIPELINE, SEED_TABLE, "c0")).unwrap().position, None, "the chunk scope's position goes with it");
+    assert_eq!(sink.commits.len(), 1, "landed rows stay");
+    assert!(rig.engine.seeding().reset(PIPELINE, TABLE).unwrap().is_empty(), "a second reset finds nothing");
+
+    // The moved source reloads rather than refusing.
+    let mut source = Pages::new(vec![vec![stamped("b", 20)]]);
+    assert_eq!(rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-2"), &mut source, &Unshaped, &mut sink, &probe(Some("f2"))).unwrap(), SeedOutcome::Idle, "an unplanned seed idles");
+    chunks(&rig, 1);
+    let row = ran(rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-3"), &mut source, &Unshaped, &mut sink, &probe(Some("f2"))));
+    assert_eq!(row.status, RunStatus::Success, "{:?}", row.error_message);
+    assert_eq!(rig.engine.seeding().state(PIPELINE, TABLE).unwrap().fingerprint, Some(Some("f2".to_string())));
 }

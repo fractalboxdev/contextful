@@ -204,6 +204,9 @@ impl Catalog for RecordedCatalog {
     fn update_chunk(&self, scope: &OwnerScope, retire: Option<&str>, f: &mut dyn FnMut(&mut ChunkRow)) -> std::result::Result<Option<ChunkRow>, Failure> {
         self.inner.update_chunk(scope, retire, f)
     }
+    fn delete_chunks(&self, pipeline_id: &str, table: &str) -> std::result::Result<Vec<ChunkRow>, Failure> {
+        self.inner.delete_chunks(pipeline_id, table)
+    }
     fn put_run(&self, row: &RunRow) -> std::result::Result<(), Failure> {
         self.record(row)?;
         self.inner.put_run(row)

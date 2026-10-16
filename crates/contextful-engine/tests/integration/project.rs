@@ -48,6 +48,7 @@ fn row(run_id: &str, st: RunStatus) -> RunRow {
         connector_hash: "ab".into(),
         trace_id: None,
         phase: Phase::Commit,
+        pipeline_phase: None,
         execution_id: "exec-1".into(),
         stop: None,
         host_scope: None,
