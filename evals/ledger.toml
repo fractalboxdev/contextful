@@ -601,7 +601,7 @@ metric = "recall.keyed.evidence_gate_p99_us"
 kind   = "bench"
 tier   = "trend"
 direction = "lower_is_better"
-method = { issue = 517 }
+method = { test = "contextful_memory::recall::keyed_recall_latency_over_a_full_window_at_the_evidence_gate_bound" }
 
 # ---------------------------------------------------------------- assurance
 

@@ -12,7 +12,10 @@ use contextful_core::store::declare::TableDecl;
 use contextful_core::store::relation::{ident, relation};
 use contextful_core::store::reserve::{ROW_SEQ, RUN_ID};
 use contextful_policy::enforce::session::Session;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+
+/// Per cited table and run, the cited sequences one batched statement found readable.
+pub(crate) type ReadableRows = BTreeMap<(String, String), BTreeSet<i64>>;
 
 /// How a citation stamped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,11 +158,29 @@ impl Face {
     /// cited row visible through the relation or, failing that, a live row of its key
     /// (`read.recall.evidence-key`), and no cell of the table masked or nulled by zone.
     pub(crate) fn evidence_read(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef, outer: &BTreeSet<String>, request: Option<u64>) -> Result<EvidenceRead, ReadFault> {
+        self.evidence_read_given(engine, session, r, outer, request, None)
+    }
+
+    /// [`Face::evidence_read`], with `row_read` answering whether the cited run and
+    /// sequence reads where a batched statement already resolved it.
+    pub(crate) fn evidence_read_given(
+        &self,
+        engine: &SqlEngine,
+        session: &Session,
+        r: &EvidenceRef,
+        outer: &BTreeSet<String>,
+        request: Option<u64>,
+        row_read: Option<bool>,
+    ) -> Result<EvidenceRead, ReadFault> {
         let Some(relation) = session.relation(&r.table) else { return Ok(EvidenceRead::UnknownTable) };
         let mut touched = outer.clone();
         touched.insert(r.table.clone());
         let deadline = self.duration_budget(session, &touched, request);
-        let read = if self.row_reads(engine, relation.name(), r, deadline)? {
+        let row_read = match row_read {
+            Some(read) => read,
+            None => self.row_reads(engine, relation.name(), r, deadline)?,
+        };
+        let read = if row_read {
             EvidenceRead::Readable
         } else if self.key_reads(engine, session, relation.name(), r, deadline)? {
             EvidenceRead::Stale
@@ -171,6 +192,62 @@ impl Face {
         } else {
             read
         })
+    }
+
+    /// The cited sequences of `refs` that read through `session`, keyed by cited table and
+    /// run, each table and run resolved with one statement appended to `executed`
+    /// (`read.recall.keyed-evidence-batch`). A table the session does not register
+    /// resolves nothing; a statement fault other than the duration ceiling resolves no
+    /// sequence of its run, which the per-citation read then answers.
+    pub(crate) fn readable_rows(
+        &self,
+        engine: &SqlEngine,
+        session: &Session,
+        refs: &[EvidenceRef],
+        outer: &BTreeSet<String>,
+        request: Option<u64>,
+        executed: &mut Vec<String>,
+    ) -> Result<ReadableRows, ReadFault> {
+        let mut cited: BTreeMap<(String, String), BTreeSet<i64>> = BTreeMap::new();
+        for r in refs {
+            cited.entry((r.table.clone(), r.run.clone())).or_default().insert(r.seq);
+        }
+        let mut readable = ReadableRows::new();
+        for ((table, run), seqs) in cited {
+            let Some(relation) = session.relation(&table) else { continue };
+            let mut touched = outer.clone();
+            touched.insert(table.clone());
+            let deadline = self.duration_budget(session, &touched, request);
+            let listed: Vec<String> = seqs.iter().map(i64::to_string).collect();
+            let sql = format!(
+                "SELECT DISTINCT {} FROM {} WHERE {} = ? AND {} IN ({})",
+                ident(ROW_SEQ),
+                ident(relation.name()),
+                ident(RUN_ID),
+                ident(ROW_SEQ),
+                listed.join(", ")
+            );
+            let parameters = Bindings::positional([Bound::Text(run.clone())]);
+            let result = match deadline {
+                Some((ms, source)) => engine.run_timed(&sql, &parameters, None, ms, source),
+                None => engine.run(&sql, &parameters, None),
+            };
+            executed.push(sql);
+            let rows = match result {
+                Ok((_, rows)) => rows,
+                Err(error) if error.refusal().is_some_and(|r| r.identifier() == "ReadDurationExceeded") => return Err(error),
+                Err(_) => continue,
+            };
+            let found: BTreeSet<i64> = rows
+                .iter()
+                .filter_map(|row| match row.first() {
+                    Some(Cell::Integer { value, .. }) => i64::try_from(*value).ok(),
+                    _ => None,
+                })
+                .collect();
+            readable.insert((table, run), found);
+        }
+        Ok(readable)
     }
 
     /// Whether the row a citation's run and sequence name reads through `relation`.

@@ -7,7 +7,7 @@ use super::fault::ReadFault;
 use contextful_core::enforce::EnforceError;
 use contextful_core::memory::calibrate::{Calibration, Confidence, Settled};
 use contextful_core::memory::declare::Shape;
-use contextful_core::memory::recall::{admit, withheld, Admission, EvidenceRead, Grounding};
+use contextful_core::memory::recall::{admit, parse_evidence, withheld, Admission, EvidenceRead, Grounding, EVIDENCE_GATE};
 use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::memory::revise::Tier;
 use contextful_core::memory::MemoryError;
@@ -133,8 +133,18 @@ impl Face {
                         Cell::Text(t) => Some(t.as_str()),
                         _ => None,
                     };
+                    // The claim's citations resolve one statement per cited table and run
+                    // (`read.recall.keyed-evidence-batch`); a claim the gate refuses before
+                    // reading any row resolves none.
+                    let refs = parse_evidence(evidence).unwrap_or_default();
+                    let readable = if (1..=EVIDENCE_GATE).contains(&refs.len()) && !refs.iter().any(|r| memory_tables.contains(&r.table)) {
+                        self.readable_rows(&engine, session, &refs, &touched, request.max_duration_ms, &mut executed)?
+                    } else {
+                        Default::default()
+                    };
                     let fault = std::cell::RefCell::new(None);
-                    let admitted = tally.gate(evidence, &memory_tables, session, |r| match self.evidence_read(&engine, session, r, &touched, request.max_duration_ms) {
+                    let row_read = |r: &EvidenceRef| readable.get(&(r.table.clone(), r.run.clone())).map(|seqs| seqs.contains(&r.seq));
+                    let admitted = tally.gate(evidence, &memory_tables, session, |r| match self.evidence_read_given(&engine, session, r, &touched, request.max_duration_ms, row_read(r)) {
                         Ok(read) => read,
                         Err(error) => {
                             *fault.borrow_mut() = Some(error);

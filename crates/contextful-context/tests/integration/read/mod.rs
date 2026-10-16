@@ -15,6 +15,7 @@ mod nested;
 mod native_rows;
 mod pin;
 mod pool;
+mod recall;
 mod register;
 mod respond;
 mod result_cache;
