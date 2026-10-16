@@ -113,12 +113,13 @@ impl S3Bucket {
         match status {
             403 => ObjectError::Forbidden(message),
             501 => ObjectError::Unsupported(message),
+            500.. => ObjectError::Unavailable(message),
             _ => ObjectError::Transport(message),
         }
     }
 
     fn transport(what: &str, e: ureq::Error) -> ObjectError {
-        ObjectError::Transport(format!("{what}: {e}"))
+        ObjectError::Unavailable(format!("{what}: {e}"))
     }
 
     /// Send a request whose repetition changes nothing, resending after a transport failure

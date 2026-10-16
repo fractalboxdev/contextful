@@ -124,6 +124,8 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *A-run*
 - `storage-incomplete` — Missing profile bindings, corpus state, strict execution guards or a supported outbox raises `StorageCapabilityMissing` before execution admission; absent compiled adapters follow {{topology.package.capability-absent}}.
   *A-run*
+- `corpus-unavailable` — A storage preflight's corpus request failing as {{store.endpoint.unavailable}} raises `StorageCorpusUnavailable`, naming the bucket or object, never the refusal of {{run.journal.storage-incomplete}}.
+  *because an unanswered bucket says nothing of whether a capability is absent, and a transient outage must not read as an unsupported profile*
 - `storage-unsupported` — An unknown storage profile or an encrypted corpus paired with an unsealed execution adapter raises `StorageProfileUnsupported` before execution admission.
   *because an unrecognized durability claim cannot select a local fallback safely*
 - `execution-schema` — An execution database whose schema differs from the executable's supported schema raises `ExecutionSchemaIncompatible` before execution admission; preflight creates no missing execution table.

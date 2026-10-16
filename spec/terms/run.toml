@@ -38,6 +38,7 @@ JournalRedactionConflict       = { clause = "run.journal.redacting-source", glos
 CapabilityUnwired              = { clause = "run.journal.unwired-capability", gloss = "A capability the running profile links no implementation for." }
 StorageBindingUnavailable      = { clause = "run.journal.d1-transport", gloss = "A D1 binding request received no HTTP answer within its attempts." }
 StorageCapabilityMissing       = { clause = "run.journal.storage-incomplete", gloss = "A disposable execution profile lacks a required durable binding or adapter." }
+StorageCorpusUnavailable       = { clause = "run.journal.corpus-unavailable", gloss = "A storage preflight's corpus request received no answer or a server error." }
 StorageProfileUnsupported      = { clause = "run.journal.storage-unsupported", gloss = "The storage profile or its encryption pairing is unsupported." }
 ExecutionSchemaIncompatible    = { clause = "run.journal.execution-schema", gloss = "The durable execution schema differs from the executable's supported schema." }
 ExecutionRecoveryMismatch      = { clause = "run.journal.execution-recovery", gloss = "A complete execution backup or its project recovery identity is missing." }

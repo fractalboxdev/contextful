@@ -157,9 +157,18 @@ fn validate_project(project: &Project, profile: &str) -> Result<()> {
         let prefix = sync.resolve_prefix(variable)?;
         let probe = if prefix.is_empty() { ".contextful-preflight/".to_owned() }
             else { format!("{prefix}/.contextful-preflight/") };
-        bucket.list(&probe).map_err(|error| anyhow::anyhow!("StorageCapabilityMissing: R2 corpus bucket: {error}"))?;
+        bucket.list(&probe).map_err(|error| corpus_failure("bucket", error))?;
     }
     Ok(())
+}
+
+/// A corpus request the bucket left unanswered raises `StorageCorpusUnavailable`
+/// (`run.journal.corpus-unavailable`); any answered failure is a missing capability.
+fn corpus_failure(what: &str, error: contextful_core::store::object::ObjectError) -> anyhow::Error {
+    match error {
+        contextful_core::store::object::ObjectError::Unavailable(_) => anyhow::anyhow!("StorageCorpusUnavailable: R2 corpus {what}: {error}"),
+        _ => anyhow::anyhow!("StorageCapabilityMissing: R2 corpus {what}: {error}"),
+    }
 }
 
 pub(crate) fn preflight(project: &Project) -> Result<Option<Remote>> {
@@ -218,7 +227,7 @@ fn verify_corpus_frontier(project: &Project, objects: &[contextful_d1::RecoveryO
     match check {
         CorpusCheck::Presence => {
             let present: std::collections::BTreeSet<_> = bucket.list(&root)
-                .map_err(|error| anyhow::anyhow!("StorageCapabilityMissing: R2 corpus bucket: {error}"))?
+                .map_err(|error| corpus_failure("bucket", error))?
                 .into_iter().collect();
             for object in objects {
                 if !present.contains(&object.key) {
@@ -228,7 +237,7 @@ fn verify_corpus_frontier(project: &Project, objects: &[contextful_d1::RecoveryO
         }
         CorpusCheck::Content => for object in objects {
             let Some((bytes, _)) = bucket.get(&object.key)
-                .map_err(|error| anyhow::anyhow!("StorageCapabilityMissing: R2 corpus object: {error}"))?
+                .map_err(|error| corpus_failure("object", error))?
             else { bail!("ExecutionRecoveryMismatch: missing R2 corpus object `{}`", object.key) };
             let digest = format!("{:x}", Sha256::digest(&bytes));
             if digest != object.sha256 {

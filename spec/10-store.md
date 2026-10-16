@@ -448,6 +448,7 @@ Opening a store's bucket: the endpoint schemes, the transport, request addressin
   *because a mistyped or deleted bucket otherwise reads as an empty bucket, a free lease or a lost compare-and-set*
 - `transport` — An S3 get, head, list page or unconditional put left without a whole answer resends within 3 attempts, each connecting within 5 s and answered within 10 s; a conditional put goes once.
   *because a resent conditional put whose lost answer applied reads its own write back as a failed condition*
+- `unavailable` — A request left unanswered within {{store.endpoint.transport}}, or answered with a `5xx` status, fails as unavailable, naming the request, and says nothing of what the bucket holds.
 - `list-pages` — A list follows each continuation token until the backend reports the listing complete, and returns every key under the prefix sorted.
 
 unsettled: Does an S3 bucket whose `[sync]` binds no key sign with the instance or container role's credentials? owner: store affects: store.endpoint
