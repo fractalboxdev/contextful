@@ -1292,3 +1292,57 @@ fn a_short_tenant_identifier_matching_engine_fields_purges_and_a_refused_purge_k
     assert_eq!(ids(&t, &store, "events"), ["e1", "e2"], "a refused purge rewrote the tenant's rows");
     assert!(contextful_policy::audit::entries(&audit_dir).unwrap_or_default().is_empty(), "a refused purge signs an audit entry");
 }
+
+/// A purge whose tenant holds no retained row rewrites nothing and signs a receipt with a zero count for every declared table and an empty `transaction_id`.
+// spec: disclosure.receipt.zero-rows@5ed752c6
+#[test]
+#[cfg(feature = "read")]
+fn a_purge_of_a_tenant_holding_no_rows_signs_a_zero_count_receipt() {
+    use contextful_core::{issue::SignatureAlgorithm, store::reconcile::ColumnType};
+    use contextful_policy::issue::{SeedSigner, SignerKey};
+    let t = tenanted(ColumnType::Utf8);
+    let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+    let audit_dir = t.project.audit_dir();
+    let store = t.fixture.store.with_erasure_verifier(audit_dir.clone(), vec![SignerKey::of(signer.as_ref())]).unwrap();
+    let purged = purge(&t, &store, &signer, "initech").expect("a purge of an absent tenant signs a receipt");
+    let receipt = &purged.receipt;
+    receipt.verify("initech", &[SignerKey::of(signer.as_ref())]).unwrap();
+    assert_eq!(receipt.affected_counts, std::collections::BTreeMap::from([("events".to_string(), 0), ("global".to_string(), 0), ("orders".to_string(), 0)]));
+    assert_eq!(receipt.transaction_id, "");
+    assert_eq!(receipt.prior_request_id, None);
+    let rows = |name: &str| serde_json::to_value(contextful_context::rows::table_rows(&purged.store, t.tables.iter().find(|table| table.name == name).unwrap(), &["id"]).unwrap()).unwrap();
+    assert_eq!(rows("orders"), json!([{ "id":"o1" }, { "id":"o2" }]));
+    assert_eq!(rows("events"), json!([{ "id":"e1" }, { "id":"e2" }]));
+    assert!(!store.root().join("_erasure_frontier.json").exists(), "a zero-row purge published a rewrite");
+    assert_eq!(contextful_context::erase::issued_receipts(&audit_dir).unwrap(), vec![receipt.digest()]);
+}
+
+/// A purge's receipt entry records the tenant's HMAC-SHA-256 under the project audit key beside its `request_id`; a later purge of that tenant signs the latest such `request_id` as `prior_request_id`.
+// spec: disclosure.receipt.prior-request@f64b4347
+#[test]
+#[cfg(feature = "read")]
+fn a_repeat_purge_signs_the_latest_earlier_request_id_of_its_tenant() {
+    use contextful_core::{issue::SignatureAlgorithm, store::reconcile::ColumnType};
+    use contextful_policy::issue::{SeedSigner, SignerKey};
+    let t = tenanted(ColumnType::Utf8);
+    let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+    let audit_dir = t.project.audit_dir();
+    let trusted = [SignerKey::of(signer.as_ref())];
+    let store = t.fixture.store.with_erasure_verifier(audit_dir.clone(), trusted.to_vec()).unwrap();
+    let first = purge(&t, &store, &signer, "acme-purged-tenant").unwrap();
+    assert_eq!(first.receipt.prior_request_id, None);
+    let other = purge(&t, &first.store, &signer, "globex").unwrap();
+    assert_eq!(other.receipt.prior_request_id, None, "a purge links to another tenant's request");
+    let second = purge(&t, &other.store, &signer, "acme-purged-tenant").unwrap();
+    assert_eq!(second.receipt.prior_request_id.as_deref(), Some(first.receipt.request_id.as_str()));
+    assert_eq!(second.receipt.affected_counts.values().sum::<usize>(), 0);
+    second.receipt.verify("acme-purged-tenant", &trusted).unwrap();
+    let third = purge(&t, &second.store, &signer, "acme-purged-tenant").unwrap();
+    assert_eq!(third.receipt.prior_request_id.as_deref(), Some(second.receipt.request_id.as_str()));
+    let mut altered = third.receipt.clone();
+    altered.prior_request_id = Some(first.receipt.request_id.clone());
+    assert!(altered.verify("acme-purged-tenant", &trusted).is_err(), "an altered prior request verifies");
+    for entry in contextful_policy::audit::entries(&audit_dir).unwrap() {
+        assert!(!entry.attributes.to_string().contains("acme-purged-tenant"), "the chain carries the tenant in cleartext");
+    }
+}

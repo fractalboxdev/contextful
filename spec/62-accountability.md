@@ -298,6 +298,10 @@ The signed artifact a tenant purge returns: its claim, its coverage block, its p
   *because the object interface has no delete, so a claim over the replication bucket names a removal that never ran*
 - `chain-record` — A purge appends its receipt's `request_id` and SHA-256 digest to the audit chain after signing; a digest the chain already holds follows {{disclosure.receipt.replayed}}.
   *A-disclosure*
+- `prior-request` — A purge's receipt entry records the tenant's HMAC-SHA-256 under the project audit key beside its `request_id`; a later purge of that tenant signs the latest such `request_id` as `prior_request_id`.
+  *because the audit chain already orders every receipt, and a keyed digest links repeat purges without a cleartext identifier or a second record*
+- `zero-rows` — A purge whose tenant holds no retained row rewrites nothing and signs a receipt with a zero count for every declared table and an empty `transaction_id`.
+  *because an owner proves a tenant's absence with one artifact whether or not rows existed*
 
 A tenant purge, its receipt, and an offline check of it:
 
@@ -318,8 +322,6 @@ sequenceDiagram
     O->>V: receipt and the tenant identifier
     V->>V: recompute hashes, check the signature
 ```
-
-unsettled: Which record holds a purge's `request_id` so a repeat purge returns it as `prior_request_id`? owner: disclosure affects: disclosure.receipt
 
 ## Shapes
 

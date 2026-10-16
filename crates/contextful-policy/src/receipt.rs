@@ -54,6 +54,8 @@ pub struct ReceiptClaim {
     pub affected_counts: BTreeMap<String, usize>,
     pub coverage: Coverage,
     pub issued_at: String,
+    /// The latest earlier purge of the same tenant, when the audit chain records one.
+    pub prior_request_id: Option<String>,
 }
 
 /// A signed tenant purge receipt; its JSON form is the artifact a purge returns.
@@ -69,6 +71,9 @@ pub struct TenantReceipt {
     pub affected_counts: BTreeMap<String, usize>,
     pub coverage: Coverage,
     pub issued_at: String,
+    /// Absent on a tenant's first receipt, so a receipt signed before the field verifies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_request_id: Option<String>,
     pub signer: String,
     pub signature: String,
 }
@@ -112,6 +117,7 @@ impl TenantReceipt {
             affected_counts: claim.affected_counts,
             coverage: claim.coverage,
             issued_at: claim.issued_at,
+            prior_request_id: claim.prior_request_id,
             signer: SignerKey::of(signer).to_string(),
             signature: String::new(),
         };
@@ -126,6 +132,7 @@ impl TenantReceipt {
     fn carries(&self, tenant: &str) -> bool {
         [&self.request_id, &self.transaction_id, &self.store_id, &self.salt, &self.tenant_hash, &self.issued_at, &self.signer]
             .into_iter()
+            .chain(self.prior_request_id.iter())
             .chain(self.affected_counts.keys())
             .chain(self.coverage.covered.iter())
             .chain(self.coverage.excluded.iter())

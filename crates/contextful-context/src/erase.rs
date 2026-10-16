@@ -122,7 +122,7 @@ pub fn erase_declared(store: &Store, declarations: &DeclarationSet, request: Era
             }
         })
     };
-    publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select })
+    publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select, allow_empty: false })
 }
 
 /// A store owner's tenant purge; the caller presents no capability credential.
@@ -168,29 +168,47 @@ pub fn purge_tenant(store: &Store, request: PurgeRequest<'_>) -> Result<Purged> 
         affected_counts: request.declarations.iter().map(|decl| (decl.name.clone(), 0)).collect(),
         coverage: coverage.clone(),
         issued_at: issued_at.clone(),
+        prior_request_id: None,
     };
     TenantReceipt::screen(&prospective, request.tenant, &ConfiguredSigner(signer.clone()))?;
+    let tenant_digest = audit::query_digest(request.audit_key, &format!("contextful.erasure.tenant\n{}", request.tenant));
+    let prior_request_id = prior_request(request.audit_dir, &tenant_digest)?;
     let select = |rows: &RetainedRows| -> Result<(ErasureSelection, String)> {
-        Ok((select_tenant(request.declarations, rows, &columns, request.tenant)?,
-            audit::query_digest(request.audit_key, &format!("contextful.erasure.tenant\n{}", request.tenant))))
+        Ok((select_tenant(request.declarations, rows, &columns, request.tenant)?, tenant_digest.clone()))
     };
     let guard = || Ok(());
-    let erased = publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select })?;
+    let erased = publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select, allow_empty: true })?;
+    // A tenant holding no row publishes no rewrite; its receipt counts zero in every declared table.
+    let affected_counts = if erased.transaction_id.is_empty() { prospective.affected_counts } else { erased.affected_counts.clone() };
     let claim = ReceiptClaim {
         request_id,
         transaction_id: erased.transaction_id.clone(),
         store_id,
-        affected_counts: erased.affected_counts.clone(),
+        affected_counts,
         coverage,
         issued_at,
+        prior_request_id,
     };
     let receipt = TenantReceipt::sign(claim, request.tenant, &ConfiguredSigner(signer.clone()))?;
     receipt.check_fresh(&issued_receipts(request.audit_dir)?)?;
     let log = AuditLog::anchor(request.audit_dir, ConfiguredSigner(signer.clone())).map_err(|_| incomplete("the canonical audit chain cannot open under the purge signer"))?;
-    log.append(json!({"operation":RECEIPT_OPERATION,"request_id":receipt.request_id,"transaction_id":receipt.transaction_id,"receipt_sha256":receipt.digest()}))
+    log.append(json!({"operation":RECEIPT_OPERATION,"request_id":receipt.request_id,"transaction_id":receipt.transaction_id,"receipt_sha256":receipt.digest(),"tenant_digest":tenant_digest}))
         .map_err(|_| incomplete("the receipt audit entry did not persist"))?;
     log.export().map_err(|_| incomplete("the receipt audit evidence did not sign"))?;
     Ok(Purged { store: erased.store, receipt })
+}
+
+/// The `request_id` of the latest receipt entry the audit chain records for a keyed tenant digest.
+fn prior_request(audit_dir: &Path, tenant_digest: &str) -> Result<Option<String>> {
+    let entries = match audit::entries(audit_dir) {
+        Ok(entries) => entries,
+        Err(_) if !audit_dir.exists() => return Ok(None),
+        Err(_) => return Err(incomplete("the audit chain holding issued receipts is unreadable")),
+    };
+    Ok(entries.iter().rev()
+        .filter(|entry| entry.attributes.get("operation").and_then(serde_json::Value::as_str) == Some(RECEIPT_OPERATION))
+        .filter(|entry| entry.attributes.get("tenant_digest").and_then(serde_json::Value::as_str) == Some(tenant_digest))
+        .find_map(|entry| entry.attributes.get("request_id").and_then(serde_json::Value::as_str).map(str::to_string)))
 }
 
 /// The digest of every receipt the audit chain records, oldest first.
@@ -214,6 +232,8 @@ struct Plan<'a> {
     clock: &'a dyn Clock,
     guard: &'a dyn Fn() -> Result<()>,
     select: &'a dyn Fn(&RetainedRows) -> Result<(ErasureSelection, String)>,
+    /// An empty selection returns an unpublished outcome with an empty transaction id.
+    allow_empty: bool,
 }
 
 fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
@@ -257,7 +277,11 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
         let mut targets: Vec<&str> = selected.affected_tables().collect();
         if let Some(frontier) = &old_frontier { targets.extend(frontier.tables.keys().map(String::as_str)); }
         targets.sort(); targets.dedup();
-        if targets.is_empty() { std::fs::remove_dir_all(&staging).at(&staging)?; return Err(unsupported("erasure selects no retained row versions")); }
+        if targets.is_empty() {
+            std::fs::remove_dir_all(&staging).at(&staging)?;
+            if plan.allow_empty { return Ok(Erased { store:configured.clone(), transaction_id:String::new(), subject_hash, affected_counts:BTreeMap::new() }); }
+            return Err(unsupported("erasure selects no retained row versions"));
+        }
         let mut hashes = BTreeMap::new();
         let mut retired = BTreeMap::new();
         let mut inventories = BTreeMap::new();
