@@ -1,0 +1,18 @@
+# The fixed builder platform of `contextful connector pin` (`connector.package.pin-verb`):
+# the Rust toolchain of the repository's `Dockerfile` plus the `wasm32-wasip2` target.
+# `PLATFORM.image` in `contextful-core::connector::package` names the published digest.
+#
+#   docker build --platform linux/amd64 -f Dockerfile.connector-builder -t contextful-connector-builder .
+#
+# `connector pin` runs it twice as the invoking user: `cargo fetch --locked` with network
+# into a per-build package cache at `/cargo`, then `cargo build --release --locked --offline`
+# under `--network none`. The toolchain stays world-readable for any uid.
+ARG PLATFORM=linux/amd64
+FROM --platform=$PLATFORM rust:1.97-alpine@sha256:3c38f3f82c2f3d73da3b38e18d279393a04cb43ddded0e35088a8c3324d40900
+LABEL org.opencontainers.image.source=https://github.com/fractalboxdev/contextful
+RUN apk add --no-cache build-base \
+ && rustup target add wasm32-wasip2 \
+ && rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" \
+ && chmod -R a+rX "$RUSTUP_HOME" "$CARGO_HOME"
+USER 65532:65532
+WORKDIR /src

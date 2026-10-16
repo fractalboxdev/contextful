@@ -34,11 +34,10 @@ pub struct Platform {
     pub image_rustup_home: &'static str,
 }
 
-/// The fixed builder platform. The image digest names the published builder image carrying
-/// the `wasm32-wasip2` target; the all-zero digest names no image, so a container build
-/// refuses at pull until the published digest is recorded here.
+/// The fixed builder platform. The image digest names the builder image the repository's
+/// `Dockerfile.connector-builder` publishes: the Rust toolchain plus the `wasm32-wasip2` target.
 pub const PLATFORM: Platform = Platform {
-    image: "ghcr.io/fractalboxdev/contextful-connector-builder@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    image: "ghcr.io/fractalboxdev/contextful-connector-builder@sha256:649d72c7a0876f9c587c7b717aefed4014b1e8ef741aae8506e98c975b561237",
     platform: "linux/amd64",
     target: "wasm32-wasip2",
     fetch: &["cargo", "fetch", "--locked", "--target", "wasm32-wasip2"],

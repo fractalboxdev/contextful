@@ -307,3 +307,44 @@ fn a_local_build_from_two_checkouts_prints_one_digest_and_writes_nothing() {
     }
     assert_eq!(digests[0], digests[1], "checkout location moved the digest");
 }
+
+/// Whether a container runtime answers `docker version`. With none, the real-platform test
+/// skips unless `CONTEXTFUL_REQUIRE_CONTAINER` is set.
+fn container_or_skip() -> bool {
+    let answered = Command::new("docker").arg("version").output().is_ok_and(|o| o.status.success());
+    if !answered {
+        assert!(std::env::var_os("CONTEXTFUL_REQUIRE_CONTAINER").is_none(), "CONTEXTFUL_REQUIRE_CONTAINER is set and no container runtime answers");
+        eprintln!("skipped: no container runtime answers `docker version`");
+    }
+    answered
+}
+
+/// `contextful connector pin <manifest>` builds the guest in a digest-pinned container on one fixed platform and
+/// writes the artifact and its digest. `--verify` rebuilds and compares without writing.
+// spec: connector.package.pin-verb@5d347de1
+#[test]
+fn pin_builds_in_the_published_builder_image_and_verify_reproduces_it_from_another_checkout() {
+    if !container_or_skip() {
+        return;
+    }
+    let roots = [tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap()];
+    let checkouts: Vec<PathBuf> = roots.iter().map(|r| checkout(r.path())).collect();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful")).args(["connector", "pin", "connector.toml"]).current_dir(&checkouts[0]).output().unwrap();
+    assert!(out.status.success(), "the build on `{}` succeeds: {}", PLATFORM.image, stderr(&out));
+    let wasm = std::fs::read(checkouts[0].join("probe.wasm")).expect("the artifact is written");
+    assert_eq!(&wasm[..4], b"\0asm", "a WebAssembly artifact");
+    let pin = digest(&wasm);
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), pin);
+    let manifest = std::fs::read_to_string(checkouts[0].join("connector.toml")).unwrap();
+    assert!(manifest.contains(&format!("wasm_sha256 = \"{pin}\"")), "{manifest}");
+    assert!(!contains(&wasm, checkouts[0].to_string_lossy().as_bytes()), "the artifact embeds its checkout path");
+
+    // The second checkout carries the pinned manifest; `--verify` rebuilds there and writes nothing.
+    std::fs::write(checkouts[1].join("connector.toml"), &manifest).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful")).args(["connector", "pin", "connector.toml", "--verify"]).current_dir(&checkouts[1]).output().unwrap();
+    assert!(out.status.success(), "the rebuild reproduces the pin: {}", stderr(&out));
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), pin);
+    assert_eq!(std::fs::read_to_string(checkouts[1].join("connector.toml")).unwrap(), manifest);
+    assert!(!checkouts[1].join("probe.wasm").exists(), "--verify writes no artifact");
+}
