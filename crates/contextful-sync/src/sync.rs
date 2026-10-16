@@ -145,7 +145,7 @@ pub fn table_of(key: &str) -> Option<String> {
 }
 
 /// The table a key under `<project>/` belongs to, for a project name of any depth.
-fn project_table(project: &str, key: &str) -> Option<String> {
+pub(crate) fn project_table(project: &str, key: &str) -> Option<String> {
     let rest = key.strip_prefix(project)?.strip_prefix('/')?;
     rest.starts_with("tables/").then(|| table_of(&format!("_/{rest}"))).flatten()
 }
@@ -182,7 +182,7 @@ impl Redistribution {
     }
 
     /// Whether `key`, under `project`, is a root-level object Shapes withholds.
-    fn root_withheld(project: &str, key: &str) -> bool {
+    pub(crate) fn root_withheld(project: &str, key: &str) -> bool {
         root_rest(project, key).is_some_and(|rest| ROOT_WITHHELD_DIRS.iter().any(|d| rest.starts_with(d)) || ROOT_WITHHELD_FILES.contains(&rest))
     }
 

@@ -2,6 +2,7 @@
 
 mod clean_room;
 mod converge;
+mod edge;
 mod generation;
 mod pull;
 mod push;
