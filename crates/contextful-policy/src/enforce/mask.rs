@@ -394,7 +394,7 @@ impl Pepper {
         forms
     }
 
-    /// Refuse a compiled relation, query plan or session catalog entry carrying the
+    /// Refuse a compiled relation or session catalog entry carrying the
     /// pepper's key state; the query layer reaches the key only through the scalar
     /// functions holding it in process memory (`authority.mask.key-material`). The
     /// refusal names the relation, never the key.

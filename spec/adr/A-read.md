@@ -250,7 +250,7 @@ Revisit: stale counts dominating a recall; a reader needing the claim's cited ve
 
 ## The store holds nothing a user could not see
 
-Query-time enforcement bounds a read, not the stored bytes, so the ceiling sits at the write path. `authority.refuse` rejects a credential-shaped value per value with `EnforceCredentialShapedValue`, landing the surrounding rows; an operator-declared exemption admits a source that legitimately carries such text. `connector.source` refuses every organization-twin API — security, eDiscovery, legal-hold export — with `ConnectorTwinApiSource`; a sanctioned, paid, disclosed organization-wide export path is admitted.
+Query-time enforcement bounds a read, not the stored bytes, so the ceiling sits at the write path. `authority.resist` rejects a claim carrying a credential-shaped value with `EnforceCredentialShapedValue`, on the direct and the synthesized write alike; the source writer's per-value refusal and its operator-declared exemption stay open. `connector.source` refuses every organization-twin API — security, eDiscovery, legal-hold export — with `ConnectorTwinApiSource`; a sanctioned, paid, disclosed organization-wide export path is admitted.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

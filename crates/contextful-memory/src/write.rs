@@ -5,11 +5,9 @@ use super::MemoryFault;
 use contextful_context::read::evidence::Stamped;
 use contextful_context::read::Face;
 use contextful_core::grant::Action;
-use contextful_core::enforce::EnforceError;
 use contextful_core::memory::MemoryError;
-use contextful_core::pipeline::guard::spans;
 use contextful_core::memory::revise::{claim_id, direct_write, keyed_claim_id, observed_order, revise, tier, Claim, Tier, WritePath};
-use contextful_core::memory::synthesize::{validate_claim, CandidateClaim};
+use contextful_core::memory::synthesize::{credential_free, validate_claim, CandidateClaim};
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::lay_out::NodeId;
 use contextful_core::time::Instant;
@@ -161,22 +159,4 @@ pub fn write_observed(
     let run_id = format!("memory-write-{}", now.unix_nanos());
     Landing { node, at: now, writer: &writer, run_id, boundary, taint: None }.commit(face, into, &writes, &dead)?;
     Ok(Written { claim: revision.landed, retired: revision.retired })
-}
-
-/// Refuse a claim carrying a value of a credential shape — the shapes
-/// `run.guard-secrets` masks — before it reaches storage; the refusal names the field and
-/// the shape, never the value (`authority.resist.credential-shaped-value`).
-fn credential_free(candidate: &CandidateClaim) -> Result<(), EnforceError> {
-    let fields = [
-        ("subject", Some(candidate.subject.as_str())),
-        ("predicate", Some(candidate.predicate.as_str())),
-        ("object", Some(candidate.object.as_str())),
-        ("scope", candidate.scope.as_deref()),
-    ];
-    for (field, value) in fields {
-        if let Some((kind, _)) = value.and_then(|v| spans(v).into_iter().next()) {
-            return Err(EnforceError::CredentialShapedValue(format!("the claim's `{field}` matches the {kind:?} credential shape")));
-        }
-    }
-    Ok(())
 }

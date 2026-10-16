@@ -130,4 +130,10 @@ fn a_relation_carrying_key_state_is_refused() {
     let session = Session::open(&authority, &Request::default(), vec![with_predicate("ordinary")], &pepper).unwrap();
     let sql = session.relation("research/notes").unwrap().sql();
     assert!(sql.contains("contextful_mask_hash(CAST(\"x\" AS VARCHAR))"), "{sql}");
+    // A relation compiled over another FROM-source passes the same check.
+    match session.relation_over("research/notes", &format!("'{hex}'"), vec![]) {
+        Err(PolicyError::Enforce(contextful_core::enforce::EnforceError::KeyMaterialInRelation(why))) => assert!(why.contains("research/notes"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    assert!(session.relation_over("research/notes", "'ordinary.parquet'", vec![]).unwrap().is_some());
 }

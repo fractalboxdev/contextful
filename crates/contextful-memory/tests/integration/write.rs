@@ -264,8 +264,8 @@ fn reaffirming_the_original_claim_id_resolves_its_conflict() {
     assert!(claims.iter().any(|claim| claim.claim_id == first.claim_id && claim.valid_from == first.valid_from && claim.valid_to.is_none()));
 }
 
-/// The write path raises `EnforceCredentialShapedValue` on a value matching a credential shape, before it reaches storage.
-// spec: authority.resist.credential-shaped-value@572915cf
+/// A claim write, direct or synthesized, raises `EnforceCredentialShapedValue` on a field matching a credential shape, before it reaches storage.
+// spec: authority.resist.credential-shaped-value@f3a0381e
 #[test]
 fn a_credential_shaped_value_is_refused_before_it_lands() {
     use contextful_core::enforce::EnforceError;
@@ -290,8 +290,12 @@ fn a_credential_shaped_value_is_refused_before_it_lands() {
             other => panic!("{field}: {other:?}"),
         }
     }
-    // Nothing landed: the next claim on the line retires no prior.
+    // Nothing landed on any line: the table holds the clean claim alone.
     let clean = write_claim(&f.face, &writer, "memory/facts", candidate("Lee"), &node, at("2030-01-12T00:00:00Z"), &super::synthesize::admit).unwrap();
     assert!(clean.claim.is_some());
     assert_eq!(clean.retired.len(), 0);
+    let session = f.face.session(&writer, &contextful_policy::enforce::session::Request::default(), Default::default()).unwrap();
+    let claims = contextful_memory::claims::read_claims(&f.face, &session, "memory/facts").unwrap();
+    assert_eq!(claims.iter().map(|c| c.object.as_str()).collect::<Vec<_>>(), ["Lee"]);
+    assert!(claims.iter().all(|c| c.subject == "acme" && c.scope.is_none()), "{claims:?}");
 }

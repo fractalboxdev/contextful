@@ -134,7 +134,7 @@ impl Face {
         }
         let absent: Vec<_> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
         let base = relation(&TableDecl::named(table), &files, &schema.columns, &absent, None)?;
-        let Some(all) = session.relation_over(table, &base, files) else { return Ok(false) };
+        let Some(all) = session.relation_over(table, &base, files)? else { return Ok(false) };
         let sql = format!("SELECT count(*) FROM ({}) WHERE {} = ? AND {} = ?", all.sql(), ident(RUN_ID), ident(ROW_SEQ));
         let (_, rows) = engine.run(&sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), None)?;
         Ok(counted(&rows))

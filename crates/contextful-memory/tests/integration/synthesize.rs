@@ -225,6 +225,23 @@ fn an_ambiguous_subject_dead_letters_its_claim() {
     assert_eq!(letters, [vec![json!("MemoryEntityAmbiguous")]]);
 }
 
+/// A synthesized claim passes the credential check a direct write passes; its dead letter names the shape, never the value.
+#[test]
+fn a_synthesized_credential_shaped_claim_dead_letters_without_its_value() {
+    let f = Fixture::new();
+    let (writer, node) = (f.writer(), NodeId::parse("memory-a").unwrap());
+    land_rows(&f.face, "research/notes", "run-0001", json!([{ "note_id": "n1", "text": "Initech's key." }]));
+    let inference = Scripted::new(&[claims("Initech", "holds key", "AKIAIOSFODNN7EXAMPLE", "run-0001")]);
+    let report = pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
+    assert_eq!((report.landed, report.dead_lettered), (0, 1));
+    let (_, letters) = facts(&f, &writer, r#"SELECT reason, detail, response FROM "memory/facts_dead_letter""#);
+    assert_eq!(letters.len(), 1);
+    assert_eq!(letters[0][0], json!("EnforceCredentialShapedValue"));
+    assert!(!serde_json::to_string(&letters).unwrap().contains("AKIAIOSFODNN7EXAMPLE"), "{letters:?}");
+    let (_, rows) = facts(&f, &writer, r#"SELECT count(*) FROM "memory/facts""#);
+    assert_eq!(rows, [vec![json!("0")]]);
+}
+
 fn many_notes(f: &Fixture, run: &str, n: usize, text: impl Fn(usize) -> String) {
     let rows: Vec<Value> = (0..n).map(|i| json!({ "note_id": format!("n{i}"), "text": text(i) })).collect();
     land_rows(&f.face, "research/notes", run, Value::Array(rows));

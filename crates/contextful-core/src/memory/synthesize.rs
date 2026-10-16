@@ -127,6 +127,24 @@ pub fn validate(content: &str) -> Result<Extraction, String> {
     Ok(extraction)
 }
 
+/// Refuse a claim, whichever path proposes it, carrying a value of a credential shape — the shapes
+/// `run.guard-secrets` masks — before it reaches storage; the refusal names the field and
+/// the shape, never the value (`authority.resist.credential-shaped-value`).
+pub fn credential_free(candidate: &CandidateClaim) -> Result<(), crate::enforce::EnforceError> {
+    let fields = [
+        ("subject", Some(candidate.subject.as_str())),
+        ("predicate", Some(candidate.predicate.as_str())),
+        ("object", Some(candidate.object.as_str())),
+        ("scope", candidate.scope.as_deref()),
+    ];
+    for (field, value) in fields {
+        if let Some((kind, _)) = value.and_then(|v| crate::pipeline::guard::spans(v).into_iter().next()) {
+            return Err(crate::enforce::EnforceError::CredentialShapedValue(format!("the claim's `{field}` matches the {kind:?} credential shape")));
+        }
+    }
+    Ok(())
+}
+
 /// Validate one claim, whichever path proposes it: non-empty subject, predicate and
 /// object, a confidence in [0, 1], and no negative evidence sequence.
 pub fn validate_claim(c: &CandidateClaim) -> Result<(), String> {

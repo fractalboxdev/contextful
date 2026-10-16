@@ -273,4 +273,18 @@ fn write_time_removal_beside_a_public_cloud_is_refused() {
     assert!(TablePolicy::from_decl(&undeclared).is_ok());
     // A public cloud with no removal declared stands too.
     assert!(TablePolicy::from_decl(&decl("[[pipeline.tables]]\nname = \"notes\"\n[pipeline.tables.policy.zone]\nallow = [\"public-cloud:*\"]\n")).is_ok());
+    // A pipeline-wide removal rule reaches the table it names, in the declaration and in a manifest file.
+    let spec = "[[pipeline]]\nid = \"feed\"\ntables = [{ name = \"notes\", policy = { zone = { allow = [\"public-cloud:*\"] } } }]\n\
+                redaction = [{ table = \"notes\", column = \"body\", operation = \"drop\" }]\n\
+                [pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/notes\" }\n";
+    let from_declaration = TableDecl::parse_pipeline(spec).unwrap();
+    let manifest = contextful_core::pipeline::declare::ManifestFile { path: "contextful.toml".into(), text: spec.into() };
+    let from_manifest = TableDecl::parse_declaration_set("", &[manifest]).unwrap();
+    for tables in [from_declaration, from_manifest] {
+        let notes = tables.iter().find(|t| t.name == "feed_notes").expect("the destination table");
+        match TablePolicy::from_decl(notes) {
+            Err(PolicyError::Enforce(EnforceError::RemovalWithPublicCloud(why))) => assert!(why.contains("feed_notes") && why.contains("body"), "{why}"),
+            other => panic!("{other:?}"),
+        }
+    }
 }

@@ -12,7 +12,7 @@ use contextful_core::grant::Action;
 use contextful_core::memory::declare::{MemoryTable, Shape};
 use contextful_core::memory::resolve::{check_edge, resolve_mention, Entity};
 use contextful_core::memory::revise::{claim_id, revise, tier, Claim, Grounding, WritePath};
-use contextful_core::memory::synthesize::{feedback, judge, template_hash, Attempt, DeadLetter, Extraction, Inference, Message, OUTPUT_SCHEMA};
+use contextful_core::memory::synthesize::{credential_free, feedback, judge, template_hash, Attempt, DeadLetter, Extraction, Inference, Message, OUTPUT_SCHEMA};
 use contextful_core::memory::MemoryError;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::lay_out::NodeId;
@@ -320,6 +320,12 @@ impl Pass<'_> {
         let mut live = read_claims(self.face, session, &target.name)?;
         let mut writes: Vec<Claim> = Vec::new();
         for mut candidate in extraction.claims {
+            // A refused candidate's letter names the field and shape alone; it never
+            // carries the value (`authority.resist.credential-shaped-value`).
+            if let Err(e) = credential_free(&candidate) {
+                dead.push(json!({ "stage": "resolve", "reason": e.identifier(), "detail": e.to_string(), "response": "", "template_hash": hash }));
+                continue;
+            }
             // Each citation carries its row's key, so a later version of the key leaves
             // the claim resolvable (`read.recall.evidence-key`).
             self.face.stamp_evidence(session, &mut candidate.evidence)?;
