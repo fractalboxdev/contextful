@@ -1,11 +1,13 @@
-//! An embedding binary: the `contextful` command line with compiled `word-split` and
-//! `word-copy` derive tasks. `word-split` lands `words`, `stats` and `units` from a
-//! `documents` row; `word-copy` lands `copies` and `units` from a `words` row.
+//! An embedding binary: the `contextful` command line with compiled `word-split`,
+//! `word-copy` and `doc-join` derive tasks. `word-split` lands `words`, `stats` and `units`
+//! from a `documents` row; `word-copy` lands `copies` and `units` from a `words` row;
+//! `doc-join` lands `digests` and `units` from a `documents` row and the `notes` and `tags`
+//! rows sharing its `doc_id`.
 //! `WORD_SPLIT_VERSION` sets the task's version, `1` by default; `WORD_SPLIT_SKIP` names,
 //! comma-separated, the content tables the task returns no rows for. `WORD_SPLIT_FAIL`
 //! exits the parent process with a failed run outcome in the chained-failure fixture.
 
-use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Tasks};
+use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Join, Tasks};
 use contextful_core::run::ports::Row;
 use contextful_core::run::RunError;
 use serde_json::json;
@@ -43,6 +45,43 @@ impl DeriveTask for WordCopy {
         out.insert(
             "copies".into(),
             vec![row(json!({ "cue_seq": 0, "copy": word }))],
+        );
+        Ok(out)
+    }
+}
+
+struct DocJoin;
+
+impl DeriveTask for DocJoin {
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn columns(&self) -> Vec<String> {
+        vec!["body".into()]
+    }
+    fn joins(&self) -> Vec<Join> {
+        vec![
+            Join { table: "notes".into(), key_column: "doc_id".into(), columns: vec!["note".into()] },
+            Join { table: "tags".into(), key_column: "doc_id".into(), columns: vec!["tag".into()] },
+        ]
+    }
+    fn marker_table(&self) -> String {
+        "units".into()
+    }
+    fn content_tables(&self) -> Vec<String> {
+        vec!["digests".into()]
+    }
+
+    fn derive(&self, unit: &HostUnit) -> Result<Derived, RunError> {
+        let texts = |table: &str, column: &str| {
+            let mut v: Vec<String> = unit.joined.get(table).into_iter().flatten().filter_map(|r| r.get(column)?.as_str().map(str::to_string)).collect();
+            v.sort();
+            v.join(",")
+        };
+        let mut out = Derived::new();
+        out.insert(
+            "digests".into(),
+            vec![row(json!({ "notes": texts("notes", "note"), "tags": texts("tags", "tag") }))],
         );
         Ok(out)
     }
@@ -125,6 +164,10 @@ fn main() {
         std::process::exit(1);
     }
     if let Err(e) = tasks.register("word-copy", Arc::new(WordCopy)) {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+    if let Err(e) = tasks.register("doc-join", Arc::new(DocJoin)) {
         eprintln!("{e}");
         std::process::exit(1);
     }

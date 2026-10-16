@@ -5,8 +5,8 @@ use contextful_core::run::RunError;
 use contextful_core::run::derive::config::DeriveConfig;
 use contextful_core::run::derive::emit::{UnitStatus, superseded, superseded_within_version};
 use contextful_core::run::derive::task::{
-    DeriveTask, Derived, HostUnit, TASK_VERSION, Tasks, check_host_tables, host_key, host_rows,
-    landing_order, select_host,
+    DeriveTask, Derived, HostUnit, Join, TASK_VERSION, Tasks, check_host_tables, host_key,
+    host_rows, join_units, landing_order, select_host,
 };
 use contextful_core::run::ports::Row;
 use contextful_core::store::declare::TableDecl;
@@ -79,6 +79,7 @@ fn unit(key: &str, body: &str, version: &str) -> HostUnit {
         key: key.into(),
         derivation_key: host_key("split", version, key, &r, &["body".into()]),
         row: r,
+        joined: Default::default(),
         prior_attempts: 0,
     }
 }
@@ -463,4 +464,28 @@ fn a_retaining_table_supersedes_within_a_version_alone() {
         [false, true, false],
         "version 1 stays current under its own version"
     );
+}
+
+/// A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each joined table read once after selection and before the first unit derives, so a row landing later is absent.
+#[test]
+fn a_unit_carries_every_joined_row_sharing_its_key() {
+    let mut units = vec![unit("d1", "alpha", "1"), unit("d2", "beta", "1"), unit("7", "gamma", "1")];
+    let notes = Join { table: "notes".into(), key_column: "doc_id".into(), columns: vec!["note".into()] };
+    let tags = Join { table: "tags".into(), key_column: "doc".into(), columns: vec!["tag".into()] };
+    join_units(&mut units, &notes, rows(json!([
+        {"doc_id": "d1", "note": "first"},
+        {"doc_id": "d2", "note": "second"},
+        {"doc_id": "d1", "note": "third"},
+        {"doc_id": null, "note": "orphan"},
+        {"doc_id": "  ", "note": "blank"},
+        {"doc_id": 7, "note": "numeric"},
+    ])));
+    join_units(&mut units, &tags, rows(json!([{"doc": "d2", "tag": "red"}])));
+    let notes_of = |u: &HostUnit| u.joined["notes"].iter().map(|r| r["note"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    assert_eq!(notes_of(&units[0]), ["first", "third"]);
+    assert_eq!(notes_of(&units[1]), ["second"]);
+    assert_eq!(notes_of(&units[2]), ["numeric"], "a numeric join value matches the unit key's text");
+    assert!(units[0].joined["tags"].is_empty(), "a unit sharing no joined row holds an empty list");
+    assert_eq!(units[1].joined["tags"], rows(json!([{"doc": "d2", "tag": "red"}])));
+    assert_eq!(notes.read_columns(), ["doc_id", "note"]);
 }

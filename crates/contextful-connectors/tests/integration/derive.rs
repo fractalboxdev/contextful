@@ -923,3 +923,93 @@ fn a_bounded_derive_selects_parents_available_by_it_and_stamps_their_instant() {
     assert_eq!(units, ["q1", "q2", "undated"].into_iter().collect());
     assert!(rows.iter().filter(|r| r["unit_ref"] == "q2").all(|r| r["available_at"] == "2030-08-01T16:05:00Z"), "{rows:?}");
 }
+
+/// A task joining `notes` and `tags` to a `documents` row, recording the joined rows each unit carries.
+struct Joined(std::sync::Mutex<Vec<(String, usize, usize)>>);
+
+impl contextful_core::run::derive::task::DeriveTask for Joined {
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn columns(&self) -> Vec<String> {
+        vec!["body".into()]
+    }
+    fn joins(&self) -> Vec<contextful_core::run::derive::task::Join> {
+        use contextful_core::run::derive::task::Join;
+        vec![
+            Join { table: "notes".into(), key_column: "doc_id".into(), columns: vec!["note".into()] },
+            Join { table: "tags".into(), key_column: "doc_id".into(), columns: vec!["tag".into()] },
+        ]
+    }
+    fn marker_table(&self) -> String {
+        "units".into()
+    }
+    fn content_tables(&self) -> Vec<String> {
+        vec!["joined".into()]
+    }
+    fn derive(&self, unit: &contextful_core::run::derive::task::HostUnit) -> Result<contextful_core::run::derive::task::Derived, RunError> {
+        let (notes, tags) = (unit.joined["notes"].len(), unit.joined["tags"].len());
+        self.0.lock().unwrap().push((unit.key.clone(), notes, tags));
+        let mut out = contextful_core::run::derive::task::Derived::new();
+        out.insert("joined".into(), vec![json!({"notes": notes, "tags": tags}).as_object().unwrap().clone()]);
+        Ok(out)
+    }
+}
+
+/// A store whose `notes` table gains a row from its second read on, as a landing during the tick.
+struct Landing {
+    tables: Vec<(String, Vec<Row>)>,
+    late: Row,
+    reads: std::sync::Mutex<std::collections::BTreeMap<String, usize>>,
+}
+
+impl TableReader for Landing {
+    fn rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure> {
+        let mut reads = self.reads.lock().unwrap();
+        let n = reads.entry(table.to_string()).or_default();
+        *n += 1;
+        let mut rows = Rows(self.tables.clone()).rows(table, columns)?;
+        if table == "notes" && *n > 1 {
+            rows.push(self.late.clone());
+        }
+        Ok(rows)
+    }
+}
+
+/// A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each
+/// joined table read once after selection and before the first unit derives, so a row landing later is absent.
+// spec: run.select.unit-parents@c80f668d
+#[test]
+fn a_host_unit_carries_its_joined_rows_read_once_before_it_derives() {
+    use contextful_connectors::derive::HostDerive;
+    use contextful_core::run::derive::task::Tasks;
+    let task = Arc::new(Joined(Default::default()));
+    let mut tasks = Tasks::default();
+    tasks.register("join", task.clone()).unwrap();
+    let config = DeriveConfig::parse_with("docs", &json!({"task": "join", "source_table": "documents", "parent_id_column": "doc_id"}), &tasks).unwrap();
+    let rows = |v: Value| -> Vec<Row> { v.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect() };
+    let reader = Landing {
+        tables: vec![
+            ("documents".into(), rows(json!([{"doc_id": "d1", "body": "a"}, {"doc_id": "d2", "body": "b"}]))),
+            ("notes".into(), rows(json!([{"doc_id": "d1", "note": "x"}, {"doc_id": "d1", "note": "y"}, {"doc_id": "d9", "note": "z"}]))),
+            ("tags".into(), rows(json!([{"doc_id": "d2", "tag": "red"}]))),
+        ],
+        late: json!({"doc_id": "d2", "note": "late"}).as_object().unwrap().clone(),
+        reads: Default::default(),
+    };
+    let derive = HostDerive {
+        pipeline_id: "docs".into(),
+        config,
+        task: task.clone(),
+        tables: Default::default(),
+        retention_columns: Default::default(),
+        reader: Box::new(reader),
+        available: None,
+    };
+    let (landing, _) = derive.stage(&Never).unwrap();
+    let mut seen = task.0.lock().unwrap().clone();
+    seen.sort();
+    assert_eq!(seen, [("d1".to_string(), 2, 0), ("d2".to_string(), 0, 1)], "the row landing after the read is absent");
+    let joined = &landing.iter().find(|(t, _)| t == "joined").unwrap().1;
+    assert_eq!(joined.len(), 2, "{landing:?}");
+}

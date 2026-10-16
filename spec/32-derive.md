@@ -69,6 +69,8 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-connector*
 - `anti-join` — Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker under its current {{run.emit.derivation-key}} in the pipeline's own output table, or, for a host task, its marker table.
   *A-run*
+- `unit-parents` — A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each joined table read once after selection and before the first unit derives, so a row landing later is absent.
+  *A-run*
 - `latest-marker` — A unit's standing under a key is its latest marker under that key by `_ingested_at`, `_run_id` and `_row_seq`, never its highest attempt count.
   *because an `empty` marker records 1 attempt, so ranking by count lets an older retry revive a settled unit*
 - `key-change` — Rows under the current key landed before the unit's latest `ok` or `empty` landing under another key count for nothing, so a key changed and changed back derives the unit again.

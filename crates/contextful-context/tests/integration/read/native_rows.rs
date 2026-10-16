@@ -34,7 +34,7 @@ fn a_registered_task_receives_numeric_values_and_numeric_looking_text_distinctly
     let response = r.face.source_rows(&session, "research/counters", None, &["counter", "text"]).unwrap();
     assert_eq!(response.rows.len(), 1, "the task input exists before its type assertions");
     let row = response.columns.iter().cloned().zip(response.rows[0].clone()).collect();
-    let unit = HostUnit { key: "one".into(), row, prior_attempts: 0, derivation_key: "counter-v1".into() };
+    let unit = HostUnit { key: "one".into(), row, prior_attempts: 0, derivation_key: "counter-v1".into(), ..Default::default() };
     let derived = task.derive(&unit).expect("an admitted native row preserves its original JSON kinds");
     assert_eq!(derived["counts"][0]["counter"], json!(9_007_199_254_740_993_i64));
     assert_eq!(derived["counts"][0]["text"], json!("9007199254740993"));
