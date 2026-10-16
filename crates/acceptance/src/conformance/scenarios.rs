@@ -351,12 +351,15 @@ fn graceful(f: &Fixture) -> Result<()> {
         &[],
     ))?;
     let deadline = Instant::now() + f.timeout;
+    // A read before the daemon lands its table fails; one still failing at the deadline
+    // names its own cause rather than a timeout.
+    let mut polled = None;
     loop {
         if !source.received("/items").is_empty() {
-            if let Ok(answer) = f.query("SELECT id FROM feed_items") {
-                if answer["rows"] == json!([["stable"]]) {
-                    break;
-                }
+            match f.query("SELECT id FROM feed_items") {
+                Ok(answer) if answer["rows"] == json!([["stable"]]) => break,
+                Ok(_) => polled = None,
+                Err(error) => polled = Some(error),
             }
         }
         require(
@@ -367,7 +370,9 @@ fn graceful(f: &Fixture) -> Result<()> {
                 .is_none(),
             "ConformanceDaemonExited",
         )?;
-        require(Instant::now() < deadline, "ConformanceDaemonTimeout")?;
+        if Instant::now() >= deadline {
+            return Err(polled.unwrap_or_else(|| "ConformanceDaemonTimeout".into()));
+        }
         std::thread::sleep(Duration::from_millis(20));
     }
     let signal = Command::new("/bin/kill")

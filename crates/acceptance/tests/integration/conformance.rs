@@ -334,6 +334,24 @@ fn a_failed_or_hung_scenario_step_names_its_verb_and_error_identifier() {
 
 #[test]
 #[cfg(unix)]
+fn a_daemon_poll_that_never_reads_names_the_query_error_not_a_timeout() {
+    let dir = tempfile::tempdir().unwrap();
+    let binary = dir.path().join("contextful");
+    executable(&binary, "#!/bin/sh\ncase \"$1 $2\" in\n'--version ') printf 'contextful fixture contextful-full\\n';;\n*' --help') ;;\n'token keygen') printf 'public-key\\n';;\n'token mint') printf 'token\\n';;\n'pipeline import') ;;\n'pipeline serve')\n  url=$(sed -n 's/.*endpoint = \"\\([^\"]*\\)\".*/\\1/p' contextful.toml)\n  /usr/bin/python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1]).read()' \"$url\"\n  trap 'exit 0' TERM\n  while :; do sleep 0.1; done;;\n'query --json') printf 'ReadDurationExceeded: statement reached 30 s\\n' >&2; exit 1;;\n*) exit 99;;\nesac\n");
+    let report = conformance::run(&Options {
+        binary,
+        storage_profile: "local".into(),
+        required: vec!["graceful-restart".into()],
+        timeout_seconds: 10,
+    })
+    .unwrap();
+    let result = report.scenarios.iter().find(|scenario| scenario.required).unwrap();
+    assert_eq!(result.outcome, Outcome::Failed);
+    assert_eq!(result.diagnostic.as_deref(), Some("ConformanceCommandFailed:query:ReadDurationExceeded"), "{report:?}");
+}
+
+#[test]
+#[cfg(unix)]
 fn a_running_output_flood_is_stopped_before_the_process_deadline() {
     let dir = tempfile::tempdir().unwrap();
     let binary = dir.path().join("contextful");
