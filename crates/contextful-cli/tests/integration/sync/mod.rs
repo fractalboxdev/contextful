@@ -3,6 +3,7 @@
 #![cfg(feature = "data-plane")]
 
 mod catalogs;
+mod generations;
 mod hydrate;
 mod run_state;
 mod node_id;

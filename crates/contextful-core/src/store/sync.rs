@@ -302,6 +302,12 @@ pub struct BucketManifest {
     /// The residency allow-set the pushing sites declare (`surface.reside.site-regions`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub residency: Option<crate::surface::reside::SiteRegions>,
+    /// The instant the commit was made, absent on a plan or a manifest predating the stamp.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub committed_at: Option<Instant>,
+    /// The node that made the commit, absent on a plan or a manifest predating the stamp.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub committed_by: Option<String>,
 }
 
 /// The immutable receipt identifying a project's applied control version.
@@ -321,7 +327,7 @@ fn is_zero(n: &u64) -> bool {
 
 impl Default for BucketManifest {
     fn default() -> BucketManifest {
-        BucketManifest { format: MANIFEST_FORMAT, generation: 0, entries: BTreeMap::new(), tombstones: BTreeMap::new(), pointers: BTreeMap::new(), control_heads: BTreeMap::new(), residency: None }
+        BucketManifest { format: MANIFEST_FORMAT, generation: 0, entries: BTreeMap::new(), tombstones: BTreeMap::new(), pointers: BTreeMap::new(), control_heads: BTreeMap::new(), residency: None, committed_at: None, committed_by: None }
     }
 }
 

@@ -469,6 +469,17 @@ struct Commit {
     stranded: Vec<(String, String)>,
 }
 
+/// One generation manifest the bucket holds: its number, stamp, and the project's entry and
+/// tombstone counts.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct GenerationSummary {
+    pub generation: u64,
+    pub committed_at: Option<Instant>,
+    pub committed_by: Option<String>,
+    pub entries: usize,
+    pub tombstones: usize,
+}
+
 /// What a pull did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PullReport {
@@ -730,6 +741,22 @@ impl Syncer {
                 Err(StoreError::SyncGenerationAbsent(format!("the bucket holds no `{key}`; its newest generation is {newest}")).into())
             }
         }
+    }
+
+    /// Each generation manifest the bucket holds, ascending, summarized for choosing a restore
+    /// (`store.pull.generation-list`).
+    pub fn generation_list(&self) -> Result<Vec<GenerationSummary>> {
+        let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
+        self.generations()?.into_iter().map(|n| {
+            let m = self.generation_manifest(n)?;
+            Ok(GenerationSummary {
+                generation: n,
+                committed_at: m.committed_at,
+                committed_by: m.committed_by,
+                entries: m.entries.keys().filter(|k| in_project(k)).count(),
+                tombstones: m.tombstones.keys().filter(|k| in_project(k)).count(),
+            })
+        }).collect()
     }
 
     /// Every generation the bucket holds a generation manifest for, ascending.
@@ -999,6 +1026,8 @@ impl Syncer {
             }
             // A manifest rewritten by a writer predating `generation` reads 0; the files keep the count (`store.push.generation-floor`).
             committed.generation = remote.generation.max(newest) + 1;
+            committed.committed_at = Some(now);
+            committed.committed_by = Some(self.node.clone());
             committed.pointers = remote.pointers.iter().filter(|(k, _)| !in_project(k)).map(|(k, p)| (k.clone(), p.clone())).collect();
             committed.pointers.extend(pointers);
             if let Some(r) = &self.residency {

@@ -71,6 +71,15 @@ pub enum SyncCmd {
         #[arg(long)]
         generation: Option<u64>,
     },
+    /// List the generation manifests the bucket holds, with each commit's time, pushing node and
+    /// the project's entry and tombstone counts.
+    Generations {
+        #[command(flatten)]
+        args: SyncArgs,
+        /// Print JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Take or release a table's compaction lease in the bucket.
     #[command(subcommand)]
     Lease(LeaseCmd),
@@ -408,6 +417,20 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
                 eprintln!("warning: {refusal}");
             }
             println!("pulled {} objects and {} pointers in {} attempt(s)", r.downloaded.len(), r.pointers.len(), r.attempts);
+            Ok(())
+        }
+        SyncCmd::Generations { args, json } => {
+            let (s, _) = open(&args)?;
+            let listed = s.generation_list()?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "generations": listed }))?);
+                return Ok(());
+            }
+            let dash = |v: Option<String>| v.unwrap_or_else(|| "-".into());
+            println!("generation committed_at committed_by entries tombstones");
+            for g in listed {
+                println!("{} {} {} {} {}", g.generation, dash(g.committed_at.map(|t| t.to_string())), dash(g.committed_by), g.entries, g.tombstones);
+            }
             Ok(())
         }
         SyncCmd::Lease(LeaseCmd::Acquire { table, args }) => {
