@@ -1209,6 +1209,7 @@ impl Syncer {
             }
             None => None,
         };
+        let pushed = crate::run_state::state_path(self.store.root(), &self.node).exists();
         let mut report = PullReport::default();
         let mut shortfall: Option<String> = None;
         let mut manifest = BucketManifest::default();
@@ -1239,12 +1240,13 @@ impl Syncer {
                 continue;
             }
             for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k))) {
-                // This node's own keys are authoritative here, except in a restore.
-                if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) {
-                    continue;
-                }
                 let Some(path) = self.local_path(key) else { continue };
                 let local = std::fs::read(&path).ok();
+                // This node's own keys are authoritative here, except in a restore or where a
+                // store that never pushed as this node lacks them (`store.pull.cold-own-keys`).
+                if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) && (pushed || local.is_some()) {
+                    continue;
+                }
                 let schema = key.ends_with("/schema.json");
                 // A restore takes a schema as the bucket holds it now (`store.pull.generation-schema`).
                 let current_schema = generation.is_some() && schema;
@@ -1296,6 +1298,8 @@ impl Syncer {
         if generation.is_none() {
             let ledger = self.key_set_ledger();
             for (key, t) in manifest.tombstones.iter().filter(|(k, _)| in_project(k) && reaches(k) && !manifest.entries.contains_key(*k)) {
+                // A key with no local copy leaves nothing to delete or verify.
+                let Some(path) = self.local_path(key).filter(|path| path.exists()) else { continue };
                 // A deletion whose signer the ledger does not verify removes nothing here.
                 if let Err(why) = verify_tombstone(ledger.as_ref(), key, t) {
                     report.unverified.push(
@@ -1303,12 +1307,10 @@ impl Syncer {
                     );
                     continue;
                 }
-                if let Some(path) = self.local_path(key) {
-                    match std::fs::remove_file(&path) {
-                        Ok(()) => report.removed.push(key.clone()),
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                        Err(e) => return Err(io(&path, e)),
-                    }
+                match std::fs::remove_file(&path) {
+                    Ok(()) => report.removed.push(key.clone()),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(io(&path, e)),
                 }
             }
         }
