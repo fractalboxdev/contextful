@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 184 | 69 | 14 | 5 | 162 | 0 | 162 |
-| `read` | 2 | 20 | 293 | 48 | 29 | 15 | 251 | 0 | 250 |
+| `read` | 2 | 20 | 294 | 48 | 29 | 15 | 252 | 0 | 252 |
 | `run` | 3 | 29 | 551 | 126 | 45 | 16 | 519 | 0 | 519 |
 | `store` | 3 | 19 | 295 | 64 | 15 | 10 | 284 | 0 | 284 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2639 | 668 | 213 | 74 | 2350 | 0 | |
+| **total** | 22 | 169 | 2640 | 668 | 213 | 74 | 2351 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 286 | 275 | passing | closed |
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
-| 5 — The read face under enforcement | 17 | 311 | 274 | passing | closed |
+| 5 — The read face under enforcement | 17 | 312 | 275 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
 | 7 — Memory | 6 | 73 | 58 | passing | closed |
 | 8 — Accountability | 5 | 93 | 86 | passing | closed |
@@ -1318,6 +1318,7 @@ Unscheduled operations: 13.
 | `read.retrieve.candidate-window` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_candidate_window_is_the_larger_of_a_multiple_and_a_floor` | performed |
 | `read.retrieve.content-tokens` | `crates/contextful-core/tests/integration/read/retrieve.rs::content_tokens_are_lowercased_split_stopped_and_deduplicated` | performed |
 | `read.retrieve.dedup-is-gated` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_browse_shaped_read_skips_the_deduplicator` | performed |
+| `read.retrieve.empty-scored-text` | `crates/contextful-context/tests/integration/read/fulltext.rs::an_empty_declared_text_list_adds_no_lexical_candidate` | performed |
 | `read.retrieve.engine-resolved-date` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_engine_resolves_the_publication_column` | performed |
 | `read.retrieve.excluded-arm` | `crates/contextful-context/tests/integration/read/respond.rs::a_ranked_read_names_its_excluded_arms` | performed |
 | `read.retrieve.filter-budget` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_filter_is_bounded_in_conditions_entries_and_bytes` | performed |

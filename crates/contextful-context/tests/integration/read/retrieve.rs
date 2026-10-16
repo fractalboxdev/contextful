@@ -1034,6 +1034,25 @@ fn a_declared_text_list_is_what_a_ranked_read_scores() {
     assert_eq!(sorted(ids(&read("press/undeclared", "article"), "doc_id")), ["d1", "d2"]);
 }
 
+/// With the lexical backend linked, rows tied on `_score` order by BM25 over the scored
+/// text, not by recency: `_score` counts matched tokens, and BM25 stays internal.
+#[cfg(feature = "fts")]
+#[test]
+fn rows_tied_on_score_order_by_bm25_over_the_scored_text() {
+    let press = "\n[[pipeline.tables]]\nname = \"press/bm25\"\nretrieve = { text = [\"title\", \"transcript\"] }\n";
+    let manifest = format!("{MANIFEST}{press}");
+    let mut r = Reads::with_manifest(&manifest);
+    land_rows(&r.store, "press/bm25", "run-0001", json!([
+        { "doc_id": "old", "title": "Lithium", "transcript": "lithium lithium lithium supply", "published_at": "2029-01-01" },
+        { "doc_id": "new", "title": "Markets", "transcript": "a long review of copper nickel cobalt zinc tin and one lithium mention", "published_at": "2030-01-01" },
+    ]));
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    let s = r.session(&["press/*"], None, None);
+    let ranked = r.face.retrieve(&s, &RetrieveRequest { limit: Some(10), ..ask("press/bm25", "lithium") }, Bounds::default()).unwrap();
+    assert_eq!(column(&ranked, "_score"), [json!(1), json!(1)]);
+    assert_eq!(ids(&ranked, "doc_id"), ["old", "new"]);
+}
+
 /// The row key is absent from the outer projection.
 // spec: read.retrieve.row-key-stays-internal@0987d291
 #[test]

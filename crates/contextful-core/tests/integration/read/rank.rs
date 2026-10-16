@@ -135,8 +135,8 @@ fn publication_text_casts_to_an_instant_before_comparison() {
     assert_eq!(ids(&c), ["a", "b"]);
 }
 
-/// The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries an integer score bounded by the content-token count, the in-window flag and the basis label.
-// spec: read.rank.retrieval-block@a1cf3e6e
+/// The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries `_score`, the count of content tokens its {{read.retrieve.scored-text}} matches, the in-window flag and the basis label.
+// spec: read.rank.retrieval-block@a5765d87
 #[test]
 fn the_retrieval_block_and_row_fields_carry_their_names() {
     let block = RetrievalBlock { window: 200, candidates_prefloor: 200, candidates: 61, matched: 61, returned: 20, in_window: 14, deduped: 3, padded: 0, underfilled: false, floor: Some(2), since: Some("2026-02-07".into()) };

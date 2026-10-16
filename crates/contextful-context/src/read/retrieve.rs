@@ -299,6 +299,7 @@ impl Face {
         let mut recalled = false;
         let mut rows: Vec<Row> = Vec::new();
         let mut underfilled = false;
+        let mut textless: std::collections::HashSet<String> = std::collections::HashSet::new();
         for table in &arms {
             // An arm whose relation lacks a filter column drops rather than run unfiltered
             // (`read.retrieve.unsatisfiable-arm-drops`).
@@ -331,6 +332,16 @@ impl Face {
                     (snippet.clone(), snippet)
                 }
             };
+            // A declared list leaving no column adds no lexical candidate: no full-text probe,
+            // and under a content token only a positive vector score admits a row
+            // (`read.retrieve.empty-scored-text`).
+            let text_free = decl.scored_text().is_some() && scored.is_empty();
+            if text_free && !tokens.is_empty() {
+                if request.query_embedding.is_none() {
+                    continue;
+                }
+                textless.insert(table.clone());
+            }
             let basis = PUBLICATION_COLUMNS
                 .iter()
                 .find(|p| schema.iter().any(|c| c.name == **p && matches!(c.ty, ColumnType::Timestamp | ColumnType::Utf8)))
@@ -400,7 +411,7 @@ impl Face {
             // so a row it recalls scores exactly as the exact path scores it
             // (`read.retrieve.sidecar-generates-candidates`).
             // A table declaring no full-text sidecar reads no snapshot manifest here.
-            let fulltext = decl.indexes().iter().any(|i| i.kind == IndexKind::Fulltext);
+            let fulltext = !text_free && decl.indexes().iter().any(|i| i.kind == IndexKind::Fulltext);
             // A replica answers by every sidecar the read needs, or refuses naming the pull
             // that supplies it (`store.replicate.missing-index`).
             if !claims && self.store.replica_of().is_some() {
@@ -482,7 +493,7 @@ impl Face {
             }
         }
         let prefloor = rows.len() as u64;
-        rows.retain(|r| passes_floor(floor, r.lexical, r.vector));
+        rows.retain(|r| passes_floor(floor, r.lexical, r.vector) && (!textless.contains(&r.table) || r.vector.is_some_and(|v| v > 0.0)));
         let deduped = dedup(&mut rows);
         let candidates = rows.len() as u64;
 

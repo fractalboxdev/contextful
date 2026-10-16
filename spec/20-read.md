@@ -290,6 +290,8 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 - `plural-suffix-floor` — A token under 4 chars takes no optional plural suffix.
 - `scored-text` — Beyond {{store.declare.table-block}}, a table block may declare `retrieve.text`, a list of columns; lexical scoring and {{read.retrieve.relevance-floor}} read exactly those text columns less any the session classes or masks, and an undeclared table its snippet columns.
   *because a snippet is chosen for display, so a match in a long body misses the floor and a categorical label in the snippet matches every row*
+- `empty-scored-text` — A table whose declared `retrieve.text` leaves no column runs no full-text probe, and under a query holding a content token its rows enter only by a positive vector score.
+  *because a null lexical score passes the floor, so a text-only query otherwise returns such a table's newest rows whatever it asks*
 - `text-free-table-scores-null` — A table with no scored text column scores lexically null, never zero, and its rows enter by vector score alone.
   *P4*
 - `candidate-window` — The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice.
@@ -372,7 +374,7 @@ Ordering of a candidate set: the three legs, their fusion, the question's timefr
 - `window-anchor-tolerance` — A publication instant more than 24 h past the question's anchor sets the in-window flag false. A null or uncastable value sets it false too, and a basis field names which case applied.
 - `ordering-casts-first` — Ordering compares publication values as `TIMESTAMPTZ` instants, casting a text value before any comparison.
   *because a text comparison of two date spellings orders strings, not instants*
-- `retrieval-block` — The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries an integer score bounded by the content-token count, the in-window flag and the basis label.
+- `retrieval-block` — The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries `_score`, the count of content tokens its {{read.retrieve.scored-text}} matches, the in-window flag and the basis label.
 - `delivered-counts` — The retrieval block's returned count equals delivered rows; its in_window count equals delivered rows with a true in-window flag, after byte truncation.
   *because aggregate counts describe the rows the caller receives*
 - `internal-score-stays-internal` — The lexical engine's own float score never crosses to a caller.
