@@ -7,7 +7,9 @@ use contextful_core::run::record::{
     SiteIdSources, Window, DESCRIBE_CEILING_ROWS, DESCRIBE_DEFAULT_ROWS, ERROR_CAP_BYTES, ERROR_ELLIPSIS, EXPORT_CEILING_ROWS,
     EXPORT_DEFAULT_ROWS, OWNER_LEASE_RENEWAL_SECS, OWNER_LEASE_TTL_SECS, SITE_ID_MAX_LEN, SITE_ID_MIN_LEN,
 };
-use contextful_core::run::RunError;
+use contextful_core::run::failure::{CALL_DEADLINE, LINEAR_MEMORY};
+use contextful_core::run::record::{BoundHit, RunRow};
+use contextful_core::run::{Failure, FailureTag, RunError};
 
 /// A run status is `pending`, `running`, `waiting`, `success`, `partial_failure`, `failed` or `canceled`, spelled
 /// identically on the record and the wire snapshot; every surface classifying a run covers all seven.
@@ -274,4 +276,26 @@ fn a_run_row_records_its_pipeline_phase_by_name() {
     for p in [PipelinePhase::Planning, PipelinePhase::Seeding, PipelinePhase::Backfilling, PipelinePhase::Streaming] {
         assert_eq!(serde_json::to_value(p).unwrap(), serde_json::json!(p.name()));
     }
+}
+
+/// A bound hit rides its failure, naming the bound struck, and the run record lists each
+/// hit; a row recorded without the list reads it empty.
+#[test]
+fn a_bound_hit_names_its_bound_and_the_row_lists_every_hit() {
+    let failure = Failure::new(FailureTag::Transient, "the guest ran past its call deadline").with_bound(CALL_DEADLINE);
+    assert_eq!((failure.tag, failure.bound.as_deref()), (FailureTag::Transient, Some("call-deadline")));
+    let wire = serde_json::to_value(&failure).unwrap();
+    assert_eq!(wire["bound"], "call-deadline");
+    assert_eq!(serde_json::from_value::<Failure>(wire).unwrap(), failure);
+    assert!(serde_json::to_value(Failure::new(FailureTag::Transient, "reset")).unwrap().get("bound").is_none());
+
+    let mut r = row("run-1", "2030-01-01T00:00:00Z");
+    let mut plain = serde_json::to_value(&r).unwrap();
+    assert!(plain.get("bound_hits").is_none(), "an empty list is not written");
+    r.bound_hits.push(BoundHit { step: "pull".into(), attempt: 1, bound: LINEAR_MEMORY.into() });
+    r.bound_hits.push(BoundHit { step: "pull".into(), attempt: 2, bound: CALL_DEADLINE.into() });
+    let back: RunRow = serde_json::from_value(serde_json::to_value(&r).unwrap()).unwrap();
+    assert_eq!(back.bound_hits, r.bound_hits);
+    plain.as_object_mut().unwrap().remove("bound_hits");
+    assert!(serde_json::from_value::<RunRow>(plain).unwrap().bound_hits.is_empty());
 }

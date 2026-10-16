@@ -5,7 +5,7 @@ use contextful_core::coordinate::{
     Cas, Catalog, CursorRow, ExecutionAdmission, ExecutionGuard, Lease, LeaseKey, LeaseRow,
 };
 use contextful_core::run::own::{ExecutionOwner, OwnerScope};
-use contextful_core::run::record::RunRow;
+use contextful_core::run::record::{select_history, HistoryPage, RunRow, Window};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -588,6 +588,28 @@ impl Catalog for D1Catalog {
             .iter()
             .map(Self::parse_run)
             .collect()
+    }
+
+    fn history(&self, pipeline_id: Option<&str>, window: &Window) -> Result<HistoryPage, Failure> {
+        let since = window.since.map_or(i64::MIN, |s| {
+            let ns = s.unix_nanos();
+            i64::try_from(ns).unwrap_or(if ns < 0 { i64::MIN } else { i64::MAX })
+        });
+        // One row past the ceiling tells a truncated window from a full one; the bound and the
+        // order read the indexed integer the start text spells (`run.record.history-window`).
+        let limit = window.ceiling.saturating_add(1);
+        let (sql, args) = match pipeline_id {
+            Some(id) => (
+                "SELECT row FROM contextful_run WHERE pipeline_id = ? AND CAST(started_ns AS INTEGER) >= CAST(? AS INTEGER) ORDER BY CAST(started_ns AS INTEGER) DESC, run_id COLLATE BINARY DESC LIMIT ?",
+                vec![json!(id), json!(since.to_string()), json!(limit)],
+            ),
+            None => (
+                "SELECT row FROM contextful_run WHERE CAST(started_ns AS INTEGER) >= CAST(? AS INTEGER) ORDER BY CAST(started_ns AS INTEGER) DESC, run_id COLLATE BINARY DESC LIMIT ?",
+                vec![json!(since.to_string()), json!(limit)],
+            ),
+        };
+        let rows = self.db.query(sql, args).map_err(storage)?.rows.iter().map(Self::parse_run).collect::<Result<Vec<_>, _>>()?;
+        Ok(select_history(rows, window))
     }
 
     fn last_run_start(&self, pipeline_id: &str) -> Result<Option<Instant>, Failure> {

@@ -826,6 +826,63 @@ fn the_stop_route_admits_its_credential_before_the_stop() {
     assert!(head.contains("Allow: POST"), "{head}");
 }
 
+/// A face serving the awakeable resume route for the rest of the test process: each call records its method,
+/// token, caller subject and body, and answers `200`.
+fn listen_awake() -> (&'static Fixture, SocketAddr, &'static Mutex<Vec<(String, String, Option<String>, Vec<u8>)>>) {
+    let f: &'static Fixture = Box::leak(Box::new(fixture()));
+    let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let calls: &'static Mutex<Vec<(String, String, Option<String>, Vec<u8>)>> = Box::leak(Box::new(Mutex::new(Vec::new())));
+    let awake = move |request: &HttpRequest, authority: &AdmittedAuthority, token: &str| {
+        let subject = authority.subject().identity().map(str::to_string);
+        calls.lock().unwrap().push((request.method.clone(), token.to_string(), subject, request.body.clone()));
+        HttpResponse::json(200, &json!({ "token": token }))
+    };
+    let awake: &'static _ = Box::leak(Box::new(awake));
+    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(4)).unwrap().with_awake(awake)));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || face.serve(listener));
+    (f, addr, calls)
+}
+
+/// `GET` and `POST /awake/:token` admit the request's credential before the registry is reached, answering `401`
+/// without one, and hand the registry the credential's verified `on_behalf_of` as the caller subject.
+// spec: run.suspend.resume-authenticates@af90afeb
+#[test]
+fn the_awake_route_admits_its_credential_before_the_registry() {
+    let (f, addr, calls) = listen_awake();
+    let request = |method: &str, target: &str, credential: Option<&str>, body: &[u8]| HttpRequest {
+        method: method.into(),
+        target: target.into(),
+        headers: credential.map(|c| vec![("Authorization".into(), format!("Bearer {c}"))]).unwrap_or_default(),
+        body: body.to_vec(),
+    };
+    for method in ["GET", "POST"] {
+        for presented in [None, Some("not-a-credential")] {
+            let (status, head, _) = send(addr, &request(method, "/awake/abc123", presented, b"{}"));
+            assert_eq!(status, 401, "{head}");
+        }
+    }
+    assert!(calls.lock().unwrap().is_empty(), "no registry is reached before the credential admits");
+
+    let token = credential(&f.signer, "*", 900, None);
+    assert_eq!(send(addr, &request("GET", "/awake/abc123", Some(&token), b"")).0, 200);
+    let (status, _, answer) = send(addr, &request("POST", "/awake/abc123", Some(&token), b"{\"approved\":true}"));
+    assert_eq!((status, body(&answer)), (200, json!({ "token": "abc123" })));
+    let dana = Some("user://dana@acme.example".to_string());
+    assert_eq!(*calls.lock().unwrap(), [
+        ("GET".to_string(), "abc123".to_string(), dana.clone(), Vec::new()),
+        ("POST".to_string(), "abc123".to_string(), dana, b"{\"approved\":true}".to_vec()),
+    ]);
+
+    let (status, head, _) = send(addr, &request("PUT", "/awake/abc123", Some(&token), b""));
+    assert_eq!(status, 405);
+    assert!(head.contains("Allow: GET, POST"), "{head}");
+    assert_eq!(send(addr, &request("GET", "/awake/abc/def", Some(&token), b"")).0, 404);
+    assert_eq!(calls.lock().unwrap().len(), 2);
+}
+
 /// A listener serving `f` behind `hydration`, for the rest of the test process, and the
 /// instant its face was built: the cold start the readiness bound measures from.
 fn listen_hydrating(f: Fixture, hydration: &'static Hydration) -> (&'static Fixture, SocketAddr, std::time::Instant) {

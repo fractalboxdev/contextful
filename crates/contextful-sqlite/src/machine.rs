@@ -8,7 +8,7 @@ use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, Leas
 use contextful_core::ports::Clock;
 use contextful_core::run::backfill::ChunkRow;
 use contextful_core::run::own::{ExecutionOwner, OwnerScope};
-use contextful_core::run::record::RunRow;
+use contextful_core::run::record::{select_history, HistoryPage, RunRow, Window};
 use contextful_core::run::{Failure, RunError};
 use contextful_core::store::StoreError;
 use contextful_core::store::encrypt::FileCipher;
@@ -76,7 +76,7 @@ impl MachineCatalog {
     pub fn open(path: &Path, clock: Arc<dyn Clock + Send + Sync>) -> Result<MachineCatalog, Failure> {
         let conn = open(path, SCHEMA)?;
         let catalog = MachineCatalog { path: path.to_path_buf(), backing: Backing::Plain(Mutex::new(conn)), clock };
-        catalog.with(true, migrate_scope_keys)?;
+        catalog.with(true, migrate)?;
         Ok(catalog)
     }
 
@@ -90,7 +90,7 @@ impl MachineCatalog {
         };
         catalog.with_sealed(true, true, |tx, fail| {
             tx.execute_batch(SCHEMA).map_err(|e| fail(&e))?;
-            migrate_scope_keys(tx, fail)
+            migrate(tx, fail)
         })?;
         Ok(catalog)
     }
@@ -173,6 +173,41 @@ fn put_lease_row(tx: &Transaction, key: &str, row: &LeaseRow, fail: Fail) -> Res
 /// Create the scope-keyed `scope` table, or rebuild one keyed on `(pipeline_id, tbl)`
 /// alone into it. Every stored row becomes a table scope with its pipeline, table, cursor
 /// and owner text unchanged, so a pending table owner resumes as it was.
+fn migrate(tx: &Transaction, fail: Fail) -> Result<(), Failure> {
+    migrate_scope_keys(tx, fail)?;
+    migrate_run_start(tx, fail)
+}
+
+/// A start instant in nanoseconds since the Unix epoch, clamped to the column's range.
+fn start_ns(at: Instant) -> i64 {
+    let ns = at.unix_nanos();
+    i64::try_from(ns).unwrap_or(if ns < 0 { i64::MIN } else { i64::MAX })
+}
+
+/// The indexed start column a history window's bound reads (`run.record.history-window`).
+/// A run table predating it gains the column, filled from each row's start instant.
+fn migrate_run_start(tx: &Transaction, fail: Fail) -> Result<(), Failure> {
+    let has: bool = tx
+        .query_row("SELECT EXISTS (SELECT 1 FROM pragma_table_info('run') WHERE name = 'started_ns')", [], |r| r.get(0))
+        .map_err(|e| fail(&e))?;
+    if !has {
+        tx.execute_batch("ALTER TABLE run ADD COLUMN started_ns INTEGER;").map_err(|e| fail(&e))?;
+        let rows: Vec<(String, String)> = tx
+            .prepare("SELECT run_id, row FROM run")
+            .and_then(|mut q| q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect())
+            .map_err(|e| fail(&e))?;
+        for (run_id, text) in rows {
+            let row: RunRow = from_text(&text, fail)?;
+            tx.execute("UPDATE run SET started_ns = ?2 WHERE run_id = ?1", params![run_id, start_ns(row.started_at)]).map_err(|e| fail(&e))?;
+        }
+    }
+    tx.execute_batch(
+        "CREATE INDEX IF NOT EXISTS run_by_pipeline_start ON run (pipeline_id, started_ns);
+         CREATE INDEX IF NOT EXISTS run_by_start ON run (started_ns);",
+    )
+    .map_err(|e| fail(&e))
+}
+
 fn migrate_scope_keys(tx: &Transaction, fail: Fail) -> Result<(), Failure> {
     let columns: Vec<String> = tx
         .prepare("SELECT name FROM pragma_table_info('scope')")
@@ -314,9 +349,9 @@ fn run_row(tx: &Transaction, run_id: &str, fail: Fail) -> Result<Option<RunRow>,
 fn put_run_row(tx: &Transaction, row: &RunRow, fail: Fail) -> Result<(), Failure> {
     let text = to_text(row, fail)?;
     tx.execute(
-        "INSERT INTO run (run_id, pipeline_id, row) VALUES (?1, ?2, ?3)
-         ON CONFLICT (run_id) DO UPDATE SET pipeline_id = excluded.pipeline_id, row = excluded.row",
-        params![row.run_id, row.pipeline_id, text],
+        "INSERT INTO run (run_id, pipeline_id, row, started_ns) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT (run_id) DO UPDATE SET pipeline_id = excluded.pipeline_id, row = excluded.row, started_ns = excluded.started_ns",
+        params![row.run_id, row.pipeline_id, text, start_ns(row.started_at)],
     )
     .map_err(|e| fail(&e))?;
     Ok(())
@@ -493,6 +528,26 @@ impl Catalog for MachineCatalog {
             .map_err(|e| fail(&e))?;
             texts.iter().map(|t| from_text(t, fail)).collect()
         })
+    }
+
+    fn history(&self, pipeline_id: Option<&str>, window: &Window) -> Result<HistoryPage, Failure> {
+        let since = window.since.map_or(i64::MIN, start_ns);
+        // One row past the ceiling tells a truncated window from a full one.
+        let limit = i64::try_from(window.ceiling.saturating_add(1)).unwrap_or(i64::MAX);
+        let rows = self.with(false, |tx, fail| {
+            let text = |r: &rusqlite::Row| r.get::<_, String>(0);
+            let texts = match pipeline_id {
+                Some(p) => tx
+                    .prepare("SELECT row FROM run WHERE pipeline_id = ?1 AND started_ns >= ?2 ORDER BY started_ns DESC, run_id DESC LIMIT ?3")
+                    .and_then(|mut q| q.query_map(params![p, since, limit], text)?.collect::<Result<Vec<_>, _>>()),
+                None => tx
+                    .prepare("SELECT row FROM run WHERE started_ns >= ?1 ORDER BY started_ns DESC, run_id DESC LIMIT ?2")
+                    .and_then(|mut q| q.query_map(params![since, limit], text)?.collect::<Result<Vec<_>, _>>()),
+            }
+            .map_err(|e| fail(&e))?;
+            texts.iter().map(|t| from_text::<RunRow>(t, fail)).collect::<Result<Vec<_>, _>>()
+        })?;
+        Ok(select_history(rows, window))
     }
 
     fn last_run_start(&self, pipeline_id: &str) -> Result<Option<Instant>, Failure> {

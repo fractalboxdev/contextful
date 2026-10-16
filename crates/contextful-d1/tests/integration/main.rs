@@ -417,6 +417,7 @@ fn run_row(id: &str) -> RunRow {
         input: None,
         failed_branches: vec![],
         credential_providers: Default::default(),
+        bound_hits: Vec::new(),
     }
 }
 
@@ -460,6 +461,42 @@ fn d1_run_rows_and_updates_survive_replacement() {
         replacement.last_run_start("feed").unwrap(),
         Some(precise.started_at)
     );
+}
+
+/// History reads through a window, newest first; the bound and the order read the indexed integer the start
+/// text spells, and the ceiling sits in the `LIMIT`.
+#[test]
+fn d1_history_selects_its_window_over_the_indexed_start() {
+    use contextful_core::run::record::Window;
+    let fixture = Fixture::start();
+    let db = D1::connect(&fixture.endpoint).unwrap();
+    db.initialize_recovery("sample", "generation").unwrap();
+    let catalog = contextful_d1::D1Catalog::connect(&fixture.endpoint).unwrap();
+    for (id, pipeline, start) in [
+        ("run-1", "feed", "2026-01-01T00:00:00Z"),
+        ("run-2", "feed", "2026-01-02T00:00:00.5Z"),
+        ("run-b", "feed", "2026-01-03T00:00:00Z"),
+        ("run-B", "feed", "2026-01-03T00:00:00Z"),
+        ("run-4", "other", "2026-01-04T00:00:00Z"),
+    ] {
+        let mut row = run_row(id);
+        row.pipeline_id = pipeline.into();
+        row.started_at = Instant::parse(start).unwrap();
+        catalog.put_run(&row).unwrap();
+    }
+    let at = |s: &str| Some(Instant::parse(s).unwrap());
+    let ids = |page: contextful_core::run::record::HistoryPage| (page.runs.into_iter().map(|r| r.run_id).collect::<Vec<_>>(), page.truncated);
+    let page = catalog.history(Some("feed"), &Window { since: at("2026-01-01T00:00:00Z"), ceiling: 2 }).unwrap();
+    assert_eq!(ids(page), (vec!["run-b".to_string(), "run-B".into()], true));
+    let page = catalog.history(Some("feed"), &Window { since: at("2026-01-02T00:00:00.5Z"), ceiling: 10 }).unwrap();
+    assert_eq!(ids(page), (vec!["run-b".to_string(), "run-B".into(), "run-2".into()], false));
+    let page = catalog.history(None, &Window { since: at("2026-01-03T00:00:00Z"), ceiling: 10 }).unwrap();
+    assert_eq!(ids(page).0, ["run-4", "run-b", "run-B"]);
+    let page = catalog.history(Some("feed"), &Window { since: None, ceiling: 1 }).unwrap();
+    assert_eq!(ids(page), (vec!["run-b".to_string()], true));
+    let indexes = db.query("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'contextful_run'", vec![]).unwrap();
+    let names: Vec<&str> = indexes.rows.iter().filter_map(|r| r.get("name").and_then(serde_json::Value::as_str)).collect();
+    assert!(names.contains(&"contextful_run_by_pipeline_start") && names.contains(&"contextful_run_by_start"), "{names:?}");
 }
 
 #[test]

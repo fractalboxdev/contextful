@@ -278,6 +278,7 @@ pub struct HttpFace<'a, C> {
     exchange_unconfigured: bool,
     claim_write: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)>,
     runs: Option<RunRoutes<'a>>,
+    awake: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &str) -> HttpResponse + Sync)>,
     hydration: Option<&'a Hydration>,
 }
 
@@ -333,7 +334,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, hydration: None })
+        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, hydration: None })
     }
 
     /// Report `build` at the handshake and `/health` in place of this package's linked
@@ -372,6 +373,13 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// Attach the run routes: an authenticated stop and the read-only run-stream socket.
     pub fn with_runs(mut self, runs: RunRoutes<'a>) -> Self {
         self.runs = Some(runs);
+        self
+    }
+
+    /// Attach the awakeable resume route, `GET` and `POST /awake/:token`, called only under
+    /// an admitted credential with the token (`run.suspend.resume-authenticates`).
+    pub fn with_awake(mut self, awake: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &str) -> HttpResponse + Sync)) -> Self {
+        self.awake = Some(awake);
         self
     }
 
@@ -482,6 +490,13 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
                     (false, _) => HttpResponse::message(405, "`/runs/:run_id/stop` answers POST").with("Allow", "POST"),
                     (true, "GET") => self.stream_request(request, run),
                     (true, _) => HttpResponse::message(405, "`/runs/:run_id/stream` answers GET").with("Allow", "GET"),
+                }
+            }
+            (path, method) if self.awake.is_some() && awake_route(path).is_some() => {
+                let token = awake_route(path).expect("matched above");
+                match method {
+                    "GET" | "POST" => self.admitted(request, |authority, _| self.awake.expect("route exists")(request, authority, token)),
+                    _ => HttpResponse::message(405, "`/awake/:token` answers GET and POST").with("Allow", "GET, POST"),
                 }
             }
             (other, _) => HttpResponse::message(404, format!("no route `{other}`; the protocol endpoint is `{MCP_PATH}`")),
@@ -667,6 +682,11 @@ fn read_request_preflight(stream: &mut impl Read, preflight: impl Fn(&HttpReques
     }
     request.body = body;
     Ok(request)
+}
+
+/// The token of an `/awake/:token` path: one non-empty segment; `None` for any other path.
+fn awake_route(path: &str) -> Option<&str> {
+    path.strip_prefix("/awake/").filter(|t| !t.is_empty() && !t.contains('/'))
 }
 
 /// The run id and whether the path is the stream route, for `/runs/:run_id/stop` or

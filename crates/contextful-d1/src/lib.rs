@@ -67,6 +67,13 @@ const TABLES: &[(&str, &str)] = &[
     ("contextful_reconciliation", "CREATE TABLE IF NOT EXISTS contextful_reconciliation (token TEXT PRIMARY KEY, evidence TEXT NOT NULL, reconciled_at INTEGER NOT NULL)"),
     ("contextful_publication", PUBLICATION_TABLE),
 ];
+/// Indexes a reader relies on; each is created with its table and on every later
+/// initialization, so a database predating one gains it. The run record's start instant is
+/// text, so its index orders the integer it spells (`run.record.history-window`).
+const INDEXES: &[&str] = &[
+    "CREATE INDEX IF NOT EXISTS contextful_run_by_pipeline_start ON contextful_run (pipeline_id, CAST(started_ns AS INTEGER))",
+    "CREATE INDEX IF NOT EXISTS contextful_run_by_start ON contextful_run (CAST(started_ns AS INTEGER))",
+];
 const PUBLICATION_TABLE: &str = "CREATE TABLE IF NOT EXISTS contextful_publication (role TEXT NOT NULL, name TEXT NOT NULL, namespace TEXT NOT NULL, version INTEGER NOT NULL, body TEXT NOT NULL, blob TEXT, token TEXT, PRIMARY KEY (role, name, namespace))";
 
 impl D1 {
@@ -122,10 +129,12 @@ impl D1 {
         )?;
         if !existing.rows.is_empty() {
             // Schema 2 lacks only the coordinated publication table.
-            self.batch(&[
+            let mut statements = vec![
                 Statement { sql: PUBLICATION_TABLE, params: vec![] },
                 Statement { sql: "UPDATE contextful_execution_schema SET version = 3 WHERE id = 1 AND version = 2", params: vec![] },
-            ])?;
+            ];
+            statements.extend(INDEXES.iter().map(|sql| Statement { sql, params: vec![] }));
+            self.batch(&statements)?;
             return self.verify_recovery(project, generation);
         }
         let frontier =
@@ -140,6 +149,7 @@ impl D1 {
                 params: vec![],
             })
             .collect();
+        statements.extend(INDEXES.iter().map(|sql| Statement { sql, params: vec![] }));
         statements.push(Statement {
             sql: "INSERT OR IGNORE INTO contextful_execution_schema (id, version) VALUES (1, ?)",
             params: vec![json!(EXECUTION_SCHEMA_VERSION)],

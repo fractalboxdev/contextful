@@ -370,6 +370,20 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     let run_snapshot = |authority: &AdmittedAuthority, run_id: &str| crate::run::served_snapshot(&run_project, authority.grants(), run_id);
     #[cfg(feature = "data-plane")]
     let http = http.with_runs(contextful_agent::http::RunRoutes { stop: &run_stop, snapshot: &run_snapshot });
+    #[cfg(feature = "data-plane")]
+    let awake = |request: &HttpRequest, authority: &AdmittedAuthority, token: &str| {
+        let payload = (request.method == "POST").then_some(request.body.as_slice());
+        match crate::run::served_awake(&run_project, authority.subject().identity(), token, payload) {
+            Ok(crate::run::Awoken::State(state)) => HttpResponse::json(200, &state),
+            Ok(crate::run::Awoken::Payload(bytes)) => {
+                let kind = if serde_json::from_slice::<serde_json::Value>(&bytes).is_ok() { "application/json" } else { "application/octet-stream" };
+                HttpResponse { status: 200, headers: vec![("Content-Type".into(), kind.into())], body: bytes }
+            }
+            Err((status, body)) => HttpResponse::json(status, &body),
+        }
+    };
+    #[cfg(feature = "data-plane")]
+    let http = http.with_awake(&awake);
     let hydrated = |set: contextful_context::read::MappedSnapshotSet| {
         use std::io::Write;
         let _ = writeln!(std::io::stderr(), "hydrated: snapshot set mapped (files: {}, bytes: {})", set.files().count(), set.bytes());

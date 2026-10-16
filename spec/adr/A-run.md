@@ -428,3 +428,43 @@ Decision: `run.orchestrate` names the role as the substrate port's verbs. A prov
 
 Consequences: a Workflows filler meets the provider's ceilings at the pull or chunk grain; the run record lives in the store, so retention binds nothing; storage-port adapters keep their suites.
 Revisit: a provider offering a sub-chunk grain.
+
+## An awakeable resumes on the credentialed face, beside the worker relay
+
+Context: `/awake/:token` on `[control] relay` carries dispatched steps and a delegate's currency probe under one deployment key. That key names no caller, so the relay cannot hand the registry the verified subject `run.suspend.caller-binding` compares. Criteria: a verified caller subject; one callback shape for every party; authentication before any registry read.
+
+Decision: the served face answers `GET` and `POST /awake/:token` for awakeables under its admitted credential and passes the credential's `on_behalf_of` to the registry as the caller. The relay keeps its listener and its signed messages. An unbound token resolves for any admitted caller; a bound one answers unknown to every other subject.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| The awakeable path on the served face, beside the relay *(chosen)* | — | Two listeners answer one path shape, each for its own tokens. |
+| The registry merged into the relay | Verified caller subject | Every awakeable caller holds the worker key, which names nobody. |
+| Resume moved to a path of its own | One callback shape | External parties and the delegate envelope learn a second route. |
+| The token as the only credential | Leak resistance | A token copied from a log resumes a run. |
+
+Consequences: the face opens the run stores per request, as the stop route does; the local owner resolves through `run awake` without a credential.
+
+## A bound hit rides its failure and is listed on the run record
+
+Context: a guest striking its memory cap or a call deadline fails `Transient`, and an attempt that then succeeds leaves no trace of the hit. Criteria: an operator sees every hit; no second retry layer; no new catalog column.
+
+Decision: the host names the struck bound on the failure. The step's retry loop appends the step label, attempt and bound to the run row's bound-hit list before it decides, so the hit is recorded whether or not a later attempt recovers. The row stays one document, and adapters change nothing.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A named bound on the failure, listed on the row *(chosen)* | — | Each hit rewrites the run row once. |
+| The run's error columns alone | Recovered hits | A hit followed by a successful attempt leaves nothing. |
+| One projection event per hit | Durability | The projection is no record; a restart forgets it. |
+| A bound-decision table | Footprint | A table in every catalog adapter for one list. |
+
+## A meter reservation holds no wait of its own
+
+Context: a meter acquire is a blocking HTTP call, so it cannot select on a run's cancellation token. Criteria: a stop lands within a bounded time; one wait per retry; the blocking transport stays.
+
+Decision: each limiter call is bounded, and a reservation never sleeps. A denial surfaces as `RateLimited` with its retry-after, and the run's retry sleep, which selects on the token, performs the wait. A stop arriving during a limiter call lands when that call returns.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A bounded call, the wait in the retry sleep *(chosen)* | — | A stop waits out at most one limiter call. |
+| An interruptible transport selecting on the token | Blocking transport | An async client inside a blocking adapter, saving at most one call. |
+| A sleep on denial inside the reservation | One wait per retry | A second sleep for the token to reach, stacked on the schedule. |

@@ -166,6 +166,35 @@ fn the_newest_run_start_reads_a_pipeline_or_a_host_scope() {
     assert_eq!(c.last_run_start("none").unwrap(), None);
 }
 
+/// History reads through a window, newest first, ties by run id in byte order; the bound sits in the `WHERE`
+/// over the indexed start column and the ceiling in the `LIMIT`.
+#[test]
+fn history_selects_its_window_newest_first_over_the_start_column() {
+    use contextful_core::run::record::Window;
+    let Some(server) = server::start() else { return };
+    let c = catalog(&server);
+    for (id, pipeline, start) in [
+        ("run-1", "feed", "2030-01-01T00:00:00Z"),
+        ("run-2", "feed", "2030-01-02T00:00:00.5Z"),
+        ("run-b", "feed", "2030-01-03T00:00:00Z"),
+        ("run-B", "feed", "2030-01-03T00:00:00Z"),
+        ("run-4", "other", "2030-01-04T00:00:00Z"),
+    ] {
+        let mut row = run_row(id, pipeline, RunStatus::Success);
+        row.started_at = at(start);
+        c.put_run(&row).unwrap();
+    }
+    let ids = |page: contextful_core::run::record::HistoryPage| (page.runs.into_iter().map(|r| r.run_id).collect::<Vec<_>>(), page.truncated);
+    let page = c.history(Some("feed"), &Window { since: Some(at("2030-01-01T00:00:00Z")), ceiling: 2 }).unwrap();
+    assert_eq!(ids(page), (vec!["run-b".to_string(), "run-B".into()], true), "ties order by bytes, not by the database's collation");
+    let page = c.history(Some("feed"), &Window { since: Some(at("2030-01-02T00:00:00.5Z")), ceiling: 10 }).unwrap();
+    assert_eq!(ids(page), (vec!["run-b".to_string(), "run-B".into(), "run-2".into()], false));
+    let page = c.history(None, &Window { since: Some(at("2030-01-03T00:00:00Z")), ceiling: 10 }).unwrap();
+    assert_eq!(ids(page).0, ["run-4", "run-b", "run-B"]);
+    let page = c.history(Some("feed"), &Window { since: Some(at("2031-01-01T00:00:00Z")), ceiling: 10 }).unwrap();
+    assert_eq!(ids(page), (Vec::<String>::new(), false));
+}
+
 #[test]
 fn rows_outlive_the_connection_that_wrote_them() {
     let Some(server) = server::start() else { return };

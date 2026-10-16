@@ -464,3 +464,35 @@ fn a_stop_arriving_once_the_last_batch_is_home_lets_it_land_and_records_the_stop
     let stored = rig.catalog().run("run-1").unwrap().unwrap();
     assert_eq!(stored.stop.as_ref().and_then(|s| s.reason.as_deref()), Some("too late"), "the unfulfilled stop stays recorded");
 }
+
+/// Each run holds one cancellation token that every await selects on: a stop marked on the row ends the run's
+/// retry sleep, and the same token ends the subprocess wait inside its pull.
+// spec: run.cancel.one-token@3a7be5ee
+#[cfg(unix)]
+#[test]
+fn one_stop_ends_the_retry_sleep_and_the_subprocess_wait_of_its_run() {
+    // A 60 s retry sleep ends at the stop.
+    let rig = Rig::new();
+    let mut source = StopsItself { rig_catalog: rig.engine.catalog.clone(), engine: rig.engine.clone(), serve_first: false, calls: 0 };
+    let started = std::time::Instant::now();
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut Sink::default()).unwrap();
+    assert!(started.elapsed() < Duration::from_secs(10), "the retry sleep ran {:?}", started.elapsed());
+    assert_eq!((row.status, row.error_kind), (RunStatus::Canceled, Some(FailureTag::Canceled)));
+
+    // A pull whose child sleeps 60 s ends at a stop marked while the child runs: the run handed its token to the
+    // pull, so nothing but the catalog carried the stop.
+    let rig = Rig::new();
+    let dir = tempfile::tempdir().unwrap();
+    let mut source = contextful_engine::command::CommandSource { argv: vec!["sh".into(), "-c".into(), "sleep 60".into()], cwd: dir.path().to_path_buf() };
+    let engine = rig.engine.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        while engine.cancel("run-2", Scope::Run, None).is_err() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    });
+    let started = std::time::Instant::now();
+    let row = rig.run(&opaque(), "1.0.0", "run-2", &mut source, &mut Sink::default()).unwrap();
+    assert!(started.elapsed() < Duration::from_secs(10), "the subprocess wait ran {:?}", started.elapsed());
+    assert_eq!((row.status, row.error_kind), (RunStatus::Canceled, Some(FailureTag::Canceled)));
+}

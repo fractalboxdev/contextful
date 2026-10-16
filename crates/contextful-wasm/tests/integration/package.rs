@@ -2,6 +2,7 @@
 
 use crate::support::{host, loopback, open, open_with, text, Response, Server, MEMORIES, PROBE, PROBE_BASE};
 use contextful_core::connector::package::{Artifact, Digest, PinRequirement};
+use contextful_core::run::failure::{CALL_DEADLINE, LINEAR_MEMORY};
 use contextful_core::run::FailureTag;
 use contextful_wasm::limits::{DISCOVERY_DEADLINE, EPOCH_TICK, IN_FLIGHT, READ_DEADLINE, REQUEST_BODY_BYTES, SESSION_LOG_BYTES};
 use contextful_wasm::{ComponentHost, Limits, Target};
@@ -324,4 +325,31 @@ fn an_outbound_body_past_8_mib_fails_the_call_before_the_vendor() {
     assert!(f.message.contains("request body"), "{f}");
     assert_eq!(server.received().len(), 1, "the over-long request never reached the vendor");
     assert_eq!(s.traffic().refused.len(), 1);
+}
+
+/// A guest striking its linear-memory cap or a call deadline fails `Transient`, the failure
+/// naming the bound it struck; a guest's own transient error names none.
+// spec: run.retry.bound-hit-is-transient@395f5b2f
+#[test]
+fn a_struck_bound_is_named_on_its_transient_failure() {
+    let capped = Limits::default().with_memory(64 * 1024 * 1024).unwrap();
+    let mut s = open_with(loopback(), &capped, None).unwrap();
+    s.open("grow", None).unwrap();
+    let f = s.next().unwrap_err();
+    assert_eq!((f.tag, f.bound.as_deref()), (FailureTag::Transient, Some(LINEAR_MEMORY)), "{f}");
+
+    let (host, _, _) = host();
+    let many = host.load(MEMORIES).unwrap();
+    let f = host.open(&many, loopback(), &Limits::default(), None).err().expect("refused");
+    assert_eq!((f.tag, f.bound.as_deref()), (FailureTag::Transient, Some(LINEAR_MEMORY)), "{f}");
+
+    let short = Limits { read_deadline: Duration::from_millis(300), ..Limits::default() };
+    let mut s = open_with(loopback(), &short, None).unwrap();
+    s.open("spin", None).unwrap();
+    let f = s.next().unwrap_err();
+    assert_eq!((f.tag, f.bound.as_deref()), (FailureTag::Transient, Some(CALL_DEADLINE)), "{f}");
+
+    let mut s = open();
+    let f = s.open("fail", None).err().expect("the guest refuses");
+    assert_eq!((f.tag, f.bound.as_deref()), (FailureTag::Transient, None), "{f}");
 }

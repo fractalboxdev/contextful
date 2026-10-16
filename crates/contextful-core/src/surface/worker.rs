@@ -3,10 +3,11 @@
 //! skew-bounded callback, and the heartbeat ledger that moves a silent worker's step onto
 //! another worker under the next attempt.
 //!
-//! A worker reaches the orchestrator only through the awakeable route
-//! (`run.suspend.resume-route`): `GET /awake/:token` is its heartbeat and
+//! A worker reaches the orchestrator only through the relay's awakeable route
+//! (`surface.dispatch.worker-target`): `GET /awake/:token` is its heartbeat and
 //! `POST /awake/:token` its completion callback, each signed over
-//! `(run, step, attempt, timestamp)`.
+//! `(run, step, attempt, timestamp)`. An awakeable a run suspends on resumes on the
+//! served face instead (`run.suspend.resume-route`).
 
 use super::SurfaceError;
 use crate::time::Instant;

@@ -5,7 +5,7 @@
 use crate::run::backfill::ChunkRow;
 use crate::run::failure::{Failure, FailureTag};
 use crate::run::own::{ExecutionOwner, OwnerPins, OwnerScope};
-use crate::run::record::RunRow;
+use crate::run::record::{select_history, HistoryPage, RunRow, Window};
 use crate::run::RunError;
 use crate::store::StoreError;
 use crate::time::Instant;
@@ -277,6 +277,13 @@ pub trait Catalog {
     fn put_run(&self, row: &RunRow) -> Result<(), Failure>;
     fn run(&self, run_id: &str) -> Result<Option<RunRow>, Failure>;
     fn runs(&self, pipeline_id: Option<&str>) -> Result<Vec<RunRow>, Failure>;
+    /// One window of `pipeline_id`'s history, or every pipeline's under `None`, newest
+    /// first (`run.record.history-window`). A SQL catalog applies the bound in its `WHERE`
+    /// over an indexed start column and the ceiling as its `LIMIT`; this default filters
+    /// what [`Catalog::runs`] returns.
+    fn history(&self, pipeline_id: Option<&str>, window: &Window) -> Result<HistoryPage, Failure> {
+        Ok(select_history(self.runs(pipeline_id)?, window))
+    }
     /// The start of `pipeline_id`'s newest journaled run, which the scheduler reads on
     /// every beat; a backend answers it without decoding the pipeline's run rows.
     fn last_run_start(&self, pipeline_id: &str) -> Result<Option<Instant>, Failure> {

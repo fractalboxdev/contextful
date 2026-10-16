@@ -14,7 +14,7 @@ use contextful_core::run::own::{releases, ExecutionOwner, OwnerPins, OwnerScope}
 use contextful_core::run::plan::NATIVE_WORLD;
 use contextful_core::run::ports::{BlobStore, Cancellation, Capabilities, ExecutionPort, JournalStore, Landed, OpenExecution, Outcome, StepEffect, Substrate, Wake};
 use contextful_core::run::project::{Change, StepPatch, StepStatus};
-use contextful_core::run::record::{cap_error, Owner, Phase, RunRow, RunStatus};
+use contextful_core::run::record::{cap_error, BoundHit, Owner, Phase, RunRow, RunStatus};
 use contextful_core::run::retry::{decide, Decision, Schedule};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::time::Instant;
@@ -209,6 +209,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             input: None,
             failed_branches: Vec::new(),
             credential_providers: Default::default(),
+            bound_hits: Vec::new(),
         };
         self.catalog.put_run(&row)?;
         let token = CancelToken::default();
@@ -521,6 +522,15 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
             };
             if failure.tag == FailureTag::Canceled {
                 return Err(Close::Failed(failure));
+            }
+            // Listed before the decision, so a hit a later attempt recovers from stays on the
+            // record (`run.retry.bound-hit-recorded`).
+            if let Some(bound) = &failure.bound {
+                let hit = BoundHit { step: label.to_string(), attempt, bound: bound.clone() };
+                engine.catalog.update_run(&self.run_id, &mut |r| {
+                    r.bound_hits.push(hit.clone());
+                    Ok(())
+                })?;
             }
             match decide(&self.schedule, label, attempt, &failure, seed(&self.run_id)) {
                 Decision::Retry { delay_ms } => {
