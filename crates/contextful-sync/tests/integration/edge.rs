@@ -132,7 +132,7 @@ fn a_newer_manifest_through_the_edge_refuses_as_an_unsupported_format() {
 
 /// A grant on `*` serves every table and the root objects; a tenant-scoped, aggregate or
 /// horizon-bound grant serves none of its table's files, and a write-only grant serves nothing.
-// spec: authority.bound-redistribution.edge-whole-table@febff83c
+// spec: authority.bound-redistribution.edge-whole-table@899cef89
 #[test]
 fn only_a_whole_table_read_grant_opens_a_table_at_the_edge() {
     let (_dir, b) = pushed();

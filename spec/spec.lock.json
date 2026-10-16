@@ -21370,8 +21370,8 @@
       "operation": "bound-redistribution",
       "subject": "edge-whole-table",
       "kind": "behavior",
-      "statement": "The edge serves a table's objects only under a read grant covering it with no tenant scope, aggregate bound or horizon, and a root object Shapes withholds only under such a grant on `*`.",
-      "why": "because a table's files hold every row a narrowing grant removes, and a query re-applies only what the replica still holds",
+      "statement": "The edge serves a table's objects only under a read grant covering it with no tenant scope, aggregate bound or horizon, and a root object outside `access/`, `control/` and `stale_memory.idx` only under such a grant on `*`.",
+      "why": "because a table's files hold every row a narrowing grant removes, run states and cursor logs name tables, and a query re-applies only what the replica holds",
       "file": "spec/51-enforcement.md",
       "line": 297
     },
