@@ -120,6 +120,18 @@ bloom_filter = ["owner", "note_id"]
     assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\ncolumns = { v = \"float64[3]\" }\n").is_err());
 }
 
+/// `retrieve.text` lists the columns a ranked read scores; unset, it is absent from the
+/// canonical serialization, and an unknown key under `retrieve` refuses the block.
+#[test]
+fn a_table_block_declares_its_scored_text_columns() {
+    let declared = &TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\nretrieve = { text = [\"title\", \"body\"] }\n").unwrap()[0];
+    assert_eq!(declared.scored_text(), Some(&["title".to_string(), "body".to_string()][..]));
+    assert!(declared.canonical().contains(r#""retrieve":{"text":["title","body"]}"#), "{}", declared.canonical());
+    assert_eq!(TableDecl::named("bare").scored_text(), None);
+    assert!(!TableDecl::named("bare").canonical().contains("retrieve"));
+    assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\nretrieve = { columns = [\"title\"] }\n").is_err());
+}
+
 /// `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.
 // spec: store.declare.order-by-default@141fbb95
 #[test]

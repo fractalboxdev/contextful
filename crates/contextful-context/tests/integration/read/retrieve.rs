@@ -14,8 +14,8 @@ fn ids(r: &Response, key: &str) -> Vec<String> {
     column(r, "_row").iter().map(|row| row[key].as_str().unwrap().to_string()).collect()
 }
 
-/// Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the snippet, recency breaking ties. The result differs in order and still answers.
-// spec: read.rank.degradation-not-error@14477b43
+/// Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the {{read.retrieve.scored-text}}, recency breaking ties. The result differs in order and still answers.
+// spec: read.rank.degradation-not-error@6ac38e4c
 #[cfg(not(feature = "fts"))]
 #[test]
 fn without_the_lexical_backend_a_ranked_read_answers_by_token_fallback() {
@@ -33,8 +33,8 @@ fn without_the_lexical_backend_a_ranked_read_answers_by_token_fallback() {
     assert!(n4 < n1, "{order:?}");
 }
 
-/// A snippet concatenates up to three text columns: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.
-// spec: read.retrieve.snippet@f249e729
+/// A snippet concatenates up to three text columns, drawn from `retrieve.text` where declared: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.
+// spec: read.retrieve.snippet@45e7c4c4
 #[test]
 fn a_snippet_leads_with_label_columns() {
     let r = Reads::new();
@@ -996,6 +996,42 @@ fn items_and_artifacts_of_any_kind_append_dedupe_on_content_and_carry_a_timestam
     for t in column(&ranked, "_ingested_at") {
         assert!(t.as_str().is_some_and(|t| t.starts_with("2030-01-12")), "{t}");
     }
+}
+
+/// Beyond {{store.declare.table-block}}, a table block may declare `retrieve.text`, a list of columns; lexical scoring and {{read.retrieve.relevance-floor}} read exactly those text columns less any the session classes or masks, and an undeclared table its snippet columns.
+// spec: read.retrieve.scored-text@818d6dba
+#[test]
+fn a_declared_text_list_is_what_a_ranked_read_scores() {
+    let press = "\n[[pipeline.tables]]\nname = \"press/declared\"\nretrieve = { text = [\"title\", \"summary\", \"transcript\"] }\n\n[[pipeline.tables]]\nname = \"press/undeclared\"\n";
+    let manifest = format!("{MANIFEST}{press}");
+    let mut r = Reads::with_manifest(&manifest);
+    // The passage lives in `summary` or `transcript`; `kind` is a categorical label.
+    let rows = json!([
+        { "doc_id": "d1", "kind": "article", "title": "Quarterly update", "summary": "Grid operators buy lithium cells", "transcript": "Opening remarks" },
+        { "doc_id": "d2", "kind": "article", "title": "Hiring note", "summary": "Two analysts join", "transcript": "The vendor shipped lithium cells late" },
+        { "doc_id": "d3", "kind": "commentary", "title": "Market colour", "summary": "Prices held steady", "transcript": "Nothing new" },
+    ]);
+    for table in ["press/declared", "press/undeclared"] {
+        land_rows(&r.store, table, "run-0001", rows.clone());
+    }
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    let s = r.session(&["press/*"], None, None);
+    let read = |table: &str, query: &str| r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), ..ask(table, query) }, Bounds::default()).unwrap();
+
+    // Declared: a match only in `transcript` clears the floor, and `kind` scores nothing.
+    let cells = read("press/declared", "lithium cells");
+    assert_eq!(sorted(ids(&cells, "doc_id")), ["d1", "d2"]);
+    // The snippet draws from the declared list, label columns first, and leaves `kind` out.
+    let snippets: Vec<String> = column(&cells, "_snippet").iter().map(|v| v.as_str().unwrap().to_string()).collect();
+    assert_eq!(
+        sorted(snippets),
+        ["Hiring note — Two analysts join — The vendor shipped lithium cells late", "Quarterly update — Grid operators buy lithium cells — Opening remarks"]
+    );
+    assert_eq!(ids(&read("press/declared", "article"), "doc_id"), Vec::<String>::new());
+
+    // Undeclared: the snippet — title, summary, then `kind` — is what scores.
+    assert_eq!(ids(&read("press/undeclared", "lithium cells"), "doc_id"), ["d1"]);
+    assert_eq!(sorted(ids(&read("press/undeclared", "article"), "doc_id")), ["d1", "d2"]);
 }
 
 /// The row key is absent from the outer projection.

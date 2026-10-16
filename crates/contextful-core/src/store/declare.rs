@@ -208,6 +208,18 @@ pub struct TableDecl {
     /// A table whose rows never enter the result cache (`read.cache.cache-is-opt-in`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub private: Option<bool>,
+    /// What a ranked read scores the table's rows on (`read.retrieve.scored-text`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retrieve: Option<RetrieveDecl>,
+}
+
+/// A table's ranked-read declaration (`read.retrieve.scored-text`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct RetrieveDecl {
+    /// The text columns lexical scoring and the relevance floor read.
+    pub text: Vec<String>,
 }
 
 /// A declared incoming reference to the table's erasure key.
@@ -491,6 +503,11 @@ impl TableDecl {
     /// The declared content-hash column, if any.
     pub fn content_hash_column(&self) -> Option<&str> {
         self.content_hash_column.as_deref()
+    }
+
+    /// The declared scored-text columns, if any (`read.retrieve.scored-text`).
+    pub fn scored_text(&self) -> Option<&[String]> {
+        self.retrieve.as_ref().map(|r| r.text.as_slice())
     }
 
     pub fn is_keyed(&self) -> bool {

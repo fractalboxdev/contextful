@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 184 | 69 | 14 | 5 | 162 | 0 | 162 |
-| `read` | 2 | 20 | 292 | 48 | 29 | 15 | 250 | 0 | 250 |
+| `read` | 2 | 20 | 293 | 48 | 29 | 15 | 251 | 0 | 250 |
 | `run` | 3 | 29 | 551 | 126 | 45 | 16 | 519 | 0 | 519 |
 | `store` | 3 | 19 | 295 | 64 | 15 | 10 | 284 | 0 | 284 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2638 | 668 | 213 | 74 | 2349 | 0 | |
+| **total** | 22 | 169 | 2639 | 668 | 213 | 74 | 2350 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 286 | 275 | passing | closed |
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
-| 5 — The read face under enforcement | 17 | 310 | 273 | passing | closed |
+| 5 — The read face under enforcement | 17 | 311 | 274 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
 | 7 — Memory | 6 | 73 | 58 | passing | closed |
 | 8 — Accountability | 5 | 93 | 86 | passing | closed |
@@ -1335,6 +1335,7 @@ Unscheduled operations: 13.
 | `read.retrieve.row-key-dedup` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_ranked_read_keeps_the_newest_row_per_content_hash` | performed |
 | `read.retrieve.row-key-stays-internal` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_row_key_stays_out_of_the_projection` | performed |
 | `read.retrieve.row-key-under-mask` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_lossy_mask_on_the_row_key_keeps_every_row` | performed |
+| `read.retrieve.scored-text` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_declared_text_list_is_what_a_ranked_read_scores` | performed |
 | `read.retrieve.script-split-matching` | `crates/contextful-core/tests/integration/read/retrieve.rs::ascii_tokens_match_on_word_boundaries_and_others_by_containment` | performed |
 | `read.retrieve.sidecar-falls-back` | `crates/contextful-context/tests/integration/read/retrieve.rs::every_failed_precondition_falls_back_to_the_exact_scan` | performed |
 | `read.retrieve.sidecar-generates-candidates` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores` | performed |
