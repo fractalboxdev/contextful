@@ -70,6 +70,9 @@ pub enum ReadError {
     /// A ranking under a horizon reached a sidecar indexing rows available after it. (`read.horizon.rank-statistics`)
     #[error("ReadIndexBeyondHorizon: {0}")]
     ReadIndexBeyondHorizon(String),
+    /// A subscription's `after` position names no committed run of its table. (`read.subscribe.position-unavailable`)
+    #[error("SubscriptionPositionUnavailable: {0}")]
+    SubscriptionPositionUnavailable(String),
     /// A read reached for a query-engine extension the binary does not link. (`assurance.build.runtime-extension-load`)
     #[error("ExtensionAutoloadRefused: {0}")]
     ExtensionAutoloadRefused(String),
@@ -100,6 +103,7 @@ impl ReadError {
             ReadError::ReadBoundExceedsHorizon(_) => "ReadBoundExceedsHorizon",
             ReadError::ReadNoBuildWithinHorizon(_) => "ReadNoBuildWithinHorizon",
             ReadError::ReadIndexBeyondHorizon(_) => "ReadIndexBeyondHorizon",
+            ReadError::SubscriptionPositionUnavailable(_) => "SubscriptionPositionUnavailable",
         }
     }
 }

@@ -6,6 +6,7 @@ mod horizon;
 mod rank;
 mod respond;
 mod retrieve;
+mod subscribe;
 mod template;
 
 use contextful_core::time::Instant;

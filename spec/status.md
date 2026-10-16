@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 277 | 0 | 277 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 151 | 0 | 151 |
-| `read` | 2 | 19 | 277 | 45 | 28 | 13 | 235 | 0 | 235 |
+| `read` | 2 | 20 | 287 | 46 | 29 | 15 | 245 | 0 | 245 |
 | `run` | 3 | 29 | 529 | 116 | 45 | 14 | 497 | 0 | 497 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 168 | 2578 | 654 | 211 | 75 | 2247 | 0 | |
+| **total** | 22 | 169 | 2588 | 655 | 212 | 77 | 2257 | 0 | |
 
 Decision records: 18.
 
@@ -45,7 +45,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
 | 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
 
-Unscheduled operations: 12.
+Unscheduled operations: 13.
 
 ## Pins
 
@@ -1303,6 +1303,16 @@ Unscheduled operations: 12.
 | `read.settle.registration` | `crates/contextful-core/tests/integration/memory/settle.rs::a_registration_names_one_form_one_source_and_a_metric_comparator` | performed |
 | `read.settle.settling-citation` | `crates/contextful-core/tests/integration/memory/settle.rs::a_judged_verdict_carries_a_web_citation` | performed |
 | `read.settle.source-mismatch` | `crates/contextful-core/tests/integration/memory/settle.rs::a_verdict_from_another_source_is_refused` | performed |
+| `read.subscribe.after-commit` | `crates/contextful-context/tests/integration/subscribe.rs::a_logged_run_absent_from_its_commit_log_never_notifies` | performed |
+| `read.subscribe.commit-order` | `crates/contextful-core/tests/integration/read/subscribe.rs::notifications_arrive_in_commit_order_once_each` | performed |
+| `read.subscribe.durable-source` | `crates/contextful-cli/tests/integration/context.rs::a_following_subscriber_receives_a_run_another_process_lands` | performed |
+| `read.subscribe.frontier-covers-run` | `crates/contextful-context/tests/integration/subscribe.rs::a_read_at_the_notified_frontier_covers_the_run` | performed |
+| `read.subscribe.no-content` | `crates/contextful-core/tests/integration/read/subscribe.rs::a_notification_carries_no_rows_and_no_count` | performed |
+| `read.subscribe.notification` | `crates/contextful-core/tests/integration/read/subscribe.rs::a_notification_names_its_run_and_the_frontier_including_it` | performed |
+| `read.subscribe.operator-verb` | `crates/contextful-cli/tests/integration/context.rs::subscribe_prints_the_replay_after_a_position_and_ends` | performed |
+| `read.subscribe.overrun` | `crates/contextful-core/tests/integration/read/subscribe.rs::past_the_bound_a_terminal_overrun_names_the_last_delivered_position` | performed |
+| `read.subscribe.position-unavailable` | `crates/contextful-core/tests/integration/read/subscribe.rs::an_unresolvable_position_names_the_oldest_resolvable_one` | performed |
+| `read.subscribe.resume` | `crates/contextful-context/tests/integration/subscribe.rs::resuming_replays_later_runs_once_across_a_fold_then_continues_live` | performed |
 | `read.synthesize.attribution` | `crates/contextful-memory/tests/integration/synthesize.rs::a_landed_claim_names_the_grant_that_wrote_it` | performed |
 | `read.synthesize.cadence` | `crates/contextful-cli/tests/integration/memory.rs::a_scheduled_synthesize_job_replaces_the_operator_triggered_pass` | performed |
 | `read.synthesize.claim-taint` | `crates/contextful-memory/tests/integration/synthesize.rs::a_batch_lands_under_its_least_trusted_row` | performed |

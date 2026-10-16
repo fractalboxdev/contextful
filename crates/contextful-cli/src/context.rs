@@ -145,6 +145,22 @@ pub enum ContextCmd {
         #[arg(long)]
         now: Option<String>,
     },
+    /// Print one JSON notification per committed run of each named table, in commit order.
+    Subscribe {
+        #[arg(required = true)]
+        tables: Vec<String>,
+        #[command(flatten)]
+        store: StoreArgs,
+        /// Resume a table after a committed run: `<table>=<run-id>/<node-id>`; repeatable.
+        #[arg(long)]
+        after: Vec<String>,
+        /// Keep reading the store's commit record after the replay, printing each run as it commits.
+        #[arg(long)]
+        follow: bool,
+        /// Milliseconds between two reads of the commit record under `--follow`.
+        #[arg(long, default_value_t = 500)]
+        poll_ms: u64,
+    },
     /// Reconstruct `derived.sqlite` from the tree and print the rows it now holds as JSON.
     RebuildCatalog {
         /// The project whose store root is `.contextful/context/<project>/` under the working
@@ -481,6 +497,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             }
             Ok(())
         }
+        ContextCmd::Subscribe { tables, store, after, follow, poll_ms } => subscribe(&store, &tables, &after, follow, poll_ms),
         ContextCmd::RebuildCatalog { project } => {
             let l = locate(project.as_deref(), None)?;
             let store = crate::project::open_store(&l.project, None, None)?;
@@ -499,5 +516,33 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&rows)?);
             Ok(())
         }
+    }
+}
+
+/// `context subscribe`: the replay, then under `--follow` each later commit, one JSON line
+/// per message (`read.subscribe.operator-verb`).
+fn subscribe(args: &StoreArgs, tables: &[String], after: &[String], follow: bool, poll_ms: u64) -> Result<()> {
+    use std::io::Write;
+    let o = Opened::open(args)?;
+    let mut positions = std::collections::BTreeMap::new();
+    for a in after {
+        let (table, position) = a.split_once('=').with_context(|| format!("`--after {a}` is not <table>=<run-id>/<node-id>"))?;
+        if positions.insert(table.to_string(), position.to_string()).is_some() {
+            bail!("`--after` names table `{table}` twice");
+        }
+    }
+    let mut subscription = contextful_context::subscribe::Subscription::open(&o.store, tables, &positions)?;
+    let stdout = std::io::stdout();
+    loop {
+        let messages = subscription.poll()?;
+        let mut out = stdout.lock();
+        for message in &messages {
+            writeln!(out, "{}", serde_json::to_string(message)?)?;
+        }
+        out.flush()?;
+        if subscription.ended() || !follow {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(poll_ms));
     }
 }
