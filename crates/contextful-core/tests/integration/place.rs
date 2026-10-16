@@ -27,3 +27,31 @@ fn a_row_naming_no_evidence_resolves_fail_closed() {
     assert_eq!(resolved, set(&["on-prem:hq"]));
     assert!(refusal.is_none());
 }
+
+/// Whether a set reaches a category is decided over its entries' constructors: `*`, the
+/// bare category, or the category carrying an identifier.
+#[test]
+fn a_set_reaches_a_category_through_any_entry_naming_it() {
+    use contextful_core::place::Category;
+    for reaching in [set(&["*"]), set(&["public-cloud:*"]), set(&["local:device", "public-cloud:us-east-1"])] {
+        assert!(reaching.reaches(Category::PublicCloud), "{:?}", reaching.labels());
+    }
+    for closed in [AllowSet::fail_closed(), set(&["private-cloud:*", "on-prem:hq"]), set(&[])] {
+        assert!(!closed.reaches(Category::PublicCloud), "{:?}", closed.labels());
+    }
+    assert!(AllowSet::fail_closed().reaches(Category::OnPrem));
+}
+
+/// Each enforcement refusal the write path, the relation compiler and the placement check
+/// raise carries its identifier as the head of its message.
+#[test]
+fn the_placement_relation_and_write_refusals_name_their_identifiers() {
+    for (e, id) in [
+        (EnforceError::KeyMaterialInRelation("x".into()), "EnforceKeyMaterialInRelation"),
+        (EnforceError::RemovalWithPublicCloud("x".into()), "EnforceRemovalWithPublicCloud"),
+        (EnforceError::CredentialShapedValue("x".into()), "EnforceCredentialShapedValue"),
+    ] {
+        assert_eq!(e.identifier(), id);
+        assert!(e.to_string().starts_with(&format!("{id}: ")), "{e}");
+    }
+}

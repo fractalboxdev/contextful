@@ -204,6 +204,16 @@ impl AllowSet {
         self.0.iter().any(|e| e.matches(zone))
     }
 
+    /// Whether the set admits some zone of `category`, decided over the entries'
+    /// constructors: `*`, the bare category, or the category carrying an identifier.
+    pub fn reaches(&self, category: Category) -> bool {
+        self.0.iter().any(|e| match e {
+            Entry::Any => true,
+            Entry::Category(c) | Entry::Exact(c, _) => *c == category,
+            Entry::LocalDevice => false,
+        })
+    }
+
     /// Whether every zone this set admits, `other` admits, decided over the entries'
     /// constructors and identifiers rather than by probing sample zones
     /// (`authority.place.symbolic-inclusion`).

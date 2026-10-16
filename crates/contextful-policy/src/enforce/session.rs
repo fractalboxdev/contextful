@@ -195,6 +195,9 @@ impl Session {
                 t.policy.check_schema(&t.decl.name, &t.columns)?;
             }
             let relation = session.compile(&t, &t.base, t.files.clone());
+            // The relation text is the session catalog entry a connection registers, so
+            // one check holds both (`authority.mask.key-material`).
+            pepper.guard(&relation.name, &relation.sql)?;
             session.relations.insert(t.decl.name.clone(), relation);
             session.policies.insert(t.decl.name.clone(), t.policy.clone());
             session.sources.insert(t.decl.name.clone(), t);
@@ -207,6 +210,9 @@ impl Session {
                 .map(|t| session.ledger(t))
                 .filter(|l| !session.relations.contains_key(&l.name))
                 .collect();
+            for l in &ledgers {
+                pepper.guard(&l.name, &l.sql)?;
+            }
             session.ledgers = ledgers.into_iter().map(|l| (l.name.clone(), l)).collect();
         }
         Ok(session)

@@ -263,3 +263,35 @@ fn reaffirming_the_original_claim_id_resolves_its_conflict() {
     let claims = contextful_memory::claims::read_claims(&f.face, &session, "memory/facts").unwrap();
     assert!(claims.iter().any(|claim| claim.claim_id == first.claim_id && claim.valid_from == first.valid_from && claim.valid_to.is_none()));
 }
+
+/// The write path raises `EnforceCredentialShapedValue` on a value matching a credential shape, before it reaches storage.
+// spec: authority.resist.credential-shaped-value@572915cf
+#[test]
+fn a_credential_shaped_value_is_refused_before_it_lands() {
+    use contextful_core::enforce::EnforceError;
+    let f = Fixture::new();
+    let writer = f.writer();
+    let node = NodeId::parse("memory-a").unwrap();
+    let shaped = [
+        CandidateClaim { object: "AKIAIOSFODNN7EXAMPLE".into(), ..candidate("Dana") },
+        CandidateClaim { object: "the key is password=hunter2hunter2".into(), ..candidate("Dana") },
+        CandidateClaim { subject: "Authorization: Bearer abcdefghijklmnop1234".into(), ..candidate("Dana") },
+        CandidateClaim { scope: Some("x-api-key: zK9s8d7f6g5h".into()), ..candidate("Dana") },
+    ];
+    for claim in shaped {
+        let field = if claim.subject != "acme" { "subject" } else if claim.scope.is_some() { "scope" } else { "object" };
+        match write_claim(&f.face, &writer, "memory/facts", claim, &node, at("2030-01-11T00:00:00Z"), &super::synthesize::admit) {
+            Err(MemoryFault::Enforce(EnforceError::CredentialShapedValue(why))) => {
+                assert!(why.contains(&format!("`{field}`")), "{why}");
+                for value in ["AKIAIOSFODNN7EXAMPLE", "hunter2hunter2", "abcdefghijklmnop1234", "zK9s8d7f6g5h"] {
+                    assert!(!why.contains(value), "the refusal names no value: {why}");
+                }
+            }
+            other => panic!("{field}: {other:?}"),
+        }
+    }
+    // Nothing landed: the next claim on the line retires no prior.
+    let clean = write_claim(&f.face, &writer, "memory/facts", candidate("Lee"), &node, at("2030-01-12T00:00:00Z"), &super::synthesize::admit).unwrap();
+    assert!(clean.claim.is_some());
+    assert_eq!(clean.retired.len(), 0);
+}

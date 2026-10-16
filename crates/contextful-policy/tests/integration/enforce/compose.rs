@@ -95,3 +95,39 @@ fn the_semi_join_opens_a_bound_relation_and_carries_its_ids_as_rows() {
     assert!(!session.relation("research/notes").unwrap().sql().contains(REACH_RELATION));
     assert_eq!(session.reach_rows(), [("research/pages".to_string(), "p1".to_string()), ("research/pages".to_string(), "p2".to_string())]);
 }
+
+/// A compiled relation, query plan or session catalog entry carrying pepper-derived key state raises `EnforceKeyMaterialInRelation`.
+// spec: authority.mask.key-material@04f8c682
+#[test]
+fn a_relation_carrying_key_state_is_refused() {
+    let signer = issuer();
+    let token = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
+    let authority = admit(&token, &signer, DURING).unwrap();
+    let key = "pepper-for-the-relation-check";
+    let pepper = Pepper::resolve(|v| (v == contextful_policy::enforce::mask::PEPPER_VAR).then(|| key.to_string()));
+    let hex: String = key.bytes().map(|b| format!("{b:02x}")).collect();
+    let inner: String = key.bytes().chain(std::iter::repeat_n(0, 64 - key.len())).map(|b| format!("{:02x}", b ^ 0x36)).collect();
+    let with_predicate = |literal: &str| {
+        let decl = TableDecl::parse_pipeline(&format!(
+            "[[pipeline.tables]]\nname = \"research/notes\"\n[pipeline.tables.policy.columns]\nx = {{ strategy = \"hash\" }}\n\
+             [pipeline.tables.policy.zone]\nallow = [\"*\"]\n[pipeline.tables.policy.rows]\npredicate = \"x = '{literal}'\"\n"
+        ))
+        .unwrap()
+        .remove(0);
+        let columns = vec![Column::new("x", ColumnType::Utf8, false)];
+        TableSource { policy: TablePolicy::from_decl(&decl).unwrap(), decl, columns, ..source("research/notes") }
+    };
+    for (form, literal) in [("key", key.to_string()), ("hex", hex.clone()), ("upper hex", hex.to_uppercase()), ("inner pad", inner)] {
+        match Session::open(&authority, &Request::default(), vec![with_predicate(&literal)], &pepper) {
+            Err(PolicyError::Enforce(contextful_core::enforce::EnforceError::KeyMaterialInRelation(why))) => {
+                assert!(why.contains("research/notes"), "{form}: {why}");
+                assert!(!why.contains(key) && !why.contains(&hex), "{form}: the refusal names no key state: {why}");
+            }
+            other => panic!("{form}: {other:?}"),
+        }
+    }
+    // The masked projection reaches the key through its scalar function alone.
+    let session = Session::open(&authority, &Request::default(), vec![with_predicate("ordinary")], &pepper).unwrap();
+    let sql = session.relation("research/notes").unwrap().sql();
+    assert!(sql.contains("contextful_mask_hash(CAST(\"x\" AS VARCHAR))"), "{sql}");
+}

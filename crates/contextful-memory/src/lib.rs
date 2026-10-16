@@ -21,6 +21,8 @@ pub enum MemoryFault {
     Store(#[from] ContextError),
     #[error(transparent)]
     Authority(#[from] contextful_core::AuthorityError),
+    #[error(transparent)]
+    Enforce(#[from] contextful_core::enforce::EnforceError),
     /// A claim that fails validation.
     #[error("{0}")]
     Invalid(String),

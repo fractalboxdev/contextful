@@ -57,6 +57,7 @@ fn each_added_step_only_removes_rows() {
 }
 
 // The predicates and the masked projection are compiled into the relation text.
+// spec: authority.compose.protection-is-a-rewrite@7e5cd474
 #[test]
 fn protection_is_compiled_into_the_relation() {
     let r = Reads::new();
@@ -207,6 +208,7 @@ fn drop_nulls_a_cell_or_empties_a_string() {
 }
 
 // The query layer's scalar function and the mask's own application agree on a digest.
+// spec: authority.mask.native-digest@29d59e18
 #[test]
 fn a_digest_from_either_layer_joins_the_other() {
     let r = Reads::new();
@@ -221,6 +223,7 @@ fn a_digest_from_either_layer_joins_the_other() {
 }
 
 // The query layer's digests are keyed by the one resolved pepper.
+// spec: authority.mask.pepper@48c78b9d
 #[test]
 fn one_resolved_pepper_keys_both_layers() {
     let r = Reads::new();
@@ -232,6 +235,7 @@ fn one_resolved_pepper_keys_both_layers() {
 }
 
 // The mask applies primary and combine together, as the query layer does.
+// spec: authority.mask.one-value@337bf787
 #[test]
 fn a_mask_applies_primary_and_combine_together_in_both_layers() {
     let r = Reads::new();
@@ -447,6 +451,7 @@ fn a_horizon_session_skips_masks_on_withheld_columns_and_refuses_undeclared_ones
 /// Regression: every strategy yields one value in both layers — the write layer's
 /// application and the query layer's projection agree cell for cell, nulls and
 /// unparseable numbers included.
+// spec: authority.mask.strategies@2c4feff4
 #[test]
 fn each_strategy_yields_one_value_in_both_layers() {
     let r = Reads::new();
@@ -475,4 +480,28 @@ fn each_strategy_yields_one_value_in_both_layers() {
 
 fn column_at(r: &Response, name: &str, row: usize) -> Value {
     column(r, name)[row].clone()
+}
+
+/// A mask exception serves the stored value to a matching subject, read through the subject
+/// relation, and the masked value to every other subject; a `drop` exception keeps the
+/// column's type.
+#[test]
+fn a_mask_exception_unmasks_for_its_subject_alone() {
+    let manifest = MANIFEST
+        .replace("handle = { strategy = \"hash\" }", "handle = { strategy = \"hash\", exceptions = [\"subject.agent = 'agent://auditor'\"] }")
+        .replace("age = { strategy = \"drop\" }", "age = { strategy = \"drop\", exceptions = [\"subject.agent = 'agent://auditor'\"] }");
+    assert_ne!(manifest, MANIFEST);
+    let r = Reads::with_manifest(&manifest);
+    let auditor = r.session_for(loop_subject("agent://auditor"), vec![read(&["research/*"], None)], None);
+    let seen = contacts(&r, &auditor, "ORDER BY contact_id");
+    assert_eq!(column(&seen, "handle"), [json!("h1"), json!("h1"), json!("h3"), json!("h4")]);
+    assert_eq!(column(&seen, "age"), [json!("40"), json!("31"), json!("52"), json!("29")], "the stored value, rendered as any 64-bit integer is");
+    assert_eq!(column(&seen, "phone"), [json!(""), json!(""), json!(""), json!("")], "a mask without exceptions still applies");
+    let agent = r.session(&["research/*"], None, None);
+    let masked = contacts(&r, &agent, "WHERE contact_id = 'c1'");
+    assert_eq!(column(&masked, "handle"), [json!(pepper().digest("h1"))]);
+    assert_eq!(column(&masked, "age"), [Value::Null]);
+    // The claim reaches the relation through the subject relation, never as text.
+    let sql = auditor.relation("research/contacts").unwrap().sql();
+    assert!(sql.contains("CASE WHEN ((SELECT \"agent\" FROM \"__contextful_subject\")"), "{sql}");
 }
