@@ -24,3 +24,27 @@ fn a_refusal_payload_carries_at_most_512_bytes() {
     let read = payload(&Refusal::from(ReadError::StatementNotReadOnly("DELETE".into())));
     assert_eq!(read["error"]["code"], json!("statement_not_read_only"));
 }
+
+/// A stale source answers HTTP 503 on the wire, and a closure past its bound the
+/// non-retryable 422.
+#[test]
+fn a_stale_source_answers_503_and_an_overflowing_closure_422_on_the_wire() {
+    use contextful_core::disclosure::VisibilityError;
+    let stale = payload(&Refusal::from(VisibilityError::AccessStale {
+        table: "wiki/pages".into(),
+        origin: "wiki".into(),
+        reason: "lags past its budget",
+        lag: "901s".into(),
+        budget: 900,
+        last_observed: "none".into(),
+    }));
+    assert_eq!(stale["error"]["http"], json!(503));
+    assert_eq!(stale["error"]["code"], json!("visibility_access_stale"));
+    assert_eq!(stale["error"]["identifier"], json!("VisibilityAccessStale"));
+    let deep = payload(&Refusal::from(VisibilityError::ClosureDepth { origin: "wiki".into(), subject: "user://dana@acme.example".into(), bound: "8 hops".into() }));
+    assert_eq!(deep["error"]["http"], json!(422));
+    assert_eq!(deep["error"]["code"], json!("visibility_closure_depth"));
+    // A visibility refusal the contract fixes no status for answers 400.
+    let other = payload(&Refusal::from(VisibilityError::UnboundTable { table: "wiki/notes".into() }));
+    assert_eq!(other["error"]["http"], json!(400));
+}

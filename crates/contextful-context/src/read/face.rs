@@ -84,6 +84,9 @@ pub struct Face {
     results: Option<ResultCache>,
     /// Each declared table's visibility block (`disclosure.mirror.binding-keys`).
     bindings: BTreeMap<String, Binding>,
+    /// Tables declared `federated`, which register on no read face
+    /// (`disclosure.declare-fidelity.federated-registered`).
+    federated: BTreeSet<String>,
     /// Reachable sets by subject and source epochs (`disclosure.reach.cache-epochs`).
     reach: std::sync::Mutex<ReachCache>,
     /// The instant a staleness check reads as now (`disclosure.bound-staleness.clock-offset`).
@@ -153,15 +156,17 @@ impl Face {
         let mut decls = BTreeMap::new();
         let mut policies = BTreeMap::new();
         let mut bindings = BTreeMap::new();
+        let mut federated = BTreeSet::new();
         for d in parsed {
             if let Some(b) = Binding::of(&d).map_err(|e| match e {
                 contextful_core::disclosure::declare::DeclareError::Visibility(v) => ReadFault::Refused(v.into()),
                 contextful_core::disclosure::declare::DeclareError::Malformed(m) => ReadFault::Policy(m.into()),
             })? {
-                // A federated table answers live and registers on no read face
-                // (`disclosure.declare-fidelity.federated-registered`).
+                // A federated table answers live and registers on no read face; the face
+                // opens without it (`disclosure.declare-fidelity.federated-registered`).
                 if b.fidelity == Fidelity::Federated {
-                    return Err(ReadFault::Refused(VisibilityError::FederatedRegistered { table: d.name.clone() }.into()));
+                    federated.insert(d.name.clone());
+                    continue;
                 }
                 bindings.insert(d.name.clone(), b);
             }
@@ -174,7 +179,7 @@ impl Face {
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
         let fulltext = crate::fulltext::SidecarCache::new(contextful_core::read::rank::LEXICAL_INDEX_CACHE_ENTRIES);
-        let face = Face { store, lexicon, decls, policies, templates, memory, pepper, fulltext, pool: SessionPool::default(), results: None, bindings, reach: Default::default(), clock: std::sync::Arc::new(system_now) };
+        let face = Face { store, lexicon, decls, policies, templates, memory, pepper, fulltext, pool: SessionPool::default(), results: None, bindings, federated, reach: Default::default(), clock: std::sync::Arc::new(system_now) };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
         for t in &face.templates {
@@ -299,11 +304,12 @@ impl Face {
         self.restrict_timed(engine, session, touched.iter().map(String::as_str), response, deadline)
     }
 
-    /// Every table the store holds or the manifest declares, sorted.
+    /// Every table the store holds or the manifest declares, sorted; a `federated` table is
+    /// absent (`disclosure.declare-fidelity.federated-registered`).
     pub fn tables(&self) -> Result<Vec<String>, ReadFault> {
         let mut all: BTreeSet<String> = self.store.tables()?.into_iter().collect();
         all.extend(self.decls.keys().cloned());
-        Ok(all.into_iter().collect())
+        Ok(all.into_iter().filter(|t| !self.federated.contains(t)).collect())
     }
 
     pub fn templates(&self) -> &[QueryTemplate] {
@@ -335,6 +341,7 @@ impl Face {
     fn table_rows(&self, session: &Session, table: &str, run: Option<&str>, native: Option<&[&str]>) -> Result<Response, ReadFault> {
         let frontier = self.read_frontier(session)?;
         let r = self.registered(session, table)?;
+        self.bind_visibility(session, &BTreeSet::from([table.to_string()]))?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let (sql, parameters) = match run {
             Some(run) => {
@@ -593,7 +600,9 @@ impl Face {
     /// The mirrored-permission semi-join of each granted bound table: the reader's reachable
     /// set on the table's source, from the cache under the subject and that source's epoch,
     /// else resolved and retained (`disclosure.reach.semi-join`). A table at a level served
-    /// from no store reaches nothing. Directory rows land in their source's run, so the
+    /// from no store reaches nothing. A set that does not resolve — a closure past its bound,
+    /// a refused identity link — admits no row and carries its refusal, which a read
+    /// touching that table alone raises. Directory rows land in their source's run, so the
     /// source epoch covers them and the directory epoch is constant.
     fn reach_filters(&self, authority: &AdmittedAuthority, granted: &[String], epochs: &BTreeMap<String, u64>) -> Result<BTreeMap<String, ReachFilter>, ReadFault> {
         let subject = authority.subject();
@@ -611,30 +620,40 @@ impl Face {
                     Some(set) => set,
                     None => {
                         let state = crate::visibility::state(&self.store, &b.source)?;
-                        let set = reach::resolve(&b.source, subject, &state, reach::ClosureBound::default()).map_err(|e| match e {
-                            ReachError::Authority(a) => ReadFault::Authority(a),
-                            ReachError::Visibility(v) => ReadFault::Refused(v.into()),
-                        })?;
-                        let resources = set.resources.clone();
-                        self.reach.lock().expect("the reach cache lock").insert(key, set).map_err(|v| ReadFault::Refused(v.into()))?;
-                        resources
+                        match reach::resolve(&b.source, subject, &state, reach::ClosureBound::default()) {
+                            Ok(set) => {
+                                let resources = set.resources.clone();
+                                self.reach.lock().expect("the reach cache lock").insert(key, set).map_err(|v| ReadFault::Refused(v.into()))?;
+                                resources
+                            }
+                            Err(e) => {
+                                filters.insert(t.clone(), ReachFilter { resource_key: b.resource_key.clone(), resources: BTreeSet::new(), refused: Some(e) });
+                                continue;
+                            }
+                        }
                     }
                 }
             } else {
                 BTreeSet::new()
             };
-            filters.insert(t.clone(), ReachFilter { resource_key: b.resource_key.clone(), resources });
+            filters.insert(t.clone(), ReachFilter { resource_key: b.resource_key.clone(), resources, refused: None });
         }
         Ok(filters)
     }
 
     /// Refuse a read touching a bound table whose source lags past the table's budget at
-    /// the face's now (`disclosure.bound-staleness.access-stale`).
-    fn bind_visibility(&self, touched: &BTreeSet<String>) -> Result<(), ReadFault> {
+    /// the face's now (`disclosure.bound-staleness.access-stale`), or whose reachable set did
+    /// not resolve when the session opened (`disclosure.reach.closure-overflow`).
+    fn bind_visibility(&self, session: &Session, touched: &BTreeSet<String>) -> Result<(), ReadFault> {
         let now = (self.clock)();
-        for b in touched.iter().filter_map(|t| self.bindings.get(t)) {
+        for (t, b) in touched.iter().filter_map(|t| self.bindings.get(t).map(|b| (t, b))) {
             let freshness = crate::visibility::freshness(&self.store, &b.source)?;
             contextful_core::disclosure::stale::check_fresh(b, freshness.as_ref(), now).map_err(|v| ReadFault::Refused(v.into()))?;
+            match session.reach_refusal(t) {
+                Some(ReachError::Authority(a)) => return Err(ReadFault::Authority(a.clone())),
+                Some(ReachError::Visibility(v)) => return Err(ReadFault::Refused(v.clone().into())),
+                None => {}
+            }
         }
         Ok(())
     }
@@ -655,7 +674,7 @@ impl Face {
     /// whole: its inputs already read at that build's horizon, so the availability bound
     /// asks no column of it.
     pub(crate) fn bind_bounds(&self, session: &Session, touched: &BTreeSet<String>, bounds: Bounds) -> Result<(), ReadFault> {
-        self.bind_visibility(touched)?;
+        self.bind_visibility(session, touched)?;
         let horizon = contextful_core::read::horizon::horizon(session.grants());
         for table in touched {
             let mut built_within = false;
@@ -902,7 +921,13 @@ impl Face {
         tools
     }
 
+    /// The session's relation for `table`. A `federated` table the credential's grants cover
+    /// refuses as federated (`disclosure.declare-fidelity.federated-registered`); any other
+    /// table outside the session refuses as unknown, naming nothing the credential cannot read.
     fn registered<'s>(&self, session: &'s Session, table: &str) -> Result<&'s contextful_policy::enforce::session::RegisteredRelation, ReadFault> {
+        if self.federated.contains(table) && raw_read_covers(session.grants(), table) {
+            return Err(ReadFault::Refused(VisibilityError::FederatedRegistered { table: table.to_string() }.into()));
+        }
         session.relation(table).ok_or_else(|| EnforceError::UnknownRelation(format!("`{table}`")).into())
     }
 

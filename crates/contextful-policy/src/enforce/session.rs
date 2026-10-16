@@ -35,11 +35,13 @@ pub const REACH_RELATION: &str = "__contextful_reach";
 
 /// The mirrored-permission semi-join of one bound table (`disclosure.reach.semi-join`): the
 /// column holding each row's `resource_id`, and the resources the reader's reachable set
-/// holds on the table's source.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// holds on the table's source. A set that did not resolve admits no row and carries its
+/// refusal, which a read touching the table raises.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ReachFilter {
     pub resource_key: String,
     pub resources: std::collections::BTreeSet<String>,
+    pub refused: Option<contextful_core::disclosure::reach::ReachError>,
 }
 
 /// One table as the store resolves it for this request: its declaration and policy, the
@@ -446,6 +448,11 @@ impl Session {
     /// bound table.
     pub fn reach_rows(&self) -> Vec<(String, String)> {
         self.reach.iter().flat_map(|(t, f)| f.resources.iter().map(move |r| (t.clone(), r.clone()))).collect()
+    }
+
+    /// The refusal resolving `table`'s reachable set raised, where it did not resolve.
+    pub fn reach_refusal(&self, table: &str) -> Option<&contextful_core::disclosure::reach::ReachError> {
+        self.reach.get(table).and_then(|f| f.refused.as_ref())
     }
 
     /// Tenant-scoped tables: table to its tenant column and granted values.

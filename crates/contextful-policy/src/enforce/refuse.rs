@@ -7,24 +7,28 @@ use serde_json::{json, Value};
 /// Bytes one refusal payload carries (`authority.refuse.payload`).
 pub const REFUSAL_PAYLOAD: usize = 512;
 
-/// The wire code and HTTP status of a refusal.
+/// The wire code and HTTP status of a refusal. A visibility refusal answers the status its
+/// contract fixes: 503 for a stale source, 422 for a closure past its bound.
 fn code(r: &Refusal) -> (String, u16) {
     match r {
         Refusal::Enforce(EnforceError::ScopeDenied(_)) => ("scope_denied".into(), 403),
         Refusal::Enforce(EnforceError::UnknownRelation(_)) => ("unknown_relation".into(), 404),
         Refusal::Read(ReadError::HttpCredentialMissing(_)) => ("http_credential_missing".into(), 401),
-        other => {
-            let id = other.identifier();
-            let mut snake = String::new();
-            for (i, ch) in id.chars().enumerate() {
-                if ch.is_ascii_uppercase() && i > 0 {
-                    snake.push('_');
-                }
-                snake.push(ch.to_ascii_lowercase());
-            }
-            (snake, 400)
-        }
+        Refusal::Visibility(v) => (snake_case(v.identifier()), v.status().unwrap_or(400)),
+        other => (snake_case(other.identifier()), 400),
     }
+}
+
+/// An identifier's wire code: `VisibilityAccessStale` reads `visibility_access_stale`.
+fn snake_case(id: &str) -> String {
+    let mut snake = String::new();
+    for (i, ch) in id.chars().enumerate() {
+        if ch.is_ascii_uppercase() && i > 0 {
+            snake.push('_');
+        }
+        snake.push(ch.to_ascii_lowercase());
+    }
+    snake
 }
 
 /// A refusal as its wire payload: code, HTTP status, identifier and message, at most

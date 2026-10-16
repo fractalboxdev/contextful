@@ -702,22 +702,6 @@ pub fn commit(prior: &SourceState, obs: &Observation) -> Result<Commit, Visibili
     Ok(Commit { resources: resources.into_values().collect(), grants, principals: principals.into_iter().collect(), members, links, tombstones, freshness })
 }
 
-/// The resources of one source `subject` reaches through its current rows.
-///
-/// The reader's identity is the verified `on_behalf_of` (`authority.identify.on-behalf-of`):
-/// `user://<p>` reaches the `user` principal spelled `<p>` and each `user` source principal a
-/// verified link maps onto it, then every `group` those principals belong to, walked with a
-/// visited set. A membership and a grant match on kind and name together. A source
-/// principal no link maps onto the subject reaches nothing
-/// (`authority.identify.unlinked-principal`), and a principal linked through
-/// `operator_asserted` links alone refuses (`authority.identify.unverified-link`).
-pub fn reachable(subject: &NormalizedSubject, state: &SourceState) -> Result<BTreeSet<String>, AuthorityError> {
-    let unbounded = super::reach::ClosureBound { max_group_depth: usize::MAX, max_nodes: usize::MAX };
-    let principals = super::reach::closure(&state.freshness.as_ref().map_or_else(String::new, |f| f.source.clone()), subject, seeds(subject, state)?, &state.members, unbounded)
-        .expect("an unbounded closure never reaches a bound");
-    Ok(state.grants.iter().filter(|g| principals.contains(&(g.principal_kind.clone(), g.principal.clone()))).map(|g| g.resource_id.clone()).collect())
-}
-
 /// The principals `subject` holds before any group edge: the `user` principal its verified
 /// `on_behalf_of` spells, and each `user` source principal a verified link maps onto it
 /// (`disclosure.reach.subject-principals`). A principal is a `(kind, name)` pair, so a name

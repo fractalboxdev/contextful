@@ -85,7 +85,7 @@ fn the_semi_join_opens_a_bound_relation_and_carries_its_ids_as_rows() {
     let token = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
     let authority = admit(&token, &signer, DURING).unwrap();
     let pepper = Pepper::resolve(|_| None);
-    let filter = |ids: &[&str]| ReachFilter { resource_key: "x".into(), resources: ids.iter().map(|s| s.to_string()).collect() };
+    let filter = |ids: &[&str]| ReachFilter { resource_key: "x".into(), resources: ids.iter().map(|s| s.to_string()).collect(), refused: None };
     let reach = std::collections::BTreeMap::from([("research/pages".to_string(), filter(&["p1", "p2"])), ("hr/salaries".to_string(), filter(&["s1"]))]);
     let session = Session::open_reaching(&authority, &Request::default(), vec![source("research/pages"), source("research/notes"), source("hr/salaries")], reach, &pepper).unwrap();
     let sql = session.relation("research/pages").unwrap().sql().to_string();

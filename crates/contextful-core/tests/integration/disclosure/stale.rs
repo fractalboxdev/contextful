@@ -40,7 +40,6 @@ fn stale(r: Result<(), VisibilityError>) -> VisibilityError {
 }
 
 /// A read raises `VisibilityAccessStale` (HTTP 503, carrying source, lag, budget and last observation) when a touched table's source lag exceeds its budget, the source has no completed full run, or the public-status watermark is past budget.
-// spec: disclosure.bound-staleness.access-stale@7ef1054e
 #[test]
 fn a_read_past_the_budget_or_before_a_full_run_is_refused_with_503() {
     let pages = binding("mirrored", "15m");

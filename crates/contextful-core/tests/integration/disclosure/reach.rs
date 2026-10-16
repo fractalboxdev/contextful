@@ -99,7 +99,6 @@ fn the_closure_walks_eight_hops_and_ten_thousand_nodes_ending_cycles() {
 }
 
 /// A closure reaching its depth or node bound raises `VisibilityClosureDepth` with the non-retryable HTTP status 422 and returns no set.
-// spec: disclosure.reach.closure-overflow@0e6f4120
 #[test]
 fn a_closure_past_its_depth_or_node_bound_is_refused_with_422() {
     let dana = subject("user://dana@acme.example");

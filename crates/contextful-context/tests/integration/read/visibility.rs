@@ -3,9 +3,9 @@
 //! budget refuses.
 
 use super::*;
-use contextful_context::visibility::{sweep_grants, Landing};
+use contextful_context::visibility::{sweep_grants, sweep_run, Landing};
 use contextful_core::disclosure::declare::Binding;
-use contextful_core::disclosure::sweep::{GrantLine, SweepBlock, SweepKind};
+use contextful_core::disclosure::sweep::{Directory, GrantLine, Membership, SweepBlock, SweepKind};
 use std::sync::{Arc, Mutex};
 
 const WIKI: &str = r#"
@@ -63,6 +63,11 @@ impl Wiki {
         sweep_grants(&self.reads.store, &landing, &self.block, &self.bindings, kind, grants, at(began), at(began)).unwrap();
     }
 
+    fn sweep_directory(&self, kind: SweepKind, began: &str, grants: Vec<GrantLine>, directory: Directory) {
+        let landing = Landing { node: NodeId::parse("ingest-a").unwrap(), site_id: "site-a".into() };
+        sweep_run(&self.reads.store, &landing, &self.block, &self.bindings, kind, grants, Some(directory), at(began), at(began)).unwrap();
+    }
+
     fn at(&self, now: &str) {
         *self.now.lock().unwrap() = at(now);
     }
@@ -78,8 +83,9 @@ impl Wiki {
     }
 }
 
-/// The semi-join opening {{authority.compose.relation-order}} admits a row of a bound table when its `resource_key` value names a resource with a read-conferring, unexpired, untombstoned grant in the reader's reachable set.
-// spec: disclosure.reach.semi-join@6f8b5b64
+/// A bound table's relation admits a row only when its `resource_key` value names a resource
+/// a current grant in the reader's reachable set names, and a sweep's revocation reaches a
+/// pooled session.
 #[test]
 fn a_bound_table_admits_only_rows_the_reachable_set_names() {
     let w = Wiki::new();
@@ -107,8 +113,16 @@ fn a_bound_table_admits_only_rows_the_reachable_set_names() {
     assert_eq!(w.pages(&erin).unwrap(), [json!("p3")]);
 }
 
-/// A read touching a bound table past its source's budget, or before its first full run,
-/// refuses through the face; the face's clock is the instant it reads as now.
+/// The wire payload of the refusal a read returned.
+fn wire<T: std::fmt::Debug>(r: Result<T, ReadFault>) -> Value {
+    match r {
+        Err(ReadFault::Refused(refusal)) => contextful_policy::enforce::refuse::payload(&refusal),
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}
+
+/// A read raises `VisibilityAccessStale` (HTTP 503, carrying source, lag, budget and last observation) when a touched table's source lag exceeds its budget, the source has no completed full run, or the public-status watermark is past budget.
+// spec: disclosure.bound-staleness.access-stale@7ef1054e
 #[test]
 fn a_read_past_the_budget_refuses_through_the_face() {
     let w = Wiki::new();
@@ -116,6 +130,8 @@ fn a_read_past_the_budget_refuses_through_the_face() {
     // No completed full run.
     let message = refused_with(w.pages(&dana), "VisibilityAccessStale");
     assert!(message.contains("no completed full run"), "{message}");
+    let payload = wire(w.pages(&dana));
+    assert_eq!((payload["error"]["http"].clone(), payload["error"]["code"].clone()), (json!(503), json!("visibility_access_stale")));
     // A table with no visibility block still reads.
     let session = w.reads.face.session(&dana, &Request::default(), Bounds::default()).unwrap();
     assert_eq!(column(&w.reads.query(&session, r#"SELECT note FROM "wiki/notes""#).unwrap(), "note"), [json!("n1")]);
@@ -125,7 +141,10 @@ fn a_read_past_the_budget_refuses_through_the_face() {
     assert_eq!(w.pages(&dana).unwrap(), [json!("p1")]);
     w.at("2030-01-01T00:15:01Z");
     let message = refused_with(w.pages(&dana), "VisibilityAccessStale");
-    assert!(message.contains("lag 901s") && message.contains("budget 900s"), "{message}");
+    for part in ["`wiki`", "lag 901s", "budget 900s", "last observation 2030-01-01T00:00:00Z"] {
+        assert!(message.contains(part), "{part}: {message}");
+    }
+    assert_eq!(wire(w.pages(&dana))["error"]["http"], json!(503));
     // The next sweep inside the budget clears it.
     w.sweep(SweepKind::Incremental, "2030-01-01T00:16:00Z", vec![grant("p1", "dana@acme.example")]);
     assert_eq!(w.pages(&dana).unwrap(), [json!("p1")]);
@@ -135,16 +154,72 @@ fn a_read_past_the_budget_refuses_through_the_face() {
 // spec: disclosure.declare-fidelity.federated-registered@9998ddc3
 #[test]
 fn a_federated_table_registers_on_no_read_face() {
-    let reads = Reads::new();
+    let mut reads = Reads::new();
     let federated = WIKI.replace("fidelity          = \"mirrored\"", "fidelity          = \"federated\"");
-    match Face::open(reads.store.clone(), &federated, pepper()) {
-        Err(ReadFault::Refused(r)) => {
-            assert_eq!(r.identifier(), "VisibilityFederatedRegistered");
-            assert!(r.to_string().contains("wiki/pages"), "{r}");
-        }
-        Err(other) => panic!("{other:?}"),
-        Ok(_) => panic!("a federated table registered"),
+    land_rows(&reads.store, "wiki/notes", "run-0001", json!([{ "note": "n1" }]));
+    // Declaring a federated table leaves the face open: every other table still reads.
+    reads.face = Face::open(reads.store.clone(), &federated, pepper()).unwrap();
+    assert!(!reads.face.tables().unwrap().contains(&"wiki/pages".to_string()));
+    let subject = Subject { on_behalf_of: Some("user://dana@acme.example".into()), ..loop_subject("agent://wiki-loop") };
+    let authority = reads.authority(subject, vec![read(&["wiki/*"], None)]);
+    let session = reads.face.session(&authority, &Request::default(), Bounds::default()).unwrap();
+    assert!(session.relation("wiki/pages").is_none());
+    assert_eq!(column(&reads.query(&session, r#"SELECT note FROM "wiki/notes""#).unwrap(), "note"), [json!("n1")]);
+    // Naming the federated table refuses with the federated refusal.
+    let message = refused_with(reads.face.rows(&session, "wiki/pages", None), "VisibilityFederatedRegistered");
+    assert!(message.contains("wiki/pages"), "{message}");
+}
+
+/// A whole-table read behind derive sources and memory synthesis refuses past the source's
+/// budget, as a statement does.
+#[test]
+fn a_whole_table_read_past_the_budget_refuses() {
+    let w = Wiki::new();
+    let dana = w.authority("user://dana@acme.example");
+    w.sweep(SweepKind::Full, "2030-01-01T00:00:00Z", vec![grant("p1", "dana@acme.example")]);
+    w.at("2030-01-01T00:05:00Z");
+    let session = w.reads.face.session(&dana, &Request::default(), Bounds::default()).unwrap();
+    assert!(w.reads.face.rows(&session, "wiki/pages", None).is_ok());
+    w.at("2030-01-01T00:15:01Z");
+    let session = w.reads.face.session(&dana, &Request::default(), Bounds::default()).unwrap();
+    refused_with(w.reads.face.rows(&session, "wiki/pages", None), "VisibilityAccessStale");
+    refused_with(w.reads.face.source_rows(&session, "wiki/pages", None, &["page_id"]), "VisibilityAccessStale");
+    // A table with no visibility block still reads whole.
+    assert!(w.reads.face.rows(&session, "wiki/notes", None).is_ok());
+}
+
+/// A closure reaching its depth or node bound raises `VisibilityClosureDepth` with the non-retryable HTTP status 422 and returns no set.
+///
+/// The refusal reaches only a read touching the bound table; the session opens and every
+/// other table reads.
+// spec: disclosure.reach.closure-overflow@0e6f4120
+#[test]
+fn a_closure_overflow_refuses_only_reads_of_its_table() {
+    let w = Wiki::new();
+    let mut members = vec![Membership { group: "g0".into(), member: "dana@acme.example".into(), member_kind: "user".into() }];
+    for i in 1..=10 {
+        members.push(Membership { group: format!("g{i}"), member: format!("g{}", i - 1), member_kind: "group".into() });
     }
+    w.sweep_directory(SweepKind::Full, "2030-01-01T00:00:00Z", vec![grant("p1", "erin@acme.example")], Directory { links: Vec::new(), members });
+    w.at("2030-01-01T00:05:00Z");
+    let dana = w.authority("user://dana@acme.example");
+    let session = w.reads.face.session(&dana, &Request::default(), Bounds::default()).unwrap();
+    assert_eq!(column(&w.reads.query(&session, r#"SELECT note FROM "wiki/notes""#).unwrap(), "note"), [json!("n1")]);
+    let message = refused_with(w.pages(&dana), "VisibilityClosureDepth");
+    assert!(message.contains("8 hops"), "{message}");
+    refused_with(w.reads.face.rows(&session, "wiki/pages", None), "VisibilityClosureDepth");
+    let payload = wire(w.pages(&dana));
+    assert_eq!((payload["error"]["http"].clone(), payload["error"]["code"].clone()), (json!(422), json!("visibility_closure_depth")));
+    // A reader whose closure stays inside the bound reads the table.
+    assert_eq!(w.pages(&w.authority("user://erin@acme.example")).unwrap(), [json!("p1")]);
+
+    // A closure past 10000 nodes refuses alike, though one hop deep.
+    let wide = (0..10_000).map(|i| Membership { group: format!("w{i}"), member: "erin@acme.example".into(), member_kind: "user".into() }).collect();
+    w.sweep_directory(SweepKind::Full, "2030-01-01T00:06:00Z", vec![grant("p1", "erin@acme.example")], Directory { links: Vec::new(), members: wide });
+    let erin = w.authority("user://erin@acme.example");
+    let message = refused_with(w.pages(&erin), "VisibilityClosureDepth");
+    assert!(message.contains("10000 nodes"), "{message}");
+    assert_eq!(wire(w.pages(&erin))["error"]["http"], json!(422));
 }
 
 /// A sub-agent's reachable set equals or narrows its parent's; no agent reads beyond the principal it acts for.
