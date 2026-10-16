@@ -287,7 +287,8 @@ impl GoldenRedaction {
 }
 
 /// The substitute of one matched span: the class marker for `replace`, the span's prefix
-/// for `truncate`. A keyed substitute refuses: the harness holds no pepper.
+/// for `truncate`. A keyed substitute refuses: the harness holds no pepper. A numeric
+/// band refuses: free text holds no typed number.
 fn substitute(rule: &Rule, matched: &str) -> Result<Option<String>, EnforceError> {
     match rule.operation {
         Operation::Drop => Ok(None),
@@ -301,6 +302,10 @@ fn substitute(rule: &Rule, matched: &str) -> Result<Option<String>, EnforceError
         }
         Operation::Hash | Operation::Tokenize => Err(EnforceError::RedactionInvalid(format!(
             "`{}.{}` rewrites under a keyed substitute, and the harness holds no pepper",
+            rule.table, rule.column
+        ))),
+        Operation::Bucket | Operation::Range => Err(EnforceError::RedactionInvalid(format!(
+            "`{}.{}` generalizes a typed number into a band, and a golden's free text carries none",
             rule.table, rule.column
         ))),
     }

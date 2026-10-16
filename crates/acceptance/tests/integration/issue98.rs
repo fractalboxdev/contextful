@@ -130,5 +130,7 @@ redaction = [{ table = "large", column = "body", match = { pattern = ".*[^a]|a" 
     let start = std::time::Instant::now();
     land(&large, &binary, "large", &json!([{"body":"a".repeat(bytes)}]), "large-a");
     assert_eq!(text(&part(&large, "large", "large-a"), "body"), "");
-    eprintln!("built landing repeated-a input={bytes} elapsed={:?}", start.elapsed());
+    let elapsed = start.elapsed();
+    eprintln!("built landing repeated-a input={bytes} elapsed={elapsed:?}");
+    assert!(elapsed < std::time::Duration::from_secs(60), "a quadratic matcher over {bytes} bytes runs past the bound: {elapsed:?}");
 }

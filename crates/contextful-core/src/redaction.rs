@@ -53,6 +53,8 @@ pub enum Operation {
     Hash,
     Tokenize,
     Truncate,
+    Bucket,
+    Range,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,9 +161,9 @@ impl CompiledRule {
         }
         match (rule.operation, &rule.argument) {
             (Operation::Replace, Some(Value::String(class))) if !class.is_empty() => {}
-            (Operation::Truncate, Some(n)) if n.as_u64().is_some_and(|n| n > 0 && n <= u32::MAX as u64) => {}
+            (Operation::Truncate | Operation::Bucket | Operation::Range, Some(n)) if n.as_u64().is_some_and(|n| n > 0 && n <= u32::MAX as u64) => {}
             (Operation::Drop | Operation::Hash | Operation::Tokenize, None) => {}
-            _ => return Err(invalid("replace takes a class; truncate takes a positive character count; other operations take no argument")),
+            _ => return Err(invalid("replace takes a class; truncate takes a positive character count; bucket and range take a positive width; other operations take no argument")),
         }
         let regex = match &rule.matcher {
             Matcher::Whole(_) => None,

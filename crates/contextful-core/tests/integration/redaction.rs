@@ -246,3 +246,51 @@ fn every_byte_of_every_match_is_rewritten_and_no_other_byte_is() {
         checked += 1;
     }
 }
+
+#[test]
+// spec: authority.redact.rule@362a24e7
+fn a_rule_names_one_table_one_column_one_operation_and_its_argument() {
+    let compile = |raw: Value| serde_json::from_value::<Rule>(raw).ok().map(CompiledRule::compile);
+    let base = json!({"table":"messages", "column":"body", "operation":"replace", "argument":"phone"});
+    assert!(matches!(compile(base.clone()), Some(Ok(_))));
+    for field in ["table", "column", "operation"] {
+        let mut missing = base.clone();
+        missing.as_object_mut().unwrap().remove(field);
+        assert!(!matches!(compile(missing), Some(Ok(_))), "a rule without its {field} refuses");
+    }
+    for field in ["table", "column"] {
+        let mut empty = base.clone();
+        empty[field] = json!("");
+        assert!(matches!(compile(empty), Some(Err(_))), "an empty {field} names nothing");
+    }
+    let mut second = base.clone();
+    second["operations"] = json!(["hash"]);
+    assert!(compile(second).is_none(), "a rule carries one operation");
+    let mut listed = base.clone();
+    listed["operation"] = json!(["replace", "hash"]);
+    assert!(compile(listed).is_none(), "a rule carries one operation");
+    for (operation, argument, admitted) in [
+        ("replace", json!("phone"), true),
+        ("replace", Value::Null, false),
+        ("replace", json!(""), false),
+        ("truncate", json!(4), true),
+        ("truncate", json!(0), false),
+        ("truncate", Value::Null, false),
+        ("bucket", json!(10), true),
+        ("bucket", json!(0), false),
+        ("bucket", Value::Null, false),
+        ("range", json!(10), true),
+        ("range", json!("10"), false),
+        ("hash", Value::Null, true),
+        ("hash", json!("phone"), false),
+        ("tokenize", Value::Null, true),
+        ("tokenize", json!(4), false),
+        ("drop", Value::Null, true),
+        ("drop", json!(1), false),
+    ] {
+        let mut raw = base.clone();
+        raw["operation"] = json!(operation);
+        raw["argument"] = argument.clone();
+        assert_eq!(matches!(compile(raw), Some(Ok(_))), admitted, "{operation} with {argument}");
+    }
+}

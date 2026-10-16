@@ -55,6 +55,7 @@ fn canary_source(dir: &Path) {
 }
 
 #[test]
+// spec: authority.redact.before-the-record@96678945
 fn removal_records_the_prepared_inline_and_blob_batch_and_resumes_without_repulling() {
     use contextful_core::run::journal::{Row, Stored, INLINE_CUTOFF_BYTES};
     use contextful_core::run::ports::{BlobStore, JournalStore};

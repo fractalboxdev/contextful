@@ -129,6 +129,13 @@ fn a_golden_passes_write_time_redaction_or_refuses() {
     // A keyed substitute needs a pepper the harness never holds.
     let keyed = GoldenRedaction::new(vec![rule("people", "notes", json!({ "pattern": "[0-9]{3}-[0-9]{2}-[0-9]{4}" }), "hash", None)]).unwrap();
     assert_eq!(keyed.redact(mined.clone()).unwrap_err().code(), "GoldenRedactionFailed");
+    // A numeric band needs a typed number that free text never carries.
+    for (operation, width) in [("bucket", 10), ("range", 10)] {
+        let band = GoldenRedaction::new(vec![rule("people", "notes", json!({ "pattern": "[0-9]{3}-[0-9]{2}-[0-9]{4}" }), operation, Some(json!(width)))]).unwrap();
+        let e = band.redact(mined.clone()).unwrap_err();
+        assert_eq!(e.code(), "GoldenRedactionFailed");
+        assert!(e.to_string().contains("band"), "{e}");
+    }
     // A question redacted to nothing leaves no case.
     let blank = GoldenRedaction::new(vec![rule("people", "notes", json!({ "pattern": ".+" }), "drop", None)]).unwrap();
     assert_eq!(blank.redact(mined.clone()).unwrap_err().code(), "GoldenRedactionFailed");

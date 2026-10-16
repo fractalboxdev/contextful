@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 322 | 64 | 24 | 5 | 280 | 0 | 280 |
-| `authority` | 2 | 16 | 298 | 79 | 29 | 8 | 266 | 0 | 266 |
+| `authority` | 2 | 16 | 298 | 79 | 29 | 8 | 269 | 0 | 269 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 179 | 69 | 14 | 4 | 156 | 0 | 156 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 291 | 64 | 14 | 10 | 281 | 0 | 281 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2610 | 658 | 212 | 73 | 2316 | 0 | |
+| **total** | 22 | 169 | 2610 | 658 | 212 | 73 | 2319 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 276 | 265 | passing | closed |
 | 4 — Ingest | 25 | 587 | 489 | passing | closed |
-| 5 — The read face under enforcement | 17 | 309 | 269 | passing | closed |
+| 5 — The read face under enforcement | 17 | 309 | 272 | passing | closed |
 | 6 — Sync and replicas | 8 | 84 | 84 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 93 | 86 | passing | closed |
@@ -526,6 +526,7 @@ Unscheduled operations: 13.
 | `authority.profile.unevaluated-restriction` | `crates/contextful-policy/tests/integration/profile.rs::a_restriction_with_no_read_evaluator_is_refused_at_mint_derivation_and_admission` | performed |
 | `authority.profile.unrecognized-element` | `crates/contextful-policy/tests/integration/profile.rs::an_element_the_profile_does_not_name_is_refused` | performed |
 | `authority.profile.version-unsupported` | `crates/contextful-policy/tests/integration/profile.rs::a_profile_version_outside_the_supported_set_is_refused` | performed |
+| `authority.redact.before-the-record` | `crates/contextful-cli/tests/integration/run.rs::removal_records_the_prepared_inline_and_blob_batch_and_resumes_without_repulling` | performed |
 | `authority.redact.canonical-journal` | `spec/pins.toml` | performed |
 | `authority.redact.child-selector-lineage` | `spec/pins.toml` | performed |
 | `authority.redact.compiled-pattern-size` | `spec/pins.toml` | performed |
@@ -536,7 +537,9 @@ Unscheduled operations: 13.
 | `authority.redact.recorded-body` | `spec/pins.toml` | performed |
 | `authority.redact.relational-journal` | `spec/pins.toml` | performed |
 | `authority.redact.rewritten-identities` | `spec/pins.toml` | performed |
+| `authority.redact.rule` | `crates/contextful-core/tests/integration/redaction.rs::a_rule_names_one_table_one_column_one_operation_and_its_argument` | performed |
 | `authority.redact.rules-per-pipeline` | `spec/pins.toml` | performed |
+| `authority.redact.write-time` | `crates/contextful-context/tests/integration/redaction.rs::each_operation_lands_its_policy_substitute_and_no_raw_value_reaches_the_encoded_part` | performed |
 | `authority.refuse.drifted-scope` | `crates/contextful-context/tests/integration/read/enforce.rs::a_drifted_scope_reads_empty` | performed |
 | `authority.refuse.echo` | `crates/contextful-context/tests/integration/read/enforce.rs::a_refusal_echoes_the_statements_value` | performed |
 | `authority.refuse.guard-walk` | `crates/contextful-context/tests/integration/read/enforce.rs::a_tree_past_the_walk_bound_composes_as_ordinary_conjuncts` | performed |
