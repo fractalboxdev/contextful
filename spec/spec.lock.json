@@ -29287,7 +29287,7 @@
       "operation": "consumer",
       "subject": "command-diagnostic",
       "kind": "behavior",
-      "statement": "A failed artifact command's diagnostic names its verb and the first error identifier its stderr carries; no other stderr text enters the report.",
+      "statement": "A failed or timed-out artifact command's diagnostic, a scenario step's included, names its verb and the first error identifier its stderr carries; no other stderr text enters the report.",
       "why": "because a provider failure must name its cause while stderr may carry binding credentials",
       "file": "spec/82-consumer.md",
       "line": 25,

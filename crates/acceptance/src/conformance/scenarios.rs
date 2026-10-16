@@ -1,6 +1,6 @@
 //! Synthetic source and receiver fixtures exercise native contracts through the CLI.
 
-use super::{Fixture, Result, Running};
+use super::{failed, Fixture, Result, Running};
 use crate::http::{Response, Server};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -178,20 +178,17 @@ fn paged(f: &Fixture, crash: bool) -> Result<()> {
         let mut attempt = 0;
         loop {
             attempt += 1;
-            if start(&format!("capture-resume-{attempt}"), "2030-01-01T00:01:00Z")?
-                .status
-                .success()
-            {
+            let resumed = start(&format!("capture-resume-{attempt}"), "2030-01-01T00:01:00Z")?;
+            if resumed.status.success() {
                 break;
             }
-            require(
-                f.remote.is_some() && Instant::now() < deadline,
-                "ConformanceResumeFailed",
-            )?;
+            if f.remote.is_none() || Instant::now() >= deadline {
+                return Err(failed("ConformanceResumeFailed", &["run"], &resumed.stderr));
+            }
             std::thread::sleep(Duration::from_millis(250));
         }
-    } else {
-        require(first.status.success(), "ConformanceCaptureFailed")?;
+    } else if !first.status.success() {
+        return Err(failed("ConformanceCaptureFailed", &["run"], &first.stderr));
     }
     let answer = f.query("SELECT id FROM items ORDER BY id")?;
     require(
@@ -224,10 +221,10 @@ fn paged(f: &Fixture, crash: bool) -> Result<()> {
         require(charges.lines().filter(|line| line.starts_with("page=\"p2\" ")).count() == 1,
             "ConformanceAmbiguousCallBilledTwice")?;
     }
-    require(
-        start("capture-3", "2030-01-01T00:02:00Z")?.status.success(),
-        "ConformanceCheckpointResumeFailed",
-    )?;
+    let resumed = start("capture-3", "2030-01-01T00:02:00Z")?;
+    if !resumed.status.success() {
+        return Err(failed("ConformanceCheckpointResumeFailed", &["run"], &resumed.stderr));
+    }
     let after = f.query("SELECT id FROM items ORDER BY id")?;
     require(
         after["rows"] == answer["rows"],
