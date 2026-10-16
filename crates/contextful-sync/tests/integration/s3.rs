@@ -168,3 +168,134 @@ fn two_nodes_converge_through_one_s3_bucket() {
     let manifest: serde_json::Value = serde_json::from_slice(&server.object("team/manifest.json").unwrap()).unwrap();
     assert!(manifest["entries"].as_object().unwrap().keys().any(|k| k.contains("ingest-a")) && manifest["entries"].as_object().unwrap().keys().any(|k| k.contains("ingest-b")));
 }
+
+/// An S3 endpoint's outbound path can drop a request or hold it open without an answer.
+mod transport {
+    use contextful_core::connector::reference::Hydrated;
+    use contextful_core::store::object::{Condition, ObjectStore, Put};
+    use contextful_sync::{S3Bucket, S3Credentials};
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    #[derive(Clone)]
+    enum Answer {
+        /// Close the connection unanswered.
+        Drop,
+        /// Hold the connection open and never answer.
+        Stall,
+        /// Answer with this status and body.
+        Status(u16, &'static str),
+    }
+
+    /// An endpoint stand-in answering requests in arrival order and logging each request line.
+    struct Endpoint {
+        url: String,
+        log: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Endpoint {
+        fn start(script: Vec<Answer>) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let script = Arc::new(Mutex::new(script.into_iter()));
+            let shared = log.clone();
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let (log, script) = (shared.clone(), script.clone());
+                    std::thread::spawn(move || serve(stream.unwrap(), &log, &script));
+                }
+            });
+            Self { url, log }
+        }
+
+        fn requests(&self) -> Vec<String> {
+            self.log.lock().unwrap().clone()
+        }
+
+        fn bucket(&self) -> S3Bucket {
+            let credentials = S3Credentials { access_key_id: Hydrated::new("synthetic"), secret_access_key: Hydrated::new("synthetic"), session_token: None };
+            S3Bucket::open(&self.url, "auto", "corpus", credentials).unwrap()
+        }
+    }
+
+    fn serve(stream: TcpStream, log: &Mutex<Vec<String>>, script: &Mutex<std::vec::IntoIter<Answer>>) {
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut writer = stream;
+        loop {
+            let mut line = String::new();
+            if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                return;
+            }
+            let mut length = 0;
+            loop {
+                let mut header = String::new();
+                reader.read_line(&mut header).unwrap();
+                if header == "\r\n" {
+                    break;
+                }
+                if let Some((name, value)) = header.split_once(':') {
+                    if name.eq_ignore_ascii_case("content-length") {
+                        length = value.trim().parse().unwrap();
+                    }
+                }
+            }
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            let method = line.split_whitespace().next().unwrap_or_default().to_string();
+            log.lock().unwrap().push(method.clone());
+            let answer = script.lock().unwrap().next().unwrap_or(Answer::Status(200, ""));
+            match answer {
+                Answer::Drop => return,
+                Answer::Stall => {
+                    std::thread::sleep(Duration::from_secs(120));
+                    return;
+                }
+                Answer::Status(status, body) => {
+                    let body = if method == "HEAD" { "" } else { body };
+                    write!(writer, "HTTP/1.1 {status} X\r\netag: \"e1\"\r\ncontent-length: {}\r\n\r\n{body}", body.len()).unwrap();
+                }
+            }
+        }
+    }
+
+    const LISTING: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>corpus</Name><Prefix></Prefix><KeyCount>1</KeyCount><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>a</Key><LastModified>2030-01-01T00:00:00.000Z</LastModified><ETag>\"e1\"</ETag><Size>1</Size><StorageClass>STANDARD</StorageClass></Contents></ListBucketResult>";
+
+    #[test]
+    fn a_stalled_get_gives_up_its_attempt_within_the_answer_bound_and_resends() {
+        let endpoint = Endpoint::start(vec![Answer::Stall, Answer::Status(200, "x")]);
+        let started = Instant::now();
+        let got = endpoint.bucket().get("a").unwrap();
+        assert_eq!(got, Some((b"x".to_vec(), "\"e1\"".into())));
+        // 3 attempts at this bound, with their backoff, fit inside a 60 s process deadline.
+        assert!(started.elapsed() < Duration::from_secs(18), "{:?}", started.elapsed());
+        assert_eq!(endpoint.requests(), ["GET", "GET"]);
+    }
+
+    #[test]
+    fn a_dropped_read_resends_within_three_attempts() {
+        let endpoint = Endpoint::start(vec![Answer::Drop, Answer::Drop, Answer::Status(200, "")]);
+        endpoint.bucket().head("a").unwrap();
+        assert_eq!(endpoint.requests(), ["HEAD", "HEAD", "HEAD"]);
+        let endpoint = Endpoint::start(vec![Answer::Drop, Answer::Status(200, LISTING)]);
+        assert_eq!(endpoint.bucket().list("").unwrap(), ["a"]);
+        assert_eq!(endpoint.requests(), ["GET", "GET"]);
+        let endpoint = Endpoint::start(vec![Answer::Drop; 8]);
+        assert!(endpoint.bucket().get("a").is_err());
+        assert_eq!(endpoint.requests().len(), 3);
+    }
+
+    #[test]
+    fn an_unconditional_put_resends_and_a_conditional_put_goes_once() {
+        let endpoint = Endpoint::start(vec![Answer::Drop, Answer::Status(200, "")]);
+        assert_eq!(endpoint.bucket().put("a", b"x", Condition::None).unwrap(), Put::Applied("\"e1\"".into()));
+        assert_eq!(endpoint.requests(), ["PUT", "PUT"]);
+        for condition in [Condition::IfNoneMatch, Condition::IfMatch("\"e0\"".into())] {
+            let endpoint = Endpoint::start(vec![Answer::Drop, Answer::Status(200, "")]);
+            assert!(endpoint.bucket().put("a", b"x", condition).is_err());
+            assert_eq!(endpoint.requests(), ["PUT"], "a conditional put whose answer is lost may have applied");
+        }
+    }
+}
