@@ -42,7 +42,7 @@ pub fn run(command: ConnectorCmd) -> Result<()> {
 }
 
 fn pin(path: &Path, local: bool, verify: bool) -> Result<()> {
-    let manifest = Manifest::load(path)?;
+    let manifest = Manifest::from_read(path, std::fs::read_to_string(path))?;
     let Some(source) = manifest.build_dir(path) else {
         bail!("connector manifest `{}` declares no `[build] source` to build", path.display());
     };
@@ -240,7 +240,7 @@ pub fn admit(decl: &ComponentSource, base: &Path) -> Result<Manifest> {
     if !resolved.starts_with(&root) {
         bail!("component manifest is a project-relative file: `{raw}`");
     }
-    let manifest = Manifest::load(&resolved).with_context(|| format!("connector manifest `{raw}`"))?;
+    let manifest = Manifest::from_read(&resolved, std::fs::read_to_string(&resolved)).with_context(|| format!("connector manifest `{raw}`"))?;
     if !decl.allow.included_in(&manifest.declared.hosts) {
         let witness = decl.allow.widening_witness(&manifest.declared.hosts).unwrap_or_else(|| "an unresolved host".to_string());
         return Err(ConnectorError::ConnectorUndeclaredAccess(format!("host `{witness}` is absent from manifest `{raw}`")).into());

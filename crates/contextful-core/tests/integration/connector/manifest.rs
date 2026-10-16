@@ -111,8 +111,8 @@ fn a_manifest_file_loads_from_disk_and_an_unreadable_one_refuses() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("connector.toml");
     std::fs::write(&path, ADOPTED).unwrap();
-    assert_eq!(Manifest::load(&path).unwrap().name.as_deref(), Some("vendor-metrics"));
+    assert_eq!(Manifest::from_read(&path, std::fs::read_to_string(&path)).unwrap().name.as_deref(), Some("vendor-metrics"));
     std::fs::write(&path, "[capabilities\n").unwrap();
-    assert!(matches!(Manifest::load(&path), Err(ConnectorError::ConnectorManifestRejected(_))));
+    assert!(matches!(Manifest::from_read(&path, std::fs::read_to_string(&path)), Err(ConnectorError::ConnectorManifestRejected(_))));
     std::fs::remove_dir_all(&dir).unwrap();
 }

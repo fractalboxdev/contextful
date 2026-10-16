@@ -1,5 +1,6 @@
 //! `contextful connector pin`: the build on the fixed builder platform, `--verify`, and the
 //! host-local `--local` build. A stand-in `docker` on `PATH` plays the container runtime.
+#![cfg(feature = "data-plane")]
 #![cfg(unix)]
 
 use contextful_core::connector::package::PLATFORM;
