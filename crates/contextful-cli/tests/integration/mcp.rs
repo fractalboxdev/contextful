@@ -214,8 +214,8 @@ allow = ["public-cloud:*"]
     assert_eq!(answers[1]["result"]["structuredContent"]["rows"], json!([]), "zone exclusion holds under owner");
 }
 
-/// Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included; `contextful mcp --incognito` turns it on for the admitted credential and never off.
-// spec: authority.place.incognito@0631be7a
+/// Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included. `contextful mcp --incognito` serves a credential signing no zone at `local:device` and refuses one signing a zone outside `[local:device, on-prem:*]`.
+// spec: authority.place.incognito@667f760c
 #[test]
 fn an_incognito_server_pins_its_credential_to_the_fail_closed_pair() {
     let dir = tempfile::tempdir().unwrap();

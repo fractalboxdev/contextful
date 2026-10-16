@@ -22160,7 +22160,7 @@
       "operation": "place",
       "subject": "incognito",
       "kind": "behavior",
-      "statement": "Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included; `contextful mcp --incognito` turns it on for the admitted credential and never off.",
+      "statement": "Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included. `contextful mcp --incognito` serves a credential signing no zone at `local:device` and refuses one signing a zone outside `[local:device, on-prem:*]`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
       "line": 357
@@ -22171,7 +22171,7 @@
       "operation": "place",
       "subject": "incognito-widening",
       "kind": "refusal",
-      "statement": "A session asserting a zone wider than the incognito pin raises `EnforceIncognitoWidening`.",
+      "statement": "A session asserting a zone wider than the incognito pin, or an incognito `contextful token mint` signing one, raises `EnforceIncognitoWidening`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
       "line": 359

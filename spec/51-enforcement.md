@@ -354,9 +354,9 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
   *A-authority*
 - `empty-evidence` — A synthesized row naming no evidence table raises `EnforceEvidenceListEmpty` and resolves to the fail-closed pair of {{authority.place.fail-closed}}.
   *because an empty list intersects to every zone, and a row citing nothing then resolves to the widest set*
-- `incognito` — Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included; `contextful mcp --incognito` turns it on for the admitted credential and never off.
+- `incognito` — Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included. `contextful mcp --incognito` serves a credential signing no zone at `local:device` and refuses one signing a zone outside `[local:device, on-prem:*]`.
   *A-authority*
-- `incognito-widening` — A session asserting a zone wider than the incognito pin raises `EnforceIncognitoWidening`.
+- `incognito-widening` — A session asserting a zone wider than the incognito pin, or an incognito `contextful token mint` signing one, raises `EnforceIncognitoWidening`.
   *A-authority*
 - `team-default` — `[project.zone]` declares `default`, `users_may_widen` and `incognito_default`; `contextful token mint` naming no `--zone` signs `default`, and under `incognito_default = true` mints incognito.
   *A-authority*

@@ -171,8 +171,8 @@ fn a_synthesized_row_resolves_to_its_evidence_intersection() {
     assert!(matches!(refusal, Some(EnforceError::EvidenceFloorExceeded(_))));
 }
 
-/// A session asserting a zone wider than the incognito pin raises `EnforceIncognitoWidening`.
-// spec: authority.place.incognito-widening@233200ff
+/// A session asserting a zone wider than the incognito pin, or an incognito `contextful token mint` signing one, raises `EnforceIncognitoWidening`.
+// spec: authority.place.incognito-widening@3f4781d3
 #[test]
 fn incognito_refuses_a_wider_zone_and_pins_an_absent_one() {
     assert_eq!(session_zone(None, None, true), Ok(Zone::LocalDevice));

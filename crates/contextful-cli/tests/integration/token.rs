@@ -571,6 +571,22 @@ fn a_mint_naming_no_zone_signs_the_project_default() {
     assert!(err.contains("[project.zone]") && err.contains("nowhere"), "{err}");
 }
 
+/// An incognito mint, asked for or by the project default, refuses a zone outside the fail-closed pair.
+#[test]
+fn an_incognito_mint_signing_a_zone_outside_the_pin_is_refused() {
+    let p = project();
+    keygen(p.path());
+    let err = stderr(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "research/*", "--incognito", "--zone", "public-cloud:eu"]));
+    assert!(err.starts_with("EnforceIncognitoWidening") && err.contains("public-cloud:eu"), "{err}");
+    let inside = stdout(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "research/*", "--incognito", "--zone", "on-prem:hq"]));
+    assert_eq!(signed_zone(&inside), (Some("on-prem:hq".into()), true));
+
+    let p = zoned("incognito_default = true\n");
+    let err = stderr(&mint_zone(p.path(), Some("public-cloud:eu")));
+    assert!(err.starts_with("EnforceIncognitoWidening"), "{err}");
+    assert_eq!(signed_zone(&stdout(&mint_zone(p.path(), Some("local:device")))), (Some("local:device".into()), true));
+}
+
 /// Under `users_may_widen = false`, a `contextful token mint` signing a zone other than the project's `default` or `local:device` raises `EnforceZoneDefaultWidened`, naming both.
 // spec: authority.place.default-widened@09682198
 #[test]

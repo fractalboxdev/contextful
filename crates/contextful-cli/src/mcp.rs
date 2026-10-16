@@ -23,8 +23,10 @@ pub struct McpArgs {
     /// Admit the selected local project under a verified signed owner claim.
     #[arg(long)]
     owner: bool,
-    /// Serve the admitted credential incognito, pinning every session to the fail-closed
-    /// pair (`authority.place.incognito`). A signed incognito stays on without it.
+    /// Serve the admitted credential incognito: one signing no zone serves at
+    /// `local:device`, and the server refuses a credential signing a zone outside
+    /// [local:device, on-prem:*] (`authority.place.incognito`). A signed incognito stays on
+    /// without it.
     #[arg(long)]
     incognito: bool,
     /// The project whose store root is `.contextful/context/<project>/` under the working
