@@ -138,7 +138,7 @@ impl D1 {
                 Statement { sql: "UPDATE contextful_execution_schema SET version = 3 WHERE id = 1 AND version = 2", params: vec![] },
             ];
             statements.extend(INDEXES.iter().map(|sql| Statement { sql, params: vec![] }));
-            self.batch(&statements)?;
+            self.initialize_batch(&statements)?;
             return self.verify_recovery(project, generation);
         }
         let frontier =
@@ -159,7 +159,7 @@ impl D1 {
             params: vec![json!(EXECUTION_SCHEMA_VERSION)],
         });
         statements.push(Statement { sql: "INSERT OR IGNORE INTO contextful_recovery (id, project, generation, frontier_sha256) VALUES (1, ?, ?, ?)", params: vec![json!(project), json!(generation), json!(frontier_sha256)] });
-        self.batch(&statements)?;
+        self.initialize_batch(&statements)?;
         self.verify_recovery(project, generation)
     }
 
@@ -295,9 +295,20 @@ impl D1 {
     }
 
     pub fn batch(&self, statements: &[Statement<'_>]) -> Result<Vec<QueryResult>, String> {
+        self.send_batch(statements, statements.iter().all(|s| reads(s.sql)))
+    }
+
+    /// Send a batch whose every statement is `IF NOT EXISTS` DDL or an insert or update
+    /// guarded to apply once, so a resend after a lost answer changes nothing
+    /// (`run.journal.d1-initialize`).
+    fn initialize_batch(&self, statements: &[Statement<'_>]) -> Result<Vec<QueryResult>, String> {
+        self.send_batch(statements, true)
+    }
+
+    fn send_batch(&self, statements: &[Statement<'_>], resend: bool) -> Result<Vec<QueryResult>, String> {
         let body = serde_json::to_vec(statements).map_err(|_| "StorageBindingRequestInvalid")?;
         let url = format!("{}/batch", self.endpoint);
-        let mut response = if statements.iter().all(|s| reads(s.sql)) {
+        let mut response = if resend {
             self.resend(|| self.agent.post(&url).header("content-type", "application/json").send(body.as_slice()))?
         } else {
             self.write(self.agent.post(&url).header("content-type", "application/json"), &body)?

@@ -2,14 +2,16 @@
 
 use contextful_d1::D1;
 use serde_json::json;
+use sha2::Digest;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Answer {
     Ok,
     Drop,
+    Body(String),
 }
 
 /// A binding stand-in answering requests in arrival order and logging each one as
@@ -71,10 +73,13 @@ fn serve(
         log.lock().unwrap().push((connection, line.trim().to_string()));
         match script.lock().unwrap().next().unwrap_or(Answer::Ok) {
             Answer::Drop => return,
-            Answer::Ok => {
-                let body = br#"{"rows":[{"ready":1}],"changes":0}"#;
+            answer => {
+                let body = match answer {
+                    Answer::Body(body) => body,
+                    _ => r#"{"rows":[{"ready":1}],"changes":0}"#.to_string(),
+                };
                 write!(writer, "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n", body.len()).unwrap();
-                writer.write_all(body).unwrap();
+                writer.write_all(body.as_bytes()).unwrap();
             }
         }
     }
@@ -119,4 +124,34 @@ fn a_blob_request_resends_after_a_dropped_answer() {
     let db = D1::connect(&binding.endpoint).unwrap();
     db.health().unwrap();
     assert_eq!(binding.log().len(), 2);
+}
+
+#[test]
+fn an_initialize_batch_dropped_on_first_touch_resends() {
+    let names = [
+        "contextful_execution_schema", "contextful_recovery", "contextful_lease", "contextful_scope",
+        "contextful_run", "contextful_journal", "contextful_blob", "contextful_sweep",
+        "contextful_awakeable", "contextful_export", "contextful_guard", "contextful_reconciliation",
+        "contextful_publication",
+    ];
+    let tables = json!({"rows": names.map(|name| json!({"name": name})), "changes": 0}).to_string();
+    let frontier = json!({"project": "research", "generation": "g1", "objects": []}).to_string();
+    let digest = format!("{:x}", sha2::Sha256::digest(frontier.as_bytes()));
+    let rows = |rows: serde_json::Value| json!({"rows": rows, "changes": 0}).to_string();
+    let binding = Binding::start(vec![
+        Answer::Ok,
+        Answer::Body(tables.clone()),
+        Answer::Drop,
+        Answer::Body(json!([{"rows": [], "changes": 0}]).to_string()),
+        Answer::Ok,
+        Answer::Body(tables),
+        Answer::Body(rows(json!([{"version": contextful_d1::EXECUTION_SCHEMA_VERSION}]))),
+        Answer::Body(rows(json!([{"project": "research", "generation": "g1", "frontier_sha256": digest}]))),
+        Answer::Body(frontier),
+        Answer::Body(rows(json!([]))),
+    ]);
+    let db = D1::connect(&binding.endpoint).unwrap();
+    db.initialize_recovery("research", "g1").unwrap();
+    let batches: Vec<_> = binding.log().into_iter().filter(|(_, line)| line.starts_with("POST /batch")).collect();
+    assert_eq!(batches.len(), 2, "the dropped initialize batch resent once: {batches:?}");
 }

@@ -71,6 +71,11 @@ fn unexpected_storage_initialization_errors_fail_without_exporting_credentials()
             "ConformanceStorageInitializeFailed",
         ),
         (
+            "StorageBindingUnavailable",
+            Outcome::Failed,
+            "ConformanceStorageInitializeFailed:StorageBindingUnavailable",
+        ),
+        (
             "ProfileCapabilityAbsent: pg-catalog",
             Outcome::Unsupported,
             "ConformanceCapabilityMissing:postgres",

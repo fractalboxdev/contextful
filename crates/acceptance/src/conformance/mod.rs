@@ -286,11 +286,14 @@ impl Fixture {
         let initialized = self.invoke(&["storage", "initialize", "--project", "research"], &[])?;
         if !initialized.status.success() {
             return Err(if initialized.storage_capability_missing {
-                if profile == "cloudflare-d1" { "ConformanceCapabilityMissing:cloudflare-d1" } else { "ConformanceCapabilityMissing:postgres" }
+                format!("ConformanceCapabilityMissing:{}", if profile == "cloudflare-d1" { "cloudflare-d1" } else { "postgres" })
             } else {
-                "ConformanceStorageInitializeFailed"
-            }
-            .into());
+                // Only the first error identifier leaves stderr; message text may carry credentials.
+                match error_identifier(&initialized.stderr) {
+                    Some(code) => format!("ConformanceStorageInitializeFailed:{code}"),
+                    None => "ConformanceStorageInitializeFailed".into(),
+                }
+            });
         }
         let checked = self.ok(&["storage", "check", "--project", "research"], &[])?;
         let checked: serde_json::Value =

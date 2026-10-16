@@ -191,6 +191,7 @@
 "run.journal.d1-profile" = { test = "crates/contextful-cli/tests/integration/storage.rs::d1_storage_initialization_and_history_survive_a_new_cli_process" }
 "run.journal.d1-blob" = { test = "crates/contextful-d1/tests/integration/main.rs::a_recorded_r2_blob_survives_replacement_and_sweep" }
 "run.journal.d1-transport" = { test = "crates/contextful-d1/tests/integration/transport.rs::a_write_never_resends_and_never_rides_a_pooled_connection" }
+"run.journal.d1-initialize" = { test = "crates/contextful-d1/tests/integration/transport.rs::an_initialize_batch_dropped_on_first_touch_resends" }
 "run.journal.d1-atomicity" = { test = "crates/contextful-d1/tests/integration/main.rs::a_recorded_r2_blob_survives_replacement_and_sweep" }
 "run.journal.d1-guard" = { test = "crates/contextful-d1/tests/integration/main.rs::a_crashed_d1_guard_requires_explicit_reconciliation_before_takeover" }
 "run.journal.d1-recovery" = { test = "crates/contextful-d1/tests/integration/main.rs::a_replacement_checks_the_same_d1_schema_and_recovery_identity" }
@@ -209,7 +210,7 @@ connector = 292
 corpus = 80
 disclosure = 156
 read = 248
-run = 503
+run = 504
 store = 283
 surface = 134
 topology = 76
