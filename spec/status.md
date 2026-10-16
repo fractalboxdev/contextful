@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 322 | 64 | 24 | 5 | 280 | 0 | 280 |
-| `authority` | 2 | 16 | 297 | 79 | 29 | 8 | 264 | 0 | 264 |
+| `authority` | 2 | 16 | 298 | 79 | 29 | 8 | 266 | 0 | 266 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 154 | 0 | 154 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2601 | 657 | 212 | 74 | 2306 | 0 | |
+| **total** | 22 | 169 | 2602 | 657 | 212 | 74 | 2308 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 276 | 265 | passing | closed |
 | 4 — Ingest | 25 | 586 | 488 | passing | closed |
-| 5 — The read face under enforcement | 17 | 308 | 267 | passing | closed |
+| 5 — The read face under enforcement | 17 | 309 | 269 | passing | closed |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 91 | 84 | passing | closed |
@@ -341,6 +341,8 @@ Unscheduled operations: 13.
 | `authority.attenuate.truncation` | `crates/contextful-policy/tests/integration/attenuate.rs::a_chain_truncated_to_a_broader_prefix_verifies_as_nothing` | performed |
 | `authority.attenuate.widens` | `crates/contextful-core/tests/integration/attenuate.rs::widens` | performed |
 | `authority.bound-redistribution.before-diff` | `crates/contextful-sync/tests/integration/redistribute.rs::a_withheld_table_ships_no_object_and_no_manifest_name` | performed |
+| `authority.bound-redistribution.edge-filter` | `crates/contextful-sync/tests/integration/edge.rs::a_pull_through_the_edge_lands_only_granted_tables` | performed |
+| `authority.bound-redistribution.edge-whole-table` | `crates/contextful-sync/tests/integration/edge.rs::only_a_whole_table_read_grant_opens_a_table_at_the_edge` | performed |
 | `authority.bound-redistribution.envelopes` | `crates/contextful-sync/tests/integration/redistribute.rs::a_withheld_table_ships_no_object_and_no_manifest_name` | performed |
 | `authority.bound-redistribution.left-behind` | `crates/contextful-sync/tests/integration/redistribute.rs::clearing_the_flag_after_a_push_refuses_and_deletes_nothing` | performed |
 | `authority.bound-redistribution.manifest-is-an-index` | `crates/contextful-sync/tests/integration/redistribute.rs::an_object_the_manifest_never_named_still_refuses` | performed |

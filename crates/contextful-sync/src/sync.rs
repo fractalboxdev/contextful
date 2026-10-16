@@ -145,7 +145,7 @@ pub fn table_of(key: &str) -> Option<String> {
 }
 
 /// The table a key under `<project>/` belongs to, for a project name of any depth.
-fn project_table(project: &str, key: &str) -> Option<String> {
+pub(crate) fn project_table(project: &str, key: &str) -> Option<String> {
     let rest = key.strip_prefix(project)?.strip_prefix('/')?;
     rest.starts_with("tables/").then(|| table_of(&format!("_/{rest}"))).flatten()
 }

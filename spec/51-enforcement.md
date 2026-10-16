@@ -294,6 +294,8 @@ The per-table licence bound applied at push, the root-object allowlist, and the 
   *A-authority*
 - `edge-filter` — A serving edge in front of the bucket filters a materialized replica by the pulling credential's grants.
   *A-authority*
+- `edge-whole-table` — The edge serves a table's objects only under a read grant covering it with no tenant scope, aggregate bound or horizon, and a root object outside `access/`, `control/` and `stale_memory.idx` only under such a grant on `*`.
+  *because a table's files hold every row a narrowing grant removes, run states and cursor logs name tables, and a query re-applies only what the replica holds*
 
 One push under the bound:
 

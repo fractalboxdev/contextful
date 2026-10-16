@@ -4,12 +4,14 @@
 //! (`topology.package.s3-sync-optional`).
 
 pub mod clean_room;
+pub mod edge;
 pub mod fs_bucket;
 pub mod run_state;
 #[cfg(feature = "s3-sync")]
 pub mod s3_bucket;
 pub mod sync;
 
+pub use edge::ServingEdge;
 pub use fs_bucket::{FsBucket, VolumeClass};
 #[cfg(feature = "s3-sync")]
 pub use s3_bucket::{S3Bucket, S3Credentials};
