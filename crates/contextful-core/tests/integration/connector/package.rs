@@ -136,3 +136,27 @@ fn the_forwarded_table_folds_into_the_content_hash() {
     assert_ne!(with_a, content_hash(&digest, Some(&json!({ "region": "us", "limit": 50 }))));
     assert_ne!(with_a, content_hash(&Digest::of(b"other"), Some(&a)));
 }
+
+/// `PLATFORM.image` names a published digest, built from the repository's
+/// `Dockerfile.connector-builder` on the platform's architecture with the platform's target,
+/// from the toolchain the repository's `Dockerfile` builds with, as a non-root user.
+#[test]
+fn the_builder_image_is_a_published_digest_of_the_in_repo_recipe() {
+    use contextful_core::connector::package::PLATFORM;
+    let digest = PLATFORM.image.rsplit_once("@sha256:").map(|(_, d)| d).expect("the image is pinned by digest");
+    assert!(Digest::parse(digest).is_some() && digest.bytes().any(|b| b != b'0'), "the digest names a published image: {}", PLATFORM.image);
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let recipe = std::fs::read_to_string(root.join("Dockerfile.connector-builder")).expect("the builder recipe is in the repository");
+    let lines: Vec<&str> = recipe.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).collect();
+    assert!(lines.contains(&format!("ARG PLATFORM={}", PLATFORM.platform).as_str()), "{lines:?}");
+    let froms: Vec<&&str> = lines.iter().filter(|l| l.starts_with("FROM ")).collect();
+    assert_eq!(froms.len(), 1, "one stage: {froms:?}");
+    let base = froms[0].strip_prefix("FROM --platform=$PLATFORM ").expect("the stage runs on the platform");
+    assert!(base.contains("@sha256:"), "the base image is pinned by digest: {base}");
+    let toolchain = std::fs::read_to_string(root.join("Dockerfile")).unwrap();
+    assert!(toolchain.lines().any(|l| l.starts_with("FROM ") && l.contains(base)), "the builder shares the repository's toolchain image `{base}`");
+    assert!(lines.iter().any(|l| l.contains(&format!("rustup target add {}", PLATFORM.target))), "{lines:?}");
+    let user = lines.iter().find_map(|l| l.strip_prefix("USER ")).expect("the image names a user");
+    assert_ne!(user.split(':').next().unwrap().parse::<u32>().expect("a numeric uid"), 0, "the image runs as root");
+}

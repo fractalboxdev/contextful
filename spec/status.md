@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 320 | 64 | 24 | 6 | 278 | 0 | 278 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 10 | 242 | 0 | 242 |
-| `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 277 | 0 | 277 |
+| `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 278 | 0 | 278 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 151 | 0 | 151 |
 | `read` | 2 | 20 | 287 | 46 | 29 | 15 | 245 | 0 | 245 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2592 | 655 | 212 | 75 | 2259 | 0 | |
+| **total** | 22 | 169 | 2592 | 655 | 212 | 75 | 2260 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 244 | 231 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 275 | 264 | passing | closed |
-| 4 — Ingest | 25 | 586 | 473 | passing | closed |
+| 4 — Ingest | 25 | 586 | 474 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 257 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
@@ -688,6 +688,7 @@ Unscheduled operations: 13.
 | `connector.package.oci-registry-bearer` | `crates/contextful-cli/src/component.rs::oci_fetch_checks_the_layer_and_caches_only_admitted_bytes` | performed |
 | `connector.package.path-remap` | `crates/contextful-cli/tests/integration/pin.rs::a_local_build_from_two_checkouts_prints_one_digest_and_writes_nothing` | performed |
 | `connector.package.pin-requirement` | `crates/contextful-core/tests/integration/connector/package.rs::either_switch_requires_a_local_pin` | performed |
+| `connector.package.pin-verb` | `crates/contextful-cli/tests/integration/pin.rs::pin_builds_in_the_published_builder_image_and_verify_reproduces_it_from_another_checkout` | performed |
 | `connector.package.remote-cache` | `crates/contextful-cli/tests/integration/component.rs::a_pinned_remote_artifact_uses_the_project_cache_before_network` | performed |
 | `connector.package.remote-cache-corrupt` | `crates/contextful-cli/tests/integration/component.rs::a_pinned_remote_artifact_uses_the_project_cache_before_network` | performed |
 | `connector.package.remote-fetch-failure` | `crates/contextful-cli/tests/integration/component.rs::remote_fetch_failure_writes_no_run_row` | performed |
