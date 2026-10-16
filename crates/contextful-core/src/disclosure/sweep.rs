@@ -712,9 +712,19 @@ pub fn commit(prior: &SourceState, obs: &Observation) -> Result<Commit, Visibili
 /// (`authority.identify.unlinked-principal`), and a principal linked through
 /// `operator_asserted` links alone refuses (`authority.identify.unverified-link`).
 pub fn reachable(subject: &NormalizedSubject, state: &SourceState) -> Result<BTreeSet<String>, AuthorityError> {
-    let Some(identity) = subject.identity() else { return Ok(BTreeSet::new()) };
-    // A principal is a `(kind, name)` pair: a name alone never crosses kinds.
+    let unbounded = super::reach::ClosureBound { max_group_depth: usize::MAX, max_nodes: usize::MAX };
+    let principals = super::reach::closure(&state.freshness.as_ref().map_or_else(String::new, |f| f.source.clone()), subject, seeds(subject, state)?, &state.members, unbounded)
+        .expect("an unbounded closure never reaches a bound");
+    Ok(state.grants.iter().filter(|g| principals.contains(&(g.principal_kind.clone(), g.principal.clone()))).map(|g| g.resource_id.clone()).collect())
+}
+
+/// The principals `subject` holds before any group edge: the `user` principal its verified
+/// `on_behalf_of` spells, and each `user` source principal a verified link maps onto it
+/// (`disclosure.reach.subject-principals`). A principal is a `(kind, name)` pair, so a name
+/// alone never crosses kinds.
+pub(crate) fn seeds(subject: &NormalizedSubject, state: &SourceState) -> Result<BTreeSet<(String, String)>, AuthorityError> {
     let mut principals: BTreeSet<(String, String)> = BTreeSet::new();
+    let Some(identity) = subject.identity() else { return Ok(principals) };
     if let Some(p) = identity.strip_prefix("user://") {
         principals.insert(("user".to_string(), p.to_string()));
     }
@@ -725,14 +735,5 @@ pub fn reachable(subject: &NormalizedSubject, state: &SourceState) -> Result<BTr
             principals.insert(("user".to_string(), source_principal.to_string()));
         }
     }
-    let mut frontier: Vec<(String, String)> = principals.iter().cloned().collect();
-    while let Some((kind, name)) = frontier.pop() {
-        for m in state.members.iter().filter(|m| m.member_kind == kind && m.member == name) {
-            let group = ("group".to_string(), m.group.clone());
-            if principals.insert(group.clone()) {
-                frontier.push(group);
-            }
-        }
-    }
-    Ok(state.grants.iter().filter(|g| principals.contains(&(g.principal_kind.clone(), g.principal.clone()))).map(|g| g.resource_id.clone()).collect())
+    Ok(principals)
 }

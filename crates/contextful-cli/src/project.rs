@@ -84,6 +84,7 @@ pub(crate) fn pipeline_files(declaration: &Path) -> Result<Vec<ManifestFile>> {
 /// (`disclosure.mirror.face-scope`), every table of its declaration set carries a visibility
 /// block. A project or declaration that does not resolve is left for the command to report.
 pub(crate) fn face_guardrail(project: Option<&str>, declaration: Option<&Path>) -> Result<()> {
+    now_offset()?;
     let Ok(located) = locate(project, declaration.map(Path::to_path_buf)) else { return Ok(()) };
     let Ok(text) = std::fs::read_to_string(&located.declaration) else { return Ok(()) };
     let scope = contextful_core::read::face::FaceScope::declared(&text).with_context(|| format!("`{}`", located.declaration.display()))?;
@@ -94,6 +95,14 @@ pub(crate) fn face_guardrail(project: Option<&str>, declaration: Option<&Path>) 
         .with_context(|| format!("`{}`", located.declaration.display()))?;
     contextful_core::disclosure::declare::check_unbound(scope, &tables)?;
     Ok(())
+}
+
+/// The seconds `CONTEXTFUL_NOW_OFFSET_SECS` moves a staleness check's now; a malformed
+/// value stops the process before it serves, naming the variable
+/// (`disclosure.bound-staleness.offset-malformed`).
+fn now_offset() -> Result<u64> {
+    let var = contextful_core::disclosure::stale::NOW_OFFSET_VAR;
+    Ok(contextful_core::disclosure::stale::now_offset(std::env::var(var).ok().as_deref())?)
 }
 
 /// Open the read face over the project's store, the declaration's text and the
@@ -175,8 +184,9 @@ pub(crate) fn read_audit(project: &Project, issuer_key: Option<&Path>, public_ke
 }
 
 pub(crate) fn open_face_with_pins(project: &Project, declaration: &Path, manifest: &str, pepper: Pepper, public_key: Option<&str>, keyset: Option<&Path>) -> Result<Face> {
+    let offset = now_offset()?;
     let store = open_store(project, public_key, keyset)?;
-    Ok(Face::open_declared(store, manifest, &pipeline_files(declaration)?, pepper)?)
+    Ok(Face::open_declared(store, manifest, &pipeline_files(declaration)?, pepper)?.with_now_offset(offset))
 }
 
 #[cfg(feature = "data-plane")]

@@ -8,7 +8,7 @@ use contextful_core::read::template::{Bindings, Bound};
 use contextful_core::read::ReadError;
 use contextful_core::time::Instant;
 use contextful_policy::enforce::mask::{Pepper, HASH_BYTES_FUNCTION, HASH_FUNCTION, TOKEN_FUNCTION};
-use contextful_policy::enforce::session::{Session, TENANT_RELATION};
+use contextful_policy::enforce::session::{Session, REACH_RELATION, TENANT_RELATION};
 use contextful_core::store::relation::{ident, literal};
 use duckdb::core::{DataChunkHandle, Inserter, LogicalTypeId};
 use duckdb::ffi::duckdb_string_t;
@@ -229,8 +229,8 @@ impl SqlEngine {
         Ok(())
     }
 
-    /// A connection for one session: the mask functions holding the pepper, the subject
-    /// and tenant relations filled through parameters, and one create-or-replace view per
+    /// A connection for one session: the mask functions holding the pepper, the subject,
+    /// tenant and reach relations filled through parameters, and one create-or-replace view per
     /// registered relation. No view directory exists on disk
     /// (`read.register.connection-views`). Every file a view names is immutable under the
     /// pool key the connection serves, so the connection keeps Parquet footers it read.
@@ -260,6 +260,13 @@ impl SqlEngine {
             .map_err(fault)?;
         for (table, value) in session.tenant_rows() {
             conn.execute(&format!("INSERT INTO {} VALUES (?, ?)", ident(TENANT_RELATION)), [table, value]).map_err(fault)?;
+        }
+        conn.execute_batch(&format!("CREATE TEMP TABLE {} (\"table\" VARCHAR, \"resource_id\" VARCHAR)", ident(REACH_RELATION))).map_err(fault)?;
+        {
+            let mut insert = conn.prepare(&format!("INSERT INTO {} VALUES (?, ?)", ident(REACH_RELATION))).map_err(fault)?;
+            for (table, resource) in session.reach_rows() {
+                insert.execute([table, resource]).map_err(fault)?;
+            }
         }
 
         // A request ledger registers only once a statement names it, so one unreadable

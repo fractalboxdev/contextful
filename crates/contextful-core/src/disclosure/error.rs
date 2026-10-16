@@ -54,6 +54,26 @@ pub enum VisibilityError {
     /// (`disclosure.pack.unsupported-coarse`)
     #[error("VisibilityUnsupportedCoarse: pack `{pack}`: table `{table}` declares `coarse` and names no `container_key`")]
     UnsupportedCoarse { pack: String, table: String },
+    /// A group closure reached its depth or node bound; no set is returned.
+    /// (`disclosure.reach.closure-overflow`)
+    #[error("VisibilityClosureDepth: source `{origin}`: the group closure of `{subject}` reached its bound of {bound}; no reachable set is returned")]
+    ClosureDepth { origin: String, subject: String, bound: String },
+    /// A reachable set or result produced past a budget, or under the narrowing posture,
+    /// was retained. (`disclosure.reach.degraded-uncached`)
+    #[error("VisibilityDegradedCached: {what} was produced past a budget or under the narrowing posture and is not retained")]
+    DegradedCached { what: String },
+    /// A read touched a table whose source lag exceeds its budget, or whose source has no
+    /// completed full run. (`disclosure.bound-staleness.access-stale`)
+    #[error("VisibilityAccessStale: table `{table}`: source `{origin}` {reason}; lag {lag}, budget {budget}s, last observation {last_observed}")]
+    AccessStale { table: String, origin: String, reason: &'static str, lag: String, budget: u64, last_observed: String },
+    /// A budget is tighter than the sweep cadence its source sustains.
+    /// (`disclosure.bound-staleness.budget-below-cadence`)
+    #[error("VisibilityBudgetUnreachable: table `{table}`: budget {budget}s is tighter than the {cadence}s sweep cadence source `{origin}` sustains")]
+    BudgetUnreachable { table: String, origin: String, budget: u64, cadence: u64 },
+    /// A federated table was registered on a read face.
+    /// (`disclosure.declare-fidelity.federated-registered`)
+    #[error("VisibilityFederatedRegistered: table `{table}` is federated; it answers live under the reader's credential and registers on no read face")]
+    FederatedRegistered { table: String },
     /// An explanation returned content from the resource it decides about.
     /// (`disclosure.explain.no-row`)
     #[error("VisibilityDiagnosticRow: {0}")]
@@ -88,10 +108,26 @@ impl VisibilityError {
             VisibilityError::PackAssertsAccess { .. } => "VisibilityPackAssertsAccess",
             VisibilityError::AllowlistAnyOf { .. } => "VisibilityAllowlistAnyOf",
             VisibilityError::UnsupportedCoarse { .. } => "VisibilityUnsupportedCoarse",
+            VisibilityError::ClosureDepth { .. } => "VisibilityClosureDepth",
+            VisibilityError::DegradedCached { .. } => "VisibilityDegradedCached",
+            VisibilityError::AccessStale { .. } => "VisibilityAccessStale",
+            VisibilityError::BudgetUnreachable { .. } => "VisibilityBudgetUnreachable",
+            VisibilityError::FederatedRegistered { .. } => "VisibilityFederatedRegistered",
             VisibilityError::DiagnosticRow(_) => "VisibilityDiagnosticRow",
             VisibilityError::NoObservations(_) => "VisibilityNoObservations",
             VisibilityError::UnqualifiedAssurance(_) => "VisibilityUnqualifiedAssurance",
             VisibilityError::IndividualNamed(_) => "VisibilityIndividualNamed",
+        }
+    }
+
+    /// The HTTP status a read surface answers this refusal with, where the contract fixes
+    /// one: `503` for a stale source, which a later sweep clears, and the non-retryable
+    /// `422` for a closure past its bound.
+    pub fn status(&self) -> Option<u16> {
+        match self {
+            VisibilityError::AccessStale { .. } => Some(503),
+            VisibilityError::ClosureDepth { .. } => Some(422),
+            _ => None,
         }
     }
 }
