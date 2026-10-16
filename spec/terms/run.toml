@@ -83,6 +83,8 @@ ReceiveBatchTooLarge           = { clause = "run.land.receive-batch-too-large", 
 ReceiveBackpressure            = { clause = "run.land.receive-backpressure", gloss = "A delivered batch arriving while every queue slot of its pipeline is held." }
 ReceiveWriteNotGranted         = { clause = "run.land.receive-write-not-granted", gloss = "A delivered batch under a credential lacking `write` over one of its pipeline's tables." }
 ReceiveBatchKeyExpired         = { clause = "run.land.receive-key-expired", gloss = "A batch under a key whose first attempt is older than its source's `key_retention_secs`." }
+ReceiveBatchKeyMissing         = { clause = "run.land.receive-key-missing", gloss = "A delivered batch naming no batch key." }
+ReceivePipelineUnknown         = { clause = "run.land.receive-pipeline-unknown", gloss = "A delivery to a pipeline id no declaration names as a `receive` source." }
 ExportSignalUnknown            = { clause = "run.export.signal-unknown", gloss = "An export block naming a signal the built-in arm does not map." }
 ExportCommitSeqMissing         = { clause = "run.export.commit-seq-missing", gloss = "A table holding rows no cursor passes, their `_commit_seq` null." }
 ExportDeliveryRefused          = { clause = "run.export.delivery-refused", gloss = "An OTLP target answering other than 2xx, or unreachable." }

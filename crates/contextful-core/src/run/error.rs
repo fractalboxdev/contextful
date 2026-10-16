@@ -279,6 +279,12 @@ pub enum RunError {
     /// A batch under a key whose first attempt is older than its source's `key_retention_secs`. (`run.land.receive-key-expired`)
     #[error("ReceiveBatchKeyExpired: {0}")]
     ReceiveBatchKeyExpired(String),
+    /// A delivered batch naming no batch key. (`run.land.receive-key-missing`)
+    #[error("ReceiveBatchKeyMissing: {0}")]
+    ReceiveBatchKeyMissing(String),
+    /// A delivery to a pipeline id no declaration names as a `receive` source. (`run.land.receive-pipeline-unknown`)
+    #[error("ReceivePipelineUnknown: {0}")]
+    ReceivePipelineUnknown(String),
     /// A non-zero exit or fatal signal from the decode process. (`run.land.parse-crashed`)
     #[error("PipelineParseCrashed: {0}")]
     PipelineParseCrashed(String),

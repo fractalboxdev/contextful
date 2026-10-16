@@ -5,7 +5,7 @@ use contextful_core::ports::FixedClock;
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
 use contextful_policy::possession::{
-    body_digest, jwk_thumbprint, sign_proof, verify_proof, NonceCache, ProofRefusal, ProofRequest,
+    body_digest, jwk_thumbprint, sign_proof, verify_body_digest, verify_proof, verify_proof_head, NonceCache, ProofRefusal, ProofRequest,
     NONCE_CACHE_ENTRIES, PROOF_CLOCK_SKEW_SECS, PROOF_REPLAY_WINDOW_SECS,
 };
 use ed25519_dalek::SigningKey;
@@ -378,4 +378,27 @@ fn a_cache_restored_from_its_entries_refuses_the_nonces_it_retains() {
     // Two minutes on, the four-minute-old proof's nonce has left the window.
     let later = at("2030-01-01T00:02:00Z");
     assert_eq!(NonceCache::restored(entries, later).len(), 1);
+}
+
+/// A head check runs every proof check but the body digest and records the nonce; the digest it answers is the one
+/// the signature covers, compared with the body once it arrives.
+#[test]
+fn a_head_check_verifies_all_but_the_body_and_answers_the_covered_digest() {
+    let key = client(7);
+    let jkt = cnf(&key).jkt;
+    let clock = FixedClock(at(NOW));
+    let mut nonces = NonceCache::new();
+    let req = request();
+    let proof = sign_proof(&key, &req, at(NOW), "h-1");
+    let covered = verify_proof_head(&jkt, &proof, req.method, req.target, &clock, &mut nonces).unwrap();
+    assert_eq!(covered, body_digest(req.body));
+    assert_eq!(verify_body_digest(&covered, req.body), Ok(()));
+    invalid(verify_body_digest(&covered, b"other"));
+
+    let head = |proof: &str, method: &str, target: &str, nonces: &mut NonceCache| verify_proof_head(&jkt, proof, method, target, &clock, nonces).map(|_| ());
+    invalid(head("not.a.proof", req.method, req.target, &mut nonces));
+    invalid(head(&sign_proof(&key, &req, at(NOW), "h-2"), "GET", req.target, &mut nonces));
+    invalid(head(&sign_proof(&key, &req, at(NOW), "h-3"), req.method, "https://store.example/other", &mut nonces));
+    invalid(head(&sign_proof(&client(8), &req, at(NOW), "h-4"), req.method, req.target, &mut nonces));
+    assert!(matches!(head(&proof, req.method, req.target, &mut nonces), Err(ProofRefusal::Refused(AuthorityError::PossessionProofReplayed(_)))), "the head check records the nonce");
 }

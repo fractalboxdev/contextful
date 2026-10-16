@@ -197,6 +197,40 @@ pub fn verify_proof(
     clock: &impl Clock,
     nonces: &mut NonceCache,
 ) -> Result<(), ProofRefusal> {
+    check_proof(cnf_jkt, proof, request.method, request.target, Some(request.body), clock, nonces).map(|_| ())
+}
+
+/// Admit `proof` for a request head of `method` and `target` whose body has not arrived:
+/// every check of [`verify_proof`] but the body digest runs and the nonce is recorded. The
+/// answer is the body digest the signature covers, for [`verify_body_digest`] to compare.
+pub fn verify_proof_head(
+    cnf_jkt: &str,
+    proof: &str,
+    method: &str,
+    target: &str,
+    clock: &impl Clock,
+    nonces: &mut NonceCache,
+) -> Result<String, ProofRefusal> {
+    check_proof(cnf_jkt, proof, method, target, None, clock, nonces)
+}
+
+/// Compare the body digest a head-verified proof covers with the body that arrived.
+pub fn verify_body_digest(covered: &str, body: &[u8]) -> Result<(), ProofRefusal> {
+    if covered != body_digest(body) {
+        return Err(invalid("the proof's body digest differs from the request body's"));
+    }
+    Ok(())
+}
+
+fn check_proof(
+    cnf_jkt: &str,
+    proof: &str,
+    method: &str,
+    target: &str,
+    body: Option<&[u8]>,
+    clock: &impl Clock,
+    nonces: &mut NonceCache,
+) -> Result<String, ProofRefusal> {
     let parts: Vec<&str> = proof.split('.').collect();
     let [header_b64, claims_b64, sig_b64] = parts[..] else {
         return Err(invalid("a proof is three dot-separated parts"));
@@ -225,14 +259,14 @@ pub fn verify_proof(
         .map_err(|_| invalid("the proof signature does not verify under the confirmed key"))?;
 
     let claims: Claims = decode_json(claims_b64, "payload")?;
-    if claims.htm != request.method {
-        return Err(invalid(format!("the proof covers method {}, the request is {}", claims.htm, request.method)));
+    if claims.htm != method {
+        return Err(invalid(format!("the proof covers method {}, the request is {}", claims.htm, method)));
     }
-    if claims.htu != request.target {
-        return Err(invalid(format!("the proof covers target {}, the request is {}", claims.htu, request.target)));
+    if claims.htu != target {
+        return Err(invalid(format!("the proof covers target {}, the request is {}", claims.htu, target)));
     }
-    if claims.bd != body_digest(request.body) {
-        return Err(invalid("the proof's body digest differs from the request body's"));
+    if let Some(body) = body {
+        verify_body_digest(&claims.bd, body)?;
     }
 
     let iat = Instant::from_unix_secs(claims.iat).map_err(|e| invalid(format!("the proof issue instant: {e}")))?;
@@ -246,7 +280,8 @@ pub fn verify_proof(
         return Err(invalid(format!("the proof was issued at {iat}, more than {PROOF_CLOCK_SKEW_SECS} s after {now}")));
     }
 
-    nonces.record(&claims.jti, iat.plus_secs(PROOF_REPLAY_WINDOW_SECS), now)
+    nonces.record(&claims.jti, iat.plus_secs(PROOF_REPLAY_WINDOW_SECS), now)?;
+    Ok(claims.bd)
 }
 
 /// The RFC 7638 thumbprint of the key a proof's header embeds; the proof is not verified.

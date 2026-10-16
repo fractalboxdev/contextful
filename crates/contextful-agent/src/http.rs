@@ -20,7 +20,7 @@ use contextful_core::read::{ReadError, Refusal};
 use contextful_core::AuthorityError;
 use contextful_policy::enforce::refuse::payload;
 use contextful_policy::keyset::KeyCheckpoint;
-use contextful_policy::possession::{ProofRefusal, ProofRequest};
+use contextful_policy::possession::{verify_body_digest, ProofRefusal, ProofRequest};
 use contextful_policy::revoke::RevocationState;
 use contextful_policy::verify::{effect_boundary, verify_network, Admission, AdmittedAuthority};
 use serde_json::{json, Value};
@@ -492,7 +492,8 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         };
         // The credential admits before any body byte is read; a holder-bound credential's
         // proof covers the body, so it is checked once the body arrives.
-        let authority = match self.admit(head, true) {
+        let mut covered = None;
+        let authority = match self.admit(head, Some(&mut covered)) {
             Ok(a) => a,
             Err(response) => return (response, false),
         };
@@ -508,7 +509,12 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
                 }
                 let request = read_body(stream, head.clone(), rest, length)?;
                 consumed = true;
-                self.admit(&request, false)?;
+                if let Some(covered) = &covered {
+                    verify_body_digest(covered, &request.body).map_err(|refusal| match refusal {
+                        ProofRefusal::Refused(e) => unadmitted(&e),
+                        ProofRefusal::NonceCacheFull => HttpResponse::unavailable(ProofRefusal::NonceCacheFull.to_string()),
+                    })?;
+                }
                 Ok(Some(request.body))
             };
             self.receive.expect("the route is installed only with a receive handler")(head, &authority, pipeline, &mut read)
@@ -658,21 +664,22 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             Err(why) => return HttpResponse::unavailable(format!("the revocation denylist is unreadable: {why}")),
         };
         let admission = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
-        match self.admit_under(request, &admission, false) {
+        match self.admit_under(request, &admission, None) {
             Ok(authority) => answer(&authority, &admission),
             Err(response) => response,
         }
     }
 
-    /// Admit the request's credential; with `defer_proof`, a holder-bound credential admits
-    /// on a present `DPoP` header whose check waits for the body the proof covers.
-    fn admit(&self, request: &HttpRequest, defer_proof: bool) -> Result<AdmittedAuthority, HttpResponse> {
+    /// Admit the request's credential; with `deferred`, a holder-bound credential's proof
+    /// is verified on the head alone and `deferred` takes the body digest it covers, which
+    /// the caller compares once the body arrives.
+    fn admit(&self, request: &HttpRequest, deferred: Option<&mut Option<String>>) -> Result<AdmittedAuthority, HttpResponse> {
         let revocation = (self.admitting.revocation)().map_err(|why| HttpResponse::unavailable(format!("the revocation denylist is unreadable: {why}")))?;
         let admission = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
-        self.admit_under(request, &admission, defer_proof)
+        self.admit_under(request, &admission, deferred)
     }
 
-    fn admit_under(&self, request: &HttpRequest, admission: &Admission<'_>, defer_proof: bool) -> Result<AdmittedAuthority, HttpResponse> {
+    fn admit_under(&self, request: &HttpRequest, admission: &Admission<'_>, deferred: Option<&mut Option<String>>) -> Result<AdmittedAuthority, HttpResponse> {
         let Some(credential) = request.credential() else {
             let missing = ReadError::HttpCredentialMissing(
                 "a request carries `Authorization: Bearer <credential>`, or `Authorization: DPoP <credential>` with a `DPoP` proof from the credential's holder key".into(),
@@ -682,10 +689,13 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let covered = ProofRequest { method: &request.method, target: &request.target, body: &request.body };
         let checkpoint = self.admitting.checkpoint;
         let keys = checkpoint.keys().map_err(|e| HttpResponse::unavailable(e.to_string()))?;
-        let authority = verify_network(credential, &keys, admission, |jkt| match request.header("DPoP") {
-            Some(_) if defer_proof => Ok(()),
-            Some(proof) => checkpoint.verify_request(jkt, proof, &covered),
-            None => Err(ProofRefusal::Refused(AuthorityError::PossessionProofInvalid(
+        let authority = verify_network(credential, &keys, admission, |jkt| match (request.header("DPoP"), deferred) {
+            (Some(proof), Some(deferred)) => {
+                *deferred = Some(checkpoint.verify_head(jkt, proof, &request.method, &request.target)?);
+                Ok(())
+            }
+            (Some(proof), None) => checkpoint.verify_request(jkt, proof, &covered),
+            (None, _) => Err(ProofRefusal::Refused(AuthorityError::PossessionProofInvalid(
                 "the credential binds a holder key, and the request carries no `DPoP` proof".into(),
             ))),
         });

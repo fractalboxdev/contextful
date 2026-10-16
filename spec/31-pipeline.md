@@ -223,7 +223,11 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *A-run*
 - `receive-endpoint` — `POST /receive/:pipeline` on the served face takes the batch key in the `Contextful-Batch-Key` header, admits the credential before reading the body, and answers `200` with the {{run.land.receive-ack}} answer.
   *because a sender refused for its credential or grant must not have spent the transfer*
-- `receive-endpoint-status` — The receive route answers `403` for {{run.land.receive-write-not-granted}}, `413` for {{run.land.receive-batch-too-large}}, `410` for {{run.land.receive-key-expired}}, `503` with `Retry-After` for {{run.land.receive-backpressure}} or a retryable failed table, and `422` otherwise.
+- `receive-key-missing` — A delivery naming no batch key raises `ReceiveBatchKeyMissing`, non-retryable, before the body is read, and no table lands.
+  *because a batch without a key can neither replay nor resume under {{run.land.receive-batch-key}}*
+- `receive-pipeline-unknown` — A delivery to a pipeline id that no declaration names, or whose source is not `receive`, raises `ReceivePipelineUnknown` before the body is read, and no table lands.
+  *because a sender's misaddressed batch must not land in another pipeline's tables*
+- `receive-endpoint-status` — The receive route answers `400` for {{run.land.receive-key-missing}}, `404` for {{run.land.receive-pipeline-unknown}}, `403` for {{run.land.receive-write-not-granted}}, `413` for {{run.land.receive-batch-too-large}}, `410` for {{run.land.receive-key-expired}}, `503` with `Retry-After` for {{run.land.receive-backpressure}} or a retryable failed table, and `422` for other refused batches.
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
 - `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull.

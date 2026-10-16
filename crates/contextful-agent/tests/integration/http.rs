@@ -993,6 +993,18 @@ fn the_receive_route_admits_on_the_head_and_checks_the_proof_against_the_body() 
     let (status, _, _) = send(addr, &anonymous);
     assert_eq!(status, 401);
     assert_eq!(calls.load(Ordering::SeqCst), before, "an unadmitted delivery reaches no handler");
+
+    // Every part of a proof but its body digest verifies on the head: a garbage proof, or one signed for another
+    // route, reaches no handler.
+    let mut garbage = proven("POST", "/receive/otel", batch.clone(), &token, &key);
+    garbage.headers.retain(|(k, _)| k != "DPoP");
+    garbage.headers.push(("DPoP".into(), "not.a.proof".into()));
+    let (status, _, answer) = send(addr, &garbage);
+    assert_eq!((status, body(&answer)["error"]["identifier"].as_str()), (401, Some("PossessionProofInvalid")), "{}", body(&answer));
+    let mut elsewhere = proven("POST", "/receive/other", batch.clone(), &token, &key);
+    elsewhere.target = "/receive/otel".into();
+    assert_eq!(send(addr, &elsewhere).0, 401);
+    assert_eq!(calls.load(Ordering::SeqCst), before, "an unverified proof reaches no handler");
     let mut fetched = proven("GET", "/receive/otel", Vec::new(), &token, &key);
     fetched.body.clear();
     assert_eq!(send(addr, &fetched).0, 405);

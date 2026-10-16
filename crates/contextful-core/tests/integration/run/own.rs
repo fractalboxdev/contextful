@@ -63,4 +63,6 @@ fn receive_refusals_name_their_identifiers() {
     assert!(RunError::ReceiveBackpressure("x".into()).to_string().starts_with("ReceiveBackpressure: "));
     assert!(RunError::ReceiveWriteNotGranted("x".into()).to_string().starts_with("ReceiveWriteNotGranted: "));
     assert!(RunError::ReceiveBatchKeyExpired("x".into()).to_string().starts_with("ReceiveBatchKeyExpired: "));
+    assert!(RunError::ReceiveBatchKeyMissing("x".into()).to_string().starts_with("ReceiveBatchKeyMissing: "));
+    assert!(RunError::ReceivePipelineUnknown("x".into()).to_string().starts_with("ReceivePipelineUnknown: "));
 }

@@ -150,7 +150,16 @@ impl Receiver {
         let site_id = crate::run::site_id_for(&text, &declaration, site_id, site_id_env)?;
         let files = manifests(&declaration)?;
         crate::secrets::check_records(&declaration, &files)?;
-        let spec = collect(&files)?.into_iter().find(|d| d.spec.id == id).with_context(|| format!("no pipeline `{id}` is declared"))?.spec;
+        let Some(spec) = collect(&files)?.into_iter().find(|d| d.spec.id == id).map(|d| d.spec) else {
+            return Err(RunError::ReceivePipelineUnknown(format!("no pipeline `{id}` is declared")).into());
+        };
+        if spec.source.name != contextful_connectors::receive::NAME {
+            return Err(RunError::ReceivePipelineUnknown(format!(
+                "pipeline `{}` reads source `{}`; `pipeline receive` lands the delivered batches of a `receive` source",
+                spec.id, spec.source.name
+            ))
+            .into());
+        }
         let Checked::Receive(config) = check(&spec, &declaration, tasks)? else {
             bail!("pipeline `{}` reads source `{}`; `pipeline receive` lands the delivered batches of a `receive` source", spec.id, spec.source.name);
         };
@@ -316,7 +325,7 @@ pub(crate) fn receive(args: Receive<'_>, tasks: &Tasks) -> Result<()> {
     let receiver = Receiver::open(&args.project, args.declaration, &args.id, args.site_id, args.site_id_env, tasks)?;
     let key = args.key;
     if key.trim().is_empty() {
-        bail!("`--key` names the batch; a resend under it replays what committed");
+        return Err(RunError::ReceiveBatchKeyMissing("`--key` names the batch; a resend under it replays what committed".into()).into());
     }
     let refuse = |refusal: Refusal| -> Result<()> {
         say(&receiver.refused(&key, &refusal));
@@ -374,11 +383,18 @@ fn served_refusal(receiver: Option<&Receiver>, key: &str, refusal: &Refusal) -> 
         None => json!({ "key": key, "committed": false, "retryable": refusal.retryable }),
     };
     body["error"] = json!({ "http": status, "identifier": identifier, "message": text });
-    Served { status, body, retry_after: matches!(refusal.error, RunError::ReceiveBackpressure(_)) }
+    Served { status, body, retry_after: status == 503 }
 }
 
-fn served_error(status: u16, identifier: &str, message: String) -> Served {
+fn served_error(status: u16, error: RunError) -> Served {
+    let message = error.to_string();
+    let identifier = message.split(':').next().unwrap_or_default().trim().to_string();
     Served { status, body: json!({ "error": { "http": status, "identifier": identifier, "message": message } }), retry_after: false }
+}
+
+/// The face's generic `500` body: a failure no clause names, its identifier withheld.
+fn served_failure(e: &anyhow::Error) -> Served {
+    Served { status: 500, body: json!({ "error": { "http": 500, "message": format!("{e:#}") } }), retry_after: false }
 }
 
 /// Land one served delivery to `pipeline` under `authority`: the grant and the queue slot
@@ -395,10 +411,16 @@ pub(crate) fn served(
 ) -> std::result::Result<Served, contextful_agent::http::HttpResponse> {
     let receiver = match Receiver::open(project, Some(declaration.to_path_buf()), pipeline, None, None, tasks) {
         Ok(r) => r,
-        Err(e) => return Ok(served_error(404, "ReceivePipelineUnknown", format!("{e:#}"))),
+        Err(e) => {
+            return Ok(match e.downcast::<RunError>() {
+                Ok(unknown @ RunError::ReceivePipelineUnknown(_)) => served_error(404, unknown),
+                Ok(other) => served_failure(&other.into()),
+                Err(e) => served_failure(&e),
+            })
+        }
     };
     let Some(key) = key.map(str::trim).filter(|k| !k.is_empty()) else {
-        return Ok(served_error(400, "ReceiveBatchKeyMissing", format!("a delivery names its batch in `{}`", contextful_agent::http::BATCH_KEY_HEADER)));
+        return Ok(served_error(400, RunError::ReceiveBatchKeyMissing(format!("a delivery names its batch in `{}`", contextful_agent::http::BATCH_KEY_HEADER))));
     };
     if let Some(refusal) = receiver.ungranted(author.authority()) {
         return Ok(served_refusal(Some(&receiver), key, &refusal));
@@ -406,15 +428,15 @@ pub(crate) fn served(
     let admitted = match receiver.admit(key) {
         Ok(Ok(admitted)) => admitted,
         Ok(Err(refusal)) => return Ok(served_refusal(Some(&receiver), key, &refusal)),
-        Err(e) => return Ok(served_error(500, "ReceiveUnavailable", format!("{e:#}"))),
+        Err(e) => return Ok(served_failure(&e)),
     };
     let Some(body) = read(receiver.config.max_batch_bytes)? else {
         return Ok(served_refusal(Some(&receiver), key, &receiver.too_large(key)));
     };
     match receiver.land(admitted, key, &body, Some(author)) {
         Ok(Ok(Landed { answer, failed: None })) => Ok(Served { status: 200, body: answer, retry_after: false }),
-        Ok(Ok(Landed { answer, failed: Some((_, retryable)) })) => Ok(Served { status: if retryable { 503 } else { 422 }, body: answer, retry_after: false }),
+        Ok(Ok(Landed { answer, failed: Some((_, retryable)) })) => Ok(Served { status: if retryable { 503 } else { 422 }, body: answer, retry_after: retryable }),
         Ok(Err(refusal)) => Ok(served_refusal(Some(&receiver), key, &refusal)),
-        Err(e) => Ok(served_error(500, "ReceiveUnavailable", format!("{e:#}"))),
+        Err(e) => Ok(served_failure(&e)),
     }
 }
