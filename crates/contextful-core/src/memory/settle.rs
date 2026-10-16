@@ -112,8 +112,8 @@ pub struct RawRegistration {
     /// The falsifiable claim the prediction scores (`read.settle.statement-bound`).
     #[serde(default)]
     pub statement: Option<String>,
-    /// The series a `metric` source resolves against, `<table>:<series_id>`
-    /// (`read.settle.metric-reference`).
+    /// The series a `metric` source resolves against, `<table>:<series_id>`, parsed
+    /// and never looked up in the store (`read.settle.metric-reference`).
     #[serde(default)]
     pub metric: Option<String>,
 }
@@ -238,10 +238,16 @@ pub struct Observation {
 /// differs refuses (`read.settle.source-mismatch`); an `adjudicator` or `manual` verdict
 /// carries an `http` or `https` settling citation (`read.settle.settling-citation`).
 pub fn observe(registration: &Registration, obs: &Observation) -> Result<(), MemoryError> {
-    if let (Some(registered), Some(observed)) = (&registration.metric, &obs.metric) {
-        if registered != observed {
+    // A verdict states the series it read; an observation never names another one.
+    if let Some(registered) = &registration.metric {
+        let named = match &obs.metric {
+            Some(observed) if observed != registered => Some(format!("`{observed}`")),
+            None if obs.verdict.is_some() => Some("no series".to_string()),
+            _ => None,
+        };
+        if let Some(named) = named {
             return Err(MemoryError::OutcomeSourceMismatch(format!(
-                "prediction `{}` settles against the `metric` series `{registered}`; the observation names `{observed}`",
+                "prediction `{}` settles against the `metric` series `{registered}`; the observation names {named}",
                 registration.prediction_id
             )));
         }

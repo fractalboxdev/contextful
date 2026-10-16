@@ -8140,7 +8140,7 @@
       "operation": "settle",
       "subject": "source-mismatch",
       "kind": "refusal",
-      "statement": "An observation carrying a verdict whose resolution source is absent or differs from the registration's, or naming a `metric` series other than the registration's, raises `OutcomeSourceMismatch`, naming each source by its wire name.",
+      "statement": "An observation naming a `metric` series other than the registration's, or carrying a verdict whose resolution source or registered series is absent or differs, raises `OutcomeSourceMismatch`, naming each source by its wire name.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 259
@@ -8195,8 +8195,8 @@
       "operation": "settle",
       "subject": "metric-reference",
       "kind": "refusal",
-      "statement": "A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.",
-      "why": "because an observation can be held to its series only when the registration names it unambiguously",
+      "statement": "A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against and is never looked up in the store; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.",
+      "why": "because a registration precedes its series' first landing, so a store lookup refuses every prediction made before its data exists",
       "file": "spec/21-memory.md",
       "line": 268
     },

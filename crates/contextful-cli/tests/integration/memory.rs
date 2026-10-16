@@ -332,6 +332,15 @@ impl Settling {
 #[test]
 fn predict_lands_a_registration_and_prints_its_id() {
     let s = Settling::new();
+    for (verb, fields) in [
+        ("predict", &["prediction_id", "subject", "predicted_at", "horizon_secs", "deadline_at", "watch", "resolution_source", "comparator", "statement", "metric", "read.settle"][..]),
+        ("observe", &["prediction_id", "observed_at", "verdict", "resolution_source", "signal", "settling_citation", "metric", "read.settle"][..]),
+    ] {
+        let help = stdout(&run(s.dir.path(), &["memory", verb, "--help"], &[]));
+        for field in fields {
+            assert!(help.contains(field), "`memory {verb} --help` documents `{field}`: {help}");
+        }
+    }
     let claim_id = s.settled_claim();
     assert_eq!(s.owner_rows("SELECT prediction_id, resolution_source, CAST(deadline_at AS VARCHAR) FROM \"memory/predictions\""), json!([[claim_id, "adjudicator", "2030-01-02 00:00:00+00"]]));
     let unformed = json!({ "prediction_id": "p3", "subject": "acme", "predicted_at": "2030-01-01T00:00:00Z", "watch": true, "horizon_secs": 60, "resolution_source": "manual" });
@@ -360,6 +369,8 @@ fn predict_lands_a_registration_and_prints_its_id() {
     long["prediction_id"] = json!("m3");
     long["statement"] = json!("x".repeat(4097));
     s.refused(&["predict", "--into", "memory/predictions", "--registration", &long.to_string()], "OutcomeStatementTooLong");
+    let unnamed = json!({ "prediction_id": "m1", "observed_at": "2030-04-01T00:00:00Z", "verdict": true, "resolution_source": "metric" });
+    s.refused(&["observe", "--into", "memory/outcomes", "--observation", &unnamed.to_string()], "OutcomeSourceMismatch");
     let other_series = json!({ "prediction_id": "m1", "observed_at": "2030-04-01T00:00:00Z", "verdict": true, "resolution_source": "metric", "metric": "metrics/revenue:acme-q2" });
     s.refused(&["observe", "--into", "memory/outcomes", "--observation", &other_series.to_string()], "OutcomeSourceMismatch");
     let wrong_source = json!({ "prediction_id": "m1", "observed_at": "2030-04-01T00:00:00Z", "verdict": true, "resolution_source": "manual", "settling_citation": "https://example.org/r" });

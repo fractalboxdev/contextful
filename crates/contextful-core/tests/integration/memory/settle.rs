@@ -53,8 +53,8 @@ fn a_registration_names_one_form_one_source_and_a_metric_comparator() {
     invalid(raw(Some("manual"), Some("x > 1")));
 }
 
-/// An observation carrying a verdict whose resolution source is absent or differs from the registration's, or naming a `metric` series other than the registration's, raises `OutcomeSourceMismatch`, naming each source by its wire name.
-// spec: read.settle.source-mismatch@b116f64e
+/// An observation naming a `metric` series other than the registration's, or carrying a verdict whose resolution source or registered series is absent or differs, raises `OutcomeSourceMismatch`, naming each source by its wire name.
+// spec: read.settle.source-mismatch@464b854b
 #[test]
 fn a_verdict_from_another_source_is_refused() {
     let reg = Registration::check(raw(Some("metric"), Some("revenue >= 1e6"))).unwrap();
@@ -71,7 +71,14 @@ fn a_verdict_from_another_source_is_refused() {
     let series = Registration::check(RawRegistration { metric: Some("metrics/revenue:acme-q3".into()), ..raw(Some("metric"), Some(">= 1e6")) }).unwrap();
     let on = |metric: Option<&str>| Observation { metric: metric.map(str::to_string), ..obs(Some(true), Some("metric"), None) };
     assert_eq!(observe(&series, &on(Some("metrics/revenue:acme-q3"))), Ok(()));
-    assert_eq!(observe(&series, &on(None)), Ok(()), "an observation naming no series is held to the source alone");
+    match observe(&series, &on(None)) {
+        Err(MemoryError::OutcomeSourceMismatch(why)) => assert!(why.contains("metrics/revenue:acme-q3"), "{why}"),
+        other => panic!("a verdict states the series it read: {other:?}"),
+    }
+    let open = Observation { verdict: None, resolution_source: None, ..on(None) };
+    assert_eq!(observe(&series, &open), Ok(()), "an observation without a verdict settles nothing");
+    let elsewhere = Observation { verdict: None, resolution_source: None, ..on(Some("metrics/revenue:acme-q4")) };
+    assert!(matches!(observe(&series, &elsewhere), Err(MemoryError::OutcomeSourceMismatch(_))));
     match observe(&series, &on(Some("metrics/revenue:acme-q4"))) {
         Err(MemoryError::OutcomeSourceMismatch(why)) => assert!(why.contains("acme-q4"), "{why}"),
         other => panic!("{other:?}"),
@@ -92,8 +99,8 @@ fn a_statement_over_the_bound_is_refused() {
     assert_ne!(checked, Registration::check(with(11)).unwrap(), "a changed statement is a changed registration");
 }
 
-/// A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.
-// spec: read.settle.metric-reference@ab4dc525
+/// A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against and is never looked up in the store; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.
+// spec: read.settle.metric-reference@dbd54df2
 #[test]
 fn a_metric_reference_names_a_table_and_series_under_a_metric_source() {
     let with = |metric: &str, source: &str, comparator: Option<&str>| RawRegistration { metric: Some(metric.into()), ..raw(Some(source), comparator) };

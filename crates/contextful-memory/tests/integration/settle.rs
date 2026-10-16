@@ -99,6 +99,21 @@ fn the_label_join_reads_a_settled_prediction_through_the_session() {
     assert!(labels(&f.face, &session, "memory/predictions", "memory/outcomes", Some("p1")).is_err());
 }
 
+/// A metric reference names a series no table of the store holds yet, and the registration lands.
+#[test]
+fn a_metric_reference_is_never_resolved_against_the_store() {
+    let f = settling();
+    let unlanded = RawRegistration {
+        comparator: Some(">= 1000000".into()),
+        metric: Some("metrics/revenue:acme-q1".into()),
+        ..registration("m1", "metric")
+    };
+    assert!(f.face.store().try_schema("metrics/revenue").unwrap().is_none());
+    let landed = predict(&f.face, &f.writer(), "memory/predictions", unlanded, &node(), at("2030-01-03T00:00:00Z"), &super::synthesize::admit).unwrap();
+    assert!(landed.landed);
+    assert_eq!(raw_rows(&f, "SELECT metric FROM \"memory/predictions\""), json!([["metrics/revenue:acme-q1"]]));
+}
+
 /// An observation naming a `prediction_id` no row of the declared `predictions` table carries in the writer's session raises `OutcomePredictionUnregistered`, and nothing lands.
 // spec: read.settle.prediction-unregistered@79aa8751
 #[test]

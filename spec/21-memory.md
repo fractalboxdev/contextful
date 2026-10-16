@@ -256,7 +256,7 @@ Predictions, observations, the registration, the citation a verdict owes, and th
 
 - `registration` — A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.
   *A-read*
-- `source-mismatch` — An observation carrying a verdict whose resolution source is absent or differs from the registration's, or naming a `metric` series other than the registration's, raises `OutcomeSourceMismatch`, naming each source by its wire name.
+- `source-mismatch` — An observation naming a `metric` series other than the registration's, or carrying a verdict whose resolution source or registered series is absent or differs, raises `OutcomeSourceMismatch`, naming each source by its wire name.
   *A-read*
 - `settling-citation` — An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.
   *A-read*
@@ -265,8 +265,8 @@ Predictions, observations, the registration, the citation a verdict owes, and th
   *A-read*
 - `statement-bound` — A registration's optional `statement`, the falsifiable claim it scores, holds at most 4096 B; a longer one raises `OutcomeStatementTooLong`, and the statement takes part in {{read.settle.registration-conflict}}.
   *because a registration reads on its own only with its claim text, and an unbounded text field lets one row outweigh the table*
-- `metric-reference` — A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.
-  *because an observation can be held to its series only when the registration names it unambiguously*
+- `metric-reference` — A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against and is never looked up in the store; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.
+  *because a registration precedes its series' first landing, so a store lookup refuses every prediction made before its data exists*
 - `deadline-date` — A `deadline_at` given as a bare `YYYY-MM-DD` resolves as {{store.bound-time.instant-comparison}} resolves a date: the deadline is the next UTC midnight, so the whole named day precedes it.
   *because one date spelling then means one instant on every clock the engine compares*
 - `predict-verb` — `contextful memory predict --into <table> --registration <json>` checks {{read.settle.registration}} and lands the registration in that `predictions` table under the admitted credential's write grant, then prints `prediction_id: <id>`.

@@ -106,9 +106,13 @@ pub enum MemoryCmd {
         /// The `predictions` table the registration lands in.
         #[arg(long)]
         into: String,
-        /// The registration: `prediction_id`, `subject`, `predicted_at`, one of
-        /// `horizon_secs`, `deadline_at` or `watch`, `resolution_source` and, for a
-        /// `metric` source, `comparator`.
+        /// The registration as one JSON object (`read.settle.registration`):
+        /// `prediction_id` (caller-chosen), `subject`, `predicted_at` (RFC 3339); exactly
+        /// one of `horizon_secs`, `deadline_at` (RFC 3339 or `YYYY-MM-DD`, through that
+        /// UTC day) or `watch: true`; `resolution_source` (`metric`, `adjudicator` or
+        /// `manual`); `comparator` exactly for `metric`; optional `statement`, the
+        /// falsifiable claim, at most 4096 B; optional `metric`, `<table>:<series_id>`,
+        /// for a `metric` source only.
         #[arg(long)]
         registration: String,
     },
@@ -123,8 +127,12 @@ pub enum MemoryCmd {
         /// manifest declares.
         #[arg(long)]
         predictions: Option<String>,
-        /// The observation: `prediction_id`, `observed_at`, and optionally `verdict`,
-        /// `resolution_source`, `signal` and `settling_citation`.
+        /// The observation as one JSON object (`read.settle.source-mismatch`):
+        /// `prediction_id`, `observed_at` (RFC 3339), and optionally `verdict` (boolean),
+        /// `resolution_source` (the registration's source, required with a verdict),
+        /// `signal` (`self-rated` keeps it out of the label view), `settling_citation`
+        /// (an http or https URL, required for an `adjudicator` or `manual` verdict) and
+        /// `metric` (the registration's series, required with a verdict on one).
         #[arg(long)]
         observation: String,
     },
