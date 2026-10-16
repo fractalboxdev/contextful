@@ -137,3 +137,53 @@ fn the_default_shape_diagrams_obey_the_diagram_rules() {
     }
     assert!(after.is_empty(), "{after:?}");
 }
+
+/// Remove `item` from the `key = [...]` line of the file's provider header.
+fn drop_item(s: &Scratch, rel: &str, key: &str, item: &str) {
+    let text = s.read(rel);
+    let line = text.lines().find(|l| l.starts_with(key)).unwrap_or_else(|| panic!("no `{key}` in {rel}")).to_string();
+    let quoted = format!("\"{item}\"");
+    assert!(line.contains(&quoted), "{line}");
+    let kept: Vec<&str> = line.split_once('[').unwrap().1.trim_end_matches(']').split(',').map(str::trim).filter(|p| !p.is_empty() && *p != quoted).collect();
+    s.write(rel, &text.replacen(&line, &format!("{key} = [{}]", kept.join(", ")), 1));
+}
+
+// spec: corpus.targets.primitives@87b01eb0
+#[test]
+fn a_target_file_lists_its_primitives_and_each_shape_the_ones_it_uses() {
+    let s = Scratch::copy();
+    for provider in ["cloudflare", "aws", "local"] {
+        let text: toml::Value = s.read(&format!("spec/targets/{provider}.toml")).parse().unwrap();
+        let offered: Vec<&str> = text["primitives"].as_array().expect("provider primitives").iter().map(|p| p.as_str().unwrap()).collect();
+        assert!(!offered.is_empty(), "{provider}");
+        for shape in text["shape"].as_array().unwrap() {
+            let uses = shape["uses"].as_array().unwrap_or_else(|| panic!("{provider} {shape:?} lists no primitives it uses"));
+            assert!(!uses.is_empty(), "{provider} {shape:?}");
+            assert!(uses.iter().all(|u| offered.contains(&u.as_str().unwrap())), "{provider} {shape:?}");
+        }
+    }
+    drop_line(&s, CF, "uses ");
+    let found = codes(&s.lint("targets"), "SpecTargetIncomplete");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("`cloudflare`") && found[0].contains("`worker-container`"), "a missing `uses` reads as an empty one: {found:?}");
+    assert!(s.cmd(&["state"]).status.success());
+    assert!(s.read("spec/targets.md").contains("## Cloudflare"), "the Cloudflare section still renders");
+}
+
+// spec: topology.deploy.unsupported-shape@d34fd162
+#[test]
+fn a_shape_claiming_containers_on_a_provider_without_them_is_refused() {
+    let s = Scratch::copy();
+    assert!(codes(&s.lint("targets"), "TargetShapeUnsupported").is_empty());
+    drop_item(&s, CF, "primitives", "containers");
+    let found = codes(&s.lint("targets"), "TargetShapeUnsupported");
+    assert_eq!(found.len(), 2, "both Cloudflare shapes run on a container: {found:?}");
+    assert!(found.iter().all(|m| m.contains("cloudflare") && m.contains("`containers`")), "{found:?}");
+    assert!(found.iter().any(|m| m.contains("`worker-container`")) && found.iter().any(|m| m.contains("`worker-container-d1`")), "{found:?}");
+
+    let s = Scratch::copy();
+    drop_item(&s, "spec/targets/aws.toml", "primitives", "functions");
+    let found = codes(&s.lint("targets"), "TargetShapeUnsupported");
+    assert!(found.iter().any(|m| m.contains("`lambda-only`") && m.contains("`functions`")), "{found:?}");
+    assert!(!found.iter().any(|m| m.contains("`fargate-daemon`")), "a daemon shape runs no function: {found:?}");
+}

@@ -4,6 +4,7 @@
 provider = "local"
 title    = "Local (reference)"
 serves   = "The reference output, development, and air-gapped single-node deployments."
+primitives = ["process", "filesystem"]
 
 [[shape]]
 name     = "process"
@@ -11,6 +12,7 @@ default  = true
 kind     = "daemon"
 profiles = ["full"]
 excludes = []
+uses     = ["process", "filesystem"]
 
 [shape.roles]
 cron_tick    = "in-process scheduler"

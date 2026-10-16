@@ -13,6 +13,7 @@ mod shell;
 mod row_token;
 mod source_lint;
 mod vacuous;
+mod parity;
 mod probe;
 mod stage;
 mod tag;
@@ -258,6 +259,16 @@ enum DeployCmd {
         #[arg(long = "resolve")]
         resolve: Vec<String>,
     },
+    /// Compare each target's table parts byte for byte against the reference target's and
+    /// raise `ParityDivergence` at the first part that differs.
+    Parity {
+        /// The reference target's store root, holding `tables/<table>/data/`.
+        #[arg(long)]
+        reference: PathBuf,
+        /// `<name>=<store root>`: a target's parts, synced from its object store; repeatable.
+        #[arg(long = "target")]
+        target: Vec<String>,
+    },
 }
 
 /// A refusal the gate reports by its registered error name.
@@ -329,6 +340,7 @@ fn main() {
         }),
         Cmd::Tag { branch, base } => tag::tag(&branch, &base),
         Cmd::Deploy { cmd: DeployCmd::Probe { dir, resolve } } => repo_root().and_then(|root| probe::run(&root.join(dir), &resolve)),
+        Cmd::Deploy { cmd: DeployCmd::Parity { reference, target } } => parity::run(&reference, &target),
         Cmd::Measure { tiers, status, check } => repo_root().and_then(|root| {
             if status {
                 return measure::status(&root, check);

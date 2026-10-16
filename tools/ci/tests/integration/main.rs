@@ -19,6 +19,7 @@ mod lean;
 mod measure;
 mod mirrors;
 mod mandatory_toolchains;
+mod parity;
 mod probe;
 mod release;
 mod secrets;

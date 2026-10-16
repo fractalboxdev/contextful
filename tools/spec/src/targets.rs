@@ -24,6 +24,9 @@ pub struct Target {
     pub title: String,
     #[serde(default)]
     pub serves: String,
+    /// The primitives the provider offers; a shape uses no other.
+    #[serde(default)]
+    pub primitives: Vec<String>,
     #[serde(default)]
     pub shape: Vec<Shape>,
 }
@@ -40,6 +43,9 @@ pub struct Shape {
     pub wall_clock_cap_min: Option<i64>,
     #[serde(default)]
     pub excludes: Vec<String>,
+    /// The provider primitives the shape's roles run on; a missing list checks as empty.
+    #[serde(default)]
+    pub uses: Vec<String>,
     #[serde(default)]
     pub roles: BTreeMap<String, String>,
 }
@@ -81,6 +87,12 @@ pub fn check(c: &Corpus) -> Vec<Finding> {
             out.push(f(rel, "SpecTargetIncomplete", format!("`{}` marks {} shapes default, want 1", t.provider, t.shape.iter().filter(|s| s.default).count())));
         }
         for s in &t.shape {
+            if s.uses.is_empty() {
+                out.push(f(rel, "SpecTargetIncomplete", format!("`{}` shape `{}` lists no primitive it `uses`", t.provider, s.name)));
+            }
+            for p in s.uses.iter().filter(|p| !t.primitives.contains(p)) {
+                out.push(f(rel, "TargetShapeUnsupported", format!("`{}` shape `{}` uses `{p}`, a primitive the provider does not offer", t.provider, s.name)));
+            }
             for (key, _) in ROLES {
                 if s.roles.get(key).map(|v| v.trim().is_empty()).unwrap_or(true) {
                     out.push(f(rel, "SpecTargetIncomplete", format!("`{}` shape `{}` fills no `{key}` role", t.provider, s.name)));

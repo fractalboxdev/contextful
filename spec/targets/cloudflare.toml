@@ -5,6 +5,7 @@
 provider = "cloudflare"
 title    = "Cloudflare"
 serves   = "Edge-first deployments on native object storage with near-zero idle cost."
+primitives = ["functions", "containers", "workflows", "scheduler", "durable-objects", "d1", "object-store", "secret-store"]
 
 [[shape]]
 name     = "worker-container"
@@ -12,6 +13,7 @@ default  = false
 kind     = "orchestrated"
 profiles = ["full"]
 excludes = []
+uses     = ["functions", "containers", "workflows", "scheduler", "durable-objects", "object-store", "secret-store"]
 
 [shape.roles]
 cron_tick    = "Cron Trigger"
@@ -30,6 +32,7 @@ default  = true
 kind     = "orchestrated"
 profiles = ["full"]
 excludes = []
+uses     = ["functions", "containers", "workflows", "scheduler", "durable-objects", "d1", "object-store", "secret-store"]
 
 [shape.roles]
 cron_tick    = "Cron Trigger"
