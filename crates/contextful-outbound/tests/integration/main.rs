@@ -10,6 +10,7 @@ mod record;
 mod resolve;
 mod rotate;
 mod support;
+mod telemetry;
 
 /// The process's proxy environment: shared by every test that builds an HTTP client, held
 /// exclusively by the one test that configures a proxy (`assurance.test.global-state-lock`).

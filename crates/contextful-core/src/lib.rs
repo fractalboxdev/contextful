@@ -26,5 +26,6 @@ pub mod store;
 pub mod surface;
 pub mod time;
 pub mod topology;
+pub mod trace;
 
 pub use error::AuthorityError;

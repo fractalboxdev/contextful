@@ -173,7 +173,7 @@ fn synthesize(
     let boundary = || effect_boundary(authority, &Admission::new(SystemClock.now(), revocation));
     let face = face(located)?;
     let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
-    let inference = Endpoint::new(endpoint, model, std::env::var(INFERENCE_KEY_VAR).ok()).map_err(anyhow::Error::msg)?;
+    let inference = crate::telemetry::traced(Endpoint::new(endpoint, model, std::env::var(INFERENCE_KEY_VAR).ok()).map_err(anyhow::Error::msg)?);
     // Machine-local state: pass cursors live beside the run state, outside the store root.
     let state = located.project.memory_dir();
     let report = Pass { face: &face, authority, inference: &inference, source, into, state: &state, node: &node, now, boundary: &boundary }.run()?;

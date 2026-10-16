@@ -112,6 +112,13 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
 - `refused-read` — A read enforcement refuses appends one entry with `outcome` `refused`, naming the relations the guard parsed, and releases no rows.
   *A-disclosure*
 - `projection` — The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.
+- `trace-carrier` — A well-formed W3C `traceparent` names the trace and the parent of the operation's span; a malformed one is ignored and the operation starts a fresh trace.
+  *because a caller's broken header must cost it the link to its trace, never the operation*
+- `span-export` — With `OTEL_EXPORTER_OTLP_ENDPOINT` set, spans leave as OTLP/HTTP JSON to its `/v1/traces` path, or to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as given, carrying the `OTEL_EXPORTER_OTLP_HEADERS` headers and `OTEL_SERVICE_NAME` as `service.name`.
+- `span-unconfigured` — With neither endpoint set, no exporter exists: no span leaves the process and telemetry opens no socket.
+  *because egress reachable under a default configuration is telemetry the operator never chose*
+- `span-queue` — Spans leave off the operation's path through a queue of 2048 spans; a span past the cap, or lost to a failed export, is dropped and counted.
+  *because an unreachable collector must add no latency to the read or run that made the span*
 
 One read's entry under group commit:
 

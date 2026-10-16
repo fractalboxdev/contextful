@@ -444,7 +444,7 @@ fn run_cases(a: RunArgs) -> Result<()> {
             let reader = ModelRef { snapshot: named(&a.snapshot, "snapshot")?, pretrain_cutoff: a.pretrain_cutoff, posttrain_cutoff: a.posttrain_cutoff };
             let judge = ModelRef { snapshot: named(&a.judge_snapshot, "judge-snapshot")?, pretrain_cutoff: a.judge_pretrain_cutoff, posttrain_cutoff: a.judge_posttrain_cutoff };
             let key = std::env::var(INFERENCE_KEY_VAR).ok();
-            let reach = |m: &ModelRef| Endpoint::new(url, &m.snapshot, key.clone()).map_err(anyhow::Error::msg);
+            let reach = |m: &ModelRef| Endpoint::new(url, &m.snapshot, key.clone()).map(crate::telemetry::traced).map_err(anyhow::Error::msg);
             Some((reach(&reader)?, reach(&judge)?, reader, judge))
         }
         _ => None,

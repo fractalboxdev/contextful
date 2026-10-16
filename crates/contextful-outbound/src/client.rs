@@ -118,6 +118,11 @@ pub struct Client {
     internal: bool,
 }
 
+/// Whether `name` is a W3C trace carrier the host adds, which selects no client.
+fn is_trace_carrier(name: &str) -> bool {
+    name.eq_ignore_ascii_case(contextful_core::trace::TRACEPARENT) || name.eq_ignore_ascii_case(contextful_core::trace::TRACESTATE)
+}
+
 /// A hop the hook admitted, and what it came to.
 enum Hop {
     Answered(Inbound),
@@ -347,8 +352,9 @@ impl Client {
             addrs: &addrs,
             headers: wire,
             body,
-            // A request carrying a declared header takes the hardened client, which bypasses the system proxy.
-            direct: !headers.is_empty(),
+            // A request carrying a declared header takes the hardened client, which bypasses the
+            // system proxy; the host's W3C trace carriers declare nothing.
+            direct: headers.iter().any(|(name, _)| !is_trace_carrier(name)),
             timeout,
             max_body,
             read_body: self.read_body,

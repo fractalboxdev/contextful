@@ -106,6 +106,7 @@ audit-segment-entries         = { clause = "disclosure.record.segment", value = 
 audit-segment-max             = { clause = "disclosure.record.chain-header", value = 65536, unit = "entries", basis = "chosen", gloss = "Largest segment size a chain header names." }
 telemetry-projection-window   = { clause = "disclosure.record.projection", value = 24, unit = "h", basis = "chosen", gloss = "Rolling window the telemetry projection answers over." }
 telemetry-projection-latency  = { clause = "disclosure.record.projection", value = 1, unit = "s", basis = "chosen", gloss = "Response time of a projection lookup." }
+span-queue                    = { clause = "disclosure.record.span-queue", value = 2048, unit = "spans", basis = "chosen", gloss = "Spans the export queue holds between an operation and the collector." }
 audit-root-cadence            = { clause = "disclosure.attest.root-replication", value = 10, unit = "min", basis = "chosen", gloss = "Cadence at which signed roots reach the replication bucket." }
 erasure-cascade-depth         = { clause = "disclosure.erase.cascade", value = 16, unit = "hops", basis = "chosen", gloss = "Deepest provenance chain an erasure cascade follows." }
 erasure-physical-removal      = { clause = "disclosure.erase.physical-removal", value = 24, unit = "h", basis = "chosen", gloss = "Commit of an erasure to rewrite or collection of every file, extraction-cache entry and dead-letter row holding an erased row." }

@@ -2,9 +2,11 @@
 
 use crate::egress::{ok, Ledger, Recording};
 use crate::support::{proxy_env, Response, Server};
-use contextful_core::memory::synthesize::{CallRecord, Inference, Message};
+use contextful_core::memory::synthesize::{CallRecord, Inference, Message, Usage};
+use contextful_core::trace::{Attr, Span, SpanKind, SpanSink, TraceContext};
 use contextful_outbound::infer::Endpoint;
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 #[test]
 fn a_completion_posts_the_conversation_and_returns_the_content() {
@@ -106,7 +108,7 @@ fn an_endpoint_exposing_logprobs_lands_them_with_the_call_record() {
     let server = Server::start(move |_| Response::json(200, &reply));
     let exposing = Endpoint::new(&server.url("/v1"), "m", None).unwrap().with_logprobs();
     let record = exposing.call(&[Message::new("user", "Did it close above 40?")]).unwrap();
-    assert_eq!(record, CallRecord { content: "Yes".into(), logprobs: Some(logprobs.clone()) });
+    assert_eq!(record, CallRecord { content: "Yes".into(), logprobs: Some(logprobs.clone()), usage: None });
     let sent: Value = serde_json::from_slice(&server.received("/v1/chat/completions")[0].body).unwrap();
     assert_eq!(sent["logprobs"], json!(true));
     assert_eq!(serde_json::to_value(&record).unwrap()["logprobs"], logprobs);
@@ -116,4 +118,93 @@ fn an_endpoint_exposing_logprobs_lands_them_with_the_call_record() {
     assert_eq!(plain.call(&[Message::new("user", "x")]).unwrap().logprobs, None);
     let sent: Value = serde_json::from_slice(&server.received("/v1/chat/completions")[1].body).unwrap();
     assert!(sent.get("logprobs").is_none(), "{sent}");
+}
+
+/// A span sink holding every span it records.
+#[derive(Default)]
+struct Spans(std::sync::Mutex<Vec<Span>>);
+
+impl SpanSink for Spans {
+    fn record(&self, span: Span) {
+        self.0.lock().unwrap().push(span);
+    }
+}
+
+/// A call record carries the input and output token counts of the endpoint's `usage` beside the content; an answer
+/// without them records none.
+// spec: connector.infer.usage@ba6e2459
+#[test]
+fn a_call_record_carries_the_endpoint_usage() {
+    let _env = proxy_env();
+    let reply = json!({ "model": "m-2025", "choices": [{ "message": { "content": "ok" } }], "usage": { "prompt_tokens": 17, "completion_tokens": 4, "total_tokens": 21 } }).to_string();
+    let server = Server::start(move |_| Response::json(200, &reply));
+    let record = Endpoint::new(&server.url("/v1"), "m", None).unwrap().call(&[Message::new("user", "x")]).unwrap();
+    assert_eq!(record.usage, Some(Usage { input_tokens: 17, output_tokens: 4 }));
+    assert_eq!(serde_json::to_value(&record).unwrap()["usage"], json!({ "input_tokens": 17, "output_tokens": 4 }));
+
+    let bare = Server::start(|_| Response::json(200, &json!({ "choices": [{ "message": { "content": "ok" } }] }).to_string()));
+    let record = Endpoint::new(&bare.url("/v1"), "m", None).unwrap().call(&[Message::new("user", "x")]).unwrap();
+    assert_eq!(record.usage, None);
+    assert!(serde_json::to_value(&record).unwrap().get("usage").is_none());
+}
+
+/// A traced call records one client span, child of the caller's, carrying `gen_ai.operation.name`,
+/// `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`,
+/// `server.address` and, on failure, `error.type`, never message content; its request's `traceparent` names it.
+// spec: connector.infer.model-span@356fc9ca
+#[test]
+fn a_traced_call_records_a_gen_ai_span_its_request_names() {
+    let _env = proxy_env();
+    let reply = json!({ "model": "m-2025", "choices": [{ "message": { "content": "the answer" } }], "usage": { "prompt_tokens": 17, "completion_tokens": 4 } }).to_string();
+    let server = Server::start(move |_| Response::json(200, &reply));
+    let caller = TraceContext::parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", Some("vendor=1")).unwrap();
+    let spans = Arc::new(Spans::default());
+    let endpoint = Endpoint::new(&server.url("/v1"), "m", None).unwrap().traced(caller.clone(), spans.clone());
+    endpoint.call(&[Message::new("system", "secret rules"), Message::new("user", "private data")]).unwrap();
+
+    let recorded = spans.0.lock().unwrap().clone();
+    assert_eq!(recorded.len(), 1);
+    let span = &recorded[0];
+    assert_eq!((span.trace_id, span.parent), (caller.trace_id, Some(caller.span_id)));
+    assert_ne!(span.span_id, caller.span_id);
+    assert_eq!(span.kind, SpanKind::Client);
+    assert_eq!(span.attribute("gen_ai.operation.name"), Some(&Attr::from("chat")));
+    assert_eq!(span.attribute("gen_ai.request.model"), Some(&Attr::from("m")));
+    assert_eq!(span.attribute("gen_ai.response.model"), Some(&Attr::from("m-2025")));
+    assert_eq!(span.attribute("gen_ai.usage.input_tokens"), Some(&Attr::Int(17)));
+    assert_eq!(span.attribute("gen_ai.usage.output_tokens"), Some(&Attr::Int(4)));
+    assert_eq!(span.attribute("server.address"), Some(&Attr::from("127.0.0.1")));
+    assert!(span.attribute("error.type").is_none() && span.error.is_none());
+    assert!(span.end_unix_nanos >= span.start_unix_nanos && span.start_unix_nanos > 0);
+    let exported = contextful_core::trace::otlp_traces("svc", &recorded).to_string();
+    for content in ["secret rules", "private data", "the answer"] {
+        assert!(!exported.contains(content), "the span carries message content `{content}`: {exported}");
+    }
+
+    // The request names that span as its parent and carries the caller's state on.
+    let sent = server.received("/v1/chat/completions");
+    let named = format!("00-{}-{}-01", caller.trace_hex(), contextful_core::trace::hex(&span.span_id));
+    assert_eq!(sent[0].header("traceparent"), Some(named.as_str()));
+    assert_eq!(sent[0].header("tracestate"), Some("vendor=1"));
+
+    // A failed call still records its span, typed by the failure.
+    let failing = Server::start(|_| Response::json(503, "{}"));
+    let spans = Arc::new(Spans::default());
+    let endpoint = Endpoint::new(&failing.url("/v1"), "m", None).unwrap().traced(caller, spans.clone());
+    assert!(endpoint.call(&[Message::new("user", "x")]).is_err());
+    let recorded = spans.0.lock().unwrap().clone();
+    assert_eq!(recorded.len(), 1);
+    assert!(recorded[0].attribute("error.type").is_some() && recorded[0].error.is_some());
+    assert!(recorded[0].attribute("gen_ai.usage.input_tokens").is_none());
+}
+
+/// The trace carriers the host adds select no client: a traced call with no configured key keeps the system proxy.
+#[test]
+fn trace_carriers_keep_the_proxy() {
+    let answer = json!({ "choices": [{ "message": { "content": "ok" } }] }).to_string();
+    let t = Recording::new(&[("models.example", "93.184.216.34:0")], vec![ok(&answer)], std::sync::Arc::default());
+    let caller = TraceContext::parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", None).unwrap();
+    let endpoint = Endpoint::new("https://models.example/v1", "m", None).unwrap().with_transport(t.clone()).traced(caller, Arc::new(Spans::default()));
+    assert_eq!(endpoint.complete(&[Message::new("user", "x")]).unwrap(), "ok");
+    assert_eq!(*t.directs.lock().unwrap(), [false]);
 }

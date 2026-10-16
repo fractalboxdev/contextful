@@ -74,6 +74,8 @@ mod serve;
 mod sync;
 mod token;
 #[cfg(feature = "data-plane")]
+mod trace;
+#[cfg(feature = "data-plane")]
 mod visibility;
 mod storage;
 #[cfg(feature = "data-plane")]
