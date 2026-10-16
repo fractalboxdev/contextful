@@ -336,21 +336,45 @@ fn local_descends(snaps: &SnapshotDir, current: u64, bucket: &ControlHead, proje
     Ok(false)
 }
 
+/// What a pulled head must fit beyond its signature and its own validity.
+#[derive(Clone, Copy, PartialEq)]
+enum Fit {
+    /// The node arms the head, so every pulled pipeline and job is declared here unchanged
+    /// (`surface.reconcile.pulled-control`).
+    Declarations,
+    /// Import or apply claims onto the head next, so the declarations may drop what it holds
+    /// (`surface.apply.adopt-before-claim`).
+    Successor,
+}
+
 /// A snapshot directory holding no version adopts the store's pulled control chain before
 /// import or apply claims one, so a host replacement converges onto the signed head instead
-/// of claiming a v1 that diverges from it (`surface.reconcile.pulled-control`). The pins are
-/// the verb's `--public-key`. True when a head was adopted.
+/// of claiming a v1 that diverges from it. The pins are the verb's `--public-key`. True when
+/// a head was adopted.
 fn adopt_before_claim(snaps: &SnapshotDir, project: &Project, declaration: &Path, tasks: &Tasks, admit: &AdmitArgs) -> Result<bool> {
     if snaps.current()?.is_some() || !project.store_root().join("control").join("head.json").exists() {
         return Ok(false);
     }
-    adopt_pulled(snaps, project, declaration, tasks, admit.public_key.as_deref())?;
+    adopt_pulled(snaps, project, declaration, tasks, admit.public_key.as_deref(), Fit::Successor)?;
     Ok(snaps.current()?.is_some())
 }
 
-/// Adopt only a complete staged chain signed by a locally pinned issuer and matching
-/// this node's declarations. The snapshot directory publishes its pointer last.
-fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, tasks: &Tasks, issuer_pin: Option<&str>) -> Result<()> {
+/// The pipelines of a snapshot that validates on its own: its document, build plans, and
+/// every job's `after` against the snapshot's pipelines. Apply runs it on what it signs and
+/// adoption on what it pulls (`surface.apply.self-valid`).
+fn self_valid(text: &str) -> Result<BTreeMap<String, PipelineSpec>> {
+    let document: toml::Value = toml::from_str(text)?;
+    check_document(&document)?;
+    validate_build_jobs(text)?;
+    let specs: BTreeMap<String, PipelineSpec> = collect(&[crate::effective::public_manifest(ManifestFile { path: "applied snapshot".into(), text: text.to_string() })?])?
+        .into_iter().map(|d| (d.spec.id.clone(), d.spec)).collect();
+    job_blocks(text, None, &specs)?;
+    Ok(specs)
+}
+
+/// Adopt only a complete staged chain signed by a locally pinned issuer whose head validates
+/// on its own and fits `fit`. The snapshot directory publishes its pointer last.
+fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, tasks: &Tasks, issuer_pin: Option<&str>, fit: Fit) -> Result<()> {
     let staged = project.store_root().join("control");
     let head_path = staged.join("head.json");
     let head_bytes = match std::fs::read(&head_path) {
@@ -424,22 +448,20 @@ fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, task
     }
     let latest = &chain[0].1;
     let text = std::str::from_utf8(latest).map_err(|e| untrusted(format!("pulled snapshot is not UTF-8: {e}")))?;
-    let document: toml::Value = toml::from_str(text).map_err(|e| untrusted(format!("pulled snapshot: {e}")))?;
-    check_document(&document).map_err(|e| untrusted(format!("pulled snapshot: {e}")))?;
-    validate_build_jobs(text).map_err(|e| untrusted(format!("pulled snapshot: {e:#}")))?;
-    let pulled = collect(&[crate::effective::public_manifest(ManifestFile { path: snapshot_file(head.version), text: text.to_string() })?])
-        .map_err(|e| untrusted(format!("pulled snapshot: {e}")))?;
-    let local = declared(declaration).map_err(|e| untrusted(format!("local declarations: {e:#}")))?;
-    let pulled_jobs = job_blocks(text, None, &local).map_err(|e| untrusted(format!("pulled jobs: {e:#}")))?;
-    let local_jobs = job_blocks(&std::fs::read_to_string(declaration)?, None, &local)?;
-    if pulled_jobs.iter().any(|job| !local_jobs.contains(job)) {
-        return Err(untrusted("pulled jobs differ from this node's declarations".into()).into());
-    }
-    if pulled.iter().any(|p| local.get(&p.spec.id).is_none_or(|d| d.content_hash() != p.spec.content_hash())) {
-        return Err(untrusted("pulled snapshot differs from this node's pipeline declarations".into()).into());
-    }
-    for pipeline in &pulled {
-        check(&pipeline.spec, declaration, tasks).map_err(|e| untrusted(format!("pipeline `{}`: {e:#}", pipeline.spec.id)))?;
+    let pulled = self_valid(text).map_err(|e| untrusted(format!("pulled snapshot: {e:#}")))?;
+    if fit == Fit::Declarations {
+        let local = declared(declaration).map_err(|e| untrusted(format!("local declarations: {e:#}")))?;
+        let pulled_jobs = job_blocks(text, None, &pulled).map_err(|e| untrusted(format!("pulled jobs: {e:#}")))?;
+        let local_jobs = job_blocks(&std::fs::read_to_string(declaration)?, None, &local)?;
+        if pulled_jobs.iter().any(|job| !local_jobs.contains(job)) {
+            return Err(untrusted("pulled jobs differ from this node's declarations".into()).into());
+        }
+        if pulled.values().any(|p| local.get(&p.id).is_none_or(|d| d.content_hash() != p.content_hash())) {
+            return Err(untrusted("pulled snapshot differs from this node's pipeline declarations".into()).into());
+        }
+        for spec in pulled.values() {
+            check(spec, declaration, tasks).map_err(|e| untrusted(format!("pipeline `{}`: {e:#}", spec.id)))?;
+        }
     }
     chain.reverse();
     let files: Vec<(u64, Vec<u8>, Vec<u8>)> = chain.into_iter().map(|(n, snapshot, receipt, _)| (n, snapshot, receipt)).collect();
@@ -755,7 +777,7 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
     let models = crate::model_source::collect(&manifests(&l.declaration)?)?;
     let tables = crate::effective::standalone_tables(&manifests(&l.declaration)?)?;
     let text = render(&declared, &jobs, &models, Some(&tables))?;
-    validate_build_jobs(&text)?;
+    self_valid(&text).map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e:#}")))?;
     for spec in declared.values() {
         check(spec, &l.declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
     }
@@ -822,10 +844,8 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
         let prior_tables = applied_tables(source, version)?;
         let tables = if id.is_some() { prior_tables.clone() } else { Some(crate::effective::standalone_tables(&manifests(&l.declaration)?)?) };
         let text = render(&target, &jobs, &models, tables.as_deref())?;
-        validate_build_jobs(&text)?;
         job_blocks(&text, Some(bodies), &target)?;
-        collect(&[crate::effective::public_manifest(ManifestFile { path: "proposed applied snapshot".into(), text: text.clone() })?])
-            .map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e}")))?;
+        self_valid(&text).map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e:#}")))?;
         for c in changes.iter().filter(|c| c.action != "remove") {
             let spec = &target[&c.id];
             check(spec, &l.declaration, tasks)
@@ -1089,7 +1109,7 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
     let store = contextful_context::Store::open(&project.dir, &project.name)?;
     scheduler.observe_runs(contextful_sync::run_state::newest_starts(&store)?);
     if let Source::Dir(directory) = &control.source {
-        adopt_pulled(directory, project, declaration, tasks, control.issuer_pin.as_deref())?;
+        adopt_pulled(directory, project, declaration, tasks, control.issuer_pin.as_deref(), Fit::Declarations)?;
     }
     let (version, specs) = applied(&control.source)?;
     let Some(version) = version else { return Ok(None) };

@@ -13,7 +13,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 20 | 287 | 46 | 29 | 15 | 245 | 0 | 245 |
 | `run` | 3 | 29 | 535 | 118 | 45 | 16 | 503 | 0 | 503 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
-| `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
+| `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
 | **total** | 22 | 169 | 2605 | 657 | 212 | 73 | 2311 | 0 | |
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 93 | 86 | passing | closed |
 | 9 — Visibility | 6 | 50 | 40 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 100 | 88 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 101 | 89 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 56 | 43 | passing | open |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
@@ -2164,6 +2164,7 @@ Unscheduled operations: 13.
 | `surface.apply.receipt-digest` | `crates/contextful-policy/tests/integration/control_receipt.rs::a_receipt_digest_uses_canonical_json_for_its_successor` | performed |
 | `surface.apply.receipt-file` | `crates/contextful-snapshot/tests/integration/snapshot.rs::an_attested_claim_commits_the_snapshot_and_receipt_together` | performed |
 | `surface.apply.receipt-message` | `crates/contextful-policy/tests/integration/control_receipt.rs::a_control_receipt_binds_every_signed_field_and_the_snapshot_bytes` | performed |
+| `surface.apply.self-valid` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cold_node_adopts_a_head_after_a_release_removes_a_pipeline_and_its_dependent_job` | performed |
 | `surface.apply.served-admin-grant` | `crates/contextful-agent/tests/integration/http.rs::control_refuses_a_tenant_scoped_admin_grant_over_every_table` | performed |
 | `surface.apply.synced-attestation` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
 | `surface.apply.uninitialized-store` | `crates/contextful-cli/tests/integration/pipeline.rs::an_apply_before_the_import_is_refused` | performed |
