@@ -7719,6 +7719,17 @@
       "line": 197
     },
     {
+      "id": "read.recall.keyed-evidence-batch",
+      "contract": "read",
+      "operation": "recall",
+      "subject": "keyed-evidence-batch",
+      "kind": "behavior",
+      "statement": "The keyed read resolves a claim's citations into one table and run with one statement, listed among the executed SQL under `internals: true`.",
+      "why": "because one statement per citation costs a claim at the gate bound one engine round trip per entry",
+      "file": "spec/21-memory.md",
+      "line": 199
+    },
+    {
       "id": "read.recall.keyed-order",
       "contract": "read",
       "operation": "recall",
@@ -7727,7 +7738,7 @@
       "statement": "Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 199
+      "line": 201
     },
     {
       "id": "read.recall.keyed-not-claims",
@@ -7738,7 +7749,7 @@
       "statement": "A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.",
       "why": "because a keyed read answers with a claim's subject, validity and evidence, which no other table carries",
       "file": "spec/21-memory.md",
-      "line": 200
+      "line": 202
     },
     {
       "id": "read.recall.confidence-label",
@@ -7749,7 +7760,7 @@
       "statement": "Each keyed claim carries `confidence_label`, `calibrated` or `uncalibrated` under {{read.synthesize.confidence-calibration}}, fitted on its table's declared `labels` table joined `prediction_id` to `claim_id`, read through the caller's session.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 202
+      "line": 204
     },
     {
       "id": "read.recall.stale-revision",
@@ -7760,7 +7771,7 @@
       "statement": "A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 204
+      "line": 206
     },
     {
       "id": "read.recall.usage-ledger",
@@ -7771,7 +7782,7 @@
       "statement": "A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 206
+      "line": 208
     },
     {
       "id": "read.recall.ranked-order",
@@ -7782,7 +7793,7 @@
       "statement": "Within one in-window flag value of {{read.rank.question-window-is-a-tier}}, claims order by tier, `curated`, then `derived`, then `researched`; claims of one tier keep {{read.rank.fusion}} order.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 208
+      "line": 210
     },
     {
       "id": "read.resolve-entity.ambiguous-mention",
@@ -7793,7 +7804,7 @@
       "statement": "A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "read.resolve-entity.edge-endpoint",
@@ -7804,7 +7815,7 @@
       "statement": "A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 235
+      "line": 237
     },
     {
       "id": "read.resolve-entity.graph-index",
@@ -7815,7 +7826,7 @@
       "statement": "An external graph engine is a derived index of admitted memory edges; an entity or ownership answer resolves through the store's enforced rows at the read frontier.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 237
+      "line": 239
     },
     {
       "id": "read.resolve-entity.ownership-answer",
@@ -7826,7 +7837,7 @@
       "statement": "An artifact's ownership answer returns the target of every `owned_by` edge from it visible to the caller, newest `_ingested_at` first, with principal id breaking equal-instant ties.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "read.resolve-entity.ownership-live",
@@ -7837,7 +7848,7 @@
       "statement": "The ownership answer omits an `owned_by` edge whose `valid_to` falls at or before the anchor.",
       "why": "because an ended edge records a past owner, and returning it names that owner as current",
       "file": "spec/21-memory.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "read.settle.registration",
@@ -7848,7 +7859,7 @@
       "statement": "A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 251
+      "line": 253
     },
     {
       "id": "read.settle.source-mismatch",
@@ -7859,7 +7870,7 @@
       "statement": "An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 253
+      "line": 255
     },
     {
       "id": "read.settle.settling-citation",
@@ -7870,7 +7881,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 255
+      "line": 257
     },
     {
       "id": "read.settle.grace-window",
@@ -7881,7 +7892,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 257
+      "line": 259
     },
     {
       "id": "read.settle.calibration-report",
@@ -7892,7 +7903,7 @@
       "statement": "Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error over 10 equal-width bins, and the held-out score {{read.synthesize.confidence-calibration}} uses, over every fifth prediction.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 258
+      "line": 260
     },
     {
       "id": "read.traverse.call",
@@ -7903,7 +7914,7 @@
       "statement": "`memory.traverse` takes `table`, `seed`, `rel_types`, `hops`, `as_of_ingest`, `observed_at` and `available_as_of`, and returns the reached edges whose `valid_from` and `valid_to` cover `observed_at`, under one frozen anchor, as {{read.respond.one-projection}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 280
+      "line": 282
     },
     {
       "id": "read.traverse.clocks",
@@ -7914,7 +7925,7 @@
       "statement": "An absent `as_of_ingest` reads the latest committed state, an absent `observed_at` the call's instant, and an absent `hops` 1; `contextful.bounds` echoes each supplied bound as {{read.recall.keyed-clocks}} does.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 281
+      "line": 283
     },
     {
       "id": "read.traverse.cli-verb",
@@ -7925,7 +7936,7 @@
       "statement": "The `contextful memory traverse` verb passes its arguments through {{read.traverse.call}} and prints the same JSON response.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 282
+      "line": 284
     },
     {
       "id": "read.traverse.enforced-edges",
@@ -7936,7 +7947,7 @@
       "statement": "Every edge reads through the caller's enforced session, and each edge's citations pass {{read.recall.evidence-unresolved}}; an edge failing either is neither returned nor walked through.",
       "why": "because walking through a hidden edge reveals the node beyond it",
       "file": "spec/21-memory.md",
-      "line": 283
+      "line": 285
     },
     {
       "id": "read.traverse.engine",
@@ -7947,7 +7958,7 @@
       "statement": "An engine-backed walk answers through {{read.resolve-entity.graph-index}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 285
+      "line": 287
     },
     {
       "id": "read.traverse.walkable",
@@ -7958,7 +7969,7 @@
       "statement": "A `rel_types` entry whose declared relation is not walkable raises `MemoryTraverseRelationUnwalkable`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 286
+      "line": 288
     },
     {
       "id": "read.traverse.hop-bound",
@@ -7969,7 +7980,7 @@
       "statement": "A walk follows at most 3 hops; a larger `hops` raises `MemoryTraverseHopsExceeded`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 288
+      "line": 290
     },
     {
       "id": "read.traverse.fan-out",
@@ -7980,7 +7991,7 @@
       "statement": "A node expands at most 64 memory-edges, ordered by `valid_from` newest first then edge id; the rest count in `edges_omitted`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 290
+      "line": 292
     },
     {
       "id": "read.traverse.frontier-cap",
@@ -7991,7 +8002,7 @@
       "statement": "A walk stops at 512 memory-edges and counts unexpanded edges in `edges_omitted`; a non-zero `edges_omitted` marks the walk incomplete, and `truncated` stays with {{read.respond.truncation-cause}}.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 292
+      "line": 294
     },
     {
       "id": "read.traverse.omitted-readable",
@@ -8002,7 +8013,7 @@
       "statement": "`edges_omitted` counts only edges the caller's session reads.",
       "why": "because a count of hidden edges discloses their existence, as {{read.recall.suppression-count}} avoids naming claims",
       "file": "spec/21-memory.md",
-      "line": 294
+      "line": 296
     },
     {
       "id": "read.traverse.cycle",
@@ -8013,7 +8024,7 @@
       "statement": "A visited node is never expanded again; the walk proceeds breadth-first by hop.",
       "why": "because a revisited node adds no edge and a cycle otherwise exhausts {{read.traverse.frontier-cap}}",
       "file": "spec/21-memory.md",
-      "line": 296
+      "line": 298
     },
     {
       "id": "run.journal.step-output",

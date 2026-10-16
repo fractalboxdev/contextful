@@ -315,3 +315,81 @@ fn a_keyed_recall_over_a_table_holding_no_claims_refuses() {
     let refused = recall(&f, &narrow, &keyed("memory/facts", "acme", None)).unwrap_err();
     assert_eq!(refused.refusal().map(|r| r.identifier()), Some("EnforceUnknownRelation"), "{refused}");
 }
+
+/// `memory.recall` latency over one full keyed window at the evidence gate bound: `limit`
+/// 4 gates 5 claims (`read.recall.keyed-window`), each citing 4096 readable entries, the
+/// most `read.recall.evidence-gate-bound` admits, behind one claim the stop leaves
+/// ungated. A batch times 200 recalls after 20 warm-up (`assurance.measure.timing-iterations`)
+/// and reports p99; the figure is the median batch of 5 (`assurance.measure.timing-batches`).
+/// Outside `contextful-ci measure`, 3 recalls after 1 exercise the path.
+#[test]
+fn keyed_recall_latency_over_a_full_window_at_the_evidence_gate_bound() {
+    use contextful_core::memory::recall::EVIDENCE_GATE;
+    use std::time::{Duration, Instant as Clock};
+    const LIMIT: u64 = 4;
+    let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
+    let (warm_up, repeats, batches) = if measuring { (20, 200, 5) } else { (1, 3, 1) };
+    let f = Fixture::new();
+    let w = Writer::of(&f.writer());
+    let node = NodeId::parse("memory-a").unwrap();
+    let notes: Vec<Value> = (0..EVIDENCE_GATE).map(|i| json!({ "note_id": format!("i{i}"), "text": "Initech filing." })).collect();
+    land_rows(&f.face, "research/notes", "run-gate", Value::Array(notes));
+    let cites: Vec<EvidenceRef> = (0..EVIDENCE_GATE as i64).map(|i| EvidenceRef::row("research/notes", "run-gate", i)).collect();
+    // The oldest claim sits past the window, so the stop leaves it ungated.
+    let claims: Vec<Claim> = (0..LIMIT + 2)
+        .map(|i| Claim {
+            claim_id: format!("i-{i}"),
+            subject: "initech".into(),
+            predicate: "cfo".into(),
+            object: format!("officer {i}"),
+            scope: None,
+            tier: Tier::Derived,
+            confidence: 0.6,
+            valid_from: at(&format!("2030-01-{:02}T00:00:00Z", 20 - i)),
+            valid_to: None,
+            evidence: cites.clone(),
+            superseded_by: None,
+            grant_id: w.grant_id.clone(),
+            agent: w.agent.clone(),
+        })
+        .collect();
+    Landing { node: &node, at: at("2030-01-13T00:00:00Z"), writer: &w, run_id: "memory-initech".into(), boundary: &super::synthesize::admit, taint: None }
+        .commit(&f.face, "memory/facts", &claims, &[])
+        .unwrap();
+    let r = reader(&f);
+    let request = RecallRequest { limit: Some(LIMIT), ..keyed("memory/facts", "initech", Some("2030-02-01T00:00:00Z")) };
+    let s = f.face.session(&r, &Request::default(), request.bounds()).unwrap();
+    let got = f.face.recall(&s, &request).unwrap();
+    assert_eq!(column(&got, "object"), (0..LIMIT).map(|i| json!(format!("officer {i}"))).collect::<Vec<_>>());
+    assert!(got.truncated);
+    assert_eq!(column(&got, "evidence_omitted"), vec![json!(EVIDENCE_GATE - 256); LIMIT as usize]);
+    assert_eq!(got.blocks["contextful.recall"]["suppressed"], json!({ "MemoryEvidenceUnresolved": 0, "MemoryEvidenceOverflow": 0 }));
+    let round = |n: usize| -> Vec<Duration> {
+        (0..n)
+            .map(|_| {
+                let started = Clock::now();
+                std::hint::black_box(f.face.recall(&s, &request).unwrap());
+                started.elapsed()
+            })
+            .collect()
+    };
+    let p99 = |mut xs: Vec<Duration>| {
+        xs.sort_unstable();
+        xs[((0.99 * xs.len() as f64).ceil() as usize).clamp(1, xs.len()) - 1]
+    };
+    let mut figures: Vec<Duration> = (0..batches)
+        .map(|_| {
+            round(warm_up);
+            p99(round(repeats))
+        })
+        .collect();
+    figures.sort_unstable();
+    let figure = figures[batches / 2];
+    eprintln!(
+        "keyed recall, {} claims gated x {EVIDENCE_GATE} evidence entries: p99 {} us (median of {batches} batches of {repeats})",
+        LIMIT + 1,
+        figure.as_micros()
+    );
+    assert!(figure > Duration::ZERO);
+    contextful_eval::record::emit("recall-evidence-latency", figure.as_micros() as f64, (repeats * batches) as u64, 0);
+}

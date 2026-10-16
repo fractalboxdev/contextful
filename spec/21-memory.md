@@ -196,6 +196,8 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
 - `keyed-gate` — Every keyed claim passes {{read.recall.evidence-gate-bound}}, and every evidence entry, served or omitted, passes {{read.recall.evidence-unresolved}}; the response carries {{read.recall.suppression-count}}.
 - `keyed-window` — The keyed read gates claims in order and stops once it keeps one claim past the row ceiling, so the suppression count covers the claims gated before that stop.
   *because a one-row recall over a subject with thousands of claims otherwise resolves every claim's evidence*
+- `keyed-evidence-batch` — The keyed read resolves a claim's citations into one table and run with one statement, listed among the executed SQL under `internals: true`.
+  *because one statement per citation costs a claim at the gate bound one engine round trip per entry*
 - `keyed-order` — Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.
 - `keyed-not-claims` — A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.
   *because a keyed read answers with a claim's subject, validity and evidence, which no other table carries*

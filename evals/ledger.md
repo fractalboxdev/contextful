@@ -2,7 +2,7 @@
 
 # Target ledger
 
-72 entries: 50 gated, 12 recorded, 2 scheduled, 8 open.
+72 entries: 50 gated, 13 recorded, 2 scheduled, 7 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -67,7 +67,7 @@
 | `pull-no-torn-snapshot` | `store.pull.pointer-last` | `pull.torn_reads` | gate | test `contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot` | `== 0` | gated |
 | `read-session-latency` | `read.cache.session-pool` | `session.warm_p95_ms` | trend | test `contextful_context::read::latency::session_and_statement_latency_at_one_fifty_and_five_hundred_runs` | — | recorded |
 | `read-session-one-engine` | `read.cache.session-pool` | `session.engine_opens` | gate | test `contextful_context::read::pool::statements_under_one_key_share_one_resolved_session_and_one_engine` | `== 1` | gated |
-| `recall-evidence-latency` | `read.recall.evidence-gate-bound` | `recall.keyed.evidence_gate_p99_us` | trend | issue 517 | — | open (issue 517) |
+| `recall-evidence-latency` | `read.recall.evidence-gate-bound` | `recall.keyed.evidence_gate_p99_us` | trend | test `contextful_memory::recall::keyed_recall_latency_over_a_full_window_at_the_evidence_gate_bound` | — | recorded |
 | `row-key-dedup` | `read.retrieve.row-key-dedup` | `retrieval.hybrid.duplicate_row_rate` | gate | test `contextful_context::read::retrieve::a_ranked_read_keeps_the_newest_row_per_content_hash` | `== 0` | gated |
 | `sqlite-journal-conformance` | `run.journal.sqlite-stores` | `journal.sqlite_conformance.failed_cases` | gate | test `contextful_sqlite::stores::the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically` | `== 0` | gated |
 | `stale-fence-differential` | `assurance.differential-test.protocol-harness` | `protocol.drift_cases` | gate | test `contextful_cli::protocol_differential::fixed_seed_replays_protocol_cases_against_the_store` | `== 0` | gated |
