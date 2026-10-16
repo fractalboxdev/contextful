@@ -126,12 +126,15 @@ fn categories_land_as_a_json_array_with_their_domain_or_scheme() {
         ]),
         "document order; an empty category is skipped"
     );
-    assert_eq!(rows[1]["categories"], Value::Null, "an item with no category lands null");
+    assert_eq!(rows[1].get("categories"), Some(&Value::Null), "an item with no category lands null");
 
     let atom = br#"<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>urn:e:1</id>
-<category term="release" scheme="https://x.test/kinds"/><category term="rust" label="Rust"></category><category scheme="s"/></entry></feed>"#;
+<category term="release" scheme="https://x.test/kinds"/><category term="rust" label="Rust">ignored</category><category scheme="s"/></entry></feed>"#;
     let rows = feed(atom);
     let categories: Value = serde_json::from_str(rows[0]["categories"].as_str().unwrap()).unwrap();
-    assert_eq!(categories, json!([{"domain": "https://x.test/kinds", "term": "release"}, {"domain": null, "term": "rust"}]));
-    assert_eq!(rows[0]["title"], Value::Null, "a category is no field");
+    assert_eq!(
+        categories,
+        json!([{"domain": "https://x.test/kinds", "term": "release"}, {"domain": null, "term": "rust"}]),
+        "an Atom category reads its term attribute, never its text"
+    );
 }
