@@ -71,7 +71,7 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `build-cost` — A cold elaboration of the package completes within 60 s and writes at most 2048 KiB of artifacts.
   *because the check runs on every change*
 - `build-command` — `lake build` at the package root elaborates every declaration and writes the environment the audit reads.
-- `module-layout` — Four modules carry the package — the layer algebra, placement with the floor, the authority mapping and connector host containment — and the library root re-exports all four.
+- `module-layout` — Five modules carry the package — the layer algebra, placement with the floor, the authority mapping, connector host containment and statement execution — and the library root re-exports all five.
 - `layer` — A layer is a total function from a row identifier to `Bool`; `composed` folds a list of layers by conjunction, admitting a row when every member admits it.
 - `floor` — An allow-set is a decidable predicate over a placement value; `floor` intersects a list of allow-sets pointwise, and `floor []` admits every caller as the unit of that fold.
 - `placement-inductive` — The declared placement is an inductive type carrying its identifier inside the constructor, with one case per category the manifest admits and one case for an absent declaration.
@@ -94,7 +94,7 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 
 ## prove
 
-The theorem inventory: layer composition, placement, the evidence floor, and the proof targets over the authority mapping.
+The theorem inventory: layer composition, placement, the evidence floor, the proof targets over the authority mapping, and the mediation relation over statement execution.
 
 - `composition-sound` — `composed_sound`: a row the fold over a list admits is admitted by every member of that list.
 - `narrowing` — `composed_narrows`: a row admitted by `l :: ls` is admitted by `ls`.
@@ -111,8 +111,12 @@ The theorem inventory: layer composition, placement, the evidence floor, and the
 - `sampled-inclusion` — Inclusion decided by evaluating a fixed set of example values raises `ZoneInclusionSampled`.
   *A-assurance*
 - `effective-policy` — An effective policy computed from two allow-sets is included in both.
-- `proof-targets` — The authority mapping of {{authority.profile.delegation-profile}} carries three proof targets: inclusion; narrowing, where permission under an attenuated child implies permission under its parent; and profile meaning, where permission holds exactly when the audience matches and every block admits.
-  *because all three are pure decision functions; scoped-session execution and mediation need an execution relation no clause specifies*
+- `proof-targets` — The authority mapping of {{authority.profile.delegation-profile}} carries four proof targets: inclusion; narrowing, where an attenuated child's permission implies its parent's; profile meaning, where permission holds exactly when the audience matches and every block admits; and {{assurance.prove.restriction-preservation}}.
+  *because all four are pure decision functions over a verified credential; the mediation relation covers read-path releases, and the rest of scoped-session execution stays unproved*
+- `restriction-preservation` — `attenuateAll_permits_every_parent_block`: every block of a credential admits each request that any chain of attenuations of that credential permits, under one trusted environment.
+  *A-assurance*
+- `mediation-relation` — `statement_reach_released_rows_pass_session_layers`: the mediation induction ranges over the read path's statement execution, and every row a reachable state has released passed every layer of the session.
+  *A-assurance*
 - `target-binding` — A proof target is bound to one authenticated query path, recorded beside it as a module path and a test, before the claim names it.
 - `unbound-target` — A target the claim names with no binding raises `ProofTargetUnbound`, naming the target.
   *A-assurance*
@@ -122,8 +126,6 @@ The theorem inventory: layer composition, placement, the evidence floor, and the
 - `mediation-from-composition` — A filter-composition theorem offered as a mediation theorem raises `MediationClaimedFromComposition`.
   *because mediation quantifies over the reachable states of an execution; composition quantifies over a list*
 - `names-carry-reach` — A constant's name states the object it ranges over, not the property a reader hopes for.
-
-unsettled: Does restriction preservation become a proof target, and which execution relation does the mediation induction range over? owner: formal affects: assurance.prove
 
 ## audit-assumptions
 
@@ -270,12 +272,13 @@ The package on disk:
 formal/
   lakefile.toml            one lean_lib, no require stanza
   lean-toolchain           one exact release string
-  Contextful.lean          library root, re-exports the four modules
+  Contextful.lean          library root, re-exports the five modules
   Contextful/
     Layer.lean             Layer, composed, composed_sound, composed_narrows
     Placement.lean         placement inductive, allow-sets, floor, zone_layer_sound
     Authority.lean         profile elements, effective authority, narrowing
     Allowlist.lean         connector host patterns, inclusion, the widening witness
+    Mediation.lean         statement execution steps, reachability, the mediation theorem
   inventory.toml           required constants and their expected statements
   reference/               the executable model the differential harness drives
   protocol/                second Lean package: lease, compare-and-swap and fence

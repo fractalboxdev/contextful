@@ -175,6 +175,40 @@ fn an_appended_block_narrows_or_adds_nothing() {
     refused(admit(&longer, &signer, DURING), "AttenuationExpiryExtended");
 }
 
+/// Every block of a credential admits each request that any chain of attenuations of that credential permits, under one trusted environment.
+// spec: assurance.prove.restriction-preservation@99cb0d14
+#[test]
+fn every_parent_block_admits_what_an_attenuation_chain_permits() {
+    let signer = issuer();
+    let parent = minted(&signer);
+    let narrowed = |credential: &str, tables: &[&str]| {
+        attenuate(credential, &Derivation { grants: Some(vec![grant(&[Action::Read], tables)]), ..Derivation::default() }).unwrap()
+    };
+    let middle = narrowed(&parent, &["research/filings", "research/notes"]);
+    let leaf = narrowed(&middle, &["research/filings"]);
+    let chain: Vec<_> = [&parent, &middle, &leaf].iter().map(|c| admit(c, &signer, DURING).unwrap()).collect();
+    let mut permitted = 0;
+    for action in [Action::Read, Action::Write, Action::Execute, Action::Admin] {
+        for table in ["research/filings", "research/notes", "research/contacts", "sales/invoices"] {
+            for (depth, descendant) in chain.iter().enumerate() {
+                if descendant.permits(action, &[table]) {
+                    permitted += 1;
+                    for ancestor in &chain[..depth] {
+                        assert!(ancestor.permits(action, &[table]), "{action:?} on {table} at depth {depth}");
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(permitted, 3 + 2 + 1, "the parent reads three of the tables, the middle two, the leaf one");
+    // The middle block's restriction binds every descendant: a leaf naming a table the
+    // authority block covers and the middle block excludes is refused at derivation, and
+    // a block appended past the holder check is refused at admission.
+    refused(attenuate(&middle, &Derivation { grants: Some(vec![grant(&[Action::Read], &["research/contacts"])]), ..Derivation::default() }), "AttenuationWidens");
+    let past_middle = append_raw(&middle, r#"grant(0, "{\"actions\":[\"read\"],\"tables\":[\"research/contacts\"]}");"#);
+    refused(admit(&past_middle, &signer, DURING), "AttenuationWidens");
+}
+
 /// A grant carrying a row restriction or aggregate bound with no read evaluator raises `ProfileRestrictionUnevaluated` at the mint, at derivation on parent and child, and at admission.
 // spec: authority.profile.unevaluated-restriction@2c55e6d0
 #[test]

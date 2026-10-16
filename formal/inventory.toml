@@ -2,7 +2,7 @@
 # pretty-printed type, matched by `contextful formal check`.
 
 [claim]
-targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent", "Authority.permits_iff_audience_and_every_block"]
+targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent", "Authority.permits_iff_audience_and_every_block", "Authority.attenuateAll_permits_every_parent_block"]
 trusted  = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser", "translator"]
 rests_on = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser"]
 verified = ["crates/contextful-core/src/attenuate.rs::widened", "crates/contextful-core/src/attenuate.rs::attenuate", "crates/contextful-policy/src/verify.rs::permits"]
@@ -105,6 +105,25 @@ assumptions    = ["propext", "Quot.sound"]
 binding   = "crates/contextful-policy/src/verify.rs::permits; test crates/contextful-policy/tests/integration/profile.rs::an_appended_block_narrows_or_adds_nothing"
 negative  = """
 Leaves open: credential bytes, signatures and block chaining, which the delegation library owns; that the library's evaluator computes the conjunction the model states; facts, checks and restrictions beyond grants, expiry and audience; scoped-session execution after the decision.
+"""
+
+[constant."Authority.attenuateAll_permits_every_parent_block"]
+module    = "Contextful.Authority"
+statement = "∀ (env : Authority.Env) (c : Authority.Credential) (bs : List Authority.Block) (r : Authority.Request), Authority.permits env (Authority.attenuateAll c bs) r = true → ∀ (b : Authority.Block), b ∈ c.authority :: c.appended → Authority.Block.admits env b r = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-policy/src/attenuate.rs::attenuate; test crates/contextful-policy/tests/integration/profile.rs::every_parent_block_admits_what_an_attenuation_chain_permits"
+negative  = """
+Leaves open: credential bytes, signatures and block chaining, which the delegation library owns; a change of the trusted environment along the chain; that admission rechecks every appended block against its parent; facts, checks and restrictions beyond grants, expiry and audience.
+"""
+
+[constant."Mediation.statement_reach_released_rows_pass_session_layers"]
+module    = "Contextful.Mediation"
+offered_as = "mediation"
+statement = "∀ (s : Mediation.Session) (rows : List RowId) (σ : Mediation.State), Mediation.Reach s (Mediation.start rows) σ → ∀ (r : RowId), r ∈ σ.released → ∀ (l : Layer), l ∈ s.layers → l r = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-policy/src/enforce/session.rs::Session; test crates/contextful-context/tests/integration/read/enforce.rs::every_row_path_takes_the_session"
+negative  = """
+Leaves open: that the session's layer list holds the required members, in the order the relation fixes; that a layer removes rather than tests; SQL semantics, the planner, joins and aggregates, which the relation abstracts to one fold per row; engine run steps, whose effects answer to the protocol model and allowlist inclusion.
 """
 
 [constant."Allowlist.allowlist_includedIn_sound"]

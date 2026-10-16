@@ -61,18 +61,32 @@ Consequences: a zero in a report is a retrieval fact; spans never outlive the ro
 
 ## The model specifies the profile-to-effective-authority mapping, each target bound to one query path
 
-`assurance.model` specifies the mapping from the delegation profile to effective authority. `assurance.prove` carries three targets: inclusion, narrowing and profile meaning; restriction preservation and scoped-session execution wait on an execution relation. `assurance.prove` decides placement inclusion symbolically; deciding over sample values raises `ZoneInclusionSampled`. An unmodelled manifest category raises `UnmodelledConstructor`; a target bound to no authenticated query path raises `ProofTargetUnbound`.
+`assurance.model` specifies the mapping from the delegation profile to effective authority. `assurance.prove` carries four targets: inclusion, narrowing, profile meaning and restriction preservation; read-path releases answer to the mediation relation; the rest of scoped-session execution stays outside every theorem. `assurance.prove` decides placement inclusion symbolically; deciding over sample values raises `ZoneInclusionSampled`. An unmodelled manifest category raises `UnmodelledConstructor`; a target bound to no authenticated query path raises `ProofTargetUnbound`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | The profile-to-authority mapping, symbolic, path-bound *(chosen)* | — | The delegation library, its cryptography and its parser are trusted dependencies the claim names. |
 | A self-owned wire protocol's attenuation rules | Stability of the proof object | Every protocol correction re-opens the proofs. |
-| The whole enforcement engine | Scope | Mediation needs an execution relation the model lacks. |
+| The whole enforcement engine | Scope | The models define no SQL semantics, credential bytes or run-path effects. |
 | Inclusion decided over probe zones | Coverage | A finite sample decides nothing over an unbounded identifier space. |
 | Targets named without a path binding | Locatability | A reader cannot find the code a constant describes. |
 
 Consequences: a defect in credential parsing or signature checks lies outside every theorem.
-Revisit: the profile's maintainer changes the mapping's domain; an execution relation makes mediation provable; a defect surfaces in the trusted remainder.
+Revisit: the profile's maintainer changes the mapping's domain; a defect surfaces in the trusted remainder.
+
+## Mediation ranges over statement execution, and restriction preservation is a proof target
+
+`assurance.prove.mediation-relation` fixes the execution relation: the read path's statement execution, one step per pending row, releasing it when the session's fold admits it and dropping it otherwise. The induction shows every released row in a reachable state passed every session layer. Run steps reach stored rows through a read-path statement; their effects answer to the protocol model's fences and allowlist inclusion. `assurance.prove.restriction-preservation` makes restriction preservation the fourth target: every parent block admits what any attenuation chain permits.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Statement execution, plus restriction preservation over attenuation chains *(chosen)* | — | The relation abstracts SQL to a fold per row; the planner, joins and aggregates stay outside the model. |
+| Engine run steps | Object | A run step releases no stored row except through a statement, so the induction proves nothing about rows. |
+| Run steps and statement execution together | Budget | A joint relation needs the run journal and SQL in one model, beyond the zero-dependency package. |
+| Restriction preservation left unproved | Coverage | A dropped parent block widens a descendant with no theorem to refuse it. |
+
+Consequences: `MediationClaimedFromComposition` still refuses a list theorem offered as mediation; the mediation constant ranges over reachable states.
+Revisit: the read path releases a row outside a statement; the model gains SQL semantics.
 
 ## A differentially tested reference model is the standing link between proofs and binary
 
