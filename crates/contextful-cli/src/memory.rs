@@ -6,25 +6,24 @@
 use crate::admit::{face, AdmitArgs};
 use crate::project::locate;
 use crate::clock::SystemClock;
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_context::node;
-use contextful_context::read::explain::ExplainRequest;
-use contextful_context::read::RecallRequest;
 use contextful_core::memory::declare::Shape;
 use contextful_core::memory::settle::{Observation as SettleObservation, RawRegistration};
 use contextful_core::memory::synthesize::CandidateClaim;
 use contextful_core::ports::Clock;
-use contextful_policy::verify::{effect_boundary, Admission};
+use contextful_agent::mcp::Server;
+use contextful_policy::verify::{effect_boundary, Admission, AdmittedAuthority};
 use contextful_memory::synthesize::Pass;
 use contextful_memory::relations;
 use contextful_core::time::Instant;
-use contextful_core::store::bound_time::Bound;
 use contextful_memory::settle;
 use contextful_memory::write::{write_observed, Observation};
 use contextful_outbound::infer::Endpoint;
 use contextful_policy::enforce::session::Request;
-use std::path::PathBuf;
+use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
 
 /// The environment variable holding the inference endpoint's bearer key, if it takes one.
 pub(crate) const INFERENCE_KEY_VAR: &str = "CONTEXTFUL_INFERENCE_KEY";
@@ -69,6 +68,9 @@ pub enum MemoryCmd {
         /// The maximum number of claims returned.
         #[arg(long)]
         limit: Option<u64>,
+        /// The issuer key that signs the read's audit entry; absent, the entry lands unanchored.
+        #[arg(long)]
+        issuer_key: Option<PathBuf>,
     },
     /// Resolve a name or alias to its canonical record and the live claims about it.
     Explain {
@@ -83,6 +85,12 @@ pub enum MemoryCmd {
         /// The memory facts table whose claims about the identity the card carries.
         #[arg(long)]
         claims: Option<String>,
+        /// Return the internals object: the statements run, the engine, the limit, the rows.
+        #[arg(long)]
+        internals: bool,
+        /// The issuer key that signs the read's audit entry; absent, the entry lands unanchored.
+        #[arg(long)]
+        issuer_key: Option<PathBuf>,
     },
     /// Run one synthesis pass from a source table into a claims table.
     Synthesize {
@@ -192,24 +200,24 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
             println!("{table}: {count} edges renamed from {from} to {to}");
             Ok(())
         }
-        MemoryCmd::Recall { project, table, subject, observed_at, as_of_ingest, limit } => {
-            let observed_at = observed_at.map(|s| Bound::parse(&s)).transpose()?;
-            let as_of_ingest = as_of_ingest.map(|s| Bound::parse(&s)).transpose()?;
-            let request = RecallRequest { observed_at, as_of_ingest, limit, ..RecallRequest::new(table, subject, SystemClock.now()) };
-            let (authority, _) = project.admit.admit(project.project.as_deref(), "memory recall")?;
-            let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
-            let session = face.session(&authority, &Request::default(), request.bounds())?;
-            let response = face.recall(&session, &request)?;
-            println!("{}", serde_json::to_string(&response.to_json())?);
-            Ok(())
+        MemoryCmd::Recall { project, table, subject, observed_at, as_of_ingest, limit, issuer_key } => {
+            let mut arguments = json!({ "table": table, "subject": subject });
+            for (name, value) in [("observed_at", observed_at), ("as_of_ingest", as_of_ingest)] {
+                if let Some(value) = value {
+                    arguments[name] = json!(value);
+                }
+            }
+            if let Some(limit) = limit {
+                arguments["limit"] = json!(limit);
+            }
+            audited_read(&project, issuer_key.as_deref(), "memory recall", "memory.recall", arguments)
         }
-        MemoryCmd::Explain { project, table, reference, claims } => {
-            let request = ExplainRequest { claims, ..ExplainRequest::new(table, reference, SystemClock.now()) };
-            let (authority, _) = project.admit.admit(project.project.as_deref(), "a knowledge card")?;
-            let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
-            let session = face.session(&authority, &Request::default(), request.bounds())?;
-            println!("{}", serde_json::to_string(&face.explain(&session, &request)?)?);
-            Ok(())
+        MemoryCmd::Explain { project, table, reference, claims, internals, issuer_key } => {
+            let mut arguments = json!({ "table": table, "reference": reference, "internals": internals });
+            if let Some(claims) = claims {
+                arguments["claims"] = json!(claims);
+            }
+            audited_read(&project, issuer_key.as_deref(), "a knowledge card", "memory.explain", arguments)
         }
         MemoryCmd::Synthesize { project, source, into, endpoint, model } => {
             let (authority, revocation) = project.admit.admit(project.project.as_deref(), "a synthesis pass")?;
@@ -285,6 +293,25 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// One read tool call through the tool server, so the command line audits a read exactly
+/// as the tool protocol does (`disclosure.record.read-entry`), printing its structured result.
+fn audited_read(project: &Project, issuer_key: Option<&Path>, purpose: &str, tool: &str, arguments: Value) -> Result<()> {
+    let (authority, revocation) = project.admit.admit(project.project.as_deref(), purpose)?;
+    let located = locate(project.project.as_deref(), project.declaration.clone())?;
+    let face = crate::admit::face_with_pins(&located, project.admit.public_key.as_deref(), project.admit.keyset.as_deref())?;
+    let audit = crate::project::read_audit(&located.project, issuer_key, project.admit.public_key.as_deref(), project.admit.keyset.as_deref())?;
+    let clock = SystemClock;
+    let boundary = |authority: &AdmittedAuthority| effect_boundary(authority, &Admission::new(clock.now(), &revocation));
+    let server = Server::new(&face, authority, &boundary, &clock, &audit).map_err(anyhow::Error::msg)?.with_build(crate::build_identity());
+    let message = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": tool, "arguments": arguments } });
+    let answer = server.handle(&message.to_string()).with_context(|| format!("the `{tool}` request has no answer"))?;
+    if answer.get("error").is_some() || answer["result"]["isError"] == true {
+        bail!("{answer}");
+    }
+    println!("{}", serde_json::to_string(&answer["result"]["structuredContent"])?);
+    Ok(())
 }
 
 /// One synthesis pass from `source` into `into`, printing its report. The operator's

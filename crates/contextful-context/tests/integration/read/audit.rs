@@ -60,15 +60,22 @@ fn audit_reads_projects_one_row_per_table_an_entry_names() {
     let log = AuditLog::open(dir.path(), signer()).unwrap();
     let mut two = read_entry(now - 10, "user://ada@acme.example", "research/notes", 4);
     two[attr::TABLES] = json!(["research/notes", "research/links"]);
-    log.append_all(vec![two, json!({ "contextful.erasure.subject": "sha256:00" })]).unwrap();
+    let mut memory = read_entry(now - 5, "user://ada@acme.example", "memory/facts", 2);
+    memory[contextful_context::read::audit::MEMORY_CLAIMS] = json!(["c-1", "c-2"]);
+    log.append_all(vec![two, json!({ "contextful.erasure.subject": "sha256:00" }), memory]).unwrap();
     drop(log);
     let chain = entries(dir.path()).unwrap();
-    assert_eq!(chain.len(), 2);
+    assert_eq!(chain.len(), 3);
     let out = audit_reads(&chain, "SELECT * FROM audit_reads ORDER BY table_name", ReadOptions::default()).unwrap().to_json();
-    assert_eq!(out["columns"], json!(["read_at", "on_behalf_of", "agent", "table_name", "policy", "outcome", "row_count"]));
-    assert_eq!(out["rows"].as_array().unwrap().len(), 2, "{out}");
-    assert_eq!(out["rows"][0][3], "research/links");
-    assert_eq!(out["rows"][1][3], "research/notes");
+    assert_eq!(out["columns"], json!(["read_at", "on_behalf_of", "agent", "table_name", "policy", "outcome", "row_count", "claims"]));
+    assert_eq!(out["rows"].as_array().unwrap().len(), 3, "{out}");
+    assert_eq!(out["rows"][0][3], "memory/facts");
+    assert_eq!(out["rows"][1][3], "research/links");
+    assert_eq!(out["rows"][2][3], "research/notes");
+    // The claim ids a memory read returned are selectable; a read recording none projects null.
+    assert_eq!(out["rows"][2][7], Value::Null, "{out}");
+    let ids = audit_reads(&chain, "SELECT unnest(CAST(claims AS VARCHAR[])) FROM audit_reads WHERE claims IS NOT NULL", ReadOptions::default()).unwrap().to_json();
+    assert_eq!(ids["rows"], json!([["c-1"], ["c-2"]]), "{ids}");
 }
 
 /// A lookup over a full 24 h window answers within 1 s, the chain's segments parsed on

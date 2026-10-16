@@ -162,12 +162,15 @@ fn a_printed_proof_checks_offline_and_an_altered_one_does_not() {
 
 /// `audit query` answers which tables a person's agent read over the last hour, from
 /// `audit_reads` computed on the call.
-// spec: disclosure.record.reads-view@4278490c
+// spec: disclosure.record.reads-view@2fe48f16
 #[test]
 fn query_answers_who_read_what_over_a_window() {
     let (dir, _) = project();
     let p = dir.path();
+    let mut recalled = read(Duration::from_secs(30), "user://bo@acme.example", &["memory/facts"], attr::SERVED, 2);
+    recalled["contextful.memory.claims"] = json!(["c-1", "c-2"]);
     append(p, 4096, vec![
+        recalled,
         read(Duration::from_secs(2 * 3600), "user://ada@acme.example", &["hr/salaries"], attr::SERVED, 1),
         read(Duration::from_secs(600), "user://ada@acme.example", &["research/notes", "research/links"], attr::SERVED, 3),
         read(Duration::from_secs(300), "user://bo@acme.example", &["hr/salaries"], attr::SERVED, 1),
@@ -181,6 +184,11 @@ fn query_answers_who_read_what_over_a_window() {
     let sql = "SELECT agent, policy, outcome, row_count FROM audit_reads WHERE outcome = 'refused'";
     let out: Value = serde_json::from_str(&stdout(&run(p, &["audit", "query", "--project", "research", "--sql", sql]))).unwrap();
     assert_eq!(out["rows"], json!([["agent://research-loop", "rev-1", "refused", "0"]]), "{out}");
+
+    // The claim ids a memory read returned select from the `claims` column.
+    let sql = "SELECT on_behalf_of, unnest(CAST(claims AS VARCHAR[])) AS id FROM audit_reads WHERE claims IS NOT NULL ORDER BY id";
+    let out: Value = serde_json::from_str(&stdout(&run(p, &["audit", "query", "--project", "research", "--sql", sql]))).unwrap();
+    assert_eq!(out["rows"], json!([["user://bo@acme.example", "c-1"], ["user://bo@acme.example", "c-2"]]), "{out}");
 }
 
 /// The projection reaches no file: a statement reading one raises rather than answering.

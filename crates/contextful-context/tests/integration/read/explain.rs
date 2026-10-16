@@ -111,7 +111,6 @@ fn an_ambiguous_reference_returns_candidates_and_an_unknown_one_an_empty_card() 
 }
 
 /// The card reads `table` and `claims` through the caller's session; a session registering no `claims` relation receives the identity alone, with no claims and no mention of that table.
-// spec: read.resolve-entity.card-authorization@8694f890
 #[test]
 fn a_caller_without_a_claims_grant_receives_the_identity_alone() {
     let r = fixture();

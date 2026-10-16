@@ -860,7 +860,9 @@ fn entities() -> Fixture {
 
 /// `memory.explain` resolves an alias in any script to one card carrying the live claims
 /// about it, lists candidates for an ambiguous reference, and returns the identity alone
-/// where the credential reads no claims table.
+/// where the credential reads no claims table, naming that table in neither the card nor
+/// its read entry.
+// spec: read.resolve-entity.card-authorization@0744c41a
 #[test]
 fn memory_explain_answers_the_knowledge_card_over_the_tool_protocol() {
     let f = entities();
@@ -888,6 +890,20 @@ fn memory_explain_answers_the_knowledge_card_over_the_tool_protocol() {
     assert_eq!(facts["result"]["structuredContent"]["error"]["identifier"], json!("MemoryExplainNotEntities"), "{facts}");
     let missing = call(&server, "memory.explain", json!({ "table": "research/entities" }));
     assert_eq!(missing["error"]["code"], json!(-32602), "{missing}");
+
+    // Each entry names the tables the card read: the claims table only where claims rode it.
+    let entries = contextful_policy::audit::entries(&f.dir.path().join("audit")).unwrap();
+    let tables: Vec<&Value> = entries.iter().map(|e| &e.attributes["contextful.tables"]).collect();
+    assert_eq!(
+        tables,
+        [
+            &json!(["research/entities", "research/facts"]),
+            &json!(["research/entities"]),
+            &json!(["research/entities"]),
+            &json!(["research/entities"]),
+            &json!(["research/facts"]),
+        ]
+    );
 }
 
 /// Dana holds from 2030-01-01 until Lee's 2030-03-01 start retires her.

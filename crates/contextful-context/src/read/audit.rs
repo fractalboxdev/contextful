@@ -14,6 +14,10 @@ use serde_json::Value;
 /// The relation's name.
 pub const AUDIT_READS: &str = "audit_reads";
 
+/// The read-entry attribute listing the claim ids a memory read returned
+/// (`read.recall.usage-ledger`), projected as the `claims` column.
+pub const MEMORY_CLAIMS: &str = "contextful.memory.claims";
+
 /// The text-typed table the entries append to before the relation casts them.
 const STAGING: &str = "__contextful_audit_staging";
 
@@ -26,6 +30,8 @@ struct Row<'e> {
     policy: Option<&'e str>,
     outcome: Option<&'e str>,
     row_count: Option<i64>,
+    /// The entry's claim ids as a JSON list; absent for a read recording none.
+    claims: Option<String>,
 }
 
 /// The rows of one entry: one per table it names, or one with no table where it names
@@ -42,6 +48,7 @@ fn project(entry: &AuditEntry) -> Vec<Row<'_>> {
         policy: text(attr::POLICY),
         outcome: text(attr::OUTCOME),
         row_count: a.get(attr::ROWS).and_then(Value::as_i64),
+        claims: a.get(MEMORY_CLAIMS).filter(|c| c.is_array()).map(Value::to_string),
     };
     let tables: Vec<&str> = a.get(attr::TABLES).and_then(Value::as_array).map(|t| t.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
     if tables.is_empty() {
@@ -58,7 +65,7 @@ pub fn audit_reads(entries: &[AuditEntry], sql: &str, opts: ReadOptions) -> Resu
     let engine = SqlEngine::projection(
         &format!(
             "CREATE TABLE {STAGING} (kind VARCHAR, read_at VARCHAR, on_behalf_of VARCHAR, agent VARCHAR, table_name VARCHAR, \
-             policy VARCHAR, outcome VARCHAR, row_count VARCHAR, transaction_id VARCHAR, subject_hash VARCHAR, affected_counts VARCHAR, executed_at VARCHAR)"
+             policy VARCHAR, outcome VARCHAR, row_count VARCHAR, claims VARCHAR, transaction_id VARCHAR, subject_hash VARCHAR, affected_counts VARCHAR, executed_at VARCHAR)"
         ),
         STAGING,
         entries.iter().flat_map(project).map(|r| {
@@ -71,25 +78,26 @@ pub fn audit_reads(entries: &[AuditEntry], sql: &str, opts: ReadOptions) -> Resu
                 r.policy.map(str::to_string),
                 r.outcome.map(str::to_string),
                 r.row_count.map(|n| n.to_string()),
+                r.claims,
                 None, None, None, None,
             ]
         }).chain(entries.iter().filter_map(|entry| {
             let attributes = &entry.attributes;
             if attributes.get("operation").and_then(Value::as_str) != Some("erasure") { return None; }
-            let mut row: [Option<String>; 12] = std::array::from_fn(|_| None);
+            let mut row: [Option<String>; 13] = std::array::from_fn(|_| None);
             row[0] = Some("erasure".to_string());
-            for (index, name) in [(8, "transaction_id"), (9, "subject_hash"), (11, "executed_at")] {
+            for (index, name) in [(9, "transaction_id"), (10, "subject_hash"), (12, "executed_at")] {
                 row[index] = Some(attributes.get(name)?.as_str()?.to_string());
             }
             let counts = attributes.get("affected_counts")?.as_object()?;
             if counts.values().any(|count| count.as_u64().is_none()) { return None; }
-            row[10] = Some(Value::Object(counts.clone()).to_string());
+            row[11] = Some(Value::Object(counts.clone()).to_string());
             Some(row)
         })),
         &format!(
             "CREATE MACRO now() AS CAST(get_current_timestamp() AS TIMESTAMP); \
              CREATE TABLE {AUDIT_READS} AS SELECT CAST(CAST(read_at AS TIMESTAMPTZ) AS TIMESTAMP) AS read_at, on_behalf_of, agent, table_name, \
-             policy, outcome, CAST(row_count AS BIGINT) AS row_count FROM {STAGING} WHERE kind = 'read'; \
+             policy, outcome, CAST(row_count AS BIGINT) AS row_count, CAST(claims AS JSON) AS claims FROM {STAGING} WHERE kind = 'read'; \
              CREATE TABLE audit_erasures AS SELECT transaction_id, subject_hash, CAST(affected_counts AS JSON) AS affected_counts, \
              CAST(CAST(executed_at AS TIMESTAMPTZ) AS TIMESTAMP) AS executed_at FROM {STAGING} WHERE kind = 'erasure'; DROP TABLE {STAGING}"
         ),

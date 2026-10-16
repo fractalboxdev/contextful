@@ -82,9 +82,7 @@ impl<S: SigningPort + Send + Sync + 'static> ReadRecord for AuditLog<S> {
     }
 }
 
-/// The read-entry attribute listing the claim ids a memory read returned
-/// (`read.recall.usage-ledger`).
-pub const MEMORY_CLAIMS: &str = "contextful.memory.claims";
+pub use contextful_context::read::audit::MEMORY_CLAIMS;
 
 /// One read as its audit entry records it.
 pub struct ReadEntry<'r> {
@@ -412,19 +410,19 @@ impl<'a> Tools<'a> {
             Some(Value::Object(m)) => m.clone(),
             Some(_) => return Err(invalid("`arguments` is an object")),
         };
-        let read = |rows, refusal, claims| ReadEntry {
+        let read = |rows, refusal, claims, value: Option<&Value>| ReadEntry {
             tool: name,
             authority: caller.authority,
             rows,
             at: self.clock.now(),
-            tables: self.relations(name, &args),
+            tables: self.read_tables(name, &args, value),
             refusal,
             claims,
         };
         match self.dispatch(caller, name, &args) {
             // The result leaves only once its entry is durable; otherwise no row does.
             Ok(Ok((value, rows, session))) => match self.bound_entry(name, &args, &value, &session).map(|bound| {
-                let mut attributes = read_attributes(&read(rows, None, self.claims(name, &value)));
+                let mut attributes = read_attributes(&read(rows, None, self.claims(name, &value), Some(&value)));
                 if let (Value::Object(a), Some(bound)) = (&mut attributes, bound) {
                     a.extend(bound);
                 }
@@ -438,7 +436,7 @@ impl<'a> Tools<'a> {
             },
             // A refusal is recorded before it answers (`disclosure.record.refused-read`).
             Ok(Err(fault)) => match fault.refusal() {
-                Some(r) => match self.record.record(read_attributes(&read(0, Some(r.identifier()), None))) {
+                Some(r) => match self.record.record(read_attributes(&read(0, Some(r.identifier()), None, None))) {
                     Ok(()) => Ok(refused(r)),
                     Err(e) => Ok(unrecorded(&e)),
                 },
@@ -510,6 +508,17 @@ impl<'a> Tools<'a> {
         }
     }
 
+    /// The relations a read's entry names (`disclosure.record.read-attributes`): those
+    /// [`Tools::relations`] names, and a knowledge card's claims table only where the card
+    /// carries claims read from it, so an unread or ungranted claims table goes unnamed.
+    fn read_tables(&self, name: &str, args: &Map<String, Value>, value: Option<&Value>) -> Vec<String> {
+        let mut tables = self.relations(name, args);
+        if name == "memory.explain" && value.is_some_and(|v| v.get("claims").is_some()) {
+            tables.extend(args.get("claims").and_then(Value::as_str).map(str::to_string));
+        }
+        tables
+    }
+
     /// The relations a read names: the base relations its statement's text names, parsed
     /// without the session's registrations so a refused read names them too, or the
     /// `table` argument of a tool reading one table.
@@ -519,7 +528,8 @@ impl<'a> Tools<'a> {
             "context.query" => args.get("sql").and_then(Value::as_str).map(str::to_string),
             "context.execute_query" => args.get("id").and_then(Value::as_str).and_then(template),
             "context.describe" | "context.reference" | "memory.recall" => return args.get("table").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
-            "memory.explain" => return ["table", "claims"].iter().filter_map(|k| args.get(*k).and_then(Value::as_str).map(str::to_string)).collect(),
+            // A knowledge card names its claims table only where it read it ([`Tools::read_tables`]).
+            "memory.explain" => return args.get("table").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
             "context.file" => return args.get("path").and_then(Value::as_str).and_then(|path| contextful_context::read::face::preview_target(path).ok()).into_iter().collect(),
             "context.subscribe" => return args.get("tables").and_then(Value::as_array).map(|ts| ts.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
             other => template(other),
