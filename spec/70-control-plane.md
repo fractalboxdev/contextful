@@ -428,6 +428,7 @@ sequenceDiagram
 - `surface.apply.receipt-file`: WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version.
 - `surface.apply.guarded-import`: WHEN a warm synced node restarts through pull, import, apply and push, THEN import claims nothing, apply reports the version unchanged, and the restart succeeds.
 - `surface.apply.adopt-before-claim`: WHEN a cold node pulls a signed bucket head and runs import, THEN import claims nothing, and apply of one added pipeline claims the head's successor and pushes.
+- `surface.apply.adopt-before-claim`: WHEN a release changes only the schedules of pipelines a build job runs `after`, THEN a cold node adopts the old head and apply claims its successor.
 - `surface.apply.adopt-before-claim`: WHEN a release removes a pipeline with the build job whose `after` names it, THEN a cold node adopts the old head, apply claims its successor, and the next cold node adopts that.
 
 ## reside
