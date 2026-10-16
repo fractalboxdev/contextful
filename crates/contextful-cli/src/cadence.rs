@@ -449,8 +449,8 @@ fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, task
     let latest = &chain[0].1;
     let text = std::str::from_utf8(latest).map_err(|e| untrusted(format!("pulled snapshot is not UTF-8: {e}")))?;
     let pulled = self_valid(text).map_err(|e| untrusted(format!("pulled snapshot: {e:#}")))?;
+    let local = declared(declaration).map_err(|e| untrusted(format!("local declarations: {e:#}")))?;
     if fit == Fit::Declarations {
-        let local = declared(declaration).map_err(|e| untrusted(format!("local declarations: {e:#}")))?;
         let pulled_jobs = job_blocks(text, None, &pulled).map_err(|e| untrusted(format!("pulled jobs: {e:#}")))?;
         let local_jobs = job_blocks(&std::fs::read_to_string(declaration)?, None, &local)?;
         if pulled_jobs.iter().any(|job| !local_jobs.contains(job)) {
@@ -459,9 +459,10 @@ fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, task
         if pulled.values().any(|p| local.get(&p.id).is_none_or(|d| d.content_hash() != p.content_hash())) {
             return Err(untrusted("pulled snapshot differs from this node's pipeline declarations".into()).into());
         }
-        for spec in pulled.values() {
-            check(spec, declaration, tasks).map_err(|e| untrusted(format!("pipeline `{}`: {e:#}", spec.id)))?;
-        }
+    }
+    // A pipeline the declarations keep unchanged runs here; the next claim checks the rest.
+    for spec in pulled.values().filter(|p| local.get(&p.id).is_some_and(|d| d.content_hash() == p.content_hash())) {
+        check(spec, declaration, tasks).map_err(|e| untrusted(format!("pipeline `{}`: {e:#}", spec.id)))?;
     }
     chain.reverse();
     let files: Vec<(u64, Vec<u8>, Vec<u8>)> = chain.into_iter().map(|(n, snapshot, receipt, _)| (n, snapshot, receipt)).collect();
