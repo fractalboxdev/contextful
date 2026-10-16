@@ -166,11 +166,15 @@ pub fn table_rows(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<V
     Ok(out)
 }
 
-/// The columns a keyed read of `decl` reads: `columns`, then each dedup-line and rank
-/// column they lack (`store.declare.dedup-view`).
+/// The columns a keyed read of `decl` reads: `columns`, then, for a keyed table, each
+/// dedup-line and rank column they lack (`store.declare.dedup-view`).
 pub fn latest_columns(decl: &TableDecl, columns: &[&str]) -> Vec<String> {
     let mut read: Vec<String> = columns.iter().map(|c| (*c).to_string()).collect();
-    for c in decl.dedup_line().into_iter().chain(rank(decl).into_iter().map(str::to_string)) {
+    let line = decl.dedup_line();
+    if line.is_empty() {
+        return read;
+    }
+    for c in line.into_iter().chain(rank(decl).into_iter().map(str::to_string)) {
         if !read.contains(&c) {
             read.push(c);
         }

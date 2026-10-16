@@ -109,6 +109,7 @@ fn a_keyed_read_keeps_one_survivor_per_key_from_rows_the_caller_holds() {
     use contextful_context::rows::{latest_columns, latest_survivors};
     let keyed = decl("name = \"documents\"\nprimary_key = [\"doc_id\"]\norder_by = \"version\"");
     assert_eq!(latest_columns(&keyed, &["path", "_run_id"]), ["path", "_run_id", "doc_id", "version", "_ingested_at", "_row_seq"]);
+    assert_eq!(latest_columns(&decl("name = \"documents\""), &["path"]), ["path"]);
     let rows = [
         row(json!({"doc_id": "d1", "version": 2, "_ingested_at": "2026-01-01T00:00:00.000000000Z", "_run_id": "r1", "_row_seq": 0})),
         row(json!({"doc_id": "d2", "version": 1, "_ingested_at": "2026-01-01T00:00:00.000000000Z", "_run_id": "r1", "_row_seq": 1})),
