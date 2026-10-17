@@ -87,6 +87,7 @@ TagOffDefaultBranch              = { clause = "assurance.release.off-branch", gl
 TagVersionRegressed              = { clause = "assurance.release.version-regressed", gloss = "A computed version below the highest existing version tag." }
 TagWorkspaceVersionMismatch      = { clause = "assurance.release.workspace-version", gloss = "A workspace package version absent or differing from the computed tag version." }
 TagGateFailed                    = { clause = "assurance.release.gate-failed", gloss = "A gate stage failing on the commit a tag names." }
+ReleaseTagVersionMismatch        = { clause = "assurance.release.release-tag-version", gloss = "A release build over a version tag that differs from the workspace package version." }
 
 [limit]
 assurance-d1-admission-lease     = { clause = "assurance.consumer.d1-admission", value = 120, unit = "s", basis = "chosen", gloss = "Life of a suite's D1 admission lease past its last renewal." }

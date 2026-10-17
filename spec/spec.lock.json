@@ -29803,6 +29803,17 @@
       "line": 571
     },
     {
+      "id": "assurance.release.release-tag-version",
+      "contract": "assurance",
+      "operation": "release",
+      "subject": "release-tag-version",
+      "kind": "refusal",
+      "statement": "`contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.",
+      "why": "because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version",
+      "file": "spec/81-engineering.md",
+      "line": 573
+    },
+    {
       "id": "assurance.release.release-run",
       "contract": "assurance",
       "operation": "release",
@@ -29811,7 +29822,7 @@
       "statement": "A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.",
       "why": "because distributed builds and formula generation share one tag identity",
       "file": "spec/81-engineering.md",
-      "line": 573
+      "line": 575
     },
     {
       "id": "assurance.release.release-dry-run",
@@ -29822,7 +29833,7 @@
       "statement": "A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.",
       "why": "because a packaging rehearsal must not claim a released version",
       "file": "spec/81-engineering.md",
-      "line": 575
+      "line": 577
     },
     {
       "id": "assurance.consumer.suite",
@@ -33588,6 +33599,10 @@
           "RefinementScopeExceeded": {
             "clause": "assurance.scope-claim.refinement-exceeded",
             "gloss": "Translation reaches cryptography, a parsing adapter, a database call or concurrency."
+          },
+          "ReleaseTagVersionMismatch": {
+            "clause": "assurance.release.release-tag-version",
+            "gloss": "A release build over a version tag that differs from the workspace package version."
           },
           "SecretPlaintext": {
             "clause": "assurance.gate.secret-ciphertext",

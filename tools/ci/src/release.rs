@@ -86,6 +86,25 @@ pub fn version(root: &Path) -> Result<String> {
         .context("Cargo.toml declares no [workspace.package] version")
 }
 
+/// `assurance.release.release-tag-version`: the `v*` tags on `HEAD`, when there are any,
+/// include `v<version>`.
+fn tag_matches(root: &Path, version: &str) -> Result<()> {
+    let out = Command::new("git").args(["tag", "--points-at", "HEAD", "--list", "v*"]).current_dir(root).output().context("listing HEAD's tags")?;
+    if !out.status.success() {
+        bail!("`git tag --points-at HEAD` exited {}", out.status.code().unwrap_or(-1));
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let tags: Vec<&str> = text.lines().map(str::trim).filter(|t| !t.is_empty()).collect();
+    let want = format!("v{version}");
+    if tags.is_empty() || tags.contains(&want.as_str()) {
+        return Ok(());
+    }
+    Err(crate::refuse(
+        "ReleaseTagVersionMismatch",
+        format!("HEAD carries {} but Cargo.toml [workspace.package] declares version {version}; tag {want} or commit the tag's version first", tags.join(", ")),
+    ))
+}
+
 /// The (profile, target) cells `profiles` and `targets` select from the matrix. A named
 /// profile or target the matrix does not carry refuses; a profile not shipping for a named
 /// target is left out of it.
@@ -139,6 +158,7 @@ pub fn release(root: &Path, builder: Builder, profiles: &[String], targets: &[St
         bail!("no profile ships for {}", targets.join(", "));
     }
     let version = version(root)?;
+    tag_matches(root, &version)?;
     std::fs::create_dir_all(out).with_context(|| format!("creating {}", out.display()))?;
     for (profile, target) in selected {
         let args = cargo_build(profile, target, builder);
