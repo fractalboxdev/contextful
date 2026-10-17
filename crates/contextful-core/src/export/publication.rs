@@ -352,9 +352,11 @@ impl SourcePublication {
         ))
     }
 
-    /// A producer run records one frontier; a second record must carry identical bytes.
-    pub fn check_history(&self, prior: Option<&SourcePublication>) -> Result<(), ExportError> {
-        if prior.is_some_and(|prior| prior != self) {
+    /// A producer run records one frontier: recorded again over `latest`, the ledger's
+    /// latest completion, it must carry identical bytes; a completion naming another run
+    /// replaces `latest` (`run.export.group-source-latest`).
+    pub fn check_history(&self, latest: Option<&SourcePublication>) -> Result<(), ExportError> {
+        if latest.is_some_and(|prior| prior.run == self.run && prior != self) {
             return Err(invalid("producer run carries different frontier bytes"));
         }
         Ok(())

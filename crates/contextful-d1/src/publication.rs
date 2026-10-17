@@ -174,6 +174,10 @@ impl D1PublicationLedger {
                 chained.push((format!("INSERT INTO contextful_publication (role, name, namespace, version, body) SELECT 'active-namespace', ?, '', 0, ? WHERE {WRITTEN} ON CONFLICT(role, name, namespace) DO UPDATE SET version = version + 1, body = excluded.body"), args));
             }
             Some(Follow::History(run, history)) => {
+                // The ledger keeps the latest completion alone (`run.export.group-source-latest`).
+                let mut prune = vec![json!(name), json!(run)];
+                prune.extend(written());
+                chained.push((format!("DELETE FROM contextful_publication WHERE role = 'source-history' AND name = ? AND namespace <> ? AND {WRITTEN}"), prune));
                 let mut args = vec![json!(name), json!(run), json!(history)];
                 args.extend(written());
                 chained.push((format!("INSERT OR IGNORE INTO contextful_publication (role, name, namespace, version, body) SELECT 'source-history', ?, ?, 0, ? WHERE {WRITTEN}"), args));
@@ -238,13 +242,14 @@ impl D1PublicationLedger {
     pub fn record_source(&self, name: &str, source: &SourcePublication) -> Result<(), Failure> {
         let body = serde_json::to_string(source).map_err(failure)?;
         for _ in 0..16 {
-            let prior = self.load::<SourcePublication>("source-history", name, &source.run)?;
-            source.check_history(prior.value.as_ref()).map_err(failure)?;
-            let current = self.load::<Value>("source", name, "")?;
+            let current = self.load::<SourcePublication>("source", name, "")?;
+            source.check_history(current.value.as_ref()).map_err(failure)?;
+            if current.value.as_ref() == Some(source) {
+                return Ok(());
+            }
             let follow = Follow::History(&source.run, body.clone());
             if self.commit(("source", name, ""), current.version, &body, Some(follow))? {
-                let recorded = self.load::<SourcePublication>("source-history", name, &source.run)?;
-                return source.check_history(recorded.value.as_ref()).map_err(failure);
+                return Ok(());
             }
         }
         Err(Failure::new(FailureTag::Transient, "D1 producer frontier changed repeatedly"))

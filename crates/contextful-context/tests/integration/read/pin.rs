@@ -170,7 +170,7 @@ fn a_pin_and_as_of_resolve_to_the_earlier_bound() {
 }
 
 /// A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not and zero rows included; the watermark names, per input table, the snapshot id and the committed runs it omits.
-// spec: read.resolve-pin.resolved-echo@fae2e0bc
+// spec: read.resolve-pin.resolved-echo@a32f9823
 #[test]
 fn every_response_touching_a_published_model_echoes_its_build() {
     let p = Pinned::new();
@@ -185,7 +185,7 @@ fn every_response_touching_a_published_model_echoes_its_build() {
     assert_eq!(entry["build_id"], json!(second.build_id), "{none}");
     let frontier = &entry["watermark"]["inputs"][EVENTS];
     assert_eq!(frontier, &serde_json::to_value(&second.watermark.inputs[EVENTS]).unwrap(), "{none}");
-    assert_eq!(frontier["runs"].as_array().unwrap().len(), 2, "{none}");
+    assert_eq!(frontier["omitted"]["count"], 2, "{none}");
 
     // A pinned read echoes the pinned build; a read touching no model carries no block.
     let s = p.session(Bounds::default(), &Pins::default().with(DAILY, &first.build_id));

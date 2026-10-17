@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 574 | 127 | 46 | 18 | 534 | 0 | 534 |
+| `run` | 3 | 29 | 581 | 127 | 47 | 18 | 541 | 0 | 541 |
 | `store` | 3 | 19 | 312 | 64 | 17 | 10 | 301 | 0 | 301 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2727 | 681 | 217 | 76 | 2433 | 0 | |
+| **total** | 22 | 169 | 2734 | 681 | 218 | 76 | 2440 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 188 | 178 | passing | closed |
 | 3 — The run path | 12 | 298 | 286 | passing | closed |
-| 4 — Ingest | 25 | 610 | 504 | passing | closed |
+| 4 — Ingest | 25 | 617 | 511 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -1580,6 +1580,7 @@ Unscheduled operations: 13.
 | `run.export.group-rebuild` | `spec/pins.toml` | performed |
 | `run.export.group-request-bound` | `spec/pins.toml` | performed |
 | `run.export.group-source` | `spec/pins.toml` | performed |
+| `run.export.group-source-latest` | `crates/contextful-sqlite/tests/integration/export.rs::the_publication_ledger_keeps_only_the_latest_completion` | performed |
 | `run.export.group-storage` | `spec/pins.toml` | performed |
 | `run.export.group-stranded` | `spec/pins.toml` | performed |
 | `run.export.log-record` | `crates/contextful-core/tests/integration/pipeline/export.rs::each_row_becomes_one_log_record_carrying_its_commit_position` | performed |
@@ -1718,6 +1719,7 @@ Unscheduled operations: 13.
 | `run.model.build-frontier` | `crates/contextful-cli/tests/integration/build.rs::build_fires_no_pipeline_and_reads_the_committed_frontier` | performed |
 | `run.model.build-horizon` | `crates/contextful-cli/tests/integration/build.rs::a_build_at_a_horizon_reads_inputs_available_by_it_and_records_it` | performed |
 | `run.model.build-id` | `crates/contextful-context/tests/integration/build.rs::a_build_id_is_the_snapshot_id` | performed |
+| `run.model.build-prefix` | `crates/contextful-context/tests/integration/build.rs::a_build_reads_no_run_above_an_unpublished_group` | performed |
 | `run.model.build-verb` | `crates/contextful-cli/tests/integration/build.rs::build_publishes_a_model_and_prints_its_receipt` | performed |
 | `run.model.contract-block` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_contract_declares_a_semantic_version_and_typed_columns` | performed |
 | `run.model.contract-major` | `crates/contextful-context/tests/integration/build.rs::a_breaking_change_under_one_major_is_refused_naming_the_column_until_the_major_moves` | performed |
@@ -1746,6 +1748,8 @@ Unscheduled operations: 13.
 | `run.model.validate-statements` | `crates/contextful-cli/tests/integration/build.rs::validate_refuses_a_statement_build_refuses` | performed |
 | `run.model.validate-undeclared` | `crates/contextful-cli/tests/integration/build.rs::validate_names_a_relation_no_manifest_declares` | performed |
 | `run.model.watermark` | `crates/contextful-context/tests/integration/build.rs::the_watermark_names_each_input_frontier` | performed |
+| `run.model.watermark-digest` | `crates/contextful-core/tests/integration/pipeline/model.rs::the_omitted_digest_hashes_the_sorted_run_keys` | performed |
+| `run.model.watermark-listed-runs` | `crates/contextful-context/tests/integration/build.rs::a_watermark_listing_runs_is_still_honored` | performed |
 | `run.normalize.field-collision` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::source_fields_cannot_replace_relational_identity_columns` | performed |
 | `run.normalize.host-stage` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::engine_code_types_flattens_extracts_and_identifies_raw_json_rows` | performed |
 | `run.normalize.identity-columns` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::repeated_nested_items_keep_distinct_parent_links_and_stable_ids` | performed |
@@ -1829,8 +1833,11 @@ Unscheduled operations: 13.
 | `run.publish.semantics-version` | `crates/contextful-core/tests/integration/pipeline/model.rs::the_recipe_names_every_injected_column_the_semantics_version_counts` | performed |
 | `run.publish.staging` | `crates/contextful-context/tests/integration/build.rs::a_refused_build_leaves_the_last_published_state_serving` | performed |
 | `run.publish.staleness` | `crates/contextful-cli/tests/integration/build.rs::model_status_derives_freshness_on_both_sides_of_max_lag` | performed |
+| `run.publish.staleness-collected-covered` | `crates/contextful-core/tests/integration/pipeline/model.rs::an_input_waits_on_runs_past_through_and_on_a_broken_omitted_set` | performed |
 | `run.publish.staleness-collected-run` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_build_is_stale_only_by_an_unread_landing_past_max_lag` | performed |
 | `run.publish.staleness-model-input` | `crates/contextful-context/tests/integration/build.rs::a_model_reading_a_model_ages_by_its_rebuilds` | performed |
+| `run.publish.staleness-omitted-check` | `crates/contextful-context/tests/integration/build.rs::a_run_below_through_the_build_never_read_makes_the_input_stale` | performed |
+| `run.publish.staleness-unsequenced` | `crates/contextful-core/tests/integration/pipeline/model.rs::an_unsequenced_run_counts_by_the_watermark_instant` | performed |
 | `run.record.bound-spelling` | `crates/contextful-core/tests/integration/run/record.rs::a_bound_is_a_date_or_a_zulu_instant` | performed |
 | `run.record.columns` | `crates/contextful-core/tests/integration/run/record.rs::a_run_row_carries_every_column` | performed |
 | `run.record.counts-at-destination` | `crates/contextful-engine/tests/integration/runner.rs::counts_come_from_the_destination` | performed |

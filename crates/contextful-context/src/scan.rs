@@ -9,7 +9,7 @@ use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::SnapshotManifest;
 use contextful_core::store::reconcile::{Column, Schema};
 use contextful_core::store::relation::relation_bounded;
-use contextful_core::store::resolve::Resolution;
+use contextful_core::store::resolve::{Resolution, TableState};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -41,15 +41,23 @@ pub fn scan(store: &Store, decl: &TableDecl, bounds: Bounds) -> Result<Scan> {
 /// its own parts carry — and under `bounds` otherwise; `valid_as_of` and
 /// `available_as_of` wrap the relation either way.
 pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option<&SnapshotManifest>) -> Result<Scan> {
-    let table = decl.name.as_str();
-    let state;
-    let resolution = match snapshot {
-        Some(s) => Resolution { snapshot: Some(s), runs: Vec::new() },
+    match snapshot {
+        Some(s) => scan_resolved(store, decl, bounds, Resolution { snapshot: Some(s), runs: Vec::new() }, true),
         None => {
-            state = store.state(decl)?;
-            state.resolve(bounds.as_of)?
+            let state = store.state(decl)?;
+            scan_resolved(store, decl, bounds, state.resolve(bounds.as_of)?, false)
         }
-    };
+    }
+}
+
+/// Resolve `decl`'s table under `bounds` over `state`, the state a caller read once, so a
+/// build's frontier names exactly the files its relation reads (`run.model.build-prefix`).
+pub fn scan_state(store: &Store, decl: &TableDecl, bounds: Bounds, state: &TableState) -> Result<Scan> {
+    scan_resolved(store, decl, bounds, state.resolve(bounds.as_of)?, false)
+}
+
+fn scan_resolved(store: &Store, decl: &TableDecl, bounds: Bounds, resolution: Resolution<'_>, pinned: bool) -> Result<Scan> {
+    let table = decl.name.as_str();
     // A replica reads only the parts it advertises (`store.replicate.missing-index`).
     if let Some(s) = resolution.snapshot {
         crate::replica::require(store, table, s, &[])?;
@@ -59,8 +67,8 @@ pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option
     let absolute: Vec<String> = files.iter().map(|f| store.logical_path(f).map(|path| path.to_string_lossy().into_owned())).collect::<Result<_>>()?;
     let publish = resolution.snapshot.filter(|_| resolution.runs.is_empty()).and_then(|s| s.publish.clone());
 
-    let schema = match snapshot {
-        Some(_) if !absolute.is_empty() => {
+    let schema = match pinned {
+        true if !absolute.is_empty() => {
             // A build writes every part under its contract's columns, so the parts carry
             // the schema the build published, whatever a later build moved it to.
             let mut columns: Vec<Column> = Vec::new();
