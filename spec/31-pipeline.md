@@ -352,6 +352,8 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *A-run*
 - `group-source` — A successful store-driven job or materialized model build records one immutable completion binding its run identifier, pinned input frontier and all output table frontiers, including empty outputs.
   *A-run*
+- `group-source-latest` — The sqlite and D1 publication ledgers keep 1 completion per publication, the latest: the latest run recorded again with different bytes refuses, and a completion naming another run replaces it.
+  *because a run is re-recorded only by its own retry, and history kept past it grows with every build*
 - `group-delivery` — `contextful export group <name>` reads every completed producer member through {{run.export.post-commit-read}}, rechecks every frontier, and stages one ordered outbox with explicit member-complete events followed by one group-complete event.
   *A-run*
 - `group-identity` — A group's identity binds its store incarnation, destination, namespace, read identity, predecessor, publication order, input frontier, membership, delivered base and next state; each event identifier binds that group and its sequence.
@@ -363,7 +365,7 @@ The outbound copy of a landed table to an operator-declared target: the export b
 - `group-rebuild` — `contextful export rebuild <name> --namespace <epoch>` exports the completed producer's full admitted state into a fresh namespace without executing its effects; the receiver keeps its active namespace until the replacement group completes.
   *A-run*
 - `group-input-digest` — A group plan's `input` carries the lowercase hex SHA-256 of its producer completion's JSON rather than the completion, so every request repeats a header of bounded size whatever the producer's input frontier holds.
-  *because a model build's watermark lists every input run its snapshot omits, without bound, and each request repeats the group header*
+  *because a producer's input frontier is caller-shaped JSON of any size, and each request repeats the group header*
 - `group-request-bound` — Staging refuses a group whose header beside its smallest event exceeds {{run.export.typed-byte-limit}} with `PublicationHeaderTooLarge`, and one holding an event unable to fit beside its header with {{run.export.typed-event-too-large}}; the outbox stays unchanged.
   *because a staged group blocks every later frontier until acknowledged, so an unsendable one strands its outbox*
 - `group-stranded` — Staging replaces a pending group unable to form its first request, which therefore no receiver holds, with the current frontier's group; a group with an acknowledged prefix stays immutable.
@@ -494,7 +496,13 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
   *because no member of a cycle has a first build, and once one exists each build folds in the other's previous output*
 - `build-id` — A build's id is the snapshot id it publishes.
   *A-run*
-- `watermark` — A build's watermark is `{at, inputs}`: per input table the snapshot id and the committed runs it omits, and `at` the newest commit instant among them.
+- `build-prefix` — A build reads each input's runs only below the lowest `commit_seq` among grouped runs awaiting their group marker, the prefix {{read.subscribe.commit-order}} delivers.
+  *because one readable prefix serves every ordered read, and a run read past an unpublished group leaves a lower `commit_seq` unread*
+- `watermark` — A build's watermark is `{at, inputs}`: per input table the snapshot id, `through`, the greatest `commit_seq` read, and `omitted`, the count and digest of runs read outside the snapshot chain; `at` is the newest commit instant.
+  *because a list of omitted runs grows by one key per run on an input no fold covers*
+- `watermark-digest` — `omitted.digest` is the lowercase hex SHA-256 over the sorted keys `<run-id>/<node-id>` of the omitted runs, each followed by a newline.
+- `watermark-listed-runs` — A watermark input carrying a `runs` list and no `omitted` reads with those runs included under {{run.publish.staleness}}; no build writes `runs`.
+  *because a manifest committed with listed runs stays readable*
 - `build-horizon` — `contextful build <model> --available-as-of <t>` reads every input at `available_as_of` equal to `t` and records `t` as the watermark's `horizon`; a build without the flag records a null horizon.
   *because a build is reused across horizons only when its own bound is recorded beside it*
 - `hold-verb` — `build hold --for <n>[smhd] <model> <build>` commits a hold until now plus the duration and prints `Held`, or `Renewed` over an unexpired hold; `--json` prints the receipt as an object.
@@ -515,7 +523,7 @@ unsettled: Does a model over a restricted table declare its own policy, or inher
 - `run.model.hold-verb`: WHEN `build hold --for 7d daily <build>` runs twice, THEN the first prints `Held` and the second `Renewed`, each with the new expiry.
 - `run.model.model-cycle`: WHEN model `a` reads `b` and `b` reads `a`, THEN `pipeline validate` raises `ModelCycle` naming `a`, `b`, and `build a` reads no row.
 - `run.model.build-frontier`: WHEN the `http` pipeline feeding a model's input points at an unreachable endpoint, THEN `build` succeeds, records no new run, and its watermark names only runs already committed.
-- `run.model.build-frontier`: WHEN a `build` job naming `orders` in `after` fires in the cycle that lands `orders` run `r`, THEN the published build's watermark lists `r` under `orders_items`.
+- `run.model.build-frontier`: WHEN a `build` job naming `orders` in `after` fires in the cycle that lands `orders` run `r`, THEN the published build's watermark `through` under `orders_items` reaches the `commit_seq` of `r`.
 - `run.model.contract-minor`: WHEN contract `1.0.0` gains nullable column `tag` as `1.1.0`, THEN the build publishes and the manifest section carries `1.1.0` and the new fingerprint; as `1.0.0` it refuses naming `tag` and `1.1.0`.
 
 ## publish
@@ -534,14 +542,20 @@ A published table's contract identity, build, freshness and holds, committed wit
 - `failed-attempt` — A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.
   *because a process killed before publication cannot write its own failure, while its attempt record and released lock survive*
 - `freshness` — Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness follows {{run.publish.staleness}} and is never stored.
-- `staleness` — A published model is stale at `t` when an input holds a committed run that neither its watermark snapshot nor listed runs include, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.
+- `staleness` — A published model is stale at `t` when an input holds a committed run outside its watermark snapshot chain, its `commit_seq` above `through`, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.
   *A-run*
+- `staleness-omitted-check` — An input whose runs outside the watermark snapshot chain, at or below `through`, differ in count or digest from `omitted` holds a waiting run counted as committed before `t` minus `max_lag`.
+  *A-run*
+- `staleness-unsequenced` — A run carrying no `commit_seq` counts as at or below `through` when committed at or before the watermark's `at`.
+  *because a run manifest may carry no sequence, and {{run.publish.staleness-omitted-check}} catches one the build never read*
+- `staleness-collected-covered` — A run whose manifest retention collected counts as at or below `through` when the current snapshot folding it records a `commit_seq` at or below `through`.
+  *because a snapshot's `commit_seq` bounds every run it folds*
 - `staleness-model-input` — An input that is a model also waits on each of its published builds newer than the watermark snapshot, aged by that build's `created_at`.
   *A-run*
 - `staleness-collected-run` — A waiting run whose manifest retention collected counts as committed before `t` minus `max_lag`.
   *A-run*
 - `hold` — A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
-- `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.
+- `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` follows {{run.model.watermark}}.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
 - `disclosure-digest` — A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.
 
@@ -566,6 +580,7 @@ flowchart LR
 - `run.publish.staleness`: WHEN no input lands after a build and `max_lag` is `1h`, THEN `build status` at 100 days later reports `stale` false.
 - `run.publish.staleness`: WHEN `events` lands a run 1 second past the build and `max_lag` is `1h`, THEN status reports fresh at 1 hour after the landing and stale, `stale_inputs` `["events"]`, 1 second later.
 - `run.publish.staleness`: WHEN a fold folds the runs a build read into a new snapshot, THEN status still reports the build fresh.
+- `run.publish.staleness-omitted-check`: WHEN a run merged from another node carries a `commit_seq` below `through` and the build never read it, THEN status reports the input stale at once.
 - `run.publish.staleness-model-input`: WHEN `daily` rebuilds after `weekly` read it and `max_lag` is `1d`, THEN `weekly` reports stale, `stale_inputs` `["daily"]`, 1 day after the rebuild.
 
 unsettled: Is a build with a non-null horizon stale by landings committed after its horizon? owner: pipeline affects: run.publish

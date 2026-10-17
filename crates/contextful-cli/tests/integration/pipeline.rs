@@ -2498,9 +2498,11 @@ fn a_build_job_after_a_pipeline_records_the_landed_run_in_its_watermark() {
     let landed = |history: &[serde_json::Value]| -> Vec<String> {
         history.iter().filter(|r| r["pipeline_id"] == "orders" && r["status"] == "success").map(|r| r["run_id"].as_str().unwrap().to_string()).collect()
     };
-    let named = |status: &serde_json::Value| -> Vec<String> {
-        let runs = status["freshness"]["watermark"]["inputs"]["orders_items"]["runs"].as_array().cloned().unwrap_or_default();
-        runs.iter().map(|r| r.as_str().unwrap().split('/').next().unwrap().to_string()).collect()
+    // The run's `commit_seq` sits at or below the watermark's `through`.
+    let read = |status: &serde_json::Value, run: &str| -> bool {
+        let through = status["freshness"]["watermark"]["inputs"]["orders_items"]["through"].as_i64();
+        let runs = contextful_context::Store::open(p, "research").unwrap().committed_runs("orders_items").unwrap();
+        runs.iter().find(|r| r.run_id == run).and_then(|r| r.commit_seq).zip(through).is_some_and(|(seq, t)| seq <= t)
     };
     for (cycle, at) in ["2030-01-01T00:01:00Z", "2030-01-01T00:02:00Z"].into_iter().enumerate() {
         ok(&cf(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", at]));
@@ -2508,7 +2510,7 @@ fn a_build_job_after_a_pipeline_records_the_landed_run_in_its_watermark() {
         assert_eq!(runs.len(), cycle + 1, "{:?}", history(p));
         let built = status();
         // The build the job fired in this cycle read the run the same cycle landed.
-        assert!(named(&built).contains(runs.last().unwrap()), "{built}");
+        assert!(read(&built, runs.last().unwrap()), "{built}");
         assert_eq!(built["stale"], serde_json::json!(false), "{built}");
     }
 }

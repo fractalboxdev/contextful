@@ -3,8 +3,8 @@
 
 use contextful_core::pipeline::declare::{collect, read_manifest, ManifestFile};
 use contextful_core::pipeline::model::{
-    build_entries, collect_models, contract_history, duration_secs, model_cycle, regenerate, waiting_runs, BuildStatus, HoldRecord,
-    InputFrontier, Materialized, ModelSpec, PublishSection, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
+    build_entries, collect_models, contract_history, duration_secs, input_waiting, model_cycle, regenerate, waiting_runs, BuildStatus,
+    HoldRecord, InputFrontier, Materialized, ModelSpec, Omitted, PublishSection, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
 };
 use contextful_core::run::RunError;
 use contextful_core::store::lay_out::{RunManifest, SnapshotId, SnapshotManifest};
@@ -289,7 +289,7 @@ fn freshness_reads_off_the_section_and_no_field_records_staleness() {
     s.max_lag = Some("1h".into());
     s.watermark = Watermark {
         at: Some(at("2030-01-01T05:00:00Z")),
-        inputs: BTreeMap::from([("events".into(), InputFrontier { snapshot_id: None, runs: vec!["r1/ingest-a".into()] })]),
+        inputs: BTreeMap::from([("events".into(), InputFrontier::read(None, &[&run_manifest("r1", "2030-01-01T05:00:00Z")]))]),
         horizon: None,
     };
     let f = s.freshness();
@@ -341,6 +341,94 @@ fn a_build_is_stale_only_by_an_unread_landing_past_max_lag() {
     assert!(s.freshness().stale_inputs(&landed, at("2031-01-01T00:00:00Z")).is_empty());
 }
 
+fn sequenced(run: &str, committed: &str, seq: Option<i64>) -> RunManifest {
+    RunManifest { commit_seq: seq, ..run_manifest(run, committed) }
+}
+
+/// `omitted.digest` is the lowercase hex SHA-256 over the sorted keys `<run-id>/<node-id>` of the omitted runs, each followed by a newline.
+// spec: run.model.watermark-digest@de9c9c8c
+#[test]
+fn the_omitted_digest_hashes_the_sorted_run_keys() {
+    use sha2::{Digest, Sha256};
+    let o = Omitted::of(["r2/n", "r1/n"]);
+    assert_eq!(o.count, 2);
+    assert_eq!(o.digest, format!("{:x}", Sha256::digest(b"r1/n\nr2/n\n")));
+    assert_eq!(Omitted::of(["r1/n", "r2/n"]), o, "the digest is independent of read order");
+    assert_eq!(Omitted::of(Vec::<String>::new()).count, 0);
+}
+
+/// A watermark input records `through`, the greatest `commit_seq` the build read, and `omitted`, the count and digest of runs it read outside the snapshot chain; it lists no run.
+#[test]
+fn a_frontier_holds_a_fixed_size_whatever_the_runs_it_omits() {
+    let size = |n: usize| {
+        let runs: Vec<RunManifest> = (0..n).map(|i| sequenced(&format!("run-{i:032}"), "2030-01-01T00:00:00Z", Some(i as i64 + 1))).collect();
+        let refs: Vec<&RunManifest> = runs.iter().collect();
+        let f = InputFrontier::read(None, &refs);
+        assert_eq!(f.through, if n == 0 { None } else { Some(n as i64) });
+        assert_eq!(f.omitted.as_ref().map(|o| o.count), Some(n as u64));
+        let text = serde_json::to_string(&f).unwrap();
+        assert!(!text.contains("run-") && !text.contains("\"runs\""), "{text}");
+        text.len()
+    };
+    // Two more digits in each of `through` and `count` are the only growth.
+    assert!(size(5000) <= size(10) + 4);
+}
+
+/// A run whose manifest retention collected counts as at or below `through` when the current snapshot folding it records a `commit_seq` at or below `through`.
+// spec: run.publish.staleness-collected-covered@96870d79
+#[test]
+fn an_input_waits_on_runs_past_through_and_on_a_broken_omitted_set() {
+    let none = BTreeSet::new();
+    let r1 = sequenced("r1", "2030-01-01T00:00:00Z", Some(1));
+    let r2 = sequenced("r2", "2030-01-01T00:10:00Z", Some(2));
+    let f = InputFrontier::read(None, &[&r1, &r2]);
+    assert!(input_waiting(&f, Some(at("2030-01-01T00:10:00Z")), &none, &[r1.clone(), r2.clone()], &[]).is_empty());
+    // A landing after the build waits with its commit instant.
+    let r3 = sequenced("r3", "2030-01-01T01:00:00Z", Some(3));
+    assert_eq!(input_waiting(&f, None, &none, &[r1.clone(), r2.clone(), r3.clone()], &[]), vec![Some(at("2030-01-01T01:00:00Z"))]);
+    // A run merged in at or below `through`, which the build never read, breaks `omitted`.
+    let merged = RunManifest { node_id: "other".into(), ..sequenced("m", "2030-01-01T00:05:00Z", Some(2)) };
+    assert_eq!(input_waiting(&f, None, &none, &[r1.clone(), r2.clone(), merged], &[]), vec![None]);
+    // Runs a later fold moved into the chain still count once their manifests are collected,
+    // when the folding snapshot sits at or below `through`.
+    let mut folded = snapshot("2030-01-02T00:00:00Z", None, None);
+    folded.includes_runs = vec![r1.key(), r2.key()];
+    folded.commit_seq = Some(2);
+    assert!(input_waiting(&f, None, &none, &[], std::slice::from_ref(&folded)).is_empty());
+    folded.commit_seq = Some(3);
+    assert_eq!(input_waiting(&f, None, &none, &[], std::slice::from_ref(&folded)), vec![None, None, None]);
+}
+
+/// A run carrying no `commit_seq` counts as at or below `through` when committed at or before the watermark's `at`.
+// spec: run.publish.staleness-unsequenced@f9b97368
+#[test]
+fn an_unsequenced_run_counts_by_the_watermark_instant() {
+    let none = BTreeSet::new();
+    let old = sequenced("old", "2030-01-01T00:00:00Z", None);
+    let f = InputFrontier::read(None, &[&old]);
+    let wm = Some(at("2030-01-01T00:00:00Z"));
+    assert!(input_waiting(&f, wm, &none, std::slice::from_ref(&old), &[]).is_empty());
+    let later = sequenced("later", "2030-01-01T02:00:00Z", None);
+    assert_eq!(input_waiting(&f, wm, &none, &[old.clone(), later], &[]), vec![Some(at("2030-01-01T02:00:00Z"))]);
+    // One the build never read, committed before `at`, breaks `omitted`.
+    let unread = sequenced("unread", "2029-12-31T00:00:00Z", None);
+    assert_eq!(input_waiting(&f, wm, &none, &[old, unread], &[]), vec![None]);
+}
+
+/// A watermark input carrying a `runs` list and no `omitted` reads with those runs included; no build writes `runs`.
+#[test]
+fn a_listed_runs_frontier_still_reads_and_is_never_written() {
+    let none = BTreeSet::new();
+    let f: InputFrontier = serde_json::from_value(serde_json::json!({"snapshot_id": null, "runs": ["r1/n"]})).unwrap();
+    assert_eq!(f.runs, ["r1/n"]);
+    assert!(f.omitted.is_none());
+    let r1 = sequenced("r1", "2030-01-01T00:00:00Z", Some(1));
+    let r2 = sequenced("r2", "2030-01-01T01:00:00Z", Some(2));
+    assert!(input_waiting(&f, None, &none, std::slice::from_ref(&r1), &[]).is_empty());
+    assert_eq!(input_waiting(&f, None, &none, &[r1, r2], &[]), vec![Some(at("2030-01-01T01:00:00Z"))]);
+    assert!(!serde_json::to_string(&f).unwrap().contains("runs"));
+}
+
 /// The model graph refuses a cycle through two or more models (`run.model.model-cycle`).
 #[test]
 fn a_model_cycle_names_every_member() {
@@ -358,7 +446,7 @@ fn a_model_cycle_names_every_member() {
 }
 
 /// The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.
-// spec: run.publish.manifest-section@d25cb29d
+// spec: run.publish.manifest-section@efa5adbc
 #[test]
 fn the_manifest_section_carries_its_keys_and_omits_an_absent_optional_one() {
     let mut s = section("snapshot-1", "1.0.0", "f", "2030-01-01T00:00:00Z");

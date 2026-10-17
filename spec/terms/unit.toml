@@ -23,6 +23,7 @@ subjects = { gloss = "distinct subjects contributing to a cell" }
 chars    = { gloss = "characters" }
 tokens   = { gloss = "model tokens" }
 entries  = { gloss = "registry or index entries" }
+completion = { gloss = "producer completion record" }
 conditions = { gloss = "filter conditions" }
 connections = { gloss = "embedded engine connections" }
 hops     = { gloss = "delegation or traversal hops" }
