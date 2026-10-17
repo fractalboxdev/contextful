@@ -457,6 +457,20 @@ fn a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_see
     assert_eq!(admitted, 0, "{admitted} of {attempts} off-transport presentations admitted");
 }
 
+/// An admitted credential turns incognito on after admission and keeps every other member.
+#[test]
+fn an_admitted_credential_turns_incognito_on_and_keeps_its_members() {
+    let signer = issuer();
+    let admitted = admit(&minted(&signer), &signer, DURING).unwrap();
+    assert!(!admitted.subject().incognito());
+    let members = admitted.subject().attestations();
+    let on = admitted.clone().incognito();
+    assert!(on.subject().incognito());
+    assert_eq!(on.subject().attestations(), members);
+    assert_eq!((on.grants(), on.credential_id()), (admitted.grants(), admitted.credential_id()));
+    assert!(on.incognito().subject().incognito(), "a second turn keeps it on");
+}
+
 /// A subject is a tuple of agent, host, `on_behalf_of` principal, task scope, inference zone and incognito flag. A credential binds the subset it names and admits under that combination alone.
 // spec: authority.identify.subject-tuple@89c82ac9
 #[test]

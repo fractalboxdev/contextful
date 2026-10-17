@@ -31,6 +31,7 @@ use contextful_core::store::reserve::{producer_columns, COMMIT_SEQ, INGESTED_AT,
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::policy::TablePolicy;
 use contextful_policy::enforce::scope;
+use contextful_policy::enforce::zone::Zone;
 use contextful_policy::enforce::session::{ReachFilter, Request, Session, TableSource, TemplateScope};
 use contextful_policy::verify::AdmittedAuthority;
 use serde::{Deserialize, Serialize};
@@ -943,6 +944,18 @@ impl Face {
     /// latest committed state (`read.query.project-relations`).
     /// A store absent from disk raises `QueryProjectAbsent` (`read.query.project-store`).
     pub fn operator_query(&self, sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
+        self.operator_read(sql, opts, false)
+    }
+
+    /// [`Face::operator_query`] for an incognito owner: each relation passes the zone step at
+    /// `local:device`, so a table its effective set excludes yields no row and an excluded
+    /// column arrives null, and the restriction block names what the step withheld from the
+    /// relations the statement touches (`read.query.incognito`).
+    pub fn operator_query_incognito(&self, sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
+        self.operator_read(sql, opts, true)
+    }
+
+    fn operator_read(&self, sql: &str, opts: ReadOptions, incognito: bool) -> Result<Response, ReadFault> {
         let frontier = self.store.frontier_stamp()?;
         if !self.store.root().is_dir() {
             return Err(ReadError::QueryProjectAbsent(format!(
@@ -953,15 +966,41 @@ impl Face {
         }
         one_statement(sql)?;
         let engine = SqlEngine::raw_with_key(self.store.parquet_key())?;
+        let zone = Zone::LocalDevice;
+        let mut withheld = BTreeMap::new();
         for t in self.tables()? {
-            engine.register(&t, &self.source(&t, Bounds::default(), None, None)?.base)?;
+            let source = self.source(&t, Bounds::default(), None, None)?;
+            if !incognito {
+                engine.register(&t, &source.base)?;
+                continue;
+            }
+            let (relation, step) = zone_step(&source, &zone);
+            engine.register(&t, &relation)?;
+            if let Some(step) = step {
+                withheld.insert(t, step);
+            }
         }
         // The least published row ceiling among the relations the statement names, beside
         // `--limit` (`read.query.raw-row-ceiling`).
         let named = engine.serialize(sql).map(|tree| named_relations(&tree)).unwrap_or_default();
         let published = named.iter().filter_map(|t| self.policies.get(t).and_then(|p| p.max_rows)).min();
         let ceiling = opts.limit.into_iter().chain(published).min();
-        let response = respond(&engine, sql, &Bindings::default(), ceiling, opts)?;
+        let mut response = respond(&engine, sql, &Bindings::default(), ceiling, opts)?;
+        let touched: BTreeSet<&String> = named.iter().collect();
+        let mut tables = Vec::new();
+        for (table, (dropped_sql, columns_masked)) in withheld.iter().filter(|(t, _)| touched.contains(t)) {
+            let rows_dropped = match dropped_sql {
+                Some(count) => match engine.run(count, &Bindings::default(), None)?.1.first().and_then(|r| r.first()) {
+                    Some(Cell::Integer { value, .. }) => u64::try_from(*value).unwrap_or(0),
+                    _ => 0,
+                },
+                None => 0,
+            };
+            tables.push(json!({ "table": table, "excluded": dropped_sql.is_some(), "rows_dropped": rows_dropped, "columns_masked": columns_masked }));
+        }
+        if !tables.is_empty() {
+            response = response.with_block("restriction", json!({ "zone": zone.label(), "incognito": true, "tables": tables }));
+        }
         self.publish_read(None, &frontier, response)
     }
 
@@ -1337,6 +1376,31 @@ impl Face {
             json!({ "zone": session.zone().label(), "incognito": session.incognito(), "tables": tables }),
         ))
     }
+}
+
+/// What the zone step withholds from one relation: the statement counting the rows an
+/// excluded table drops, and the columns it nulls.
+type ZoneStep = (Option<String>, Vec<String>);
+
+/// A table's base relation under the zone step alone: no row where its effective set omits
+/// `zone` (`authority.place.excluded-row`), and a null cell where a column's set does
+/// (`authority.place.excluded-cell`). The step is returned where it withholds anything.
+fn zone_step(t: &TableSource, zone: &Zone) -> (String, Option<ZoneStep>) {
+    let base = &t.base;
+    if !t.policy.placement.effective().admits(zone) {
+        let count = format!("SELECT count(*) FROM ({base}) AS \"__contextful_base\"");
+        return (format!("SELECT * FROM ({base}) AS \"__contextful_base\" WHERE false"), Some((Some(count), Vec::new())));
+    }
+    let masked: Vec<String> = t.columns.iter().filter(|c| !t.policy.column_set(&c.name).admits(zone)).map(|c| c.name.clone()).collect();
+    if masked.is_empty() {
+        return (base.clone(), None);
+    }
+    let projection: Vec<String> = t
+        .columns
+        .iter()
+        .map(|c| if masked.contains(&c.name) { format!("CAST(NULL AS {}) AS {}", c.ty.sql(), ident(&c.name)) } else { ident(&c.name) })
+        .collect();
+    (format!("SELECT {} FROM ({base}) AS \"__contextful_base\"", projection.join(", ")), Some((None, masked)))
 }
 
 /// Admit a statement over the session's registered relations. A session that is no owner

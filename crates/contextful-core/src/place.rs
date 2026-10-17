@@ -320,6 +320,79 @@ pub fn session_zone(asserted: Option<&str>, signed: Option<&str>, incognito: boo
     }
 }
 
+/// A project's `[project.zone]`: the zone a mint naming none signs, whether a mint signs
+/// another, and whether a mint is incognito by default (`authority.place.team-default`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectZone {
+    pub default: Option<Zone>,
+    pub users_may_widen: bool,
+    pub incognito_default: bool,
+}
+
+impl Default for ProjectZone {
+    fn default() -> Self {
+        ProjectZone { default: None, users_may_widen: true, incognito_default: false }
+    }
+}
+
+impl ProjectZone {
+    /// The `[project.zone]` a declaration's text spells; an absent table is the default. A
+    /// key outside the three, a `default` outside the zone grammar, or a non-boolean flag
+    /// does not load.
+    pub fn declared(manifest: &str) -> Result<ProjectZone, DeclarationMalformed> {
+        let value: toml::Value = toml::from_str(manifest).map_err(|e| DeclarationMalformed(e.to_string()))?;
+        let Some(table) = value.get("project").and_then(|p| p.get("zone")) else {
+            return Ok(ProjectZone::default());
+        };
+        let table = table.as_table().ok_or_else(|| DeclarationMalformed("`[project.zone]` is a table".to_string()))?;
+        let mut zone = ProjectZone::default();
+        for (key, v) in table {
+            let flag = || v.as_bool().ok_or_else(|| DeclarationMalformed(format!("`[project.zone] {key}` is a boolean, not {v}")));
+            match key.as_str() {
+                "default" => {
+                    let parsed = v.as_str().map(Zone::parse).filter(|z| *z != Zone::Undeclared);
+                    zone.default = Some(parsed.ok_or_else(|| DeclarationMalformed(format!("`[project.zone] default` is a zone, not {v}")))?);
+                }
+                "users_may_widen" => zone.users_may_widen = flag()?,
+                "incognito_default" => zone.incognito_default = flag()?,
+                other => return Err(DeclarationMalformed(format!("`[project.zone]` declares no key `{other}`"))),
+            }
+        }
+        Ok(zone)
+    }
+
+    /// The zone and incognito flag a mint signs: a named zone, else the default, and
+    /// incognito when asked or by default (`authority.place.team-default`). Under
+    /// `users_may_widen = false` a zone other than the default or `local:device` refuses
+    /// (`authority.place.default-widened`), and an incognito mint signing a zone outside the
+    /// fail-closed pair refuses (`authority.place.incognito-widening`).
+    pub fn mint(&self, named: Option<String>, incognito: bool) -> Result<(Option<String>, bool), EnforceError> {
+        if let (Some(default), Some(named), false) = (&self.default, &named, self.users_may_widen) {
+            let zone = Zone::parse(named);
+            if zone != *default && zone != Zone::LocalDevice {
+                return Err(EnforceError::ZoneDefaultWidened(format!(
+                    "the mint signs `{}`; the project fixes its default `{}` with `users_may_widen = false`",
+                    zone.label(),
+                    default.label()
+                )));
+            }
+        }
+        let zone = named.or_else(|| self.default.as_ref().map(Zone::label));
+        let incognito = incognito || self.incognito_default;
+        // An incognito credential signing a zone outside the pin admits nothing, so the mint
+        // refuses where the zone is chosen (`authority.place.incognito-widening`).
+        if let (true, Some(z)) = (incognito, zone.as_deref().map(Zone::parse)) {
+            if !AllowSet::fail_closed().admits(&z) {
+                return Err(EnforceError::IncognitoWidening(format!(
+                    "the mint is incognito and signs `{}`, outside [local:device, on-prem:*]",
+                    z.label()
+                )));
+            }
+        }
+        Ok((zone, incognito))
+    }
+}
+
 /// A synthesized row's resolved set: at most the intersection of its evidence tables'
 /// sets. A wider declaration refuses and resolves to that intersection
 /// (`authority.place.evidence-floor`); a row naming no evidence table refuses and resolves

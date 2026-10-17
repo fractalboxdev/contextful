@@ -3,6 +3,7 @@
 
 use crate::error::{IoPath, Result};
 use contextful_core::issue::AuthoringPosture;
+use contextful_core::place::ProjectZone;
 use contextful_core::store::lay_out::{is_path_segment, store_root, STORE_ID_FILE};
 use contextful_core::store::StoreError;
 use std::fs;
@@ -138,6 +139,17 @@ impl Project {
     /// (`disclosure.record.read-chain`).
     pub fn audit_dir(&self) -> PathBuf {
         self.dir.join(".contextful/audit")
+    }
+
+    /// The `[project.zone]` the declaration file spells, or the default where the file is
+    /// absent (`authority.place.team-default`).
+    pub fn zone(&self) -> Result<ProjectZone> {
+        let path = self.declaration();
+        match fs::read_to_string(&path) {
+            Ok(text) => ProjectZone::declared(&text).map_err(|e| crate::ContextError::Invalid(format!("{}: {e}", path.display()))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ProjectZone::default()),
+            Err(e) => Err(e).at(&path),
+        }
     }
 
     /// The memory pass state `.contextful/memory/<project>/`.

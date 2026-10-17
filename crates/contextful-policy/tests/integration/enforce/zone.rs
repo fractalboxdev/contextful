@@ -171,14 +171,25 @@ fn a_synthesized_row_resolves_to_its_evidence_intersection() {
     assert!(matches!(refusal, Some(EnforceError::EvidenceFloorExceeded(_))));
 }
 
-/// A session asserting a zone wider than the incognito pin raises `EnforceIncognitoWidening`.
-// spec: authority.place.incognito-widening@233200ff
+/// A session asserting a zone wider than the incognito pin, or an incognito `contextful token mint` signing one, raises `EnforceIncognitoWidening`.
+// spec: authority.place.incognito-widening@3f4781d3
 #[test]
 fn incognito_refuses_a_wider_zone_and_pins_an_absent_one() {
     assert_eq!(session_zone(None, None, true), Ok(Zone::LocalDevice));
     assert_eq!(session_zone(Some("on-prem:hq"), Some("on-prem:hq"), true), Ok(z("on-prem:hq")));
     assert!(matches!(session_zone(None, Some("private-cloud:vpc"), true), Err(EnforceError::IncognitoWidening(_))));
     assert_eq!(session_zone(None, Some("public-cloud:us-east-1"), false), Ok(z("public-cloud:us-east-1")));
+
+    // The mint `contextful token mint` runs refuses the same zone where it is chosen: named,
+    // or supplied by a project default under `incognito_default`.
+    use contextful_policy::enforce::zone::ProjectZone;
+    let plain = ProjectZone::default();
+    assert!(matches!(plain.mint(Some("private-cloud:vpc".into()), true), Err(EnforceError::IncognitoWidening(m)) if m.contains("private-cloud:vpc")));
+    assert_eq!(plain.mint(Some("on-prem:hq".into()), true), Ok((Some("on-prem:hq".into()), true)));
+    assert_eq!(plain.mint(Some("private-cloud:vpc".into()), false), Ok((Some("private-cloud:vpc".into()), false)));
+    let defaulted = ProjectZone::declared("[project.zone]\ndefault = \"public-cloud:us-east-1\"\nincognito_default = true\n").unwrap();
+    assert!(matches!(defaulted.mint(None, false), Err(EnforceError::IncognitoWidening(_))));
+    assert!(matches!(defaulted.mint(Some("public-cloud:eu".into()), false), Err(EnforceError::IncognitoWidening(_))));
 }
 
 /// A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.

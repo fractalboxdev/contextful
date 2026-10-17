@@ -23,6 +23,12 @@ pub struct McpArgs {
     /// Admit the selected local project under a verified signed owner claim.
     #[arg(long)]
     owner: bool,
+    /// Serve the admitted credential incognito: one signing no zone serves at
+    /// `local:device`, and the server refuses a credential signing a zone outside
+    /// [local:device, on-prem:*] (`authority.place.incognito`). A signed incognito stays on
+    /// without it.
+    #[arg(long)]
+    incognito: bool,
     /// The project whose store root is `.contextful/context/<project>/` under the working
     /// directory; absent, the nearest `contextful.toml` upward names it.
     #[arg(long)]
@@ -53,6 +59,7 @@ pub fn run(args: McpArgs) -> Result<()> {
     } else {
         authority
     };
+    let authority = if args.incognito { authority.incognito() } else { authority };
     crate::sync::pull_before_run(&located)?;
     let face = crate::admit::face_with_pins(&located, args.admit.public_key.as_deref(), args.admit.keyset.as_deref())?;
     let audit = crate::project::read_audit(&located.project, args.issuer_key.as_deref(), args.admit.public_key.as_deref(), args.admit.keyset.as_deref())?;

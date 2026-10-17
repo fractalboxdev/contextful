@@ -55,3 +55,26 @@ fn the_placement_relation_and_write_refusals_name_their_identifiers() {
         assert!(e.to_string().starts_with(&format!("{id}: ")), "{e}");
     }
 }
+
+/// `[project.zone]` parses into the zone a mint signs; a fixed default refuses another zone.
+#[test]
+fn a_project_zone_supplies_the_minted_zone_and_bounds_a_named_one() {
+    use contextful_core::place::ProjectZone;
+    let declared = |zone: &str| ProjectZone::declared(&format!("[project]\nname = \"research\"\n\n[project.zone]\n{zone}"));
+    assert_eq!(ProjectZone::declared("[project]\nname = \"research\"\n").unwrap(), ProjectZone::default());
+    let open = declared("default = \"on-prem:hq\"\nincognito_default = true\n").unwrap();
+    assert_eq!(open.mint(None, false).unwrap(), (Some("on-prem:hq".into()), true));
+    assert_eq!(open.mint(Some("on-prem:lab".into()), false).unwrap(), (Some("on-prem:lab".into()), true));
+    assert!(matches!(open.mint(Some("public-cloud:eu".into()), false), Err(EnforceError::IncognitoWidening(_))));
+    let fixed = declared("default = \"on-prem:hq\"\nusers_may_widen = false\n").unwrap();
+    assert_eq!(fixed.mint(Some("local:device".into()), false).unwrap(), (Some("local:device".into()), false));
+    assert!(matches!(fixed.mint(Some("public-cloud:eu".into()), false), Err(EnforceError::ZoneDefaultWidened(m)) if m.contains("on-prem:hq")));
+    // An incognito mint signs only a zone inside the fail-closed pair.
+    assert!(matches!(ProjectZone::default().mint(Some("public-cloud:eu".into()), true), Err(EnforceError::IncognitoWidening(m)) if m.contains("public-cloud:eu")));
+    assert_eq!(ProjectZone::default().mint(Some("on-prem:hq".into()), true).unwrap(), (Some("on-prem:hq".into()), true));
+    let cloud = declared("default = \"public-cloud:eu\"\nincognito_default = true\n").unwrap();
+    assert!(matches!(cloud.mint(None, false), Err(EnforceError::IncognitoWidening(_))));
+    for bad in ["default = \"nowhere\"\n", "users_may_widen = \"no\"\n", "fallback = \"local:device\"\n"] {
+        assert!(declared(bad).is_err(), "{bad}");
+    }
+}

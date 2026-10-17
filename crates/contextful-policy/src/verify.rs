@@ -18,7 +18,7 @@ use base64::Engine;
 use biscuit_auth::Biscuit;
 use contextful_core::claims::AuthorityBlock;
 use contextful_core::grant::{Action, Grant, TablePattern};
-use contextful_core::identify::NormalizedSubject;
+use contextful_core::identify::{NormalizedSubject, SubjectDerivation};
 use contextful_core::issue::{MintPlan, SignatureAlgorithm};
 use contextful_core::ports::SigningPort;
 use contextful_core::time::Instant;
@@ -104,6 +104,14 @@ impl AdmittedAuthority {
         }
         self.owner_active = true;
         Some(self)
+    }
+
+    /// Turn the admitted subject's incognito flag on; nothing turns it off
+    /// (`authority.place.incognito`, `authority.identify.incognito`).
+    pub fn incognito(mut self) -> Self {
+        let on = SubjectDerivation { incognito: Some(true), ..SubjectDerivation::default() };
+        self.subject = self.subject.derive(&on).expect("a derivation turning incognito on names no member and narrows");
+        self
     }
 
     pub fn owner_active(&self) -> bool {

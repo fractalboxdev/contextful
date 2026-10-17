@@ -7,6 +7,7 @@ use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_core::grant::{Action, Grant, TablePattern, TenantScope};
 use contextful_core::identify::{MintSurface, Subject};
+use contextful_core::place::ProjectZone;
 use contextful_core::issue::{
     key_rotation_due, IssuancePolicy, Lifetime, MintContext, MintRequest, NodeRole, SignatureAlgorithm,
     ISSUER_KEY_ROTATION_CADENCE_SECS,
@@ -290,6 +291,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
             owner,
             now,
         } => {
+            let (zone, incognito) = Root::find()?.project_zone()?.mint(zone, incognito)?;
             let subject = Subject { on_behalf_of, agent, host, task, zone, incognito };
             let grant = Grant {
                 horizon: horizon.as_deref().map(Instant::parse).transpose()?,
@@ -421,6 +423,17 @@ impl Root {
         let path = self.policy_path();
         let text = std::fs::read_to_string(&path).with_context(|| format!("no issuance policy at {}", path.display()))?;
         IssuancePolicy::parse(&text).map_err(|e| anyhow::anyhow!("{e:?}"))
+    }
+
+    /// The `[project.zone]` the root's declaration spells; the default without a
+    /// declaration (`authority.place.team-default`).
+    fn project_zone(&self) -> Result<ProjectZone> {
+        let path = self.dir.join("contextful.toml");
+        match std::fs::read_to_string(&path) {
+            Ok(text) => ProjectZone::declared(&text).with_context(|| format!("reading `{}`", path.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ProjectZone::default()),
+            Err(e) => Err(e).with_context(|| format!("reading `{}`", path.display())),
+        }
     }
 
     fn write_ledger(&self, ledger: &KeySetLedger) -> Result<()> {

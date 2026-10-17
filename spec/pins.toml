@@ -208,11 +208,11 @@
 
 [floor]
 assurance = 281
-authority = 271
+authority = 274
 connector = 292
 corpus = 80
 disclosure = 165
-read = 271
+read = 272
 run = 519
 store = 284
 surface = 134

@@ -74,6 +74,9 @@ pub enum EnforceError {
     /// A request asserting a zone its credential does not sign. (`authority.place.asserted-zone`)
     #[error("EnforceZoneAssertionWidens: {0}")]
     ZoneAssertionWidens(String),
+    /// A mint signing a zone other than a non-widenable project default. (`authority.place.default-widened`)
+    #[error("EnforceZoneDefaultWidened: {0}")]
+    ZoneDefaultWidened(String),
     /// An allow-set entry matching no entry form. (`authority.place.unparsed-pattern`)
     #[error("EnforceZonePatternUnparsed: {0}")]
     ZonePatternUnparsed(String),
@@ -106,6 +109,7 @@ impl EnforceError {
             EnforceError::UnknownRelation(_) => "EnforceUnknownRelation",
             EnforceError::WriteOnReadOnlyFace(_) => "EnforceWriteOnReadOnlyFace",
             EnforceError::ZoneAssertionWidens(_) => "EnforceZoneAssertionWidens",
+            EnforceError::ZoneDefaultWidened(_) => "EnforceZoneDefaultWidened",
             EnforceError::ZonePatternUnparsed(_) => "EnforceZonePatternUnparsed",
         }
     }

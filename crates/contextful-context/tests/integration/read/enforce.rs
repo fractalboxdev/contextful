@@ -466,6 +466,23 @@ fn an_incognito_session_serves_under_the_fail_closed_pair() {
     refused_with(r.face.session(&wide, &Request::default(), Bounds::default()), "EnforceIncognitoWidening");
 }
 
+/// The incognito operator read passes each relation through the zone step at `local:device`,
+/// naming what it withheld from the relations the statement touches; the plain one does not.
+#[test]
+fn an_incognito_operator_read_applies_the_zone_step_at_local_device() {
+    let r = Reads::new();
+    let vendor = r#"SELECT * FROM "research/vendor""#;
+    assert_eq!(r.face.operator_query(vendor, Default::default()).unwrap().rows.len(), 1);
+    let withheld = r.face.operator_query_incognito(vendor, Default::default()).unwrap();
+    assert!(withheld.rows.is_empty());
+    assert_eq!(
+        withheld.blocks.get("contextful.restriction"),
+        Some(&json!({ "zone": "local:device", "incognito": true, "tables": [{ "table": "research/vendor", "excluded": true, "rows_dropped": 1, "columns_masked": [] }] }))
+    );
+    let notes = r.face.operator_query_incognito(r#"SELECT count(*) AS n FROM "research/notes""#, Default::default()).unwrap();
+    assert_eq!((notes.rows.len(), notes.blocks.get("contextful.restriction")), (1, None), "a fail-closed table admits `local:device`");
+}
+
 /// Under a horizon a mask on a withheld column governs nothing, and the session opens; a mask
 /// naming a column the table never carried still refuses.
 #[test]
