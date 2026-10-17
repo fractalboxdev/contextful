@@ -6,13 +6,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 323 | 65 | 24 | 5 | 281 | 0 | 281 |
-| `authority` | 2 | 16 | 300 | 80 | 29 | 8 | 276 | 0 | 274 |
+| `authority` | 2 | 16 | 300 | 80 | 29 | 8 | 276 | 0 | 276 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 554 | 126 | 45 | 17 | 522 | 0 | 522 |
-| `store` | 3 | 19 | 297 | 64 | 15 | 10 | 286 | 0 | 285 |
+| `store` | 3 | 19 | 297 | 64 | 15 | 10 | 286 | 0 | 286 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
 | **total** | 22 | 169 | 2670 | 675 | 213 | 75 | 2384 | 0 | |
