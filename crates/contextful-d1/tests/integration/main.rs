@@ -343,6 +343,7 @@ fn owner() -> ExecutionOwner {
         .into(),
         attempts: vec!["run-1".into()],
         opened_at: Instant::parse("2026-01-01T00:00:00Z").unwrap(),
+        next_attempt_at: None,
     }
 }
 
@@ -420,6 +421,7 @@ fn run_row(id: &str) -> RunRow {
         failed_branches: vec![],
         credential_providers: Default::default(),
         bound_hits: Vec::new(),
+        next_attempt_at: None,
     }
 }
 

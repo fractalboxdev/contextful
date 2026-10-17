@@ -170,7 +170,7 @@ retry-max-delay            = { clause = "run.retry.default-policy", value = 30, 
 retry-default-attempts     = { clause = "run.retry.default-policy", value = 5, unit = "attempts", basis = "chosen", gloss = "Total attempts of the default schedule." }
 retry-jitter-ceiling       = { clause = "run.retry.default-policy", value = 250, unit = "ms", basis = "chosen", gloss = "Upper bound of the seeded additive jitter." }
 retry-single-attempt       = { clause = "run.retry.single-attempt", value = 1, unit = "attempts", basis = "chosen", gloss = "Total attempts of the no-retry schedule." }
-retry-after-ceiling        = { clause = "run.retry.retry-after", value = 300, unit = "s", basis = "chosen", gloss = "Longest server-requested delay a step sleeps before closing." }
+retry-after-ceiling        = { clause = "run.retry.retry-after", value = 300, unit = "s", basis = "chosen", gloss = "Longest remaining retry wait a step sleeps in process before closing waiting." }
 d1-request-timeout         = { clause = "run.journal.d1-transport", value = 15, unit = "s", basis = "chosen", gloss = "Wall clock of one D1 request attempt, transfer included." }
 d1-transport-attempts      = { clause = "run.journal.d1-transport", value = 3, unit = "attempts", basis = "chosen", gloss = "Total attempts of a D1 request whose repetition changes nothing." }
 cancel-poll-interval       = { clause = "run.cancel.poll-interval", value = 500, unit = "ms", basis = "chosen", gloss = "Cadence of the catalog read feeding the cancellation token." }

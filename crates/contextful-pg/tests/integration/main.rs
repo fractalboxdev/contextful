@@ -58,6 +58,7 @@ pub fn run_row(run_id: &str, pipeline: &str, status: RunStatus) -> RunRow {
         failed_branches: Vec::new(),
         credential_providers: Default::default(),
         bound_hits: Vec::new(),
+        next_attempt_at: None,
     }
 }
 
@@ -74,5 +75,6 @@ pub fn owner(execution_id: &str) -> ExecutionOwner {
         .into(),
         attempts: vec!["run-1".into()],
         opened_at: at(T0),
+        next_attempt_at: None,
     }
 }

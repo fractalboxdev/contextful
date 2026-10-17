@@ -215,6 +215,7 @@ fn owners_without_implementation_pins_refuse_before_input_or_body() {
             pins: drive.input.pins(),
             attempts: vec![],
             opened_at: rig.catalog().now().unwrap(),
+            next_attempt_at: None,
         })
         .unwrap();
     assert!(rig

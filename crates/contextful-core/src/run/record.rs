@@ -199,6 +199,10 @@ pub struct RunRow {
     /// (`run.retry.bound-hit-recorded`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bound_hits: Vec<BoundHit>,
+    /// A `waiting` attempt's next-attempt instant (`run.retry.waiting-state`); absent on
+    /// every other row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_attempt_at: Option<Instant>,
 }
 
 /// One bound hit: the step whose attempt struck it, that attempt, and the bound

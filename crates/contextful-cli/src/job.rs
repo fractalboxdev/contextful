@@ -324,19 +324,21 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                         })
                     },&mut complete)?
                 };
-                let (mut successful, mut failed, mut parked, mut deferred) = (0, 0, 0, 0);
+                let (mut successful, mut failed, mut parked, mut deferred, mut waiting) = (0, 0, 0, 0, 0);
                 for item in &report.items {
                     use contextful_engine::drive::ItemStatus;
                     let status = match &item.status {
-                        ItemStatus::Succeeded(_) => { successful += 1; "success" },
-                        ItemStatus::Failed(_) => { failed += 1; "failed" },
-                        ItemStatus::Parked => { parked += 1; "parked" },
-                        ItemStatus::Deferred => { deferred += 1; "deferred" },
+                        ItemStatus::Succeeded(_) => { successful += 1; "success".to_string() },
+                        ItemStatus::Failed(_) => { failed += 1; "failed".to_string() },
+                        ItemStatus::Parked => { parked += 1; "parked".to_string() },
+                        ItemStatus::Deferred => { deferred += 1; "deferred".to_string() },
+                        ItemStatus::Waiting { next_attempt_at } => { waiting += 1; format!("waiting until {next_attempt_at}") },
                     };
                     println!("{name}: item {} execution {} {status}", item.logical_id, item.execution_id);
                 }
-                let summary = format!("{name}: {successful} successful items, {failed} failed, {parked} parked, {deferred} deferred");
-                if !report.succeeded() { bail!("{summary}"); }
+                let summary = format!("{name}: {successful} successful items, {failed} failed, {parked} parked, {deferred} deferred, {waiting} waiting");
+                // A waiting item is neither refused nor failed (`run.retry.waiting-state`).
+                if failed + parked + deferred > 0 { bail!("{summary}"); }
                 println!("{summary}");
                 return Ok(());
             }

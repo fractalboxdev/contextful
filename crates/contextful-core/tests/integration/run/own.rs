@@ -79,7 +79,7 @@ fn a_pin_mismatch_names_only_recoveries_the_command_line_provides() {
     let build = |hash: &str| -> OwnerPins {
         Pins { connector: ConnectorPin { id: "vendor".into(), version: "1".into(), world: "native".into(), hash: "artifact".into() }, content_hash: hash.into(), input_hash: String::new() }.into()
     };
-    let owner = |scope: OwnerScope, pins: OwnerPins| ExecutionOwner { execution_id: "x-1".into(), scope, pins, attempts: Vec::new(), opened_at: Instant::from_unix_secs(0).unwrap() };
+    let owner = |scope: OwnerScope, pins: OwnerPins| ExecutionOwner { execution_id: "x-1".into(), scope, pins, attempts: Vec::new(), opened_at: Instant::from_unix_secs(0).unwrap(), next_attempt_at: None };
     let message = |owner: ExecutionOwner, asked: OwnerPins| match owner.check_pins(&asked) {
         Err(RunError::ExecutionPinMismatch(m)) => m,
         other => panic!("expected ExecutionPinMismatch, got {other:?}"),
