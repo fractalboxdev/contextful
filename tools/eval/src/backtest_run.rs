@@ -219,6 +219,8 @@ pub fn settle(case: &CaseSpec, answer: &AnswerSpec) -> Result<Option<Settled>, S
         watch: false,
         resolution_source: Some(f.resolution_source.clone()),
         comparator: f.comparator.clone(),
+        statement: None,
+        metric: None,
     })
     .map_err(|e| e.to_string())?;
     let held = f.outcome >= 0.5;
@@ -229,6 +231,7 @@ pub fn settle(case: &CaseSpec, answer: &AnswerSpec) -> Result<Option<Settled>, S
         resolution_source: Some(f.resolution_source.clone()),
         signal: None,
         settling_citation: f.settling_citation.clone(),
+        metric: None,
     };
     settle::observe(&registration, &observation).map_err(|e| e.to_string())?;
     if !settle::in_label_window(registration.predicted_at, registration.deadline(), observation.observed_at) {

@@ -52,7 +52,7 @@ flowchart LR
 
 ## declare
 
-The five memory table shapes, their canonical columns, tier and scope, and the relation vocabulary with its cardinality.
+The seven memory table shapes, their canonical columns, tier and scope, and the relation vocabulary with its cardinality.
 
 - `canonical-column` — A table naming a shape and omitting one of its canonical columns raises `MemoryShapeColumnMissing` when the declaration loads.
   *P1*
@@ -68,6 +68,8 @@ The five memory table shapes, their canonical columns, tier and scope, and the r
   *A-read*
 - `relation-string` — A bare string entry in `[relation].declared` declares a `directed`, `many`, non-walkable relation.
   *because declarations naming relations as strings keep loading, and a walk crosses only a relation its author opted in*
+- `settlement-shapes` — The `predictions` shape carries one column per registration field, `deadline_at` resolved for a horizon; the `outcomes` shape carries one column per observation field. Both key on `prediction_id`.
+  *because the label join reads these columns by name, and one row per prediction keeps one label per prediction*
 
 
 ## synthesize
@@ -254,13 +256,37 @@ Predictions, observations, the registration, the citation a verdict owes, and th
 
 - `registration` — A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.
   *A-read*
-- `source-mismatch` — An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`.
+- `source-mismatch` — An observation naming a `metric` series other than the registration's, or carrying a verdict whose resolution source or registered series is absent or differs, raises `OutcomeSourceMismatch`, naming each source by its wire name.
   *A-read*
 - `settling-citation` — An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.
   *A-read*
 - `grace-window` — The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.
 - `calibration-report` — Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error over 10 equal-width bins, and the held-out score {{read.synthesize.confidence-calibration}} uses, over every fifth prediction.
   *A-read*
+- `statement-bound` — A registration's optional `statement`, the falsifiable claim it scores, holds at most 4096 B; a longer one raises `OutcomeStatementTooLong`, and the statement takes part in {{read.settle.registration-conflict}}.
+  *because a registration reads on its own only with its claim text, and an unbounded text field lets one row outweigh the table*
+- `metric-reference` — A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against and is never looked up in the store; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.
+  *because a registration precedes its series' first landing, so a store lookup refuses every prediction made before its data exists*
+- `deadline-date` — A `deadline_at` given as a bare `YYYY-MM-DD` resolves as {{store.bound-time.instant-comparison}} resolves a date: the deadline is the next UTC midnight, so the whole named day precedes it.
+  *because one date spelling then means one instant on every clock the engine compares*
+- `predict-verb` — `contextful memory predict --into <table> --registration <json>` checks {{read.settle.registration}} and lands the registration in that `predictions` table under the admitted credential's write grant, then prints `prediction_id: <id>`.
+  *because a registration nothing lands leaves its outcome no prediction to settle against*
+- `observe-verb` — `contextful memory observe --into <table> --observation <json>` reads the prediction's stored registration through the writer's session, checks {{read.settle.source-mismatch}} and {{read.settle.settling-citation}}, lands it in that `outcomes` table, and prints its label row.
+  *because a verdict is checked against the source registered before it, never one the observation asserts*
+- `verb-attribution` — Both verbs admit a capability token as `contextful memory write` does, and each landed row carries `_authored_by` from its subject under {{store.reserve.injected}}.
+  *because a settled outcome is weighed by who registered and who observed it*
+- `prediction-unregistered` — An observation naming a `prediction_id` no row of the declared `predictions` table carries in the writer's session raises `OutcomePredictionUnregistered`, and nothing lands.
+  *because a verdict with no registration has no source to check it against*
+- `restated-landing` — A registration or observation identical to the stored row of its `prediction_id` lands nothing, and the verb succeeds with its usual output.
+  *because a retried verb restates one registration, and landing it again commits a run that records nothing new*
+- `registration-conflict` — A registration whose `prediction_id` a stored registration with any other field already holds raises `OutcomeRegistrationConflict`, and nothing lands.
+  *because rewriting a registration after the fact changes the deadline or source a verdict is scored against*
+- `outcome-settled` — An observation differing from a stored outcome of its `prediction_id` that carries a verdict raises `OutcomeAlreadySettled`; a stored outcome without a verdict is replaced.
+  *because a verdict rewritten after scoring silently changes the calibration it fed*
+- `label-join` — The label view of Shapes runs over a declared `predictions` and `outcomes` table pair as read through the reader's session.
+  *because the view's grace window and self-rated filter then hold for every reader, not each reader's own join*
+- `calibration-verb` — `contextful memory calibration --table <claims>` joins label rows carrying a verdict to that claims table on `prediction_id` equal to `claim_id`, through the caller's session, and prints {{read.settle.calibration-report}} with the count of joined predictions, as JSON under `--json`.
+  *because a prediction's shape, predicate and emitted confidence are those of the claim it scores*
 
 Registration, observation and the label view:
 
@@ -358,11 +384,11 @@ The label view:
 CREATE VIEW outcome_labels AS
 SELECT p.prediction_id, p.subject, p.resolution_source,
        o.verdict, o.signal, o.settling_citation,
-       epoch(CAST(o.observed_at AS TIMESTAMPTZ)) - epoch(CAST(p.predicted_at AS TIMESTAMPTZ)) AS lead_time_s
+       epoch(CAST(o.observed_at AS TIMESTAMP)) - epoch(CAST(p.predicted_at AS TIMESTAMP)) AS lead_time_s
 FROM predictions p
 JOIN outcomes o ON o.prediction_id = p.prediction_id
 WHERE o.observed_at IS NOT NULL
   AND o.signal IS DISTINCT FROM 'self-rated'
-  AND epoch(CAST(o.observed_at AS TIMESTAMPTZ)) >= epoch(CAST(p.predicted_at AS TIMESTAMPTZ))
-  AND epoch(CAST(o.observed_at AS TIMESTAMPTZ)) <= epoch(CAST(p.deadline_at AS TIMESTAMPTZ)) + 86400;
+  AND epoch(CAST(o.observed_at AS TIMESTAMP)) >= epoch(CAST(p.predicted_at AS TIMESTAMP))
+  AND epoch(CAST(o.observed_at AS TIMESTAMP)) <= epoch(CAST(p.deadline_at AS TIMESTAMP)) + 86400;
 ```

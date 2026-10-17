@@ -39,9 +39,24 @@ pub enum MemoryError {
     /// A candidate edge carries an undeclared relation type. (`read.declare.undeclared-relation`)
     #[error("MemoryUndeclaredRelation: {0}")]
     UndeclaredRelation(String),
+    /// An observation differs from a stored outcome that already carries a verdict. (`read.settle.outcome-settled`)
+    #[error("OutcomeAlreadySettled: {0}")]
+    OutcomeAlreadySettled(String),
+    /// A registration's metric reference is malformed or sits under a non-metric source. (`read.settle.metric-reference`)
+    #[error("OutcomeMetricReferenceInvalid: {0}")]
+    OutcomeMetricReferenceInvalid(String),
+    /// A registration's statement exceeds its byte bound. (`read.settle.statement-bound`)
+    #[error("OutcomeStatementTooLong: {0}")]
+    OutcomeStatementTooLong(String),
     /// A judgment verdict carries no http or https settling citation. (`read.settle.settling-citation`)
     #[error("OutcomeCitationMissing: {0}")]
     OutcomeCitationMissing(String),
+    /// An observation names a prediction no stored registration the writer reads carries. (`read.settle.prediction-unregistered`)
+    #[error("OutcomePredictionUnregistered: {0}")]
+    OutcomePredictionUnregistered(String),
+    /// A registration reuses a stored prediction id with different fields. (`read.settle.registration-conflict`)
+    #[error("OutcomeRegistrationConflict: {0}")]
+    OutcomeRegistrationConflict(String),
     /// A prediction registration breaks the one-form, one-source, comparator-iff-metric rule. (`read.settle.registration`)
     #[error("OutcomeRegistrationInvalid: {0}")]
     OutcomeRegistrationInvalid(String),
@@ -65,7 +80,12 @@ impl MemoryError {
             MemoryError::RecallNotClaims(_) => "MemoryRecallNotClaims",
             MemoryError::ShapeColumnMissing(_) => "MemoryShapeColumnMissing",
             MemoryError::UndeclaredRelation(_) => "MemoryUndeclaredRelation",
+            MemoryError::OutcomeAlreadySettled(_) => "OutcomeAlreadySettled",
             MemoryError::OutcomeCitationMissing(_) => "OutcomeCitationMissing",
+            MemoryError::OutcomeMetricReferenceInvalid(_) => "OutcomeMetricReferenceInvalid",
+            MemoryError::OutcomeStatementTooLong(_) => "OutcomeStatementTooLong",
+            MemoryError::OutcomePredictionUnregistered(_) => "OutcomePredictionUnregistered",
+            MemoryError::OutcomeRegistrationConflict(_) => "OutcomeRegistrationConflict",
             MemoryError::OutcomeRegistrationInvalid(_) => "OutcomeRegistrationInvalid",
             MemoryError::OutcomeSourceMismatch(_) => "OutcomeSourceMismatch",
         }

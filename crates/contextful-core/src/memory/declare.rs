@@ -1,4 +1,4 @@
-//! `read.declare`: the five memory table shapes, their canonical columns, and the
+//! `read.declare`: the seven memory table shapes, their canonical columns, and the
 //! relation vocabulary.
 
 use super::MemoryError;
@@ -13,10 +13,15 @@ pub enum Shape {
     Entities,
     Edges,
     Preferences,
+    /// Prediction registrations (`read.declare.settlement-shapes`).
+    Predictions,
+    /// Observed outcomes of registered predictions (`read.declare.settlement-shapes`).
+    Outcomes,
 }
 
 impl Shape {
-    pub const ALL: [Shape; 5] = [Shape::Episodes, Shape::Facts, Shape::Entities, Shape::Edges, Shape::Preferences];
+    pub const ALL: [Shape; 7] =
+        [Shape::Episodes, Shape::Facts, Shape::Entities, Shape::Edges, Shape::Preferences, Shape::Predictions, Shape::Outcomes];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -25,6 +30,8 @@ impl Shape {
             Shape::Entities => "memory_entities",
             Shape::Edges => "memory_edges",
             Shape::Preferences => "memory_preferences",
+            Shape::Predictions => "predictions",
+            Shape::Outcomes => "outcomes",
         }
     }
 
@@ -43,6 +50,10 @@ impl Shape {
             Shape::Entities => &["entity_id", "kind", "name", "aliases"],
             Shape::Edges => &["edge_id", "rel_type", "source_id", "target_id", "evidence"],
             Shape::Preferences => &["preference_id", "subject", "key", "value", "scope"],
+            Shape::Predictions => &[
+                "prediction_id", "subject", "predicted_at", "horizon_secs", "deadline_at", "resolution_source", "comparator", "statement", "metric",
+            ],
+            Shape::Outcomes => &["prediction_id", "observed_at", "verdict", "resolution_source", "signal", "settling_citation", "metric"],
         }
     }
 

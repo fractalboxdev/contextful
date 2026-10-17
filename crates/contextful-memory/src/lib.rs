@@ -4,6 +4,7 @@ pub mod claims;
 pub mod owners;
 pub mod relations;
 pub mod synthesize;
+pub mod settle;
 pub mod write;
 
 use contextful_context::read::ReadFault;

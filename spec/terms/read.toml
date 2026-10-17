@@ -63,6 +63,11 @@ MemoryTraverseHopsExceeded    = { clause = "read.traverse.hop-bound", gloss = "A
 OutcomeRegistrationInvalid    = { clause = "read.settle.registration", gloss = "A prediction registration breaks the one-form, one-source, comparator-iff-metric rule." }
 OutcomeSourceMismatch         = { clause = "read.settle.source-mismatch", gloss = "An observation's verdict carries no source or a source other than the registration's." }
 OutcomeCitationMissing        = { clause = "read.settle.settling-citation", gloss = "A judgment verdict carries no http or https settling citation." }
+OutcomePredictionUnregistered = { clause = "read.settle.prediction-unregistered", gloss = "An observation names a prediction no stored registration the writer reads carries." }
+OutcomeRegistrationConflict   = { clause = "read.settle.registration-conflict", gloss = "A registration reuses a stored prediction id with different fields." }
+OutcomeStatementTooLong       = { clause = "read.settle.statement-bound", gloss = "A registration's statement exceeds its byte bound." }
+OutcomeMetricReferenceInvalid = { clause = "read.settle.metric-reference", gloss = "A registration's metric reference is malformed or names a series under a non-metric source." }
+OutcomeAlreadySettled         = { clause = "read.settle.outcome-settled", gloss = "An observation differs from a stored outcome that already carries a verdict." }
 ReadBoundExceedsHorizon       = { clause = "read.horizon.exceeds-horizon", gloss = "A call's `available_as_of` or `since` falls later than its credential's horizon." }
 ReadIndexBeyondHorizon        = { clause = "read.horizon.rank-statistics", gloss = "A ranking under a horizon reached a sidecar indexing rows available after it." }
 ReadNoBuildWithinHorizon      = { clause = "read.horizon.build-resolution", gloss = "A model table holds no build whose recorded horizon is at or before the credential's." }
@@ -112,5 +117,6 @@ memory-evidence-gate         = { clause = "read.recall.evidence-gate-bound", val
 memory-traverse-hops         = { clause = "read.traverse.hop-bound", value = 3, unit = "hops", basis = "chosen", gloss = "Hops one traversal follows from its seed." }
 memory-traverse-fan-out      = { clause = "read.traverse.fan-out", value = 64, unit = "memory-edges", basis = "chosen", gloss = "Edges one node expands within a traversal." }
 memory-traverse-frontier     = { clause = "read.traverse.frontier-cap", value = 512, unit = "memory-edges", basis = "chosen", gloss = "Edges one traversal reaches before it stops." }
+outcome-statement-bytes      = { clause = "read.settle.statement-bound", value = 4096, unit = "B", basis = "chosen", gloss = "Longest registration statement." }
 outcome-grace-window         = { clause = "read.settle.grace-window", value = 86400, unit = "s", basis = "chosen", gloss = "Inclusive window past a deadline within which an observation is scored." }
 read-subscribe-queue         = { clause = "read.subscribe.overrun", value = 1000, unit = "notifications", basis = "chosen", gloss = "Most notifications a subscription holds undelivered before its terminal overrun message." }
