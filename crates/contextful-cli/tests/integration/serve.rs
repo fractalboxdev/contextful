@@ -515,6 +515,146 @@ fn published_workflows_include_completed_local_runs_before_sync_push() {
     assert_eq!(view["runs"]["filings-flow"]["status"], "success");
 }
 
+/// Three pipelines, two models, a build and a store-driven job, a publication and two
+/// external steps around them.
+const GRAPH_PIPELINES: &str = "[[pipeline]]\nid = \"ingest\"\nschedule = \"every 1h\"\ntables = [\"records\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/ingest\" }\n\n\
+[[pipeline]]\nid = \"normalize\"\nafter = \"ingest\"\ntables = [\"records\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/normalize\" }\n\n\
+[[pipeline]]\nid = \"enrich\"\nschedule = \"every 1d\"\ntables = [\"records\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/enrich\" }\n";
+
+const GRAPH_WORK: &str = "[[model]]\nid = \"daily_summary\"\nsql = \"SELECT id FROM normalize_records\"\nunique_key = [\"id\"]\npublish = false\n\n\
+[[model]]\nid = \"weekly_rollup\"\nsql = \"SELECT id FROM daily_summary\"\nunique_key = [\"id\"]\npublish = false\n\n\
+[[job]]\nname = \"summarize\"\nkind = \"build\"\ntarget = \"daily_summary\"\nafter = \"normalize\"\n\n\
+[[job]]\nname = \"score\"\nkind = \"store-driven\"\nbody = { delegate = \"scorer\" }\nstatement = \"SELECT id FROM enrich_records\"\nmax_in_flight = 2\ntables = [\"scores\"]\n\n\
+[[export]]\nname = \"scores-copy\"\ntable = \"scores\"\nendpoint = \"http://127.0.0.1:1/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n\n\
+[[publication]]\nname = \"scores-feed\"\njob = \"score\"\nmembers = [\"scores-copy\"]\n\n\
+[[external]]\nname = \"review\"\nlabel = \"Analyst review\"\ninputs = [\"table:normalize_records\"]\noutputs = [\"pipeline:enrich\"]\n\n\
+[[external]]\nname = \"dashboard\"\nlabel = \"Team dashboard\"\ninputs = [\"table:weekly_rollup\", \"job:score\"]\n";
+
+// spec: surface.visualize.workflow-canvas@71481a6d
+// spec: surface.visualize.dataflow-edges@1ee8d398
+/// The published workflow lists every pipeline, table, model, job, publication and external
+/// step as a node and joins them by an explicit edge list.
+#[test]
+fn published_workflow_is_a_typed_node_and_edge_graph_with_external_steps() {
+    let (dir, public) = project();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/flow.toml"), GRAPH_PIPELINES).unwrap();
+    let declaration = root.join("contextful.toml");
+    let owner = std::fs::read_to_string(&declaration).unwrap();
+    std::fs::write(&declaration, format!("{owner}\n{GRAPH_WORK}")).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let snapshot: toml::Value = toml::from_str(&std::fs::read_to_string(root.join(".contextful/control/research/manifest@v1.toml")).unwrap()).unwrap();
+    assert_eq!(snapshot["external"].as_array().unwrap().len(), 2, "import retains the external steps");
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+
+    let names = |key: &str, field: &str| -> Vec<String> {
+        view[key].as_array().unwrap_or_else(|| panic!("{key}: {view}")).iter().map(|entry| entry[field].as_str().unwrap().to_string()).collect()
+    };
+    let mut nodes: Vec<String> = Vec::new();
+    nodes.extend(names("pipelines", "id").into_iter().map(|n| format!("pipeline:{n}")));
+    nodes.extend(view["tables"].as_array().unwrap().iter().map(|n| format!("table:{}", n.as_str().unwrap())));
+    nodes.extend(names("models", "id").into_iter().map(|n| format!("model:{n}")));
+    nodes.extend(names("jobs", "name").into_iter().map(|n| format!("job:{n}")));
+    nodes.extend(names("publications", "name").into_iter().map(|n| format!("publication:{n}")));
+    nodes.extend(names("externals", "name").into_iter().map(|n| format!("external:{n}")));
+    nodes.sort();
+    assert_eq!(nodes, [
+        "external:dashboard", "external:review", "job:score", "job:summarize",
+        "model:daily_summary", "model:weekly_rollup", "pipeline:enrich", "pipeline:ingest", "pipeline:normalize",
+        "publication:scores-feed", "table:enrich_records", "table:ingest_records", "table:normalize_records", "table:scores",
+    ]);
+    assert_eq!(view["externals"][0]["label"], "Analyst review");
+
+    let mut edges: Vec<(String, String, String)> = view["edges"].as_array().unwrap().iter()
+        .map(|e| (e["from"].as_str().unwrap().into(), e["to"].as_str().unwrap().into(), e["via"].as_str().unwrap().into()))
+        .collect();
+    edges.sort();
+    let expected: Vec<(String, String, String)> = [
+        ("external:review", "pipeline:enrich", "output"),
+        ("job:score", "external:dashboard", "input"),
+        ("job:score", "publication:scores-feed", "publishes"),
+        ("job:score", "table:scores", "writes"),
+        ("job:summarize", "model:daily_summary", "builds"),
+        ("model:daily_summary", "model:weekly_rollup", "reads"),
+        ("model:weekly_rollup", "external:dashboard", "input"),
+        ("pipeline:enrich", "table:enrich_records", "lands"),
+        ("pipeline:ingest", "pipeline:normalize", "after"),
+        ("pipeline:ingest", "table:ingest_records", "lands"),
+        ("pipeline:normalize", "job:summarize", "after"),
+        ("pipeline:normalize", "table:normalize_records", "lands"),
+        ("table:enrich_records", "job:score", "reads"),
+        ("table:normalize_records", "external:review", "input"),
+        ("table:normalize_records", "model:daily_summary", "reads"),
+    ].into_iter().map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string())).collect();
+    assert_eq!(edges, expected);
+    for edge in &edges {
+        assert!(nodes.contains(&edge.0) && nodes.contains(&edge.1), "{edge:?} joins two published nodes");
+    }
+    assert_eq!(view["runs"], json!({}), "nothing has run, and the engine records no run for an external step");
+    let external_keys: Vec<&String> = view["externals"][1].as_object().unwrap().keys().collect();
+    assert_eq!(external_keys, ["inputs", "label", "name", "outputs"], "an external step carries no kind or schedule");
+}
+
+// spec: surface.apply.external-snapshot@07ad058d
+/// A pipeline-only apply keeps the snapshot's external steps, and the pipeline editor
+/// refuses a store whose snapshot carries them.
+#[test]
+fn a_pipeline_only_apply_preserves_external_steps_and_the_editor_refuses_them() {
+    let (dir, public) = project();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/flow.toml"), GRAPH_PIPELINES).unwrap();
+    let declaration = root.join("contextful.toml");
+    let owner = std::fs::read_to_string(&declaration).unwrap();
+    std::fs::write(&declaration, format!("{owner}\n{GRAPH_WORK}")).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    std::fs::write(root.join("pipelines/flow.toml"), GRAPH_PIPELINES.replace("every 1d", "every 2d")).unwrap();
+    std::fs::write(&declaration, format!("{owner}\n{}", GRAPH_WORK.split("[[external]]").next().unwrap())).unwrap();
+    stdout(&run(root, &["pipeline", "apply", "enrich", "--project", "research"]));
+    let snapshot: toml::Value = toml::from_str(&std::fs::read_to_string(root.join(".contextful/control/research/manifest@v2.toml")).unwrap()).unwrap();
+    assert_eq!(snapshot["external"].as_array().unwrap().len(), 2, "a pipeline-only apply preserves the external steps");
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let edit = json!({ "expected": 2, "document": GRAPH_PIPELINES }).to_string();
+    let (status, refused) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+    assert_eq!(status, 422, "{refused}");
+    assert_eq!(refused["error"]["identifier"], "ApplyValidationRefused");
+    // A full apply from declarations without external steps drops them.
+    stdout(&run(root, &["pipeline", "apply", "--project", "research"]));
+    let snapshot: toml::Value = toml::from_str(&std::fs::read_to_string(root.join(".contextful/control/research/manifest@v3.toml")).unwrap()).unwrap();
+    assert!(snapshot.get("external").is_none());
+}
+
+/// Import refuses an external step naming undeclared work or sharing a step's name, and
+/// claims no version.
+#[test]
+fn import_refuses_an_unbound_or_colliding_external_step() {
+    for (external, identifier) in [
+        ("[[external]]\nname = \"review\"\ninputs = [\"table:missing_records\"]\n", "ExternalStepUnbound"),
+        ("[[external]]\nname = \"review\"\noutputs = [\"pipeline:normalize_records\"]\n", "ExternalStepUnbound"),
+        ("[[external]]\nname = \"score\"\n", "ExternalStepCollision"),
+        ("[[external]]\nname = \"ingest\"\n", "ExternalStepCollision"),
+        ("[[external]]\nname = \"review\"\ncommand = \"make review\"\n", "ApplyValidationRefused"),
+    ] {
+        let (dir, _) = project();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("pipelines")).unwrap();
+        std::fs::write(root.join("pipelines/flow.toml"), GRAPH_PIPELINES).unwrap();
+        let declaration = root.join("contextful.toml");
+        let owner = std::fs::read_to_string(&declaration).unwrap();
+        let work = GRAPH_WORK.split("[[external]]").next().unwrap();
+        std::fs::write(&declaration, format!("{owner}\n{work}\n{external}")).unwrap();
+        let out = run(root, &["pipeline", "import", "--project", "research"]);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success() && stderr.contains(identifier), "{external}: {stderr}");
+        assert!(!root.join(".contextful/control/research/manifest@v1.toml").exists());
+    }
+}
+
 fn post_claim(addr: &str, token: &str, body: &Value, browser_origin: bool) -> (u16, Value) {
     let body = body.to_string();
     let origin = if browser_origin { "Origin: https://console.example\r\n" } else { "" };

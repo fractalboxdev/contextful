@@ -25461,6 +25461,17 @@
       ]
     },
     {
+      "id": "surface.apply.external-snapshot",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "external-snapshot",
+      "kind": "behavior",
+      "statement": "Import and full apply retain validated `[[external]]` declarations in the snapshot; a pipeline-only apply preserves them, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.",
+      "why": "because Admin reads external steps from the applied version, beside the jobs {{surface.fire.job-snapshot}} retains",
+      "file": "spec/70-control-plane.md",
+      "line": 377
+    },
+    {
       "id": "surface.apply.self-valid",
       "contract": "surface",
       "operation": "apply",
@@ -25469,7 +25480,7 @@
       "statement": "Import, apply and adoption validate a snapshot's document, build plans and each job's `after` against that snapshot's own pipelines, so apply signs no head its adoption refuses.",
       "why": "because a signed head failing its own adoption refuses every cold start until a reset",
       "file": "spec/70-control-plane.md",
-      "line": 377
+      "line": 379
     },
     {
       "id": "surface.apply.draft-claim",
@@ -25480,7 +25491,7 @@
       "statement": "An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 379
+      "line": 381
     },
     {
       "id": "surface.apply.operator-attestation",
@@ -25491,7 +25502,7 @@
       "statement": "An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.",
       "why": "because a shared store capability cannot identify the person who used the console",
       "file": "spec/70-control-plane.md",
-      "line": 381
+      "line": 383
     },
     {
       "id": "surface.apply.draft-table-contracts",
@@ -25502,7 +25513,7 @@
       "statement": "Pipeline editing preserves standalone table metadata from the draft's expected immutable version; apply regenerates that metadata and refuses an altered saved draft under {{surface.apply.validation}} before advancing the pointer.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 383
+      "line": 385
     },
     {
       "id": "surface.apply.draft-absent",
@@ -25513,7 +25524,7 @@
       "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
       "why": "because an absent draft supplies no document for the version claim",
       "file": "spec/70-control-plane.md",
-      "line": 385
+      "line": 387
     },
     {
       "id": "surface.apply.served-admin-grant",
@@ -25524,7 +25535,7 @@
       "statement": "A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.",
       "why": "because the control document arms work over every table and tenant of the store",
       "file": "spec/70-control-plane.md",
-      "line": 387
+      "line": 389
     },
     {
       "id": "surface.apply.served-malformed",
@@ -25535,7 +25546,7 @@
       "statement": "A served Admin edit or apply whose body is not a JSON object holding exactly its route's fields raises `ControlRequestMalformed`, answered `400`, and changes nothing.",
       "why": "because an absent or extra field leaves the operator's intended version or draft ambiguous",
       "file": "spec/70-control-plane.md",
-      "line": 389
+      "line": 391
     },
     {
       "id": "surface.apply.served-unavailable",
@@ -25546,7 +25557,7 @@
       "statement": "A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.",
       "why": "because a storage or owner fault message can disclose paths and endpoints to the console",
       "file": "spec/70-control-plane.md",
-      "line": 391
+      "line": 393
     },
     {
       "id": "surface.reside.region-entries",
@@ -25557,7 +25568,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 438
+      "line": 440
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -25568,7 +25579,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 439
+      "line": 441
     },
     {
       "id": "surface.reside.site-regions",
@@ -25579,7 +25590,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 441
+      "line": 443
     },
     {
       "id": "surface.open-console.page-routes",
@@ -25773,10 +25784,65 @@
       "operation": "visualize",
       "subject": "workflow-canvas",
       "kind": "behavior",
-      "statement": "Admin projects store-published pipelines, schedules, steps, dataflow and run outcomes, and shows store-owned annotations for surrounding work.",
+      "statement": "Admin projects the store-published pipelines, jobs, models, publications and external steps as one node–edge graph under {{surface.visualize.dataflow-edges}}, with each pipeline's schedule, steps and latest run outcome.",
       "why": "A-surface",
       "file": "spec/71-console.md",
       "line": 144
+    },
+    {
+      "id": "surface.visualize.dataflow-edges",
+      "contract": "surface",
+      "operation": "visualize",
+      "subject": "dataflow-edges",
+      "kind": "behavior",
+      "statement": "The published workflow lists edges `{from, to, via}` between typed node ids: pipeline and build-job `after`, pipeline to produced table, table or model to its reading model or job, build job to model, job to written table and publication.",
+      "why": "because a graph the client infers from names draws edges the store never declared",
+      "file": "spec/71-console.md",
+      "line": 146
+    },
+    {
+      "id": "surface.visualize.external-step",
+      "contract": "surface",
+      "operation": "visualize",
+      "subject": "external-step",
+      "kind": "behavior",
+      "statement": "Admin draws each `[[external]]` declaration as a node marked as run outside the engine, joined by its inputs and outputs; the engine runs, schedules and records nothing for it.",
+      "why": "because work around the store belongs on the canvas without becoming a job kind {{surface.fire.job-kind-unknown}} refuses",
+      "file": "spec/71-console.md",
+      "line": 148
+    },
+    {
+      "id": "surface.visualize.external-shape",
+      "contract": "surface",
+      "operation": "visualize",
+      "subject": "external-shape",
+      "kind": "behavior",
+      "statement": "An `[[external]]` declares `name`, optional `label`, and `inputs` and `outputs` of typed references `table:<name>`, `pipeline:<id>` or `job:<name>`; any other key fails {{surface.apply.validation}}.",
+      "why": "because a typed reference keeps a table and a pipeline sharing a name distinct, and no command key makes it runnable",
+      "file": "spec/71-console.md",
+      "line": 150
+    },
+    {
+      "id": "surface.visualize.external-unbound",
+      "contract": "surface",
+      "operation": "visualize",
+      "subject": "external-unbound",
+      "kind": "refusal",
+      "statement": "An `[[external]]` input or output lacking a `table:`, `pipeline:` or `job:` prefix, or naming no declared table, model, pipeline or job, raises `ExternalStepUnbound` at validation.",
+      "why": "because an edge to nothing draws a line the operator cannot trace",
+      "file": "spec/71-console.md",
+      "line": 152
+    },
+    {
+      "id": "surface.visualize.external-collision",
+      "contract": "surface",
+      "operation": "visualize",
+      "subject": "external-collision",
+      "kind": "refusal",
+      "statement": "An `[[external]]` whose `name` repeats another external's name, a job's name or a pipeline's id raises `ExternalStepCollision` at validation.",
+      "why": "because one name labelling two graph nodes leaves the reader to guess which one ran",
+      "file": "spec/71-console.md",
+      "line": 154
     },
     {
       "id": "surface.visualize.operational-record",
@@ -25787,7 +25853,7 @@
       "statement": "Admin's inspector, pack file surface and learnings view present the store-published operational record.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 146
+      "line": 156
     },
     {
       "id": "surface.visualize.listing-page",
@@ -25798,7 +25864,7 @@
       "statement": "One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 148
+      "line": 158
     },
     {
       "id": "surface.package.stdio-credential",
@@ -25809,7 +25875,7 @@
       "statement": "The process transport requires a verified capability token; `--owner` selects its signed owner claim. An absent token raises `StdioCredentialMissing` before protocol framing and never resolves to owner context.",
       "why": "A-read",
       "file": "spec/71-console.md",
-      "line": 154
+      "line": 164
     },
     {
       "id": "surface.package.store-selector",
@@ -25820,7 +25886,7 @@
       "statement": "The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.",
       "why": "A-topology",
       "file": "spec/71-console.md",
-      "line": 156
+      "line": 166
     },
     {
       "id": "surface.package.owner-flag",
@@ -25831,7 +25897,7 @@
       "statement": "A process `--owner` admits the local owner context only with a verified signed claim bound to the selected store and an unrestricted read grant; any other credential raises `OwnerCredentialInvalid` before protocol framing.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 158
+      "line": 168
     },
     {
       "id": "surface.speak.redactor-lookahead",
@@ -25842,7 +25908,7 @@
       "statement": "The streaming redactor buffers 128 chars across each chunk boundary, and no denylist entry is longer than the buffer.",
       "why": "because an identifier split between two chunks otherwise passes unredacted",
       "file": "spec/71-console.md",
-      "line": 198
+      "line": 208
     },
     {
       "id": "surface.speak.unanswerable-suggestion",
@@ -25853,7 +25919,7 @@
       "statement": "A suggested prompt whose answer under these rules is a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 200
+      "line": 210
     },
     {
       "id": "surface.speak.stream-redaction",
@@ -25864,7 +25930,7 @@
       "statement": "The server redacts each streamed model chunk before Query emits prose to the operator.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 202
+      "line": 212
     },
     {
       "id": "surface.ground.ungrounded-answer",
@@ -25875,7 +25941,7 @@
       "statement": "A path composing answer prose in a turn holding no tool result raises `ConsoleUngroundedAnswer`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 209
+      "line": 219
     },
     {
       "id": "surface.ground.unadmitted-tool",
@@ -25886,7 +25952,7 @@
       "statement": "A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 211
+      "line": 221
     },
     {
       "id": "surface.ground.mutating-tool",
@@ -25897,7 +25963,7 @@
       "statement": "The console's query endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 213
+      "line": 223
     },
     {
       "id": "surface.ground.org-face-read-only",
@@ -25908,7 +25974,7 @@
       "statement": "A pack registering a write tool on an organization-wide face raises `ConsoleWriteToolOnOrgFace` at startup, naming the pack and the tool, and the face serves nothing.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 215
+      "line": 225
     },
     {
       "id": "surface.ground.direct-file-read",
@@ -25919,7 +25985,7 @@
       "statement": "A table function resolving a path straight against stored bytes raises `ConsoleFileAccessDirect` on this surface.",
       "why": "P5",
       "file": "spec/71-console.md",
-      "line": 217
+      "line": 227
     },
     {
       "id": "surface.ground.mint-refused",
@@ -25930,7 +25996,7 @@
       "statement": "A refused mint raises `ConsoleTokenExchangeRefused`. A store carrying a shared credential falls back to it; one carrying none surfaces the refusal to the reader.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 219
+      "line": 229
     },
     {
       "id": "surface.ground.sources-per-turn",
@@ -25941,7 +26007,7 @@
       "statement": "A source list carries at most 8 entries.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 221
+      "line": 231
     },
     {
       "id": "surface.ground.sources-block",
@@ -25952,7 +26018,7 @@
       "statement": "Every grounded answer includes a sources block citing only the governed results its admitted read tools returned.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 222
+      "line": 232
     },
     {
       "id": "surface.plan-turn.planner-reached-memory",
@@ -25963,7 +26029,7 @@
       "statement": "Scaffolding and every deterministic fallback cover data tables; scaffolding naming a memory relation raises `ConsolePlannerReachedMemory`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 261
+      "line": 271
     },
     {
       "id": "surface.plan-turn.code-path-bounds",
@@ -25974,7 +26040,7 @@
       "statement": "The code path reads at most 5000 rows per data table and stops after 10 s.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 263
+      "line": 273
     },
     {
       "id": "surface.plan-turn.overlay-cache",
@@ -25985,7 +26051,7 @@
       "statement": "The overlay caches for 5 min, a miss included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 264
+      "line": 274
     },
     {
       "id": "surface.plan-turn.overlay-length",
@@ -25996,7 +26062,7 @@
       "statement": "An overlay is truncated at 8000 chars.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 265
+      "line": 275
     },
     {
       "id": "surface.plan-turn.turn-flow",
@@ -26007,7 +26073,7 @@
       "statement": "A Query turn plans over admitted read tools, replans once after an unanswered first round, and synthesizes from the resulting governed rows.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 266
+      "line": 276
     },
     {
       "id": "surface.plan-turn.overlay-audience",
@@ -26018,7 +26084,7 @@
       "statement": "A store's prompt overlay reaches the operator-facing synthesis text and stays outside the planner's text.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 268
+      "line": 278
     },
     {
       "id": "surface.set-vantage.unparseable",
@@ -26029,7 +26095,7 @@
       "statement": "A vantage that is neither a calendar day nor an instant raises `ConsoleVantageUnparseable`, answered `400`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 275
+      "line": 285
     },
     {
       "id": "surface.set-vantage.web-bound-unparseable",
@@ -26040,7 +26106,7 @@
       "statement": "A web leg whose bound fails to parse fails that leg and raises `ConsoleWebBoundUnparseable`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 277
+      "line": 287
     },
     {
       "id": "surface.set-vantage.sample-labels",
@@ -26051,7 +26117,7 @@
       "statement": "A table's arrivals contribute at most 3 entries of sampled label.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 279
+      "line": 289
     },
     {
       "id": "surface.browse.discovered-chips",
@@ -26062,7 +26128,7 @@
       "statement": "Query builds pre-question chips from described tables admitted to the reader's zone and humanizes their table labels.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 285
+      "line": 295
     },
     {
       "id": "surface.browse.insights-panel",
@@ -26073,7 +26139,7 @@
       "statement": "The insights panel presents row counts returned by the reader's table descriptions.",
       "why": "because a row count from the read face already reflects the reader's relation",
       "file": "spec/71-console.md",
-      "line": 287
+      "line": 297
     },
     {
       "id": "surface.browse.file-gallery",
@@ -26084,7 +26150,7 @@
       "statement": "The file gallery presents only paths returned by the reader's governed file listing and previews them through the read face.",
       "why": "P5",
       "file": "spec/71-console.md",
-      "line": 289
+      "line": 299
     },
     {
       "id": "surface.browse.gallery-path-unlisted",
@@ -26095,7 +26161,7 @@
       "statement": "A gallery preview naming a path absent from the governed file listing under the request's `as_of` raises `ConsoleGalleryPathUnlisted` before preview dispatch.",
       "why": "because the browser must not turn an arbitrary path into a store read",
       "file": "spec/71-console.md",
-      "line": 291,
+      "line": 301,
       "scenarios": [
         "WHEN a Query client requests a path absent from the reader's bound file listing, THEN it raises `ConsoleGalleryPathUnlisted` without a preview call."
       ]
@@ -26109,7 +26175,7 @@
       "statement": "After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 302
+      "line": 312
     },
     {
       "id": "surface.learn.unscoped",
@@ -26120,7 +26186,7 @@
       "statement": "A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 303
+      "line": 313
     },
     {
       "id": "surface.learn.write-refused",
@@ -26131,7 +26197,7 @@
       "statement": "A served claim write that refuses or returns no scope-bound receipt raises `ConsoleLearningWriteRefused` to Query before answer publication.",
       "why": "because a failed write cannot count as a durable learning",
       "file": "spec/71-console.md",
-      "line": 305
+      "line": 315
     },
     {
       "id": "surface.learn.subject-resolution",
@@ -26142,7 +26208,7 @@
       "statement": "Distillation preserves the subject it observes; recall resolves that subject through entity matching.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 307
+      "line": 317
     },
     {
       "id": "surface.render.client-authored-view",
@@ -26153,7 +26219,7 @@
       "statement": "A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 314
+      "line": 324
     },
     {
       "id": "surface.render.component-choice",
@@ -26164,7 +26230,7 @@
       "statement": "One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 316
+      "line": 326
     },
     {
       "id": "surface.render.older-transcript",
@@ -26175,7 +26241,7 @@
       "statement": "A client reading a transcript with an unknown component-union member renders its view as a table.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 317
+      "line": 327
     },
     {
       "id": "surface.brief.absence-is-earned",
@@ -26186,7 +26252,7 @@
       "statement": "The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 353
+      "line": 363
     },
     {
       "id": "surface.brief.topic-tier",
@@ -26197,7 +26263,7 @@
       "statement": "The topic tier needs at least 2 tokens shared between the conclusion's subject and text and the row's label and topics, one of them naming the subject.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 355
+      "line": 365
     },
     {
       "id": "surface.brief.card-subjects",
@@ -26208,7 +26274,7 @@
       "statement": "A card carries at most 3 subjects.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 356
+      "line": 366
     },
     {
       "id": "surface.brief.articles-per-subject",
@@ -26219,7 +26285,7 @@
       "statement": "A subject carries at most 3 entries of matched article.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 357
+      "line": 367
     },
     {
       "id": "surface.brief.catchup-window",
@@ -26230,7 +26296,7 @@
       "statement": "The backend caps the requested window at 7 d.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 358
+      "line": 368
     },
     {
       "id": "surface.brief.greeting",
@@ -26241,7 +26307,7 @@
       "statement": "Query derives a greeting card from arrived rows matching live conclusions in a turnless present-time session.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 359
+      "line": 369
     },
     {
       "id": "surface.publish-answer.share-affordance",
@@ -26252,7 +26318,7 @@
       "statement": "A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 366
+      "line": 376
     },
     {
       "id": "surface.publish-answer.askerless-audience",
@@ -26263,7 +26329,7 @@
       "statement": "A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 368
+      "line": 378
     },
     {
       "id": "surface.publish-answer.one-operator-principal",
@@ -26274,7 +26340,7 @@
       "statement": "An answer uses one operator's credential; the console offers no room-intersection principal.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 370
+      "line": 380
     },
     {
       "id": "assurance.model.package",
@@ -32625,7 +32691,19 @@
       "surface.apply.self-valid"
     ],
     [
+      "surface.apply.external-snapshot",
+      "surface.apply.validation"
+    ],
+    [
       "surface.apply.draft-table-contracts",
+      "surface.apply.validation"
+    ],
+    [
+      "surface.visualize.workflow-canvas",
+      "surface.visualize.dataflow-edges"
+    ],
+    [
+      "surface.visualize.external-shape",
       "surface.apply.validation"
     ],
     [
@@ -38287,6 +38365,14 @@
           "EnforceRegionMismatch": {
             "clause": "surface.reside.region-mismatch",
             "gloss": "A configured resource resolving outside the residency allow-set."
+          },
+          "ExternalStepCollision": {
+            "clause": "surface.visualize.external-collision",
+            "gloss": "An external step name repeating another external, a job or a pipeline."
+          },
+          "ExternalStepUnbound": {
+            "clause": "surface.visualize.external-unbound",
+            "gloss": "An external step input or output naming no declared table, model, pipeline or job."
           },
           "JobBodyUnregistered": {
             "clause": "surface.fire.store-driven-body",

@@ -374,6 +374,8 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
   *because a restart on a warm disk runs import before apply, and a refusal there stops the restart*
 - `adopt-before-claim` — Import or apply over a snapshot directory holding no version first adopts a pulled head verified under {{surface.reconcile.issuer-pin}} against the verb's `--public-key` and meeting {{surface.apply.self-valid}}, though the declarations drop its pipelines or jobs; an import that adopts claims nothing.
   *because a replacement host claiming a fresh v1 diverges from the bucket's signed head, and the claim that follows removes what a release dropped*
+- `external-snapshot` — Import and full apply retain validated `[[external]]` declarations in the snapshot; a pipeline-only apply preserves them, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.
+  *because Admin reads external steps from the applied version, beside the jobs {{surface.fire.job-snapshot}} retains*
 - `self-valid` — Import, apply and adoption validate a snapshot's document, build plans and each job's `after` against that snapshot's own pipelines, so apply signs no head its adoption refuses.
   *because a signed head failing its own adoption refuses every cold start until a reset*
 - `draft-claim` — An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.

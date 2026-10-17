@@ -141,8 +141,18 @@ Which stores a deployment serves, how each store's credential and binding names 
 
 The Admin page's operational views.
 
-- `workflow-canvas` — Admin projects store-published pipelines, schedules, steps, dataflow and run outcomes, and shows store-owned annotations for surrounding work.
+- `workflow-canvas` — Admin projects the store-published pipelines, jobs, models, publications and external steps as one node–edge graph under {{surface.visualize.dataflow-edges}}, with each pipeline's schedule, steps and latest run outcome.
   *A-surface*
+- `dataflow-edges` — The published workflow lists edges `{from, to, via}` between typed node ids: pipeline and build-job `after`, pipeline to produced table, table or model to its reading model or job, build job to model, job to written table and publication.
+  *because a graph the client infers from names draws edges the store never declared*
+- `external-step` — Admin draws each `[[external]]` declaration as a node marked as run outside the engine, joined by its inputs and outputs; the engine runs, schedules and records nothing for it.
+  *because work around the store belongs on the canvas without becoming a job kind {{surface.fire.job-kind-unknown}} refuses*
+- `external-shape` — An `[[external]]` declares `name`, optional `label`, and `inputs` and `outputs` of typed references `table:<name>`, `pipeline:<id>` or `job:<name>`; any other key fails {{surface.apply.validation}}.
+  *because a typed reference keeps a table and a pipeline sharing a name distinct, and no command key makes it runnable*
+- `external-unbound` — An `[[external]]` input or output lacking a `table:`, `pipeline:` or `job:` prefix, or naming no declared table, model, pipeline or job, raises `ExternalStepUnbound` at validation.
+  *because an edge to nothing draws a line the operator cannot trace*
+- `external-collision` — An `[[external]]` whose `name` repeats another external's name, a job's name or a pipeline's id raises `ExternalStepCollision` at validation.
+  *because one name labelling two graph nodes leaves the reader to guess which one ran*
 - `operational-record` — Admin's inspector, pack file surface and learnings view present the store-published operational record.
   *A-surface*
 - `listing-page` — One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve.
@@ -390,6 +400,26 @@ A store registry entry, and the names derived from it:
 ```
 secret   FIELD_NOTES_QUERY_TOKEN
 binding  FIELD_NOTES
+```
+
+An external step, and the edges it adds to the published workflow:
+
+```toml
+[[external]]
+name    = "review"
+label   = "Analyst review"
+inputs  = ["table:normalize_records"]
+outputs = ["pipeline:enrich"]
+```
+
+```json
+{
+  "externals": [{ "name": "review", "label": "Analyst review", "inputs": ["table:normalize_records"], "outputs": ["pipeline:enrich"] }],
+  "edges": [
+    { "from": "table:normalize_records", "to": "external:review", "via": "input" },
+    { "from": "external:review", "to": "pipeline:enrich", "via": "output" }
+  ]
+}
 ```
 
 A tool return, split three ways:

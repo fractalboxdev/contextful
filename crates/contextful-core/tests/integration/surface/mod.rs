@@ -6,5 +6,6 @@ mod control;
 mod delegate;
 mod dispatch;
 mod edit;
+mod external;
 mod reside;
 mod worker;
