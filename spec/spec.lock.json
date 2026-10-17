@@ -22161,6 +22161,17 @@
       "line": 345
     },
     {
+      "id": "authority.place.row-zone-column",
+      "contract": "authority",
+      "operation": "place",
+      "subject": "row-zone-column",
+      "kind": "behavior",
+      "statement": "A table's `policy.zone.column` names a column whose value, one allow-set entry, narrows its row's set as a column's set narrows its table's; a null keeps the table's set, and an unparsed value admits no zone.",
+      "why": "because the store owner declares the column in the table's policy and its value only narrows, unlike the binding's advisory key {{run.bind.advisory-zone}} refuses",
+      "file": "spec/51-enforcement.md",
+      "line": 347
+    },
+    {
       "id": "authority.place.excluded-row",
       "contract": "authority",
       "operation": "place",
@@ -22169,7 +22180,7 @@
       "statement": "Where the table's effective set omits the session's zone, the row leaves the result.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 347
+      "line": 349
     },
     {
       "id": "authority.place.excluded-cell",
@@ -22180,7 +22191,7 @@
       "statement": "A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 349
+      "line": 351
     },
     {
       "id": "authority.place.per-principal",
@@ -22191,7 +22202,7 @@
       "statement": "A `[[principal]]` allow-set narrows every row whose `_authored_agent` or `_authored_by` equals its `id`, wherever the row lands; a row whose authors no principal lists keeps its table's set.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 351
+      "line": 353
     },
     {
       "id": "authority.place.unauthored-row",
@@ -22202,7 +22213,7 @@
       "statement": "A row the engine landed with no authenticated subject takes its table's set; only a row whose author the engine cannot verify resolves as an undeclared zone.",
       "why": "because a pipeline-landed row carries no author to narrow by, and treating it as undeclared withholds every such row from any table not admitting `*`",
       "file": "spec/51-enforcement.md",
-      "line": 353
+      "line": 355
     },
     {
       "id": "authority.place.evidence-floor",
@@ -22213,7 +22224,7 @@
       "statement": "A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 355
+      "line": 357
     },
     {
       "id": "authority.place.empty-evidence",
@@ -22224,7 +22235,7 @@
       "statement": "A synthesized row naming no evidence table raises `EnforceEvidenceListEmpty` and resolves to the fail-closed pair of {{authority.place.fail-closed}}.",
       "why": "because an empty list intersects to every zone, and a row citing nothing then resolves to the widest set",
       "file": "spec/51-enforcement.md",
-      "line": 357
+      "line": 359
     },
     {
       "id": "authority.place.incognito",
@@ -22235,7 +22246,7 @@
       "statement": "Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included. `contextful mcp --incognito` serves a credential signing no zone at `local:device` and refuses one signing a zone outside `[local:device, on-prem:*]`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 359
+      "line": 361
     },
     {
       "id": "authority.place.incognito-widening",
@@ -22246,7 +22257,7 @@
       "statement": "A session asserting a zone wider than the incognito pin, or an incognito `contextful token mint` signing one, raises `EnforceIncognitoWidening`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 361
+      "line": 363
     },
     {
       "id": "authority.place.team-default",
@@ -22257,7 +22268,7 @@
       "statement": "`[project.zone]` declares `default`, `users_may_widen` and `incognito_default`; `contextful token mint` naming no `--zone` signs `default`, and under `incognito_default = true` mints incognito.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 363
+      "line": 365
     },
     {
       "id": "authority.place.default-widened",
@@ -22268,7 +22279,7 @@
       "statement": "Under `users_may_widen = false`, a `contextful token mint` signing a zone other than the project's `default` or `local:device` raises `EnforceZoneDefaultWidened`, naming both.",
       "why": "because a default any minter replaces bounds nothing the project owner chose",
       "file": "spec/51-enforcement.md",
-      "line": 365
+      "line": 367
     },
     {
       "id": "authority.place.serve-outcome",
@@ -22279,7 +22290,7 @@
       "statement": "Serving one row yields a drop flag and the list of zone-masked columns.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 367
+      "line": 369
     },
     {
       "id": "authority.place.envelope",
@@ -22290,7 +22301,7 @@
       "statement": "A response envelope carries the zone's removals, the asserted zone and the incognito flag in {{read.respond.restriction-block}}, and no removed value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 369
+      "line": 371
     },
     {
       "id": "authority.place.excluded-disclosed",
@@ -22301,7 +22312,7 @@
       "statement": "`rows_dropped` counts the rows the zone step removes from the whole relation, every earlier step applied; the caller's statement, filter and requested size never enter it, and no removed value crosses.",
       "why": "A-read",
       "file": "spec/51-enforcement.md",
-      "line": 371
+      "line": 373
     },
     {
       "id": "authority.place.symbolic-inclusion",
@@ -22312,7 +22323,7 @@
       "statement": "Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 373
+      "line": 375
     },
     {
       "id": "authority.place.proxy-boundary",
@@ -22323,7 +22334,7 @@
       "statement": "A proxy replica resolves zones at the proxy boundary.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 375
+      "line": 377
     },
     {
       "id": "authority.place.allow-set-entries",
@@ -22334,7 +22345,7 @@
       "statement": "An allow-set holds at most 32 entries.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 377
+      "line": 379
     },
     {
       "id": "authority.place.identifier-length",
@@ -22345,7 +22356,7 @@
       "statement": "A zone identifier holds at most 128 chars.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 379
+      "line": 381
     },
     {
       "id": "authority.resist.credential-shaped-value",
@@ -22356,7 +22367,7 @@
       "statement": "A claim write, direct or synthesized, raises `EnforceCredentialShapedValue` on a field matching a credential shape, before it reaches storage.",
       "why": "A-read",
       "file": "spec/51-enforcement.md",
-      "line": 408
+      "line": 410
     },
     {
       "id": "authority.resist.read-only-face",
@@ -22367,7 +22378,7 @@
       "statement": "An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.",
       "why": "A-surface",
       "file": "spec/51-enforcement.md",
-      "line": 410
+      "line": 412
     },
     {
       "id": "authority.resist.write-tool",
@@ -22378,7 +22389,7 @@
       "statement": "Registering a write tool on an organization-wide face raises `EnforceWriteOnReadOnlyFace`.",
       "why": "A-surface",
       "file": "spec/51-enforcement.md",
-      "line": 412
+      "line": 414
     },
     {
       "id": "disclosure.mirror.unbound-table",

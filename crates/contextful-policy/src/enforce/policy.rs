@@ -31,7 +31,13 @@ struct RawPolicy {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawZone {
-    allow: Vec<String>,
+    /// Absent, the table resolves to the fail-closed pair (`authority.place.fail-closed`).
+    #[serde(default)]
+    allow: Option<Vec<String>>,
+    /// The column whose per-row entry narrows the table's set
+    /// (`authority.place.row-zone-column`).
+    #[serde(default)]
+    column: Option<String>,
     /// Protected classes or columns whose floor this declaration lifts, each by name.
     #[serde(default)]
     protected_class_override: Vec<String>,
@@ -96,6 +102,8 @@ pub struct TablePolicy {
     pub placement: Placement,
     /// The classes and columns the zone declaration's override names.
     pub overrides: Vec<String>,
+    /// The column whose value narrows each row's set (`authority.place.row-zone-column`).
+    pub zone_column: Option<String>,
     pub rows: Option<RowPolicy>,
     pub replicate: Option<bool>,
     /// The per-table row ceiling published as `limits.max_rows`.
@@ -137,10 +145,13 @@ impl TablePolicy {
             Some(Value::String(c)) => Some(super::mask::class(c)?),
             Some(other) => return Err(DeclarationMalformed(format!("table `{}`: class {other} is not a string", decl.name)).into()),
         };
-        let (declared, overrides) = match raw.zone {
-            Some(z) => (Some(AllowSet::parse(&z.allow)?), z.protected_class_override),
-            None => (None, Vec::new()),
+        let (declared, overrides, zone_column) = match raw.zone {
+            Some(z) => (z.allow.as_deref().map(AllowSet::parse).transpose()?, z.protected_class_override, z.column),
+            None => (None, Vec::new(), None),
         };
+        if let Some(c) = zone_column.as_deref().filter(|c| c.trim().is_empty()) {
+            return Err(DeclarationMalformed(format!("table `{}`: policy.zone.column `{c}` names no column", decl.name)).into());
+        }
         let protected_override = table_class.is_some_and(|c| overrides.iter().any(|o| o == c.name));
         let placement = Placement { declared, protected: table_class.is_some_and(|c| c.protected()), protected_override };
         placement.check(&format!("table {}", decl.name))?;
@@ -180,6 +191,7 @@ impl TablePolicy {
             columns,
             placement,
             overrides,
+            zone_column,
             rows,
             replicate: raw.redistribution.map(|r| r.replicate),
             max_rows: raw.limits.as_ref().and_then(|l| l.max_rows),
