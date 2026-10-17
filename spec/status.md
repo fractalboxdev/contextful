@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 557 | 127 | 45 | 17 | 525 | 0 | 525 |
 | `store` | 3 | 19 | 297 | 64 | 15 | 10 | 286 | 0 | 286 |
-| `surface` | 2 | 21 | 171 | 66 | 24 | 0 | 145 | 0 | 145 |
+| `surface` | 2 | 21 | 173 | 67 | 24 | 0 | 147 | 0 | 147 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2690 | 680 | 214 | 75 | 2405 | 0 | |
+| **total** | 22 | 169 | 2692 | 681 | 214 | 75 | 2407 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 106 | 94 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 108 | 96 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 61 | 49 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
@@ -2296,6 +2296,8 @@ Unscheduled operations: 13.
 | `surface.dispatch.fire-credential-inherited` | `crates/contextful-cli/tests/integration/job.rs::scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart` | performed |
 | `surface.dispatch.fire-credential-lifetime` | `crates/contextful-cli/tests/integration/job.rs::an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables` | performed |
 | `surface.dispatch.fire-credential-missing` | `crates/contextful-cli/tests/integration/job.rs::a_serve_scheduling_a_store_driven_job_without_key_or_credential_refuses_at_start` | performed |
+| `surface.dispatch.fire-credential-zone` | `crates/contextful-cli/tests/integration/memory.rs::an_issuer_key_serve_in_a_project_declaring_no_default_zone_refuses_at_start` | performed |
+| `surface.dispatch.fire-reach` | `crates/contextful-core/tests/integration/job.rs::a_synthesize_fire_reaches_its_source_claims_and_entities_tables` | performed |
 | `surface.dispatch.heartbeat-beat` | `crates/contextful-engine/tests/integration/worker.rs::a_beating_worker_keeps_its_step_and_its_callback_completes_it` | performed |
 | `surface.dispatch.heartbeat-lapse` | `crates/contextful-engine/tests/integration/worker.rs::killing_a_worker_mid_step_reschedules_it_once_and_fences_the_late_callback` | performed |
 | `surface.dispatch.lease-gated` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_under_a_running_daemon_arms_nothing_and_names_the_holder` | performed |

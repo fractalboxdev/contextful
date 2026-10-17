@@ -2,6 +2,7 @@
 //! declaration.
 
 use contextful_core::job::{parse_jobs, JobError, JobKind, KINDS, PLAN, STORE_DRIVEN, SYNTHESIZE};
+use contextful_core::memory::declare::MemoryDeclarations;
 
 fn registered(name: &str) -> bool {
     name == "score"
@@ -201,4 +202,23 @@ fn registered_dependencies_hash_public_semantics_and_refuse_endpoint_credentials
     assert_ne!(a,BodyDependencies::new(b"prompt-a",&configured,b"policy-a"));
     let manifest="[[job]]\nname='score'\nkind='store-driven'\nbody='score'\nstatement='select * from docs'\nmax_in_flight=2\ntables=['scores']\nimplementation_digest='forged'\n";
     assert!(contextful_core::job::parse_jobs(manifest,&|_|true).is_err());
+}
+
+/// A synthesize fire reads its source, its claims table and the declared entities table,
+/// and writes its claims table alone.
+// spec: surface.dispatch.fire-reach@20e103a7
+#[test]
+fn a_synthesize_fire_reaches_its_source_claims_and_entities_tables() {
+    let block = "[[job]]\nname = \"s\"\nkind = \"synthesize\"\ntarget = \"memory/facts\"\nsource = \"research/notes\"\nendpoint = \"http://127.0.0.1:9/v1\"\nmodel = \"m\"\n";
+    let jobs = parse_jobs(block, &registered).unwrap();
+    let facts = "[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+    let entities = "[[table]]\nname = \"memory/entities\"\nshape = \"memory_entities\"\ncolumns = [\"entity_id\", \"kind\", \"name\", \"aliases\"]\n";
+    let reach = |manifest: &str| jobs[0].reach(&MemoryDeclarations::parse(manifest).unwrap()).unwrap();
+    let alone = reach(facts);
+    assert_eq!((alone.read.as_slice(), alone.write.as_slice()), (["research/notes".to_string(), "memory/facts".to_string()].as_slice(), ["memory/facts".to_string()].as_slice()));
+    let resolved = reach(&format!("{facts}{entities}"));
+    assert_eq!(resolved.read, ["research/notes", "memory/facts", "memory/entities"]);
+    assert_eq!(resolved.write, ["memory/facts"]);
+    let store = parse_jobs(&store_driven("max_in_flight = 1\n"), &registered).unwrap();
+    assert!(store[0].reach(&MemoryDeclarations::parse(facts).unwrap()).is_none(), "a store-driven job's reads come from its statement");
 }
