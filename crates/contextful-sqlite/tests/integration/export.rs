@@ -276,3 +276,27 @@ fn sealed_export_refuses_plaintext_and_corrupt_envelopes_without_fallback() {
     assert!(ExportLedger::open_sealed(&sealed_path, cipher()).is_err());
     assert_eq!(std::fs::read(&sealed_path).unwrap(), corrupted);
 }
+
+/// The sqlite and D1 publication ledgers keep 1 completion per publication, the latest: the latest run recorded again with different bytes refuses, and a completion naming another run replaces it.
+// spec: run.export.group-source-latest@0e86a410
+#[test]
+fn the_publication_ledger_keeps_only_the_latest_completion() {
+    use contextful_sqlite::{PublicationLedger, SourcePublication};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("machine.sqlite");
+    let ledger = PublicationLedger::open(&path).unwrap();
+    let completion = |run: &str, frontier: &str| SourcePublication { run: run.into(), input: json!({"build": run}), frontiers: [("items".into(), frontier.into())].into() };
+    for i in 0..50 {
+        ledger.record_source("projection", &completion(&format!("run-{i}"), &format!("f{i}"))).unwrap();
+    }
+    let rows = |role: &str| -> i64 {
+        rusqlite::Connection::open(&path).unwrap()
+            .query_row("SELECT count(*) FROM coordinated_publication WHERE role = ?1 AND name = 'projection'", [role], |r| r.get(0)).unwrap()
+    };
+    assert_eq!(rows("source-history"), 1);
+    assert_eq!(ledger.source("projection").unwrap(), Some(completion("run-49", "f49")));
+    // The latest run recorded again must carry identical bytes.
+    ledger.record_source("projection", &completion("run-49", "f49")).unwrap();
+    assert!(ledger.record_source("projection", &completion("run-49", "other")).is_err());
+    assert_eq!(ledger.source("projection").unwrap(), Some(completion("run-49", "f49")));
+}

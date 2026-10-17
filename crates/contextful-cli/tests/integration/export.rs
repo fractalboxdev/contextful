@@ -197,7 +197,7 @@ fn a_coordinated_export_sends_a_digest_of_a_large_producer_input() {
     let pointer = store.pointer("spans").unwrap().map(|(p,_)|p.snapshot_id.to_string());
     use sha2::{Digest,Sha256};
     let frontier = format!("{:x}",Sha256::digest(serde_json::to_vec(&(pointer,runs)).unwrap()));
-    // A model build's watermark lists every committed input run its snapshot omits.
+    // A producer input of any size, here 5000 run keys, rides the header as its digest.
     let omitted: Vec<String> = (0..5000).map(|i| format!("run-{i:032}")).collect();
     let source = contextful_sqlite::SourcePublication {run:"build-1".into(),input:serde_json::json!({"at":null,"inputs":{"events":{"snapshot_id":"snapshot-one","runs":omitted}}}),frontiers:[("spans".into(),frontier)].into()};
     let ledger = contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap();

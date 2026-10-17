@@ -106,7 +106,8 @@ fn a_build_publishes_its_section_in_the_snapshot_manifest_the_pointer_names() {
     assert_eq!(section["contract_version"], "1.0.0");
     assert_eq!(section["max_lag"], "1d");
     assert_eq!(section["last_build_status"], "published");
-    assert_eq!(section["watermark"]["inputs"]["events"]["runs"][0].as_str().unwrap().split('/').next(), Some("r1"));
+    assert_eq!(section["watermark"]["inputs"]["events"]["omitted"]["count"], 1);
+    assert_eq!(section["watermark"]["inputs"]["events"]["through"], 1);
     // The logs are derived: removing every one leaves the section, and the published rows, standing.
     for log in [BUILDS_LOG, HOLDS_LOG, CONTRACT_HISTORY_LOG] {
         let _ = std::fs::remove_file(p.dir().join(log));
@@ -347,26 +348,108 @@ fn a_build_injects_the_five_columns_over_any_the_sql_selects() {
     assert_eq!(section.semantics_version, Some(3));
 }
 
-/// A build's watermark is `{at, inputs}`: per input table the snapshot id and the committed runs it omits, and `at` the newest commit instant among them.
-// spec: run.model.watermark@bf26ede3
+/// A build's watermark is `{at, inputs}`: per input table the snapshot id, `through`, the greatest `commit_seq` read, and `omitted`, the count and digest of runs read outside the snapshot chain; `at` is the newest commit instant.
+// spec: run.model.watermark@a38ca23e
 #[test]
 fn the_watermark_names_each_input_frontier() {
+    use contextful_core::pipeline::model::Omitted;
     let p = Project::new();
     p.land("r2", json!([{"day": "d3", "v": 1}]), "2030-01-01T00:20:00Z");
     let built = p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
     assert_eq!(built.watermark.at, Some(at("2030-01-01T00:20:00Z")));
     let events = &built.watermark.inputs["events"];
     assert_eq!(events.snapshot_id, None);
-    assert_eq!(events.runs.iter().map(|r| r.split('/').next().unwrap()).collect::<Vec<_>>(), ["r1", "r2"]);
+    assert_eq!(events.through, Some(2));
+    assert_eq!(events.omitted, Some(Omitted::of(["r1/ingest-a", "r2/ingest-a"])));
+    assert!(events.runs.is_empty());
     // A fold moves the runs into a snapshot the next build names.
     contextful_context::fold::fold(&p.fx.store, &decl("name = \"events\""), at("2030-01-01T02:00:00Z")).unwrap();
     let next = p.build(MODEL, "2030-01-01T03:00:00Z").unwrap();
     let events = &next.watermark.inputs["events"];
-    assert!(events.snapshot_id.is_some() && events.runs.is_empty(), "{events:?}");
+    assert!(events.snapshot_id.is_some(), "{events:?}");
+    assert_eq!(events.omitted, Some(Omitted::of(Vec::<String>::new())));
+    assert_eq!(events.through, Some(2));
     assert_eq!(next.watermark.at, Some(at("2030-01-01T02:00:00Z")));
 }
 
-/// A published model is stale at `t` when an input holds a committed run that neither its watermark snapshot nor listed runs include, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.
+/// An input no fold covers adds no bytes per run to the watermark the build commits.
+#[test]
+fn the_watermark_stays_a_fixed_size_across_unfolded_runs() {
+    let p = Project::new();
+    let size = |p: &Project, now: &str| {
+        let built = p.build(MODEL, now).unwrap();
+        let section = current_section(&p.fx.store, "daily").unwrap().unwrap();
+        assert_eq!(section.watermark, built.watermark);
+        serde_json::to_vec(&section.watermark.inputs["events"]).unwrap().len()
+    };
+    let one = size(&p, "2030-01-02T00:00:00Z");
+    for i in 0..40 {
+        p.land(&format!("x{i:02}"), json!([{"day": "d9", "v": i}]), "2030-01-01T00:30:00Z");
+    }
+    let many = size(&p, "2030-01-03T00:00:00Z");
+    // One more digit in each of `through` and `count`.
+    assert!(many <= one + 2, "{one} bytes over 1 run, {many} over 41");
+}
+
+/// A build reads each input's runs only below the lowest `commit_seq` among grouped runs awaiting their group marker, the prefix `read.subscribe.commit-order` delivers.
+// spec: run.model.build-prefix@2ed385c0
+#[test]
+fn a_build_reads_no_run_above_an_unpublished_group() {
+    use contextful_context::land::{commit_parts_group, publish_group, Position, RunContext};
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::reserve::Injection;
+    let p = Project::new();
+    let d = decl("name = \"events\"");
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "grouped".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, authored_agent: None, taint: None },
+        committed_at: at("2030-01-01T00:10:00Z"),
+    };
+    commit_parts_group(&p.fx.store, &d, &[], &ctx, &Position::default(), "events", &[], &|| Ok(()), &|_| Ok(())).unwrap();
+    p.land("plain", json!([{"day": "d9", "v": 1}]), "2030-01-01T00:20:00Z");
+    let built = p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
+    let events = &built.watermark.inputs["events"];
+    assert_eq!(events.through, Some(1), "{events:?}");
+    assert_eq!(events.omitted.as_ref().map(|o| o.count), Some(1));
+    assert_eq!(p.rows("SELECT count(*) FROM daily WHERE day = 'd9'"), [[json!("0")]]);
+    publish_group(&p.fx.store, "events", &["events".to_string()], &ctx).unwrap();
+    assert_eq!(status(&p.fx.store, "daily", at("2030-01-01T23:00:00Z")).unwrap()["stale"], false);
+    assert_eq!(status(&p.fx.store, "daily", at("2030-01-02T00:20:01Z")).unwrap()["stale_inputs"], json!(["events"]));
+}
+
+/// An input whose runs outside the watermark snapshot chain, at or below `through`, differ in count or digest from `omitted` holds a waiting run counted as committed before `t` minus `max_lag`.
+// spec: run.publish.staleness-omitted-check@07cef60d
+#[test]
+fn a_run_below_through_the_build_never_read_makes_the_input_stale() {
+    let p = Project::new();
+    p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
+    assert_eq!(status(&p.fx.store, "daily", at("2030-01-01T02:00:00Z")).unwrap()["stale"], false);
+    p.land("merged", json!([{"day": "d9", "v": 1}]), "2030-01-01T01:30:00Z");
+    let path = p.fx.table_dir("events").join(contextful_core::store::lay_out::RUNS_DIR).join("merged/ingest-a").join(MANIFEST_FILE);
+    let mut manifest: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    manifest["commit_seq"] = json!(1);
+    std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let stale = status(&p.fx.store, "daily", at("2030-01-01T02:00:00Z")).unwrap();
+    assert_eq!(stale["stale_inputs"], json!(["events"]), "{stale}");
+}
+
+/// A watermark input carrying a `runs` list and no `omitted` reads with those runs included under `run.publish.staleness`; no build writes `runs`.
+// spec: run.model.watermark-listed-runs@3fa44f2d
+#[test]
+fn a_watermark_listing_runs_is_still_honored() {
+    let p = Project::new();
+    let built = p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
+    let path = p.dir().join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(&built.build_id).join(MANIFEST_FILE);
+    let mut manifest: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    manifest["publish"]["watermark"]["inputs"]["events"] = json!({"snapshot_id": null, "runs": ["r1/ingest-a"]});
+    std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    assert_eq!(current_section(&p.fx.store, "daily").unwrap().unwrap().watermark.inputs["events"].runs, ["r1/ingest-a"]);
+    assert_eq!(status(&p.fx.store, "daily", at("2030-04-01T00:00:00Z")).unwrap()["stale"], false);
+    p.land("r2", json!([{"day": "d3", "v": 1}]), "2030-04-01T00:00:00Z");
+    assert_eq!(status(&p.fx.store, "daily", at("2030-04-02T00:00:01Z")).unwrap()["stale_inputs"], json!(["events"]));
+}
+
+/// A published model is stale at `t` when an input holds a committed run outside its watermark snapshot chain, its `commit_seq` above `through`, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.
 #[test]
 fn a_fold_after_the_build_leaves_it_fresh() {
     let p = Project::new();
@@ -393,7 +476,7 @@ fn runs_in_the_watermark_snapshot_chain_count_as_read() {
     contextful_context::fold::fold(&p.fx.store, &decl("name = \"events\""), at("2030-01-01T00:20:00Z")).unwrap();
     let built = p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
     let events = &built.watermark.inputs["events"];
-    assert!(events.snapshot_id.is_some() && events.runs.is_empty(), "{events:?}");
+    assert!(events.snapshot_id.is_some() && events.omitted.as_ref().is_some_and(|o| o.count == 0), "{events:?}");
     let runs = p.fx.store.committed_runs("events").unwrap();
     assert_eq!(runs.len(), 2, "both folded runs keep their manifests");
     let fresh = status(&p.fx.store, "daily", at("2030-03-01T00:00:00Z")).unwrap();

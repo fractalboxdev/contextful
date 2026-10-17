@@ -417,12 +417,54 @@ pub enum BuildStatus {
     Failed,
 }
 
-/// One input table's frontier: its current snapshot and the committed runs that snapshot
-/// omits (`run.model.watermark`).
+/// The runs a build read outside its input's snapshot chain, as their count and the
+/// SHA-256 of their sorted keys (`run.model.watermark-digest`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Omitted {
+    pub count: u64,
+    pub digest: String,
+}
+
+impl Omitted {
+    /// The count and digest of `keys`: each `<run-id>/<node-id>` once, sorted, followed by
+    /// a newline, under SHA-256 (`run.model.watermark-digest`).
+    pub fn of<I: IntoIterator<Item = S>, S: AsRef<str>>(keys: I) -> Omitted {
+        let keys: BTreeSet<String> = keys.into_iter().map(|k| k.as_ref().to_string()).collect();
+        let mut material = String::new();
+        for k in &keys {
+            material.push_str(k);
+            material.push('\n');
+        }
+        Omitted { count: keys.len() as u64, digest: sha256_hex(material.as_bytes()) }
+    }
+}
+
+/// One input table's frontier: its current snapshot, the greatest `commit_seq` the build
+/// read, and the count and digest of the runs it read outside the snapshot chain
+/// (`run.model.watermark`). Its size is fixed whatever the runs the snapshot omits.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputFrontier {
     pub snapshot_id: Option<String>,
+    #[serde(default)]
+    pub through: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub omitted: Option<Omitted>,
+    /// The omitted runs by key, as a watermark carrying no `omitted` records them; read
+    /// and never written (`run.model.watermark-listed-runs`).
+    #[serde(default, skip_serializing)]
     pub runs: Vec<String>,
+}
+
+impl InputFrontier {
+    /// The frontier of a build that read `snapshot` and `runs` beside it.
+    pub fn read(snapshot: Option<&SnapshotManifest>, runs: &[&RunManifest]) -> InputFrontier {
+        InputFrontier {
+            snapshot_id: snapshot.map(|s| s.snapshot_id.to_string()),
+            through: snapshot.and_then(|s| s.commit_seq).into_iter().chain(runs.iter().filter_map(|r| r.commit_seq)).max(),
+            omitted: Some(Omitted::of(runs.iter().map(|r| r.key()))),
+            runs: Vec::new(),
+        }
+    }
 }
 
 /// A build's watermark: the frontier of each input and the newest commit instant among
@@ -504,6 +546,63 @@ pub fn waiting_runs(included: &BTreeSet<String>, runs: &[RunManifest], folded: &
     let present: BTreeSet<String> = runs.iter().map(RunManifest::key).collect();
     let mut out: Vec<Option<Instant>> = runs.iter().filter(|r| !included.contains(&r.key())).map(|r| Some(r.committed_at)).collect();
     out.extend(folded.iter().filter(|k| !included.contains(*k) && !present.contains(*k)).map(|_| None));
+    out
+}
+
+/// The commit instants one input waits on (`run.publish.staleness`). `included` holds the
+/// keys the watermark snapshot's chain folded, `runs` the input's committed runs and
+/// `chain` its current snapshot chain. A run outside `included` waits when its
+/// `commit_seq` exceeds `through` (`run.publish.staleness-unsequenced` places a run
+/// carrying none by `at`); the runs at or below it must match `omitted`, or the input
+/// waits on `None` (`run.publish.staleness-omitted-check`). A collected run a current
+/// snapshot folded counts at or below `through` when that snapshot's `commit_seq` does
+/// (`run.publish.staleness-collected-covered`), and waits on `None` otherwise. A frontier
+/// carrying no `omitted` includes its listed runs (`run.model.watermark-listed-runs`).
+pub fn input_waiting(
+    frontier: &InputFrontier,
+    at: Option<Instant>,
+    included: &BTreeSet<String>,
+    runs: &[RunManifest],
+    chain: &[SnapshotManifest],
+) -> Vec<Option<Instant>> {
+    let folded: BTreeSet<String> = chain.iter().flat_map(|m| m.includes_runs.iter().cloned()).collect();
+    let Some(omitted) = &frontier.omitted else {
+        let mut listed = included.clone();
+        listed.extend(frontier.runs.iter().cloned());
+        return waiting_runs(&listed, runs, &folded);
+    };
+    let through = frontier.through;
+    let mut covered: BTreeSet<String> = BTreeSet::new();
+    let mut out = Vec::new();
+    for r in runs.iter().filter(|r| !included.contains(&r.key())) {
+        let below = match r.commit_seq {
+            Some(seq) => through.is_some_and(|t| seq <= t),
+            None => at.is_some_and(|a| r.committed_at <= a),
+        };
+        if below {
+            covered.insert(r.key());
+        } else {
+            out.push(Some(r.committed_at));
+        }
+    }
+    let present: BTreeSet<String> = runs.iter().map(RunManifest::key).collect();
+    let mut gone: BTreeSet<&str> = BTreeSet::new();
+    for m in chain {
+        let below = m.commit_seq.zip(through).is_some_and(|(seq, t)| seq <= t);
+        for k in m.includes_runs.iter().filter(|k| !included.contains(*k) && !present.contains(*k)) {
+            if !gone.insert(k) {
+                continue;
+            }
+            if below {
+                covered.insert(k.clone());
+            } else {
+                out.push(None);
+            }
+        }
+    }
+    if Omitted::of(&covered) != *omitted {
+        out.push(None);
+    }
     out
 }
 

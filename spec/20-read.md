@@ -468,7 +468,7 @@ Resolution of a named published-model build at read time, and the state each res
 - `unregistered-pin` — A pin on a table the session registers no relation for, absent or outside the grants, refuses as {{read.resolve-pin.unknown-build}} on a table publishing no build, in one text for both.
   *because an answer differing between an absent and an ungranted table discloses the ungranted table's existence*
 - `earlier-bound-wins` — A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.
-- `resolved-echo` — A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not and zero rows included; the watermark names, per input table, the snapshot id and the committed runs it omits.
+- `resolved-echo` — A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not and zero rows included; the watermark follows {{run.model.watermark}}.
 - `absent-watermark` — The watermark is null for a materialization carrying none, distinct from a watermark of zero.
   *P4*
 - `consumer-comparison` — A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.
@@ -610,7 +610,7 @@ The response projection, with `total_cents` a `BIGINT` column:
   "contextful.resolved": {
     "daily_orders": {
       "build_id": "snapshot-01773100800000000000",
-      "watermark": { "at": "2026-02-14T10:00:00Z", "inputs": { "orders": { "snapshot_id": null, "runs": ["run-0192/node-9f2c"] } } }
+      "watermark": { "at": "2026-02-14T10:00:00Z", "inputs": { "orders": { "snapshot_id": null, "through": 7, "omitted": { "count": 1, "digest": "9f2c…" } } } }
     }
   },
   "contextful.policy.applied": { "rows_dropped": 12, "columns_masked": ["email"], "overfetch_rounds": 1 },
