@@ -320,7 +320,7 @@ fn a_pass_builds_a_sidecar_declared_over_rows_already_landed() {
         .collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     land(&r.store, &decl_of(&bare), &Batch { rows, types: HashMap::new() }, &ctx).unwrap();
