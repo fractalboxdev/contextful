@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 323 | 65 | 24 | 5 | 281 | 0 | 281 |
+| `assurance` | 3 | 18 | 324 | 66 | 24 | 5 | 282 | 0 | 282 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 297 | 64 | 15 | 10 | 286 | 0 | 286 |
 | `surface` | 2 | 21 | 167 | 65 | 23 | 0 | 141 | 0 | 141 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2680 | 678 | 213 | 75 | 2395 | 0 | |
+| **total** | 22 | 169 | 2681 | 679 | 213 | 75 | 2396 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 61 | 49 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 170 | 135 | passing | closed |
+| 14 — Assurance | 7 | 171 | 136 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
@@ -298,6 +298,7 @@ Unscheduled operations: 13.
 | `assurance.release.dirty-tree` | `tools/ci/tests/integration/release.rs::a_tree_differing_from_head_is_refused_before_the_gate` | performed |
 | `assurance.release.gate-failed` | `tools/ci/tests/integration/release.rs::a_failing_gate_stage_is_refused_and_creates_no_tag` | performed |
 | `assurance.release.off-branch` | `tools/ci/tests/integration/release.rs::a_head_the_default_branch_does_not_reach_is_refused` | performed |
+| `assurance.release.release-tag-version` | `tools/ci/tests/integration/release.rs::a_release_over_a_tag_other_than_the_workspace_version_is_refused` | performed |
 | `assurance.release.version` | `tools/ci/tests/integration/release.rs::the_version_counts_closed_milestones_and_earlier_tags_of_that_count` | performed |
 | `assurance.release.version-regressed` | `tools/ci/tests/integration/release.rs::a_milestone_reopening_below_the_last_tag_is_refused` | performed |
 | `assurance.release.workspace-version` | `tools/ci/tests/integration/release.rs::a_workspace_version_other_than_the_computed_one_is_refused` | performed |

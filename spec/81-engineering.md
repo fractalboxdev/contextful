@@ -570,6 +570,8 @@ The release tag's version, the refusals guarding it, the signed annotated tag `c
   *A-assurance*
 - `gate-failed` — Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.
   *A-assurance*
+- `release-tag-version` — `contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.
+  *because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version*
 - `release-run` — A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.
   *because distributed builds and formula generation share one tag identity*
 - `release-dry-run` — A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.

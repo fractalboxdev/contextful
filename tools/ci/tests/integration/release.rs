@@ -301,3 +301,41 @@ fn a_failing_gate_stage_is_refused_and_creates_no_tag() {
     assert!(r.cargo_ran());
     assert_eq!(r.tags(), "");
 }
+
+impl Release {
+    fn release(&self) -> Output {
+        let path = format!("{}:{}", self.bin.path().display(), std::env::var("PATH").unwrap_or_default());
+        Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+            .args(["release", "--target", "x86_64-unknown-linux-musl", "--target-dir", "target", "--out", "dist"])
+            .current_dir(&self.repo.root)
+            .env_remove("CARGO_TARGET_DIR")
+            .env("PATH", path)
+            .output()
+            .unwrap()
+    }
+}
+
+/// `contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.
+// spec: assurance.release.release-tag-version@c43a6156
+#[test]
+fn a_release_over_a_tag_other_than_the_workspace_version_is_refused() {
+    let r = Release::new(&THREE_OF_FOUR, Some("0.3.0"));
+    r.repo.git(&["tag", "-a", "-m", "v0.3.2", "v0.3.2"]);
+    let o = r.release();
+    let err = stderr(&o);
+    assert!(!o.status.success() && err.contains("ReleaseTagVersionMismatch"), "expected ReleaseTagVersionMismatch: {err}");
+    assert!(err.contains("v0.3.2") && err.contains("0.3.0"), "{err}");
+    assert!(!r.cargo_ran(), "a build ran under a mismatched tag");
+
+    // A matching tag beside the stray one clears the check, and the build starts.
+    r.repo.git(&["tag", "-a", "-m", "v0.3.0", "v0.3.0"]);
+    let o = r.release();
+    assert!(!stderr(&o).contains("ReleaseTagVersionMismatch"), "{}", stderr(&o));
+    assert!(r.cargo_ran(), "the build did not start under a matching tag");
+
+    // An untagged head builds as before.
+    let r = Release::new(&THREE_OF_FOUR, Some("0.3.0"));
+    let o = r.release();
+    assert!(!stderr(&o).contains("ReleaseTagVersionMismatch"), "{}", stderr(&o));
+    assert!(r.cargo_ran(), "the build did not start on an untagged head");
+}
