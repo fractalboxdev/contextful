@@ -104,6 +104,10 @@ pub struct TablePolicy {
     pub max_duration_ms: Option<u64>,
     /// The per-table response byte ceiling published as `limits.max_response_bytes`.
     pub max_response_bytes: Option<u64>,
+    /// The manifest's `[[principal]]` blocks, each narrowing the rows it authors
+    /// (`authority.place.per-principal`). The read face sets them; a declaration alone
+    /// carries none.
+    pub principals: Vec<contextful_core::pipeline::model::Principal>,
 }
 
 impl TablePolicy {
@@ -181,6 +185,7 @@ impl TablePolicy {
             max_rows: raw.limits.as_ref().and_then(|l| l.max_rows),
             max_duration_ms: raw.limits.as_ref().and_then(|l| l.max_duration_ms),
             max_response_bytes: raw.limits.as_ref().and_then(|l| l.max_response_bytes),
+            principals: Vec::new(),
         })
     }
 

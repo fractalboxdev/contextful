@@ -156,7 +156,7 @@ fn transaction_time_is_ingested_at_and_valid_time_is_declared() {
         run_id: "r".into(),
         site_id: "s".into(),
         batch_seq: None,
-        authored_by: None,
+        authored_by: None, authored_agent: None,
         taint: None,
     }
     .columns()

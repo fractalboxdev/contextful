@@ -16,7 +16,7 @@ fn single_row(i: usize) -> Batch {
 }
 
 fn injection(run: &str) -> Injection {
-    Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None }
+    Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None }
 }
 
 fn tick(i: usize) -> Instant {

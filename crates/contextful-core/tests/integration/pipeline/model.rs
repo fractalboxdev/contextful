@@ -406,9 +406,15 @@ fn the_manifest_section_carries_its_keys_and_omits_an_absent_optional_one() {
 // spec: store.reconcile.reserved-set-versioned@3ef4472c
 #[test]
 fn the_recipe_names_every_injected_column_the_semantics_version_counts() {
-    assert_eq!(SEMANTICS_VERSION, 2);
+    // `_authored_agent` advanced the version from 2.
+    assert_eq!(SEMANTICS_VERSION, 3);
     for injected in contextful_core::store::reserve::ALWAYS_INJECTED {
         assert!(FINGERPRINT_RECIPE.contains(injected), "{injected}");
+    }
+    // A column injected only where its scope exists is named as conditional, outside the hash.
+    let (_, conditional) = FINGERPRINT_RECIPE.split_once("conditional").expect("the recipe names the conditional injected columns");
+    for injected in contextful_core::store::reserve::INJECTED.iter().filter(|c| !contextful_core::store::reserve::ALWAYS_INJECTED.contains(c)) {
+        assert!(conditional.contains(injected), "{injected}");
     }
     for input in ["name", "type", "nullable", "grain"] {
         assert!(FINGERPRINT_RECIPE.contains(input), "{input}");
@@ -503,4 +509,26 @@ fn the_disclosure_digest_sorts_set_valued_fields() {
     let swapped = with(json!({"rows": {"predicate": "p", "exception": [{"when": "y", "predicate": "2"}, {"when": "x", "predicate": "1"}]}}));
     assert_ne!(disclosure_digest(&first), disclosure_digest(&swapped), "exceptions apply first-match, so their order counts");
     assert!(withholds_cells(&TableDecl { class: Some(json!("email")), ..TableDecl::named("t") }));
+}
+
+/// A `[[principal]]` block parses to its `id` and allow-set; a repeated or empty `id`, a block
+/// missing `zone.allow`, and an entry outside the grammar refuse.
+#[test]
+fn a_principal_block_parses_to_its_id_and_allow_set() {
+    use contextful_core::pipeline::model::principals;
+    use contextful_core::place::{AllowSet, PlaceError, Zone};
+    let parsed = principals(
+        "[[pipeline.tables]]\nname = \"t\"\n\n[[principal]]\nid = \"agent://loop\"\nzone = { allow = [\"local:device\"] }\n\n\
+         [[principal]]\nid = \"user://dana\"\nzone = { allow = [\"on-prem:*\"] }\n",
+    )
+    .unwrap();
+    assert_eq!(parsed.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["agent://loop", "user://dana"]);
+    assert_eq!(parsed[0].zone, AllowSet::parse(&["local:device".to_string()]).unwrap());
+    assert!(parsed[1].zone.admits(&Zone::parse("on-prem:hq")) && !parsed[1].zone.admits(&Zone::LocalDevice));
+    assert!(principals("[[pipeline.tables]]\nname = \"t\"\n").unwrap().is_empty());
+    let twice = "[[principal]]\nid = \"a\"\nzone = { allow = [\"*\"] }\n[[principal]]\nid = \"a\"\nzone = { allow = [\"*\"] }\n";
+    assert!(matches!(principals(twice), Err(PlaceError::Malformed(m)) if m.0.contains("more than once")));
+    assert!(matches!(principals("[[principal]]\nid = \" \"\nzone = { allow = [\"*\"] }\n"), Err(PlaceError::Malformed(_))));
+    assert!(matches!(principals("[[principal]]\nid = \"a\"\n"), Err(PlaceError::Malformed(_))));
+    assert!(matches!(principals("[[principal]]\nid = \"a\"\nzone = { allow = [\"moon:*\"] }\n"), Err(PlaceError::Enforce(_))));
 }

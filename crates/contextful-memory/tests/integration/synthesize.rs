@@ -86,6 +86,19 @@ fn a_landed_claim_names_the_grant_that_wrote_it() {
     );
 }
 
+/// A landed claim carries the writing credential's agent as `_authored_agent` beside its
+/// on-behalf-of principal (`store.reserve.authored-agent`).
+#[test]
+fn a_landed_claim_carries_its_authoring_agent() {
+    let f = Fixture::new();
+    let (writer, node) = (f.writer(), NodeId::parse("memory-a").unwrap());
+    land_rows(&f.face, "research/notes", "run-0001", json!([{ "note_id": "n1", "text": "Dana is Acme's CFO." }]));
+    let inference = Scripted::new(&[claims("acme", "cfo", "Dana", "run-0001")]);
+    pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run().unwrap();
+    let (_, rows) = facts(&f, &writer, r#"SELECT _authored_agent, _authored_by FROM "memory/facts""#);
+    assert_eq!(rows, [vec![json!("agent://synthesizer"), json!("user://dana@acme.example")]]);
+}
+
 /// Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.
 // spec: connector.infer.output-taint@ad6fddaf
 #[test]

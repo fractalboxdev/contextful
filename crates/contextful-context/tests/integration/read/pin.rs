@@ -339,7 +339,7 @@ fn a_model_table_under_a_horizon_reads_its_newest_build_within_it() {
     let rows = json!([{ "day": "d1", "at": "2014-06-01T00:00:00Z" }, { "day": "d2", "at": "2015-06-01T00:00:00Z" }]);
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();

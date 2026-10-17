@@ -196,6 +196,25 @@ fn a_per_request_write_accompanied_by_a_credential_is_authored_by_it() {
     assert_eq!(authors(dir.path()), Some(vec![serde_json::json!(DANA)]));
 }
 
+/// A write accompanied by a credential carrying an agent lands that agent as `_authored_agent`
+/// beside `_authored_by`, through `context land` and `run start` alike
+/// (`store.reserve.authored-agent`).
+#[test]
+fn a_credentialed_write_carries_its_agent() {
+    let dir = project("authoring_posture = \"per_request\"");
+    let public = ok(&cf(dir.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"], None));
+    let mint = [
+        "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", DANA, "--agent", "agent://lander", "--ttl", "600",
+        "--action", "write", "--table", "filings",
+    ];
+    let token = ok(&cf(dir.path(), &mint, None));
+    ok(&cf(dir.path(), &land(&["--public-key", &public, "--audience", AUD]), Some(&token)));
+    ok(&cf(dir.path(), &start(&["--public-key", &public, "--audience", AUD]), Some(&token)));
+    let q = "SELECT DISTINCT _authored_agent, _authored_by FROM filings";
+    let r: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", q], None))).unwrap();
+    assert_eq!(r["rows"], serde_json::json!([["agent://lander", DANA]]), "{r}");
+}
+
 /// An absent authorship value on a landed row means no credential authorized the write: the uncredentialed owner or a timer-fired run.
 // spec: authority.issue.absent-author@3b12ea3e
 #[test]

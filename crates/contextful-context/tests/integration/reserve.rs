@@ -53,7 +53,7 @@ fn a_model_output_row_carries_the_engine_taint_and_no_other_row_does() {
     let d = decl("name = \"claims\"");
     let context = |run: &str, taint: Option<Provenance>| RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint },
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint },
         committed_at: at("2030-01-01T00:00:00Z"),
     };
     let batch = |rows: Value| Batch { rows: rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect(), types: HashMap::new() };
@@ -63,6 +63,36 @@ fn a_model_output_row_carries_the_engine_taint_and_no_other_row_does() {
         f.query(&d, Bounds::default(), "SELECT id, _taint FROM t ORDER BY id"),
         [[s("a"), s("ingested:third-party")], [s("b"), None]],
         "the engine's label replaces the producer's, and a row no model produced carries none"
+    );
+}
+
+#[cfg(feature = "read")]
+/// Where an authenticated subject carrying an agent member authorized the write, the engine injects `_authored_agent`, that agent, beside `_authored_by`, replacing any producer value.
+// spec: store.reserve.authored-agent@b1ffb4f9
+#[test]
+fn an_authored_write_carries_its_agent_beside_its_principal() {
+    let f = Fixture::new();
+    let d = decl("name = \"notes\"");
+    let context = |run: &str, by: Option<&str>, agent: Option<&str>| RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection {
+            run_id: run.into(),
+            site_id: "site-a".into(),
+            batch_seq: Some(0),
+            authored_by: by.map(str::to_string),
+            authored_agent: agent.map(str::to_string),
+            taint: None,
+        },
+        committed_at: at("2030-01-01T00:00:00Z"),
+    };
+    let batch = |rows: Value| Batch { rows: rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect(), types: HashMap::new() };
+    let forged = json!([{"id": "a", "_authored_agent": "agent://forged"}]);
+    land(&f.store, &d, &batch(forged), &context("run-1", Some("user://dana"), Some("agent://lander"))).unwrap();
+    land(&f.store, &d, &batch(json!([{"id": "b", "_authored_agent": "agent://forged"}])), &context("run-2", None, None)).unwrap();
+    assert_eq!(
+        f.query(&d, Bounds::default(), "SELECT id, _authored_by, _authored_agent FROM t ORDER BY id"),
+        [[s("a"), s("user://dana"), s("agent://lander")], [s("b"), None, None]],
+        "the engine's agent replaces the producer's, and an unauthored write carries none"
     );
 }
 

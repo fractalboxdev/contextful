@@ -344,7 +344,7 @@ fn a_build_injects_the_five_columns_over_any_the_sql_selects() {
     assert_eq!(p.rows("SELECT list(_row_seq ORDER BY _row_seq) FROM daily"), [[json!(["0", "1", "2"])]]);
     assert_eq!(p.rows("SELECT DISTINCT _commit_seq FROM daily"), [[json!("1")]]);
     let section = p.build(MODEL, "2030-01-01T02:00:00Z").unwrap().section.unwrap();
-    assert_eq!(section.semantics_version, Some(2));
+    assert_eq!(section.semantics_version, Some(3));
 }
 
 /// A build's watermark is `{at, inputs}`: per input table the snapshot id and the committed runs it omits, and `at` the newest commit instant among them.

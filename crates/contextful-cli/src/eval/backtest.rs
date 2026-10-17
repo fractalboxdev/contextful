@@ -81,7 +81,7 @@ fn land_planted(store: &Store, decl: &TableDecl, rows: Vec<Map<String, Value>>, 
     let (node, _) = node::resolve(store, |k| std::env::var(k).ok())?;
     let ctx = RunContext {
         node,
-        injection: Injection { run_id: run_id.into(), site_id: "eval".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: run_id.into(), site_id: "eval".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at,
     };
     land(store, decl, &Batch { rows, types: Default::default() }, &ctx).with_context(|| format!("planting in `{}`", decl.name))?;

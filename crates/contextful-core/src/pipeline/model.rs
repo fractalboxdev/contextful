@@ -18,11 +18,11 @@ use std::path::Path;
 
 /// The engine's injected-column semantics a published build carries; it advances when
 /// the engine adds an injected column (`run.publish.semantics-version`).
-pub const SEMANTICS_VERSION: u32 = 2;
+pub const SEMANTICS_VERSION: u32 = 3;
 
-/// The inputs of a schema fingerprint (`run.publish.semantics-version`).
-pub const FINGERPRINT_RECIPE: &str =
-    "sha256(jcs({columns: [{name, type, nullable}], grain, injected: [_ingested_at, _run_id, _row_seq, _commit_seq, _site_id]}))";
+/// The inputs of a schema fingerprint, then the injected columns a write carries only where
+/// their scope exists, which the hash leaves out (`run.publish.semantics-version`).
+pub const FINGERPRINT_RECIPE: &str = "sha256(jcs({columns: [{name, type, nullable}], grain, injected: [_ingested_at, _run_id, _row_seq, _commit_seq, _site_id]})); conditional, unhashed: [_batch_seq, _authored_by, _authored_agent, _taint]";
 
 /// The history logs a published model's table directory holds (`run.publish.history-logs`).
 pub const BUILDS_LOG: &str = "builds.jsonl";
@@ -650,6 +650,53 @@ pub fn regenerate<T: Clone>(existing: &[T], derived: &[T], key: impl Fn(&T) -> S
     out.extend(derived.iter().cloned());
     out.sort_by(|a, b| order(a).cmp(&order(b)).then_with(|| key(a).cmp(&key(b))));
     out
+}
+
+/// One `[[principal]]` block: the identity a row's `_authored_agent` or `_authored_by`
+/// names, and the allow-set narrowing every row it authors
+/// (`authority.place.per-principal`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Principal {
+    pub id: String,
+    pub zone: crate::place::AllowSet,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPrincipal {
+    id: String,
+    zone: RawPrincipalZone,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPrincipalZone {
+    allow: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PrincipalBlocks {
+    #[serde(default)]
+    principal: Vec<RawPrincipal>,
+}
+
+/// The `[[principal]]` blocks a manifest declares. A block missing `id` or `zone.allow`, an
+/// empty or repeated `id`, and an allow-set entry outside the grammar refuse.
+pub fn principals(manifest: &str) -> Result<Vec<Principal>, crate::place::PlaceError> {
+    use crate::store::declare::DeclarationMalformed;
+    let blocks: PrincipalBlocks = toml::from_str(manifest).map_err(|e| DeclarationMalformed(format!("[[principal]]: {}", e.message())))?;
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for p in blocks.principal {
+        if p.id.trim().is_empty() {
+            return Err(DeclarationMalformed("a [[principal]] block names an empty `id`".to_string()).into());
+        }
+        if !seen.insert(p.id.clone()) {
+            return Err(DeclarationMalformed(format!("[[principal]] `{}` is declared more than once", p.id)).into());
+        }
+        out.push(Principal { zone: crate::place::AllowSet::parse(&p.zone.allow)?, id: p.id });
+    }
+    Ok(out)
 }
 
 /// The top-level keys a manifest file holds (`run.model.top-level-block`).

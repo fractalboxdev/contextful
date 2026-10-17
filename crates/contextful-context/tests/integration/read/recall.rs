@@ -27,7 +27,7 @@ fn land_claims(r: &Reads, claims: &[(&str, Vec<Value>)]) {
         .collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "memory-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "memory-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     let decl = TableDecl { primary_key: Some(vec!["claim_id".into()]), ..TableDecl::named("research/insights") };

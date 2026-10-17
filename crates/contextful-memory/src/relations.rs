@@ -58,6 +58,7 @@ pub fn rename(
                 site_id: "memory".into(),
                 batch_seq: Some(0),
                 authored_by: authority.subject().on_behalf_of().map(str::to_string),
+                authored_agent: authority.subject().agent().map(str::to_string),
                 taint: None,
             },
             committed_at: now,

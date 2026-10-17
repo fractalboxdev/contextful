@@ -336,7 +336,7 @@ fn sidecar_reads_with_rows(extra: &str, row_for: impl Fn(usize) -> (String, Valu
         let decl = TableDecl::parse_pipeline(&manifest).unwrap().into_iter().find(|d| d.name == table).unwrap();
         let ctx = RunContext {
             node: NodeId::parse("ingest-a").unwrap(),
-            injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+            injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
             committed_at: at("2030-01-10T00:00:00Z"),
         };
         land(&r.store, &decl, &Batch { rows: rows.clone(), types: types.clone() }, &ctx).unwrap();
@@ -368,7 +368,7 @@ fn crowded_reads(crowd: usize) -> Reads {
     let decl = TableDecl::parse_pipeline(&manifest).unwrap().into_iter().find(|d| d.name == "lab/indexed").unwrap();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     land(&r.store, &decl, &Batch { rows, types }, &ctx).unwrap();
@@ -898,7 +898,7 @@ fn dupe_reads() -> Reads {
             };
             let ctx = RunContext {
                 node: NodeId::parse("ingest-a").unwrap(),
-                injection: Injection { run_id: format!("run-000{run}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+                injection: Injection { run_id: format!("run-000{run}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
                 committed_at: at(&format!("2030-01-1{run}T00:00:00Z")),
             };
             let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
@@ -970,7 +970,7 @@ fn items_and_artifacts_of_any_kind_append_dedupe_on_content_and_carry_a_timestam
             let decl = decls.iter().find(|d| d.name == table).unwrap();
             let ctx = RunContext {
                 node: NodeId::parse("ingest-a").unwrap(),
-                injection: Injection { run_id: format!("run-000{run}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+                injection: Injection { run_id: format!("run-000{run}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
                 committed_at: at(&format!("2030-01-1{run}T00:00:00Z")),
             };
             let rows = vec![row.as_object().unwrap().clone()];
@@ -1133,7 +1133,7 @@ fn a_declared_half_life_scales_a_claims_ranked_score() {
             .collect();
         let ctx = RunContext {
             node: NodeId::parse("ingest-a").unwrap(),
-            injection: Injection { run_id: "memory-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+            injection: Injection { run_id: "memory-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
             committed_at: at("2030-01-10T00:00:00Z"),
         };
         let decl = TableDecl { primary_key: Some(vec!["claim_id".into()]), ..TableDecl::named("research/insights") };

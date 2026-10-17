@@ -427,6 +427,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
                 site_id: site_id.clone(),
                 batch_seq: Some(0),
                 authored_by: author.as_ref().and_then(Author::on_behalf_of),
+                authored_agent: author.as_ref().and_then(Author::agent),
                 taint: None,
             };
             if session {

@@ -111,7 +111,7 @@ fn a_relanded_run_with_other_rows_or_a_logged_position_conflicts() {
     // A logged run's readability rides its commit-log entry, so its re-landing conflicts even with equal rows.
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-l".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
+        injection: Injection { run_id: "run-l".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-01T00:02:00Z"),
     };
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: Some(1), logged: true, replace_frontier: false };

@@ -395,6 +395,12 @@ mod wired {
             self.authority.subject().on_behalf_of().map(str::to_string)
         }
 
+        /// The agent every row the write lands carries as `_authored_agent`
+        /// (`store.reserve.authored-agent`).
+        pub fn agent(&self) -> Option<String> {
+            self.authority.subject().agent().map(str::to_string)
+        }
+
         /// The commit boundary (`authority.verify.write-commit`): the denylist read afresh,
         /// and expiry, against the system clock.
         pub fn boundary(&self) -> Result<()> {

@@ -293,7 +293,7 @@ fn canonical_recording_admission_binds_bare_plans_and_preserves_independent_dest
 fn context() -> RunContext {
     RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-a".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
+        injection: Injection { run_id: "run-a".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, authored_agent: None, taint: None },
         committed_at: crate::support::at("2030-01-01T00:01:00Z"),
     }
 }

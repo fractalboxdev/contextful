@@ -99,6 +99,8 @@ pub struct Face {
     reach: std::sync::Mutex<ReachCache>,
     /// The instant a staleness check reads as now (`disclosure.bound-staleness.clock-offset`).
     clock: std::sync::Arc<dyn Fn() -> contextful_core::time::Instant + Send + Sync>,
+    /// The manifest's `[[principal]]` blocks (`authority.place.per-principal`).
+    principals: Vec<contextful_core::pipeline::model::Principal>,
 }
 
 /// A table's `level` and `principal_kind` tables, by table.
@@ -212,6 +214,7 @@ impl Face {
             decls.insert(d.name.clone(), d);
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
+        let principals = contextful_core::pipeline::model::principals(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
         let (levels, kinds) = pack_levels(manifest, pipelines, &bindings)?;
         let fulltext = crate::fulltext::SidecarCache::new(contextful_core::read::rank::LEXICAL_INDEX_CACHE_ENTRIES);
         let face = Face {
@@ -231,6 +234,7 @@ impl Face {
             kinds,
             reach: Default::default(),
             clock: std::sync::Arc::new(system_now),
+            principals,
         };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
@@ -469,6 +473,7 @@ impl Face {
             Some(p) => p.clone(),
             None => TablePolicy::from_decl(&decl)?,
         };
+        policy.principals = self.principals.clone();
         let ledger = crate::ledger::files(&self.store, table)?.iter().map(|p| p.to_string_lossy().into_owned()).collect();
         Ok(match self.store.try_schema(table)? {
             Some(_) => {
