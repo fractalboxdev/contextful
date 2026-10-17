@@ -563,7 +563,7 @@ fn tokenless_cycle(dir: &Path, public: &str, extra_args: &[&str], extra: &[(&str
         .unwrap()
 }
 
-// spec: surface.dispatch.fire-credential@8c7350dc
+// spec: surface.dispatch.fire-credential@ec4a47af
 // spec: surface.dispatch.fire-credential-lifetime@0f8b546a
 #[test]
 fn an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables() {
@@ -621,7 +621,7 @@ fn a_minted_fire_admits_under_the_minting_pin_and_audience_whatever_serve_inheri
     assert_eq!(select(p, "SELECT count(*) FROM scores")[0][0], "3");
 }
 
-// spec: surface.dispatch.fire-credential-missing@e986b3a1
+// spec: surface.dispatch.fire-credential-missing@49c1976e
 #[test]
 fn a_serve_scheduling_a_store_driven_job_without_key_or_credential_refuses_at_start() {
     let (dir, public, token) = project(&format!("site_id = \"site\"\n{}", job("max_in_flight = 1\nschedule = \"every 1m\"\n")));
