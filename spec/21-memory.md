@@ -193,7 +193,7 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
 - `suppression-count` — A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.
   *because a count discloses that a conclusion was withheld, never what it concluded*
 - `keyed` — `memory.recall` takes `table`, `subject`, `observed_at`, `as_of_ingest` and `limit`, and returns the claims whose `subject` equals `subject` exactly and whose `valid_from` and `valid_to` cover `observed_at` as {{store.bound-time.valid-as-of}} does.
-- `cli-verb` — The `contextful memory recall` verb passes its arguments through {{read.recall.keyed}} and prints the same JSON response as the `memory.recall` tool.
+- `cli-verb` — The `contextful memory recall` verb calls the `memory.recall` tool with its arguments, prints the tool's JSON response, and appends the read entry {{disclosure.record.read-entry}} names for that call.
 - `keyed-clocks` — `as_of_ingest` bounds the read as {{store.bound-time.as-of}} does; absent, the read takes the latest committed state, and an absent `observed_at` the call's instant. `contextful.bounds` echoes each supplied bound under its argument name, with a per-name `inclusive` map.
 - `keyed-history` — A claim a successor retired still answers an `observed_at` inside its validity; the keyed read filters on validity alone, never on `superseded_by`.
   *because the question is what held at that instant, and the retired claim is the answer its interval records*
@@ -209,7 +209,7 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
   *A-read*
 - `stale-revision` — A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.
   *A-read*
-- `usage-ledger` — A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
+- `usage-ledger` — A `memory.recall` read, a `memory.explain` read carrying claims, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
   *A-read*
 - `ranked-order` — Within one in-window flag value of {{read.rank.question-window-is-a-tier}}, claims order by tier, `curated`, then `derived`, then `researched`; claims of one tier keep {{read.rank.fusion}} order.
   *A-read*
@@ -246,8 +246,26 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
   *A-read*
 - `ownership-live` — The ownership answer omits an `owned_by` edge whose `valid_to` falls at or before the anchor.
   *because an ended edge records a past owner, and returning it names that owner as current*
+- `knowledge-card` — `memory.explain` takes `table`, `reference` and an optional `claims` table, resolves `reference` against the names and aliases of `table`, and returns that identity's `entity_id`, `kind`, `name` and `aliases`.
+  *because a caller holding a name or an alias in any script needs the canonical record without knowing its opaque id*
+- `card-claims` — A card naming `claims` carries the claims {{read.recall.keyed}} returns at the call instant, under {{read.recall.keyed-gate}}, whose `subject` equals the identity's `entity_id` or its canonical `name`.
+  *because synthesis keys a resolved claim by canonical name and `claim_id` hashes the subject, so re-keying stored claims by id re-identifies every one*
+- `card-candidates` — A `reference` matching two or more identities with no exact canonical name separating them returns their `entity_id`s as candidates and no identity; a `reference` matching none returns an empty card.
+  *because naming one of several matches guesses on the caller's behalf, and an absent identity is an answer, not a fault*
+- `card-authorization` — The card reads `table` and `claims` through the caller's session; a session registering no `claims` relation receives the identity alone, and a card carrying no claims names that table in neither its body nor its read entry.
+  *because a grant on identities is narrower than a grant on what the workspace concludes about them*
+- `card-cli-verb` — The `contextful memory explain` verb, `--internals` included, calls the `memory.explain` tool with its arguments, prints the tool's JSON response, and appends the read entry that call appends.
+  *because a read outside the audit chain is a read no owner can account for*
+- `card-not-entities` — A granted `table` declaring a shape other than `memory_entities`, or no memory shape, raises `MemoryExplainNotEntities`.
+  *because only a `memory_entities` table carries the identity, kind and aliases a card returns*
 
-unsettled: Which edges carry aliases and nearness's parent closure, and what fields form the knowledge card? owner: read-path affects: read.resolve-entity
+unsettled: Which edges carry aliases and nearness's parent closure? owner: read-path affects: read.resolve-entity
+
+#### Scenarios
+
+- `read.resolve-entity.knowledge-card`: WHEN `reference` is an alias written in another script, THEN `memory.explain` returns the one identity carrying it.
+- `read.resolve-entity.card-candidates`: WHEN `reference` is an alias two identities share, THEN the card lists both `entity_id`s and no identity.
+- `read.resolve-entity.card-authorization`: WHEN the caller holds a read grant on `table` and none on `claims`, THEN the card carries the identity and no claims.
 
 
 ## settle

@@ -6,6 +6,7 @@ mod audit;
 mod carried;
 mod cold;
 mod enforce;
+mod explain;
 mod extension;
 mod fulltext;
 mod guard;

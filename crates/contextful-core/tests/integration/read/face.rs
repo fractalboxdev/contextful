@@ -12,6 +12,15 @@ fn citation_resolution_and_subscription_belong_to_the_closed_read_tool_set() {
     assert_eq!(register_tool(FaceScope::Organization, "context.reference", ToolKind::Read), Ok(()));
 }
 
+#[test]
+fn the_knowledge_card_belongs_to_the_closed_read_tool_set() {
+    assert_eq!(TOOLS.last(), Some(&"memory.explain"));
+    assert_eq!(register_tool(FaceScope::Organization, "memory.explain", ToolKind::Read), Ok(()));
+    let refused = contextful_core::memory::MemoryError::ExplainNotEntities("`memory/facts`".into());
+    assert_eq!(refused.identifier(), "MemoryExplainNotEntities");
+    assert!(refused.to_string().starts_with("MemoryExplainNotEntities: "));
+}
+
 /// A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.
 // spec: read.embed.required-face@2167a7a9
 #[test]

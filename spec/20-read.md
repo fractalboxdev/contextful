@@ -71,9 +71,9 @@ The relations, tools and templates one connection sees, the engine executing aga
   *P4*
 - `bare-name` — A bare table name in any read — a caller statement, a template body, a ranking arm, a file preview — resolves to the caller's registered relation, which carries the caller's restriction.
   *P5*
-- `tool-set` — The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `context.subscribe`, `corpus.retrieve` and `memory.recall` as its closed tool set.
+- `tool-set` — The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `context.subscribe`, `corpus.retrieve`, `memory.recall` and `memory.explain` as its closed tool set.
   *A-read*
-- `bound-arguments` — Every read tool but `memory.recall` and `context.subscribe`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
+- `bound-arguments` — Every read tool but `memory.recall`, `memory.explain` and `context.subscribe`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
   *because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it*
 - `bound-listing` — `context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.
   *because valid time narrows rows, and a listing returns files and table names, never rows*

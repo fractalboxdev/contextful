@@ -168,7 +168,7 @@ fn relation_rename_rewrites_stored_edges_before_the_old_name_is_removed() {
     assert_eq!(rows["rows"], json!([["e1", "tracks"], ["e2", "tracks"]]));
 }
 
-// spec: read.recall.cli-verb@4e5cfc78
+// spec: read.recall.cli-verb@5b079311
 #[test]
 fn recall_cli_answers_historical_and_current_claims_as_json() {
     let (dir, public, token) = project();
@@ -224,6 +224,45 @@ fn recall_cli_answers_historical_and_current_claims_as_json() {
     ))).unwrap();
     assert!(withheld["rows"].as_array().unwrap().is_empty());
     assert_eq!(withheld["contextful.recall"]["suppressed"]["MemoryEvidenceUnresolved"], json!(1));
+
+    // The three verb calls append an entry each, as the tool call does.
+    let sql = "SELECT agent, CAST(count(*) AS VARCHAR), CAST(count(claims) AS VARCHAR) FROM audit_reads WHERE table_name = 'memory/facts' GROUP BY agent ORDER BY agent";
+    let audited: Value = serde_json::from_str(&stdout(&run(dir.path(), &["audit", "query", "--project", "research", "--sql", sql], &[]))).unwrap();
+    assert_eq!(audited["rows"], json!([["agent://reader", "1", "0"], ["agent://synthesizer", "3", "3"]]), "{audited}");
+    // The evidence table the gate read is named; the reader, holding no grant on it, read none.
+    let sql = "SELECT agent, CAST(count(*) AS VARCHAR) FROM audit_reads WHERE table_name = 'research/notes' GROUP BY agent";
+    let evidence: Value = serde_json::from_str(&stdout(&run(dir.path(), &["audit", "query", "--project", "research", "--sql", sql], &[]))).unwrap();
+    assert_eq!(evidence["rows"], json!([["agent://synthesizer", "3"]]), "{evidence}");
+}
+
+/// A read verb's `--issuer-key` never anchors the chain: over an unanchored chain it refuses
+/// and appends nothing, unsigned reads go on, and once `audit anchor` holds the chain the
+/// same verb appends signed entries.
+// spec: disclosure.record.signed-read@e4226fd4
+#[test]
+fn a_signed_read_over_an_unanchored_chain_refuses_and_unsigned_reads_go_on() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    stdout(&run(p, &["memory", "write", "--project", "research", "--into", "memory/facts", "--claim", &one("Dana"), "--public-key", &public, "--audience", AUD], &[("CONTEXTFUL_TOKEN", &token)]));
+    let recall = ["memory", "recall", "--project", "research", "--table", "memory/facts", "--subject", "acme", "--public-key", &public, "--audience", AUD];
+    stdout(&run(p, &recall, &[("CONTEXTFUL_TOKEN", &token)]));
+    let entries = || contextful_policy::audit::entries(&p.join(".contextful/audit")).unwrap().len();
+    assert_eq!(entries(), 1);
+
+    let signed = ["memory", "explain", "--project", "research", "--table", "memory/facts", "--reference", "acme", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public, "--audience", AUD];
+    let refused = run(p, &signed, &[("CONTEXTFUL_TOKEN", &token)]);
+    assert!(!refused.status.success());
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("AuditLogUnanchored") && stderr.contains("audit anchor"), "{stderr}");
+    assert_eq!(entries(), 1, "a refused signed read appends nothing");
+    stdout(&run(p, &recall, &[("CONTEXTFUL_TOKEN", &token)]));
+    assert_eq!(entries(), 2, "an unsigned read still appends");
+
+    stdout(&run(p, &["audit", "anchor", "--project", "research", "--issuer-key", ".contextful/issuer.seed"], &[]));
+    let mut signed_recall = recall.to_vec();
+    signed_recall.extend(["--issuer-key", ".contextful/issuer.seed"]);
+    stdout(&run(p, &signed_recall, &[("CONTEXTFUL_TOKEN", &token)]));
+    assert_eq!(entries(), 3);
 }
 
 /// A claims table synthesizes when `contextful memory synthesize` runs; a `[[job]]` of kind `synthesize` targeting it with a `schedule` replaces that default, and each fire still advances only through {{read.synthesize.pass-cursor}}.
@@ -441,4 +480,83 @@ fn calibration_reports_the_settled_claims_of_a_table() {
     let text = stdout(&s.memory(&["calibration", "--table", "memory/facts"]));
     assert!(text.starts_with("1 settled predictions joined a claim in memory/facts"), "{text}");
     assert!(text.contains("memory_facts cfo: 1 samples"), "{text}");
+}
+
+/// `contextful memory explain` resolves an alias written in another script to one card with
+/// the live claims about its identity, synthesized and written alike, lists the candidates
+/// an ambiguous alias matches, and returns the identity alone to a credential holding no
+/// grant on the claims table, appending the read entry the tool call appends.
+// spec: read.resolve-entity.card-cli-verb@2e9d0411
+#[test]
+fn explain_cli_answers_one_card_candidates_or_the_identity_alone() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    let manifest = std::fs::read_to_string(p.join("contextful.toml")).unwrap();
+    std::fs::write(
+        p.join("contextful.toml"),
+        format!("{manifest}\n[[table]]\nname = \"memory/entities\"\nshape = \"memory_entities\"\ncolumns = [\"entity_id\", \"kind\", \"name\", \"aliases\"]\n"),
+    )
+    .unwrap();
+    let entities = [
+        json!({ "entity_id": "e-acme", "kind": "company", "name": "Acme Holdings", "aliases": "[\"ACME\",\"アクメ\"]" }),
+        json!({ "entity_id": "e-globex", "kind": "company", "name": "Globex", "aliases": "[\"GX\"]" }),
+        json!({ "entity_id": "e-gx", "kind": "fund", "name": "GX Partners", "aliases": "[\"gx\"]" }),
+    ];
+    std::fs::write(p.join("entities.jsonl"), entities.iter().map(|e| format!("{e}\n")).collect::<String>()).unwrap();
+    stdout(&run(p, &["context", "land", "memory/entities", "--project", "research", "--rows", "entities.jsonl", "--run-id", "run-entities", "--site-id", "site-a"], &[]));
+    let claim = json!({ "subject": "e-acme", "predicate": "cfo", "object": "Dana", "confidence": 1.0,
+        "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] })
+    .to_string();
+    stdout(&run(p, &["memory", "write", "--project", "research", "--into", "memory/facts", "--claim", &claim, "--public-key", &public, "--audience", AUD], &[("CONTEXTFUL_TOKEN", &token)]));
+    // Synthesis resolves the mention `ACME` and keys its claim by the canonical name.
+    let extracted = json!({ "claims": [{ "subject": "ACME", "predicate": "ceo", "object": "Lee", "confidence": 0.9,
+        "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] }] })
+    .to_string();
+    let endpoint = Endpoint::start(vec![extracted]);
+    let url = endpoint.url();
+    let synthesize = [
+        "memory", "synthesize", "--project", "research", "--source", "research/notes", "--into", "memory/facts", "--endpoint", &url,
+        "--model", "fixture", "--public-key", &public, "--audience", AUD,
+    ];
+    let report = stdout(&run(p, &synthesize, &[("CONTEXTFUL_TOKEN", &token), ("CONTEXTFUL_INFERENCE_KEY", "")]));
+    assert!(report.contains("1 landed"), "{report}");
+
+    let explain = |reference: &str, token: &str| -> Value {
+        let args = ["memory", "explain", "--project", "research", "--table", "memory/entities", "--reference", reference, "--claims", "memory/facts", "--public-key", &public, "--audience", AUD];
+        serde_json::from_str(&stdout(&run(p, &args, &[("CONTEXTFUL_TOKEN", token)]))).unwrap()
+    };
+    let identity = json!({ "entity_id": "e-acme", "kind": "company", "name": "Acme Holdings", "aliases": ["ACME", "アクメ"] });
+    let card = explain("アクメ", &token);
+    assert_eq!(card["entity"], identity, "{card}");
+    let at = |c: &str| card["claims"]["columns"].as_array().unwrap().iter().position(|x| x == c).unwrap();
+    let mut keyed: Vec<(Value, Value)> = card["claims"]["rows"].as_array().unwrap().iter().map(|r| (r[at("subject")].clone(), r[at("object")].clone())).collect();
+    keyed.sort_by_key(|(subject, _)| subject.to_string());
+    assert_eq!(keyed, [(json!("Acme Holdings"), json!("Lee")), (json!("e-acme"), json!("Dana"))], "{card}");
+
+    assert_eq!(explain("GX", &token), json!({ "entity": null, "candidates": ["e-globex", "e-gx"] }));
+
+    let identities_only = stdout(&run(
+        p,
+        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--agent", "agent://reader", "--zone", "on-prem:hq", "--action", "read", "--table", "memory/entities", "--ttl", "600"],
+        &[],
+    ));
+    assert_eq!(explain("ACME", &identities_only), json!({ "entity": identity, "candidates": [] }));
+
+    // `--internals` returns the tool's internals object.
+    let args = ["memory", "explain", "--project", "research", "--table", "memory/entities", "--reference", "ACME", "--claims", "memory/facts", "--internals", "--public-key", &public, "--audience", AUD];
+    let traced: Value = serde_json::from_str(&stdout(&run(p, &args, &[("CONTEXTFUL_TOKEN", &token)]))).unwrap();
+    assert_eq!(traced["contextful.internals"]["engine"], json!("duckdb"), "{traced}");
+    assert_eq!(traced["contextful.internals"]["row_count"], json!(3), "{traced}");
+
+    // Each call appended a read entry naming only the tables it read, and its claim ids.
+    let audit = |sql: &str| -> Value {
+        let out: Value = serde_json::from_str(&stdout(&run(p, &["audit", "query", "--project", "research", "--sql", sql], &[]))).unwrap();
+        out["rows"].clone()
+    };
+    let per_table = audit("SELECT table_name, CAST(count(*) AS VARCHAR), CAST(count(claims) AS VARCHAR) FROM audit_reads GROUP BY table_name ORDER BY table_name");
+    assert_eq!(per_table, json!([["memory/entities", "4", "2"], ["memory/facts", "2", "2"], ["research/notes", "2", "2"]]));
+    assert_eq!(audit("SELECT table_name FROM audit_reads WHERE agent = 'agent://reader'"), json!([["memory/entities"]]));
+    let mut ids: Vec<Value> = card["claims"]["rows"].as_array().unwrap().iter().map(|r| json!([r[at("claim_id")]])).collect();
+    ids.sort_by_key(Value::to_string);
+    assert_eq!(audit("SELECT DISTINCT unnest(CAST(claims AS VARCHAR[])) AS id FROM audit_reads ORDER BY id"), json!(ids));
 }

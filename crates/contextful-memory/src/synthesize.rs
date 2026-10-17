@@ -381,19 +381,6 @@ impl Pass<'_> {
         if !session.reads(&t.name) {
             return Ok(Vec::new());
         }
-        Ok(objects(&self.face.rows(session, &t.name, None)?)
-            .iter()
-            .filter_map(|row| {
-                Some(Entity {
-                    entity_id: row.get("entity_id")?.as_str()?.to_string(),
-                    name: row.get("name")?.as_str()?.to_string(),
-                    aliases: row
-                        .get("aliases")
-                        .and_then(Value::as_str)
-                        .and_then(|a| serde_json::from_str::<Vec<String>>(a).ok())
-                        .unwrap_or_default(),
-                })
-            })
-            .collect())
+        Ok(self.face.entities(session, &t.name)?.into_iter().map(|r| r.entity).collect())
     }
 }

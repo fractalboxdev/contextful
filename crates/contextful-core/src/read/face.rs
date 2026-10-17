@@ -6,7 +6,7 @@ use crate::enforce::EnforceError;
 use serde::Serialize;
 
 /// The closed tool set (`read.register.tool-set`).
-pub const TOOLS: [&str; 9] = [
+pub const TOOLS: [&str; 10] = [
     "context.describe",
     "context.query",
     "context.reference",
@@ -16,6 +16,7 @@ pub const TOOLS: [&str; 9] = [
     "context.subscribe",
     "corpus.retrieve",
     "memory.recall",
+    "memory.explain",
 ];
 
 /// Prefixes the built-in tools hold; no template identifier takes one

@@ -1588,6 +1588,11 @@ fn builtin_tool(name: &str) -> Value {
             }),
             vec!["table", "subject"],
         ),
+        "memory.explain" => (
+            "The canonical record a name or alias resolves to in an entities table, its candidates when several match, and the live claims about it from `claims`.",
+            json!({ "table": { "type": "string" }, "reference": { "type": "string" }, "claims": { "type": "string" }, "internals": { "type": "boolean" }, "zone": { "type": "string" } }),
+            vec!["table", "reference"],
+        ),
         _ => (
             "Ranked rows across the tables under a prefix.",
             json!({
@@ -1616,8 +1621,9 @@ fn builtin_tool(name: &str) -> Value {
             vec!["query"],
         ),
     };
-    // `memory.recall` names its two clocks itself (`read.register.bound-arguments`).
-    if name != "memory.recall" {
+    // `memory.recall` names its two clocks itself, and a knowledge card reads the latest
+    // state (`read.register.bound-arguments`).
+    if name != "memory.recall" && name != "memory.explain" {
         for (bound, schema) in bound_properties() {
             properties[bound.as_str()] = schema;
         }

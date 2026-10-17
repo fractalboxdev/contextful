@@ -350,6 +350,32 @@ fn an_unanchored_handle_links_under_an_unsigned_tip_and_refuses_a_signed_chain()
     assert_eq!(verify(signed.path()).unwrap().seq, 2, "a refused open leaves the chain as it was");
 }
 
+/// A signed read's open anchors nothing: over a fresh chain or an unanchored one it raises
+/// `AuditLogUnanchored`, writes nothing, and the chain stays open to an unanchored handle;
+/// over an anchored chain it appends signed entries.
+#[test]
+fn a_signed_read_open_never_anchors_a_chain() {
+    let unanchored = |r: Result<AuditLog<SeedSigner>, AuditError>| match r {
+        Err(AuditError::AuditLogUnanchored(m)) => m,
+        other => panic!("expected AuditLogUnanchored, got {other:?}"),
+    };
+    let fresh = tempfile::tempdir().unwrap();
+    assert!(unanchored(AuditLog::open_anchored(fresh.path(), key())).contains("audit anchor"));
+    assert!(!fresh.path().join("chain.held").exists() && !fresh.path().join("chain.tip").exists());
+    let dir = unanchored_of(3);
+    let before = tip_of(dir.path());
+    assert!(unanchored(AuditLog::open_anchored(dir.path(), key())).contains("audit anchor"));
+    assert_eq!(tip_of(dir.path()), before, "a refused open leaves the tip unsigned");
+    assert!(!dir.path().join("chain.held").exists());
+    assert_eq!(AuditLog::unanchored(dir.path()).unwrap().append(attrs("agent://u", 9)).unwrap().seq, 4);
+
+    drop(AuditLog::anchor(dir.path(), key()).unwrap());
+    let held = AuditLog::open_anchored(dir.path(), key()).unwrap();
+    assert_eq!(held.append(attrs("agent://a", 1)).unwrap().seq, 5);
+    drop(held);
+    assert!(tip_of(dir.path()).signature.is_some());
+}
+
 /// An unanchored handle's append group or tip write finding `chain.held` written since its open raises `AuditLogAnchored` and writes nothing, so a held open never meets an unsigned tip or an unrooted segment.
 // spec: disclosure.record.held-under-append@bd383fa1
 #[test]

@@ -12,6 +12,7 @@
 //! does not persist answers `AuditEntryUnpersisted` in-band with no rows
 //! (`disclosure.record.unpersisted-wire`).
 
+use contextful_context::read::explain::ExplainRequest;
 use contextful_context::read::{Face, ReadFault, ReadOptions, RecallRequest, RetrieveRequest};
 use contextful_core::memory::declare::Shape;
 use contextful_core::read::face::{read_backend, register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
@@ -81,9 +82,7 @@ impl<S: SigningPort + Send + Sync + 'static> ReadRecord for AuditLog<S> {
     }
 }
 
-/// The read-entry attribute listing the claim ids a memory read returned
-/// (`read.recall.usage-ledger`).
-pub const MEMORY_CLAIMS: &str = "contextful.memory.claims";
+pub use contextful_context::read::audit::MEMORY_CLAIMS;
 
 /// One read as its audit entry records it.
 pub struct ReadEntry<'r> {
@@ -256,9 +255,13 @@ fn answered(r: Response) -> (Value, u64) {
     (r.to_json(), rows)
 }
 
-fn answered_in(r: Response, session: Session) -> (Value, u64, Session) {
+/// A dispatched read: its structured result, the rows it returns, its session, and the
+/// tables it read where the read reports them; `None` names the tables its arguments name.
+type Answered = (Value, u64, Session, Option<Vec<String>>);
+
+fn answered_in(r: Response, session: Session) -> Answered {
     let (value, rows) = answered(r);
-    (value, rows, session)
+    (value, rows, session, None)
 }
 
 /// A tool result: the structured value and its text rendering.
@@ -411,19 +414,19 @@ impl<'a> Tools<'a> {
             Some(Value::Object(m)) => m.clone(),
             Some(_) => return Err(invalid("`arguments` is an object")),
         };
-        let read = |rows, refusal, claims| ReadEntry {
+        let read = |rows, refusal, claims, tables: Option<Vec<String>>| ReadEntry {
             tool: name,
             authority: caller.authority,
             rows,
             at: self.clock.now(),
-            tables: self.relations(name, &args),
+            tables: tables.unwrap_or_else(|| self.relations(name, &args)),
             refusal,
             claims,
         };
         match self.dispatch(caller, name, &args) {
             // The result leaves only once its entry is durable; otherwise no row does.
-            Ok(Ok((value, rows, session))) => match self.bound_entry(name, &args, &value, &session).map(|bound| {
-                let mut attributes = read_attributes(&read(rows, None, self.claims(name, &value)));
+            Ok(Ok((value, rows, session, tables))) => match self.bound_entry(name, &args, &value, &session).map(|bound| {
+                let mut attributes = read_attributes(&read(rows, None, self.claims(name, &value), tables));
                 if let (Value::Object(a), Some(bound)) = (&mut attributes, bound) {
                     a.extend(bound);
                 }
@@ -437,7 +440,7 @@ impl<'a> Tools<'a> {
             },
             // A refusal is recorded before it answers (`disclosure.record.refused-read`).
             Ok(Err(fault)) => match fault.refusal() {
-                Some(r) => match self.record.record(read_attributes(&read(0, Some(r.identifier()), None))) {
+                Some(r) => match self.record.record(read_attributes(&read(0, Some(r.identifier()), None, None))) {
                     Ok(()) => Ok(refused(r)),
                     Err(e) => Ok(unrecorded(&e)),
                 },
@@ -479,9 +482,13 @@ impl<'a> Tools<'a> {
     }
 
     /// The claim ids a memory read returned (`read.recall.usage-ledger`): every row's
-    /// `claim_id` of a `memory.recall` answer, and each `memory_facts` row's of a
-    /// `corpus.retrieve` answer returning one. Any other read returns `None`.
+    /// `claim_id` of a `memory.recall` answer and of a knowledge card's claims, and each
+    /// `memory_facts` row's of a `corpus.retrieve` answer returning one. Any other read,
+    /// and a card that read no claims, returns `None`.
     fn claims(&self, name: &str, value: &Value) -> Option<Vec<String>> {
+        if name == "memory.explain" {
+            return self.claims("memory.recall", value.get("claims")?);
+        }
         let columns = value.get("columns")?.as_array()?;
         let at = |column: &str| columns.iter().position(|c| c == column);
         let rows = value.get("rows")?.as_array()?;
@@ -514,6 +521,9 @@ impl<'a> Tools<'a> {
             "context.query" => args.get("sql").and_then(Value::as_str).map(str::to_string),
             "context.execute_query" => args.get("id").and_then(Value::as_str).and_then(template),
             "context.describe" | "context.reference" | "memory.recall" => return args.get("table").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
+            // A refused knowledge card names its entities table; an answered one reports the
+            // tables it read.
+            "memory.explain" => return args.get("table").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
             "context.file" => return args.get("path").and_then(Value::as_str).and_then(|path| contextful_context::read::face::preview_target(path).ok()).into_iter().collect(),
             "context.subscribe" => return args.get("tables").and_then(Value::as_array).map(|ts| ts.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
             other => template(other),
@@ -525,7 +535,7 @@ impl<'a> Tools<'a> {
     }
 
     /// Run one tool: its structured result and the rows it returns.
-    fn dispatch(&self, caller: Caller<'_>, name: &str, args: &Map<String, Value>) -> Result<Result<(Value, u64, Session), ReadFault>, Protocol> {
+    fn dispatch(&self, caller: Caller<'_>, name: &str, args: &Map<String, Value>) -> Result<Result<Answered, ReadFault>, Protocol> {
         let zone = string(args, "zone")?;
         let zone = zone.as_deref();
         // Every read tool admits a pin map (`read.resolve-pin.pin-parameter`).
@@ -537,9 +547,9 @@ impl<'a> Tools<'a> {
         let horizon = horizon(caller.authority.grants());
         let inherited;
         let args = match horizon {
-            // `memory.recall` names its own clocks and reads the horizon below; a
-            // subscription takes no bound.
-            Some(_) if name != "memory.recall" && name != "context.subscribe" => match inherit_horizon(args, horizon)? {
+            // `memory.recall` names its own clocks and a knowledge card reads the latest
+            // state, each reading the horizon below; a subscription takes no bound.
+            Some(_) if name != "memory.recall" && name != "memory.explain" && name != "context.subscribe" => match inherit_horizon(args, horizon)? {
                 Ok(a) => {
                     inherited = a;
                     &inherited
@@ -553,7 +563,7 @@ impl<'a> Tools<'a> {
                 only(args, name, &["table", "internals"])?;
                 let table = string(args, "table")?;
                 let opts = options(args)?;
-                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.describe_with_options(&s, table.as_deref(), opts).map(|v| (v, 0, s)))
+                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.describe_with_options(&s, table.as_deref(), opts).map(|v| (v, 0, s, None)))
             }
             "context.query" => {
                 only(args, name, &["sql", "parameters", "limit", "max_duration_ms", "max_response_bytes", "internals"])?;
@@ -636,7 +646,7 @@ impl<'a> Tools<'a> {
                 self.session(caller, zone, Bounds::default(), pins).and_then(|s| {
                     let page = self.face.subscribe(&s, &tables, &after)?;
                     let sent = page["messages"].as_array().map_or(0, |m| m.len() as u64);
-                    Ok((page, sent, s))
+                    Ok((page, sent, s, None))
                 })
             }
             "corpus.retrieve" => {
@@ -709,7 +719,30 @@ impl<'a> Tools<'a> {
                     internals: boolean(args, "internals")?,
                     ..RecallRequest::new(required(args, "table")?, required(args, "subject")?, self.clock.now())
                 };
-                self.session(caller, zone, request.bounds(), pins).and_then(|s| self.face.recall(&s, &request).map(|r| answered_in(r, s)))
+                self.session(caller, zone, request.bounds(), pins).and_then(|s| self.face.recall_read(&s, &request).map(|(r, read)| {
+                    let (value, rows) = answered(r);
+                    (value, rows, s, Some(read))
+                }))
+            }
+            "memory.explain" => {
+                only(args, name, &["table", "reference", "claims", "internals"])?;
+                // A knowledge card reads the latest state (`read.register.bound-arguments`).
+                if let Some(k) = ["as_of", "valid_as_of", "available_as_of", VINTAGE].into_iter().find(|k| args.contains_key(*k)) {
+                    return Err(invalid(format!("`{name}` takes no argument `{k}`")));
+                }
+                let request = ExplainRequest {
+                    claims: string(args, "claims")?,
+                    available_as_of: horizon.map(|at| Bound { at, inclusive: true }),
+                    max_duration_ms: integer(args, "max_duration_ms")?,
+                    max_response_bytes: integer(args, "max_response_bytes")?,
+                    internals: boolean(args, "internals")?,
+                    ..ExplainRequest::new(required(args, "table")?, required(args, "reference")?, self.clock.now())
+                };
+                self.session(caller, zone, request.bounds(), pins).and_then(|s| {
+                    let (card, read) = self.face.explain_read(&s, &request)?;
+                    let rows = u64::from(!card["entity"].is_null()) + card["claims"]["rows"].as_array().map_or(0, |r| r.len() as u64);
+                    Ok((card, rows, s, Some(read)))
+                })
             }
             template if self.face.templates().iter().any(|t| t.id == template) => {
                 // No template parameter takes a read argument's name (`read.guard.template-reserved-parameter`).

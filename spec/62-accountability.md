@@ -83,6 +83,8 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *A-disclosure*
 - `read-attributes` — A read's entry carries `contextful.tool`, `contextful.credential`, `contextful.subject.<member>` and `contextful.subject.attestation.<member>` per present subject member, `contextful.result.rows`, `contextful.read.at`, `contextful.read.outcome` and `contextful.tables`, the relations the read names.
   *because the chain answers who read how much under which credential, and the attestation keeps an asserted member from reading as identity*
+- `memory-read-tables` — A `memory.recall` or `memory.explain` entry's `contextful.tables` lists each relation the read ran a statement on under the caller's session: the entities, the claims, every evidence table its gate read, and a labels table.
+  *because the evidence gate reads source rows on the caller's behalf, and a read its entry omits is one no owner can account for*
 - `read-chain` — `contextful serve`, `contextful mcp` and {{read.reference.call}} open `.contextful/audit/` before answering; without an explicit startup signing port they use unanchored custody. A chain that does not open stops the process before any row reads.
   *A-disclosure*
 - `read-signer` — An explicit startup read signing port matches independently configured current public pins before opening and before each append; missing, wrong or retired signing authority refuses held-chain reads through {{disclosure.record.unpersisted-entry}} without inferring keys from requests or receipts.
@@ -103,8 +105,12 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *because the lock is held per append group, so a held open can land between two groups of a running unanchored handle*
 - `unsigned-tip` — A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.
   *A-disclosure*
-- `reads-view` — `audit query` runs one statement over `audit_reads`, one row per table a read entry names — `read_at`, `on_behalf_of`, `agent`, `table_name`, `policy`, `outcome`, `row_count` — computed from the chain's segments on each call.
+- `signed-read` — A read verb's `--issuer-key` opens the chain held without anchoring it; over a chain carrying no `chain.held` it refuses as {{disclosure.record.unsigned-tip}} does, naming {{disclosure.attest.anchor-verb}}, and appends nothing.
+  *because anchoring is one-way and {{disclosure.record.unanchored-over-signed}} then refuses every unsigned reader, so only the owner's explicit verb performs it*
+- `reads-view` — `audit query` runs one statement over `audit_reads`, one row per table a read entry names — `read_at`, `on_behalf_of`, `agent`, `table_name`, `policy`, `outcome`, `row_count`, `claims` — computed from the chain's segments on each call.
   *A-disclosure*
+- `reads-view-types` — In `audit_reads`, `row_count` is an integer, and `claims` lists the claim ids a read entry records, null where it records none.
+  *because a count compared as text sorts wrong, and an empty list beside null gives one absence two spellings*
 - `erasures-view` — `audit query` exposes `audit_erasures` from canonical erasure entries: `transaction_id`, `subject_hash`, `affected_counts` and `executed_at`; the projection retains no state and exposes no selector or row payload.
   *A-disclosure*
 - `bound-entry` — A bounded read's {{disclosure.record.read-attributes}} entry adds `contextful.bounds` as {{store.bound-time.echo}} echoes it, the snapshot id the read resolved, the query text and the response's SHA-256 digest.
