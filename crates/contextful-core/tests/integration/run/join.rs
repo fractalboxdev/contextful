@@ -97,6 +97,7 @@ fn a_pending_owner_s_pin_names_the_artifact_a_replay_resolves() {
         pins: Pins { connector: recorded.clone(), content_hash: "plan".into(), input_hash: String::new() }.into(),
         attempts: vec!["run-1".into()],
         opened_at: super::at("2030-01-01T00:00:00Z"),
+        next_attempt_at: None,
     };
     let rebuilt = pin(&sha256_hex(b"build 2"));
     assert_eq!(admission_pin(Some(&owner), &rebuilt), &recorded);

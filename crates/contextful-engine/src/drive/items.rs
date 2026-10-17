@@ -18,7 +18,9 @@ use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{OwnerPins, OwnerScope};
 use contextful_core::run::ports::{BlobStore, JournalStore, Landed, OpenExecution};
 use contextful_core::run::record::{RunRow, RunStatus};
+use contextful_core::run::retry::RETRY_AFTER_CEILING_SECS;
 use contextful_core::run::{Failure, FailureTag};
+use contextful_core::time::Instant;
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -30,6 +32,9 @@ pub enum ItemStatus {
     Failed(Failure),
     Parked,
     Deferred,
+    /// A retry wait parked the item until its next-attempt instant; it is neither refused
+    /// nor failed (`run.retry.waiting-state`).
+    Waiting { next_attempt_at: Instant },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +44,16 @@ pub struct ItemOutcome {
     pub execution_id: String,
     pub run_id: Option<String>,
     pub status: ItemStatus,
+}
+
+impl ItemOutcome {
+    /// The next-attempt instant of a waiting item.
+    pub fn waiting(&self) -> Option<Instant> {
+        match self.status {
+            ItemStatus::Waiting { next_attempt_at } => Some(next_attempt_at),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -268,10 +283,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         }) {
             Ok(value) => value,
             Err(close) => {
-                let error: EngineError = match &close {
-                    Close::Failed(f) => f.clone().into(),
-                    Close::Refused(e) => e.clone().into(),
-                };
+                let error = close.error();
                 aggregate.close_with(Err(close))?;
                 return Err(error);
             }
@@ -337,29 +349,40 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                 BodyOwner,
                 std::sync::mpsc::SyncSender<Result<Landed, Failure>>,
             ),
-            Done(Result<ItemOutcome, EngineError>),
+            Done(usize, Result<ItemOutcome, EngineError>),
         }
+        // A waiting item frees its slot; once every item of a pass stopped, the ones whose
+        // instant falls within the retry ceiling re-enter in a later pass of this fire
+        // (`run.items.waiting-item`).
+        let mut outcomes: Vec<Option<ItemOutcome>> = vec![None; rows.len()];
+        let mut due: Vec<usize> = (0..rows.len()).collect();
+        let mut waited: Option<Instant> = None;
+        let mut pass = 0u32;
+        loop {
         let (send, receive) = std::sync::mpsc::channel();
         let next = AtomicUsize::new(0);
         let results = std::thread::scope(|threads| {
-            for _ in 0..drive.max_in_flight.max(1).min(rows.len()) {
+            for _ in 0..drive.max_in_flight.max(1).min(due.len()) {
                 let send = send.clone();
                 let rows = &rows;
+                let due = &due;
                 let next = &next;
                 let pins = &pins;
                 let set = &set;
                 let aggregate = &aggregate;
                 threads.spawn(move || {
-                    while let Some((row, id, entity)) =
-                        rows.get(next.fetch_add(1, Ordering::SeqCst))
-                    {
+                    while let Some(&index) = due.get(next.fetch_add(1, Ordering::SeqCst)) {
+                        let (row, id, entity) = &rows[index];
                         let result = (|| {
                             let scope = OwnerScope::host(&format!("{ITEM_SCOPE_PREFIX}{id}"));
                             if let Some(receipt) = self.catalog.cursor_at(&scope)?.position {
                                 return receipt_outcome(&row.key, id, receipt)
                                     .map_err(EngineError::from);
                             }
-                            let attempt = format!("{}:item:{}", drive.run_id, id);
+                            let attempt = match pass {
+                                0 => format!("{}:item:{}", drive.run_id, id),
+                                n => format!("{}:item:{}:{}", drive.run_id, id, n + 1),
+                            };
                             let lease = match self.catalog.acquire(
                                 &entity_lease_key(&policy.entity_namespace, entity),
                                 &attempt,
@@ -400,6 +423,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                             };
                             x.hold(lease);
                             x.inherit(aggregate);
+                            x.park_waits(waited);
                             if let Err(close) = x.claim() {
                                 let (tag, message) = close.recorded();
                                 x.close_with(Err(close))?;
@@ -456,13 +480,24 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                                         .map_err(Close::Failed)
                                 }
                                 Err(RowStop::Parked) => {
+                                    let stopped = calls.close.lock().unwrap_or_else(|e| e.into_inner()).take();
                                     drop(calls);
-                                    x.park()?;
+                                    let status = match stopped {
+                                        Some(close) if close.waiting().is_some() => {
+                                            let next_attempt_at = close.waiting().expect("a waiting close");
+                                            x.close_with(Err(close))?;
+                                            ItemStatus::Waiting { next_attempt_at }
+                                        }
+                                        _ => {
+                                            x.park()?;
+                                            ItemStatus::Parked
+                                        }
+                                    };
                                     return Ok(ItemOutcome {
                                         logical_id: row.key.clone(),
                                         execution_id: id.clone(),
                                         run_id: Some(attempt),
-                                        status: ItemStatus::Parked,
+                                        status,
                                     });
                                 }
                                 Err(RowStop::Failed(f)) => Err(calls
@@ -554,7 +589,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                                 status,
                             })
                         })();
-                        if send.send(Message::Done(result)).is_err() {
+                        if send.send(Message::Done(index, result)).is_err() {
                             break;
                         }
                     }
@@ -570,21 +605,35 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                             .and_then(|_| land(&id, &out, &owner));
                         let _ = reply.send(admitted);
                     }
-                    Message::Done(result) => results.push(result),
+                    Message::Done(index, result) => results.push((index, result)),
                 }
             }
             results
         });
-        let mut items = match results.into_iter().collect::<Result<Vec<_>, _>>() {
-            Ok(items) => items,
-            Err(e) => {
-                aggregate.close_with(Err(Close::Failed(Failure::new(
-                    FailureTag::Storage,
-                    e.to_string(),
-                ))))?;
-                return Err(e);
+        for (index, result) in results {
+            match result {
+                Ok(outcome) => outcomes[index] = Some(outcome),
+                Err(e) => {
+                    aggregate.close_with(Err(Close::Failed(Failure::new(
+                        FailureTag::Storage,
+                        e.to_string(),
+                    ))))?;
+                    return Err(e);
+                }
             }
-        };
+        }
+        let now = self.catalog.now()?;
+        let ceiling = now.plus_secs(RETRY_AFTER_CEILING_SECS);
+        let Some(until) = outcomes.iter().flatten().filter_map(ItemOutcome::waiting).filter(|at| *at <= ceiling).min() else { break };
+        let nanos = u64::try_from(until.unix_nanos() - now.unix_nanos()).unwrap_or(0);
+        if !aggregate.token().wait_timeout(std::time::Duration::from_nanos(nanos)) {
+            break;
+        }
+        due = (0..rows.len()).filter(|&i| outcomes[i].as_ref().and_then(ItemOutcome::waiting).is_some_and(|at| at <= until)).collect();
+        waited = Some(until);
+        pass += 1;
+        }
+        let mut items: Vec<ItemOutcome> = outcomes.into_iter().flatten().collect();
         items.sort_by(|a, b| a.logical_id.cmp(&b.logical_id));
         let report = ItemReport { items };
         if report.succeeded() {
@@ -613,12 +662,14 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                     )))?
                     .position
                     .is_some(),
-                ItemStatus::Parked | ItemStatus::Deferred => false,
+                ItemStatus::Parked | ItemStatus::Deferred | ItemStatus::Waiting { .. } => false,
             };
         }
         if terminal && !report.succeeded() {
             aggregate.discard();
         }
+        let waits = report.items.iter().filter_map(ItemOutcome::waiting).min();
+        let only_waiting = report.items.iter().all(|i| matches!(i.status, ItemStatus::Succeeded(_) | ItemStatus::Waiting { .. }));
         let outcome = if report.succeeded() {
             let landed = report
                 .items
@@ -632,10 +683,19 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                 });
             Ok((landed, Tally::default()))
         } else {
-            Err(Close::Failed(Failure::new(
-                FailureTag::Transient,
-                "isolated items contain failed, parked or deferred outcomes",
-            )))
+            match waits {
+                // The job wakes at its earliest waiting item (`run.retry.wake`).
+                Some(at) if only_waiting => Err(Close::Waiting { label: "isolated items".into(), at }),
+                _ => {
+                    if let Some(at) = waits {
+                        aggregate.wake_at(at)?;
+                    }
+                    Err(Close::Failed(Failure::new(
+                        FailureTag::Transient,
+                        "isolated items contain failed, parked, deferred or waiting outcomes",
+                    )))
+                }
+            }
         };
         aggregate.close_with(outcome)?;
         Ok(report)

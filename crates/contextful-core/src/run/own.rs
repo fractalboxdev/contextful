@@ -250,6 +250,10 @@ pub struct ExecutionOwner {
     /// Catalog run ids of the attempts made under this owner, oldest first.
     pub attempts: Vec<String>,
     pub opened_at: Instant,
+    /// The instant a waiting attempt resumes at: the scheduler wakes the owner's unit then,
+    /// and the next attempt's claim clears it (`run.retry.wake`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_attempt_at: Option<Instant>,
 }
 
 impl ExecutionOwner {
