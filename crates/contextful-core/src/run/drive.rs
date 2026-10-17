@@ -102,6 +102,60 @@ impl ItemPolicy {
     }
 }
 
+/// How a terminal isolated item ended (`run.items.terminal-outcome`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ItemTerminal {
+    Succeeded,
+    /// A failure no retry changes.
+    Failed,
+    /// A retryable failure on the attempt that spent the item budget.
+    Exhausted,
+}
+
+impl ItemTerminal {
+    /// The outcome's spelling on the item record.
+    pub fn name(self) -> &'static str {
+        match self {
+            ItemTerminal::Succeeded => "succeeded",
+            ItemTerminal::Failed => "failed",
+            ItemTerminal::Exhausted => "exhausted",
+        }
+    }
+
+    /// Whether a failure tagged `tag` is one a later attempt can change.
+    pub fn retryable(tag: FailureTag) -> bool {
+        matches!(tag, FailureTag::Transient | FailureTag::RateLimited | FailureTag::Storage | FailureTag::Canceled)
+    }
+}
+
+/// What a terminal item's receipt names beyond its landing: the job, the keys as the job's
+/// input relation served them, the attempts spent and the outcome (`run.items.outcome-record`).
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ItemIdentity {
+    pub job: String,
+    pub logical_key: serde_json::Value,
+    pub entity_namespace: String,
+    pub entity_key: serde_json::Value,
+    pub attempts: u32,
+    pub outcome: ItemTerminal,
+}
+
+/// The durable receipt a terminal item stores as its `item:<execution id>` cursor position.
+/// A receipt stored before [`ItemIdentity`] existed decodes with none.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ItemReceipt {
+    pub run_id: String,
+    pub rows: u64,
+    pub bytes: u64,
+    pub failure: Option<Failure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item: Option<ItemIdentity>,
+}
+
+/// The owner scope prefix an isolated item's execution holds.
+pub const ITEM_SCOPE_PREFIX: &str = "item:";
+
 /// What a store-driven job pins: the body it names, its input statement and the `as_of`
 /// it declares, absent when the execution resolves one at open (`run.journal.input-pin`).
 #[derive(Debug, Clone, PartialEq, Eq)]

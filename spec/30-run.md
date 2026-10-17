@@ -202,6 +202,12 @@ Independent store-driven items, their durable receipts, bounded retries and enti
   *because an owner that resumes after transfer cannot authorize another effect*
 - `delegated-item` — Under a delegated body, each call ordinal is one request under {{surface.delegate.envelope}}, its `ok`, `defer` or `permanent` answer recorded under the item's entry key, so a resume replays every recorded answer and sends only the unrecorded call.
   *A-surface*
+- `outcome-record` — Each terminal item appends one row to the reserved `_items` table once its receipt commits: job, logical key, entity namespace and key, attempt count, terminal outcome, reason, attempt run id, execution id and end instant.
+  *A-run*
+- `terminal-outcome` — An item row's outcome is `succeeded`, `failed` for a failure no retry changes, or `exhausted` for a retryable failure on the attempt spending {{run.items.retry-budget}}; its reason carries the failure tag and {{run.record.error-cap}} message.
+  *A-run*
+- `served-key` — An item row carries its logical and entity keys as the job's input relation served them, so a key its source masks or classes lands under that rule, never in the clear.
+  *A-run*
 
 #### Scenarios
 
@@ -210,6 +216,10 @@ Independent store-driven items, their durable receipts, bounded retries and enti
 - `run.items.entity-admission`: WHEN three store-driven jobs declare one entity namespace and key column and two fire in one window, THEN at most one item per key enters a body and the later job's item reports deferred.
 - `run.items.entity-admission`: WHEN two jobs target one entity under different plans, THEN one enters its body and the other reports deferred while unrelated entities proceed.
 - `run.items.fence`: WHEN an entity lease transfers before a paid call, THEN the earlier attempt invokes no provider.
+- `run.items.outcome-record`: WHEN one of three items fails transiently under a one-attempt budget, THEN `_items` holds two `succeeded` rows and one `exhausted` row naming the job and entity key, and a later fire adds none.
+- `run.items.served-key`: WHEN the input table hashes the entity key column, THEN every `_items` row carries the 32-char digest and no clear key.
+
+unsettled: Does a job credential holding a mask exception record its entity key in the clear on `_items`, or does the item record apply the source column's mask itself? owner: run-path affects: run.items
 
 ## advance
 

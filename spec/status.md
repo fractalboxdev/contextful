@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 551 | 126 | 45 | 16 | 519 | 0 | 519 |
+| `run` | 3 | 29 | 554 | 126 | 45 | 17 | 522 | 0 | 522 |
 | `store` | 3 | 19 | 295 | 64 | 15 | 10 | 284 | 0 | 284 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2664 | 675 | 213 | 74 | 2377 | 0 | |
+| **total** | 22 | 169 | 2667 | 675 | 213 | 75 | 2380 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
-| 3 — The run path | 12 | 286 | 275 | passing | closed |
+| 3 — The run path | 12 | 289 | 278 | passing | closed |
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
 | 5 — The read face under enforcement | 17 | 314 | 279 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
@@ -1610,10 +1610,13 @@ Unscheduled operations: 13.
 | `run.items.entity-admission` | `spec/pins.toml` | performed |
 | `run.items.identity` | `spec/pins.toml` | performed |
 | `run.items.opt-in` | `spec/pins.toml` | performed |
+| `run.items.outcome-record` | `crates/contextful-cli/tests/integration/job.rs::terminal_items_read_back_from_the_item_record_by_job_and_entity` | performed |
 | `run.items.outcomes` | `spec/pins.toml` | performed |
 | `run.items.replay` | `spec/pins.toml` | performed |
 | `run.items.retry-budget` | `spec/pins.toml` | performed |
+| `run.items.served-key` | `crates/contextful-cli/tests/integration/job.rs::a_masked_entity_key_lands_in_the_item_record_masked` | performed |
 | `run.items.terminal-input` | `spec/pins.toml` | performed |
+| `run.items.terminal-outcome` | `crates/contextful-cli/tests/integration/job.rs::terminal_items_read_back_from_the_item_record_by_job_and_entity` | performed |
 | `run.journal.blob-sweep` | `crates/contextful-engine/tests/integration/journal.rs::the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day` | performed |
 | `run.journal.blob-write` | `crates/contextful-engine/tests/integration/journal.rs::concurrent_blob_writers_converge_on_one_file` | performed |
 | `run.journal.body-projection` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |

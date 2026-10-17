@@ -13,6 +13,7 @@ pub mod erase;
 pub mod error;
 pub mod fold;
 pub mod fulltext;
+pub mod item_record;
 pub mod land;
 pub mod ledger;
 pub mod node;

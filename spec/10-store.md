@@ -238,7 +238,7 @@ The column and table namespaces the engine holds, the provenance columns it inje
   *A-read*
 - `column-name` — A producer column inside the `_` namespace and outside the optional set raises `StoreReservedColumnName` at reconciliation, before any Parquet.
   *P1*
-- `table-namespaces` — The engine reserves two table namespaces: `_runs`, the durable run record, and `_visibility`, under which {{disclosure.mirror.grants-table}} lands each source's mirrored access tables.
+- `table-namespaces` — The engine reserves three table namespaces: `_runs`, the durable run record, `_items`, the item record of {{run.items.outcome-record}}, and `_visibility`, under which {{disclosure.mirror.grants-table}} lands each source's mirrored access tables.
 - `table-name` — A pipeline declaring a table inside a reserved namespace raises `StoreReservedTableName` when its manifest is assembled, naming the reservation.
   *P1*
 - `ledger-suffix` — A table name ending in `__requests` is reserved to request-ledger relations and refuses as {{store.reserve.table-name}}.
