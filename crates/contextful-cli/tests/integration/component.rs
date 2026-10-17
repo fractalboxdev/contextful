@@ -226,6 +226,7 @@ fn a_replay_runs_the_component_build_its_owner_pinned_and_a_rebuild_waits_for_a_
             pins: Pins { connector: recorded, content_hash: declared[0].spec.content_hash(), input_hash: String::new() }.into(),
             attempts: vec!["run-died".into()],
             opened_at: contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap(),
+            next_attempt_at: None,
         })
         .unwrap();
 

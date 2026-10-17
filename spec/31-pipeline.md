@@ -388,6 +388,8 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *A-run*
 - `group-storage` — A coordinated publication under `postgres` raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery; a `cloudflare-d1` sender state over 8 MiB raises it before staging.
   *A-run*
+- `group-sender-profile` — {{run.export.group-storage}} reads the sender's storage profile alone; under the local profile a group keeps its sender state in `machine.sqlite` and delivers to any `changes-v1` receiver, a D1-backed one included.
+  *because the outbox is the sender's durable state, and a receiver's storage is behind its endpoint*
 - `group-d1-state` — Under {{run.journal.d1-profile}}, D1 holds each group's producer frontier, sender outbox and active namespace; one D1 batch commits a completing acknowledgement with its promoted state and active namespace.
   *A-run*
 - `group-d1-lease` — A `cloudflare-d1` group writer holds one durable D1 lease per publication, and every sender write predicates on that lease and the row's prior version.
@@ -404,6 +406,8 @@ The outbound copy of a landed table to an operator-declared target: the export b
 - `run.export.group-d1-state`: WHEN a replacement loses the acknowledgement of the group-complete batch, THEN it reoffers that batch, and the receiver's accepted group absorbs the retry without a second activation.
 
 unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export
+
+unsettled: Does a local-profile sender whose disk a replacement emptied continue its receiver's group sequence, or refuse until `contextful export rebuild` opens a fresh namespace? owner: pipeline affects: run.export
 
 ## backfill
 

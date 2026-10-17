@@ -344,9 +344,10 @@ impl ChunkRow {
             return;
         }
         match status {
-            RunStatus::Canceled => self.status = ChunkStatus::Pending,
+            // A chunk whose attempt closed waiting on a next-attempt instant resumes as a stop does.
+            RunStatus::Canceled | RunStatus::Waiting => self.status = ChunkStatus::Pending,
             RunStatus::Failed | RunStatus::PartialFailure => self.status = ChunkStatus::Failed,
-            RunStatus::Success | RunStatus::Pending | RunStatus::Running | RunStatus::Waiting => return,
+            RunStatus::Success | RunStatus::Pending | RunStatus::Running => return,
         }
         self.lease = None;
     }

@@ -9,13 +9,13 @@ use crate::runner::{Engine, EngineError};
 use crate::stores::{FileBlobStore, FileJournalStore};
 use contextful_core::coordinate::{Cas, CursorRow, Lease};
 use contextful_core::run::backfill::{ChunkStatus, PipelinePhase};
-use contextful_core::run::journal::{sha256_hex, EntryKey};
+use contextful_core::run::journal::{sha256_hex, EntryKey, Row};
 use contextful_core::run::own::{releases, ExecutionOwner, OwnerPins, OwnerScope};
 use contextful_core::run::plan::NATIVE_WORLD;
 use contextful_core::run::ports::{BlobStore, Cancellation, Capabilities, ExecutionPort, JournalStore, Landed, OpenExecution, Outcome, StepEffect, Substrate, Wake};
 use contextful_core::run::project::{Change, StepPatch, StepStatus};
 use contextful_core::run::record::{cap_error, BoundHit, Owner, Phase, RunRow, RunStatus};
-use contextful_core::run::retry::{decide, Decision, Schedule};
+use contextful_core::run::retry::{decide, hold, not_before_key, Decision, Hold, NotBefore, Schedule};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::time::Instant;
 use serde_json::Value;
@@ -41,6 +41,8 @@ pub(crate) struct Tally {
 pub(crate) enum Close {
     Refused(RunError),
     Failed(Failure),
+    /// A step parked until its next-attempt instant (`run.retry.waiting-state`).
+    Waiting { label: String, at: Instant },
 }
 
 impl From<Failure> for Close {
@@ -69,6 +71,7 @@ impl From<Close> for EngineError {
         match c {
             Close::Refused(e) => EngineError::Refused(e),
             Close::Failed(f) => EngineError::Failure(f),
+            waiting @ Close::Waiting { .. } => EngineError::Failure(Failure::new(FailureTag::RateLimited, waiting.message())),
         }
     }
 }
@@ -80,6 +83,7 @@ impl Close {
             Close::Failed(f) => (f.tag, f.to_string()),
             Close::Refused(RunError::StepFailed { failure, .. }) => (failure.tag, self.message()),
             Close::Refused(_) => (FailureTag::Permanent, self.message()),
+            Close::Waiting { .. } => (FailureTag::RateLimited, self.message()),
         }
     }
 
@@ -87,6 +91,24 @@ impl Close {
         match self {
             Close::Failed(f) => f.to_string(),
             Close::Refused(e) => e.to_string(),
+            Close::Waiting { label, at } => format!("`{label}` waits for its next attempt at {at}"),
+        }
+    }
+
+    /// The error a caller of the closing execution answers.
+    pub(crate) fn error(&self) -> EngineError {
+        match self {
+            Close::Refused(e) => EngineError::Refused(e.clone()),
+            Close::Failed(f) => EngineError::Failure(f.clone()),
+            Close::Waiting { .. } => EngineError::Failure(Failure::new(FailureTag::RateLimited, self.message())),
+        }
+    }
+
+    /// The instant a waiting close resumes at.
+    pub(crate) fn waiting(&self) -> Option<Instant> {
+        match self {
+            Close::Waiting { at, .. } => Some(*at),
+            _ => None,
         }
     }
 }
@@ -132,6 +154,13 @@ pub struct Execution<'e, J: JournalStore = FileJournalStore, B: BlobStore = File
     /// Each logical name the run hydrated and the adapter that answered it, copied onto the
     /// closing row (`connector.record.provider-attribution`).
     credentials: std::collections::BTreeMap<String, String>,
+    /// Whether every retry wait closes the attempt waiting rather than sleeping: an
+    /// isolated item's, so a wait holds no slot (`run.items.waiting-item`).
+    park_waits: bool,
+    /// An instant the caller already waited out on this attempt's behalf.
+    waited: Option<Instant>,
+    /// The step and instant the last parked step waits on.
+    waiting: Mutex<Option<(String, Instant)>>,
 }
 
 impl<J: JournalStore, B: BlobStore> Engine<J, B> {
@@ -147,10 +176,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     pub fn open_execution(&self, open: &OpenExecution) -> Result<Execution<'_, J, B>, EngineError> {
         let mut execution = self.begin(open)?;
         if let Err(close) = execution.claim() {
-            let refusal = match &close {
-                Close::Refused(e) => EngineError::Refused(e.clone()),
-                Close::Failed(f) => EngineError::Failure(f.clone()),
-            };
+            let refusal = close.error();
             execution.close_with(Err(close))?;
             return Err(refusal);
         }
@@ -210,6 +236,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             failed_branches: Vec::new(),
             credential_providers: Default::default(),
             bound_hits: Vec::new(),
+            next_attempt_at: None,
         };
         self.catalog.put_run(&row)?;
         let token = CancelToken::default();
@@ -232,10 +259,28 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             retired: false,
             discarded: false,
             credentials: Default::default(),
+            park_waits: false,
+            waited: None,
+            waiting: Mutex::new(None),
         };
         execution.emit(Change::Status { status: RunStatus::Running, at: Some(now), error: None });
         execution.registration = Some(self.keeper.register(self.catalog.clone(), &open.run_id, token, held));
         Ok(execution)
+    }
+
+    /// The next-attempt entry standing for step `key`: the one its last closed attempt
+    /// recorded, while the step holds no recorded value (`run.retry.not-before`).
+    pub fn not_before(&self, key: &EntryKey) -> Result<Option<NotBefore>, Failure> {
+        let attempts = self.journal.attempts(key)?;
+        if attempts == 0 {
+            return Ok(None);
+        }
+        let Some(Row::Recorded { value, .. }) = self.journal.row(&not_before_key(key, attempts))? else { return Ok(None) };
+        let bytes = self.journal.load(&value).map_err(|e| match e {
+            StepError::Failed(f) | StepError::Storage(f) => f,
+            StepError::Journal(r) => Failure::new(FailureTag::Storage, r.to_string()),
+        })?;
+        NotBefore::decode(&bytes).map(Some)
     }
 
     /// Whether the pending owner of `scope` holds `execution_id` under another attempt
@@ -423,9 +468,12 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
                 pins: self.pins.clone(),
                 attempts: Vec::new(),
                 opened_at: self.engine.catalog.now()?,
+            next_attempt_at: None,
             },
         };
         owner.attempts.push(self.run_id.clone());
+        // This attempt answers the wake a waiting attempt left (`run.retry.wake`).
+        owner.next_attempt_at = None;
         self.engine.catalog.put_owner(&owner)?;
         self.pins = owner.pins;
         self.opened_at = Some(owner.opened_at);
@@ -459,6 +507,40 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
     /// Whether the execution runs under a backfill chunk scope.
     fn chunked(&self) -> bool {
         matches!(self.scope, OwnerScope::Chunk { .. })
+    }
+
+    /// Close every retry wait waiting instead of sleeping, counting `waited` as already
+    /// waited out: an isolated item's attempt (`run.items.waiting-item`).
+    pub(crate) fn park_waits(&mut self, waited: Option<Instant>) {
+        self.park_waits = true;
+        self.waited = waited;
+    }
+
+    /// The next-attempt entry standing for `key`: the one its closed attempts recorded.
+    fn not_before(&self, key: &EntryKey) -> Result<Option<NotBefore>, Failure> {
+        self.engine.not_before(key)
+    }
+
+    /// Hold the next attempt of `label` until `at`: return when it passed, sleep a remaining
+    /// wait up to the ceiling, or close waiting (`run.retry.retry-after`).
+    fn hold_until(&self, label: &str, at: Instant) -> Result<(), Close> {
+        if self.waited.is_some_and(|w| w >= at) {
+            return Ok(());
+        }
+        match hold(at, self.now()?, self.park_waits) {
+            Hold::Due => Ok(()),
+            Hold::Sleep { nanos } => {
+                if self.token.wait_timeout(Duration::from_nanos(nanos)) {
+                    Ok(())
+                } else {
+                    Err(Close::Failed(Failure::canceled(format!("stopped during the retry sleep of `{label}`"))))
+                }
+            }
+            Hold::Wait => {
+                *self.waiting.lock().unwrap_or_else(|e| e.into_inner()) = Some((label.to_string(), at));
+                Err(Close::Waiting { label: label.to_string(), at })
+            }
+        }
     }
 
     /// Replace the schedule the execution's next steps retry under, answering the one it
@@ -509,6 +591,11 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         // A schedule a crash interrupted mid-backoff resumes the budget its step's journal
         // row persisted (`run.retry.attempt-counter`).
         let mut attempt = engine.journal.attempts(key)? + 1;
+        // A resume honors the next-attempt instant its predecessor recorded
+        // (`run.retry.resume-at`).
+        if let Some(stored) = self.not_before(key)? {
+            self.hold_until(label, stored.at)?;
+        }
         loop {
             self.assert_current()?;
             self.emit(Change::Step(StepPatch { attempts: Some(attempt), ..StepPatch::new(label).status(StepStatus::Running) }));
@@ -532,20 +619,22 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
                     Ok(())
                 })?;
             }
-            match decide(&self.schedule, label, attempt, &failure, seed(&self.run_id)) {
-                Decision::Retry { delay_ms } => {
-                    engine.journal.note_attempts(key, &self.run_id, attempt)?;
-                    self.emit(Change::Step(StepPatch { failure: Some(failure.clone()), ..StepPatch::new(label).status(StepStatus::Retrying) }));
-                    if !token.wait_timeout(Duration::from_millis(delay_ms)) {
-                        return Err(Close::Failed(Failure::canceled(format!("stopped during the retry sleep of `{label}`"))));
-                    }
-                    attempt += 1;
-                }
-                Decision::Fail { error, .. } | Decision::Reschedule { error, .. } => {
+            let delay_ms = match decide(&self.schedule, label, attempt, &failure, seed(&self.run_id)) {
+                Decision::Retry { delay_ms } => delay_ms,
+                Decision::Reschedule { retry_after_secs, .. } => retry_after_secs.saturating_mul(1000),
+                Decision::Fail { error, .. } => {
                     self.emit(Change::Step(StepPatch { failure: Some(failure), ..StepPatch::new(label).status(StepStatus::Failed) }));
                     return Err(Close::Refused(error));
                 }
-            }
+            };
+            // The count, then the instant, persist before any wait, so a restart honors both
+            // (`run.retry.attempt-counter`, `run.retry.not-before`).
+            let next = NotBefore::after(self.now()?, delay_ms, attempt);
+            engine.journal.note_attempts(key, &self.run_id, attempt)?;
+            engine.journal.record(&not_before_key(key, attempt), &next.encode())?;
+            self.emit(Change::Step(StepPatch { failure: Some(failure.clone()), ..StepPatch::new(label).status(StepStatus::Retrying) }));
+            self.hold_until(label, next.at)?;
+            attempt += 1;
         }
     }
 
@@ -555,6 +644,20 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
             return Err(RunError::Invalid(format!("execution `{}` committed its cursor and retired; {what} opens a fresh execution", self.execution_id)).into());
         }
         Ok(())
+    }
+
+    /// Record on the claimed owner the instant its waiting attempt resumes at, for the
+    /// scheduler's wake (`run.retry.wake`).
+    pub(crate) fn wake_at(&self, at: Instant) -> Result<(), Failure> {
+        if !self.owned || self.retired {
+            return Ok(());
+        }
+        let Some(mut owner) = self.engine.catalog.owner_at(&self.scope)? else { return Ok(()) };
+        if owner.execution_id != self.execution_id || owner.next_attempt_at.is_some_and(|t| t <= at) {
+            return Ok(());
+        }
+        owner.next_attempt_at = Some(at);
+        self.engine.catalog.put_owner(&owner)
     }
 
     /// Set the run row's status, keeping every other field.
@@ -600,13 +703,26 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
                 }
                 Err(close) => {
                     let (tag, message) = close.recorded();
-                    r.status = if tag == FailureTag::Canceled { RunStatus::Canceled } else { RunStatus::Failed };
+                    r.status = match close.waiting() {
+                        Some(at) => {
+                            // A waiting attempt is neither refused nor failed; it ended
+                            // nothing (`run.retry.waiting-state`).
+                            r.ended_at = None;
+                            r.next_attempt_at = Some(at);
+                            RunStatus::Waiting
+                        }
+                        None if tag == FailureTag::Canceled => RunStatus::Canceled,
+                        None => RunStatus::Failed,
+                    };
                     r.error_kind = Some(tag);
                     r.error_message = Some(cap_error(&message));
                 }
             }
             Ok(())
         })?;
+        if let Some(at) = outcome.as_ref().err().and_then(Close::waiting) {
+            self.wake_at(at)?;
+        }
         let row = match closed {
             Some(Ok(r)) => r,
             _ => engine.catalog.run(&self.run_id)?.ok_or_else(|| Failure::new(FailureTag::Storage, format!("run `{}` has no row to close", self.run_id)))?,
@@ -734,7 +850,11 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> ExecutionPort for Execution<
     fn close(self, outcome: Outcome) -> Result<RunRow, EngineError> {
         let outcome = match outcome {
             Outcome::Success { rows, bytes, batches } => Ok((Landed { rows, bytes }, Tally { batches, ..Tally::default() })),
-            Outcome::Failed(f) => Err(Close::Failed(f)),
+            // A host closing on the failure a parked step answered closes waiting.
+            Outcome::Failed(f) => Err(match self.waiting.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                Some((label, at)) if f.tag == FailureTag::RateLimited => Close::Waiting { label, at },
+                _ => Close::Failed(f),
+            }),
         };
         self.close_with(outcome)
     }

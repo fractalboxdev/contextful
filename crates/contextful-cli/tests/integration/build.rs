@@ -468,6 +468,7 @@ fn interrupt_in_plan_phase(p: &Path) -> String {
         pins: PlanPins { plan_ref: plan_ref.clone(), identities: Default::default() }.into(),
         attempts: vec![row.run_id.clone()],
         opened_at: row.started_at,
+        next_attempt_at: None,
     }).unwrap();
     plan_ref
 }
