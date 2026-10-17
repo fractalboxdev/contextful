@@ -15,6 +15,9 @@ pub enum MemoryError {
     /// A candidate edge endpoint resolves to no identity. (`read.resolve-entity.edge-endpoint`)
     #[error("MemoryEdgeEndpointUnresolved: {0}")]
     EdgeEndpointUnresolved(String),
+    /// An entity upsert names a name or alias another entity already carries. (`read.resolve-entity.alias-conflict`)
+    #[error("MemoryEntityAliasConflict: {0}")]
+    EntityAliasConflict(String),
     /// A mention resolves onto two identities with no separating key. (`read.resolve-entity.ambiguous-mention`)
     #[error("MemoryEntityAmbiguous: {0}")]
     EntityAmbiguous(String),
@@ -57,6 +60,7 @@ impl MemoryError {
             MemoryError::CitationNotLive(_) => "MemoryCitationNotLive",
             MemoryError::DirectWriteShapeRefused(_) => "MemoryDirectWriteShapeRefused",
             MemoryError::EdgeEndpointUnresolved(_) => "MemoryEdgeEndpointUnresolved",
+            MemoryError::EntityAliasConflict(_) => "MemoryEntityAliasConflict",
             MemoryError::EntityAmbiguous(_) => "MemoryEntityAmbiguous",
             MemoryError::EvidenceOverflow(_) => "MemoryEvidenceOverflow",
             MemoryError::EvidenceUnresolved(_) => "MemoryEvidenceUnresolved",

@@ -134,7 +134,7 @@ Supersession within one validity line, confidence decay, the direct write and it
   *A-read*
 - `supersede` — A claim of equal or higher tier retires a live prior on its subject, predicate and scope when both are open-ended or share a valid-from instant, except {{read.revise.unscoped-collision}}; the prior ends at the successor's start and names it.
   *A-read*
-- `direct-write` — The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.
+- `direct-write` — The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through {{read.resolve-entity.entity-upsert}}.
   *A-read*
 - `observed-at` — `contextful memory write --observed-at <instant>` lands the claim with `valid_from` at that instant; without it, `valid_from` is the write's own instant.
 - `dedup-key` — `--dedup-key <key>` derives `claim_id` from the key beside the subject, predicate, object and scope, and a write whose `claim_id` the table already holds lands nothing.
@@ -242,6 +242,12 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
   *A-read*
 - `ownership-live` — The ownership answer omits an `owned_by` edge whose `valid_to` falls at or before the anchor.
   *because an ended edge records a past owner, and returning it names that owner as current*
+- `entity-upsert` — `contextful memory entity upsert --table <entities> --id <id> --kind <kind> --name <name> [--alias <alias>]...` lands one row into a declared `memory_entities` table under a read and a write grant on it.
+  *because the claim write refuses entity rows, and an operator still names the identities mentions resolve to*
+- `upsert-merge` — An upsert naming a held `entity_id` replaces its `kind` and `name`, and keeps the stored aliases followed by each given alias no stored alias matches case-folded.
+  *because an alias an earlier upsert recorded keeps naming the entity for mentions already written with it*
+- `alias-conflict` — An upsert whose name or alias matches, case-folded, the name or an alias of another entity the session reads raises `MemoryEntityAliasConflict`, and nothing lands.
+  *because two identities sharing a mention dead-letter every claim naming it under {{read.resolve-entity.ambiguous-mention}}*
 
 unsettled: Which edges carry aliases and nearness's parent closure, and what fields form the knowledge card? owner: read-path affects: read.resolve-entity
 

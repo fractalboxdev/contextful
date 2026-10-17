@@ -266,3 +266,56 @@ fn a_scheduled_synthesize_job_replaces_the_operator_triggered_pass() {
     assert_eq!(again["fired"], json!(["job:synth-facts"]), "{again}");
     assert_eq!(endpoint.bodies.lock().unwrap().len(), 1, "no run past the cursor, no model call");
 }
+
+/// An entity upsert lands a canonical identity, merges aliases on its key, refuses a
+/// mention another entity owns, and a synthesis pass resolves the upserted alias.
+// spec: read.resolve-entity.entity-upsert@c75ccadb
+// spec: read.resolve-entity.upsert-merge@ebeebe20
+// spec: read.resolve-entity.alias-conflict@4c7114b5
+#[test]
+fn an_entity_upsert_lands_merges_aliases_and_refuses_a_taken_mention() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    let manifest = p.join("contextful.toml");
+    let declaration = format!(
+        "{}\n[[table]]\nname = \"memory/entities\"\nshape = \"memory_entities\"\ncolumns = [\"entity_id\", \"kind\", \"name\", \"aliases\"]\n",
+        std::fs::read_to_string(&manifest).unwrap()
+    );
+    std::fs::write(&manifest, declaration).unwrap();
+    let env = [("CONTEXTFUL_TOKEN", token.as_str())];
+    let upsert = |id: &str, name: &str, aliases: &[&str]| -> Output {
+        let mut args = vec!["memory", "entity", "upsert", "--project", "research", "--table", "memory/entities", "--id", id, "--kind", "org", "--name", name];
+        for a in aliases {
+            args.extend(["--alias", a]);
+        }
+        args.extend(["--public-key", &public, "--audience", AUD]);
+        run(p, &args, &env)
+    };
+
+    assert!(stdout(&upsert("e-acme", "Acme", &["Acme Corp"])).contains("added e-acme"));
+    let merged = stdout(&upsert("e-acme", "Acme Inc", &["acme corp", "ACME Holdings"]));
+    assert!(merged.contains("updated e-acme"), "{merged}");
+    let query = ["query", "--json", "--project", "research", "SELECT entity_id, name, aliases, _authored_by FROM \"memory/entities\""];
+    let rows: Value = serde_json::from_str(&stdout(&run(p, &query, &[]))).unwrap();
+    assert_eq!(rows["rows"], json!([["e-acme", "Acme Inc", "[\"Acme Corp\",\"ACME Holdings\"]", "user://dana@acme.example"]]));
+
+    let taken = upsert("e-other", "Globex", &["Acme Corp"]);
+    assert!(!taken.status.success());
+    assert!(String::from_utf8_lossy(&taken.stderr).contains("MemoryEntityAliasConflict"), "{}", String::from_utf8_lossy(&taken.stderr));
+    let rows: Value = serde_json::from_str(&stdout(&run(p, &query, &[]))).unwrap();
+    assert_eq!(rows["rows"].as_array().unwrap().len(), 1, "the refused upsert lands nothing");
+
+    let content = json!({ "claims": [{ "subject": "ACME Holdings", "predicate": "cfo", "object": "Dana", "confidence": 0.9,
+        "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] }] })
+    .to_string();
+    let endpoint = Endpoint::start(vec![content]);
+    let url = endpoint.url();
+    let synth = [
+        "memory", "synthesize", "--project", "research", "--source", "research/notes", "--into", "memory/facts", "--endpoint", &url,
+        "--model", "fixture", "--public-key", &public, "--audience", AUD,
+    ];
+    assert!(stdout(&run(p, &synth, &[("CONTEXTFUL_TOKEN", &token), ("CONTEXTFUL_INFERENCE_KEY", "")])).contains("1 landed"));
+    let facts = ["query", "--json", "--project", "research", "SELECT subject FROM \"memory/facts\""];
+    let rows: Value = serde_json::from_str(&stdout(&run(p, &facts, &[]))).unwrap();
+    assert_eq!(rows["rows"], json!([["Acme Inc"]]), "the upserted alias resolves to the canonical name");
+}

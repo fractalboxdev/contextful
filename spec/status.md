@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 184 | 69 | 14 | 5 | 162 | 0 | 162 |
-| `read` | 2 | 20 | 290 | 47 | 29 | 15 | 248 | 0 | 248 |
+| `read` | 2 | 20 | 293 | 48 | 29 | 15 | 251 | 0 | 251 |
 | `run` | 3 | 29 | 551 | 126 | 45 | 16 | 519 | 0 | 519 |
 | `store` | 3 | 19 | 295 | 64 | 15 | 10 | 284 | 0 | 284 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2636 | 667 | 213 | 74 | 2347 | 0 | |
+| **total** | 22 | 169 | 2639 | 668 | 213 | 74 | 2350 | 0 | |
 
 Decision records: 18.
 
@@ -32,7 +32,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
 | 5 — The read face under enforcement | 17 | 309 | 272 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
-| 7 — Memory | 6 | 72 | 57 | passing | closed |
+| 7 — Memory | 6 | 75 | 60 | passing | closed |
 | 8 — Accountability | 5 | 93 | 86 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 101 | 89 | passing | closed |
@@ -1276,10 +1276,13 @@ Unscheduled operations: 13.
 | `read.register.stateless-session` | `crates/contextful-agent/tests/integration/http.rs::a_notification_answers_202_and_the_face_holds_no_session_or_stream` | performed |
 | `read.register.template-projection` | `crates/contextful-core/tests/integration/read/template.rs::a_template_projects_into_a_tool_with_every_field_required` | performed |
 | `read.register.tool-set` | `crates/contextful-agent/tests/integration/mcp.rs::the_tool_list_is_the_closed_read_set` | performed |
+| `read.resolve-entity.alias-conflict` | `crates/contextful-cli/tests/integration/memory.rs::an_entity_upsert_lands_merges_aliases_and_refuses_a_taken_mention` | performed |
 | `read.resolve-entity.ambiguous-mention` | `crates/contextful-core/tests/integration/memory/resolve.rs::a_mention_two_identities_share_is_ambiguous` | performed |
 | `read.resolve-entity.edge-endpoint` | `crates/contextful-core/tests/integration/memory/resolve.rs::an_edge_with_an_unresolved_endpoint_is_refused` | performed |
+| `read.resolve-entity.entity-upsert` | `crates/contextful-cli/tests/integration/memory.rs::an_entity_upsert_lands_merges_aliases_and_refuses_a_taken_mention` | performed |
 | `read.resolve-entity.graph-index` | `crates/contextful-memory/tests/integration/owners.rs::an_ownership_answer_reads_enforced_rows_at_the_frontier` | performed |
 | `read.resolve-entity.ownership-answer` | `crates/contextful-memory/tests/integration/owners.rs::an_ownership_answer_returns_every_attached_principal_newest_first` | performed |
+| `read.resolve-entity.upsert-merge` | `crates/contextful-cli/tests/integration/memory.rs::an_entity_upsert_lands_merges_aliases_and_refuses_a_taken_mention` | performed |
 | `read.resolve-pin.absent-watermark` | `crates/contextful-context/tests/integration/read/pin.rs::a_build_over_no_input_echoes_a_null_watermark` | performed |
 | `read.resolve-pin.consumer-comparison` | `crates/contextful-context/tests/integration/read/pin.rs::a_derivation_spanning_two_builds_fails_and_a_pinned_one_holds` | performed |
 | `read.resolve-pin.earlier-bound-wins` | `crates/contextful-context/tests/integration/read/pin.rs::a_pin_and_as_of_resolve_to_the_earlier_bound` | performed |

@@ -14,6 +14,7 @@ use contextful_core::memory::synthesize::CandidateClaim;
 use contextful_core::ports::Clock;
 use contextful_policy::verify::{effect_boundary, Admission};
 use contextful_memory::synthesize::Pass;
+use contextful_memory::entity::{self, EntityInput};
 use contextful_memory::relations;
 use contextful_core::time::Instant;
 use contextful_core::store::bound_time::Bound;
@@ -40,7 +41,36 @@ pub struct Project {
 }
 
 #[derive(Subcommand)]
+pub enum EntityCmd {
+    /// Land one canonical identity into a `memory_entities` table. A held id keeps its
+    /// stored aliases; a name or alias another entity carries refuses.
+    Upsert {
+        #[command(flatten)]
+        project: Project,
+        /// The `memory_entities` table to land into.
+        #[arg(long)]
+        table: String,
+        /// The entity's key.
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        kind: String,
+        /// The canonical name, the deterministic key a mention resolves on.
+        #[arg(long)]
+        name: String,
+        /// Another name the entity answers to; repeatable.
+        #[arg(long = "alias")]
+        aliases: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum MemoryCmd {
+    /// Add or update a canonical identity.
+    Entity {
+        #[command(subcommand)]
+        command: EntityCmd,
+    },
     /// Migrate stored edges between declared relation names.
     Relations {
         #[command(subcommand)]
@@ -111,6 +141,17 @@ pub enum RelationsCmd {
 
 pub fn run(cmd: MemoryCmd) -> Result<()> {
     match cmd {
+        MemoryCmd::Entity { command: EntityCmd::Upsert { project, table, id, kind, name, aliases } } => {
+            let (authority, revocation) = project.admit.admit(project.project.as_deref(), "an entity upsert")?;
+            let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
+            let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
+            let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
+            let input = EntityInput { entity_id: id, kind, name, aliases };
+            let landed = entity::upsert(&face, &authority, &table, input, &node, SystemClock.now(), &boundary)?;
+            let verb = if landed.replaced { "updated" } else { "added" };
+            println!("{table}: {verb} {} (aliases: {})", landed.entity_id, landed.aliases.join(", "));
+            Ok(())
+        }
         MemoryCmd::Relations { command: RelationsCmd::Rename { from, to, project } } => {
             let (authority, revocation) = project.admit.admit(project.project.as_deref(), "a relation rename")?;
             let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
