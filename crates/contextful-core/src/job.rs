@@ -2,6 +2,7 @@
 //! store-driven kind's declaration. A block selects among kinds the engine names and bodies
 //! the embedding binary registers; it never carries a command (`surface.fire.job-kind-unknown`).
 
+use crate::memory::declare::{MemoryDeclarations, Shape};
 use crate::pipeline::declare::PipelineSpec;
 use crate::run::drive::{ItemPolicy, StoreInput};
 use crate::run::sweep::Sweep;
@@ -155,6 +156,23 @@ impl Job {
             JobKind::Plan(_) => PLAN,
         }
     }
+
+    /// The tables one synthesize fire reads and writes, which its fire credential grants
+    /// (`surface.dispatch.fire-reach`); `None` for any other kind, whose reach the
+    /// declaration alone does not fix.
+    pub fn reach(&self, memory: &MemoryDeclarations) -> Option<Reach> {
+        let (JobKind::Synthesize(synthesis), Some(target)) = (&self.kind, &self.target) else { return None };
+        let mut read = vec![synthesis.source.clone(), target.clone()];
+        read.extend(memory.of_shape(Shape::Entities).map(|t| t.name.clone()).filter(|t| !read.contains(t)));
+        Some(Reach { read, write: vec![target.clone()] })
+    }
+}
+
+/// The tables one fire reads and writes.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Reach {
+    pub read: Vec<String>,
+    pub write: Vec<String>,
 }
 
 /// Every `[[job]]` block of `manifest`, validated; `registered` answers whether the

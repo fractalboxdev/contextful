@@ -239,13 +239,17 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
   *because two daemons reading one snapshot otherwise fire every due unit twice*
 - `children-reaped` — A serve process starts each child run in its own process group; on `SIGTERM`, `SIGINT`, a `--cycle` exit or an unwind it signals each live group `SIGTERM`, `SIGKILL`s the remainder after 10 s, and exits once every child has.
   *because a child outliving its serve also outlives the cadence lease, and a second scheduler then fires the same pipeline concurrently*
-- `fire-credential` — Under `--issuer-key`, serve mints each store-driven child fire one credential for `svc://job/<name>` in the project's default zone, granting `read` on its statement's relations and `write` on its `tables`, in that child's `CONTEXTFUL_TOKEN`; the seed reaches no child argument or variable.
+- `fire-credential` — Under `--issuer-key`, serve mints each store-driven or synthesize child fire one credential for `svc://job/<name>` in the project's default zone, granting {{surface.dispatch.fire-reach}}, in that child's `CONTEXTFUL_TOKEN`; the seed reaches no child argument or variable.
   *because a serve outlives any credential the ceiling admits, and a credential minted per fire narrows each child to its own job's tables*
+- `fire-reach` — A store-driven fire reaches `read` on its statement's relations and `write` on its `tables`; a synthesize fire reaches `read` on its source, its target and the declared entities table, and `write` on its target.
+  *because a synthesize pass consolidates against live claims and resolves mentions against entities, and writes no table but its claims and their dead letters*
 - `fire-credential-lifetime` — A fire credential lives 600 s, or {{authority.issue.ceiling}} when lower; the child admits it once at start.
   *because a fire admits its credential before its first read, and a short lifetime bounds a leaked fire credential's exposure*
 - `fire-credential-inherited` — A serve holding no `--issuer-key` passes its own `CONTEXTFUL_TOKEN` to each child it starts.
-- `fire-credential-missing` — A serve dispatching to child processes, whose applied snapshot schedules a store-driven job, holding neither `--issuer-key` nor `CONTEXTFUL_TOKEN`, raises `FireCredentialMissing` at start and fires nothing.
+- `fire-credential-missing` — A serve dispatching to child processes, whose applied snapshot schedules a store-driven or synthesize job, holding neither `--issuer-key` nor `CONTEXTFUL_TOKEN`, raises `FireCredentialMissing` at start and fires nothing.
   *because a missing credential otherwise fails every fire while the serve reports healthy*
+- `fire-credential-zone` — A serve under `--issuer-key`, whose applied snapshot schedules a store-driven or synthesize job, under a root whose `[project.zone]` declares no `default`, raises `FireCredentialZoneUnset` at start and fires nothing.
+  *because a credential signing no zone asserts an undeclared zone, which {{authority.place.undeclared}} admits nowhere but `*`, so every fire reads no row*
 
 One step on a worker target, from submit to an accepted or rejected callback:
 
