@@ -293,6 +293,48 @@ pub fn batch(publication: &GroupBatch, offset: usize) -> Result<Option<GroupBatc
     Ok(Some(result))
 }
 
+fn encoded_len(value: &impl Serialize) -> Result<usize, ExportError> {
+    Ok(serde_json::to_vec(value)
+        .map_err(|e| invalid(e.to_string()))?
+        .len())
+}
+
+/// The group's request bytes without events, and each event's bytes in a request.
+fn request_sizes(publication: &GroupBatch) -> Result<(usize, Vec<usize>), ExportError> {
+    let header = encoded_len(&GroupBatch {
+        version: publication.version,
+        group: publication.group.clone(),
+        events: Vec::new(),
+    })?;
+    let events = publication
+        .events
+        .iter()
+        .map(encoded_len)
+        .collect::<Result<_, _>>()?;
+    Ok((header, events))
+}
+
+/// Every request of a group fits the typed ceiling (`run.export.group-request-bound`).
+fn sendable(publication: &GroupBatch) -> Result<(), ExportError> {
+    let (header, events) = request_sizes(publication)?;
+    if header + events.iter().min().copied().unwrap_or(0) > TYPED_REQUEST_BYTES {
+        return Err(ExportError::PublicationHeaderTooLarge(format!(
+            "group `{}` header holds {header} B of the {TYPED_REQUEST_BYTES} B request ceiling",
+            publication.group.plan.name
+        )));
+    }
+    if let Some(at) = events
+        .iter()
+        .position(|len| header + len > TYPED_REQUEST_BYTES)
+    {
+        return Err(ExportError::ExportEventTooLarge(format!(
+            "publication event `{}` exceeds {TYPED_REQUEST_BYTES} B beside its group header",
+            publication.events[at].id
+        )));
+    }
+    Ok(())
+}
+
 /// A producer completion pinning its input frontier and every declared output frontier.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourcePublication {
@@ -302,6 +344,14 @@ pub struct SourcePublication {
 }
 
 impl SourcePublication {
+    /// A plan's `input`: the completion's SHA-256, bounded whatever its frontier holds
+    /// (`run.export.group-input-digest`).
+    pub fn digest(&self) -> Result<String, ExportError> {
+        Ok(sha256_hex(
+            &serde_json::to_vec(self).map_err(|e| invalid(e.to_string()))?,
+        ))
+    }
+
     /// A producer run records one frontier; a second record must carry identical bytes.
     pub fn check_history(&self, prior: Option<&SourcePublication>) -> Result<(), ExportError> {
         if prior.is_some_and(|prior| prior != self) {
@@ -329,10 +379,27 @@ impl GroupSender {
     }
 
     pub fn pending_identity(&self) -> Option<&str> {
-        self.pending.as_ref().map(|_| self.identity.as_str())
+        self.pending
+            .as_ref()
+            .filter(|_| !self.stranded())
+            .map(|_| self.identity.as_str())
     }
 
-    /// Returns whether the sender changed; a pending outbox stays immutable until acknowledged.
+    /// A pending group unable to form its first request, so never offered
+    /// (`run.export.group-stranded`).
+    fn stranded(&self) -> bool {
+        self.offset == 0
+            && self.pending.as_ref().is_some_and(|pending| {
+                request_sizes(pending).is_ok_and(|(header, events)| {
+                    events
+                        .first()
+                        .is_some_and(|first| header + first > TYPED_REQUEST_BYTES)
+                })
+            })
+    }
+
+    /// Returns whether the sender changed; a pending outbox stays immutable until acknowledged,
+    /// unless it was never offered.
     pub fn stage(
         &mut self,
         plan: &PublicationPlan,
@@ -355,7 +422,8 @@ impl GroupSender {
                 return Err(invalid("active membership changed"));
             }
         }
-        if let Some(pending) = &self.pending {
+        let stranded = self.stranded();
+        if let Some(pending) = self.pending.as_ref().filter(|_| !stranded) {
             if pending.group.plan.members != plan.members
                 || pending.group.plan.destination != plan.destination
                 || self.identity != identity
@@ -382,9 +450,15 @@ impl GroupSender {
             && self.identity == identity
             && self.state == *states
         {
-            return Ok(false);
+            if stranded {
+                self.pending = None;
+                self.next_state = GroupState::new();
+            }
+            return Ok(stranded);
         }
-        self.pending = Some(publication(plan.clone(), &self.state, states)?);
+        let next = publication(plan.clone(), &self.state, states)?;
+        sendable(&next)?;
+        self.pending = Some(next);
         self.identity = identity.into();
         self.incarnation = plan.incarnation.clone();
         self.next_state = states.clone();

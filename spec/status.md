@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 554 | 126 | 45 | 17 | 522 | 0 | 522 |
+| `run` | 3 | 29 | 557 | 127 | 45 | 17 | 525 | 0 | 525 |
 | `store` | 3 | 19 | 297 | 64 | 15 | 10 | 286 | 0 | 286 |
 | `surface` | 2 | 21 | 167 | 65 | 23 | 0 | 141 | 0 | 141 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2677 | 677 | 213 | 75 | 2392 | 0 | |
+| **total** | 22 | 169 | 2680 | 678 | 213 | 75 | 2395 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 185 | 175 | passing | closed |
 | 3 — The run path | 12 | 289 | 278 | passing | closed |
-| 4 — Ingest | 25 | 593 | 495 | passing | closed |
+| 4 — Ingest | 25 | 596 | 498 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -1569,9 +1569,12 @@ Unscheduled operations: 13.
 | `run.export.group-delivery` | `spec/pins.toml` | performed |
 | `run.export.group-identity` | `spec/pins.toml` | performed |
 | `run.export.group-incompatible` | `spec/pins.toml` | performed |
+| `run.export.group-input-digest` | `spec/pins.toml` | performed |
 | `run.export.group-rebuild` | `spec/pins.toml` | performed |
+| `run.export.group-request-bound` | `spec/pins.toml` | performed |
 | `run.export.group-source` | `spec/pins.toml` | performed |
 | `run.export.group-storage` | `spec/pins.toml` | performed |
+| `run.export.group-stranded` | `spec/pins.toml` | performed |
 | `run.export.log-record` | `crates/contextful-core/tests/integration/pipeline/export.rs::each_row_becomes_one_log_record_carrying_its_commit_position` | performed |
 | `run.export.post-commit-read` | `crates/contextful-cli/tests/integration/export.rs::export_reads_through_the_face_under_the_admitted_credential` | performed |
 | `run.export.secret-preflight` | `crates/contextful-cli/tests/integration/export.rs::an_unresolved_header_reference_refuses_before_any_request` | performed |

@@ -95,6 +95,7 @@ ExportDeliveryRefused          = { clause = "run.export.delivery-refused", gloss
 ExportEventTooLarge            = { clause = "run.export.typed-event-too-large", gloss = "One typed event exceeding the delivery request ceiling." }
 ExportIdentityChanged          = { clause = "run.export.typed-identity-changed", gloss = "A pending typed export under another read identity, or its target redirected under the same name." }
 PublicationIncompatible        = { clause = "run.export.group-incompatible", gloss = "A coordinated publication, predecessor, membership or checkpoint differs from its durable binding." }
+PublicationHeaderTooLarge      = { clause = "run.export.group-request-bound", gloss = "A coordinated group header leaving no room for one event under the typed request ceiling." }
 PublicationStorageUnsupported  = { clause = "run.export.group-storage", gloss = "A storage profile lacks the coordinated publication outbox capability." }
 PipelineChunkParallelism       = { clause = "run.backfill.chunk-parallelism", gloss = "A sequential chunk plan beside a parallelism above one." }
 PipelineRewindWindowInvalid    = { clause = "run.backfill.rewind-invalid", gloss = "An inverted, empty or scale-incomparable rewind window." }
