@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
-| `read` | 2 | 20 | 313 | 54 | 29 | 15 | 270 | 1 | 265 |
+| `read` | 2 | 20 | 313 | 54 | 29 | 15 | 271 | 0 | 271 |
 | `run` | 3 | 29 | 551 | 126 | 45 | 16 | 519 | 0 | 519 |
 | `store` | 3 | 19 | 295 | 64 | 15 | 10 | 284 | 0 | 284 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2662 | 674 | 213 | 74 | 2372 | 1 | |
+| **total** | 22 | 169 | 2662 | 674 | 213 | 74 | 2373 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 286 | 275 | passing | closed |
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
-| 5 — The read face under enforcement | 17 | 312 | 274 | passing | closed |
+| 5 — The read face under enforcement | 17 | 312 | 275 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
@@ -1340,7 +1340,7 @@ Unscheduled operations: 13.
 | `read.retrieve.identifiers-never-snippet` | `crates/contextful-context/tests/integration/read/retrieve.rs::identifier_columns_never_enter_a_snippet` | performed |
 | `read.retrieve.kinds` | `crates/contextful-context/tests/integration/read/retrieve.rs::kinds_keep_listed_artifact_kinds_and_drop_tables_without_one` | performed |
 | `read.retrieve.plural-suffix-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_short_token_takes_no_plural_suffix` | performed |
-| `read.retrieve.ranked-call` | `crates/contextful-agent/tests/integration/mcp.rs::?`, `crates/contextful-agent/tests/integration/mcp.rs::?` | broken |
+| `read.retrieve.ranked-call` | `crates/contextful-agent/tests/integration/mcp.rs::corpus_retrieve_takes_a_filter_and_kinds` | performed |
 | `read.retrieve.relevance-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_relevance_floor_admits_null_scores_and_positive_vectors` | performed |
 | `read.retrieve.reserved-columns-project-null` | `crates/contextful-context/tests/integration/read/retrieve.rs::reserved_columns_project_null_for_a_table_lacking_them` | performed |
 | `read.retrieve.row-key-dedup` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_ranked_read_keeps_the_newest_row_per_content_hash` | performed |
