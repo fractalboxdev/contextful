@@ -563,7 +563,8 @@ fn tokenless_cycle(dir: &Path, public: &str, extra_args: &[&str], extra: &[(&str
         .unwrap()
 }
 
-// spec: surface.dispatch.fire-credential@8cd7af0d
+// spec: surface.dispatch.fire-credential@8c7350dc
+// spec: surface.dispatch.fire-credential-lifetime@0f8b546a
 #[test]
 fn an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables() {
     let declaration = format!("site_id = \"site\"\n{}\n[project.zone]\ndefault = \"on-prem:hq\"\n", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
@@ -575,10 +576,14 @@ fn an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables()
     let answer: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(answer["fired"], serde_json::json!(["job:score-documents"]), "{out}");
     assert_eq!(select(p, "SELECT count(*) FROM scores")[0][0], "3");
-    let credential = std::fs::read_to_string(&held).unwrap();
-    assert_ne!(credential.trim(), token);
-    let card: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["token", "introspect", "--token", credential.trim()]))).unwrap();
+    let seen = std::fs::read_to_string(&held).unwrap();
+    let credential = seen.lines().next().unwrap();
+    assert_ne!(credential, token);
+    let seed = std::fs::read_to_string(p.join(".contextful/issuer.seed")).unwrap();
+    assert!(!seen.contains("issuer.seed") && !seen.contains(seed.trim()), "the issuer seed reaches no child argument or variable: {seen}");
+    let card: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["token", "introspect", "--token", credential]))).unwrap();
     let text = card.to_string();
+    assert_eq!(card["authority"]["exp"].as_i64().unwrap() - card["authority"]["iat"].as_i64().unwrap(), 600, "{text}");
     assert!(text.contains("svc://job/score-documents"), "{text}");
     assert!(text.contains("on-prem:hq"), "the credential carries the project's default zone: {text}");
     let grants = card["authority"]["grants"].as_array().unwrap_or_else(|| panic!("{text}"));

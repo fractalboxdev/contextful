@@ -661,14 +661,15 @@ fn mint_one(
 }
 
 /// One credential on behalf of the service `on_behalf_of` over `grants`, signed by the seed
-/// at `issuer_key` under the issuance policy at `root` with the policy's ceiling lifetime
-/// (`surface.dispatch.fire-credential`).
-pub(crate) fn mint_service(root: &Path, issuer_key: &Path, on_behalf_of: &str, grants: Vec<Grant>) -> Result<String> {
+/// at `issuer_key` under the issuance policy at `root`, living `lifetime_secs` or the
+/// policy's ceiling when lower (`surface.dispatch.fire-credential`).
+pub(crate) fn mint_service(root: &Path, issuer_key: &Path, on_behalf_of: &str, grants: Vec<Grant>, lifetime_secs: u64) -> Result<String> {
     let root = Root { dir: root.to_path_buf() };
     let signer = SeedSigner::resolve(Some(issuer_key))?;
     let (zone, incognito) = root.project_zone()?.mint(None, false)?;
     let subject = Subject { on_behalf_of: Some(on_behalf_of.to_string()), agent: None, host: None, task: None, zone, incognito };
-    let request = MintRequest::custody(subject.mint(MintSurface::CommandLine)?.to_subject(), grants);
+    let mut request = MintRequest::custody(subject.mint(MintSurface::CommandLine)?.to_subject(), grants);
+    request.lifetime = Lifetime::Clamped(lifetime_secs);
     let plan = root.check(&signer, &request, instant_or_now(None)?)?;
     root.sign(&plan, None, None, &signer)
 }

@@ -1307,6 +1307,10 @@ impl ChildDispatch {
     }
 }
 
+/// The lifetime of a fire credential, clamped to the issuance ceiling
+/// (`surface.dispatch.fire-credential-lifetime`).
+const FIRE_CREDENTIAL_SECS: u64 = 600;
+
 /// One credential for a store-driven fire of `job`, on behalf of `svc://job/<job>`: `read`
 /// over the relations its statement names and `write` over its declared `tables`
 /// (`surface.dispatch.fire-credential`).
@@ -1331,7 +1335,7 @@ fn fire_credential(located: &Located, root: &Path, seed: &Path, job: &str, drive
         grants.push(grant(Action::Read, read.into_iter().collect())?);
     }
     grants.push(grant(Action::Write, driven.tables.clone())?);
-    crate::token::mint_service(root, seed, &format!("svc://job/{job}"), grants)
+    crate::token::mint_service(root, seed, &format!("svc://job/{job}"), grants, FIRE_CREDENTIAL_SECS)
 }
 
 /// Refuse a serve whose applied snapshot schedules a store-driven job while it holds
