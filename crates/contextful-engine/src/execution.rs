@@ -468,7 +468,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
                 pins: self.pins.clone(),
                 attempts: Vec::new(),
                 opened_at: self.engine.catalog.now()?,
-            next_attempt_at: None,
+                next_attempt_at: None,
             },
         };
         owner.attempts.push(self.run_id.clone());
