@@ -33,6 +33,8 @@ const AUTHORITY: &str = "AdmittedAuthority";
 const UNMEDIATED: &[(&str, &str)] = &[
     // Operator text over the operator's own store registers every table raw.
     ("crates/contextful-context/src/read/face.rs::Face::operator_query", "read.query.project-relations"),
+    // The incognito owner read registers each table through the zone step at `local:device`.
+    ("crates/contextful-context/src/read/face.rs::Face::operator_query_incognito", "read.query.incognito"),
     // Operator text over no store: no stored row exists to mediate.
     ("crates/contextful-context/src/read/face.rs::operator_query", "read.guard.statement-provenance"),
     // The audit view projects audit entries, never a stored row.
