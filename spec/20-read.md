@@ -288,7 +288,11 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 - `script-split-matching` — An all-lowercase-alphanumeric token matches on an ASCII word boundary with an optional plural suffix; a token with any non-ASCII character matches by containment.
   *because no ASCII word boundary occurs beside an ideograph*
 - `plural-suffix-floor` — A token under 4 chars takes no optional plural suffix.
-- `text-free-table-scores-null` — A table with no snippet-worthy text column scores lexically null, never zero, and its rows enter by vector score alone.
+- `scored-text` — Beyond {{store.declare.table-block}}, a table block may declare `retrieve.text`, a list of columns; lexical scoring and {{read.retrieve.relevance-floor}} read exactly those text columns less any the session classes or masks, and an undeclared table its snippet columns.
+  *because a snippet is chosen for display, so a match in a long body misses the floor and a categorical label in the snippet matches every row*
+- `empty-scored-text` — A table whose declared `retrieve.text` leaves no column runs no full-text probe, and under a query holding a content token its rows enter only by a positive vector score.
+  *because a null lexical score passes the floor, so a text-only query otherwise returns such a table's newest rows whatever it asks*
+- `text-free-table-scores-null` — A table with no scored text column scores lexically null, never zero, and its rows enter by vector score alone.
   *P4*
 - `candidate-window` — The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice.
   *P4*
@@ -309,7 +313,7 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 - `dedup-is-gated` — The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it.
 - `excluded-arm` — An arm whose table the session's zone excludes contributes no candidate, and the ranked response names that table in {{read.respond.restriction-block}}.
   *A-read*
-- `snippet` — A snippet concatenates up to three text columns: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.
+- `snippet` — A snippet concatenates up to three text columns, drawn from `retrieve.text` where declared: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.
 - `identifiers-never-snippet` — Content hashes, URLs, identifiers and instant-valued columns never qualify for a snippet.
 - `sidecar-generates-candidates` — Each sidecar arm, vector over a query embedding and full-text over the content tokens, adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.
   *P5*
@@ -370,14 +374,14 @@ Ordering of a candidate set: the three legs, their fusion, the question's timefr
 - `window-anchor-tolerance` — A publication instant more than 24 h past the question's anchor sets the in-window flag false. A null or uncastable value sets it false too, and a basis field names which case applied.
 - `ordering-casts-first` — Ordering compares publication values as `TIMESTAMPTZ` instants, casting a text value before any comparison.
   *because a text comparison of two date spellings orders strings, not instants*
-- `retrieval-block` — The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries an integer score bounded by the content-token count, the in-window flag and the basis label.
+- `retrieval-block` — The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries `_score`, the count of content tokens its {{read.retrieve.scored-text}} matches, the in-window flag and the basis label.
 - `delivered-counts` — The retrieval block's returned count equals delivered rows; its in_window count equals delivered rows with a true in-window flag, after byte truncation.
   *because aggregate counts describe the rows the caller receives*
 - `internal-score-stays-internal` — The lexical engine's own float score never crosses to a caller.
   *because a corpus-relative number drifts under a consumer's threshold as the corpus changes*
 - `absent-block` — The retrieval block is omitted from every non-ranked statement and from a build with no ranker, and an absent block differs from one reporting zero matches.
   *P2*
-- `degradation-not-error` — Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the snippet, recency breaking ties. The result differs in order and still answers.
+- `degradation-not-error` — Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the {{read.retrieve.scored-text}}, recency breaking ties. The result differs in order and still answers.
   *A-topology*
 - `fallback-counts-tokens` — Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.
 - `caller-embedding` — A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.

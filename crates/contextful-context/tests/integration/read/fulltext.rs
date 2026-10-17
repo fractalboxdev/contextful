@@ -112,6 +112,28 @@ fn a_probe_matches_unspaced_phrases_and_plurals_across_the_snapshot() {
     assert_eq!(either.len(), 2, "{either:?}");
 }
 
+/// A table whose declared `retrieve.text` leaves no column runs no full-text probe, and under a query holding a content token its rows enter only by a positive vector score.
+// spec: read.retrieve.empty-scored-text@4e37b8a9
+#[test]
+fn an_empty_declared_text_list_adds_no_lexical_candidate() {
+    let indexed = "name = \"lab/text\"\nprimary_key = [\"passage_id\"]\n";
+    let manifest = format!("{MANIFEST}{}", TEXT.replace(indexed, &format!("{indexed}retrieve = {{ text = [] }}\n")));
+    let mut r = Reads::with_manifest(&manifest);
+    let bodies: Vec<String> = (0..300).map(|i| if i == 2 { "Overdue invoices from March".to_string() } else { format!("routine passage {i}") }).collect();
+    land_both(&r, &manifest, &bodies, "run-0001", "2030-01-11T00:00:00Z");
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    let s = r.session(&["lab/*"], None, None);
+    // The sidecar finds the row, so only the declaration keeps the probe from running.
+    assert_eq!(r.face.fulltext_candidates(&s, "lab/text", &["invoice".to_string()], 10).unwrap().1, ["p00002"]);
+    for query in ["invoice", "routine passage"] {
+        let ranked = r.face.retrieve(&s, &ask("lab/text", query), Bounds::default()).unwrap();
+        assert_eq!(ids(&ranked), Vec::<String>::new(), "{query}");
+        assert_eq!(ranked.blocks["contextful.retrieval"]["candidates_prefloor"], json!(0), "{query}");
+    }
+    // A query with no content token applies no floor, and the table still browses.
+    assert_eq!(ids(&r.face.retrieve(&s, &RetrieveRequest { limit: Some(3), ..ask("lab/text", "") }, Bounds::default()).unwrap()).len(), 3);
+}
+
 /// A term on the oldest of 10,001 rows returns for limit 10 (ledger `lexical-deep-recall`).
 #[cfg(feature = "fts")]
 #[test]

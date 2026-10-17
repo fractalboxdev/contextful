@@ -157,6 +157,11 @@ fn identifier_like(name: &str) -> bool {
 /// partition column, and a column carrying a declared class or mask, never enters one.
 fn snippet_columns(text: &[&str], sensitive: impl Fn(&str) -> bool) -> Vec<String> {
     let eligible: Vec<&str> = text.iter().copied().filter(|c| !identifier_like(c) && !sensitive(c)).collect();
+    snippet_order(&eligible)
+}
+
+/// Label-priority columns of `eligible` first, then the rest in order, three at most.
+fn snippet_order(eligible: &[&str]) -> Vec<String> {
     let mut out: Vec<String> = LABEL_COLUMNS.iter().filter(|l| eligible.contains(l)).map(|l| l.to_string()).collect();
     out.extend(eligible.iter().filter(|c| !LABEL_COLUMNS.contains(c)).map(|c| c.to_string()));
     out.truncate(3);
@@ -169,6 +174,8 @@ struct Row {
     id: String,
     values: Vec<(String, Value)>,
     snippet: Option<String>,
+    /// The text lexical scoring reads (`read.retrieve.scored-text`).
+    scored: Option<String>,
     lexical: Option<u32>,
     vector: Option<f64>,
     publication: Publication,
@@ -292,6 +299,7 @@ impl Face {
         let mut recalled = false;
         let mut rows: Vec<Row> = Vec::new();
         let mut underfilled = false;
+        let mut textless: std::collections::HashSet<String> = std::collections::HashSet::new();
         for table in &arms {
             // An arm whose relation lacks a filter column drops rather than run unfiltered
             // (`read.retrieve.unsatisfiable-arm-drops`).
@@ -311,10 +319,29 @@ impl Face {
             let policy = session.policy(table);
             let text: Vec<&str> = schema.iter().filter(|c| c.ty == ColumnType::Utf8).map(|c| c.name.as_str()).collect();
             let decl = self.decl(table);
-            let snippet = snippet_columns(&text, |c| {
-                decl.partition_by().iter().any(|p| p == c)
-                    || policy.and_then(|p| p.columns.get(c)).is_some_and(|p| p.class.is_some() || p.mask.is_some())
-            });
+            let classed = |c: &str| policy.and_then(|p| p.columns.get(c)).is_some_and(|p| p.class.is_some() || p.mask.is_some());
+            // A declared `retrieve.text` list is exactly what scoring reads, and the snippet
+            // draws from it; an undeclared table scores its snippet (`read.retrieve.scored-text`).
+            let (snippet, scored) = match decl.scored_text() {
+                Some(declared) => {
+                    let listed: Vec<&str> = text.iter().copied().filter(|c| declared.iter().any(|d| d == c) && !classed(c)).collect();
+                    (snippet_order(&listed), listed.iter().map(|c| c.to_string()).collect::<Vec<String>>())
+                }
+                None => {
+                    let snippet = snippet_columns(&text, |c| decl.partition_by().iter().any(|p| p == c) || classed(c));
+                    (snippet.clone(), snippet)
+                }
+            };
+            // A declared list leaving no column adds no lexical candidate: no full-text probe,
+            // and under a content token only a positive vector score admits a row
+            // (`read.retrieve.empty-scored-text`).
+            let text_free = decl.scored_text().is_some() && scored.is_empty();
+            if text_free && !tokens.is_empty() {
+                if request.query_embedding.is_none() {
+                    continue;
+                }
+                textless.insert(table.clone());
+            }
             let basis = PUBLICATION_COLUMNS
                 .iter()
                 .find(|p| schema.iter().any(|c| c.name == **p && matches!(c.ty, ColumnType::Timestamp | ColumnType::Utf8)))
@@ -367,6 +394,7 @@ impl Face {
                     anchor,
                     window,
                     snippet: &snippet,
+                    scored: &scored,
                     basis: &basis,
                     tokens: &tokens,
                     request,
@@ -383,7 +411,7 @@ impl Face {
             // so a row it recalls scores exactly as the exact path scores it
             // (`read.retrieve.sidecar-generates-candidates`).
             // A table declaring no full-text sidecar reads no snapshot manifest here.
-            let fulltext = decl.indexes().iter().any(|i| i.kind == IndexKind::Fulltext);
+            let fulltext = !text_free && decl.indexes().iter().any(|i| i.kind == IndexKind::Fulltext);
             // A replica answers by every sidecar the read needs, or refuses naming the pull
             // that supplies it (`store.replicate.missing-index`).
             if !claims && self.store.replica_of().is_some() {
@@ -428,6 +456,7 @@ impl Face {
                             anchor,
                             window: u64::MAX,
                             snippet: &snippet,
+                            scored: &scored,
                             basis: &basis,
                             tokens: &tokens,
                             request,
@@ -464,14 +493,14 @@ impl Face {
             }
         }
         let prefloor = rows.len() as u64;
-        rows.retain(|r| passes_floor(floor, r.lexical, r.vector));
+        rows.retain(|r| passes_floor(floor, r.lexical, r.vector) && (!textless.contains(&r.table) || r.vector.is_some_and(|v| v > 0.0)));
         let deduped = dedup(&mut rows);
         let candidates = rows.len() as u64;
 
-        // Without the lexical backend the token fallback scores the same snippets and the
+        // Without the lexical backend the token fallback scores the same text and the
         // read still answers, in its own order (`read.rank.degradation-not-error`).
         let lexical = if super::LEXICAL_BACKEND {
-            let index = LexicalIndex::build(&rows.iter().map(|r| r.snippet.as_deref()).collect::<Vec<_>>());
+            let index = LexicalIndex::build(&rows.iter().map(|r| r.scored.as_deref()).collect::<Vec<_>>());
             request.fusion.calibrate(&index.bm25(&tokens))
         } else {
             token_fallback(&rows.iter().map(|r| r.lexical).collect::<Vec<_>>(), tokens.len())
@@ -715,6 +744,7 @@ struct ArmContext<'a> {
     anchor: Instant,
     window: u64,
     snippet: &'a [String],
+    scored: &'a [String],
     basis: &'a str,
     tokens: &'a [String],
     request: &'a RetrieveRequest,
@@ -775,6 +805,8 @@ impl Face {
             }
             let snippet_text: Vec<String> = cx.snippet.iter().filter_map(|c| get(c).and_then(text_of)).collect();
             let snippet_text = (!cx.snippet.is_empty()).then(|| snippet_text.join(" — "));
+            let scored_text: Vec<String> = cx.scored.iter().filter_map(|c| get(c).and_then(text_of)).collect();
+            let scored_text = (!cx.scored.is_empty()).then(|| scored_text.join(" — "));
             let publication = match get(cx.basis).map(|p| cell(p.clone())) {
                 Some(Cell::Timestamp(t)) => Publication::At(t),
                 Some(Cell::Null) | None => Publication::Null,
@@ -812,8 +844,9 @@ impl Face {
             rows.push(Row {
                 table: cx.table.to_string(),
                 id,
-                lexical: lexical_score(cx.tokens, snippet_text.as_deref()),
+                lexical: lexical_score(cx.tokens, scored_text.as_deref()),
                 snippet: snippet_text,
+                scored: scored_text,
                 vector,
                 publication,
                 basis_column: cx.basis.to_string(),

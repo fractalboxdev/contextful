@@ -82,8 +82,8 @@ fn the_relevance_floor_admits_null_scores_and_positive_vectors() {
     assert!(passes_floor(floor, None, None));
 }
 
-/// A table with no snippet-worthy text column scores lexically null, never zero, and its rows enter by vector score alone.
-// spec: read.retrieve.text-free-table-scores-null@6fd1ad30
+/// A table with no scored text column scores lexically null, never zero, and its rows enter by vector score alone.
+// spec: read.retrieve.text-free-table-scores-null@4339b83d
 #[test]
 fn a_row_with_no_snippet_scores_null_and_passes_the_floor() {
     let tokens = content_tokens("solar battery storage");
