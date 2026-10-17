@@ -1058,3 +1058,20 @@ fn a_fingerprint_is_one_head_spelling_the_validators_and_reads_no_body() {
     assert_eq!(source(config("/exports/bare"), vec![]).fingerprint().as_deref(), Some("length=0"), "a bare answer still spells its length");
     assert_eq!(source(config("/exports/missing"), vec![]).fingerprint(), None, "an answer outside 2xx yields no fingerprint");
 }
+
+/// An HTTP body decompresses under a declared `compression` alone: a zip of CSV files lands
+/// the named member, and the same archive undeclared reaches the decoder as served.
+#[test]
+fn an_http_zip_body_lands_its_named_member_under_declared_compression() {
+    let archive = crate::object::zipped(&[("summary.csv", b"code;name\nE1;one\n"), ("detail.csv", b"code;name\nE2;two\n")]);
+    let vendor = Server::start(move |_| Response { status: 200, headers: vec![], body: archive.clone() });
+    let s = source(json!({"endpoint": vendor.url("/documents/S100?type=5"), "format": "csv", "compression": "zip", "member": "detail.csv", "delimiter": ";"}), vec![]);
+    let rows = s.walk(&request(None), &Never).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["code"], "E2");
+    assert_eq!(rows[0]["name"], "two");
+    let s = source(json!({"endpoint": vendor.url("/documents/S100.zip"), "format": "csv", "delimiter": ";"}), vec![]);
+    let f = s.walk(&request(None), &Never).unwrap_err();
+    assert!(f.message.contains("ConnectorEncodingInvalid") && f.message.contains("S100.zip"), "an undeclared HTTP body decodes as served: {f}");
+    assert!(matches!(HttpConfig::parse(&json!({"endpoint": vendor.url("/d"), "member": "a.csv", "format": "csv"})), Err(ConfigError::Run(RunError::Invalid(_)))));
+}

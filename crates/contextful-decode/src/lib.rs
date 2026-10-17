@@ -81,6 +81,44 @@ pub fn gunzip(body: &[u8], ceiling: u64, input: &str) -> Result<Vec<u8>, Failure
     Ok(out)
 }
 
+/// Decompress the one member of a zip `body`, or the member `member` names, holding at most
+/// `ceiling` decompressed bytes counted as they arrive (`connector.source.zip-member`). An
+/// archive of several members and no `member`, a named member it lacks, and a body that is
+/// not a whole archive are unreadable input; past the ceiling the read refuses whole, each
+/// naming `input`.
+pub fn unzip(body: &[u8], member: Option<&str>, ceiling: u64, input: &str) -> Result<Vec<u8>, Failure> {
+    use std::io::Read;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(body)).map_err(|e| unreadable(input, "the archive directory".into(), format!("the body is not a zip archive: {e}")))?;
+    let members: Vec<String> = archive.file_names().filter(|n| !n.ends_with('/')).map(String::from).collect();
+    let name = match (member, members.as_slice()) {
+        (Some(m), _) => members.iter().find(|n| *n == m).cloned().ok_or_else(|| unreadable(input, format!("member `{m}`"), "the archive holds no such member"))?,
+        (None, [one]) => one.clone(),
+        (None, held) => return Err(unreadable(input, "the archive directory".into(), format!("the archive holds {} members and the source declares no `member`", held.len()))),
+    };
+    let file = archive.by_name(&name).map_err(|e| unreadable(input, format!("member `{name}`"), e))?;
+    let mut out = Vec::new();
+    file.take(ceiling.saturating_add(1)).read_to_end(&mut out).map_err(|e| unreadable(input, format!("member `{name}` byte {}", out.len()), format!("the member does not inflate whole: {e}")))?;
+    if out.len() as u64 > ceiling {
+        return Err(Failure::deterministic(FailureTag::Permanent, format!("`{input}` member `{name}` decompresses past {ceiling} B; the read refuses rather than landing a truncated object")));
+    }
+    Ok(out)
+}
+
+/// How delimited text splits: one field delimiter, `,` by default
+/// (`connector.source.delimiter`), and the column names a body carrying no header row takes
+/// in order (`connector.source.declared-columns`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Delimited {
+    pub delimiter: char,
+    pub columns: Option<Vec<String>>,
+}
+
+impl Default for Delimited {
+    fn default() -> Delimited {
+        Delimited { delimiter: ',', columns: None }
+    }
+}
+
 /// Decode `body` into records, and the parsed JSON body a pagination pointer reads. A
 /// workbook lands its first sheet; [`workbook::rows`] selects another.
 pub fn decode(format: Format, body: &[u8], records: Option<&str>, input: &str) -> Result<(Vec<Row>, Option<Value>), Failure> {
@@ -89,6 +127,11 @@ pub fn decode(format: Format, body: &[u8], records: Option<&str>, input: &str) -
 
 /// Decode a body with the declared character encoding of delimited text.
 pub fn decode_with_encoding(format: Format, body: &[u8], records: Option<&str>, input: &str, encoding: Option<&str>) -> Result<(Vec<Row>, Option<Value>), Failure> {
+    decode_delimited(format, body, records, input, encoding, &Delimited::default())
+}
+
+/// Decode a body with the declared encoding, delimiter and columns of delimited text.
+pub fn decode_delimited(format: Format, body: &[u8], records: Option<&str>, input: &str, encoding: Option<&str>, delimited: &Delimited) -> Result<(Vec<Row>, Option<Value>), Failure> {
     match format {
         Format::Json | Format::JsonObject => {
             let v: Value = serde_json::from_slice(body).map_err(|e| unreadable(input, format!("line {} column {}", e.line(), e.column()), e))?;
@@ -125,20 +168,20 @@ pub fn decode_with_encoding(format: Format, body: &[u8], records: Option<&str>, 
             if invalid {
                 return Err(Failure::deterministic(FailureTag::Permanent, ConnectorError::ConnectorEncodingInvalid(format!("`{input}` contains bytes invalid under `{label}`")).to_string()));
             }
-            Ok((csv(&text, input)?, None))
+            Ok((csv(&text, input, delimited)?, None))
         }
         Format::Feed => Ok((feed::rows(body, input)?, None)),
         Format::Workbook => Ok((workbook::rows(body, None, 0, input)?, None)),
     }
 }
 
-/// A delimited body's records under RFC 4180: a quoted field may hold commas, doubled
-/// quotes and line breaks. Each record carries the line it starts on and its fields,
-/// each with whether it was quoted; an empty line is no record.
 /// One record: the line it starts on, and each field with whether it was quoted.
 type Record = (usize, Vec<(String, bool)>);
 
-fn records(text: &str, input: &str) -> Result<Vec<Record>, Failure> {
+/// A delimited body's records under RFC 4180 over `delimiter`: a quoted field may hold the
+/// delimiter, doubled quotes and line breaks. Each record carries the line it starts on and
+/// its fields, each with whether it was quoted; an empty line is no record.
+fn records(text: &str, delimiter: char, input: &str) -> Result<Vec<Record>, Failure> {
     let mut out = Vec::new();
     let mut fields: Vec<(String, bool)> = Vec::new();
     let (mut field, mut quoted, mut in_quotes) = (String::new(), false, false);
@@ -165,7 +208,7 @@ fn records(text: &str, input: &str) -> Result<Vec<Record>, Failure> {
                 quoted = true;
                 in_quotes = true;
             }
-            ',' => fields.push((std::mem::take(&mut field), std::mem::replace(&mut quoted, false))),
+            c if c == delimiter => fields.push((std::mem::take(&mut field), std::mem::replace(&mut quoted, false))),
             '\r' if chars.peek() == Some(&'\n') => {}
             '\n' => {
                 fields.push((std::mem::take(&mut field), std::mem::replace(&mut quoted, false)));
@@ -190,15 +233,24 @@ fn records(text: &str, input: &str) -> Result<Vec<Record>, Failure> {
     Ok(out)
 }
 
-/// A header record, then one row per record: every cell a string, an empty unquoted
-/// field null. A leading UTF-8 byte-order mark is no part of the first column's name.
-fn csv(text: &str, input: &str) -> Result<Vec<Row>, Failure> {
+/// A header record, or the declared columns, then one row per record: every cell a string,
+/// an empty unquoted field null. A leading UTF-8 byte-order mark is no part of the first
+/// column's name. Under declared columns a record carries exactly one field per column.
+fn csv(text: &str, input: &str, delimited: &Delimited) -> Result<Vec<Row>, Failure> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-    let mut recs = records(text, input)?.into_iter();
-    let Some((_, header)) = recs.next() else { return Ok(Vec::new()) };
-    let names: Vec<String> = header.into_iter().map(|(f, _)| f).collect();
+    let mut recs = records(text, delimited.delimiter, input)?.into_iter();
+    let names: Vec<String> = match &delimited.columns {
+        Some(columns) => columns.clone(),
+        None => match recs.next() {
+            Some((_, header)) => header.into_iter().map(|(f, _)| f).collect(),
+            None => return Ok(Vec::new()),
+        },
+    };
     let mut rows = Vec::new();
     for (line, cells) in recs {
+        if delimited.columns.is_some() && cells.len() != names.len() {
+            return Err(unreadable(input, format!("line {line}"), format!("{} fields under {} declared columns", cells.len(), names.len())));
+        }
         if cells.len() > names.len() {
             return Err(unreadable(input, format!("line {line}"), format!("{} cells under a {}-column header", cells.len(), names.len())));
         }

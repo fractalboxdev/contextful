@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 324 | 66 | 24 | 5 | 282 | 0 | 282 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
+| `connector` | 2 | 14 | 379 | 92 | 22 | 12 | 296 | 0 | 296 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 297 | 64 | 15 | 10 | 286 | 0 | 286 |
 | `surface` | 2 | 21 | 167 | 65 | 23 | 0 | 141 | 0 | 141 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2681 | 679 | 213 | 75 | 2396 | 0 | |
+| **total** | 22 | 169 | 2685 | 679 | 213 | 75 | 2400 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 185 | 175 | passing | closed |
 | 3 — The run path | 12 | 289 | 278 | passing | closed |
-| 4 — Ingest | 25 | 596 | 498 | passing | closed |
+| 4 — Ingest | 25 | 600 | 502 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -785,10 +785,12 @@ Unscheduled operations: 13.
 | `connector.source.conditional-position` | `crates/contextful-connectors/tests/integration/conditional.rs::a_conditional_pull_commits_the_validators_alone` | performed |
 | `connector.source.conditional-rejected` | `crates/contextful-connectors/tests/integration/conditional.rs::conditional_beside_a_page_walk_or_an_incremental_field_is_refused` | performed |
 | `connector.source.conversion-required` | `crates/contextful-connectors/tests/integration/file.rs::a_compound_binary_container_refuses_by_extension_or_magic_naming_the_command` | performed |
+| `connector.source.declared-columns` | `crates/contextful-decode/tests/integration/decode.rs::declared_columns_name_a_headerless_body_and_a_count_mismatch_refuses_naming_the_line` | performed |
 | `connector.source.declared-encoding` | `crates/contextful-connectors/tests/integration/http.rs::csv_declared_encoding_decodes_and_refuses_invalid_bytes` | performed |
 | `connector.source.declined-tally` | `crates/contextful-engine/tests/integration/runner.rs::the_run_row_holds_every_pulls_declined_tally_by_extension` | performed |
 | `connector.source.decompression-budget` | `crates/contextful-decode/tests/integration/workbook.rs::an_office_read_decompresses_at_most_64_mib_by_claim_and_by_arrival` | performed |
 | `connector.source.delimited-cell` | `crates/contextful-decode/tests/integration/decode.rs::delimited_cells_land_as_strings_and_empty_unquoted_fields_as_null` | performed |
+| `connector.source.delimiter` | `crates/contextful-connectors/tests/integration/object.rs::delimited_keys_refuse_against_another_format_and_a_malformed_delimiter_refuses` | performed |
 | `connector.source.document-columns` | `crates/contextful-connectors/tests/integration/file.rs::a_row_carries_its_columns_and_a_title_from_frontmatter_heading_or_stem` | performed |
 | `connector.source.document-grain` | `crates/contextful-connectors/tests/integration/file.rs::a_note_lands_whole_or_by_heading_and_a_pdf_by_page_each_linked_to_its_anchor` | performed |
 | `connector.source.document-identity` | `crates/contextful-connectors/tests/integration/file.rs::a_note_crossing_the_threshold_keeps_its_first_rows_identity` | performed |
@@ -868,6 +870,7 @@ Unscheduled operations: 13.
 | `connector.source.object-position-owned` | `crates/contextful-cli/tests/integration/object.rs::an_incremental_field_beside_an_etag_position_is_refused_at_validation` | performed |
 | `connector.source.object-transport` | `crates/contextful-cli/tests/integration/object.rs::a_signed_read_passes_the_backends_signature_check_and_a_skip_downloads_nothing` | performed |
 | `connector.source.object-unreadable` | `crates/contextful-connectors/tests/integration/object.rs::one_unreadable_object_refuses_the_whole_read_naming_it` | performed |
+| `connector.source.object-zip` | `crates/contextful-connectors/tests/integration/object.rs::a_declared_or_zip_keyed_archive_lands_its_tab_delimited_headerless_member` | performed |
 | `connector.source.office-part-selection` | `crates/contextful-decode/tests/integration/workbook.rs::only_the_named_parts_open_and_an_entity_stays_literal` | performed |
 | `connector.source.ordering-column` | `crates/contextful-connectors/tests/integration/report.rs::ordering_by_the_ingest_stamp_is_refused` | performed |
 | `connector.source.page-cap` | `crates/contextful-connectors/tests/integration/http.rs::a_walk_stops_at_1000_requests` | performed |
@@ -900,6 +903,7 @@ Unscheduled operations: 13.
 | `connector.source.workbook-cell-typing` | `crates/contextful-decode/tests/integration/workbook.rs::cells_land_as_strings_a_date_as_its_serial_and_a_formula_as_its_cached_value` | performed |
 | `connector.source.workbook-incremental` | `crates/contextful-connectors/tests/integration/workbook.rs::an_incremental_position_against_a_workbook_is_refused` | performed |
 | `connector.source.worksheet-landing` | `crates/contextful-decode/tests/integration/workbook.rs::a_worksheet_lands_at_most_64_mib_of_resolved_text_and_1048576_rows` | performed |
+| `connector.source.zip-member` | `crates/contextful-decode/tests/integration/archive.rs::an_archive_lands_its_single_or_named_member_and_refuses_an_ambiguous_or_absent_one` | performed |
 | `connector.widen.host-inclusion` | `crates/contextful-core/tests/integration/connector/widen.rs::generated_hosts_agree_with_the_proved_model`, `formal/Contextful/Allowlist.lean::allowlist_includedIn_sound` | performed |
 | `connector.widen.host-witness` | `crates/contextful-core/tests/integration/connector/widen.rs::generated_hosts_agree_with_the_proved_model`, `formal/Contextful/Allowlist.lean::widen_witness_admitted` | performed |
 | `corpus.address.clause-id` | `tools/spec/tests/integration/readable.rs::a_clause_item_takes_its_contract_and_operation_from_its_file_and_section` | performed |

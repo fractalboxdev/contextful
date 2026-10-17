@@ -1,7 +1,8 @@
 //! The generic HTTP source: one endpoint, one decoder, one pagination shape, and headers
 //! whose values are templates hydrated per read (`connector.source.http-headers`).
 
-use crate::decode::{decode_with_encoding, workbook, Format};
+use crate::body::{BodyKeys, Compression};
+use crate::decode::{decode_delimited, workbook, Format};
 use contextful_core::connector::attach::{endpoint, scrub, scrub_text, Allowlist};
 use contextful_core::connector::meter::LimiterDeclaration;
 use contextful_core::connector::probe::ScopeProbe;
@@ -25,7 +26,7 @@ pub const NAME: &str = "http";
 pub const PAGE_CAP: usize = 1000;
 
 /// The configuration keys the HTTP source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 21] = [
+pub const KEYS: [&str; 25] = [
     "endpoint",
     "table_pattern",
     "format",
@@ -46,6 +47,10 @@ pub const KEYS: [&str; 21] = [
     "conditional",
     "expansion",
     "encoding",
+    "compression",
+    "member",
+    "delimiter",
+    "columns",
     "skip_unchanged",
 ];
 
@@ -367,6 +372,9 @@ pub struct HttpConfig {
     pub expansion: Option<Expansion>,
     /// The character encoding of a CSV body; absent means UTF-8.
     pub encoding: Option<String>,
+    /// Compression, zip member and delimited-text keys; a body declaring no compression
+    /// decodes as served.
+    pub body: BodyKeys,
     /// Whether a snapshot read commits its raw-byte digest as the position and lands
     /// nothing when the digest matches the stored one (`run.advance.skip-unchanged`).
     pub skip_unchanged: bool,
@@ -434,6 +442,7 @@ impl HttpConfig {
                 return Err(ConnectorError::ConnectorEncodingInvalid(format!("unknown encoding `{label}`")).into());
             }
         }
+        let body = BodyKeys::parse(NAME, cfg, format, Compression::None)?;
         let records = text(cfg, "records")?;
         let next_cursor_path = text(cfg, "next_cursor_path")?;
         let next_url_path = text(cfg, "next_url_path")?;
@@ -555,6 +564,7 @@ impl HttpConfig {
             conditional,
             expansion,
             encoding,
+            body,
             skip_unchanged,
         };
         if c.scope_probe.is_some() && c.probe_credential().is_none() {
@@ -790,6 +800,17 @@ impl HttpSource {
     }
 
     /// The URL of the page `token` names; `None` names the walk's first page.
+    /// A response's records, decompressed as declared, and the parsed JSON body a
+    /// pagination pointer reads.
+    fn decode(&self, resp: &contextful_outbound::client::Response) -> Result<(Vec<Row>, Option<Value>), Failure> {
+        let input = scrub(&resp.url);
+        let body = self.config.body.decompress(resp.url.path(), &resp.body, &input)?;
+        match self.config.format {
+            Format::Workbook => Ok((workbook::rows(&body, self.config.sheet.as_deref(), self.config.skip_rows, &input)?, None)),
+            format => decode_delimited(format, &body, self.config.records.as_deref(), &input, self.config.encoding.as_deref(), &self.config.body.delimited),
+        }
+    }
+
     fn page_url(&self, base: &Url, token: Option<&str>) -> Result<Url, Failure> {
         let unreadable = |why: &str| Failure::deterministic(FailureTag::Config, format!("the page position `{}` {why}", scrub_text(token.unwrap_or_default())));
         Ok(match (&self.config.pagination, token) {
@@ -844,10 +865,7 @@ impl HttpSource {
         if let Some(d) = digest {
             sha2::Digest::update(d, &resp.body);
         }
-        let (batch, body) = match self.config.format {
-            Format::Workbook => (workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?, None),
-            format => decode_with_encoding(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url), self.config.encoding.as_deref())?,
-        };
+        let (batch, body) = self.decode(&resp)?;
         let batch = self.stamp(batch, &resp.url)?;
         let next = match &self.config.pagination {
             Pagination::None => None,
@@ -1208,10 +1226,7 @@ impl HttpSource {
             let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
             return Err(classify(resp.status, retry_after, &scrub(&resp.url)));
         }
-        let batch = match self.config.format {
-            Format::Workbook => workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?,
-            format => decode_with_encoding(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url), self.config.encoding.as_deref())?.0,
-        };
+        let (batch, _) = self.decode(&resp)?;
         let rows = self.expand(self.stamp(batch, &resp.url)?, request, cancel, &resp.url, budget)?;
         Ok(serde_json::json!({ "rows": rows, "cursor": served_validators(&resp), "more": false, "snapshot_complete": true }))
     }

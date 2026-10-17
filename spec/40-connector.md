@@ -451,6 +451,10 @@ The declared behavior of each source compiled into the engine.
   *because a dimension file's schema then depends on no data*
 - `declared-encoding` — A non-UTF-8 delimited body decodes through a declared encoding label, and bytes invalid under it raise `ConnectorEncodingInvalid`.
   *P1*
+- `delimiter` — `delimiter` on `format = "csv"` names the one field delimiter character, `,` by default; a tab is admitted, and a quote, a line break or a longer value is refused at build.
+  *because a field delimiter that also opens a quote or ends a record leaves every line two readings*
+- `declared-columns` — `columns` on `format = "csv"` names the body's columns in order, and the body carries no header row. A record whose field count differs is unreadable input under {{run.land.unreadable-input}}, naming its line.
+  *because a headerless body under a short list otherwise lands a shifted cell under the wrong name*
 - `clock-column-spelling` — A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises `ConnectorClockColumnRejected`.
   *because the watermark compares text*
 - `feed-format` — `format = "feed"` decodes an RSS or Atom document into one row per item or entry carrying `entry_id`, `title`, `link`, `published_at`, `summary`, `author` and `categories`, each null where the entry holds none.
@@ -505,6 +509,9 @@ The declared behavior of each source compiled into the engine.
   *because a key beside a prefix leaves which objects land to a guess, and neither names no object*
 - `prefix-listing` — A prefix read lists every key under the prefix in key order, narrowed by an optional `suffix`, and lands each object through one decoder. `pick = "latest"` lands the greatest listed key alone.
 - `object-gzip` — `compression = "gzip"`, or a key ending `.gz` with `compression` undeclared, decompresses an object before decode; `compression = "none"` reads it as stored.
+- `object-zip` — `compression = "zip"`, or an object key ending `.zip` with `compression` undeclared, decodes one archive member. An HTTP body decompresses under a declared `compression` alone, bounded by {{connector.source.object-expansion}}.
+- `zip-member` — An archive decodes its single member, or the member `member` names. Several members without `member`, or a named member the archive lacks, is unreadable input under {{run.land.unreadable-input}}.
+  *because landing one member of several by archive order picks rows the declaration never named*
 - `object-expansion` — One object decompresses to at most 256 MiB, counted as the bytes arrive. Past it the read refuses whole, naming the object, and lands nothing.
 - `object-unreadable` — An object a decoder cannot read refuses the whole read under {{run.land.unreadable-input}}, naming it as `s3://<bucket>/<key>`, and no other object of the read lands.
 - `etag-skip` — With `skip_unchanged = true`, the object source's position maps each object key to its ETag in place of {{run.advance.skip-unchanged}}'s digest; an object whose ETag matches lands nothing, and a read matching every object closes a zero-row success.
