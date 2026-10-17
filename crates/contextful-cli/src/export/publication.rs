@@ -302,7 +302,7 @@ pub(super) fn deliver(
             anyhow::bail!("PublicationIncompatible: read identity changed during staging");
         }
         let active = ledger.active(name, &namespace)?;
-        let input = serde_json::to_value(&source)?;
+        let input = serde_json::Value::String(source.digest()?);
         let plan = PublicationPlan {
             name: name.into(),
             incarnation,

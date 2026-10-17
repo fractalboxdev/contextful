@@ -62,6 +62,9 @@ pub enum ExportError {
     /// One typed event cannot fit a request by itself.
     #[error("ExportEventTooLarge: {0}")]
     ExportEventTooLarge(String),
+    /// A group header leaving no room for one event. (`run.export.group-request-bound`)
+    #[error("PublicationHeaderTooLarge: {0}")]
+    PublicationHeaderTooLarge(String),
     /// A pending publication cannot be delivered under a changed read identity or target.
     #[error("ExportIdentityChanged: {0}")]
     ExportIdentityChanged(String),

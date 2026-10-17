@@ -185,6 +185,31 @@ fn coordinated_exports_require_a_completed_producer_and_rebuild_full_state() {
 }
 
 #[test]
+fn a_coordinated_export_sends_a_digest_of_a_large_producer_input() {
+    let collector = Collector::start();
+    let manifest = format!("{}\n[[publication]]\nname='projection'\njob='producer'\nmembers=['spans-mirror']\n",typed_block(&collector.endpoint()));
+    let (dir,public,token) = project(&manifest,"spans");
+    let p = dir.path();
+    land(p,"load-1","2030-01-01T00:00:00Z",&ids("a",2));
+    let store = contextful_context::Store::open(p,"research").unwrap();
+    let mut runs = store.committed_runs("spans").unwrap();
+    runs.sort_by(|a,b| (a.commit_seq,&a.run_id,&a.node_id).cmp(&(b.commit_seq,&b.run_id,&b.node_id)));
+    let pointer = store.pointer("spans").unwrap().map(|(p,_)|p.snapshot_id.to_string());
+    use sha2::{Digest,Sha256};
+    let frontier = format!("{:x}",Sha256::digest(serde_json::to_vec(&(pointer,runs)).unwrap()));
+    // A model build's watermark lists every committed input run its snapshot omits.
+    let omitted: Vec<String> = (0..5000).map(|i| format!("run-{i:032}")).collect();
+    let source = contextful_sqlite::SourcePublication {run:"build-1".into(),input:serde_json::json!({"at":null,"inputs":{"events":{"snapshot_id":"snapshot-one","runs":omitted}}}),frontiers:[("spans".into(),frontier)].into()};
+    let ledger = contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap();
+    ledger.record_source("projection",&source).unwrap();
+    ok(&cf(p,&["export","group","projection","--project","research","--public-key",&public,"--audience",AUD],&[("CONTEXTFUL_TOKEN",&token)]));
+    let requests = collector.received();
+    assert_eq!(requests.len(),1);
+    assert_eq!(requests[0].body["group"]["input"],format!("{:x}",Sha256::digest(serde_json::to_vec(&source).unwrap())));
+    assert_eq!(requests[0].body["events"].as_array().unwrap().len(),4);
+}
+
+#[test]
 fn typed_export_refuses_a_truncated_initial_state() {
     for table_cap in [false, true] {
         let collector = Collector::start();

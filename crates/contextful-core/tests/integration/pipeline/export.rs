@@ -174,3 +174,84 @@ fn each_row_becomes_one_log_record_carrying_its_commit_position() {
     assert!(unplaced.to_string().contains("_commit_seq"), "{unplaced}");
     assert_eq!(log_records(e, &columns, &[], &types).unwrap().1, None);
 }
+
+fn group_plan(input: Value) -> contextful_core::export::publication::PublicationPlan {
+    contextful_core::export::publication::PublicationPlan {
+        name: "projection".into(), incarnation: "store-one".into(), namespace: "epoch-one".into(),
+        destination: "receiver".into(), read_identity: "reader".into(), base: None, order: 1, input,
+        members: [("items".into(), "items".into())].into(),
+    }
+}
+
+fn group_states(rows: &[Value]) -> contextful_core::export::publication::GroupState {
+    [("items".into(), rows.iter().map(|row| (json!({"id": row["id"]}).to_string(), row.clone())).collect())].into()
+}
+
+/// A checkpoint holding `pending` exactly as an earlier sender staged it, `offset` events acknowledged.
+fn sender_with(pending: &contextful_core::export::publication::GroupBatch, next: &contextful_core::export::publication::GroupState, offset: usize) -> contextful_core::export::publication::GroupSender {
+    let bytes = serde_json::to_vec(&json!([1, "projection", "epoch-one", {
+        "identity": "reader", "incarnation": "store-one", "active": null, "state": {},
+        "pending": pending, "next_state": next, "offset": offset,
+    }])).unwrap();
+    contextful_core::export::publication::GroupSender::restore(&bytes, "projection", "epoch-one", "store-one", "reader", None).unwrap()
+}
+
+#[test]
+fn a_group_header_carries_a_digest_of_any_producer_input() {
+    use contextful_core::export::publication::{GroupSender, SourcePublication};
+    let runs: Vec<String> = (0..5000).map(|i| format!("run-{i:032}")).collect();
+    let source = SourcePublication {
+        run: "build-1".into(),
+        input: json!({"at": null, "inputs": {"events": {"snapshot_id": "snapshot-one", "runs": runs}}}),
+        frontiers: [("items".into(), "frontier-one".into())].into(),
+    };
+    assert!(serde_json::to_vec(&source).unwrap().len() > TYPED_REQUEST_BYTES);
+    let digest = source.digest().unwrap();
+    assert_eq!(digest.len(), 64);
+    assert!(digest.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
+    let mut advanced = source.clone();
+    advanced.frontiers.insert("items".into(), "frontier-two".into());
+    assert_ne!(digest, advanced.digest().unwrap());
+    let mut sender = GroupSender::default();
+    assert!(sender.stage(&group_plan(json!(digest)), &group_states(&[json!({"id": 1})]), "reader").unwrap());
+    let batch = sender.batch().unwrap().unwrap();
+    assert_eq!(batch.events.len(), 3);
+    assert_eq!(batch.group.plan.input, json!(digest));
+    assert!(serde_json::to_vec(&batch).unwrap().len() < 1024);
+}
+
+#[test]
+fn staging_refuses_a_group_whose_requests_exceed_the_ceiling() {
+    use contextful_core::export::publication::GroupSender;
+    let mut sender = GroupSender::default();
+    let oversized = json!("x".repeat(TYPED_REQUEST_BYTES));
+    let refused = sender.stage(&group_plan(oversized), &group_states(&[json!({"id": 1})]), "reader").unwrap_err();
+    assert!(matches!(refused, ExportError::PublicationHeaderTooLarge(_)), "{refused}");
+    assert_eq!(sender, GroupSender::default());
+    let row = json!({"id": 1, "body": "y".repeat(TYPED_REQUEST_BYTES)});
+    let refused = sender.stage(&group_plan(json!("digest")), &group_states(&[row]), "reader").unwrap_err();
+    assert!(matches!(refused, ExportError::ExportEventTooLarge(_)), "{refused}");
+    assert_eq!(sender, GroupSender::default());
+}
+
+#[test]
+fn a_never_offered_stranded_group_yields_to_the_next_stage() {
+    use contextful_core::export::publication::publication;
+    let states = group_states(&[json!({"id": 1})]);
+    let stranded = publication(group_plan(json!({"runs": "x".repeat(TYPED_REQUEST_BYTES)})), &BTreeMap::new(), &states).unwrap();
+    let mut sender = sender_with(&stranded, &states, 0);
+    assert!(matches!(sender.batch(), Err(ExportError::ExportEventTooLarge(_))));
+    assert_eq!(sender.pending_identity(), None);
+    assert!(sender.stage(&group_plan(json!("digest")), &states, "reader").unwrap());
+    let batch = sender.batch().unwrap().unwrap();
+    assert_ne!(batch.group.id, stranded.group.id);
+    assert!(sender.acknowledge(&batch.group.id, batch.events.last().unwrap().sequence).unwrap());
+
+    // A group with an acknowledged prefix has reached the receiver and stays immutable.
+    let rows = group_states(&[json!({"id": 1}), json!({"id": 2, "body": "y".repeat(TYPED_REQUEST_BYTES)})]);
+    let partial = publication(group_plan(json!("digest")), &BTreeMap::new(), &rows).unwrap();
+    let mut sender = sender_with(&partial, &rows, 1);
+    assert_eq!(sender.pending_identity(), Some("reader"));
+    assert!(!sender.stage(&group_plan(json!("later")), &rows, "reader").unwrap());
+    assert!(matches!(sender.batch(), Err(ExportError::ExportEventTooLarge(_))));
+}
