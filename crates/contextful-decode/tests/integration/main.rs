@@ -5,3 +5,4 @@ mod feed;
 mod gzip;
 mod pdf;
 mod workbook;
+mod archive;

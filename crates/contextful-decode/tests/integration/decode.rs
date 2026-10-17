@@ -1,6 +1,6 @@
 //! The decoders the sources share.
 
-use contextful_decode::{decode, decode_with_encoding, Format};
+use contextful_decode::{decode, decode_delimited, decode_with_encoding, Delimited, Format};
 use serde_json::{json, Value};
 
 /// A delimited source lands every cell as a string and an empty unquoted field as null.
@@ -76,4 +76,30 @@ fn json_object_refuses_nonobjects_and_bad_input_without_relaxing_json_arrays() {
     assert!(decode(array, b"{}", None, "snapshot").is_err());
     assert!(decode(array, b"[]", None, "snapshot").unwrap().0.is_empty());
     assert_eq!(decode(array, b"[{\"id\":1}]", None, "snapshot").unwrap().0.len(), 1);
+}
+
+/// `delimiter` names the one field delimiter: a tab splits fields, and a quoted field holds it.
+#[test]
+fn a_declared_tab_delimiter_splits_fields_and_a_quoted_field_holds_one() {
+    let tab = Delimited { delimiter: '\t', columns: None };
+    let (rows, _) = decode_delimited(Format::Csv, b"id\tnote\n1\ta,b\n2\t\"x\ty\"\n", None, "tabs.tsv", None, &tab).unwrap();
+    assert_eq!(Value::Object(rows[0].clone()), json!({"id": "1", "note": "a,b"}));
+    assert_eq!(Value::Object(rows[1].clone()), json!({"id": "2", "note": "x\ty"}));
+    assert_eq!(Delimited::default().delimiter, ',');
+}
+
+/// `columns` names a headerless body's columns in order; a record whose field count differs
+/// from the list refuses the read, naming its line.
+// spec: connector.source.declared-columns@83ec75e4
+#[test]
+fn declared_columns_name_a_headerless_body_and_a_count_mismatch_refuses_naming_the_line() {
+    let declared = Delimited { delimiter: '\t', columns: Some(vec!["id".into(), "day".into(), "actor".into()]) };
+    let (rows, _) = decode_delimited(Format::Csv, b"1\t20250101\tUSA\n2\t20250102\t\n", None, "events.CSV", None, &declared).unwrap();
+    assert_eq!(rows.len(), 2, "the first line is a record, not a header");
+    assert_eq!(Value::Object(rows[0].clone()), json!({"id": "1", "day": "20250101", "actor": "USA"}));
+    assert_eq!(Value::Object(rows[1].clone()), json!({"id": "2", "day": "20250102", "actor": null}));
+    for (body, line) in [(&b"1\t2\t3\n4\t5\n"[..], "line 2"), (&b"1\t2\t3\t4\n"[..], "line 1")] {
+        let f = decode_delimited(Format::Csv, body, None, "events.CSV", None, &declared).unwrap_err();
+        assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("events.CSV") && f.message.contains(line), "{f}");
+    }
 }

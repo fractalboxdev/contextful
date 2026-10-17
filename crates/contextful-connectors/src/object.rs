@@ -7,7 +7,8 @@
 //! signs every bucket request and the bucket is one more allowlisted vendor host
 //! (`connector.source.object-transport`). This package links no S3 client.
 
-use crate::decode::{decode_with_encoding, gunzip, workbook, Format};
+use crate::body::{strip_ext, BodyKeys, Compression};
+use crate::decode::{decode_delimited, workbook, Format};
 use crate::http::ConfigError;
 use contextful_core::connector::attach::{endpoint, is_loopback_host, scrub, Allowlist};
 use contextful_core::connector::reference::{check_material, Hydrated, Part, SecretName, Template};
@@ -24,15 +25,13 @@ use url::Url;
 
 /// The source's registered name.
 pub const NAME: &str = "s3";
-/// Decompressed bytes of one object: 256 MiB (`connector.source.object-expansion`).
-pub const EXPANSION_CEILING: u64 = 256 * 1024 * 1024;
 /// The endpoint a source declaring none reads.
 pub const DEFAULT_ENDPOINT: &str = "https://s3.amazonaws.com";
 /// The signing region a source declaring none signs for.
 pub const DEFAULT_REGION: &str = "us-east-1";
 
 /// The configuration keys the object source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 14] = [
+pub const KEYS: [&str; 17] = [
     "bucket",
     "key",
     "prefix",
@@ -44,6 +43,9 @@ pub const KEYS: [&str; 14] = [
     "encoding",
     "records",
     "compression",
+    "member",
+    "delimiter",
+    "columns",
     "skip_unchanged",
     "access_key_id",
     "secret_access_key",
@@ -56,15 +58,6 @@ pub enum Address {
     Key(String),
     /// Every key under `prefix` ending in `suffix`, in key order; `latest` keeps the greatest.
     Prefix { prefix: String, suffix: Option<String>, latest: bool },
-}
-
-/// How an object's bytes are stored.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Compression {
-    /// Gzip where the key ends `.gz`, as stored otherwise.
-    ByKey,
-    Gzip,
-    None,
 }
 
 /// A parsed object source configuration.
@@ -80,7 +73,8 @@ pub struct ObjectConfig {
     /// The character encoding of a CSV object; absent means UTF-8.
     pub encoding: Option<String>,
     pub records: Option<String>,
-    pub compression: Compression,
+    /// Compression, zip member and delimited-text keys.
+    pub body: BodyKeys,
     pub skip_unchanged: bool,
     /// The access key id and secret access key references, declared together or not at all.
     pub access_key_id: Option<Template>,
@@ -92,11 +86,7 @@ fn invalid(why: String) -> ConfigError {
 }
 
 fn text(cfg: &Map<String, Value>, k: &str) -> Result<Option<String>, ConfigError> {
-    match cfg.get(k) {
-        None => Ok(None),
-        Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(other) => Err(invalid(format!("key `{k}` is a string, found {other}"))),
-    }
+    crate::body::text(NAME, cfg, k)
 }
 
 fn flag(cfg: &Map<String, Value>, k: &str) -> Result<bool, ConfigError> {
@@ -126,11 +116,12 @@ fn credential(key: &str, value: &str) -> Result<Template, ConfigError> {
     Ok(template)
 }
 
-/// The format a key's extension names, a trailing `.gz` set aside.
+/// The format a key's extension names, compared without case, a trailing `.gz` or `.zip`
+/// set aside (`connector.source.body-format`).
 fn format_of(name: &str) -> Option<Format> {
-    let name = name.strip_suffix(".gz").unwrap_or(name);
-    let ext = name.rsplit_once('.')?.1;
-    match ext {
+    let name = strip_ext(name, ".gz").or_else(|| strip_ext(name, ".zip")).unwrap_or(name);
+    let ext = name.rsplit_once('.')?.1.to_ascii_lowercase();
+    match ext.as_str() {
         "jsonl" | "ndjson" => Some(Format::Jsonl),
         "json" => Some(Format::Json),
         "csv" => Some(Format::Csv),
@@ -193,12 +184,13 @@ impl ObjectConfig {
         if records.is_some() && !matches!(format, Format::Json | Format::JsonObject) {
             return Err(ConnectorError::ConnectorFormatKeyRejected(format!("`records` reads a JSON body and the source's format is `{}`", format.name())).into());
         }
-        let compression = match text(cfg, "compression")?.as_deref() {
-            None => Compression::ByKey,
-            Some("gzip") => Compression::Gzip,
-            Some("none") => Compression::None,
-            Some(other) => return Err(invalid(format!("`compression = \"{other}\"` is neither `gzip` nor `none`"))),
-        };
+        let body = BodyKeys::parse(NAME, cfg, format, Compression::ByKey)?;
+        // A named key or suffix that is no zip leaves `member` nothing to select.
+        if let (Some(_), Some(n)) = (&body.member, named) {
+            if body.compression_of(n) != Compression::Zip {
+                return Err(invalid(format!("declares `member`, which selects inside a zip archive, and `{n}` is stored as no zip")));
+            }
+        }
         let access_key_id = text(cfg, "access_key_id")?.map(|v| credential("access_key_id", &v)).transpose()?;
         let secret_access_key = text(cfg, "secret_access_key")?.map(|v| credential("secret_access_key", &v)).transpose()?;
         if access_key_id.is_some() != secret_access_key.is_some() {
@@ -221,7 +213,7 @@ impl ObjectConfig {
             format,
             encoding,
             records,
-            compression,
+            body,
             skip_unchanged: flag(cfg, "skip_unchanged")?,
             access_key_id,
             secret_access_key,
@@ -236,14 +228,6 @@ impl ObjectConfig {
     /// The name an object refuses under: `s3://<bucket>/<key>`.
     pub fn input(&self, key: &str) -> String {
         format!("s3://{}/{key}", self.bucket)
-    }
-
-    fn gzipped(&self, key: &str) -> bool {
-        match self.compression {
-            Compression::Gzip => true,
-            Compression::None => false,
-            Compression::ByKey => key.ends_with(".gz"),
-        }
     }
 }
 
@@ -463,10 +447,10 @@ impl ObjectSource {
                 skipped_input = true;
                 continue;
             }
-            let body = if self.config.gzipped(&key) { gunzip(&bytes, EXPANSION_CEILING, &input)? } else { bytes };
+            let body = self.config.body.decompress(&key, &bytes, &input)?;
             let decoded = match self.config.format {
                 Format::Workbook => workbook::rows(&body, None, 0, &input)?,
-                format => decode_with_encoding(format, &body, self.config.records.as_deref(), &input, self.config.encoding.as_deref())?.0,
+                format => decode_delimited(format, &body, self.config.records.as_deref(), &input, self.config.encoding.as_deref(), &self.config.body.delimited)?.0,
             };
             rows.extend(decoded);
         }

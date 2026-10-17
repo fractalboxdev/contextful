@@ -2,6 +2,7 @@
 
 /// The shared record decoders (`connector.source.body-format`).
 pub use contextful_decode as decode;
+pub mod body;
 pub mod boundary;
 pub mod derive;
 #[cfg(feature = "drive")]
