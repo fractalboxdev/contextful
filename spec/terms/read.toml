@@ -58,6 +58,7 @@ MemoryEvidenceOverflow        = { clause = "read.recall.evidence-gate-bound", gl
 MemoryObservationOutOfOrder   = { clause = "read.revise.observed-order", gloss = "A claim was observed before a live contradicting claim of its line." }
 MemoryRecallNotClaims         = { clause = "read.recall.keyed-not-claims", gloss = "A keyed recall named a table declaring no `memory_facts` shape." }
 MemoryEntityAmbiguous         = { clause = "read.resolve-entity.ambiguous-mention", gloss = "A mention resolves onto two identities with no separating key." }
+MemoryEntityAliasConflict     = { clause = "read.resolve-entity.alias-conflict", gloss = "An entity upsert names a name or alias another entity already carries." }
 MemoryEdgeEndpointUnresolved  = { clause = "read.resolve-entity.edge-endpoint", gloss = "A candidate edge endpoint resolves to no identity." }
 MemoryExplainNotEntities      = { clause = "read.resolve-entity.card-not-entities", gloss = "A knowledge card named a table declaring no `memory_entities` shape." }
 MemoryTraverseRelationUnwalkable = { clause = "read.traverse.walkable", gloss = "A traversal named a relation its declaration does not mark walkable." }
