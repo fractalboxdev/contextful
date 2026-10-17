@@ -9,7 +9,7 @@ use contextful_core::grant::{Action, Grant, TablePattern, TenantScope};
 use contextful_core::identify::{MintSurface, Subject};
 use contextful_core::place::ProjectZone;
 use contextful_core::issue::{
-    key_rotation_due, IssuancePolicy, Lifetime, MintContext, MintRequest, NodeRole, SignatureAlgorithm,
+    key_rotation_due, IssuancePolicy, Lifetime, MintContext, MintPlan, MintRequest, NodeRole, SignatureAlgorithm,
     ISSUER_KEY_ROTATION_CADENCE_SECS,
 };
 use contextful_core::revoke::{EpochScope, KeySetLedger, RotationPolicy};
@@ -425,6 +425,19 @@ impl Root {
         IssuancePolicy::parse(&text).map_err(|e| anyhow::anyhow!("{e:?}"))
     }
 
+    /// `request` checked against the root's issuance policy at `now` as a primary node.
+    fn check(&self, signer: &SeedSigner, request: &MintRequest, now: Instant) -> Result<MintPlan> {
+        let clock = FixedClock(now);
+        let ctx = MintContext { node: NodeRole::Primary, signer: signer as &dyn SigningPort, clock: &clock as &dyn Clock };
+        Ok(self.policy()?.check(request, &ctx)?)
+    }
+
+    /// `plan` signed under the ledger's current revocation epoch.
+    fn sign(&self, plan: &MintPlan, confirmation: Option<String>, owner_project: Option<String>, signer: &SeedSigner) -> Result<String> {
+        let epoch = mint_epoch(plan, &self.ledger().read()?.current_epochs());
+        Ok(mint(plan, &MintClaims { confirmation, epoch, owner_project }, signer)?)
+    }
+
     /// The `[project.zone]` the root's declaration spells; the default without a
     /// declaration (`authority.place.team-default`).
     fn project_zone(&self) -> Result<ProjectZone> {
@@ -620,14 +633,11 @@ fn mint_one(
     let root = Root::find()?;
     let default = root.seed();
     let signer = SeedSigner::resolve(issuer_key.or_else(|| default.exists().then_some(default.as_path())))?;
-    let policy = root.policy()?;
     let subject = subject.mint(MintSurface::CommandLine)?.to_subject();
     let mut request = MintRequest::custody(subject, vec![grant]);
     request.lifetime = lifetime;
     request.audience = audience;
-    let clock = FixedClock(instant_or_now(now)?);
-    let ctx = MintContext { node: NodeRole::Primary, signer: &signer as &dyn SigningPort, clock: &clock as &dyn Clock };
-    let plan = policy.check(&request, &ctx)?;
+    let plan = root.check(&signer, &request, instant_or_now(now)?)?;
     let owner_project = if owner {
         #[cfg(feature = "read-plane")]
         {
@@ -647,8 +657,21 @@ fn mint_one(
             bail!("`--holder` is the 43-character base64url RFC 7638 thumbprint of an Ed25519 public key, not `{jkt}`");
         }
     }
-    let epoch = mint_epoch(&plan, &root.ledger().read()?.current_epochs());
-    Ok(mint(&plan, &MintClaims { confirmation: holder, epoch, owner_project }, &signer)?)
+    root.sign(&plan, holder, owner_project, &signer)
+}
+
+/// One credential on behalf of the service `on_behalf_of` over `grants`, signed by the seed
+/// at `issuer_key` under the issuance policy at `root`, living `lifetime_secs` or the
+/// policy's ceiling when lower (`surface.dispatch.fire-credential`).
+pub(crate) fn mint_service(root: &Path, issuer_key: &Path, on_behalf_of: &str, grants: Vec<Grant>, lifetime_secs: u64) -> Result<String> {
+    let root = Root { dir: root.to_path_buf() };
+    let signer = SeedSigner::resolve(Some(issuer_key))?;
+    let (zone, incognito) = root.project_zone()?.mint(None, false)?;
+    let subject = Subject { on_behalf_of: Some(on_behalf_of.to_string()), agent: None, host: None, task: None, zone, incognito };
+    let mut request = MintRequest::custody(subject.mint(MintSurface::CommandLine)?.to_subject(), grants);
+    request.lifetime = Lifetime::Clamped(lifetime_secs);
+    let plan = root.check(&signer, &request, instant_or_now(None)?)?;
+    root.sign(&plan, None, None, &signer)
 }
 
 fn instant_or_now(text: Option<&str>) -> Result<Instant> {

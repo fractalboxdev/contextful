@@ -238,6 +238,10 @@ pub enum PipelineCmd {
         /// Locally pinned issuer keys for pulled control receipts; absent, `CONTEXTFUL_ISSUER_PUBKEY`.
         #[arg(long)]
         public_key: Option<String>,
+        /// Issuer seed each store-driven fire's credential is minted under; absent, each
+        /// child inherits `CONTEXTFUL_TOKEN`.
+        #[arg(long)]
+        issuer_key: Option<PathBuf>,
     },
     /// Run steps a `serve` submits: take `POST /submit`, run each step as `run --applied`,
     /// heartbeat and call back through the step's awakeable route under `CONTEXTFUL_WORKER_KEY`.
@@ -881,7 +885,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
         PipelineCmd::Import { project, declaration, admit, issuer_key } => {
             crate::cadence::import(&project, declaration, tasks, bodies, &admit, issuer_key.as_deref())
         }
-        PipelineCmd::Serve { project, declaration, cycle, http, public_key } => crate::cadence::serve(&project, declaration, cycle, http.as_deref(), public_key.as_deref(), tasks, bodies),
+        PipelineCmd::Serve { project, declaration, cycle, http, public_key, issuer_key } => crate::cadence::serve(&project, declaration, cycle, http.as_deref(), public_key.as_deref(), issuer_key.as_deref(), tasks, bodies),
         PipelineCmd::Receive { id, key, project, declaration, site_id, site_id_env, admit } => {
             crate::receive::receive(crate::receive::Receive { id, key, project, declaration, site_id, site_id_env, admit: &admit }, tasks)
         }

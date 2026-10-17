@@ -4,7 +4,9 @@
 //! With `SCORE_AUDIT` set, each row also lands one `audits` row carrying its `doc_id`.
 //! `SCORE_LEDGER` names a file each served call appends `<doc_id> <idempotency key>` to;
 //! `SCORE_DIE_AFTER` ends the process inside the call past that many served calls;
-//! `SCORE_TRANSIENT` names a `body` whose call fails as transient.
+//! `SCORE_TRANSIENT` names a `body` whose call fails as transient;
+//! `SCORE_CREDENTIAL` names a file each served call writes its `CONTEXTFUL_TOKEN` to, then
+//! its arguments and environment, one per line.
 
 use contextful_core::run::drive::{Bodies, Emitted, InputRow, PreparedEmitted, RecordedRowBody, RecordedRowCalls, RowBody, RowCalls, RowStop};
 use contextful_core::run::effect::RecordedEffect;
@@ -33,6 +35,14 @@ impl Score {
         if let Some(path) = &self.ledger {
             let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).map_err(|e| Failure::new(FailureTag::Transient, e.to_string()))?;
             writeln!(f, "{doc} {key}").map_err(|e| Failure::new(FailureTag::Transient, e.to_string()))?;
+        }
+        if let Some(path) = std::env::var_os("SCORE_CREDENTIAL") {
+            let seen = std::iter::once(std::env::var("CONTEXTFUL_TOKEN").unwrap_or_default())
+                .chain(std::env::args())
+                .chain(std::env::vars().map(|(k, v)| format!("{k}={v}")))
+                .collect::<Vec<_>>()
+                .join("\n");
+            std::fs::write(path, seen).map_err(|e| Failure::new(FailureTag::Transient, e.to_string()))?;
         }
         *served += 1;
         Ok(body.chars().count().to_string().into_bytes())

@@ -11,7 +11,7 @@
 
 use crate::admit::{revocation_state, AdmitArgs, LedgerFile};
 use crate::clock::SystemClock;
-use contextful_core::job::{parse_jobs, JobKind};
+use contextful_core::job::{parse_jobs, Job, JobKind, StoreDriven};
 use contextful_core::run::drive::Bodies;
 use crate::pipeline::{check, manifests};
 use crate::project::Located;
@@ -22,7 +22,7 @@ use contextful_core::pipeline::declare::{collect, ManifestFile, PipelineSpec};
 use contextful_core::pipeline::transform::TransformOp;
 use contextful_core::pipeline::model::ModelSpec;
 use contextful_core::store::declare::TableDecl;
-use contextful_core::grant::Action;
+use contextful_core::grant::{Action, Grant, TablePattern};
 use contextful_core::ports::Clock;
 use contextful_core::run::derive::task::Tasks;
 use contextful_core::surface::arm::{Schedule, Trigger, TICK_INTERVAL_MS, WAKE_ANSWER_SECS};
@@ -1227,6 +1227,9 @@ struct ChildDispatch {
     declaration: Option<PathBuf>,
     now: Option<String>,
     children: Arc<Children>,
+    /// The seed each store-driven fire's credential is minted under, and the root holding
+    /// the issuance policy (`surface.dispatch.fire-credential`).
+    issuer: Option<(PathBuf, PathBuf)>,
 }
 
 enum ChildStepError {
@@ -1259,15 +1262,21 @@ impl ChildDispatch {
     /// Run one applied pipeline or registered job through this embedding executable.
     fn step(&self, id: &str, version: u64) -> Result<String, ChildStepError> {
         let mut cmd = Command::new(&self.exe);
-        let selected = (|| -> Result<Option<String>> {
+        let selected = (|| -> Result<Option<(Job, Located)>> {
             let located = crate::project::locate(Some(&self.project), self.declaration.clone())?;
             let manifest = std::fs::read_to_string(&located.declaration)?;
             let snapshot = snapshot_manifest(&located.project, &manifest, version)?;
             let jobs = parse_jobs(&snapshot.text, &|_| true)?;
-            Ok(jobs.into_iter().find(|job| id == format!("job:{}", job.name)).map(|job| job.name))
+            Ok(jobs.into_iter().find(|job| id == format!("job:{}", job.name)).map(|job| (job, located)))
         })().map_err(|e| ChildStepError::Infrastructure(format!("{id}: reading applied dispatch: {e:#}")))?;
         match selected {
-            Some(name) => { cmd.args(["job", "fire", &name]); }
+            Some((job, located)) => {
+                cmd.args(["job", "fire", &job.name]);
+                if let (JobKind::StoreDriven(driven), Some((seed, root))) = (&job.kind, &self.issuer) {
+                    let token = fire_credential(&located, root, seed, &job.name, driven).map_err(|e| ChildStepError::Infrastructure(format!("{id}: minting the fire credential: {e:#}")))?;
+                    cmd.env(crate::admit::TOKEN_VAR, token);
+                }
+            }
             None => { cmd.args(["pipeline", "run", id]); }
         }
         cmd.args(["--applied", &version.to_string(), "--project", &self.project]);
@@ -1296,6 +1305,62 @@ impl ChildDispatch {
             Err(ChildStepError::Run(last(&stderr)))
         }
     }
+}
+
+/// The lifetime of a fire credential, clamped to the issuance ceiling
+/// (`surface.dispatch.fire-credential-lifetime`).
+const FIRE_CREDENTIAL_SECS: u64 = 600;
+
+/// One credential for a store-driven fire of `job`, on behalf of `svc://job/<job>`: `read`
+/// over the relations its statement names and `write` over its declared `tables`
+/// (`surface.dispatch.fire-credential`).
+fn fire_credential(located: &Located, root: &Path, seed: &Path, job: &str, driven: &StoreDriven) -> Result<String> {
+    let tree = crate::admit::face(located)?.serialize(&driven.input.statement)?;
+    let read = contextful_core::read::guard::admit(&tree, |_| true)?.relations;
+    let grant = |action: Action, tables: Vec<String>| -> Result<Grant> {
+        Ok(Grant {
+            horizon: None,
+            actions: vec![action],
+            tables: tables.iter().map(|t| TablePattern::parse(t)).collect::<Result<_, _>>()?,
+            tenant: None,
+            aggregate: None,
+            templates: None,
+            max_rows: None,
+            max_duration_ms: None,
+            max_response_bytes: None,
+        })
+    };
+    let mut grants = Vec::new();
+    if !read.is_empty() {
+        grants.push(grant(Action::Read, read.into_iter().collect())?);
+    }
+    grants.push(grant(Action::Write, driven.tables.clone())?);
+    crate::token::mint_service(root, seed, &format!("svc://job/{job}"), grants, FIRE_CREDENTIAL_SECS)
+}
+
+/// Refuse a serve whose applied snapshot schedules a store-driven job while it holds
+/// neither an issuer seed nor an inherited credential (`surface.dispatch.fire-credential-missing`).
+fn require_fire_credential(control: &ControlConfig, issuer: bool) -> Result<()> {
+    if issuer || AdmitArgs::presented() {
+        return Ok(());
+    }
+    let Some(version) = control.source.current()? else { return Ok(()) };
+    let text = control.source.read(version)?;
+    // A job the snapshot cannot register meets its own refusal when the snapshot arms.
+    let Ok(jobs) = parse_jobs(&text, &|name| {
+        control.bodies.contains(name) || name.strip_prefix(contextful_core::surface::delegate::BODY_PREFIX).is_some_and(|d| control.delegates.contains_key(d))
+    }) else {
+        return Ok(());
+    };
+    let scheduled: Vec<&str> = jobs.iter().filter(|j| j.schedule.is_some() && matches!(j.kind, JobKind::StoreDriven(_))).map(|j| j.name.as_str()).collect();
+    if scheduled.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "FireCredentialMissing: applied v{version} schedules store-driven job(s) {}, and serve holds neither `--issuer-key` nor {}; each fire admits one credential",
+        scheduled.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", "),
+        crate::admit::TOKEN_VAR
+    )
 }
 
 /// Bind the relay's awakeable route and dispatch onto `workers` through it
@@ -1408,7 +1473,7 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
 }
 
 /// `pipeline serve [--cycle]`.
-pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: bool, http: Option<&str>, public_key: Option<&str>, tasks: &Tasks, bodies: &Bodies) -> Result<()> {
+pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: bool, http: Option<&str>, public_key: Option<&str>, issuer_key: Option<&Path>, tasks: &Tasks, bodies: &Bodies) -> Result<()> {
     let explicit = declaration.clone();
     let (l, text, mut control) = located(project, declaration)?;
     control.bodies = bodies.names().into_iter().collect();
@@ -1427,13 +1492,18 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     let reaper = Reaper(children.clone());
     let dispatch: Arc<dyn Dispatch> = match &control.relay {
         Some(relay) if !control.workers.is_empty() => worker_dispatch(relay, &control.workers)?,
-        _ => Arc::new(ChildDispatch {
-            exe: std::env::current_exe()?,
-            project: l.project.name.clone(),
-            declaration: explicit,
-            now: project.now.clone(),
-            children: children.clone(),
-        }),
+        _ => {
+            require_fire_credential(&control, issuer_key.is_some())?;
+            let root = crate::root::root(project.project.as_deref())?;
+            Arc::new(ChildDispatch {
+                exe: std::env::current_exe()?,
+                project: l.project.name.clone(),
+                declaration: explicit,
+                now: project.now.clone(),
+                children: children.clone(),
+                issuer: issuer_key.map(|seed| (seed.to_path_buf(), root)),
+            })
+        }
     };
     let holder = format!("{}:{}", boot_id(), std::process::id());
     let mut scheduler = Scheduler::new(w.engine.catalog.clone(), dispatch, &l.project.name, &holder, control.pool);

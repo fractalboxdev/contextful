@@ -522,6 +522,7 @@ fn scheduled_host(dir: &Path, public: &str, token: &str, args: &[&str], extra: &
     host(dir, args, &vars)
 }
 
+// spec: surface.dispatch.fire-credential-inherited@fe4cd292
 #[test]
 fn scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart() {
     let group = "[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy']\n";
@@ -545,6 +546,68 @@ fn scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart()
     assert_eq!(second["fired"], serde_json::json!([]));
     assert_eq!(std::fs::read_to_string(&ledger).unwrap().lines().count(), 3);
     assert_eq!(select(p, "SELECT count(*) FROM scores")[0][0], "3");
+}
+
+/// A cycle of the embedding binary holding the issuer pin and audience and no credential.
+fn tokenless_cycle(dir: &Path, public: &str, extra_args: &[&str], extra: &[(&str, &str)]) -> Output {
+    let mut args = vec!["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:01:00Z"];
+    args.extend_from_slice(extra_args);
+    Command::new(host_binary())
+        .args(&args)
+        .envs([("CONTEXTFUL_ISSUER_PUBKEY", public), ("CONTEXTFUL_AUDIENCE", AUD)])
+        .envs(extra.iter().copied())
+        .current_dir(dir)
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .env_remove("CONTEXTFUL_TOKEN")
+        .output()
+        .unwrap()
+}
+
+// spec: surface.dispatch.fire-credential@8c7350dc
+// spec: surface.dispatch.fire-credential-lifetime@0f8b546a
+#[test]
+fn an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables() {
+    let declaration = format!("site_id = \"site\"\n{}\n[project.zone]\ndefault = \"on-prem:hq\"\n", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
+    let (dir, public, token) = project(&declaration);
+    let p = dir.path();
+    ok(&scheduled_host(p, &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+    let held = p.join("fire-credential.txt");
+    let out = ok(&tokenless_cycle(p, &public, &["--issuer-key", ".contextful/issuer.seed"], &[("SCORE_CREDENTIAL", held.to_str().unwrap())]));
+    let answer: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(answer["fired"], serde_json::json!(["job:score-documents"]), "{out}");
+    assert_eq!(select(p, "SELECT count(*) FROM scores")[0][0], "3");
+    let seen = std::fs::read_to_string(&held).unwrap();
+    let credential = seen.lines().next().unwrap();
+    assert_ne!(credential, token);
+    let seed = std::fs::read_to_string(p.join(".contextful/issuer.seed")).unwrap();
+    assert!(!seen.contains("issuer.seed") && !seen.contains(seed.trim()), "the issuer seed reaches no child argument or variable: {seen}");
+    let card: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["token", "introspect", "--token", credential]))).unwrap();
+    let text = card.to_string();
+    assert_eq!(card["authority"]["exp"].as_i64().unwrap() - card["authority"]["iat"].as_i64().unwrap(), 600, "{text}");
+    assert!(text.contains("svc://job/score-documents"), "{text}");
+    assert!(text.contains("on-prem:hq"), "the credential carries the project's default zone: {text}");
+    let grants = card["authority"]["grants"].as_array().unwrap_or_else(|| panic!("{text}"));
+    let scope: Vec<(Vec<String>, Vec<String>)> = grants
+        .iter()
+        .map(|g| {
+            let strings = |v: &serde_json::Value| v.as_array().unwrap().iter().map(|s| s.as_str().unwrap().to_string()).collect::<Vec<_>>();
+            (strings(&g["actions"]), strings(&g["tables"]))
+        })
+        .collect();
+    assert_eq!(scope, vec![(vec!["read".to_string()], vec!["documents".to_string()]), (vec!["write".to_string()], vec!["scores".to_string()])], "{text}");
+}
+
+// spec: surface.dispatch.fire-credential-missing@e986b3a1
+#[test]
+fn a_serve_scheduling_a_store_driven_job_without_key_or_credential_refuses_at_start() {
+    let (dir, public, token) = project(&format!("site_id = \"site\"\n{}", job("max_in_flight = 1\nschedule = \"every 1m\"\n")));
+    let p = dir.path();
+    ok(&scheduled_host(p, &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+    let ledger = p.join("refused-paid.txt");
+    let failure = err(&tokenless_cycle(p, &public, &[], &[("SCORE_LEDGER", ledger.to_str().unwrap())]));
+    assert!(failure.contains("FireCredentialMissing"), "{failure}");
+    assert!(failure.contains("score-documents"), "{failure}");
+    assert!(!ledger.exists(), "no fire runs");
 }
 
 #[test]
