@@ -942,6 +942,7 @@ mod materialize {
             runs: 0,
             retention: None,
             warnings: Vec::new(),
+            built: Vec::new(),
             _in_flight: Some(Arc::new(in_flight)),
         };
         let restore = |store: &Store| -> Result<()> {

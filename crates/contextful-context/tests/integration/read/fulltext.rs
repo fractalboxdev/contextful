@@ -305,3 +305,51 @@ fn ids_of(r: &Response, key: &str) -> Vec<String> {
     ids.sort();
     ids
 }
+
+/// A pass over a table whose current snapshot lacks a declared sidecar, or holds it under another `id_column` or builder parameters, builds it over that snapshot's rows into a new snapshot, though no run landed.
+// spec: store.index.declared-unbuilt@8a1b8472
+#[test]
+fn a_pass_builds_a_sidecar_declared_over_rows_already_landed() {
+    use contextful_core::store::fold::FoldOutcome;
+    let bare = format!("{MANIFEST}{}", TEXT.split("[[pipeline.tables.indexes]]").next().unwrap());
+    let decl_of = |manifest: &str| TableDecl::parse_pipeline(manifest).unwrap().into_iter().find(|d| d.name == "lab/text").unwrap();
+    let r = Reads::with_manifest(&bare);
+    let rows: Vec<serde_json::Map<String, Value>> = [("p0", "d0", "Overdue invoices from March"), ("p1", "d1", "routine passage")]
+        .iter()
+        .map(|(id, digest, body)| json!({"passage_id": id, "digest": digest, "body": body}).as_object().unwrap().clone())
+        .collect();
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        committed_at: at("2030-01-10T00:00:00Z"),
+    };
+    land(&r.store, &decl_of(&bare), &Batch { rows, types: HashMap::new() }, &ctx).unwrap();
+    assert!(matches!(fold(&r.store, &decl_of(&bare), at("2030-01-11T00:00:00Z")).unwrap(), FoldOutcome::Folded { runs: 1, .. }));
+    let s = r.session(&["lab/*"], None, None);
+    let tokens = ["invoice".to_string()];
+    assert_eq!(r.face.fulltext_candidates(&s, "lab/text", &tokens, 10).err(), Some(Fallback::NoSidecar));
+    // With no index change and nothing landed, a pass publishes nothing.
+    assert_eq!(fold(&r.store, &decl_of(&bare), at("2030-01-11T01:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
+
+    // A newly declared sidecar, the same sidecar under another `id_column`, and another tokenizer.
+    let steps = [
+        (format!("{MANIFEST}{TEXT}"), "passage_id", "p0", "indexes/fts-body-cjk"),
+        (format!("{MANIFEST}{TEXT}id_column = \"digest\"\n"), "digest", "d0", "indexes/fts-body-cjk"),
+        (format!("{MANIFEST}{}", TEXT.replace("\"cjk\"", "\"unicode\"")), "passage_id", "p0", "indexes/fts-body-unicode"),
+    ];
+    for (i, (manifest, id_column, id, path)) in steps.iter().enumerate() {
+        let decl = decl_of(manifest);
+        let before = r.store.chain("lab/text").unwrap().0[0].snapshot_id.clone();
+        let outcome = fold(&r.store, &decl, at(&format!("2030-01-12T0{i}:00:00Z"))).unwrap();
+        assert!(matches!(outcome, FoldOutcome::Folded { runs: 0, rows: 2, .. }), "{manifest}: {outcome:?}");
+        let (chain, _) = r.store.chain("lab/text").unwrap();
+        assert_eq!(chain[0].parent.as_ref(), Some(&before));
+        let built: Vec<&str> = chain[0].indexes.iter().filter_map(|e| e.path()).collect();
+        assert_eq!(built, [*path], "{manifest}");
+        // The lexical read probes the sidecar the pass built.
+        let (column, found) = r.face.fulltext_candidates(&s, "lab/text", &tokens, 10).unwrap();
+        assert_eq!((column.as_str(), found), (*id_column, vec![id.to_string()]), "{manifest}");
+        // The sidecar now matches its declaration: the next pass publishes nothing.
+        assert_eq!(fold(&r.store, &decl, at(&format!("2030-01-12T0{i}:30:00Z"))).unwrap(), FoldOutcome::NothingLanded, "{manifest}");
+    }
+}

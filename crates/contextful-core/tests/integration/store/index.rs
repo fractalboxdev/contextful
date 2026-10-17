@@ -309,3 +309,38 @@ fn a_partition_plan_past_either_bound_warns_naming_the_column() {
     // No partition specification, nothing to warn about.
     assert!(partition_warnings(&[], &[1]).is_empty());
 }
+
+/// An entry counts as built under a declaration only when its identifier and builder
+/// parameters match it, so a changed declaration rebuilds (`store.index.declared-unbuilt`).
+#[test]
+fn an_entry_is_built_as_a_declaration_only_under_its_identifier_and_parameters() {
+    let vector: IndexEntry = serde_json::from_value(serde_json::json!({
+        "kind": "vector", "path": "indexes/vec-embedding-e5-small/zone=all", "table": "passages",
+        "snapshot_id": "snapshot-01742054400000000000", "column": "embedding", "id_column": "passage_id",
+        "model": "e5-small", "dim": 384, "metric": "cosine", "m": DEFAULT_M, "ef_construction": DEFAULT_EF_CONSTRUCTION,
+        "builder": VECTOR_BUILDER, "builder_version": VECTOR_BUILDER_VERSION, "row_count": 2, "key_version": 0
+    }))
+    .unwrap();
+    let fulltext: IndexEntry = serde_json::from_value(serde_json::json!({
+        "kind": "fulltext", "path": "indexes/fts-body-cjk", "table": "passages",
+        "snapshot_id": "snapshot-01742054400000000000", "column": "body", "id_column": "passage_id", "tokenizer": "cjk",
+        "builder": FULLTEXT_BUILDER, "builder_version": FULLTEXT_BUILDER_VERSION, "row_count": 2, "term_count": 3, "key_version": 0
+    }))
+    .unwrap();
+    let decl = |block: &str| {
+        table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n[[pipeline.tables.indexes]]\n{block}")).indexes()[0].clone()
+    };
+    let vec_block = "kind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5-small\"\ndim = 384\n";
+    let fts_block = "kind = \"fulltext\"\ncolumn = \"body\"\ntokenizer = \"cjk\"\n";
+    assert!(vector.built_as(&decl(vec_block), "passage_id"));
+    assert!(fulltext.built_as(&decl(fts_block), "passage_id"));
+    // Another identifier, another graph parameter, or another kind is not the declared sidecar.
+    assert!(!vector.built_as(&decl(vec_block), "digest"));
+    assert!(!fulltext.built_as(&decl(fts_block), "digest"));
+    assert!(!vector.built_as(&decl(&format!("{vec_block}m = 24\n")), "passage_id"));
+    assert!(!vector.built_as(&decl(&format!("{vec_block}ef_construction = 400\n")), "passage_id"));
+    assert!(!fulltext.built_as(&decl(vec_block), "passage_id"));
+    // An entry a newer builder records is left as written.
+    let unrecognized: IndexEntry = serde_json::from_value(serde_json::json!({"kind": "sparse", "path": "indexes/sparse-body"})).unwrap();
+    assert!(unrecognized.built_as(&decl(fts_block), "digest"));
+}
