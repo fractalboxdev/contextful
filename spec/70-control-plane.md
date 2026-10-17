@@ -239,6 +239,11 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
   *because two daemons reading one snapshot otherwise fire every due unit twice*
 - `children-reaped` — A serve process starts each child run in its own process group; on `SIGTERM`, `SIGINT`, a `--cycle` exit or an unwind it signals each live group `SIGTERM`, `SIGKILL`s the remainder after 10 s, and exits once every child has.
   *because a child outliving its serve also outlives the cadence lease, and a second scheduler then fires the same pipeline concurrently*
+- `fire-credential` — Under `--issuer-key`, serve mints each store-driven child fire one credential for `svc://job/<name>` in the project's default zone, granting `read` on its statement's relations and `write` on its `tables`, lived to {{authority.issue.ceiling}}, set in that child's `CONTEXTFUL_TOKEN`.
+  *because a serve outlives any credential the ceiling admits, and a credential minted per fire narrows each child to its own job's tables*
+- `fire-credential-inherited` — A serve holding no `--issuer-key` passes its own `CONTEXTFUL_TOKEN` to each child it starts.
+- `fire-credential-missing` — A serve dispatching to child processes, whose applied snapshot schedules a store-driven job, holding neither `--issuer-key` nor `CONTEXTFUL_TOKEN`, raises `FireCredentialMissing` at start and fires nothing.
+  *because a missing credential otherwise fails every fire while the serve reports healthy*
 
 One step on a worker target, from submit to an accepted or rejected callback:
 
