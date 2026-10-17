@@ -35,6 +35,7 @@ QueryParameterRejected        = { clause = "read.guard.query-binding", gloss = "
 ReadDurationExceeded          = { clause = "read.respond.duration-ceiling", gloss = "A statement reached its selected duration ceiling." }
 ReadResponseTooLarge          = { clause = "read.respond.byte-ceiling", gloss = "A response envelope or first row exceeds its selected byte ceiling." }
 FilterBudgetExceeded          = { clause = "read.retrieve.filter-budget-refusal", gloss = "A ranked read's filter exceeded its value, condition or byte budget." }
+RetrieveTableUnavailable      = { clause = "read.retrieve.table-list", gloss = "A ranked read listed a table name outside the session's relations." }
 PinnedBuildUnavailable        = { clause = "read.resolve-pin.unknown-build", gloss = "A pinned build identifier is unknown or collected." }
 RequiredFaceAbsent            = { clause = "read.embed.required-face", gloss = "A client required a face this binary did not link." }
 ReadBackendAbsent             = { clause = "read.embed.absent-read-backend", gloss = "A read tool was called on a binary without the embedded SQL engine." }

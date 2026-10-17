@@ -95,6 +95,9 @@ fn dedup(rows: &mut Vec<Row>) -> u64 {
 #[derive(Debug, Clone)]
 pub struct RetrieveRequest {
     pub prefix: String,
+    /// Relation names the read narrows its arms to, beside `prefix`
+    /// (`read.retrieve.table-list`).
+    pub tables: Option<Vec<String>>,
     pub query: String,
     pub query_embedding: Option<Vec<f32>>,
     /// The caller's filter object: each column to a value or a value list.
@@ -121,6 +124,7 @@ impl RetrieveRequest {
     pub fn new(prefix: impl Into<String>, query: impl Into<String>, anchor: Instant) -> RetrieveRequest {
         RetrieveRequest {
             prefix: prefix.into(),
+            tables: None,
             query: query.into(),
             query_embedding: None,
             filter: None,
@@ -259,8 +263,9 @@ impl Face {
         // (`read.retrieve.filter-budget-refusal`).
         let filter = Filter::parse(request.filter.as_ref(), request.kinds.as_deref())?;
         let predicate = filter_predicate(&filter);
-        let arms: Vec<String> =
-            session.relations().map(|r| r.name().to_string()).filter(|n| n.starts_with(&request.prefix)).collect();
+        // A listed name outside the session's relations refuses alike whether absent or
+        // ungranted (`read.retrieve.table-list`).
+        let arms = contextful_core::read::arms::arms(session.relations().map(|r| r.name()), &request.prefix, request.tables.as_deref())?;
         // The same least row ceiling a statement meets: grants, the request, every arm's
         // published `limits.max_rows` and the face ceiling, which bounds the candidate window
         // every arm reads (`read.respond.face-ceiling`).

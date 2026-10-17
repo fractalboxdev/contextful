@@ -869,6 +869,32 @@ fn seed_claims(store: &Store) {
     }
 }
 
+/// A `corpus.retrieve` response carries the `contextful.recall` block exactly when one of its arms reads a `memory_facts` table, whichever of `prefix` and `tables` chose the arms.
+// spec: read.recall.recall-block-presence@7286b6e1
+#[test]
+fn the_recall_block_rides_a_ranked_read_exactly_when_a_claim_arm_runs() {
+    let f = claims();
+    let clock = FixedClock(at("2030-06-01T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let recall = |arguments: Value| {
+        let answer = call(&server, "corpus.retrieve", arguments);
+        assert!(answer["result"].get("isError").is_none(), "{answer}");
+        answer["result"]["structuredContent"].get("contextful.recall").cloned()
+    };
+    let block = json!({ "suppressed": { "MemoryEvidenceOverflow": 0, "MemoryEvidenceUnresolved": 0 }, "stale": 0, "withheld": 0 });
+    for arguments in [
+        json!({ "prefix": "research/", "query": "acme cfo" }),
+        json!({ "prefix": "research/facts", "query": "acme cfo" }),
+        json!({ "query": "acme cfo", "tables": ["research/facts"] }),
+        json!({ "query": "acme cfo", "tables": ["research/facts", "research/notes"] }),
+    ] {
+        assert_eq!(recall(arguments.clone()), Some(block.clone()), "{arguments}");
+    }
+    for arguments in [json!({ "prefix": "research/notes", "query": "acme cfo" }), json!({ "query": "acme cfo", "tables": ["research/notes"] })] {
+        assert_eq!(recall(arguments.clone()), None, "{arguments}");
+    }
+}
+
 /// Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face.
 // spec: read.respond.internals-opt-in@82ae2a18
 #[test]
@@ -961,8 +987,8 @@ fn memory_reads_record_the_claim_ids_they_returned() {
     assert_eq!(first["contextful.read.at"], json!(at("2030-06-01T00:00:00Z").to_rfc3339()));
 }
 
-/// `corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.
-// spec: read.retrieve.ranked-call@13d751b7
+/// `corpus.retrieve({prefix, tables?, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns ranked rows across item and artifact genres under `prefix` and `tables`, each with a snippet and provenance, composing the query surface and memory recall, storing nothing.
+// spec: read.retrieve.ranked-call@647d6cc9
 #[test]
 fn corpus_retrieve_takes_a_filter_and_kinds() {
     let f = fixture();
@@ -999,6 +1025,67 @@ fn corpus_retrieve_takes_a_filter_and_kinds() {
     assert_eq!(over["result"]["structuredContent"]["error"]["identifier"], json!("FilterBudgetExceeded"));
     let malformed = call(&server, "corpus.retrieve", with(json!({ "kinds": "memo" })));
     assert_eq!(malformed["error"]["code"], json!(-32602), "{malformed}");
+}
+
+const LISTED: &str = "[[pipeline.tables]]\nname = \"research/news\"\n\n[[pipeline.tables]]\nname = \"research/transcripts\"\n\n[[pipeline.tables]]\nname = \"research/filings\"\n";
+
+/// Three granted tables beside `hr/salaries`, which the credential's `research/*` grant
+/// leaves out; `with_salaries` false leaves it absent from the store.
+fn listed(with_salaries: bool) -> Fixture {
+    let manifest = if with_salaries { format!("{LISTED}\n[[pipeline.tables]]\nname = \"hr/salaries\"\n") } else { LISTED.to_string() };
+    fixture_over(&manifest, |store| {
+        for (table, id) in [("research/news", "a1"), ("research/transcripts", "t1"), ("research/filings", "f1")] {
+            put(store, &TableDecl::named(table), "run-0001", "2030-01-01T00:00:00Z", json!([{ "doc_id": id, "title": "Battery storage outlook" }]), &[]);
+        }
+        if with_salaries {
+            put(store, &TableDecl::named("hr/salaries"), "run-0001", "2030-01-01T00:00:00Z", json!([{ "employee": "e1", "title": "Battery storage engineer" }]), &[]);
+        }
+    })
+}
+
+/// `tables` intersects `prefix`: an arm runs for each session relation matching both. A listed name outside the session's relations raises `RetrieveTableUnavailable` naming every such name in list order, identically for an absent and an ungranted table, keeping {{authority.filter-rows.default-deny}}.
+// spec: read.retrieve.table-list@cf0610ab
+#[test]
+fn corpus_retrieve_reads_only_the_listed_tables() {
+    let f = listed(true);
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let tools = ask(&server, 1, "tools/list", json!({}));
+    let retrieve = tools["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == json!("corpus.retrieve")).unwrap().clone();
+    let schema = &retrieve["inputSchema"]["properties"]["tables"];
+    assert_eq!((&schema["type"], &schema["items"], &schema["minItems"]), (&json!("array"), &json!({ "type": "string" }), &json!(1)));
+    assert!(schema["description"].as_str().is_some_and(|d| d.contains("prefix")), "{schema}");
+
+    let tables_of = |answer: &Value| {
+        let columns = answer["result"]["structuredContent"]["columns"].as_array().unwrap().clone();
+        let at = columns.iter().position(|c| c == "_table").unwrap();
+        let mut t: Vec<String> = rows(answer).as_array().unwrap().iter().map(|r| r[at].as_str().unwrap().to_string()).collect();
+        t.sort();
+        t
+    };
+    let everything = call(&server, "corpus.retrieve", json!({ "prefix": "research/", "query": "battery storage" }));
+    assert_eq!(tables_of(&everything), ["research/filings", "research/news", "research/transcripts"]);
+    let two = call(&server, "corpus.retrieve", json!({ "query": "battery storage", "tables": ["research/news", "research/transcripts"] }));
+    assert_eq!(tables_of(&two), ["research/news", "research/transcripts"]);
+    let narrowed = call(&server, "corpus.retrieve", json!({ "prefix": "research/news", "query": "battery storage", "tables": ["research/news", "research/transcripts"] }));
+    assert_eq!(tables_of(&narrowed), ["research/news"]);
+
+    // An ungranted name and an absent one answer byte for byte alike.
+    let asked = json!({ "query": "battery storage", "tables": ["research/zz", "research/news", "hr/salaries", "research/zz"] });
+    let ungranted = call(&server, "corpus.retrieve", asked.clone());
+    assert_eq!(ungranted["result"]["isError"], json!(true), "{ungranted}");
+    assert_eq!(ungranted["result"]["structuredContent"]["error"]["identifier"], json!("RetrieveTableUnavailable"));
+    let message = ungranted["result"]["structuredContent"]["error"]["message"].as_str().unwrap_or_default().to_string();
+    assert!(message.contains("`research/zz`, `hr/salaries`"), "{ungranted}");
+    let g = listed(false);
+    let other = Server::new(&g.face, g.authority.clone(), &current, &clock, &g.audit).unwrap();
+    let absent = call(&other, "corpus.retrieve", asked);
+    assert_eq!(serde_json::to_string(&ungranted["result"]).unwrap(), serde_json::to_string(&absent["result"]).unwrap());
+
+    for bad in [json!([]), json!("research/news"), json!([1])] {
+        let malformed = call(&server, "corpus.retrieve", json!({ "query": "battery storage", "tables": bad }));
+        assert_eq!(malformed["error"]["code"], json!(-32602), "{malformed}");
+    }
 }
 
 const PINNED: &str = r#"[[pipeline.tables]]

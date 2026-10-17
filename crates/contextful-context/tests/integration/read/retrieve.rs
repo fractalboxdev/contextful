@@ -245,6 +245,32 @@ fn an_ungranted_table_yields_no_rows() {
     assert!(tables.iter().all(|t| t == "research/notes"), "{tables:?}");
 }
 
+/// A listed table answers only where the prefix also matches, and an ungranted name
+/// refuses exactly as an absent one does.
+#[test]
+fn a_table_list_narrows_the_arms_and_refuses_an_unlisted_relation_alike() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], None, None);
+    let listed = |prefix: &str, tables: &[&str]| RetrieveRequest {
+        tables: Some(tables.iter().map(|t| t.to_string()).collect()),
+        limit: Some(50),
+        ..ask(prefix, "")
+    };
+    let distinct = |r: &Response| {
+        let mut t: Vec<String> = column(r, "_table").iter().map(|v| v.as_str().unwrap().to_string()).collect();
+        t.sort();
+        t.dedup();
+        t
+    };
+    let two = r.face.retrieve(&s, &listed("", &["research/notes", "research/visits"]), Bounds::default()).unwrap();
+    assert_eq!(distinct(&two), ["research/notes", "research/visits"]);
+    let narrowed = r.face.retrieve(&s, &listed("research/notes", &["research/notes", "research/visits"]), Bounds::default()).unwrap();
+    assert_eq!(distinct(&narrowed), ["research/notes"]);
+    let ungranted = refused_with(r.face.retrieve(&s, &listed("", &["research/notes", "hr/salaries"]), Bounds::default()), "RetrieveTableUnavailable");
+    let absent = refused_with(r.face.retrieve(&s, &listed("", &["research/notes", "hr/absent"]), Bounds::default()), "RetrieveTableUnavailable");
+    assert_eq!(ungranted.replace("hr/salaries", "hr/absent"), absent);
+}
+
 /// Regression: a ranked read meets the least row ceiling a statement does — the table's
 /// published limit and the grant's — with `truncated` set by the probe row, and a limit
 /// past any ceiling reads no wider window.

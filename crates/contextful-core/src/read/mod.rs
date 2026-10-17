@@ -3,6 +3,7 @@
 //! encoding, the statement guard over the engine's own parse, templates, and the
 //! handshake's linked-backend identity.
 
+pub mod arms;
 pub mod cache;
 pub mod embed;
 pub mod error;

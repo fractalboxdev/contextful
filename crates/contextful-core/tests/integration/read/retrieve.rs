@@ -264,3 +264,22 @@ fn filter_values_are_scalars_and_lists_are_non_empty() {
     }
     assert!(budget_refused(Filter::parse(None, Some(&[]))));
 }
+
+/// A table list intersects the prefix; a listed name outside the relations refuses with
+/// one identifier, its message naming only the listed string.
+#[test]
+fn a_table_list_intersects_the_prefix_and_refuses_a_name_outside_the_relations() {
+    use contextful_core::read::arms::arms;
+    let relations = ["research/news", "research/transcripts", "research/filings", "lab/notes"];
+    let listed = strings(&["research/news", "research/transcripts", "lab/notes"]);
+    assert_eq!(arms(relations.iter().copied(), "", None), Ok(strings(&relations)));
+    assert_eq!(arms(relations.iter().copied(), "research/", None), Ok(strings(&relations[..3])));
+    assert_eq!(arms(relations.iter().copied(), "", Some(&listed)), Ok(strings(&["research/news", "research/transcripts", "lab/notes"])));
+    assert_eq!(arms(relations.iter().copied(), "research/", Some(&listed)), Ok(strings(&["research/news", "research/transcripts"])));
+    let refused = arms(relations.iter().copied(), "", Some(&strings(&["research/news", "hr/salaries"]))).unwrap_err();
+    assert_eq!(refused.identifier(), "RetrieveTableUnavailable");
+    assert_eq!(refused, ReadError::RetrieveTableUnavailable("not tables this read can list: `hr/salaries`".into()));
+    // Every name outside the relations, once each, in list order.
+    let several = arms(relations.iter().copied(), "", Some(&strings(&["zz/last", "research/news", "aa/first", "zz/last"]))).unwrap_err();
+    assert_eq!(several, ReadError::RetrieveTableUnavailable("not tables this read can list: `zz/last`, `aa/first`".into()));
+}
