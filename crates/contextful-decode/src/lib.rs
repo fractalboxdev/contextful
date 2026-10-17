@@ -86,20 +86,28 @@ pub fn gunzip(body: &[u8], ceiling: u64, input: &str) -> Result<Vec<u8>, Failure
 /// archive of several members and no `member`, a named member it lacks, and a body that is
 /// not a whole archive are unreadable input; past the ceiling the read refuses whole, each
 /// naming `input`.
+/// A member name as a refusal shows it: its first 256 characters, quoted and escaped, since
+/// the archive's vendor writes it.
+fn member_name(name: &str) -> String {
+    let cut: String = name.chars().take(256).collect();
+    format!("{cut:?}")
+}
+
 pub fn unzip(body: &[u8], member: Option<&str>, ceiling: u64, input: &str) -> Result<Vec<u8>, Failure> {
     use std::io::Read;
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(body)).map_err(|e| unreadable(input, "the archive directory".into(), format!("the body is not a zip archive: {e}")))?;
     let members: Vec<String> = archive.file_names().filter(|n| !n.ends_with('/')).map(String::from).collect();
     let name = match (member, members.as_slice()) {
-        (Some(m), _) => members.iter().find(|n| *n == m).cloned().ok_or_else(|| unreadable(input, format!("member `{m}`"), "the archive holds no such member"))?,
+        (Some(m), _) => members.iter().find(|n| *n == m).cloned().ok_or_else(|| unreadable(input, format!("member {}", member_name(m)), "the archive holds no such member"))?,
         (None, [one]) => one.clone(),
         (None, held) => return Err(unreadable(input, "the archive directory".into(), format!("the archive holds {} members and the source declares no `member`", held.len()))),
     };
-    let file = archive.by_name(&name).map_err(|e| unreadable(input, format!("member `{name}`"), e))?;
+    let shown = member_name(&name);
+    let file = archive.by_name(&name).map_err(|e| unreadable(input, format!("member {shown}"), e))?;
     let mut out = Vec::new();
-    file.take(ceiling.saturating_add(1)).read_to_end(&mut out).map_err(|e| unreadable(input, format!("member `{name}` byte {}", out.len()), format!("the member does not inflate whole: {e}")))?;
+    file.take(ceiling.saturating_add(1)).read_to_end(&mut out).map_err(|e| unreadable(input, format!("member {shown} byte {}", out.len()), format!("the member does not inflate whole: {e}")))?;
     if out.len() as u64 > ceiling {
-        return Err(Failure::deterministic(FailureTag::Permanent, format!("`{input}` member `{name}` decompresses past {ceiling} B; the read refuses rather than landing a truncated object")));
+        return Err(Failure::deterministic(FailureTag::Permanent, format!("`{input}` member {shown} decompresses past {ceiling} B; the read refuses rather than landing a truncated object")));
     }
     Ok(out)
 }

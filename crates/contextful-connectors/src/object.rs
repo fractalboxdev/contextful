@@ -7,8 +7,7 @@
 //! signs every bucket request and the bucket is one more allowlisted vendor host
 //! (`connector.source.object-transport`). This package links no S3 client.
 
-pub use crate::body::{Compression, EXPANSION_CEILING};
-use crate::body::BodyKeys;
+use crate::body::{strip_ext, BodyKeys, Compression};
 use crate::decode::{decode_delimited, workbook, Format};
 use crate::http::ConfigError;
 use contextful_core::connector::attach::{endpoint, is_loopback_host, scrub, Allowlist};
@@ -87,11 +86,7 @@ fn invalid(why: String) -> ConfigError {
 }
 
 fn text(cfg: &Map<String, Value>, k: &str) -> Result<Option<String>, ConfigError> {
-    match cfg.get(k) {
-        None => Ok(None),
-        Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(other) => Err(invalid(format!("key `{k}` is a string, found {other}"))),
-    }
+    crate::body::text(NAME, cfg, k)
 }
 
 fn flag(cfg: &Map<String, Value>, k: &str) -> Result<bool, ConfigError> {
@@ -121,9 +116,10 @@ fn credential(key: &str, value: &str) -> Result<Template, ConfigError> {
     Ok(template)
 }
 
-/// The format a key's extension names, a trailing `.gz` set aside.
+/// The format a key's extension names, compared without case, a trailing `.gz` or `.zip`
+/// set aside (`connector.source.body-format`).
 fn format_of(name: &str) -> Option<Format> {
-    let name = name.strip_suffix(".gz").or_else(|| name.strip_suffix(".zip")).unwrap_or(name);
+    let name = strip_ext(name, ".gz").or_else(|| strip_ext(name, ".zip")).unwrap_or(name);
     let ext = name.rsplit_once('.')?.1.to_ascii_lowercase();
     match ext.as_str() {
         "jsonl" | "ndjson" => Some(Format::Jsonl),
@@ -189,6 +185,12 @@ impl ObjectConfig {
             return Err(ConnectorError::ConnectorFormatKeyRejected(format!("`records` reads a JSON body and the source's format is `{}`", format.name())).into());
         }
         let body = BodyKeys::parse(NAME, cfg, format, Compression::ByKey)?;
+        // A named key or suffix that is no zip leaves `member` nothing to select.
+        if let (Some(_), Some(n)) = (&body.member, named) {
+            if body.compression_of(n) != Compression::Zip {
+                return Err(invalid(format!("declares `member`, which selects inside a zip archive, and `{n}` is stored as no zip")));
+            }
+        }
         let access_key_id = text(cfg, "access_key_id")?.map(|v| credential("access_key_id", &v)).transpose()?;
         let secret_access_key = text(cfg, "secret_access_key")?.map(|v| credential("secret_access_key", &v)).transpose()?;
         if access_key_id.is_some() != secret_access_key.is_some() {

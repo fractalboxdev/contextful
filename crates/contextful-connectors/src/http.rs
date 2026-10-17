@@ -799,7 +799,6 @@ impl HttpSource {
         Ok(url)
     }
 
-    /// The URL of the page `token` names; `None` names the walk's first page.
     /// A response's records, decompressed as declared, and the parsed JSON body a
     /// pagination pointer reads.
     fn decode(&self, resp: &contextful_outbound::client::Response) -> Result<(Vec<Row>, Option<Value>), Failure> {
@@ -811,6 +810,7 @@ impl HttpSource {
         }
     }
 
+    /// The URL of the page `token` names; `None` names the walk's first page.
     fn page_url(&self, base: &Url, token: Option<&str>) -> Result<Url, Failure> {
         let unreadable = |why: &str| Failure::deterministic(FailureTag::Config, format!("the page position `{}` {why}", scrub_text(token.unwrap_or_default())));
         Ok(match (&self.config.pagination, token) {

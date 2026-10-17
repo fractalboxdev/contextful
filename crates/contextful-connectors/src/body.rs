@@ -31,12 +31,19 @@ pub struct BodyKeys {
     pub delimited: Delimited,
 }
 
-fn text(source: &str, cfg: &Map<String, Value>, k: &str) -> Result<Option<String>, ConfigError> {
+/// A string key of `source`'s configuration; any other JSON value refuses.
+pub(crate) fn text(source: &str, cfg: &Map<String, Value>, k: &str) -> Result<Option<String>, ConfigError> {
     match cfg.get(k) {
         None => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(other) => Err(RunError::Invalid(format!("`{source}` source key `{k}` is a string, found {other}")).into()),
+        Some(other) => Err(RunError::Invalid(format!("the `{source}` source key `{k}` is a string, found {other}")).into()),
     }
+}
+
+/// `name` without `ext`, the extension compared without case (`connector.source.body-format`).
+pub(crate) fn strip_ext<'a>(name: &'a str, ext: &str) -> Option<&'a str> {
+    let at = name.len().checked_sub(ext.len())?;
+    (name.is_char_boundary(at) && name[at..].eq_ignore_ascii_case(ext)).then(|| &name[..at])
 }
 
 impl BodyKeys {
@@ -97,8 +104,8 @@ impl BodyKeys {
     /// where the source declares none.
     pub fn compression_of(&self, name: &str) -> Compression {
         match self.compression {
-            Compression::ByKey if name.ends_with(".gz") => Compression::Gzip,
-            Compression::ByKey if name.ends_with(".zip") => Compression::Zip,
+            Compression::ByKey if strip_ext(name, ".gz").is_some() => Compression::Gzip,
+            Compression::ByKey if strip_ext(name, ".zip").is_some() => Compression::Zip,
             Compression::ByKey => Compression::None,
             c => c,
         }

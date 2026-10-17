@@ -3,7 +3,8 @@
 
 use crate::support::{request, Never};
 use contextful_connectors::http::ConfigError;
-use contextful_connectors::object::{ObjectConfig, ObjectSource, EXPANSION_CEILING};
+use contextful_connectors::body::EXPANSION_CEILING;
+use contextful_connectors::object::{ObjectConfig, ObjectSource};
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Source;
 use contextful_core::run::RunError;
@@ -146,7 +147,7 @@ fn a_gz_key_or_declared_gzip_decompresses_and_none_reads_as_stored() {
 
 /// One object decompresses to at most 256 MiB; past it the read refuses whole, naming the
 /// object, and lands nothing.
-// spec: connector.source.object-expansion@12b9ca72
+// spec: connector.source.object-expansion@4df187c1
 #[test]
 fn an_object_expanding_past_256_mib_refuses_naming_it_and_lands_nothing() {
     assert_eq!(EXPANSION_CEILING, 256 * 1024 * 1024);
@@ -306,14 +307,19 @@ pub(crate) fn zipped(members: &[(&str, &[u8])]) -> Vec<u8> {
 
 /// `compression = "zip"`, or a key ending `.zip` with `compression` undeclared, decodes the
 /// archive's member: a GDELT 2.0 export lands one row per line, every cell a string.
-// spec: connector.source.object-zip@039798e3
+// spec: connector.source.object-zip@7ceb4716
 #[test]
 fn a_declared_or_zip_keyed_archive_lands_its_tab_delimited_headerless_member() {
     let archive = zipped(&[("20250101000000.export.CSV", GDELT)]);
-    let bucket = MemBucket::with(&[("gdelt/20250101000000.export.CSV.zip", &archive), ("gdelt/export.bin", &archive)]);
+    let bucket = MemBucket::with(&[
+        ("gdelt/20250101000000.export.CSV.zip", &archive),
+        ("gdelt/20250101000000.export.CSV.ZIP", &archive),
+        ("gdelt/export.bin", &archive),
+    ]);
     let declared = json!({"bucket": "gdelt", "key": "gdelt/export.bin", "format": "csv", "compression": "zip", "delimiter": "\t", "columns": GDELT_COLUMNS});
     let keyed = json!({"bucket": "gdelt", "key": "gdelt/20250101000000.export.CSV.zip", "delimiter": "\t", "columns": GDELT_COLUMNS});
-    for config in [declared, keyed] {
+    let upper = json!({"bucket": "gdelt", "key": "gdelt/20250101000000.export.CSV.ZIP", "delimiter": "\t", "columns": GDELT_COLUMNS});
+    for config in [declared, keyed, upper] {
         let (rows, _) = read(&mut source(config, bucket.clone()), None);
         assert_eq!(rows.len(), 3, "one row per line, the first line no header");
         assert_eq!(rows[0]["GlobalEventID"], json!("1210000001"));
@@ -345,17 +351,6 @@ fn a_two_member_archive_refuses_without_member_and_lands_the_named_one() {
     assert_eq!(rows, vec![json!({"id": "2"})]);
 }
 
-/// A zip member decompressing past 256 MiB refuses whole, naming the object.
-#[test]
-fn a_zip_member_expanding_past_256_mib_refuses_naming_the_object() {
-    let mut body = b"{\"n\":1}\n".to_vec();
-    body.resize(EXPANSION_CEILING as usize + 1, b'\n');
-    let bucket = MemBucket::with(&[("big.jsonl.zip", &zipped(&[("big.jsonl", &body)]))]);
-    let f = source(json!({"bucket": "lake", "key": "big.jsonl.zip"}), bucket).pull(&request(None), &Never).unwrap_err();
-    assert!(f.message.contains("s3://lake/big.jsonl.zip") && f.message.contains(&EXPANSION_CEILING.to_string()), "{f}");
-    assert!(f.deterministic);
-}
-
 /// `delimiter` names one field delimiter character, `,` by default, and a tab is admitted;
 /// against a non-delimited format it raises `ConnectorFormatKeyRejected` at build, and a
 /// quote, a line break or a longer value refuses as invalid configuration.
@@ -378,11 +373,18 @@ fn delimited_keys_refuse_against_another_format_and_a_malformed_delimiter_refuse
         json!({"bucket": "b", "key": "k.csv", "delimiter": "\"\""}),
         json!({"bucket": "b", "key": "k.csv", "delimiter": "\""}),
         json!({"bucket": "b", "key": "k.csv", "delimiter": "\n"}),
+        json!({"bucket": "b", "key": "k.csv", "delimiter": "\r"}),
         json!({"bucket": "b", "key": "k.csv", "delimiter": ""}),
         json!({"bucket": "b", "key": "k.csv", "columns": []}),
         json!({"bucket": "b", "key": "k.csv", "columns": ["a", "a"]}),
         json!({"bucket": "b", "key": "k.csv", "member": "m.csv", "compression": "gzip"}),
+        json!({"bucket": "b", "key": "a.csv.gz", "member": "x.csv"}),
+        json!({"bucket": "b", "key": "a.csv", "member": "x.csv"}),
+        json!({"bucket": "b", "prefix": "d/", "suffix": ".csv", "member": "x.csv"}),
     ] {
         assert!(matches!(refusal(config.clone()), ConfigError::Run(RunError::Invalid(_))), "{config}");
+    }
+    for config in [json!({"bucket": "b", "prefix": "d/", "member": "x.csv"}), json!({"bucket": "b", "prefix": "d/", "suffix": ".ZIP", "member": "x.csv"})] {
+        assert!(ObjectConfig::parse(&config).is_ok(), "{config}: a zip suffix or no suffix admits `member`");
     }
 }

@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 324 | 66 | 24 | 5 | 282 | 0 | 282 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 2 | 14 | 379 | 92 | 22 | 12 | 296 | 0 | 296 |
+| `connector` | 2 | 14 | 380 | 92 | 22 | 12 | 297 | 0 | 297 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 297 | 64 | 15 | 10 | 286 | 0 | 286 |
 | `surface` | 2 | 21 | 167 | 65 | 23 | 0 | 141 | 0 | 141 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2685 | 679 | 213 | 75 | 2400 | 0 | |
+| **total** | 22 | 169 | 2686 | 679 | 213 | 75 | 2401 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 185 | 175 | passing | closed |
 | 3 — The run path | 12 | 289 | 278 | passing | closed |
-| 4 — Ingest | 25 | 600 | 502 | passing | closed |
+| 4 — Ingest | 25 | 601 | 503 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -851,6 +851,7 @@ Unscheduled operations: 13.
 | `connector.source.github-recipe` | `crates/contextful-connectors/tests/integration/github.rs::the_recipe_lands_issues_without_pull_requests_and_stamps_the_repository` | performed |
 | `connector.source.github-recipe-keys` | `crates/contextful-cli/tests/integration/pipeline.rs::the_github_recipe_lands_one_row_per_key_across_polls` | performed |
 | `connector.source.heading-threshold` | `crates/contextful-connectors/tests/integration/file.rs::a_note_splits_by_heading_only_past_the_threshold` | performed |
+| `connector.source.http-compression` | `crates/contextful-connectors/tests/integration/http.rs::an_http_zip_body_lands_its_named_member_under_declared_compression` | performed |
 | `connector.source.http-headers` | `crates/contextful-connectors/tests/integration/http.rs::header_templates_hydrate_onto_each_read` | performed |
 | `connector.source.http-limiter` | `crates/contextful-cli/tests/integration/pipeline.rs::a_bound_quota_meters_every_page_of_a_run` | performed |
 | `connector.source.http-page-pull` | `crates/contextful-connectors/tests/integration/http.rs::a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page` | performed |

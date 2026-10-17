@@ -42,3 +42,25 @@ fn a_member_refuses_whole_one_byte_past_the_ceiling() {
     assert!(f.message.contains("s3://b/big.zip") && f.message.contains("4095"), "{f}");
     assert!(f.deterministic);
 }
+
+/// A directory entry is no member: an archive holding one directory and one file lands the file.
+#[test]
+fn a_directory_entry_is_no_member() {
+    let mut w = ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    w.add_directory("d/", options).unwrap();
+    w.start_file("d/m.csv", options).unwrap();
+    w.write_all(b"id\n1\n").unwrap();
+    let zipped = w.finish().unwrap().into_inner();
+    assert_eq!(unzip(&zipped, None, 1 << 20, "s3://b/dir.zip").unwrap(), b"id\n1\n");
+}
+
+/// A refusal shows a member name escaped and cut to 256 characters.
+#[test]
+fn a_refusal_escapes_and_truncates_a_member_name() {
+    let two = archive(&[("a.csv", b"id\n1\n"), ("b.csv", b"id\n2\n")]);
+    let long = format!("x\n{}", "y".repeat(400));
+    let f = unzip(&two, Some(&long), 1 << 20, "s3://b/two.zip").unwrap_err();
+    assert!(f.message.contains("no such member") && f.message.contains("x\\n") && !f.message.contains('\n'), "{f}");
+    assert!(f.message.contains(&"y".repeat(254)) && !f.message.contains(&"y".repeat(255)), "{f}");
+}

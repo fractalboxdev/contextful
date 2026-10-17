@@ -233,7 +233,7 @@ fn expansion_filters_rfc_6901_clock_fields() {
 
 /// `format` selects the decoder for an HTTP body, `json` when undeclared, and the same bytes
 /// under another declared format decode by that format or refuse.
-// spec: connector.source.body-format@8770ca6b
+// spec: connector.source.body-format@444bf963
 #[test]
 fn a_declared_format_selects_the_decoder_and_json_is_the_default() {
     const FEED: &str = r#"<rss version="2.0"><channel><title>n</title>
@@ -1061,6 +1061,7 @@ fn a_fingerprint_is_one_head_spelling_the_validators_and_reads_no_body() {
 
 /// An HTTP body decompresses under a declared `compression` alone: a zip of CSV files lands
 /// the named member, and the same archive undeclared reaches the decoder as served.
+// spec: connector.source.http-compression@e2bacb72
 #[test]
 fn an_http_zip_body_lands_its_named_member_under_declared_compression() {
     let archive = crate::object::zipped(&[("summary.csv", b"code;name\nE1;one\n"), ("detail.csv", b"code;name\nE2;two\n")]);
@@ -1074,4 +1075,23 @@ fn an_http_zip_body_lands_its_named_member_under_declared_compression() {
     let f = s.walk(&request(None), &Never).unwrap_err();
     assert!(f.message.contains("ConnectorEncodingInvalid") && f.message.contains("S100.zip"), "an undeclared HTTP body decodes as served: {f}");
     assert!(matches!(HttpConfig::parse(&json!({"endpoint": vendor.url("/d"), "member": "a.csv", "format": "csv"})), Err(ConfigError::Run(RunError::Invalid(_)))));
+}
+
+/// A declared-gzip HTTP body decompressing past 256 MiB refuses the read, naming the
+/// scrubbed URL and the ceiling.
+#[test]
+fn an_http_body_expanding_past_256_mib_refuses_naming_the_scrubbed_url() {
+    use contextful_connectors::body::EXPANSION_CEILING;
+    use std::io::Write;
+    let mut body = b"{\"n\":1}\n".to_vec();
+    body.resize(EXPANSION_CEILING as usize + 1, b'\n');
+    let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    e.write_all(&body).unwrap();
+    let gzipped = e.finish().unwrap();
+    drop(body);
+    let vendor = Server::start(move |_| Response { status: 200, headers: vec![], body: gzipped.clone() });
+    let s = source(json!({"endpoint": vendor.url("/export?key=s3cr3t"), "format": "jsonl", "compression": "gzip"}), vec![]);
+    let f = s.walk(&request(None), &Never).unwrap_err();
+    assert!(f.message.contains(&vendor.url("/export")) && f.message.contains(&EXPANSION_CEILING.to_string()), "{f}");
+    assert!(!f.message.contains("s3cr3t"), "the query never reaches the refusal: {f}");
 }

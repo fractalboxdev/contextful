@@ -439,7 +439,9 @@ The declared behavior of each source compiled into the engine.
   *because a watermark position carries no page token*
 - `http-limiter` — The generic HTTP source reads its {{connector.meter.limiter-declaration}} from a `limiter` config table, and the project manifest holds each {{connector.meter.limiter-binding}} under `[limiters.<quota>]`.
 - `http-scope-probe` — The generic HTTP source reads its {{connector.declare-capability.scope-probe}} from a `scope_probe` config table and carries its first reference-bound header as the bound credential.
-- `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `json-object`, `jsonl`, `csv`, `feed` or a workbook — for HTTP, file and object sources. HTTP declares formats; file sources infer them from extensions.
+- `http-compression` — The generic HTTP source decompresses a body under a declared `compression` of `gzip` or `zip` alone, never by URL extension, bounded by {{connector.source.object-expansion}}.
+  *because a URL path names a route, not how the vendor stored the bytes*
+- `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `json-object`, `jsonl`, `csv`, `feed` or a workbook — for HTTP, file and object sources. HTTP declares formats; file and object sources infer them from extensions compared without case.
 - `json-record-shape` — `json` requires an array of objects; `json-object` requires one object. Both select `records` when declared, otherwise the root; a missing selection or wrong shape is unreadable input under {{run.land.unreadable-input}}.
 - `json-object-record` — `json-object` emits one row even when the selected object or its nested arrays are empty; decoding retains the full parsed body for pagination pointers.
 - `json-body-paths` — `records`, `next_cursor_path` and `next_url_path` read JSON pointers in either JSON mode.
@@ -509,10 +511,10 @@ The declared behavior of each source compiled into the engine.
   *because a key beside a prefix leaves which objects land to a guess, and neither names no object*
 - `prefix-listing` — A prefix read lists every key under the prefix in key order, narrowed by an optional `suffix`, and lands each object through one decoder. `pick = "latest"` lands the greatest listed key alone.
 - `object-gzip` — `compression = "gzip"`, or a key ending `.gz` with `compression` undeclared, decompresses an object before decode; `compression = "none"` reads it as stored.
-- `object-zip` — `compression = "zip"`, or an object key ending `.zip` with `compression` undeclared, decodes one archive member. An HTTP body decompresses under a declared `compression` alone, bounded by {{connector.source.object-expansion}}.
+- `object-zip` — `compression = "zip"`, or an object key ending `.zip` with `compression` undeclared, decodes one archive member.
 - `zip-member` — An archive decodes its single member, or the member `member` names. Several members without `member`, or a named member the archive lacks, is unreadable input under {{run.land.unreadable-input}}.
   *because landing one member of several by archive order picks rows the declaration never named*
-- `object-expansion` — One object decompresses to at most 256 MiB, counted as the bytes arrive. Past it the read refuses whole, naming the object, and lands nothing.
+- `object-expansion` — One object or HTTP body decompresses to at most 256 MiB, counted as the bytes arrive. Past it the read refuses whole, naming the object or the scrubbed URL, and lands nothing.
 - `object-unreadable` — An object a decoder cannot read refuses the whole read under {{run.land.unreadable-input}}, naming it as `s3://<bucket>/<key>`, and no other object of the read lands.
 - `etag-skip` — With `skip_unchanged = true`, the object source's position maps each object key to its ETag in place of {{run.advance.skip-unchanged}}'s digest; an object whose ETag matches lands nothing, and a read matching every object closes a zero-row success.
 - `object-credentials` — The `s3` source's `access_key_id` and `secret_access_key` each hold one `secret://<name>` reference, declared together and hydrated per read; undeclared, requests go unsigned. A literal in either is refused under {{connector.reference.material-in-a-declaration}}.
