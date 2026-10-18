@@ -444,6 +444,11 @@ pub fn commit(store: &Store, mut staged: Staged) -> Result<Committed> {
     // A part carried by reference sits under its origin, beside the staging directory.
     for p in &staged.manifest.parts {
         if !staged.staging.join(p.locator()).is_file() {
+            // A carried part another pass's collection removed after the pointer moved
+            // is a lost race, not a partial snapshot.
+            if p.origin.is_some() && store.pointer_etag(table)? != staged.etag {
+                return Ok(Committed::Lost);
+            }
             return Err(StoreError::StorePartialSnapshot(format!(
                 "table `{table}`: snapshot {} names part `{}`, which is not in its directory; nothing was published",
                 staged.manifest.snapshot_id, p.name
@@ -610,9 +615,12 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<Vec<Stri
         let Ok(id) = SnapshotId::try_from(id.clone()) else { continue };
         let path = store.snapshot_dir(table, &id)?.join(MANIFEST_FILE);
         if let Some(bytes) = store.metadata().read_optional(&path)? {
-            if let Ok(m) = serde_json::from_slice::<SnapshotManifest>(&bytes) {
-                survivors.push(m);
-            }
+            // A held manifest that does not decode stops collection: the parts it carries
+            // are unknown, so removing any could break the publish hold.
+            let m = serde_json::from_slice::<SnapshotManifest>(&bytes).map_err(|e| {
+                StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
+            })?;
+            survivors.push(m);
         }
     }
     let keep = referenced(&survivors);

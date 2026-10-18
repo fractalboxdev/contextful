@@ -35,6 +35,7 @@ fn erasure_preserves_valid_retention_produced_empty_snapshots() {
 #[cfg(feature = "read")]
 fn erasure_rewrites_a_part_a_later_snapshot_carries_by_reference() {
     partitioned_erasure_paths(false, false, false, true);
+    partitioned_erasure_paths(true, false, false, true);
     partitioned_erasure_paths(true, true, false, true);
 }
 
@@ -60,7 +61,7 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool, initial_empty: boo
         contextful_context::project::ensure_store_id(fixture.store.root()).unwrap();
         contextful_context::fold::fold(&fixture.store, &table, crate::support::at("2030-01-01T00:01:00Z")).unwrap();
         if extended {
-            fixture.land_typed(&table, "run-0001b", json!([{ "id":"extra", "subject":"other", "text":"extra words", "embedding":[0.0,0.0,1.0] }]), "2030-01-01T00:01:30Z", &crate::index::f32x3()).unwrap();
+            fixture.land_typed(&table, "run-0001b", json!([{ "id":"extra", "subject":"other", "text":"extra words", "tag":"added later", "embedding":[0.0,0.0,1.0] }]), "2030-01-01T00:01:30Z", &crate::index::f32x3()).unwrap();
             contextful_context::fold::fold(&fixture.store, &table, crate::support::at("2030-01-01T00:02:00Z")).unwrap();
             let (carrying, _) = crate::index::current(&fixture, "notes");
             assert_eq!(carrying.indexes.len(), 2);
@@ -86,6 +87,13 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool, initial_empty: boo
         let mut expected = if all_erased { json!([]) } else { json!([{ "id":"kept", "subject":"survivor", "text":"retained text" }]) };
         if extended { expected.as_array_mut().unwrap().push(json!({ "id":"extra", "subject":"other", "text":"extra words" })); }
         assert_eq!(serde_json::to_value(contextful_context::rows::table_rows(&result.store, &table, &["id", "subject", "text"]).unwrap()).unwrap(), expected);
+        if extended {
+            // A carried part written before a column arrived conforms to the merged schema,
+            // so the column survives the rewrite.
+            let tags = contextful_context::rows::table_rows(&result.store, &table, &["id", "tag"]).unwrap();
+            let tag = tags.iter().find(|r| r["id"] == "extra").map(|r| r["tag"].clone());
+            assert_eq!(tag, Some(json!("added later")), "{tags:?}");
+        }
         let audit = serde_json::to_string(&contextful_policy::audit::entries(&audit_dir).unwrap()).unwrap();
         assert!(!audit.contains(canary), "signed retirement paths disclose the erased partition: {key_set}");
         fn check(directory: &std::path::Path, canary: &str) {
@@ -118,9 +126,15 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool, initial_empty: boo
                 _ => panic!("unexpected fixture index"),
             }
         }
-        continued.land_typed(&table, "run-0002", json!([{ "id":"later", "subject":"survivor", "text":"later retained", "embedding":[0.0,0.0,1.0]}]), "2030-01-01T00:06:00Z", &crate::index::f32x3()).unwrap();
+        // A later run restates the survivor: the rewritten snapshot's one root part is
+        // scanned for the stored row, so the key keeps one row.
+        let mut later = vec![json!({ "id":"later", "subject":"survivor", "text":"later retained", "embedding":[0.0,0.0,1.0]})];
+        if !all_erased { later.push(json!({ "id":"kept", "subject":"survivor", "text":"restated text", "embedding":[0.0,1.0,0.0]})); }
+        continued.land_typed(&table, "run-0002", json!(later), "2030-01-01T00:06:00Z", &crate::index::f32x3()).unwrap();
         contextful_context::fold::fold(&continued.store, &table, crate::support::at("2030-01-01T00:07:00Z")).unwrap();
-        assert_eq!(contextful_context::rows::table_rows(&continued.store, &table, &["id"]).unwrap().len(), if all_erased { 1 } else { 2 } + usize::from(extended));
+        let held = contextful_context::rows::table_rows(&continued.store, &table, &["id", "text"]).unwrap();
+        assert_eq!(held.len(), if all_erased { 1 } else { 2 } + usize::from(extended), "{held:?}");
+        if !all_erased { assert_eq!(held.iter().find(|r| r["id"] == "kept").unwrap()["text"], "restated text"); }
         check(continued.store.root(), canary);
         if all_erased {
             let again = erase(&continued.store, EraseRequest { declarations:&declarations, tables:&tables, selector:EraseSelector::Subject("survivor"), admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();

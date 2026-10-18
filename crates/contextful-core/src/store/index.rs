@@ -459,6 +459,15 @@ impl IndexEntry {
         }
     }
 
+    /// Passes since a recognised entry's last full build that extended it by a segment.
+    pub fn extensions(&self) -> u32 {
+        match self {
+            IndexEntry::Vector(e) => e.extensions,
+            IndexEntry::Fulltext(e) => e.extensions,
+            IndexEntry::Unrecognized(_) => 0,
+        }
+    }
+
     /// The segments a recognised entry carries by reference, oldest first.
     pub fn segments(&self) -> &[IndexSegment] {
         match self {

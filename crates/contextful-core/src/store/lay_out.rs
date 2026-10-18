@@ -195,7 +195,7 @@ impl FormatVersion {
     /// part or a sidecar segment sits in another snapshot's directory, `1.0` otherwise
     /// (`store.lay-out.format-version`).
     pub fn of_manifest(parts: &[PartEntry], indexes: &[super::index::IndexEntry]) -> FormatVersion {
-        if parts.iter().any(|p| p.origin.is_some()) || indexes.iter().any(|i| !i.segments().is_empty()) {
+        if parts.iter().any(|p| p.origin.is_some()) || indexes.iter().any(|i| !i.segments().is_empty() || i.extensions() > 0) {
             Self::CURRENT
         } else {
             Self::SELF_CONTAINED
@@ -404,14 +404,14 @@ pub struct SnapshotManifest {
 }
 
 impl SnapshotManifest {
-    /// The `ancestors` a snapshot whose parent is `parent` records (`store.lay-out.ancestors`):
-    /// none for a root, absent under a parent recording none, else the parent first.
     /// Every data file the snapshot names, relative to its table directory; a part carried
     /// by reference sits under its origin's directory (`store.fold.carry-by-reference`).
     pub fn part_files(&self) -> Vec<String> {
         self.parts.iter().map(|p| p.location(&self.snapshot_id)).collect()
     }
 
+    /// The `ancestors` a snapshot whose parent is `parent` records (`store.lay-out.ancestors`):
+    /// none for a root, absent under a parent recording none, else the parent first.
     pub fn ancestors_after(parent: Option<&SnapshotManifest>) -> Option<Vec<SnapshotId>> {
         let Some(parent) = parent else { return Some(Vec::new()) };
         let inherited = parent.ancestors.as_ref()?;

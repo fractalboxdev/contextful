@@ -96,8 +96,8 @@ fn a_restated_key_rewrites_only_the_part_holding_it() {
     assert!(first.parts.iter().all(|p| p.origin.is_none()));
 }
 
-/// Within each partition a pass writes into, 4 parts of one size tier, a tier spanning a fourfold range of row counts, merge into one part, repeating until no tier holds 4 parts.
-// spec: store.fold.tiered-merge@a65d4ea5
+/// Within each partition a pass writes into, 4 parts of one size tier, a tier holding row counts between consecutive powers of that number, merge into one part, repeating until no tier holds 4 parts.
+// spec: store.fold.tiered-merge@f11d6692
 #[test]
 fn four_parts_of_one_tier_merge_into_one() {
     assert_eq!(FOLD_MERGE_FANOUT, 4);

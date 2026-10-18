@@ -556,6 +556,7 @@ fn rebuild_snapshots(store: &Store, decl: &TableDecl, directory: &Path) -> Resul
     // Every retained snapshot reads its rows, a part carried by reference at its origin,
     // and writes them whole under a staged name before any part file leaves, since another
     // snapshot may still name the file (`store.fold.carry-by-reference`).
+    let target = crate::parquet_io::arrow_schema(&store.schema(&decl.name)?);
     let mut rewritten = Vec::new();
     for path in files(directory)? {
         if path.file_name().is_none_or(|name| name != MANIFEST_FILE) { continue; }
@@ -567,15 +568,13 @@ fn rebuild_snapshots(store: &Store, decl: &TableDecl, directory: &Path) -> Resul
         let holder = |part: &contextful_core::store::lay_out::PartEntry| -> Result<PathBuf> {
             Ok(snapshots.join(part.holder(&manifest.snapshot_id).to_string()).join(relative_path(&part.name)?))
         };
+        // A carried part keeps the schema it was written under, so each batch conforms to
+        // the merged schema before the parts join (`store.reconcile.fold-never-narrows`).
         let mut batches = Vec::new();
-        for part in &manifest.parts { batches.extend(store.read_parquet(&holder(part)?)?); }
-        let rows = match batches.first() {
-            Some(first) => concat_batches(&first.schema(), &batches).map_err(|_| incomplete("a retained snapshot has incompatible parts"))?,
-            None => match manifest.parts.first() {
-                Some(part) => empty_part(store, &holder(part)?)?,
-                None => RecordBatch::new_empty(crate::parquet_io::arrow_schema(&store.schema(&decl.name)?)),
-            },
-        };
+        for part in &manifest.parts {
+            for batch in store.read_parquet(&holder(part)?)? { batches.push(crate::parquet_io::conform(&batch, &target)?); }
+        }
+        let rows = concat_batches(&target, &batches).map_err(|_| incomplete("a retained snapshot has incompatible parts"))?;
         store.write_parquet(&snapshot.join(ERASURE_PART), &rows)?;
         for index in &manifest.indexes {
             if matches!(index, IndexEntry::Unrecognized(_)) { return Err(unsupported("an unrecognized sidecar has no erasure rewrite adapter")); }

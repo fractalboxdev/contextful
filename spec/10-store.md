@@ -301,7 +301,7 @@ Compaction: pass order, triggers, retention, the compaction lease, and the point
 - `pass` — A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet and every declared sidecar into staging, then commits by {{store.fold.pointer-commit}}.
 - `carry-by-reference` — An append table's pass writes its unfolded runs' rows as one delta part per partition they reach, rewrites only a part a delta row replaces or retention trims, and carries every other part by reference to its origin snapshot.
   *A-store*
-- `tiered-merge` — Within each partition a pass writes into, 4 parts of one size tier, a tier spanning a fourfold range of row counts, merge into one part, repeating until no tier holds 4 parts.
+- `tiered-merge` — Within each partition a pass writes into, 4 parts of one size tier, a tier holding row counts between consecutive powers of that number, merge into one part, repeating until no tier holds 4 parts.
   *A-store*
 - `bounded-memory` — A carrying pass building no sidecar in full holds its delta and one record batch per part it reads or merges, so its peak memory follows the rows landed, not the rows held.
   *because a pass inline with a landing that decodes the whole table grows with history until it exhausts the landing process's memory*
@@ -451,6 +451,8 @@ At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and
 - `rotation` — Rotation writes forward: new files take the new key version, published files keep theirs until collected, and a key version retires once no retained file names it.
 
 unsettled: How long does a sidecar decrypted into process memory stay resident across reads, and what evicts it? owner: store affects: store.encrypt
+
+unsettled: What reseals a part carried by reference under a retiring key version, given only a restatement, retention or merge rewrites it, so {{store.encrypt.rotation}} retires that version? owner: store affects: store.encrypt
 
 ## endpoint
 

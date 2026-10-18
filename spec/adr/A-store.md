@@ -270,11 +270,11 @@ Consequences: a mixed fleet refuses a newer major by name instead of folding it.
 
 ## A pass carries untouched parts and sidecar segments by reference
 
-**Status:** accepted; supersedes the whole-snapshot rewrite of `store.fold.pass`.
+**Status:** accepted.
 
-Context: a pass that rewrote every part and rebuilt every sidecar wrote bytes and held memory in proportion to the table, so a quarter-hour landing over a growing history slowed with age. Criteria: bytes written per byte landed stay bounded as history grows; a pass's memory follows the rows landed; readers and collection see one file list.
+Context: a pass that rewrites every part and rebuilds every sidecar writes bytes and holds memory in proportion to the table, so each landing over a growing history costs more than the last. Criteria: bytes written per byte landed stay bounded as history grows; a pass's memory follows the rows landed; readers and collection see one file list.
 
-Decision: a part entry names its `origin` snapshot; a pass writes delta parts, rewrites only a part a delta row replaces or retention trims, and merges four parts of one size tier. A sidecar extends by a segment while no stored row changes. Collection keeps every file a retained snapshot names. A snapshot carrying a reference declares `2.0`; a `1.x` snapshot reads as self-contained, and its next pass migrates it.
+Decision: a part entry names its `origin` snapshot; a pass writes delta parts, rewrites only a part a delta row replaces or retention trims, and merges parts of one size tier at a fixed fanout. A sidecar extends by a segment while no stored row changes. Collection keeps every file a retained snapshot names. A snapshot carrying a reference declares `2.0`; a `1.x` snapshot reads as self-contained, and its next pass migrates it.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

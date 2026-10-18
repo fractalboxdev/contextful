@@ -147,6 +147,16 @@ fn footer_bounds(path: &Path, column: &str) -> Result<Option<(i128, i128)>> {
     Ok(bounds)
 }
 
+/// Whether `dir` is a partition directory of `by`: one `<column>=<value>` segment per
+/// column, outermost first.
+fn partition_path(dir: &str, by: &[String]) -> bool {
+    if by.is_empty() {
+        return dir.is_empty();
+    }
+    let segments: Vec<&str> = dir.split('/').collect();
+    segments.len() == by.len() && segments.iter().zip(by).all(|(s, c)| s.split_once('=').is_some_and(|(k, _)| k == c))
+}
+
 /// The batches of the part at `path`, each conformed to `target`, decoded one at a time.
 fn conformed<'a>(store: &'a Store, path: &Path, target: &'a Arc<ArrowSchema>) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 'a>> {
     let batches = store.parquet_batches(path, None)?;
@@ -213,8 +223,10 @@ pub(super) fn stage(input: Input<'_>) -> Result<Option<Output>> {
         let mut projection = line.clone();
         projection.extend(rank.iter().filter(|c| !line.contains(c)).cloned());
         let sub = narrowed(&target, &projection)?;
-        // A partition named by the dedup line holds every row of its keys.
-        let scoped = by.iter().all(|c| line.contains(c));
+        // A partition named by the dedup line holds every row of its keys, provided every
+        // part sits in a directory of the current `partition_by`: erasure leaves one root
+        // part, and a changed `partition_by` leaves parts under the old columns.
+        let scoped = by.iter().all(|c| line.contains(c)) && slots.iter().all(|s| partition_path(s.entry.partition(), by));
         for (k, slot) in slots.iter().enumerate() {
             if scoped && !delta_partitions.contains(slot.entry.partition()) {
                 continue;
