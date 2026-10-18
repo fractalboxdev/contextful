@@ -291,6 +291,29 @@ fn a_container_profile_requires_a_recovery_identity_before_connecting() {
     assert!(!error.contains("canary-secret"), "{error}");
 }
 
+/// Batches queued behind the land lock under `push_after_run`: the bucket puts per 1000 one-row updates.
+#[test]
+#[cfg(feature = "s3-sync")]
+fn queued_receive_batches_push_once_per_group() {
+    use crate::receive::{queue_behind_the_land_lock, queued_project, queued_rounds, QUEUED_SEED, QUEUED_WRITERS};
+    use contextful_acceptance::s3::{S3Server, ACCESS_KEY, SECRET_KEY};
+
+    let s3 = S3Server::start("receive");
+    let sync = format!(
+        "endpoint = \"{}\"\nbucket = \"receive\"\nprefix = \"team\"\ncoordination = \"single-writer\"\npull_before_run = false\npush_after_run = true\naccess_key_id = \"env://RECEIVE_TEST_ACCESS_KEY\"\nsecret_access_key = \"env://RECEIVE_TEST_SECRET_KEY\"\n",
+        s3.endpoint
+    );
+    let dir = queued_project(Some(&sync));
+    let env = [("RECEIVE_TEST_ACCESS_KEY", ACCESS_KEY), ("RECEIVE_TEST_SECRET_KEY", SECRET_KEY)];
+    let before = s3.puts();
+    let updates = queue_behind_the_land_lock(dir.path(), queued_rounds(), QUEUED_WRITERS, QUEUED_SEED, &env);
+    let puts = s3.puts() - before;
+    assert!(s3.keys().iter().any(|k| k.contains("tables/otel_spans/")), "the landed table reaches the bucket: {:?}", s3.keys());
+    assert!(puts > 0, "a push puts at least one object");
+    eprintln!("{updates} queued updates: {puts} bucket puts");
+    contextful_eval::record::emit("receive-group-bucket-puts", puts as f64 * 1000.0 / updates as f64, updates, QUEUED_SEED);
+}
+
 /// A coordinated group runs under D1: preflight admits it, the producer frontier and outbox live in D1,
 /// and an empty local disk neither forgets nor repeats the acknowledged group.
 #[test]

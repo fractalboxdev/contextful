@@ -1364,12 +1364,17 @@ fn a_bound_token_answers_unknown_to_every_other_subject() {
 /// A project declaring a `receive` pipeline over two tables, its body bound 512 B and its queue 2 deep; the
 /// issuer's public key.
 fn receiving_face() -> (tempfile::TempDir, String) {
+    receiving_face_with(2, 512)
+}
+
+/// [`receiving_face`], its queue `depth` deep and its body bound `bytes`.
+fn receiving_face_with(depth: u32, bytes: u64) -> (tempfile::TempDir, String) {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path();
     std::fs::create_dir_all(p.join(".contextful/context/research")).unwrap();
     std::fs::write(p.join(".contextful/context/research/config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
     std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
-    std::fs::write(p.join("contextful.toml"), "authoring_posture = \"per_request\"\nsite_id = \"site-a\"\n[[pipeline]]\nid = \"otel\"\ntables = [\"spans\", { name = \"events\", columns = { id = \"Utf8\", n = \"Int64\" } }]\n[pipeline.source]\nname = \"receive\"\nconfig = { format = \"jsonl\", max_batch_bytes = 512, max_queue_depth = 2, key_retention_secs = 3600 }\n").unwrap();
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\nsite_id = \"site-a\"\n[[pipeline]]\nid = \"otel\"\ntables = [\"spans\", {{ name = \"events\", columns = {{ id = \"Utf8\", n = \"Int64\" }} }}]\n[pipeline.source]\nname = \"receive\"\nconfig = {{ format = \"jsonl\", max_batch_bytes = {bytes}, max_queue_depth = {depth}, key_retention_secs = 3600 }}\n")).unwrap();
     let public = stdout(&run(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
     (dir, public)
 }
@@ -1563,4 +1568,113 @@ fn the_receive_route_maps_each_refusal_to_its_status() {
     let (status, head, failed) = deliver(&addr, Some(&both), Some("flush-4"), line.len(), &line);
     assert_eq!((status, failed["committed"].clone(), failed["retryable"].clone()), (503, json!(false), json!(true)), "{failed}");
     assert!(head.lines().any(|h| h.eq_ignore_ascii_case("retry-after: 1")), "a retryable failed table carries the retry interval: {head}");
+}
+
+/// The seed every daily bar of the served throughput schedule derives from.
+const THROUGHPUT_SEED: u64 = 0x5eed_0102;
+
+/// The rows of one delivered batch of daily bars.
+const BAR_ROWS: u64 = 100;
+
+/// The rounds each writer count delivers, one batch per writer each; the figure is their median round. A
+/// 256-writer round spends about 90 s of a debug build retrying refusals, so that count runs three.
+fn throughput_rounds(writers: u64) -> usize {
+    if writers >= 256 { 3 } else { 5 }
+}
+
+/// `BAR_ROWS` daily bars for batch `batch`, their prices derived from `seed`.
+fn bars(seed: u64, batch: u64) -> String {
+    let mut state = seed ^ batch.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    (0..BAR_ROWS)
+        .map(|i| {
+            state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            let open = 100 + (state >> 40) % 900;
+            let close = open + (state >> 20) % 50;
+            delivered("spans", json!({ "id": format!("b{batch}-{i}"), "symbol": format!("S{:03}", i % 64), "day": format!("2030-01-{:02}", 1 + i % 28), "open": open, "close": close, "volume": state >> 44 }))
+        })
+        .collect()
+}
+
+/// `POST /receive/otel` of `body` under `key`, resending after each `503` once its retry interval passes; the
+/// `503` answers met before the batch committed.
+fn deliver_retrying(addr: &str, token: &str, key: &str, body: &str) -> u64 {
+    let mut refusals = 0;
+    loop {
+        let mut stream = TcpStream::connect(addr).unwrap();
+        // A refusal answers on the head alone, so the body may meet a closed socket.
+        let _ = write!(stream, "POST /receive/otel HTTP/1.1\r\nAuthorization: Bearer {token}\r\nContextful-Batch-Key: {key}\r\nContent-Type: application/x-ndjson\r\nContent-Length: {}\r\n\r\n{body}", body.len());
+        let raw = exchange_response(&mut stream).unwrap_or_else(|e| panic!("batch `{key}`: {e}"));
+        let (head, answer) = raw.split_once("\r\n\r\n").unwrap();
+        match head.split(' ').nth(1) {
+            Some("200") => return refusals,
+            Some("503") => {
+                refusals += 1;
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+            other => panic!("batch `{key}` answered {other:?}: {answer}"),
+        }
+    }
+}
+
+/// The served receive route at 1, 16 and 256 concurrent writers of 100-row batches through a queue 64 deep: the
+/// rows committed per second, the median round, and the `503` answers each 256-writer round meets. A run
+/// outside a measure run drives the one-writer rounds alone.
+#[test]
+fn served_receive_throughput_at_one_sixteen_and_256_writers() {
+    let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
+    let (dir, public) = receiving_face_with(64, 65_536);
+    let root = dir.path();
+    let token = mint_write(root, "otel_*");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "320", "--project", "research", "--public-key", &public]);
+    let writer_counts: &[u64] = if measuring { &[1, 16, 256] } else { &[1] };
+    let mut next = 0u64;
+    let mut rates = Vec::new();
+    for &writers in writer_counts {
+        let count = throughput_rounds(writers);
+        let mut rounds: Vec<(f64, u64)> = (0..count)
+            .map(|_| {
+                let batches: Vec<(u64, String)> = (next..next + writers).map(|b| (b, bars(THROUGHPUT_SEED, b))).collect();
+                next += writers;
+                let gate = std::sync::Barrier::new(writers as usize + 1);
+                let (refusals, wall) = std::thread::scope(|scope| {
+                    let hands: Vec<_> = batches
+                        .iter()
+                        .map(|(b, body)| {
+                            let (gate, addr, token) = (&gate, addr.as_str(), token.as_str());
+                            scope.spawn(move || {
+                                gate.wait();
+                                deliver_retrying(addr, token, &format!("bars-{b}"), body)
+                            })
+                        })
+                        .collect();
+                    gate.wait();
+                    let started = std::time::Instant::now();
+                    let refusals: u64 = hands.into_iter().map(|h| h.join().unwrap()).sum();
+                    (refusals, started.elapsed())
+                });
+                ((writers * BAR_ROWS) as f64 / wall.as_secs_f64(), refusals)
+            })
+            .collect();
+        rounds.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+        let (rate, _) = rounds[count / 2];
+        let mut refusals: Vec<u64> = rounds.iter().map(|r| r.1).collect();
+        refusals.sort_unstable();
+        let refused = refusals[count / 2];
+        eprintln!("served receive, {writers} writer(s): {rate:.0} rows/s, {refused} 503 answers per round (median of {count} rounds)");
+        let n = writers * count as u64;
+        match writers {
+            1 => contextful_eval::record::emit("receive-rows-per-s-w1", rate, n, THROUGHPUT_SEED),
+            16 => contextful_eval::record::emit("receive-rows-per-s-w16", rate, n, THROUGHPUT_SEED),
+            _ => {
+                contextful_eval::record::emit("receive-backpressure-w256", refused as f64, n, THROUGHPUT_SEED);
+                contextful_eval::record::emit("receive-rows-per-s-w256", rate, n, THROUGHPUT_SEED)
+            }
+        };
+        rates.push(rate);
+    }
+    if let [one, .., many] = rates[..] {
+        contextful_eval::record::emit("receive-rows-per-s-ratio", many / one, next, THROUGHPUT_SEED);
+    }
+    let landed = receive_rows(root, "SELECT count(*) FROM otel_spans");
+    assert_eq!(landed[0][0].as_str().and_then(|n| n.parse::<u64>().ok()), Some(next * BAR_ROWS), "every committed batch lands its rows once: {landed}");
 }

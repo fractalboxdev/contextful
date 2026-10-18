@@ -333,3 +333,91 @@ fn a_resend_after_the_receiver_dies_lands_what_the_uninterrupted_run_lands() {
     assert_eq!(landed, rows(whole.path(), sql), "the resumed run lands the uninterrupted run's cells");
     assert_eq!(rows(resumed.path(), "SELECT note FROM otel_spans ORDER BY id"), serde_json::json!([["x-api-key: [REDACTED:secret]"], ["plain"]]));
 }
+
+/// The seed of the queued-receive schedule: rounds of sixteen one-row batches.
+pub(crate) const QUEUED_SEED: u64 = 0x5eed_0101;
+
+/// The batches each round of the queued-receive schedule holds behind the land lock.
+pub(crate) const QUEUED_WRITERS: usize = 16;
+
+/// The rounds of the queued-receive schedule: two under a measure run, one otherwise.
+pub(crate) fn queued_rounds() -> usize {
+    if std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some() { 2 } else { 1 }
+}
+
+/// A project receiving into `otel` through a queue 64 deep, its store config carrying the `sync` block when given.
+pub(crate) fn queued_project(sync: Option<&str>) -> tempfile::TempDir {
+    let dir = receiving(4096, 64);
+    if let Some(sync) = sync {
+        std::fs::write(dir.path().join(".contextful/context/research/config.toml"), format!("[node]\nid = \"ingest-a\"\n\n[sync]\n{sync}")).unwrap();
+    }
+    dir
+}
+
+/// Deliver `rounds` rounds of `writers` one-row `spans` batches, each round queued behind a held land lock and
+/// released together, every receiver carrying `env`; the batches delivered. Row ids derive from `seed`.
+pub(crate) fn queue_behind_the_land_lock(dir: &Path, rounds: usize, writers: usize, seed: u64, env: &[(&str, &str)]) -> u64 {
+    let queue = dir.join(".contextful/run/research/receive/otel");
+    std::fs::create_dir_all(&queue).unwrap();
+    let lock = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(queue.join("land.lock")).unwrap();
+    for round in 0..rounds {
+        lock.lock().unwrap();
+        let held: Vec<_> = (0..writers)
+            .map(|w| {
+                let n = (round * writers + w) as u64;
+                let mut child = receiver(dir, &format!("flush-{n}")).envs(env.iter().copied()).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+                let mut err = BufReader::new(child.stderr.take().unwrap());
+                let mut queued = String::new();
+                err.read_line(&mut queued).unwrap();
+                assert!(queued.contains("queue slot"), "{queued}");
+                let id = format!("{:016x}", seed.wrapping_mul(n + 1));
+                child.stdin.take().unwrap().write_all(line("spans", serde_json::json!({ "id": id })).as_bytes()).unwrap();
+                (child, err)
+            })
+            .collect();
+        lock.unlock().unwrap();
+        for (child, mut err) in held {
+            let out = child.wait_with_output().unwrap();
+            let mut rest = String::new();
+            let _ = std::io::Read::read_to_string(&mut err, &mut rest);
+            assert!(out.status.success(), "{rest}");
+            assert_eq!(answer(&out)["committed"], true, "{rest}");
+        }
+    }
+    (rounds * writers) as u64
+}
+
+/// Every file under `dir`, recursively.
+fn files_under(dir: &Path) -> Vec<std::path::PathBuf> {
+    let (mut pending, mut found) = (vec![dir.to_path_buf()], Vec::new());
+    while let Some(path) = pending.pop() {
+        if path.is_dir() {
+            pending.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+        } else {
+            found.push(path);
+        }
+    }
+    found
+}
+
+/// Batches queued behind the land lock: the commits, and the part files plus run manifests, landed per 1000
+/// one-row updates.
+#[test]
+fn batches_queued_behind_the_land_lock_commit_per_group() {
+    let dir = queued_project(None);
+    let updates = queue_behind_the_land_lock(dir.path(), queued_rounds(), QUEUED_WRITERS, QUEUED_SEED, &[]);
+    let landed = rows(dir.path(), "SELECT count(*), count(DISTINCT _run_id) FROM otel_spans");
+    let count = |cell: &serde_json::Value| cell.as_str().and_then(|n| n.parse::<u64>().ok());
+    assert_eq!(count(&landed[0][0]), Some(updates), "every queued row lands once: {landed}");
+    let commits = count(&landed[0][1]).unwrap();
+    assert!((1..=updates).contains(&commits), "{landed}");
+    let parts = files_under(&dir.path().join(".contextful/context/research/tables/otel_spans"))
+        .into_iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "parquet") || p.file_name().is_some_and(|n| n == "_manifest.json"))
+        .count() as u64;
+    assert!(parts >= commits, "each commit lands at least one part: {parts} for {commits}");
+    let per_1000 = |n: u64| n as f64 * 1000.0 / updates as f64;
+    eprintln!("{updates} queued updates: {commits} commits, {parts} part files and run manifests");
+    contextful_eval::record::emit("receive-group-commits", per_1000(commits), updates, QUEUED_SEED);
+    contextful_eval::record::emit("receive-group-parts", per_1000(parts), updates, QUEUED_SEED);
+}
