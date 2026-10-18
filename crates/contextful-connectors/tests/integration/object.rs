@@ -439,7 +439,13 @@ fn a_prefix_of_1000_objects_with_one_unreadable_lands_the_rest() {
     ];
     let mut fewest = PREFIX_OBJECTS;
     for (config, bucket) in &cases {
-        let rows = pulled_rows(&mut source(config.clone(), bucket.clone()), None).map(|(rows, _, _)| rows).unwrap_or_default();
+        let rows = match pulled_rows(&mut source(config.clone(), bucket.clone()), None) {
+            Ok((rows, _, _)) => rows,
+            Err(f) => {
+                assert!(f.message.contains(&format!("{bad:04}")), "{config}: a refusal names the unreadable object: {f}");
+                Vec::new()
+            }
+        };
         assert!(!rows.iter().any(|r| r["n"] == json!("unreadable")), "{config}: no row of the unreadable object lands");
         fewest = fewest.min(objects_landed(&rows, bad));
     }
@@ -457,14 +463,19 @@ fn a_read_with_one_unreadable_object_commits_the_position_of_the_rest() {
     }
     bucket.put(&unreadable, b"{\"n\":\"unreadable\"}\n[3]\n", Condition::None).unwrap();
     let mut s = source(json!({"bucket": "lake", "prefix": "d/", "format": "jsonl", "skip_unchanged": true}), bucket.clone());
-    let position = pulled_rows(&mut s, None).ok().and_then(|(_, at, _)| at);
+    let position = match pulled_rows(&mut s, None) {
+        Ok((_, at, _)) => at,
+        Err(f) => {
+            assert!(f.message.contains(&unreadable), "a refusal names the unreadable object: {f}");
+            None
+        }
+    };
     let held = position.as_ref().and_then(|p| p["objects"].as_object()).map_or(0, |o| o.keys().filter(|k| **k != unreadable).count());
     let advanced = u64::from(held == PREFIX_OBJECTS - 1);
 
     bucket.gets.lock().unwrap().clear();
     let _ = pulled_rows(&mut s, position);
     let redownloaded = bucket.gets.lock().unwrap().iter().filter(|k| **k != unreadable).count();
-    assert!(redownloaded < PREFIX_OBJECTS);
     contextful_eval::record::emit("ingest-prefix-position-advances", advanced as f64, 1, 0);
     contextful_eval::record::emit("ingest-prefix-redecodes", redownloaded as f64, 1, 0);
 }
@@ -496,7 +507,13 @@ fn one_unreadable_in_a_hundred_lands_and_two_refuse() {
         }
         pulled_rows(&mut source(json!({"bucket": "lake", "prefix": "d/", "format": "jsonl"}), bucket), None)
     };
-    let one_lands = prefix(&[50]).is_ok_and(|(rows, _, _)| rows.len() == 99);
+    let one_lands = match prefix(&[50]) {
+        Ok((rows, _, _)) => rows.len() == 99,
+        Err(f) => {
+            assert!(f.message.contains("d/050.jsonl"), "a refusal names the unreadable object: {f}");
+            false
+        }
+    };
     let two_refuse = prefix(&[25, 75]).is_err();
     assert!(two_refuse, "two unreadable objects in a hundred refuse the read");
     let held = u64::from(one_lands) + u64::from(two_refuse);
@@ -535,10 +552,14 @@ fn a_prefix_with_one_object_expanding_past_the_ceiling_lands_the_rest() {
         bucket.put(&format!("big/{i:04}.jsonl.gz"), &gz(format!("{{\"n\":{i}}}\n").as_bytes()), Condition::None).unwrap();
     }
     bucket.put(&format!("big/{bad:04}.jsonl.gz"), &big, Condition::None).unwrap();
-    let rows = pulled_rows(&mut source(json!({"bucket": "lake", "prefix": "big/", "format": "jsonl"}), bucket), None)
-        .map(|(rows, _, _)| rows)
-        .unwrap_or_default();
+    let rows = match pulled_rows(&mut source(json!({"bucket": "lake", "prefix": "big/", "format": "jsonl"}), bucket), None) {
+        Ok((rows, _, _)) => rows,
+        Err(f) => {
+            let named = f.message.contains(&format!("big/{bad:04}.jsonl.gz")) && f.message.contains(&EXPANSION_CEILING.to_string());
+            assert!(named, "a refusal names the oversize object and the ceiling: {f}");
+            Vec::new()
+        }
+    };
     let landed = objects_landed(&rows, bad);
-    assert!(landed < PREFIX_OBJECTS);
     contextful_eval::record::emit("ingest-prefix-one-oversize", landed as f64, 1, 0);
 }

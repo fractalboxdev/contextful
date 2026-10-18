@@ -523,9 +523,16 @@ fn a_folder_of_1000_files_with_one_unreadable_lands_the_rest() {
         }
         let unreadable = format!("n{bad:04}.{extension}");
         write(dir.path(), &unreadable, body);
-        let rows = read(&source(dir.path(), json!({"root": "."})), None).map(|(rows, _, _)| rows).unwrap_or_default();
+        let rows = match read(&source(dir.path(), json!({"root": "."})), None) {
+            Ok((rows, _, _)) => rows,
+            Err(f) => {
+                assert!(f.message.contains(&unreadable), "{extension}: a refusal names the unreadable file: {f}");
+                Vec::new()
+            }
+        };
         let mut landed: Vec<&str> = rows.iter().filter_map(|r| r["path"].as_str()).collect();
         assert!(!landed.contains(&unreadable.as_str()), "{extension}: no row of the unreadable file lands");
+        landed.sort_unstable();
         landed.dedup();
         fewest = fewest.min(landed.len());
     }
