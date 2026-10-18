@@ -242,6 +242,126 @@ tier   = "trend"
 direction = "higher_is_better"
 method = { issue = 52 }
 
+# ---------------------------------------------------------------- connector source
+
+[entry.backfill-http-rows-per-pull]
+clause = "connector.source.http-watermark-walk"
+metric = "ingest.backfill.http_rows_per_pull"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_connectors::http::a_watermarked_walk_hands_the_runner_one_page_per_pull" }
+target = { op = "<=", value = 9990 }
+
+[entry.backfill-http-rows-per-pull-url]
+clause = "connector.source.http-url-walk"
+metric = "ingest.backfill.http_url_rows_per_pull"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_connectors::http::a_next_url_walk_hands_the_runner_one_page_per_pull" }
+target = { op = "<=", value = 9990 }
+
+# The fire loop stops at 3 fires and records 4 when the walk is unfinished, so the
+# figure ceilings at 4; it moves to the gate tier with a target of 1.
+[entry.backfill-http-fires-to-complete]
+clause = "connector.source.page-cap"
+metric = "ingest.backfill.http_fires_to_complete"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_engine::runner::a_2000_page_vendor_lands_every_page_through_successive_fires" }
+seed   = 0x5eed_0b02
+
+[entry.backfill-http-rows-landed]
+clause = "connector.source.page-cap"
+metric = "ingest.backfill.http_rows_landed_once"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_engine::runner::a_2000_page_vendor_lands_every_page_through_successive_fires" }
+seed   = 0x5eed_0b02
+
+[entry.backfill-decode-peak-heap]
+clause = "connector.source.body-format"
+metric = "decode.page.peak_heap_ratio"
+kind   = "size"
+tier   = "gate"
+method = { probe = "backfill-decode-peak-heap" }
+target = { op = "<=", value = 15.52 }
+seed   = 0x5eed_0b03
+
+[entry.backfill-walk-peak-rss]
+clause = "connector.source.http-watermark-walk"
+metric = "connector.http.watermark_walk.peak_rss"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { probe = "backfill-walk-peak-rss" }
+seed   = 0x5eed_0b04
+
+[entry.ingest-prefix-one-corrupt]
+clause = "connector.source.object-unreadable"
+metric = "ingest.prefix.one_corrupt.objects_landed"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_connectors::object::a_prefix_of_1000_objects_with_one_unreadable_lands_the_rest" }
+
+[entry.ingest-prefix-position-advances]
+clause = "connector.source.object-unreadable"
+metric = "ingest.prefix.one_corrupt.position_advances"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest" }
+
+[entry.ingest-prefix-redecodes]
+clause = "connector.source.object-unreadable"
+metric = "ingest.prefix.one_corrupt.objects_redownloaded"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest" }
+target = { op = "<=", value = 999 }
+
+[entry.ingest-folder-one-corrupt]
+clause = "run.land.unreadable-input"
+metric = "ingest.folder.one_corrupt.files_landed"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_connectors::file::a_folder_of_1000_files_with_one_unreadable_lands_the_rest" }
+
+[entry.ingest-prefix-all-corrupt-refused]
+clause = "connector.source.object-unreadable"
+metric = "ingest.prefix.all_corrupt.refused"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_connectors::object::a_prefix_where_every_object_is_unreadable_still_refuses" }
+target = { op = "==", value = 1 }
+
+[entry.ingest-prefix-ceiling-boundary]
+clause = "connector.source.object-unreadable"
+metric = "ingest.prefix.ceiling_boundary.cases_held"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_connectors::object::one_unreadable_in_a_hundred_lands_and_two_refuse" }
+
+[entry.ingest-skip-prior-rows-tombstoned]
+clause = "connector.source.object-unreadable"
+metric = "ingest.prefix.skip.prior_rows_retired"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_connectors::object::a_skipped_object_tombstones_none_of_its_earlier_rows" }
+target = { op = "==", value = 0 }
+
+[entry.ingest-prefix-one-oversize]
+clause = "connector.source.object-expansion"
+metric = "ingest.prefix.one_oversize.objects_landed"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_connectors::object::a_prefix_with_one_object_expanding_past_the_ceiling_lands_the_rest" }
+
 # ---------------------------------------------------------------- run.journal
 
 [entry.journal-effect-once]
@@ -317,6 +437,197 @@ tier   = "gate"
 method = { test = "contextful_core::run::derive::a_changed_engine_rederives_every_unit_and_no_read_between_ticks_is_empty" }
 target = { op = "==", value = 0 }
 
+# ---------------------------------------------------------------- run
+
+[entry.catalog-calls-per-landing]
+clause = "run.land.receive-entry"
+metric = "catalog.calls_per_landing"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing" }
+target = { op = "<=", value = 30 }
+
+[entry.catalog-calls-per-landing-writes]
+clause = "run.land.receive-entry"
+metric = "catalog.writes_per_landing"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing" }
+target = { op = "<=", value = 6 }
+
+[entry.catalog-d1-requests-per-landing]
+clause = "run.journal.d1-profile"
+metric = "catalog.d1.requests_per_landing"
+kind   = "test"
+tier   = "scheduled"
+direction = "lower_is_better"
+method = { test = "contextful_d1::catalog_cost::a_received_landing_issues_its_d1_requests" }
+target = { op = "<=", value = 45 }
+
+# The fire loop stops at 3 fires and records 4 when the window is unfinished, so the
+# figure ceilings at 4; it moves to the gate tier with a target of 1.
+[entry.backfill-fires-to-complete]
+clause = "run.own.staged-bytes"
+metric = "ingest.backfill.fires_to_complete"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire" }
+seed   = 0x5eed_0b01
+
+[entry.backfill-window-commits]
+clause = "run.own.one-commit-per-run"
+metric = "ingest.backfill.window_commits"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire" }
+seed   = 0x5eed_0b01
+
+[entry.backfill-parts-per-commit-min]
+clause = "run.own.one-commit-per-run"
+metric = "ingest.backfill.parts_per_commit_min"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire" }
+seed   = 0x5eed_0b01
+
+[entry.receive-group-commits]
+clause = "run.land.receive-queue"
+metric = "land.receive.commits_per_1000_updates"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_cli::receive::batches_queued_behind_the_land_lock_commit_per_group" }
+target = { op = "<=", value = 1000 }
+seed   = 0x5eed_0101
+
+[entry.receive-group-parts]
+clause = "run.land.receive-queue"
+metric = "land.receive.parts_per_1000_updates"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_cli::receive::batches_queued_behind_the_land_lock_commit_per_group" }
+target = { op = "<=", value = 2000 }
+seed   = 0x5eed_0101
+
+[entry.receive-group-bucket-puts]
+clause = "store.push.after-run"
+metric = "land.receive.bucket_puts_per_1000_updates"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_cli::storage::queued_receive_batches_push_once_per_group" }
+target = { op = "<=", value = 15062.5 }
+seed   = 0x5eed_0101
+
+[entry.receive-rows-per-s-w1]
+clause = "run.land.receive-queue"
+metric = "land.receive.rows_per_s.w1"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers" }
+seed   = 0x5eed_0102
+
+[entry.receive-rows-per-s-w16]
+clause = "run.land.receive-queue"
+metric = "land.receive.rows_per_s.w16"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers" }
+seed   = 0x5eed_0102
+
+[entry.receive-rows-per-s-w256]
+clause = "run.land.receive-queue"
+metric = "land.receive.rows_per_s.w256"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers" }
+seed   = 0x5eed_0102
+
+[entry.receive-rows-per-s-ratio]
+clause = "run.land.receive-queue"
+metric = "land.receive.rows_per_s.w256_over_w1"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers" }
+seed   = 0x5eed_0102
+
+# Counts every 503 answer, each 1 s retry of a refused writer included.
+[entry.receive-backpressure-w256]
+clause = "run.land.receive-backpressure"
+metric = "land.receive.backpressure_refusals.w256"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers" }
+seed   = 0x5eed_0102
+
+# A ratchet: a model reading `_runs` over 524 unit runs (1048 store runs, 48 past the last
+# 50-run fold multiple) serializes a 48301 B watermark; growth past that reds evaluate.
+[entry.watermark-bytes-runs-record]
+clause = "run.model.watermark"
+metric = "run.model.watermark_bytes"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs" }
+target = { op = "<=", value = 48301 }
+seed   = 0x5eed_0615
+
+# A ratchet: the same watermark lists 1048 `_runs` run ids, read through JSON.
+[entry.watermark-ids-runs-record]
+clause = "run.model.watermark"
+metric = "run.model.watermark_ids"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs" }
+target = { op = "<=", value = 1048 }
+seed   = 0x5eed_0615
+
+# A ratchet: the source completion a grouped publication records from that build's
+# watermark is 48408 B.
+[entry.source-completion-bytes]
+clause = "run.export.group-source"
+metric = "run.export.source_completion_bytes"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs" }
+target = { op = "<=", value = 48408 }
+seed   = 0x5eed_0615
+
+[entry.status-latency-runs-record]
+clause = "run.publish.staleness"
+metric = "run.publish.status_p95_us"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_context::build::status_over_an_unfolded_run_record_at_two_thousand_runs" }
+seed   = 0x5eed_0615
+
+# One source-history row per run, never pruned: 200 rows after 200 builds.
+[entry.source-history-rows]
+clause = "run.export.group-source"
+metric = "run.export.source_history_rows"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sqlite::export::source_history_stays_bounded_per_publication" }
+target = { op = "<=", value = 200 }
+seed   = 0x5eed_0615
+
+# A synthetic watermark input: history pruning moves this figure, a bounded watermark
+# alone does not.
+[entry.source-history-bytes]
+clause = "run.export.group-source"
+metric = "run.export.source_history_bytes"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_sqlite::export::source_history_stays_bounded_per_publication" }
+seed   = 0x5eed_0615
+
 # ---------------------------------------------------------------- store
 
 [entry.stale-fence-never-lands]
@@ -367,6 +678,385 @@ kind   = "test"
 tier   = "gate"
 method = { test = "contextful_fs::create::racing_creates_land_exactly_one" }
 target = { op = "==", value = 1 }
+
+[entry.vintage-append-day-scan]
+clause = "store.available-time.vintage-hash"
+metric = "vintage.rows_scanned.append_day"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::vintage_cost::a_one_day_append_reads_no_stored_vintage" }
+target = { op = "<=", value = 10000 }
+seed   = 0x5eed_7101
+
+[entry.vintage-restate-day-scan]
+clause = "store.available-time.vintage-hash"
+metric = "vintage.rows_scanned.restate_day"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::vintage_cost::a_one_day_restatement_reads_only_that_days_vintages" }
+target = { op = "<=", value = 10000 }
+seed   = 0x5eed_7101
+
+[entry.vintage-backfill-scan]
+clause = "store.available-time.vintage-hash"
+metric = "vintage.rows_scanned.backfill_100_days"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::vintage_cost::a_daily_backfill_scans_linearly_in_its_rows" }
+target = { op = "<=", value = 495000 }
+seed   = 0x5eed_7101
+
+[entry.vintage-random-key-scan]
+clause = "store.available-time.vintage-hash"
+metric = "vintage.rows_scanned.fresh_random_keys"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::vintage_cost::a_fresh_filing_id_reads_no_stored_vintage" }
+target = { op = "<=", value = 10000 }
+seed   = 0x5eed_7106
+
+[entry.vintage-after-fold-scan]
+clause = "store.available-time.vintage-hash"
+metric = "vintage.rows_scanned.append_after_fold"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::vintage_cost::an_append_after_a_fold_reads_no_stored_vintage" }
+target = { op = "<=", value = 10000 }
+seed   = 0x5eed_7107
+
+[entry.vintage-concurrent-scan]
+clause = "store.available-time.vintage-hash"
+metric = "vintage.rows_scanned.concurrent_w8"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::vintage_cost::eight_writers_landing_new_keys_scan_no_history" }
+target = { op = "<=", value = 1990000 }
+seed   = 0x5eed_7108
+
+[entry.vintage-commit-latency-p50]
+clause = "store.available-time.vintage-hash"
+metric = "vintage.commit_20k.latency_ms.p50"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_context::vintage_cost::vintage_commit_latency_at_twenty_thousand_rows" }
+seed   = 0x5eed_7104
+
+[entry.vintage-commit-latency-p95]
+clause = "store.available-time.vintage-hash"
+metric = "vintage.commit_20k.latency_ms.p95"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_context::vintage_cost::vintage_commit_latency_at_twenty_thousand_rows" }
+seed   = 0x5eed_7104
+
+[entry.vintage-commit-memory]
+clause = "store.available-time.vintage-hash"
+metric = "vintage.one_day_commit_1m.peak_rss"
+kind   = "test"
+tier   = "scheduled"
+direction = "lower_is_better"
+method = { test = "contextful_context::vintage_cost::a_one_day_commit_on_a_million_vintages_holds_bounded_memory" }
+seed   = 0x5eed_7105
+
+[entry.fold-events-write-amp]
+clause = "store.fold.pass"
+metric = "fold.events.bytes_written_per_byte_landed"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::fold_amplification::a_day_of_quarter_hour_landings_writes_bounded_bytes_per_byte_landed" }
+target = { op = "<=", value = 11.68 }
+seed   = 0x5eed_00f1
+
+[entry.fold-events-write-amp-growth]
+clause = "store.fold.pass"
+metric = "fold.events.write_amp_growth_4x"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::fold_amplification::a_day_of_quarter_hour_landings_writes_bounded_bytes_per_byte_landed" }
+target = { op = "<=", value = 2.10 }
+seed   = 0x5eed_00f1
+
+[entry.fold-events-write-amp-by-count]
+clause = "store.fold.triggers"
+metric = "fold.events.bytes_written_per_byte_landed_by_count"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::fold_amplification::many_small_commits_fold_by_run_count_with_bounded_amplification" }
+target = { op = "<=", value = 13.86 }
+seed   = 0x5eed_00f7
+
+[entry.fold-bars-write-amp]
+clause = "store.fold.pass"
+metric = "fold.bars.bytes_written_per_byte_landed"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::fold_amplification::daily_keyed_bars_with_restatements_write_bounded_bytes_per_byte_landed" }
+target = { op = "<=", value = 44.11 }
+seed   = 0x5eed_00f2
+
+# Each pass rebuilds the vector graph whole, so the figure counts full rebuilds.
+[entry.fold-vector-rows-indexed]
+clause = "store.index.graph-extensions"
+metric = "fold.vector.rows_indexed_per_row_landed"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_context::fold_amplification::sidecars_indexed_per_quarter_hour_landing_stay_bounded" }
+seed   = 0x5eed_00f3
+
+[entry.fold-fulltext-rows-indexed]
+clause = "store.index.fulltext-by-fold"
+metric = "fold.fulltext.rows_indexed_per_row_landed"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_context::fold_amplification::sidecars_indexed_per_quarter_hour_landing_stay_bounded" }
+seed   = 0x5eed_00f3
+
+[entry.fold-fulltext-docs-rebuilt]
+clause = "store.index.fulltext-by-fold"
+metric = "index.fold.fulltext_docs_rebuilt_per_increment"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::fulltext_rebuild::ten_folds_of_a_thousand_rows_reindex_only_the_increment" }
+target = { op = "<=", value = 10000 }
+seed   = 0x5eed_0605
+
+[entry.fold-peak-heap-growth]
+clause = "store.fold.pass"
+metric = "fold.peak_heap_growth_10x"
+kind   = "size"
+tier   = "gate"
+method = { probe = "fold-peak-heap" }
+target = { op = "<=", value = 8.48 }
+seed   = 0x5eed_00f4
+
+[entry.fold-events-peak-rss]
+clause = "store.fold.pass"
+metric = "fold.events.peak_rss"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { probe = "fold-events-peak-rss" }
+seed   = 0x5eed_00f5
+
+# 20,000 held passages: each debug-build fold rebuilds both sidecars over every held row.
+[entry.fold-passages-peak-rss]
+clause = "store.fold.pass"
+metric = "fold.passages.peak_rss"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { probe = "fold-passages-peak-rss" }
+seed   = 0x5eed_00f5
+
+[entry.commit-lock-refusals-w8]
+clause = "store.reserve.commit-order"
+metric = "land.commit_lock.refusals.w8"
+kind   = "test"
+tier   = "scheduled"
+direction = "lower_is_better"
+method = { test = "contextful_context::run_commit::eight_pipelines_share_one_table_commit_lock" }
+target = { op = "<=", value = 0 }
+seed   = 0x5eed_0103
+
+# The gap between consecutive commit completions while every lander queues, lander work
+# outside the lock included.
+[entry.commit-lock-hold-w8]
+clause = "store.reserve.commit-order"
+metric = "land.commit_lock.hold_ms.w8.p95"
+kind   = "test"
+tier   = "scheduled"
+direction = "lower_is_better"
+method = { test = "contextful_context::run_commit::eight_pipelines_share_one_table_commit_lock" }
+seed   = 0x5eed_0103
+
+# Each overlapping push but the holder's refuses: 1 + 3 + 7 over 2, 4 and 8 units, the
+# most the schedule allows; it moves to the gate tier with a target of 0.
+[entry.push-parallel-same-root-refusals]
+clause = "store.push.in-flight"
+metric = "sync.push.refusals_per_parallel_units"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_sync::push::parallel_units_on_one_store_root_count_push_in_flight_refusals" }
+seed   = 0x5eed_0090
+
+[entry.push-lockstep-rebase-exhausted]
+clause = "store.merge.exhausted"
+metric = "sync.push.rebase_exhausted_per_parallel_units"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::push::lockstep_writers_on_distinct_nodes_count_exhausted_rebases" }
+target = { op = "<=", value = 3 }
+seed   = 0x5eed_0091
+
+# Every run of the sibling disk is tombstoned, the most the fixture allows; it moves to
+# the gate tier with a target of 0.
+[entry.push-shared-node-sibling-tombstones]
+clause = "store.merge.scoped-union"
+metric = "sync.push.sibling_runs_tombstoned"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_sync::push::sibling_disks_sharing_a_node_id_count_tombstoned_runs" }
+seed   = 0x5eed_0092
+
+[entry.push-generation-list-per-round]
+clause = "store.push.generation-floor"
+metric = "sync.push.generation_keys_listed_per_round"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::generation::a_commit_round_counts_the_generation_keys_it_lists" }
+target = { op = "<=", value = 1000 }
+seed   = 0x5eed_0093
+
+[entry.runs-record-objects-per-tick]
+clause = "store.fold.triggers"
+metric = "store.objects_per_tick_steady_state"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick" }
+target = { op = "<=", value = 20 }
+seed   = 0x5eed_0615
+
+[entry.runs-record-live-objects]
+clause = "store.fold.retention"
+metric = "store.objects.runs_record_live_after_240_ticks"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick" }
+target = { op = "<=", value = 4801 }
+seed   = 0x5eed_0615
+
+[entry.runs-record-manifest-keys-per-tick]
+clause = "store.push.generation"
+metric = "sync.manifest_keys_per_tick_steady_state"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick" }
+target = { op = "<=", value = 20 }
+seed   = 0x5eed_0615
+
+[entry.bucket-keys-per-tick]
+clause = "store.push.generation"
+metric = "sync.bucket_keys_per_tick_steady_state"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick" }
+seed   = 0x5eed_0615
+
+[entry.sync-noop-pull-keys-listed-1k]
+clause = "store.pull.pointer-advance"
+metric = "sync.pull.keys_listed_per_noop_pull.at_1k"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes" }
+target = { op = "<=", value = 1010 }
+seed   = 0x5eed_0090
+
+[entry.sync-noop-pull-keys-listed-10k]
+clause = "store.pull.pointer-advance"
+metric = "sync.pull.keys_listed_per_noop_pull.at_10k"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes" }
+target = { op = "<=", value = 10010 }
+seed   = 0x5eed_0090
+
+[entry.sync-noop-pull-hashed-1k]
+clause = "store.pull.before-run"
+metric = "sync.pull.bytes_hashed_per_noop_pull.at_1k"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes" }
+target = { op = "<=", value = 1024000 }
+seed   = 0x5eed_0090
+
+[entry.sync-noop-pull-hashed-10k]
+clause = "store.pull.before-run"
+metric = "sync.pull.bytes_hashed_per_noop_pull.at_10k"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes" }
+target = { op = "<=", value = 10240000 }
+seed   = 0x5eed_0090
+
+[entry.sync-noop-pull-read-10k]
+clause = "store.pull.before-run"
+metric = "sync.pull.bytes_read_per_noop_pull.at_10k"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes" }
+target = { op = "<=", value = 10250240 }
+seed   = 0x5eed_0090
+
+[entry.sync-noop-pull-manifest-bytes-10k]
+clause = "store.pull.before-run"
+metric = "sync.pull.manifest_bytes_per_noop_pull.at_10k"
+kind   = "size"
+tier   = "gate"
+method = { test = "contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes" }
+target = { op = "<=", value = 2152176 }
+seed   = 0x5eed_0090
+
+[entry.sync-cold-pull-overlap]
+clause = "store.pull.before-run"
+metric = "sync.cold_pull.max_inflight_gets"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_sync::pull::a_cold_pull_reports_its_peak_in_flight_object_gets" }
+seed   = 0x5eed_0091
+
+[entry.sync-cold-pull-wall-p50]
+clause = "store.pull.before-run"
+metric = "sync.cold_pull.wall_ms.p50"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_sync::pull::cold_pull_wall_over_a_fixed_latency_bucket" }
+seed   = 0x5eed_0091
+
+[entry.sync-cold-pull-wall-p95]
+clause = "store.pull.before-run"
+metric = "sync.cold_pull.wall_ms.p95"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_sync::pull::cold_pull_wall_over_a_fixed_latency_bucket" }
+seed   = 0x5eed_0091
+
+# ---------------------------------------------------------------- surface
+
+[entry.dispatch-backlog-ticks]
+clause = "surface.arm.trigger-select"
+metric = "dispatch.max_ticks_waited_by_due_unit"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_engine::scheduler::a_backlog_of_twenty_units_clears_within_the_recovery_tick" }
+target = { op = "<=", value = 3 }
+
+[entry.dispatch-overload-misses]
+clause = "surface.dispatch.pool-bound"
+metric = "dispatch.max_missed_ticks_per_unit"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_engine::scheduler::overload_misses_spread_evenly_across_tied_units" }
+target = { op = "<=", value = 6 }
+
+# A unit failing before its run row wins every wake at pool 1; it moves to the gate tier
+# with a target of at least 9.
+[entry.dispatch-failing-head]
+clause = "surface.arm.next-fire-from-history"
+metric = "dispatch.units_started_behind_failing_head"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_engine::scheduler::a_unit_failing_before_its_run_row_yields_the_pool_to_a_fresh_scheduler" }
 
 # ---------------------------------------------------------------- topology
 
@@ -602,6 +1292,43 @@ kind   = "bench"
 tier   = "trend"
 direction = "lower_is_better"
 method = { test = "contextful_memory::recall::keyed_recall_latency_over_a_full_window_at_the_evidence_gate_bound" }
+
+# Every past horizon over the sidecar refuses with ReadIndexBeyondHorizon, so the three
+# horizon figures record 0; they move to the gate tier with a target of 1.
+[entry.horizon-answered]
+clause = "read.horizon.rank-statistics"
+metric = "retrieve.horizon.answered_share"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index" }
+seed   = 0x5eed_0601
+
+[entry.horizon-deep-recall]
+clause = "read.horizon.rank-statistics"
+metric = "retrieve.horizon.deep_recall"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index" }
+seed   = 0x5eed_0601
+
+[entry.horizon-rank-equivalence]
+clause = "read.horizon.rank-statistics"
+metric = "retrieve.horizon.rank_equivalence"
+kind   = "test"
+tier   = "trend"
+direction = "higher_is_better"
+method = { test = "contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index" }
+seed   = 0x5eed_0601
+
+[entry.unbounded-retrieve-latency]
+clause = "read.retrieve.sidecar-generates-candidates"
+metric = "retrieve.unbounded.p95_ms"
+kind   = "test"
+tier   = "trend"
+direction = "lower_is_better"
+method = { test = "contextful_context::read::horizon::retrieve_latency_at_10k_chunks" }
 
 # ---------------------------------------------------------------- assurance
 
