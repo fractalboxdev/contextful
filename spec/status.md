@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 299 | 64 | 15 | 10 | 288 | 0 | 288 |
 | `surface` | 2 | 21 | 172 | 66 | 24 | 0 | 146 | 0 | 146 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2693 | 680 | 214 | 75 | 2408 | 0 | |
+| **total** | 22 | 169 | 2694 | 680 | 214 | 75 | 2409 | 0 | |
 
 Decision records: 18.
 
