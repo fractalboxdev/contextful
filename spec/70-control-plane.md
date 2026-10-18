@@ -243,6 +243,8 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
   *because a serve outlives any credential the ceiling admits, and a credential minted per fire narrows each child to its own job's tables*
 - `fire-credential-lifetime` — A fire credential lives 600 s, or {{authority.issue.ceiling}} when lower; the child admits it once at start.
   *because a fire admits its credential before its first read, and a short lifetime bounds a leaked fire credential's exposure*
+- `fire-credential-pins` — Each child holding a minted fire credential also receives `CONTEXTFUL_ISSUER_PUBKEY`, the seed's public key, and `CONTEXTFUL_AUDIENCE`, the issuance policy's default audience the credential carries, replacing values serve inherited.
+  *because the child admits its credential from inherited variables, and a pin or audience other than the minting one refuses every fire*
 - `fire-credential-inherited` — A serve holding no `--issuer-key` passes its own `CONTEXTFUL_TOKEN` to each child it starts.
 - `fire-credential-missing` — A serve dispatching to child processes, whose applied snapshot schedules a store-driven job, holding neither `--issuer-key` nor `CONTEXTFUL_TOKEN`, raises `FireCredentialMissing` at start and fires nothing.
   *because a missing credential otherwise fails every fire while the serve reports healthy*

@@ -660,10 +660,18 @@ fn mint_one(
     root.sign(&plan, holder, owner_project, &signer)
 }
 
+/// A service credential and what admits it: the minting seed's public key and the audience
+/// it was minted for (`surface.dispatch.fire-credential-pins`).
+pub(crate) struct ServiceCredential {
+    pub token: String,
+    pub public_key: String,
+    pub audience: String,
+}
+
 /// One credential on behalf of the service `on_behalf_of` over `grants`, signed by the seed
 /// at `issuer_key` under the issuance policy at `root`, living `lifetime_secs` or the
 /// policy's ceiling when lower (`surface.dispatch.fire-credential`).
-pub(crate) fn mint_service(root: &Path, issuer_key: &Path, on_behalf_of: &str, grants: Vec<Grant>, lifetime_secs: u64) -> Result<String> {
+pub(crate) fn mint_service(root: &Path, issuer_key: &Path, on_behalf_of: &str, grants: Vec<Grant>, lifetime_secs: u64) -> Result<ServiceCredential> {
     let root = Root { dir: root.to_path_buf() };
     let signer = SeedSigner::resolve(Some(issuer_key))?;
     let (zone, incognito) = root.project_zone()?.mint(None, false)?;
@@ -671,7 +679,8 @@ pub(crate) fn mint_service(root: &Path, issuer_key: &Path, on_behalf_of: &str, g
     let mut request = MintRequest::custody(subject.mint(MintSurface::CommandLine)?.to_subject(), grants);
     request.lifetime = Lifetime::Clamped(lifetime_secs);
     let plan = root.check(&signer, &request, instant_or_now(None)?)?;
-    root.sign(&plan, None, None, &signer)
+    let token = root.sign(&plan, None, None, &signer)?;
+    Ok(ServiceCredential { token, public_key: signer.public_key_text(), audience: root.policy()?.default_audience })
 }
 
 fn instant_or_now(text: Option<&str>) -> Result<Instant> {

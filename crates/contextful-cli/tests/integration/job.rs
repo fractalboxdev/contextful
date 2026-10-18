@@ -597,6 +597,30 @@ fn an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables()
     assert_eq!(scope, vec![(vec!["read".to_string()], vec!["documents".to_string()]), (vec!["write".to_string()], vec!["scores".to_string()])], "{text}");
 }
 
+/// A minted fire's child admits under the pin and audience serve minted it with, whatever
+/// audience or pin serve's own environment carries.
+// spec: surface.dispatch.fire-credential-pins@b6a0d0c7
+#[test]
+fn a_minted_fire_admits_under_the_minting_pin_and_audience_whatever_serve_inherited() {
+    let declaration = format!("site_id = \"site\"\n{}\n[project.zone]\ndefault = \"on-prem:hq\"\n", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
+    let (dir, public, token) = project(&declaration);
+    let p = dir.path();
+    ok(&scheduled_host(p, &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+    let out = Command::new(host_binary())
+        .args(["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:01:00Z", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public])
+        .env("CONTEXTFUL_AUDIENCE", "contextful://another-project")
+        .current_dir(p)
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .env_remove("CONTEXTFUL_TOKEN")
+        .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
+        .output()
+        .unwrap();
+    let out = ok(&out);
+    let answer: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(answer["fired"], serde_json::json!(["job:score-documents"]), "{out}");
+    assert_eq!(select(p, "SELECT count(*) FROM scores")[0][0], "3");
+}
+
 // spec: surface.dispatch.fire-credential-missing@e986b3a1
 #[test]
 fn a_serve_scheduling_a_store_driven_job_without_key_or_credential_refuses_at_start() {
