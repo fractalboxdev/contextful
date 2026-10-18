@@ -10,6 +10,7 @@ mod explain;
 mod extension;
 mod fulltext;
 mod guard;
+mod horizon;
 mod hydrate;
 mod latency;
 mod nested;
@@ -121,6 +122,21 @@ name = "hr/salaries"
 id = "notes_for"
 sql = "SELECT note_id FROM \"research/notes\" WHERE tenant = ? ORDER BY note_id"
 parameters = ["tenant:string"]
+"#;
+
+/// A news table keyed per story, each row public from `published_at`, its body indexed.
+pub const DATED_TEXT: &str = r#"
+[[pipeline.tables]]
+name = "lab/news"
+primary_key = ["story_id"]
+content_hash_column = "digest"
+
+[pipeline.tables.available_time]
+column = "published_at"
+
+[[pipeline.tables.indexes]]
+kind = "fulltext"
+column = "body"
 "#;
 
 pub fn at(s: &str) -> Instant {

@@ -10,6 +10,7 @@ mod declare;
 mod encrypt;
 mod erase;
 mod fold;
+mod fulltext_rebuild;
 mod index;
 mod init;
 #[cfg(feature = "read")]

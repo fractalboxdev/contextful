@@ -18,6 +18,8 @@ use duckdb::vtab::arrow::WritableVector;
 use duckdb::{params_from_iter, Config, Connection};
 use serde_json::Value;
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// The engine's name, as the internals block reports it.
 pub const ENGINE: &str = "duckdb";
@@ -94,6 +96,8 @@ impl VScalar for MaskToken {
 pub struct SqlEngine {
     conn: Connection,
     admitted: Option<Session>,
+    /// Where a session connection adds the rows its table and Parquet scans emit.
+    scanned: Option<Arc<AtomicU64>>,
 }
 
 /// One catalog entry: its lowercase name, its stability (`None` for a macro) and a
@@ -118,7 +122,7 @@ impl SqlEngine {
             .enable_autoload_extension(false)
             .and_then(|c| c.with("autoinstall_known_extensions", "false"))
             .map_err(fault)?;
-        Ok(SqlEngine { conn: Connection::open_in_memory_with_flags(config).map_err(fault)?, admitted: None })
+        Ok(SqlEngine { conn: Connection::open_in_memory_with_flags(config).map_err(fault)?, admitted: None, scanned: None })
     }
 
     /// Close the connection to everything outside it but `files`: no file, extension or
@@ -282,9 +286,24 @@ impl SqlEngine {
             conn.execute_batch(&format!("CREATE OR REPLACE TEMP VIEW {} AS {}", ident(r.name()), r.sql())).map_err(fault)?;
         }
         let files: Vec<String> = session.relations().chain(session.ledgers()).flat_map(|r| r.files().iter().cloned()).collect();
+        // Per-operator row counts, kept in memory, feed the scanned-row tally.
+        conn.execute_batch(PROFILING).map_err(fault)?;
         engine.lock(&files)?;
         engine.admitted = Some(session.clone());
         Ok(engine)
+    }
+
+    /// Add the rows each later statement's table and Parquet scans emit to `scanned`.
+    pub(crate) fn tally_scans(&mut self, scanned: Arc<AtomicU64>) {
+        self.scanned = Some(scanned);
+    }
+
+    /// Add the last statement's scanned rows to the tally, where one is set.
+    fn tally(&self) {
+        let Some(scanned) = &self.scanned else { return };
+        if let Some(info) = self.conn.get_profiling_info() {
+            scanned.fetch_add(scan_rows(&info), Ordering::Relaxed);
+        }
     }
 
     /// Register the request ledgers among `names`, the relations an admitted statement
@@ -382,6 +401,12 @@ impl SqlEngine {
     }
 
     fn native_values(&self, sql: &str, parameters: &Bindings, selected: &[&str], fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Value>>), ReadFault> {
+        let out = self.native_stream(sql, parameters, selected, fetch);
+        self.tally();
+        out
+    }
+
+    fn native_stream(&self, sql: &str, parameters: &Bindings, selected: &[&str], fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Value>>), ReadFault> {
         SqlEngine::refuse_extension_statement(sql)?;
         let mut stmt = self.conn.prepare(sql).map_err(engine_fault)?;
         let values: Vec<Engine> = (1..=stmt.parameter_count()).map(|i| {
@@ -423,6 +448,12 @@ impl SqlEngine {
     /// Run `sql`, reading at most `fetch` rows as the engine's own values. Each
     /// placeholder takes the value bound under the identifier the engine names it by.
     pub(crate) fn run_values(&self, sql: &str, parameters: &Bindings, fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Engine>>), ReadFault> {
+        let out = self.query_values(sql, parameters, fetch);
+        self.tally();
+        out
+    }
+
+    fn query_values(&self, sql: &str, parameters: &Bindings, fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Engine>>), ReadFault> {
         SqlEngine::refuse_extension_statement(sql)?;
         let mut stmt = self.conn.prepare(sql).map_err(engine_fault)?;
         let values: Vec<Engine> = (1..=stmt.parameter_count())
@@ -448,6 +479,23 @@ impl SqlEngine {
         }
         Ok((columns, out))
     }
+}
+
+/// The profile a session connection keeps in memory: each operator's type and the rows
+/// it emits.
+const PROFILING: &str =
+    r#"SET enable_profiling = 'no_output'; SET custom_profiling_settings = '{"OPERATOR_TYPE": "true", "OPERATOR_CARDINALITY": "true"}';"#;
+
+/// The operator type of a scan over stored rows, `READ_PARQUET` among them.
+const SCAN: &str = "TABLE_SCAN";
+
+/// The rows every table and Parquet scan under `info` emitted.
+fn scan_rows(info: &duckdb::profiling::ProfilingInfo) -> u64 {
+    let own = match info.metrics.get("OPERATOR_TYPE") {
+        Some(kind) if kind == SCAN => info.metrics.get("OPERATOR_CARDINALITY").and_then(|n| n.parse().ok()).unwrap_or(0),
+        _ => 0,
+    };
+    own + info.children.iter().map(scan_rows).sum::<u64>()
 }
 
 /// The engine's message for a function or type an unloaded extension provides, which
