@@ -146,7 +146,6 @@ fn a_future_dated_run_state_leaves_a_cold_nodes_cadence_alone() {
 }
 
 /// A run state a push rewrote and never committed reaches `sync pull` as a warning naming the key, and the pull exits 0.
-// spec: store.pull.run-state-torn@f0e7f46d
 #[test]
 fn sync_pull_warns_of_a_torn_run_state_and_succeeds() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"s1\",\"at\":5}]".into()));
