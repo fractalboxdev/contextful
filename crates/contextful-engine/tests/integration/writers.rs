@@ -288,10 +288,15 @@ fn a_received_batch_counts_its_catalog_calls_per_landing() {
     for (row, name) in [(&first, "execution-k0"), (&measured, "execution-k1")] {
         text = text.replace(&row.execution_id, name);
     }
+    // The D1 replay reads this trace; `CONTEXTFUL_BLESS=1` rewrites it, any other run compares.
     let path = std::path::Path::new(RECEIVE_LANDING_TRACE);
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    if std::fs::read_to_string(path).ok().as_deref() != Some(&*format!("{text}\n")) {
-        std::fs::write(path, text + "\n").unwrap();
+    let expected = format!("{text}\n");
+    if std::env::var_os("CONTEXTFUL_BLESS").is_some() {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, &expected).unwrap();
+    } else {
+        let held = std::fs::read_to_string(path).unwrap_or_default();
+        assert!(held == expected, "{} is stale; rerun with CONTEXTFUL_BLESS=1", path.display());
     }
 }
 
