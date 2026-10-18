@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 557 | 127 | 45 | 17 | 525 | 0 | 525 |
-| `store` | 3 | 19 | 299 | 64 | 15 | 10 | 288 | 0 | 288 |
+| `store` | 3 | 19 | 303 | 64 | 16 | 10 | 292 | 0 | 292 |
 | `surface` | 2 | 21 | 172 | 66 | 24 | 0 | 146 | 0 | 146 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2694 | 680 | 214 | 75 | 2409 | 0 | |
+| **total** | 22 | 169 | 2698 | 680 | 215 | 75 | 2413 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 12 | 289 | 278 | passing | closed |
 | 4 — Ingest | 25 | 601 | 503 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
-| 6 — Sync and replicas | 8 | 90 | 89 | passing | closed |
+| 6 — Sync and replicas | 8 | 94 | 93 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -2133,9 +2133,12 @@ Unscheduled operations: 13.
 | `store.lease.ttl` | `crates/contextful-core/tests/integration/store/sync.rs::a_lease_is_granted_for_10_minutes` | performed |
 | `store.merge.cursor-recency` | `crates/contextful-core/tests/integration/store/sync.rs::differing_copies_of_a_commit_log_entry_refuse` | performed |
 | `store.merge.exhausted` | `crates/contextful-sync/tests/integration/push.rs::exhausted_rounds_refuse_and_report_every_uploaded_object` | performed |
+| `store.merge.held-absent` | `crates/contextful-sync/tests/integration/push.rs::a_store_without_a_record_holds_every_owned_key_once_it_pushed_and_none_before` | performed |
+| `store.merge.held-record` | `crates/contextful-sync/tests/integration/push.rs::a_push_records_the_keys_it_holds_and_a_pull_adds_those_it_brings_home` | performed |
 | `store.merge.ownership` | `crates/contextful-core/tests/integration/store/sync.rs::a_keys_owner_is_read_off_the_key` | performed |
 | `store.merge.retries` | `crates/contextful-sync/tests/integration/push.rs::the_re_commit_loop_takes_five_rounds_by_default_and_the_declared_bound_otherwise` | performed |
-| `store.merge.scoped-union` | `crates/contextful-core/tests/integration/store/sync.rs::a_merge_keeps_every_local_entry_and_only_the_remote_entries_it_does_not_own` | performed |
+| `store.merge.round-ceiling` | `crates/contextful-sync/tests/integration/push.rs::a_push_overtaken_every_round_stops_at_sixty_four_rounds` | performed |
+| `store.merge.scoped-union` | `crates/contextful-core/tests/integration/store/sync.rs::a_merge_tombstones_only_the_owned_entries_its_store_held` | performed |
 | `store.merge.tombstone-owner` | `crates/contextful-core/tests/integration/store/sync.rs::a_tombstone_naming_another_owners_entry_refuses_and_the_entry_stays` | performed |
 | `store.merge.tombstone-signed` | `crates/contextful-sync/tests/integration/converge.rs::a_push_signs_each_tombstone_with_its_issuer_key` | performed |
 | `store.merge.tombstone-ttl` | `crates/contextful-core/tests/integration/store/sync.rs::a_tombstone_leaves_the_manifest_after_30_days` | performed |
@@ -2174,7 +2177,8 @@ Unscheduled operations: 13.
 | `store.push.generation-conflict` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_file_holding_another_commit_refuses_and_the_next_push_numbers_past_it` | performed |
 | `store.push.generation-floor` | `crates/contextful-sync/tests/integration/generation.rs::a_manifest_rewritten_without_its_generation_numbers_past_the_newest_generation_file` | performed |
 | `store.push.generation-heal` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_committed_under_a_concurrent_push_is_written_before_the_next_commit` | performed |
-| `store.push.in-flight` | `crates/contextful-sync/tests/integration/push.rs::a_second_push_of_one_store_refuses_while_the_first_runs` | performed |
+| `store.push.generation-probe` | `crates/contextful-sync/tests/integration/generation.rs::a_commit_round_counts_the_generation_keys_it_lists` | performed |
+| `store.push.in-flight` | `crates/contextful-sync/tests/integration/push.rs::a_second_push_of_one_store_waits_for_the_first_then_refuses_past_its_bound` | performed |
 | `store.push.manifest-commit` | `crates/contextful-sync/tests/integration/push.rs::the_manifest_commits_by_replace_on_the_etag_read` | performed |
 | `store.push.manifest-format` | `crates/contextful-sync/tests/integration/generation.rs::a_manifest_without_a_format_reads_as_format_one` | performed |
 | `store.push.pointer-carry` | `crates/contextful-sync/tests/integration/push.rs::a_push_carries_a_local_folds_pointer_and_a_second_node_reads_its_snapshot` | performed |

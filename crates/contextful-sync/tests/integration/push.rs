@@ -188,23 +188,27 @@ fn the_manifest_commits_by_replace_on_the_etag_read() {
     assert!(run_a.size > 0 && run_a.sha256.len() == 64);
 }
 
-/// A second push of one store on one machine raises `SyncPushInFlight`, naming the holder of the push guard.
-// spec: store.push.in-flight@d101bdd0
+/// A push of one store waits for the push guard another push on the machine holds, up to `[sync] push_wait_secs`,
+/// defaulting to 300 s, then raises `SyncPushInFlight`, naming the holder. A push whose wait outlasts the holder
+/// commits after it.
+// spec: store.push.in-flight@60525ef6
 #[test]
-fn a_second_push_of_one_store_refuses_while_the_first_runs() {
+fn a_second_push_of_one_store_waits_for_the_first_then_refuses_past_its_bound() {
+    assert_eq!(contextful_core::store::sync::PUSH_WAIT_SECS, 300);
     let dir = tempfile::tempdir().unwrap();
     let (gate_tx, gate_rx) = std::sync::mpsc::channel::<()>();
     let (entered_tx, entered_rx) = std::sync::mpsc::channel::<()>();
     let gate = std::sync::Mutex::new(Some(gate_rx));
     let entered = std::sync::Mutex::new(Some(entered_tx));
+    let inner = bucket(dir.path());
     let slow: Arc<dyn ObjectStore> = Arc::new(Scripted {
-        inner: bucket(dir.path()),
+        inner: inner.clone(),
         script: Script {
             on_get: Some(Box::new(move |key: &str| {
                 if key.ends_with("manifest.json") {
                     if let Some(tx) = entered.lock().unwrap().take() {
                         tx.send(()).unwrap();
-                        gate.lock().unwrap().take().unwrap().recv().unwrap();
+                        gate.lock().unwrap().take().unwrap().recv_timeout(std::time::Duration::from_secs(30)).expect("the holder is released");
                     }
                 }
                 None
@@ -212,17 +216,27 @@ fn a_second_push_of_one_store_refuses_while_the_first_runs() {
             ..Script::default()
         },
     });
-    let a = node("ingest-a", slow, "");
+    let mut a = node("ingest-a", slow, "");
+    a.syncer.config.push_wait_secs = Some(1);
     a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    let mut patient = node("ingest-a", inner.clone(), "");
+    patient.syncer.store = a.syncer.store.clone();
+    patient.syncer.config.push_wait_secs = Some(30);
     std::thread::scope(|s| {
         let first = s.spawn(|| a.syncer.push(at(NOW)));
-        entered_rx.recv().unwrap();
+        entered_rx.recv_timeout(std::time::Duration::from_secs(30)).expect("the first push reads the manifest");
+        let waited = std::time::Instant::now();
         match a.syncer.push(at(NOW)) {
             Err(SyncError::Store(StoreError::SyncPushInFlight(m))) => assert!(m.contains(&std::process::id().to_string()), "{m}"),
             other => panic!("{other:?}"),
         }
+        assert!(waited.elapsed() >= std::time::Duration::from_secs(1), "the push waited its bound before refusing");
+        let after = s.spawn(|| patient.syncer.push(at(NOW)));
+        std::thread::sleep(std::time::Duration::from_millis(200));
         gate_tx.send(()).unwrap();
-        first.join().unwrap().unwrap();
+        let held = first.join().unwrap().unwrap();
+        let next = after.join().unwrap().expect("a push waiting within its bound commits after the holder");
+        assert!(next.generation > held.generation, "{held:?} then {next:?}");
     });
 }
 
@@ -330,8 +344,52 @@ fn a_mount_type_off_the_local_allowlist_classifies_as_network() {
     }
 }
 
-/// `[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts.
-// spec: store.merge.retries@84dd83ad
+/// A bucket on which another writer commits the next generation ahead of each of this writer's first `ahead`
+/// manifest puts, writing its generation copy, so each of those puts loses to a newer generation. Returns the bucket
+/// and the count of manifest puts this writer made.
+fn overtaken(dir: &std::path::Path, ahead: usize) -> (Arc<dyn ObjectStore>, Arc<std::sync::atomic::AtomicUsize>) {
+    interfered(dir, Box::new(move |put| (put < ahead).then_some(true)))
+}
+
+/// A bucket answering this writer's manifest put number `put` by `plan(put)`: `Some(true)` commits another writer's
+/// next generation ahead of it, `Some(false)` fails it with no newer generation, and `None` lets it through. Returns
+/// the bucket and the count of manifest puts this writer made.
+fn interfered(dir: &std::path::Path, plan: Box<dyn Fn(usize) -> Option<bool> + Send + Sync>) -> (Arc<dyn ObjectStore>, Arc<std::sync::atomic::AtomicUsize>) {
+    let inner = bucket(dir);
+    let other = inner.clone();
+    let puts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = puts.clone();
+    let b: Arc<dyn ObjectStore> = Arc::new(Scripted {
+        inner,
+        script: Script {
+            on_put: Some(Box::new(move |key, _| {
+                if key != "team/manifest.json" {
+                    return None;
+                }
+                match plan(counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst)) {
+                    None => return None,
+                    Some(false) => return Some(Ok(Put::ConditionFailed)),
+                    Some(true) => {}
+                }
+                let (mut m, condition) = match other.get(key).unwrap() {
+                    Some((bytes, etag)) => (serde_json::from_slice::<BucketManifest>(&bytes).unwrap(), Condition::IfMatch(etag)),
+                    None => (BucketManifest::default(), Condition::IfNoneMatch),
+                };
+                m.generation += 1;
+                let bytes = serde_json::to_vec_pretty(&m).unwrap();
+                assert!(matches!(other.put(key, &bytes, condition).unwrap(), Put::Applied(_)));
+                other.put(&format!("team/{}", generation_key(m.generation)), &bytes, Condition::IfNoneMatch).unwrap();
+                None
+            })),
+            ..Script::default()
+        },
+    });
+    (b, puts)
+}
+
+/// `[sync] push_retries` bounds consecutive re-commit rounds whose re-read manifest carries no newer generation,
+/// defaulting to 5 attempts.
+// spec: store.merge.retries@15d8a962
 #[test]
 fn the_re_commit_loop_takes_five_rounds_by_default_and_the_declared_bound_otherwise() {
     assert_eq!(contextful_core::store::sync::PUSH_RETRIES, 5);
@@ -357,11 +415,46 @@ fn the_re_commit_loop_takes_five_rounds_by_default_and_the_declared_bound_otherw
         assert!(a.syncer.push(at(NOW)).is_err());
         assert_eq!(rounds.load(std::sync::atomic::Ordering::SeqCst), expected);
     }
+    // Rounds lost to a newer generation count against no retry: seven of them, then a commit, under a bound of 2.
+    let dir = tempfile::tempdir().unwrap();
+    let (b, puts) = overtaken(dir.path(), 7);
+    let mut a = node("ingest-a", b, "");
+    a.syncer.config.push_retries = Some(2);
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    let report = a.syncer.push(at(NOW)).unwrap();
+    assert_eq!((report.rounds, report.generation), (8, 8), "{report:?}");
+    assert_eq!(puts.load(std::sync::atomic::Ordering::SeqCst), 8);
+    // Only consecutive rounds meeting no newer generation count: four such rounds, each after one that met a newer
+    // generation, then a commit, under a bound of 2.
+    let dir = tempfile::tempdir().unwrap();
+    let (b, puts) = interfered(dir.path(), Box::new(|put| (put < 8).then_some(put % 2 == 0)));
+    let mut a = node("ingest-a", b, "");
+    a.syncer.config.push_retries = Some(2);
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    let report = a.syncer.push(at(NOW)).expect("no two consecutive rounds meet no newer generation");
+    assert_eq!((report.rounds, report.generation), (9, 5), "{report:?}");
+    assert_eq!(puts.load(std::sync::atomic::Ordering::SeqCst), 9);
 }
 
-/// Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the
-/// bucket, and asks for a re-run.
-// spec: store.merge.exhausted@1170c7b9
+/// A push stops its manifest commit loop after 64 rounds, whatever generations those rounds meet.
+// spec: store.merge.round-ceiling@bb637cc3
+#[test]
+fn a_push_overtaken_every_round_stops_at_sixty_four_rounds() {
+    assert_eq!(contextful_core::store::sync::PUSH_ROUND_CEILING, 64);
+    let dir = tempfile::tempdir().unwrap();
+    let (b, puts) = overtaken(dir.path(), usize::MAX);
+    let a = node("ingest-a", b, "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    match a.syncer.push(at(NOW)) {
+        Err(SyncError::Store(StoreError::SyncManifestRebaseExhausted(m))) => assert!(m.contains("lost 64 races"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(puts.load(std::sync::atomic::Ordering::SeqCst), 64);
+}
+
+/// Exhausting the retries or the round ceiling raises `SyncManifestRebaseExhausted`, reports every uploaded object as
+/// already in the bucket, and asks for a re-run.
+// spec: store.merge.exhausted@c7d702ef
 #[test]
 fn exhausted_rounds_refuse_and_report_every_uploaded_object() {
     let dir = tempfile::tempdir().unwrap();
@@ -611,8 +704,9 @@ fn unit_part(node: &str, i: usize) -> String {
 }
 
 /// Units sharing one store root push through its one push guard: while one push holds it, each overlapping push of
-/// the root raises `SyncPushInFlight`. For N = 2, 4 and 8 units landing disjoint tables, the first push holds at its
-/// manifest read while the other N-1 push; the record is the refusals summed over the three sets.
+/// the root waits within its bound and commits after it. For N = 2, 4 and 8 units landing disjoint tables, the first
+/// push holds at its manifest read while the other N-1 push; the record is the `SyncPushInFlight` refusals summed
+/// over the three sets, and every unit's run is published.
 #[test]
 fn parallel_units_on_one_store_root_count_push_in_flight_refusals() {
     let (mut refusals, mut pushes) = (0usize, 0u64);
@@ -679,6 +773,7 @@ fn parallel_units_on_one_store_root_count_push_in_flight_refusals() {
         pushes += units as u64;
     }
     contextful_eval::record::emit("push-parallel-same-root-refusals", refusals as f64, pushes, 0x5eed_0090);
+    assert_eq!(refusals, 0, "an overlapping push of one root waits for the guard and commits");
 }
 
 /// A round barrier for manifest commits: each writer's manifest put waits until every live writer has reached its
@@ -724,9 +819,9 @@ impl Drop for Leaving<'_> {
 }
 
 /// Writers on distinct nodes and disks merge disjoint tables through the manifest's compare-and-set, re-reading and
-/// re-merging after each lost round within `push_retries` rounds. In lockstep each round has one winner, so for
-/// N = 2, 4 and 8 writers the record is the writers summed over the three sets that exhaust their rounds with
-/// `SyncManifestRebaseExhausted`.
+/// re-merging after each lost round. In lockstep each round has one winner, and each loser's next round meets a
+/// newer generation, which counts against no retry. For N = 2, 4 and 8 writers the record is the writers summed
+/// over the three sets that exhaust their rounds with `SyncManifestRebaseExhausted`.
 #[test]
 fn lockstep_writers_on_distinct_nodes_count_exhausted_rebases() {
     let (mut exhausted, mut pushes) = (0usize, 0u64);
@@ -783,11 +878,13 @@ fn lockstep_writers_on_distinct_nodes_count_exhausted_rebases() {
         pushes += writers as u64;
     }
     contextful_eval::record::emit("push-lockstep-rebase-exhausted", exhausted as f64, pushes, 0x5eed_0091);
+    assert_eq!(exhausted, 0, "every lockstep writer commits");
 }
 
-/// Two disks pushing under one node id each treat the bucket's entries owned by that id as their own, and a push
-/// tombstones every such entry its disk lacks. Disk A pushes three runs, then disk B, which pulled before A pushed,
-/// pushes one run of another table; the record is the number of A's runs B's commit tombstones.
+/// Two disks pushing under one node id each list the bucket's entries owned by that id, and a push tombstones only
+/// those its own disk held at its last sync. Disk A pushes three runs, then disk B, which pulled before A pushed,
+/// pushes one run of another table; the record is the number of A's runs B's commit tombstones, and a third node
+/// pulls every one of them.
 #[test]
 fn sibling_disks_sharing_a_node_id_count_tombstoned_runs() {
     const RUNS: usize = 3;
@@ -804,6 +901,7 @@ fn sibling_disks_sharing_a_node_id_count_tombstoned_runs() {
     for r in 0..RUNS {
         a.land_into("t0", &format!("run-a{r}"), json!([{"id": r}]), "2030-01-01T00:00:00Z");
     }
+    record_run_state(&a);
     a.syncer.push(at(NOW)).unwrap();
     let pushed = manifest(b.as_ref());
     let runs: Vec<Vec<String>> = (0..RUNS)
@@ -812,11 +910,154 @@ fn sibling_disks_sharing_a_node_id_count_tombstoned_runs() {
     assert_eq!(runs.len(), RUNS);
     assert!(runs.iter().all(|keys| !keys.is_empty()), "A's push lists each of its runs: {runs:?}");
     sibling.land_into("t1", "run-b", json!([{"id": 9}]), "2030-01-01T00:00:00Z");
+    record_run_state(&sibling);
     let outcome = sibling.syncer.push(at(NOW));
     let after = manifest(b.as_ref());
     let tombstoned = runs.iter().filter(|keys| keys.iter().any(|k| after.tombstones.contains_key(k) && !after.entries.contains_key(k))).count();
-    eprintln!("the sibling push answered {:?}; {tombstoned} of A's {RUNS} runs tombstoned", outcome.map(|r| r.generation));
+    eprintln!("the sibling push answered {:?}; {tombstoned} of A's {RUNS} runs tombstoned", outcome.as_ref().map(|r| r.generation));
     contextful_eval::record::emit("push-shared-node-sibling-tombstones", tombstoned as f64, RUNS as u64, 0x5eed_0092);
+    outcome.expect("the sibling push commits");
+    assert_eq!(tombstoned, 0, "the sibling tombstones no run its disk never held");
+    assert!(after.entries.keys().any(|k| k.starts_with("research/tables/t1/data/runs/run-b/conformance/")), "the sibling's run is listed");
+    let reader = node("ingest-r", b.clone(), "");
+    crate::support::trust(&[&first, &a, &sibling, &reader], "2030-01-01T00:00:00Z");
+    reader.syncer.pull(&contextful_sync::PullScope::default()).unwrap();
+    for key in runs.iter().flatten() {
+        let rel = key.strip_prefix("research/").unwrap();
+        assert!(reader.root().join(rel).exists(), "a third node pulls `{key}`");
+    }
+}
+
+/// The keys of `node` the store's `.sync-held.json` records.
+fn held_record(n: &crate::support::Node) -> Vec<String> {
+    let record: serde_json::Value = serde_json::from_slice(&std::fs::read(n.root().join(contextful_sync::HELD_FILE)).unwrap()).unwrap();
+    record["nodes"][n.syncer.node.as_str()].as_array().expect("a record for the node").iter().map(|k| k.as_str().unwrap().to_string()).collect()
+}
+
+/// Write the node's run state into its store root, as the CLI does before every push.
+fn record_run_state(n: &crate::support::Node) {
+    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: n.syncer.node.clone(), runs: Default::default(), cursors: Vec::new(), control_version: None };
+    contextful_sync::run_state::record(&n.syncer.store, &state).unwrap();
+}
+
+const RUN_1: &str = "research/tables/filings/data/runs/run-1/ingest-a/part-00000.parquet";
+
+/// A push records in `.sync-held.json`, under its node id, each owned key the store holds, adding them before its
+/// commit and replacing the node's keys after; a pull holding the push guard adds each such key the bucket manifest
+/// lists.
+// spec: store.merge.held-record@1de637d6
+#[test]
+fn a_push_records_the_keys_it_holds_and_a_pull_adds_those_it_brings_home() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    let recorded = held_record(&a);
+    assert!(recorded.iter().any(|k| k == RUN_1), "{recorded:?}");
+    assert!(recorded.iter().all(|k| k.contains("/ingest-a/")), "only keys ingest-a owns: {recorded:?}");
+    // A replacement disk under the node id pulls the node's keys home and records them.
+    let replacement = node("ingest-a", b.clone(), "");
+    replacement.syncer.pull(&contextful_sync::PullScope::default()).unwrap();
+    assert!(held_record(&replacement).iter().any(|k| k == RUN_1));
+    // So its deletion of a pulled run propagates.
+    std::fs::remove_dir_all(replacement.root().join("tables/filings/data/runs/run-1")).unwrap();
+    replacement.syncer.push(at(NOW)).unwrap();
+    let m = manifest(b.as_ref());
+    assert!(m.tombstones.contains_key(RUN_1) && !m.entries.contains_key(RUN_1), "the held run leaves with a tombstone");
+    assert!(!held_record(&replacement).iter().any(|k| k == RUN_1), "the record drops what the store no longer holds");
+    // A push under another node id on the store keeps this node's keys.
+    let mut other = node("ingest-b", b.clone(), "");
+    other.syncer.store = a.syncer.store.clone();
+    other.syncer.push(at(NOW)).unwrap();
+    assert!(held_record(&a).iter().any(|k| k == RUN_1), "ingest-a's keys survive a push under ingest-b");
+}
+
+/// A pull extends the record only while it holds the push guard: during a push of the store it waits within
+/// `[sync] push_wait_secs`, and the record it writes keeps every key that push committed.
+#[test]
+fn a_pull_extends_the_record_only_while_it_holds_the_push_guard() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let armed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (gate_tx, gate_rx) = std::sync::mpsc::channel::<()>();
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel::<()>();
+    let gate = std::sync::Mutex::new(Some(gate_rx));
+    let entered = std::sync::Mutex::new(Some(entered_tx));
+    let arm = armed.clone();
+    let slow: Arc<dyn ObjectStore> = Arc::new(Scripted {
+        inner: inner.clone(),
+        script: Script {
+            on_get: Some(Box::new(move |key: &str| {
+                if arm.load(std::sync::atomic::Ordering::SeqCst) && key.ends_with("manifest.json") {
+                    if let Some(tx) = entered.lock().unwrap().take() {
+                        tx.send(()).unwrap();
+                        gate.lock().unwrap().take().unwrap().recv_timeout(std::time::Duration::from_secs(30)).expect("the holder is released");
+                    }
+                }
+                None
+            })),
+            ..Script::default()
+        },
+    });
+    let a = node("ingest-a", slow, "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    a.land("run-2", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    armed.store(true, std::sync::atomic::Ordering::SeqCst);
+    let mut hasty = node("ingest-a", inner.clone(), "");
+    hasty.syncer.store = a.syncer.store.clone();
+    hasty.syncer.config.push_wait_secs = Some(1);
+    let mut patient = node("ingest-a", inner.clone(), "");
+    patient.syncer.store = a.syncer.store.clone();
+    patient.syncer.config.push_wait_secs = Some(30);
+    std::thread::scope(|s| {
+        let push = s.spawn(|| a.syncer.push(at(NOW)));
+        entered_rx.recv_timeout(std::time::Duration::from_secs(30)).expect("the push reads the manifest");
+        match hasty.syncer.pull(&contextful_sync::PullScope::default()) {
+            Err(SyncError::Store(StoreError::SyncPushInFlight(m))) => assert!(m.contains(&std::process::id().to_string()), "{m}"),
+            other => panic!("a pull during a push waits for its guard: {other:?}"),
+        }
+        let pull = s.spawn(|| patient.syncer.pull(&contextful_sync::PullScope::default()));
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        gate_tx.send(()).unwrap();
+        push.join().unwrap().unwrap();
+        pull.join().unwrap().expect("a pull waiting within its bound runs after the push");
+    });
+    let recorded = held_record(&a);
+    for run in ["run-1", "run-2"] {
+        assert!(recorded.iter().any(|k| *k == RUN_1.replace("run-1", run)), "{run} stays recorded: {recorded:?}");
+    }
+}
+
+/// A store whose `.sync-held.json` names no keys for its node reads as holding every remote key that node owns when an
+/// earlier push left its `.push.lock`, and none otherwise.
+// spec: store.merge.held-absent@6df5abdf
+#[test]
+fn a_store_without_a_record_holds_every_owned_key_once_it_pushed_and_none_before() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.land("run-2", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    // A store that pushed before it kept a record propagates its deletions.
+    std::fs::remove_file(a.root().join(contextful_sync::HELD_FILE)).unwrap();
+    assert!(a.root().join(".push.lock").exists());
+    std::fs::remove_dir_all(a.root().join("tables/filings/data/runs/run-1")).unwrap();
+    a.syncer.push(at(NOW)).unwrap();
+    let m = manifest(b.as_ref());
+    assert!(m.tombstones.contains_key(RUN_1) && !m.entries.contains_key(RUN_1), "{:?}", m.tombstones.keys().collect::<Vec<_>>());
+    // A fresh disk under the node id that never pulled or pushed deletes nothing it never held, though it writes its
+    // run state before the push as the CLI does.
+    let fresh = node("ingest-a", b.clone(), "");
+    fresh.land("run-3", json!([{"id": 3}]), "2030-01-01T00:00:00Z");
+    record_run_state(&fresh);
+    fresh.syncer.push(at(NOW)).unwrap();
+    let run_2 = RUN_1.replace("run-1", "run-2");
+    let m = manifest(b.as_ref());
+    assert!(m.entries.contains_key(&run_2) && !m.tombstones.contains_key(&run_2), "run-2 stays listed");
+    assert!(m.entries.contains_key(&RUN_1.replace("run-1", "run-3")));
 }
 
 /// A run row for unit `unit` at tick `tick`, its id derived from the fixture seed.

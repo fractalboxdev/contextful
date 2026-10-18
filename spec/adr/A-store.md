@@ -453,3 +453,38 @@ A price table keeps raw values. Under `available_as_of` each listed numeric colu
 | Raw storage, factors applied per read *(chosen)* | — | Each bounded read joins the factor table. |
 | Store back-adjusted prices | Point-in-time | A 2014 price encodes a split announced in 2020. |
 | One adjusted copy per factor vintage | Storage | Every split rewrites the price history. |
+
+## A push tombstones only the owned keys its store held
+
+**Status:** accepted; amends the scoped-union decision above, whose merge read every owned key a store lacks as its deletion.
+
+Context: ownership reads the node id off a key, and two disks pushing under one id each lack the other's runs. Criteria: a deletion propagates only from a store that held the key; a replacement host keeps its node's history; no liveness service.
+
+Decision: a store records the keys of its node it held at its last push or pull, a pull extending the record under the push guard. A merge tombstones an owned remote entry only where that record lists it and the store lacks it; another owned entry passes through.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A local record of held keys *(chosen)* | — | One dot-file per store, rewritten each push, sized by the node's keys. |
+| Refuse a push under a node id another live disk holds | Replacement hosts | Telling a live sibling from a replaced host needs a node lease no store keeps. |
+| A base generation, its `gen-<N>.json` listing the held keys | Cold disks | A replaced disk keeps no base, and a missing copy erases it. |
+| Every owned key a store lacks | Sibling disks | One disk erases every run the other pushed. |
+
+Consequences: a store with no record whose earlier push left its push guard file reads as holding every owned key, so its pending deletions still propagate; a store that never pushed reads as holding none.
+Revisit: two disks under one node id overwriting one run state.
+
+## A lost commit round counts only when no newer generation landed
+
+**Status:** accepted; amends the scoped-union decision above, whose retry bound counted every lost round.
+
+Context: in lockstep each commit round has one winner, so a fixed bound of 5 rounds exhausts every writer past the fifth. Criteria: writers that progress all commit; a stuck bucket still refuses; a bound reproduces in a test.
+
+Decision: a lost round whose re-read manifest carries a newer generation resets the retry count; `push_retries` bounds consecutive rounds meeting none, and a ceiling of 64 rounds bounds every push.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Progress-counted retries under a round ceiling *(chosen)* | — | A writer beaten every round spends up to 64 rounds before it refuses. |
+| A fixed bound on lost rounds | Busy buckets | Eight lockstep writers leave three refused. |
+| A wall-clock bound | Reproducibility | The outcome depends on bucket latency. |
+
+Consequences: `SyncManifestRebaseExhausted` names a bucket that stops advancing, or a writer outrun 64 times.
+Revisit: deployments whose concurrent writers exceed 64.

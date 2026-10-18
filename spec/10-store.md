@@ -475,8 +475,8 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *P3*
 - `prefix-overspecified` — Declaring `prefix` and `prefix_from` together raises `SyncPrefixOverspecified`.
   *P3*
-- `in-flight` — A second push of one store on one machine raises `SyncPushInFlight`, naming the holder of the push guard.
-  *A-store*
+- `in-flight` — A push of one store waits for the push guard another push on the machine holds, up to `[sync] push_wait_secs`, defaulting to 300 s, then raises `SyncPushInFlight`, naming the holder.
+  *because units of one serve share a store root, and a refused push fails a fire whose runs already committed*
 - `wire-format` — A push uploads each file it owns, or no node owns, whose digest the bucket lacks under `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks and staging directories stay local, and table pointers travel by {{store.push.pointer-carry}}.
 - `schema-cas` — A table's `schema.json` commits by merging into the bucket's copy through the one-promotion lattice and replacing it on the ETag read; no copy overwrites another.
   *because two nodes landing different columns into one table both keep them*
@@ -490,6 +490,8 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
 - `commit-stamp` — Each manifest commit records `committed_at`, the push's instant, and `committed_by`, the pushing node id; a plan carries neither.
 - `generation-floor` — A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.
   *because a format-1 writer predating the field drops `generation`, and reusing a taken number collides with its immutable copy*
+- `generation-probe` — A push reading a manifest at generation G lists `gen-<G>.json` and each later generation's key alone, stopping at the first absent one; only a manifest without `generation` lists `manifests/` whole.
+  *because the prefix gains one copy per commit and is never pruned, so a whole listing grows every commit round*
 - `generation-heal` — Before each manifest commit, a push finding no `gen-<N>.json` for the generation of the manifest it read creates it from the bytes it read.
   *because a commit of N+1 landing while `gen-<N>.json` is absent leaves a gap no later push sees*
 - `generation-conflict` — A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after its manifest commit applied.
@@ -535,7 +537,7 @@ sequenceDiagram
   loop each file whose digest differs
     W->>B: upload under the prefix
   end
-  loop up to push_retries, default 5
+  loop up to 64 rounds, 5 without progress
     W->>W: merge own entries with remote ones
     W->>M: replace If-Match ETag
     alt condition holds
@@ -573,7 +575,7 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
 - `tombstone-applied` — A pull deletes the local copy of each key a tombstone names and no entry lists; a key holding no local copy is neither verified nor reported.
   *because a deletion that never reaches a consumer resurrects once its tombstone ages out*
 - `cold-own-keys` — A pull into a store holding no `nodes/<node-id>/run-state.json` of its own node downloads that node's keys it lacks, so a replacement host reusing the node id tombstones none of them.
-  *because a push tombstones each key its node owns and no longer holds, deleting the run history a replacement host never pulled*
+  *because a replacement host otherwise reads none of its node's run history, and its push lists none of it as held*
 - `pointer-advance` — A pull advances a local pointer only to a bucket pointer carrying a higher fence, or the same fence and a later snapshot, and verifies every advancing table before writing any pointer.
   *A-store*
 - `schema-merge` — A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.
@@ -649,12 +651,19 @@ Reconciling one bucket manifest between writers: per-entry ownership, tombstones
 - `tombstone-unverified` — A tombstone unsigned, failing its signature, or signed by a key the key-set ledger does not record as verifying at its `deleted_at` raises `SyncTombstoneUnverified`; a merge keeps the entry it names and a pull deletes nothing.
   *A-store*
 - `tombstone-ttl` — A tombstone leaves the manifest 30 d after its `deleted_at`.
-- `retries` — `[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts.
-- `exhausted` — Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.
+- `retries` — `[sync] push_retries` bounds consecutive re-commit rounds whose re-read manifest carries no newer generation than the round before, defaulting to 5 attempts.
+  *A-store*
+- `round-ceiling` — A push stops its manifest commit loop after 64 rounds, whatever generations those rounds meet.
+  *A-store*
+- `exhausted` — Exhausting {{store.merge.retries}} or {{store.merge.round-ceiling}} raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.
   *A-store*
 - `cursor-recency` — Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit.
   *A-run*
-- `scoped-union` — A merge takes each local entry this writer owns or no node owns, and from the remote every other entry; a remote entry it owns and no longer holds leaves with a tombstone.
+- `scoped-union` — A merge takes each local entry this writer owns or no node owns, and every other remote entry; a remote entry it owns leaves with a tombstone only where {{store.merge.held-record}} lists it and the store no longer holds it.
+  *A-store*
+- `held-record` — A push records in `.sync-held.json`, under its node id, each owned key the store holds, adding them before its commit and replacing the node's keys after; a pull holding the push guard adds each such key the bucket manifest lists.
+  *A-store*
+- `held-absent` — A store whose `.sync-held.json` names no keys for its node reads as holding every remote key that node owns when an earlier push left its `.push.lock`, and none otherwise.
   *A-store*
 - `ownership` — A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.
   *A-store*
@@ -838,6 +847,7 @@ secret_access_key = "secret://sync-secret-access-key"
 prefix_from       = "env:CONTEXTFUL_SYNC_PREFIX"
 coordination      = "cas"
 push_retries      = 5
+push_wait_secs    = 300
 pull_before_run   = true
 push_after_run    = true
 

@@ -5,7 +5,7 @@ use contextful_core::store::lease::{BucketLease, CLOCK_SKEW_SECS, RENEWAL_SECS, 
 use contextful_core::store::object::Condition;
 use contextful_core::connector::reference::SecretName;
 use contextful_core::store::sync::{
-    confine, merge, owner_of, BucketManifest, ControlHead, CredentialRef, Endpoint, Entry, SyncConfig, Tombstone, DEFAULT_REGION, TOMBSTONE_TTL_SECS,
+    confine, merge, merge_verified, owner_of, BucketManifest, HeldKeys, ControlHead, CredentialRef, Endpoint, Entry, SyncConfig, Tombstone, DEFAULT_REGION, TOMBSTONE_TTL_SECS,
 };
 use contextful_core::store::StoreError;
 use std::collections::BTreeMap;
@@ -85,9 +85,30 @@ fn a_keys_owner_is_read_off_the_key() {
     assert!(m.manifest.entries.contains_key(SCHEMA) && m.manifest.tombstones.is_empty());
 }
 
-/// A merge takes each local entry this writer owns or no node owns, and from the remote every other entry; a
-/// remote entry it owns and no longer holds leaves with a tombstone.
-// spec: store.merge.scoped-union@d0d3b811
+/// A merge takes each local entry this writer owns or no node owns, and every other remote entry; a remote entry it
+/// owns leaves with a tombstone only where the held record lists it and the store no longer holds it.
+// spec: store.merge.scoped-union@d6efe8eb
+#[test]
+fn a_merge_tombstones_only_the_owned_entries_its_store_held() {
+    let now = at("2030-01-01T00:00:00Z");
+    let gone = "research/tables/filings/data/runs/run-0/ingest-a/part-00000.parquet";
+    let sibling = "research/tables/filings/data/runs/run-9/ingest-a/part-00000.parquet";
+    let remote = BucketManifest {
+        entries: [(gone.to_string(), entry("old", "ingest-a")), (sibling.to_string(), entry("sib", "ingest-a")), (RUN_B.to_string(), entry("b", "ingest-b"))].into(),
+        ..Default::default()
+    };
+    let local: BTreeMap<String, Entry> = [(RUN_A.to_string(), entry("a", "ingest-a"))].into();
+    let held = HeldKeys::Keys([gone.to_string(), RUN_A.to_string()].into());
+    let m = merge_verified(&remote, &local, &held, "ingest-a", now, &|_, _| Ok(())).unwrap().manifest;
+    assert_eq!(m.entries.keys().collect::<Vec<_>>(), [RUN_A, RUN_B, sibling], "an owned entry the store never held stays listed");
+    assert_eq!(m.entries[sibling].sha256, "sib");
+    assert_eq!(m.tombstones.keys().collect::<Vec<_>>(), [gone], "the held entry the store lost leaves");
+    // A store holding every owned key the remote lists tombstones each it lacks.
+    let every = merge_verified(&remote, &local, &HeldKeys::Every, "ingest-a", now, &|_, _| Ok(())).unwrap().manifest;
+    assert_eq!(every.tombstones.keys().collect::<Vec<_>>(), [gone, sibling]);
+}
+
+/// [`merge`] reads the store as holding every owned key the remote lists.
 #[test]
 fn a_merge_keeps_every_local_entry_and_only_the_remote_entries_it_does_not_own() {
     let now = at("2030-01-01T00:00:00Z");

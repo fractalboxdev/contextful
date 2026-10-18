@@ -64,7 +64,7 @@ SyncCredentialUnbound        = { clause = "store.endpoint.credential-unbound", g
 SyncPrefixEscape             = { clause = "store.push.prefix-escape", gloss = "A key resolved outside the configured prefix." }
 SyncPrefixUnbound            = { clause = "store.push.prefix-unbound", gloss = "The variable named by `prefix_from` is unset at startup." }
 SyncPrefixOverspecified      = { clause = "store.push.prefix-overspecified", gloss = "`prefix` and `prefix_from` are declared together." }
-SyncPushInFlight             = { clause = "store.push.in-flight", gloss = "A second push of one store started on a machine already pushing it." }
+SyncPushInFlight             = { clause = "store.push.in-flight", gloss = "A push of one store waited past its bound for the push guard another push on the machine holds." }
 SyncManifestFormatUnsupported = { clause = "store.push.format-unsupported", gloss = "A bucket or generation manifest carries a format newer than the reader parses." }
 SyncGenerationConflict       = { clause = "store.push.generation-conflict", gloss = "A generation manifest already holds another commit's bytes under the number a push committed." }
 SyncGenerationAbsent         = { clause = "store.pull.generation-absent", gloss = "A pull names a generation the bucket holds no generation manifest for." }
@@ -76,7 +76,7 @@ SyncProbeInconclusive        = { clause = "store.probe.inconclusive", gloss = "T
 SyncCoordinationUnproven     = { clause = "store.probe.unproven", gloss = "`cas` is declared against a backend the probe did not demonstrate." }
 SyncTombstoneForeign         = { clause = "store.merge.tombstone-owner", gloss = "A tombstone names an entry another node owns." }
 SyncTombstoneUnverified      = { clause = "store.merge.tombstone-unverified", gloss = "A tombstone is unsigned, fails its signature, or names a signer the key-set ledger does not verify." }
-SyncManifestRebaseExhausted  = { clause = "store.merge.exhausted", gloss = "The bucket manifest commit lost its race past the retry bound." }
+SyncManifestRebaseExhausted  = { clause = "store.merge.exhausted", gloss = "The bucket manifest commit lost its race past the retry bound or the round ceiling." }
 SyncCursorConflict           = { clause = "store.merge.cursor-recency", gloss = "A cursor was resolved by recency instead of through its commit." }
 LeaseHeld                    = { clause = "store.lease.held", gloss = "A run or pass found an unexpired lease another node holds." }
 LeaseFenced                  = { clause = "store.lease.stale-fence", gloss = "A conditional commit lost to a higher fence." }
@@ -108,6 +108,8 @@ store-kdf-lanes             = { clause = "store.encrypt.password-kdf", value = 4
 store-clock-skew            = { clause = "store.lease.clock-skew", value = 30, unit = "s", basis = "chosen", gloss = "Largest clock difference between two machines coordination assumes." }
 store-pull-convergence      = { clause = "store.pull.convergence", value = 3, unit = "attempts", basis = "chosen", gloss = "Manifest re-fetches a pull performs against keys moving beneath it." }
 store-tombstone-ttl         = { clause = "store.merge.tombstone-ttl", value = 30, unit = "d", basis = "chosen", gloss = "Age at which a tombstone leaves the bucket manifest." }
-store-push-retries          = { clause = "store.merge.retries", value = 5, unit = "attempts", basis = "chosen", gloss = "Default re-commit rounds on a lost bucket manifest compare-and-set." }
+store-push-retries          = { clause = "store.merge.retries", value = 5, unit = "attempts", basis = "chosen", gloss = "Default consecutive re-commit rounds meeting no newer generation on a lost bucket manifest compare-and-set." }
+store-push-round-ceiling    = { clause = "store.merge.round-ceiling", value = 64, unit = "rounds", basis = "chosen", gloss = "Manifest commit rounds one push makes, whatever generations they meet." }
+store-push-wait             = { clause = "store.push.in-flight", value = 300, unit = "s", basis = "chosen", gloss = "Default wait for the push guard another push of the store holds." }
 store-lease-ttl             = { clause = "store.lease.ttl", value = 10, unit = "min", basis = "chosen", gloss = "Granted life of a lease." }
 store-lease-renewal         = { clause = "store.lease.renewal", value = 200, unit = "s", basis = "chosen", gloss = "Interval at which a holder renews, a third of the grant." }

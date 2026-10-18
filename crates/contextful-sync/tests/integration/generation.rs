@@ -348,8 +348,10 @@ fn a_generation_pull_takes_the_current_schema() {
     assert_eq!(files(&c), ["tables/filings/data/runs/run-1/ingest-a/part-00000.parquet"]);
 }
 
-/// A commit round lists `manifests/` whole to find the newest `gen-<N>.json`, so its listing grows with every commit
-/// the bucket keeps. Over 1000 generations, one push of one round records the keys it listed under `manifests/`.
+/// A push reading a manifest at generation G lists `gen-<G>.json` and each later generation's key alone, stopping at
+/// the first absent one, and lists `manifests/` whole only for a manifest without `generation`. Over 1000 generations,
+/// one push of one round records the keys it listed under `manifests/`.
+// spec: store.push.generation-probe@860d9f56
 #[test]
 fn a_commit_round_counts_the_generation_keys_it_lists() {
     const GENERATIONS: u64 = 1000;
@@ -375,4 +377,9 @@ fn a_commit_round_counts_the_generation_keys_it_lists() {
     let listed = counted.script.listed_under("team/manifests/");
     eprintln!("one commit round over {GENERATIONS} generations listed {listed} key(s) under manifests/");
     contextful_eval::record::emit("push-generation-list-per-round", listed as f64, u64::from(report.rounds), 0x5eed_0093);
+    assert_eq!(listed, 1, "the round lists `gen-{GENERATIONS}.json` alone");
+    // A generation copy standing past the read manifest's generation is found by its own key.
+    inner.put(&format!("team/{}", generation_key(GENERATIONS + 2)), &bytes, Condition::IfNoneMatch).unwrap();
+    a.land("run-3", json!([{"id": 3}]), "2030-01-01T00:00:00Z");
+    assert_eq!(a.syncer.push(at(NOW)).unwrap().generation, GENERATIONS + 3);
 }
