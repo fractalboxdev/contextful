@@ -16,7 +16,7 @@ use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{admission_pin, resolve_pinned, segment_run_id, Artifacts, ConnectorPin, OwnerScope, Pins};
 use contextful_core::run::plan::Plan;
 use contextful_core::run::ports::{
-    AwakeableStore, BlobStore, Cancellation, Commit, Destination, JournalStore, Landed, OpenExecution, Part, Pull, PullRequest, Shape, Source, Stage, Types, Unshaped,
+    AwakeableStore, BlobStore, Cancellation, Commit, DeadLetter, Destination, JournalStore, Landed, OpenExecution, Part, Pull, PullRequest, Shape, Source, Stage, Types, Unshaped,
     STAGED_BYTES_PER_RUN,
 };
 use contextful_core::run::record::{HistoryPage, RunRow, RunStatus, Window, OWNER_LEASE_TTL_SECS};
@@ -100,6 +100,8 @@ struct RecordedPull {
     /// Whether every fetched clock passed the frontier the pull opened on.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     strict: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    dead_letters: Vec<DeadLetter>,
 }
 
 /// Bytes a run stages before it commits a checkpoint and keeps pulling: 512 MiB
@@ -462,6 +464,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let mut completion_reported = false;
         let mut declined: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
         let mut audit: Vec<String> = Vec::new();
+        // Inputs the source could not read; they land in the dead-letter table with the
+        // run's commit (`run.land.dead-letter`).
+        let mut dead_letters: Vec<DeadLetter> = Vec::new();
         // Columns a staged batch carried with no declared type: their parts hold the
         // inferred type, so a later declaration cannot retype them (`run.land.late-type`).
         let mut undeclared: BTreeSet<String> = BTreeSet::new();
@@ -497,12 +502,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             let pull = match (&prepared, &effect_summary) {
                 (_, Some(summary)) => Pull { rows:Vec::new(), cursor:None, more:emissions.is_some_and(|all| ordinal + 1 < all.len()), snapshot_complete:None, types:summary.types.iter().map(|(column, ty)| (column.clone(), ty.name())).collect(), ..Pull::default() },
                 (_, None) if emissions.is_some() => Pull { rows:Vec::new(), cursor:None, more:false, snapshot_complete:None, types:Default::default(), ..Pull::default() },
-                (Some(prepared), _) => Pull { rows:Vec::new(), cursor:prepared.next.clone(), more:prepared.more, snapshot_complete:prepared.snapshot_complete, types:prepared.types.clone(), skipped:prepared.skipped, declined:prepared.declined.clone(), audit:prepared.audit.clone() },
+                (Some(prepared), _) => Pull { rows:Vec::new(), cursor:prepared.next.clone(), more:prepared.more, snapshot_complete:prepared.snapshot_complete, types:prepared.types.clone(), skipped:prepared.skipped, declined:prepared.declined.clone(), audit:prepared.audit.clone(), dead_letters:prepared.dead_letters.clone() },
                 (None, _) => Pull::decode(resolved.as_ref().expect("ordinary input resolves a pull").bytes())?,
             };
             completion_reported |= pull.snapshot_complete.is_some();
             skipped = skipped.saturating_add(pull.skipped);
             audit.extend(pull.audit.iter().cloned());
+            dead_letters.extend(pull.dead_letters.iter().cloned());
             for (extension, n) in &pull.declined {
                 let held = declined.entry(extension.clone()).or_default();
                 *held = held.saturating_add(*n);
@@ -640,6 +646,19 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         // The land path carries no stop check. Under a lease, the commit point re-reads the
         // lease: a writer a later acquisition fenced out lands nothing.
         let lease = execution.lease();
+        // A replacing table lands no partial inventory, and a run that committed its dead letters
+        // alone would succeed while the table stays stale; the pull fails naming each input, and
+        // the failure discards what it staged (`run.land.dead-letter-replace`). A replay reads the
+        // same inputs, so the recording goes.
+        if !dead_letters.is_empty() && dest.replaces(table) && plan.cursor_kind != CursorKind::Monotonic {
+            execution.discard();
+            let named: Vec<String> = dead_letters.iter().map(|letter| letter.reason.clone()).collect();
+            return Err(Failure::deterministic(
+                FailureTag::Permanent,
+                RunError::PipelineUnreadableInput(format!("replacing table `{table}` lands no partial inventory; {} unreadable: {}", dead_letters.len(), named.join("; "))).to_string(),
+            )
+            .into());
+        }
         // A reported partial inventory cannot displace a complete replacement. Sources
         // predating the completion field retain their existing nonempty-run behavior.
         if dest.replaces(table) && plan.cursor_kind != CursorKind::Monotonic && (skipped > 0 || (completion_reported && !snapshot_complete)) {
@@ -647,11 +666,15 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             parts.clear();
             position = cached.position.clone();
         }
+        if !dead_letters.is_empty() {
+            dest.stage_dead_letters(table, staging, &spec.site_id, &dead_letters)?;
+        }
         let moved = position != cached.position;
         let batch_count = parts.len() as u64;
         let replace_frontier = batch_count == 0 && skipped == 0 && snapshot_complete && plan.cursor_kind != CursorKind::Monotonic && dest.replaces(table);
         let committed_at = self.catalog.now()?;
-        let landed = if batch_count > 0 || moved || replace_frontier {
+        let committed = batch_count > 0 || moved || replace_frontier || !dead_letters.is_empty();
+        let landed = if committed {
             let precommit = || -> Result<(), Failure> {
                 if let Some(owner) = parent {
                     if emissions.is_some() { self.validate_body_owner(owner)?; }
@@ -688,7 +711,6 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         } else {
             Landed::default()
         };
-        let committed = batch_count > 0 || moved || replace_frontier;
         let mut next = CursorRow {
             position,
             version: 0,
@@ -825,7 +847,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 let count = rows.len() as u64;
                 let columns = rows.iter().flat_map(|row| row.keys()).cloned().collect();
                 let prepared = if rows.is_empty() { Value::Null } else { dest.prepare_recorded(&spec.plan.spec.table, rows, types.clone(), execution.execution_id())? };
-                let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, fetched, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined, audit:pull.audit, walk, strict };
+                let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, fetched, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined, audit:pull.audit, walk, strict, dead_letters:pull.dead_letters };
                 serde_json::to_vec(&recorded).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))
             }, parent);
             if late { execution.discard(); }

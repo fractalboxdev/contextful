@@ -515,8 +515,17 @@ The declared behavior of each source compiled into the engine.
 - `object-zip` — `compression = "zip"`, or an object key ending `.zip` with `compression` undeclared, decodes one archive member.
 - `zip-member` — An archive decodes its single member, or the member `member` names. Several members without `member`, or a named member the archive lacks, is unreadable input under {{run.land.unreadable-input}}.
   *because landing one member of several by archive order picks rows the declaration never named*
-- `object-expansion` — One object or HTTP body decompresses to at most 256 MiB, counted as the bytes arrive. Past it the read refuses whole, naming the object or the scrubbed URL, and lands nothing.
-- `object-unreadable` — An object a decoder cannot read refuses the whole read under {{run.land.unreadable-input}}, naming it as `s3://<bucket>/<key>`, and no other object of the read lands.
+- `object-expansion` — One object or HTTP body decompresses to at most 256 MiB, counted as the bytes arrive. Past it the body lands nothing, named as the object or the scrubbed URL, and an HTTP read refuses whole.
+- `object-unreadable` — An object a decoder cannot read, or one past {{connector.source.object-expansion}}'s ceiling, lands no rows and one {{run.land.dead-letter}} row naming it as `s3://<bucket>/<key>`; the rest of the read lands.
+  *A-connector*
+- `unreadable-all` — An object or file read in which every input it reaches is unreadable, none landing or held unchanged, refuses whole under {{run.land.unreadable-input}}, naming each input.
+  *because every input failing names a declaration fault, such as a wrong `format`, rather than damaged inputs*
+- `unreadable-position` — With `skip_unchanged = true` a position holds a dead-lettered object at its ETag, and the `file` position holds a dead-lettered file at its digest, so a later read skips it until it changes.
+  *because a dead letter re-landing on every fire fills the dead-letter table with one fault*
+- `dead-letter-replay` — `replay_dead_letters = true` on the `s3` or `file` source re-reads every input its position holds dead-lettered, whatever its ETag or digest, landing it or dead-lettering it again.
+  *because a fixed decoder reads unchanged bytes, which no ETag or digest change announces*
+- `unreadable-incomplete` — A read that dead-letters an input reports no complete snapshot, so a replacing table retires none of that input's earlier rows.
+  *because a complete snapshot claim tombstones every row the read omits*
 - `etag-skip` — With `skip_unchanged = true`, the object source's position maps each object key to its ETag in place of {{run.advance.skip-unchanged}}'s digest; an object whose ETag matches lands nothing, and a read matching every object closes a zero-row success.
 - `object-credentials` — The `s3` source's `access_key_id` and `secret_access_key` each hold one `secret://<name>` reference, declared together and hydrated per read; undeclared, requests go unsigned. A literal in either is refused under {{connector.reference.material-in-a-declaration}}.
 - `object-transport` — The `s3` source presigns each request through the S3 bucket adapter of {{store.endpoint.addressing}} and sends it through the mediated client, allowlisting the endpoint host alone; a skip compares listed or head-request ETags and downloads no object.
@@ -545,6 +554,8 @@ The declared behavior of each source compiled into the engine.
 - `frontmatter-columns` — Each other frontmatter key lands lowercased as a string column on every row of its note: a scalar as its text, a list as a JSON array.
 - `document-url` — With `base_url`, a row's url is the base joined with its slug, then `#page=<n>` on a PDF page or the heading's anchor on a heading section; without `base_url` the url is null.
 - `file-position` — The `file` position maps each landed path to its digest and row count. A matching digest lands nothing, a changed file re-lands whole and tombstones ordinals past its new count, and a vanished file tombstones every row.
+- `file-unreadable` — A file a decoder cannot read lands no rows and one {{run.land.dead-letter}} row, keeps its earlier rows, and the read continues.
+  *A-connector*
 - `file-rename` — A file renamed onto its old slug re-lands under its new path, and the old path tombstones only ordinals past the renamed file's row count.
   *because a tombstone on an identity the read lands live removes the renamed document*
 - `file-cap` — A file over 64 MiB is declined, and none of it past the leading bytes announcing its format is read.
@@ -683,6 +694,12 @@ unsettled: Does a conditional read also carry a watermark in one position, so a 
 unsettled: Does a feed entry with an unreadable date land with a null `published_at` rather than refusing the whole document? owner: connector affects: connector.source
 
 unsettled: Does the default build link the PDF decoder, so a document folder holding a PDF lands without a rebuild? owner: connector affects: connector.source
+
+unsettled: Does a prefix read under `skip_unchanged` take each ETag from the listing, so an unchanged object skips without a download? owner: connector affects: connector.source
+
+unsettled: Does an object read without `skip_unchanged` hold its dead letters at their SHA-256, so an unchanged unreadable object stops landing a dead letter every fire? owner: connector affects: connector.source
+
+unsettled: Does a failure the declaration causes, such as `columns` off every object's field count or a missing `member`, refuse the read rather than dead-letter each changed object? owner: connector affects: connector.source
 
 ## Shapes
 

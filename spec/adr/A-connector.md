@@ -92,11 +92,24 @@ An input lands whole and faithful or refuses by name, and no input ends the serv
 | Process boundary, permanent whole-input refusal per table *(chosen)* | — | Every input pays a boundary crossing; one damaged page discards a readable document; non-UTF-8 publications are unreadable. |
 | In-process unwind guard or watchdog thread | Effectiveness | A crash or runaway allocation in a native decoder ends the process; native code is neither interruptible nor memory-bounded. |
 | Land the parsed parts with a truncation flag | Distinguishability | No reader consults the flag, so a fragment is quoted as the document. |
-| Skip the item and tally it | Answerability | A collection missing documents reads like one that has none. |
+| Skip the item and tally it, for HTTP bodies and receive batches | Answerability | A collection missing documents reads like one that has none. |
 | Lossy or statistical decoding | Honesty of landed values | Replacement characters land as publisher text. |
 
-Consequences: a large collection progresses only after the offending file is removed or converted.
+Consequences: an HTTP collection progresses only after the offending body is removed or converted; object and file reads dead-letter under the section below.
 Revisit: crossing overhead exceeds decode time on small inputs; a read surface honors a completeness predicate; a memory-safe compound-binary reader exists.
+
+## Unreadable objects and files dead-letter while the read lands the rest
+
+One damaged input refusing a prefix or folder read holds back every other input and its position. An object or file a decoder cannot read, or one past the expansion ceiling, lands one row — key, reason, SHA-256 — in `<table>_dead_letter`, committed beside the readable rows. The position holds the input at its ETag or digest; `replay_dead_letters` reads it again. A read whose every input is unreadable refuses whole. The dead-letter table names each input a collection lacks, which a tally cannot; it governs object and file reads, and the section above governs HTTP bodies and receive batches. A replacing table fails a pull that dead-letters anything, since its partial inventory cannot replace the table.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Dead-letter table, position past the input *(chosen)* | — | A sibling table per table; a fixed decoder waits on a replay; a replacing table still stalls. |
+| Refuse the whole read | Progress | One damaged object stalls thousands. |
+| Skip and tally under a ceiling | Answerability | A count names no input. |
+| Audit entries on the run record | Queryability | Capped per run; join no table. |
+
+Consequences: a dead-lettered input keeps its earlier rows live until a replay or a changed input lands it.
 
 ## Host access and quota are declared and fail closed
 

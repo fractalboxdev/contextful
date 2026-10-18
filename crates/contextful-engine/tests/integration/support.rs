@@ -6,7 +6,7 @@ use contextful_core::ports::Clock;
 use contextful_core::run::backfill::ChunkRow;
 use contextful_core::run::own::{ConnectorPin, ExecutionOwner, OwnerScope};
 use contextful_core::run::plan::Plan;
-use contextful_core::run::ports::{Cancellation, Commit, Destination, Landed, Marker, Part, PullRequest, Row, Source, Stage};
+use contextful_core::run::ports::{Cancellation, Commit, DeadLetter, Destination, Landed, Marker, Part, PullRequest, Row, Source, Stage};
 use contextful_core::run::record::{HistoryPage, RunRow, Window};
 use contextful_core::run::{Failure, RunError};
 use contextful_core::time::Instant;
@@ -173,6 +173,8 @@ pub struct Sink {
     pub discarded: Vec<(String, String)>,
     /// Whether every table replaces its source state.
     pub replace: bool,
+    /// Every dead-letter stage, as `(table, run_id, letters)`.
+    pub dead_letters: Vec<(String, String, Vec<DeadLetter>)>,
 }
 
 impl Destination for Sink {
@@ -214,6 +216,11 @@ impl Destination for Sink {
             panic!("the process dies after the commit marker lands");
         }
         Ok(self.report.unwrap_or(Landed { rows, bytes }))
+    }
+
+    fn stage_dead_letters(&mut self, table: &str, run_id: &str, _: &str, letters: &[DeadLetter]) -> Result<(), Failure> {
+        self.dead_letters.push((table.to_string(), run_id.to_string(), letters.to_vec()));
+        Ok(())
     }
 
     fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure> {

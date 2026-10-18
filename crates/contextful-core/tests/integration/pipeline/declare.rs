@@ -211,9 +211,9 @@ fn an_undeserializable_manifest_names_file_key_path_and_value() {
     assert!(collect(&[manifest("contextful.toml", "[[pipeline.tables]]\nname = \"filings\"\n")]).unwrap().is_empty());
 }
 
-/// Two tables whose destination names fold to one spelling, within one pipeline or across pipelines, raise
-/// `PipelineTableNameCollision` at validation, naming both declarations.
-// spec: run.declare.table-name-collision@584c7c4c
+/// Two tables whose destination names fold to one spelling, or one whose name is another's `<name>_dead_letter`, within
+/// one pipeline or across pipelines, raise `PipelineTableNameCollision` at validation, naming both declarations.
+// spec: run.declare.table-name-collision@f4f441bb
 #[test]
 fn tables_folding_to_one_destination_name_are_refused() {
     let within = "[[pipeline]]\nid = \"shop\"\ntables = [\"a-b\", \"a_b\"]\n[pipeline.source]\nname = \"http\"\n";
@@ -227,6 +227,14 @@ fn tables_folding_to_one_destination_name_are_refused() {
         other => panic!("{other:?}"),
     }
     assert_eq!(collect(&[manifest("contextful.toml", &within.replace("\"a_b\"", "\"c\""))]).unwrap().len(), 1);
+    // A table landing in another's dead-letter table collides with it, in either declaration order.
+    for tables in ["[\"docs\", \"docs-dead-letter\"]", "[\"docs_dead_letter\", \"docs\"]"] {
+        let letters = within.replace("[\"a-b\", \"a_b\"]", tables);
+        match collect(&[manifest("contextful.toml", &letters)]) {
+            Err(RunError::PipelineTableNameCollision(m)) => assert!(m.contains("dead letters of") && m.contains("shop_docs_dead_letter"), "{m}"),
+            other => panic!("{tables}: {other:?}"),
+        }
+    }
 }
 
 #[test]

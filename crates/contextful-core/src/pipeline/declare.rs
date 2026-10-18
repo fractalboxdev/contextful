@@ -339,18 +339,22 @@ pub fn read_manifest(f: &ManifestFile) -> Result<Vec<Declared>, RunError> {
     }
 }
 
-/// Refuse two tables folding to one destination name, within one pipeline or across
-/// pipelines (`run.declare.table-name-collision`).
+/// Refuse two tables folding to one destination name, or one landing in another's dead-letter
+/// table, within one pipeline or across pipelines (`run.declare.table-name-collision`).
 pub fn check_destinations(declared: &[Declared]) -> Result<(), RunError> {
     let mut seen: Vec<(String, String)> = Vec::new();
     for d in declared {
         for t in &d.spec.tables {
             let name = d.spec.table_name(t.name());
             let here = format!("pipeline `{}` table `{}` ({}:{})", d.spec.id, t.name(), d.file, d.line);
-            if let Some((_, first)) = seen.iter().find(|(n, _)| *n == name) {
-                return Err(RunError::PipelineTableNameCollision(format!("{first} and {here} both land in `{name}`")));
+            let letters = crate::run::ports::dead_letter_table(&name);
+            for (landed, by) in [(&name, here.clone()), (&letters, format!("the dead letters of {here}"))] {
+                if let Some((_, first)) = seen.iter().find(|(n, _)| n == landed) {
+                    return Err(RunError::PipelineTableNameCollision(format!("{first} and {by} both land in `{landed}`")));
+                }
             }
-            seen.push((name, here));
+            seen.push((name, here.clone()));
+            seen.push((letters, format!("the dead letters of {here}")));
         }
     }
     Ok(())

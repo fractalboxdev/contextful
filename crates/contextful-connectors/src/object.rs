@@ -2,6 +2,10 @@
 //! decompressed under a ceiling and decoded through the shared decoders
 //! (`connector.source.object-address`, `connector.source.prefix-listing`).
 //!
+//! An object a decoder cannot read, or one past the expansion ceiling, lands a dead letter
+//! naming its key, the reason and its digest, and the rest of the read lands
+//! (`connector.source.object-unreadable`).
+//!
 //! A signed read presigns each request through [`Presign`], which the binary implements over
 //! the store's S3 bucket adapter, and sends it through the mediated client, so one S3 client
 //! signs every bucket request and the bucket is one more allowlisted vendor host
@@ -13,13 +17,14 @@ use crate::http::ConfigError;
 use contextful_core::connector::attach::{endpoint, is_loopback_host, scrub, Allowlist};
 use contextful_core::connector::reference::{check_material, Hydrated, Part, SecretName, Template};
 use contextful_core::connector::ConnectorError;
-use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source};
+use contextful_core::run::ports::{Cancellation, DeadLetter, PullRequest, Row, Source};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::object::{ObjectError, ObjectStore};
 use contextful_outbound::client::{classify, Client};
 use contextful_outbound::Resolver;
 use serde_json::{Map, Value};
-use std::collections::BTreeMap;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use url::Url;
 
@@ -31,7 +36,7 @@ pub const DEFAULT_ENDPOINT: &str = "https://s3.amazonaws.com";
 pub const DEFAULT_REGION: &str = "us-east-1";
 
 /// The configuration keys the object source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 17] = [
+pub const KEYS: [&str; 18] = [
     "bucket",
     "key",
     "prefix",
@@ -47,6 +52,7 @@ pub const KEYS: [&str; 17] = [
     "delimiter",
     "columns",
     "skip_unchanged",
+    "replay_dead_letters",
     "access_key_id",
     "secret_access_key",
 ];
@@ -76,6 +82,9 @@ pub struct ObjectConfig {
     /// Compression, zip member and delimited-text keys.
     pub body: BodyKeys,
     pub skip_unchanged: bool,
+    /// Re-read every object the position holds dead-lettered, whatever its ETag
+    /// (`connector.source.dead-letter-replay`).
+    pub replay_dead_letters: bool,
     /// The access key id and secret access key references, declared together or not at all.
     pub access_key_id: Option<Template>,
     pub secret_access_key: Option<Template>,
@@ -215,6 +224,7 @@ impl ObjectConfig {
             records,
             body,
             skip_unchanged: flag(cfg, "skip_unchanged")?,
+            replay_dead_letters: flag(cfg, "replay_dead_letters")?,
             access_key_id,
             secret_access_key,
         })
@@ -408,26 +418,44 @@ impl ObjectSource {
     }
 
     /// Read every addressed object from `position`: the rows of each object whose ETag moved,
-    /// and the position after them. A failure on any object lands none.
+    /// and the position after them. An unreadable object lands a dead letter in place of rows.
     pub fn read(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<(Vec<Row>, Option<Value>), Failure> {
-        self.read_with_completion(position, cancel).map(|(rows, cursor, _)| (rows, cursor))
+        self.read_whole(position, cancel).map(|read| (read.rows, read.cursor))
     }
 
-    /// The source examined its complete inventory only when no object was skipped.
-    fn read_with_completion(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<(Vec<Row>, Option<Value>, bool), Failure> {
+    /// The rows one object's bytes decode to.
+    fn decode(&self, key: &str, bytes: &[u8], input: &str) -> Result<Vec<Row>, Failure> {
+        let body = self.config.body.decompress(key, bytes, input)?;
+        Ok(match self.config.format {
+            Format::Workbook => workbook::rows(&body, None, 0, input)?,
+            format => decode_delimited(format, &body, self.config.records.as_deref(), input, self.config.encoding.as_deref(), &self.config.body.delimited)?.0,
+        })
+    }
+
+    fn read_whole(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<ObjectRead, Failure> {
         let skip = self.config.skip_unchanged;
         let held: BTreeMap<String, String> =
             position.filter(|_| skip).and_then(|p| p.get("objects")).and_then(|o| serde_json::from_value(o.clone()).ok()).unwrap_or_default();
+        let held_dead: BTreeSet<String> =
+            position.filter(|_| skip).and_then(|p| p.get("dead_letters")).and_then(|o| serde_json::from_value(o.clone()).ok()).unwrap_or_default();
         let objects = (self.open)()?;
         let mut etags = BTreeMap::new();
+        let mut dead = BTreeSet::new();
         let mut rows = Vec::new();
+        let mut letters = Vec::new();
+        let mut refusals = Vec::new();
+        // Objects landed or held unchanged; a read whose every object is unreadable refuses
+        // (`connector.source.unreadable-all`).
+        let mut readable = 0usize;
         let mut skipped_input = false;
         for (key, listed) in self.keys(objects.as_ref())? {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped between objects"));
             }
             let input = self.config.input(&key);
-            if let Some(tag) = held.get(&key).filter(|_| skip) {
+            let was_dead = held_dead.contains(&key);
+            let replay = self.config.replay_dead_letters && was_dead;
+            if let Some(tag) = held.get(&key).filter(|_| skip && !replay) {
                 // An unchanged ETag costs a listing entry or a head request, never a download.
                 let current = match listed {
                     Some(t) => Some(t),
@@ -435,7 +463,12 @@ impl ObjectSource {
                     None => None,
                 };
                 if current.as_ref() == Some(tag) {
-                    etags.insert(key, tag.clone());
+                    etags.insert(key.clone(), tag.clone());
+                    if was_dead {
+                        dead.insert(key);
+                    } else {
+                        readable += 1;
+                    }
                     skipped_input = true;
                     continue;
                 }
@@ -443,26 +476,76 @@ impl ObjectSource {
             let (bytes, etag) = objects.get(&key)?.ok_or_else(|| Failure::deterministic(FailureTag::Permanent, format!("`{input}`: no object holds the key")))?;
             let unchanged = held.get(&key) == Some(&etag);
             etags.insert(key.clone(), etag);
-            if skip && unchanged {
+            if skip && unchanged && !replay {
+                if was_dead {
+                    dead.insert(key);
+                } else {
+                    readable += 1;
+                }
                 skipped_input = true;
                 continue;
             }
-            let body = self.config.body.decompress(&key, &bytes, &input)?;
-            let decoded = match self.config.format {
-                Format::Workbook => workbook::rows(&body, None, 0, &input)?,
-                format => decode_delimited(format, &body, self.config.records.as_deref(), &input, self.config.encoding.as_deref(), &self.config.body.delimited)?.0,
-            };
-            rows.extend(decoded);
+            match self.decode(&key, &bytes, &input) {
+                Ok(decoded) => {
+                    readable += 1;
+                    rows.extend(decoded);
+                }
+                // A deterministic refusal over the object's own bytes is the object's fault, never
+                // the read's: it lands a dead letter and the read continues.
+                Err(f) if f.deterministic && f.tag == FailureTag::Permanent => {
+                    letters.push(DeadLetter { key: key.clone(), reason: f.message.clone(), sha256: hex(&Sha256::digest(&bytes)) });
+                    refusals.push(f);
+                    dead.insert(key);
+                }
+                Err(f) => return Err(f),
+            }
         }
-        Ok((rows, skip.then(|| serde_json::json!({ "objects": etags })), !skipped_input))
+        if readable == 0 && !refusals.is_empty() {
+            return Err(unreadable_all(refusals));
+        }
+        let mut cursor = serde_json::json!({ "objects": etags });
+        if !dead.is_empty() {
+            cursor["dead_letters"] = serde_json::json!(dead);
+        }
+        let complete = !skipped_input && letters.is_empty();
+        Ok(ObjectRead { rows, cursor: skip.then_some(cursor), complete, letters })
     }
+}
+
+/// One read of the addressed objects.
+struct ObjectRead {
+    rows: Vec<Row>,
+    cursor: Option<Value>,
+    /// Every addressed object landed; an unchanged or dead-lettered object leaves it false.
+    complete: bool,
+    letters: Vec<DeadLetter>,
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The refusal of a read whose every object is unreadable: the one object's own refusal, or
+/// one naming every object and its reason.
+fn unreadable_all(mut refusals: Vec<Failure>) -> Failure {
+    if refusals.len() == 1 {
+        return refusals.remove(0);
+    }
+    let reasons: Vec<String> = refusals.iter().map(|f| f.message.clone()).collect();
+    Failure::deterministic(FailureTag::Permanent, RunError::PipelineUnreadableInput(format!("every one of the {} objects the read addresses is unreadable: {}", refusals.len(), reasons.join("; "))).to_string())
 }
 
 impl Source for ObjectSource {
     /// One pull reads every addressed object; the position rides the pull as its cursor.
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
-        let (rows, cursor, snapshot_complete) = self.read_with_completion(request.position.as_ref(), cancel)?;
-        serde_json::to_vec(&serde_json::json!({ "rows": rows, "cursor": cursor, "more": false, "snapshot_complete": snapshot_complete }))
+        let read = self.read_whole(request.position.as_ref(), cancel)?;
+        let mut pull = serde_json::json!({ "rows": read.rows, "cursor": read.cursor, "more": false, "snapshot_complete": read.complete });
+        // Each dead-lettered object counts on the run record (`run.record.skipped-count`).
+        if !read.letters.is_empty() {
+            pull["skipped"] = serde_json::json!(read.letters.len());
+            pull["dead_letters"] = serde_json::json!(read.letters);
+        }
+        serde_json::to_vec(&pull)
             .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }

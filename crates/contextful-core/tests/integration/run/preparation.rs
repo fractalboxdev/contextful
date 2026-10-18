@@ -23,3 +23,18 @@ fn a_source_cannot_supply_an_internal_prepared_journal_envelope() {
     let bytes = br#"{"authority":"guessed","prepared":{"tables":{}},"rows":[],"next":null}"#;
     assert!(contextful_core::run::ports::Pull::decode(bytes).is_err());
 }
+
+/// A pull carries the inputs its source could not read, and a destination keeping no dead-letter table refuses them
+/// rather than dropping them.
+#[test]
+fn a_pull_carries_its_dead_letters_and_an_ordinary_destination_refuses_them() {
+    use contextful_core::run::ports::{dead_letter_table, DeadLetter, Pull};
+    let bytes = br#"{"rows":[{"n":1}],"skipped":1,"dead_letters":[{"key":"d/2.jsonl","reason":"PipelineUnreadableInput: line 2","sha256":"ab"}]}"#;
+    let pull = Pull::decode(bytes).unwrap();
+    let letter = DeadLetter { key: "d/2.jsonl".into(), reason: "PipelineUnreadableInput: line 2".into(), sha256: "ab".into() };
+    assert_eq!(pull.dead_letters, std::slice::from_ref(&letter));
+    assert_eq!(Pull::decode(&serde_json::to_vec(&pull).unwrap()).unwrap(), pull, "a pull's dead letters round-trip");
+    assert!(Pull::decode(br#"{"dead_letters":[{"key":"k","reason":"r","sha256":"s","extra":1}]}"#).is_err(), "a dead letter holds three fields");
+    assert_eq!(dead_letter_table("feed_orders"), "feed_orders_dead_letter");
+    assert!(Ordinary.stage_dead_letters("feed_orders", "run-1", "site-a", &[letter]).is_err());
+}

@@ -12,6 +12,7 @@ use contextful_core::store::object::{Condition, ObjectError, ObjectStore, Put};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -145,30 +146,76 @@ fn a_gz_key_or_declared_gzip_decompresses_and_none_reads_as_stored() {
     assert!(matches!(refusal(json!({"bucket": "b", "key": "k", "compression": "zstd"})), ConfigError::Run(_)));
 }
 
-/// One object decompresses to at most 256 MiB; past it the read refuses whole, naming the
-/// object, and lands nothing.
-// spec: connector.source.object-expansion@4df187c1
+/// One object decompresses to at most 256 MiB, counted as the bytes arrive. Past it the object lands nothing and is
+/// unreadable under {{connector.source.object-unreadable}}, named with the ceiling.
+// spec: connector.source.object-expansion@61ca643d
 #[test]
-fn an_object_expanding_past_256_mib_refuses_naming_it_and_lands_nothing() {
+fn an_object_expanding_past_256_mib_lands_nothing_and_is_named_with_the_ceiling() {
     assert_eq!(EXPANSION_CEILING, 256 * 1024 * 1024);
     let mut body = b"{\"n\":1}\n".to_vec();
     body.resize(EXPANSION_CEILING as usize + 1, b'\n');
     let bucket = MemBucket::with(&[("big/1.jsonl.gz", &gz(b"{\"n\":0}\n")), ("big/2.jsonl.gz", &gz(&body))]);
-    let mut s = source(json!({"bucket": "lake", "prefix": "big/", "format": "jsonl"}), bucket);
-    let f = s.pull(&request(None), &Never).unwrap_err();
+    let pulled = pull_json(&mut source(json!({"bucket": "lake", "prefix": "big/", "format": "jsonl"}), bucket.clone()), None).unwrap();
+    assert_eq!(pulled["rows"], json!([{"n": 0}]), "no byte of the oversize object lands");
+    let reason = pulled["dead_letters"][0]["reason"].as_str().unwrap_or_default();
+    assert!(reason.contains("s3://lake/big/2.jsonl.gz") && reason.contains(&EXPANSION_CEILING.to_string()), "{pulled}");
+    // A read of the oversize object alone refuses, naming it and the ceiling.
+    let f = source(json!({"bucket": "lake", "key": "big/2.jsonl.gz", "format": "jsonl"}), bucket).pull(&request(None), &Never).unwrap_err();
     assert!(f.message.contains("s3://lake/big/2.jsonl.gz") && f.message.contains(&EXPANSION_CEILING.to_string()), "{f}");
     assert!(f.deterministic, "a ceiling over static bytes is deterministic");
 }
 
-/// An object a decoder cannot read refuses the whole read, naming `s3://<bucket>/<key>`,
-/// and no other object of the read lands.
-// spec: connector.source.object-unreadable@a4fe1b2d
+/// One pull as the runner receives it.
+fn pull_json(s: &mut ObjectSource, position: Option<Value>) -> Result<Value, contextful_core::run::Failure> {
+    Ok(serde_json::from_slice(&s.pull(&request(position), &Never)?).unwrap())
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// An object a decoder cannot read, or one past {{connector.source.object-expansion}}'s ceiling, lands no rows and one
+/// {{run.land.dead-letter}} row; the rest of the read lands.
+// spec: connector.source.object-unreadable@2c509939
 #[test]
-fn one_unreadable_object_refuses_the_whole_read_naming_it() {
-    let bucket = MemBucket::with(&[("d/1.jsonl", b"{\"n\":1}\n"), ("d/2.jsonl", b"{\"n\":2}\n[3]\n"), ("d/3.jsonl", b"{\"n\":4}\n")]);
-    let mut s = source(json!({"bucket": "lake", "prefix": "d/", "format": "jsonl"}), bucket);
-    let f = s.pull(&request(None), &Never).unwrap_err();
-    assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("s3://lake/d/2.jsonl") && f.message.contains("line 2"), "{f}");
+fn an_unreadable_object_lands_a_dead_letter_and_the_rest_of_the_read_lands() {
+    let bad = b"{\"n\":2}\n[3]\n";
+    let bucket = MemBucket::with(&[("d/1.jsonl", b"{\"n\":1}\n"), ("d/2.jsonl", bad), ("d/3.jsonl", b"{\"n\":4}\n")]);
+    let pulled = pull_json(&mut source(json!({"bucket": "lake", "prefix": "d/", "format": "jsonl"}), bucket), None).unwrap();
+    assert_eq!(pulled["rows"], json!([{"n": 1}, {"n": 4}]), "no row of the unreadable object lands");
+    assert_eq!(pulled["skipped"], json!(1));
+    let letters = pulled["dead_letters"].as_array().cloned().unwrap_or_default();
+    assert_eq!(letters.len(), 1, "{pulled}");
+    assert_eq!((&letters[0]["key"], &letters[0]["sha256"]), (&json!("d/2.jsonl"), &json!(sha256(bad))));
+    let reason = letters[0]["reason"].as_str().unwrap();
+    assert!(reason.starts_with("PipelineUnreadableInput") && reason.contains("s3://lake/d/2.jsonl") && reason.contains("line 2"), "{reason}");
+}
+
+/// A position holds a dead-lettered object at its ETag, so a later read skips it until the ETag changes; with
+/// `replay_dead_letters = true` a read decodes it again.
+// spec: connector.source.unreadable-position@1e81082c
+// spec: connector.source.dead-letter-replay@91122ea9
+#[test]
+fn a_dead_lettered_object_is_held_at_its_etag_until_it_changes_or_a_replay_reads_it() {
+    let bucket = MemBucket::with(&[("d/1.jsonl", b"{\"n\":1}\n"), ("d/2.jsonl", b"[2]\n")]);
+    let config = json!({"bucket": "lake", "prefix": "d/", "format": "jsonl", "skip_unchanged": true});
+    let first = pull_json(&mut source(config.clone(), bucket.clone()), None).unwrap();
+    assert_eq!(first["cursor"], json!({"objects": {"d/1.jsonl": "\"e1\"", "d/2.jsonl": "\"e2\""}, "dead_letters": ["d/2.jsonl"]}));
+    let second = pull_json(&mut source(config.clone(), bucket.clone()), Some(first["cursor"].clone())).unwrap();
+    assert_eq!((&second["rows"], second.get("dead_letters")), (&json!([]), None), "an unchanged ETag lands nothing, dead-lettered or not");
+    assert_eq!(second["cursor"], first["cursor"], "the dead letter stays held");
+
+    let mut replay = config.clone();
+    replay["replay_dead_letters"] = json!(true);
+    let replayed = pull_json(&mut source(replay.clone(), bucket.clone()), Some(first["cursor"].clone())).unwrap();
+    assert_eq!(replayed["rows"], json!([]), "a replay reads the dead-lettered object alone");
+    assert_eq!(replayed["dead_letters"][0]["key"], json!("d/2.jsonl"), "a replay of a still unreadable object dead-letters it again");
+
+    bucket.put("d/2.jsonl", b"{\"n\":2}\n", Condition::None).unwrap();
+    let fixed = pull_json(&mut source(config, bucket), Some(first["cursor"].clone())).unwrap();
+    assert_eq!(fixed["rows"], json!([{"n": 2}]), "a changed ETag reads the object again");
+    assert_eq!(fixed["cursor"], json!({"objects": {"d/1.jsonl": "\"e1\"", "d/2.jsonl": "\"e3\""}}), "a readable object leaves the dead letters");
+    assert!(ObjectConfig::parse(&json!({"bucket": "b", "key": "k", "replay_dead_letters": "yes"})).is_err());
 }
 
 /// With `skip_unchanged = true`, the position maps each key to its ETag; a matching ETag
@@ -330,14 +377,16 @@ fn a_declared_or_zip_keyed_archive_lands_its_tab_delimited_headerless_member() {
     }
 }
 
-/// A row with more or fewer fields than `columns` refuses the read, naming the row, and
-/// nothing lands.
+/// An object holding a row with more or fewer fields than `columns` lands none of its rows and dead-letters, naming
+/// the row; the other objects land.
 #[test]
-fn a_row_off_the_declared_column_count_refuses_the_read_naming_it() {
+fn a_row_off_the_declared_column_count_dead_letters_its_object_naming_the_row() {
     let bucket = MemBucket::with(&[("e/1.CSV.zip", &zipped(&[("1.CSV", b"1\t2\t3\n")])), ("e/2.CSV.zip", &zipped(&[("2.CSV", b"4\t5\t6\n7\t8\n")]))]);
     let mut s = source(json!({"bucket": "lake", "prefix": "e/", "suffix": ".CSV.zip", "delimiter": "\t", "columns": ["a", "b", "c"]}), bucket);
-    let f = s.pull(&request(None), &Never).unwrap_err();
-    assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("s3://lake/e/2.CSV.zip") && f.message.contains("line 2"), "{f}");
+    let pulled = pull_json(&mut s, None).unwrap();
+    assert_eq!(pulled["rows"], json!([{"a": "1", "b": "2", "c": "3"}]));
+    let reason = pulled["dead_letters"][0]["reason"].as_str().unwrap_or_default();
+    assert!(reason.starts_with("PipelineUnreadableInput") && reason.contains("s3://lake/e/2.CSV.zip") && reason.contains("line 2"), "{pulled}");
 }
 
 /// A two-member archive without `member` refuses; with `member` it lands that member alone.
@@ -450,10 +499,11 @@ fn a_prefix_of_1000_objects_with_one_unreadable_lands_the_rest() {
         fewest = fewest.min(objects_landed(&rows, bad));
     }
     contextful_eval::record::emit("ingest-prefix-one-corrupt", fewest as f64, cases.len() as u64, 0);
+    assert_eq!(fewest, PREFIX_OBJECTS - 1, "every readable object lands in each shape");
 }
 
 /// Under `skip_unchanged`, a read of 1000 objects whose last is unreadable: whether the first read's position holds
-/// every readable object, and how many readable objects the second read downloads again.
+/// every readable object, and how many readable objects the second read decodes and downloads again.
 #[test]
 fn a_read_with_one_unreadable_object_commits_the_position_of_the_rest() {
     let unreadable = format!("d/{:04}.jsonl", PREFIX_OBJECTS - 1);
@@ -473,14 +523,18 @@ fn a_read_with_one_unreadable_object_commits_the_position_of_the_rest() {
     let held = position.as_ref().and_then(|p| p["objects"].as_object()).map_or(0, |o| o.keys().filter(|k| **k != unreadable).count());
     let advanced = u64::from(held == PREFIX_OBJECTS - 1);
 
+    // A refused first read holds no position, so every readable object decodes again.
     bucket.gets.lock().unwrap().clear();
-    let _ = pulled_rows(&mut s, position);
+    let redecoded = pulled_rows(&mut s, position).map_or(PREFIX_OBJECTS - 1, |(again, _, _)| objects_landed(&again, PREFIX_OBJECTS - 1));
     let redownloaded = bucket.gets.lock().unwrap().iter().filter(|k| **k != unreadable).count();
     contextful_eval::record::emit("ingest-prefix-position-advances", advanced as f64, 1, 0);
-    contextful_eval::record::emit("ingest-prefix-redecodes", redownloaded as f64, 1, 0);
+    contextful_eval::record::emit("ingest-prefix-redecodes", redecoded as f64, 1, 0);
+    contextful_eval::record::emit("ingest-prefix-redownloads", redownloaded as f64, 1, 0);
+    assert_eq!((advanced, redecoded), (1, 0), "the position holds every readable object, and none decodes again");
 }
 
 /// A prefix of 100 objects declared JSON Lines, every one holding CSV, refuses the read.
+// spec: connector.source.unreadable-all@d5df385c
 #[test]
 fn a_prefix_where_every_object_is_unreadable_still_refuses() {
     let bucket = Arc::new(MemBucket::default());
@@ -495,33 +549,34 @@ fn a_prefix_where_every_object_is_unreadable_still_refuses() {
     contextful_eval::record::emit("ingest-prefix-all-corrupt-refused", refused as f64, 1, 0);
 }
 
-/// Two prefixes of 100 objects, one holding a single unreadable object and one holding two. The figure counts the
-/// prefixes read as a one-in-a-hundred ceiling reads them: the first lands its 99 readable objects, the second refuses.
+/// Two prefixes of 100 objects, one holding a single unreadable object and one holding two. The figure counts the dead
+/// letters that name their object's key, reason and digest, while every readable object of both prefixes lands.
 #[test]
-fn one_unreadable_in_a_hundred_lands_and_two_refuse() {
+fn each_unreadable_object_in_a_prefix_lands_one_dead_letter_naming_it() {
     let prefix = |bad: &[usize]| {
         let bucket = Arc::new(MemBucket::default());
+        let mut bodies = BTreeMap::new();
         for i in 0..100 {
-            let body = if bad.contains(&i) { b"[3]\n".to_vec() } else { format!("{{\"n\":{i}}}\n").into_bytes() };
+            let body = if bad.contains(&i) { format!("[{i}]\n").into_bytes() } else { format!("{{\"n\":{i}}}\n").into_bytes() };
             bucket.put(&format!("d/{i:03}.jsonl"), &body, Condition::None).unwrap();
+            bodies.insert(format!("d/{i:03}.jsonl"), body);
         }
-        pulled_rows(&mut source(json!({"bucket": "lake", "prefix": "d/", "format": "jsonl"}), bucket), None)
+        let pulled = pull_json(&mut source(json!({"bucket": "lake", "prefix": "d/", "format": "jsonl"}), bucket), None).unwrap();
+        assert_eq!(pulled["rows"].as_array().map_or(0, Vec::len), 100 - bad.len(), "every readable object lands");
+        let named = pulled["dead_letters"].as_array().cloned().unwrap_or_default().iter().filter(|l| {
+            let key = l["key"].as_str().unwrap_or_default();
+            bodies.get(key).is_some_and(|b| l["sha256"] == json!(sha256(b))) && l["reason"].as_str().is_some_and(|r| r.contains(&format!("s3://lake/{key}")))
+        }).count();
+        named
     };
-    let one_lands = match prefix(&[50]) {
-        Ok((rows, _, _)) => rows.len() == 99,
-        Err(f) => {
-            assert!(f.message.contains("d/050.jsonl"), "a refusal names the unreadable object: {f}");
-            false
-        }
-    };
-    let two_refuse = prefix(&[25, 75]).is_err();
-    assert!(two_refuse, "two unreadable objects in a hundred refuse the read");
-    let held = u64::from(one_lands) + u64::from(two_refuse);
-    contextful_eval::record::emit("ingest-prefix-ceiling-boundary", held as f64, 2, 0);
+    let named = prefix(&[50]) + prefix(&[25, 75]);
+    contextful_eval::record::emit("ingest-prefix-dead-letter-rows", named as f64, 2, 0);
+    assert_eq!(named, 3, "one dead letter per unreadable object, naming it");
 }
 
 /// A prefix read in full twice, one object turned unreadable before the second read: the rows of that object the
 /// second read would retire, every one of them when it lands without the object and claims a complete snapshot.
+// spec: connector.source.unreadable-incomplete@3cf5e19f
 #[test]
 fn a_skipped_object_tombstones_none_of_its_earlier_rows() {
     let bucket = MemBucket::with(&[("d/1.jsonl", b"{\"n\":1}\n"), ("d/2.jsonl", b"{\"n\":2}\n{\"n\":3}\n"), ("d/3.jsonl", b"{\"n\":4}\n")]);
@@ -529,12 +584,15 @@ fn a_skipped_object_tombstones_none_of_its_earlier_rows() {
     let (first, _, complete) = pulled_rows(&mut s, None).unwrap();
     assert_eq!((first.len(), complete), (4, true));
     bucket.put("d/2.jsonl", b"{\"n\":2}\n[3]\n", Condition::None).unwrap();
-    let retired = match pulled_rows(&mut s, None) {
-        Ok((rows, _, true)) => [json!({"n": 2}), json!({"n": 3})].iter().filter(|r| !rows.contains(r)).count(),
-        _ => 0,
+    let second = pull_json(&mut s, None).unwrap();
+    let retired = match second["snapshot_complete"] == json!(true) {
+        true => [json!({"n": 2}), json!({"n": 3})].iter().filter(|r| !second["rows"].as_array().is_some_and(|rows| rows.contains(r))).count(),
+        false => 0,
     };
-    assert_eq!(retired, 0, "a read leaving an object out never claims the snapshot whole");
     contextful_eval::record::emit("ingest-skip-prior-rows-tombstoned", retired as f64, 1, 0);
+    assert_eq!(retired, 0, "a read leaving an object out never claims the snapshot whole");
+    assert_eq!(second["rows"], json!([{"n": 1}, {"n": 4}]), "the readable objects land");
+    assert_eq!(second["dead_letters"][0]["key"], json!("d/2.jsonl"), "the unreadable object dead-letters");
 }
 
 /// A prefix of 1000 gzip objects whose last expands past the 256 MiB ceiling: the readable objects that land.
@@ -562,4 +620,5 @@ fn a_prefix_with_one_object_expanding_past_the_ceiling_lands_the_rest() {
     };
     let landed = objects_landed(&rows, bad);
     contextful_eval::record::emit("ingest-prefix-one-oversize", landed as f64, 1, 0);
+    assert_eq!(landed, PREFIX_OBJECTS - 1, "every object under the ceiling lands");
 }

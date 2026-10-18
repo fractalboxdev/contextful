@@ -2357,6 +2357,28 @@ fn a_relational_pipeline_shreds_lists_into_indexed_child_rows() {
     assert_eq!(child["rows"][1], serde_json::json!([parent_id, "1", "end", null, "BIGINT"]));
 }
 
+/// Dead letters whose `<table>_dead_letter` already holds a relational child table, or a store table lacking `key`,
+/// `reason` or `sha256`, refuse the pull under {{run.declare.table-name-collision}} and land nothing.
+// spec: run.land.dead-letter-occupied@42db8483
+#[test]
+fn dead_letters_landing_in_a_relational_child_table_refuse_the_pull() {
+    let vendor = Vendor::start(|_| (200, r#"[{"id":"a","letter":[{"n":1}]}]"#.into()));
+    let manifest = format!(
+        "{}[[pipeline]]\nid = \"handbook\"\ntables = [\"documents\"]\n[pipeline.source]\nname = \"file\"\nconfig = {{ root = \"handbook\" }}\n",
+        pipeline("handbook_documents", &vendor.url("/v1/{table}"), "normalize = \"relational\"", "tables = [\"dead\"]")
+    );
+    let dir = project(&manifest);
+    ok(&fire(dir.path(), "handbook_documents", "r1", "2030-01-01T00:00:00Z"));
+    std::fs::create_dir_all(dir.path().join("handbook")).unwrap();
+    std::fs::write(dir.path().join("handbook/guide.md"), "# Guide\n").unwrap();
+    std::fs::write(dir.path().join("handbook/latin.txt"), b"caf\xe9").unwrap();
+    let out = fire(dir.path(), "handbook", "r2", "2030-01-01T00:01:00Z");
+    let err = stderr(&out);
+    assert!(!out.status.success() && err.contains("PipelineTableNameCollision") && err.contains("handbook_documents_dead_letter"), "{err}");
+    let child: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", "SELECT count(*) FROM handbook_documents_dead_letter"]))).unwrap();
+    assert_eq!(child["rows"], serde_json::json!([["1"]]), "the child table holds its own row alone");
+}
+
 // spec: run.record.schema-diff-home@89362023
 #[test]
 fn a_native_downgrade_is_recorded_on_the_commit_and_in_history() {

@@ -8,6 +8,7 @@ use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::{PullRequest, Row, Source};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use serde_json::{json, Value};
+use sha2::Digest;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -537,4 +538,44 @@ fn a_folder_of_1000_files_with_one_unreadable_lands_the_rest() {
         fewest = fewest.min(landed.len());
     }
     contextful_eval::record::emit("ingest-folder-one-corrupt", fewest as f64, cases.len() as u64, 0);
+    assert_eq!(fewest, FILES - 1, "every readable file lands in each shape");
+}
+
+/// A file a decoder cannot read lands no rows and one {{run.land.dead-letter}} row, keeps its earlier rows, and the
+/// read continues. The position holds it at its digest until it changes or `replay_dead_letters` reads it, and a
+/// folder with nothing readable refuses whole.
+// spec: connector.source.file-unreadable@8882711d
+#[test]
+fn an_unreadable_file_lands_a_dead_letter_keeps_its_earlier_rows_and_the_read_continues() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.md", "first");
+    write(dir.path(), "b.txt", "readable");
+    let s = source(dir.path(), json!({"root": "."}));
+    let first = s.read(None, &Never).unwrap();
+    write(dir.path(), "b.txt", b"caf\xe9");
+    write(dir.path(), "c.md", "third");
+    let second = s.read(Some(&first.position), &Never).unwrap();
+    assert_eq!(keys(&second.rows), [("c".to_string(), 1, false)], "the readable file lands and the unreadable one retires nothing");
+    let digest: String = sha2::Sha256::digest(b"caf\xe9").iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(second.dead_letters.len(), 1);
+    let letter = &second.dead_letters[0];
+    assert_eq!((letter.key.as_str(), letter.sha256.as_str()), ("b.txt", digest.as_str()));
+    assert!(letter.reason.starts_with("PipelineUnreadableInput") && letter.reason.contains("byte 3"), "{}", letter.reason);
+    assert_eq!(second.position["files"]["b.txt"], json!({"sha256": digest, "slug": "b", "rows": 1, "dead_letter": true}), "the earlier row stays live");
+
+    let third = s.read(Some(&second.position), &Never).unwrap();
+    assert!(third.rows.is_empty() && third.dead_letters.is_empty(), "the position holds the dead-lettered file at its digest");
+    let replay = source(dir.path(), json!({"root": ".", "replay_dead_letters": true}));
+    assert_eq!(replay.read(Some(&second.position), &Never).unwrap().dead_letters.len(), 1, "a replay decodes the held file again");
+    write(dir.path(), "b.txt", "fixed");
+    let fixed = s.read(Some(&second.position), &Never).unwrap();
+    assert_eq!(keys(&fixed.rows), [("b".to_string(), 1, false)], "a changed digest reads the file again");
+    assert_eq!(fixed.position["files"]["b.txt"].get("dead_letter"), None);
+
+    // A folder with nothing readable refuses whole, naming each file.
+    let unreadable = tempfile::tempdir().unwrap();
+    write(unreadable.path(), "x.txt", b"caf\xe9");
+    write(unreadable.path(), "y.txt", b"na\xefve");
+    let f = source(unreadable.path(), json!({"root": "."})).read(None, &Never).unwrap_err();
+    assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("x.txt") && f.message.contains("y.txt"), "{f}");
 }
