@@ -419,6 +419,10 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because a staged group blocks every later frontier until acknowledged, so an unsendable one strands its outbox*
 - `group-stranded` — Staging replaces a pending group unable to form its first request, which therefore no receiver holds, with the current frontier's group; a group with an acknowledged prefix stays immutable.
   *because a group never offered carries no delivery obligation, while a receiver may already stage an acknowledged prefix*
+- `group-quiesce` — `contextful export group <name>` first takes the publication's dispatch intent, so serve starts no unit over its inputs, then holds those inputs exclusively through its pull, read, staging and delivery.
+  *because a commit during the export moves the producer frontier the export rechecks*
+- `group-quiesce-wait` — An export finding the publication's intent or inputs still held after 300 s raises `PublicationInputsBusy` before its pull, read or staging; the outbox stays unchanged.
+  *because a running producer ends on its own schedule, and the next attempt exports its completed frontier*
 - `group-incompatible` — Membership drift, incarnation mismatch, a changed pending read identity, an incompatible checkpoint, an incomplete producer frontier, or a predecessor/order mismatch raises `PublicationIncompatible` before delivery or activation.
   *A-run*
 - `group-storage` — A coordinated publication under `postgres` raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery; a `cloudflare-d1` sender state over 8 MiB raises it before staging.
@@ -443,6 +447,7 @@ The outbound copy of a landed table to an operator-declared target: the export b
 #### Scenarios
 
 - `run.export.group-stranded`: WHEN an earlier sender staged a group whose header alone exceeds the request ceiling, THEN the next `contextful export group` replaces it with a digest-headed group and delivers it.
+- `run.export.group-quiesce`: WHEN serve's cycle finds the producer due while an export of its publication awaits the receiver, THEN the cycle reports the producer pending and the export acknowledges its group.
 - `run.export.group-d1-recovery`: WHEN the container stops after D1 commits a staged group and before any delivery, THEN its replacement delivers that group's exact bytes and the receiver activates every member together.
 - `run.export.group-d1-state`: WHEN a replacement loses the acknowledgement of the group-complete batch, THEN it reoffers that batch, and the receiver's accepted group absorbs the retry without a second activation.
 - `run.export.group-d1-acknowledge`: WHEN a receiver completes a group of 880 deletes whose final acknowledgement the sender lost, THEN the replacement reoffers from the last recorded sequence, the receiver absorbs the retry, and the sender promotes the group.

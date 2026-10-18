@@ -87,6 +87,75 @@ pub(crate) fn lock(located: &crate::project::Located) -> Result<FileLock> {
     )?)
 }
 
+/// Each declared publication as its name, producer job and member tables.
+pub(crate) fn families(text: &str) -> Result<Vec<(String, String, Vec<String>)>> {
+    let exports = parse_exports(text)?;
+    Ok(declarations(text)?
+        .into_iter()
+        .map(|group| {
+            let tables = group
+                .members
+                .iter()
+                .map(|name| exports.iter().find(|e| &e.name == name).expect("validated member").table.clone())
+                .collect();
+            (group.name, group.job, tables)
+        })
+        .collect())
+}
+
+/// The lock files fencing serve's dispatch over publication `name`'s inputs: an intent an
+/// export takes first, so no unit starts over them, then the inputs each started unit holds
+/// shared (`surface.dispatch.export-quiesced`, `run.export.group-quiesce`).
+fn quiesce_files(project_dir: &Path, project: &str, name: &str) -> Result<(std::fs::File, std::fs::File)> {
+    let dir = cursor_dir(project_dir, project);
+    std::fs::create_dir_all(&dir)?;
+    let open = |kind: &str| -> Result<std::fs::File> {
+        let path = dir.join(format!("publication-{name}.{kind}.lock"));
+        Ok(std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path)
+            .with_context(|| format!("opening `{}`", path.display()))?)
+    };
+    Ok((open("intent")?, open("inputs")?))
+}
+
+/// Hold publication `name`'s inputs shared for one serve unit, or `None` while an export holds
+/// or awaits them (`surface.dispatch.export-claim`).
+pub(crate) fn hold_inputs(project_dir: &Path, project: &str, name: &str) -> Result<Option<std::fs::File>> {
+    let (intent, inputs) = quiesce_files(project_dir, project, name)?;
+    for file in [&intent, &inputs] {
+        match file.try_lock_shared() {
+            Ok(()) => {}
+            Err(std::fs::TryLockError::WouldBlock) => return Ok(None),
+            Err(std::fs::TryLockError::Error(e)) => return Err(e.into()),
+        }
+    }
+    Ok(Some(inputs))
+}
+
+/// Take publication `name`'s intent, then its inputs, exclusively; each waits at most
+/// [`QUIESCE_WAIT_SECS`] for serve's units or another export (`run.export.group-quiesce-wait`).
+fn quiesce(located: &crate::project::Located, name: &str) -> Result<(std::fs::File, std::fs::File)> {
+    let (intent, inputs) = quiesce_files(&located.project.dir, &located.project.name, name)?;
+    for (file, what) in [(&intent, "dispatch intent"), (&inputs, "inputs")] {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(QUIESCE_WAIT_SECS);
+        loop {
+            match file.try_lock() {
+                Ok(()) => break,
+                Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(50))
+                }
+                Err(std::fs::TryLockError::WouldBlock) => anyhow::bail!(
+                    "PublicationInputsBusy: publication `{name}`: its {what} stayed held for {QUIESCE_WAIT_SECS} s"
+                ),
+                Err(std::fs::TryLockError::Error(e)) => return Err(e.into()),
+            }
+        }
+    }
+    Ok((intent, inputs))
+}
+
+/// (`run.export.group-quiesce-wait`)
+const QUIESCE_WAIT_SECS: u64 = 300;
+
 /// The completion frontier enters the ledger only after every output closes successfully.
 pub(crate) fn record_source(
     store: &contextful_context::Store,
@@ -220,9 +289,12 @@ pub(super) fn deliver(
     supported()?;
     let located = project.locate(declaration)?;
     crate::storage::preflight(&located.project)?;
-    crate::sync::pull_before_run(&located)?;
     let text = std::fs::read_to_string(&located.declaration)?;
     let (declared, exports) = group(&text, name)?;
+    // Serve starts no unit over the publication's inputs until this export ends, and every
+    // unit already running ends before the pull (`run.export.group-quiesce`).
+    let _quiesced = quiesce(&located, name)?;
+    crate::sync::pull_before_run(&located)?;
     let _held = lock(&located)?;
     let vars: BTreeMap<String, String> = std::env::vars().collect();
     let resolver = contextful_outbound::assemble(&vars, Arc::new(SystemClock))?;

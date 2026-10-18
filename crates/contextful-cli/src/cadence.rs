@@ -1391,6 +1391,77 @@ impl Dispatch for ChildDispatch {
             Err(ChildStepError::Infrastructure(error)) => Err(error),
         })
     }
+
+    /// Hold every publication whose inputs the unit writes, or defer the unit while an export
+    /// of one runs (`surface.dispatch.export-quiesced`, `surface.dispatch.export-claim`). A
+    /// declaration this cannot read claims nothing: the export's frontier recheck still refuses.
+    fn claim(&self, id: &str, steps: &[String], version: u64) -> Option<Box<dyn Send>> {
+        let held = (|| -> Result<Option<Vec<std::fs::File>>> {
+            let located = crate::project::locate(Some(&self.project), self.declaration.clone())?;
+            let unit: BTreeSet<&str> = std::iter::once(id).chain(steps.iter().map(String::as_str)).collect();
+            let mut held = Vec::new();
+            for (name, writers) in publication_inputs(&located, version)? {
+                if writers.iter().any(|w| unit.contains(w.as_str())) {
+                    match crate::export::publication::hold_inputs(&located.project.dir, &located.project.name, &name)? {
+                        Some(file) => held.push(file),
+                        None => {
+                            eprintln!("fire {id}: deferred while an export of publication `{name}` runs");
+                            return Ok(None);
+                        }
+                    }
+                }
+            }
+            Ok(Some(held))
+        })();
+        match held {
+            Ok(held) => held.map(|files| Box::new(files) as Box<dyn Send>),
+            Err(e) => {
+                eprintln!("fire {id}: publication inputs unread: {e:#}");
+                Some(Box::new(()))
+            }
+        }
+    }
+}
+
+/// Each local publication's input writers as serve unit ids: its producer job, and every
+/// pipeline or job landing or writing one of its member tables or a relation its producer
+/// reads, over applied version `version` (`surface.dispatch.export-quiesced`).
+fn publication_inputs(located: &Located, version: u64) -> Result<BTreeMap<String, BTreeSet<String>>> {
+    let local = if located.declaration.exists() { std::fs::read_to_string(&located.declaration)? } else { String::new() };
+    let families = crate::export::publication::families(&local)?;
+    if families.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let control = control_config(&local, &located.project)?;
+    let snapshot = control.source.read(version)?;
+    let pipelines: Vec<PipelineSpec> = collect(&[crate::effective::public_manifest(ManifestFile { path: snapshot_file(version), text: snapshot.clone() })?])?
+        .into_iter().map(|d| d.spec).collect();
+    let jobs = parse_jobs(&snapshot, &|_| true)?;
+    let models = applied_models(&control.source, Some(version))?;
+    let externals = parse_externals(&snapshot)?;
+    let publications = local_publications(&local)?;
+    let graph = Graph::of(&pipelines, &jobs, &models, &publications, &externals)?;
+    let models: BTreeSet<&str> = models.iter().map(|m| m.id.as_str()).collect();
+    let node = |relation: &str| if models.contains(relation) { format!("model:{relation}") } else { format!("table:{relation}") };
+    Ok(families.into_iter().map(|(name, job, tables)| {
+        let producer = format!("job:{job}");
+        // A build job's statement is its target model's.
+        let readers: BTreeSet<String> = std::iter::once(producer.clone())
+            .chain(graph.edges.iter().filter(|(from, _, via)| from == &producer && *via == "builds").map(|(_, to, _)| to.clone()))
+            .collect();
+        let inputs: BTreeSet<String> = tables.iter().map(|t| node(t))
+            .chain(graph.edges.iter().filter(|(_, to, via)| *via == "reads" && readers.contains(to)).map(|(from, _, _)| from.clone()))
+            .collect();
+        let writers = std::iter::once(producer.clone())
+            .chain(graph.edges.iter().filter(|(_, to, via)| matches!(*via, "lands" | "writes" | "builds") && inputs.contains(to)).map(|(from, _, _)| from.clone()))
+            .filter_map(|from| match from.split_once(':') {
+                Some(("pipeline", id)) => Some(id.to_string()),
+                Some(("job", _)) => Some(from),
+                _ => None,
+            })
+            .collect();
+        (name, writers)
+    }).collect())
 }
 
 impl ChildDispatch {
@@ -1804,8 +1875,7 @@ fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
     let mut failed: Vec<&str> = ended.iter().filter(|f| f.result.is_err()).map(|f| f.id.as_str()).chain(beat.refused.iter().map(|(id, _)| id.as_str())).collect();
     fired.sort();
     failed.sort();
-    let mut pending: Vec<&str> = beat.pending.iter().chain(&beat.held).map(String::as_str).collect();
-    pending.sort();
+    let pending = scheduler.with_steps(beat.pending.iter().chain(&beat.held).chain(&beat.deferred).map(String::as_str));
     let next_due = scheduler.next_due()?.map(|t| t.to_rfc3339());
     scheduler.release()?;
     let answer = json!({
@@ -1958,11 +2028,10 @@ fn wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, d
     fired.sort();
     failed.sort();
     let in_flight = scheduler.in_flight();
-    // A refilled slot started some of what the beat left pending (`surface.dispatch.refill`).
+    // A refilled slot started some of what the beat left pending, held or deferred
+    // (`surface.dispatch.refill`); each names its landing steps (`surface.arm.wake-pending-steps`).
     let waiting = scheduler.waiting();
-    let mut pending: Vec<&str> = waiting.iter().map(String::as_str).chain(in_flight.iter().map(String::as_str)).collect();
-    pending.sort();
-    pending.dedup();
+    let pending = scheduler.with_steps(waiting.iter().chain(&in_flight).map(String::as_str));
     let next_due = scheduler.next_due()?.map(|t| t.to_rfc3339());
     if in_flight.is_empty() {
         scheduler.release()?;

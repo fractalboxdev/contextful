@@ -2019,6 +2019,34 @@ fn a_wake_refills_a_freed_slot_with_the_unit_its_evaluation_left_pending() {
     assert_eq!(again["fired"], serde_json::json!([]), "{again}");
 }
 
+/// A wake whose head pipeline lands while a later landing step still runs names the head, that step and the
+/// build job declaring `after` the head pending, and none of them fired.
+// spec: surface.arm.wake-pending-steps@36226668
+#[test]
+fn a_wake_names_the_jobs_due_behind_a_landed_head_pending() {
+    let fast = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let slow = Vendor::start(|_| {
+        std::thread::sleep(std::time::Duration::from_secs(35));
+        (200, "[{\"id\":\"a\"}]".into())
+    });
+    let declaration = format!(
+        "site_id = \"site-a\"\n\n[control]\ntrigger = \"external\"\n\n{}{}{}",
+        scheduled("orders", &fast.url("/v1/orders"), "every 1h"),
+        pipeline("tail", &slow.url("/v1/tail"), "after = \"orders\"", "tables = [\"items\"]"),
+        inventory_model_job("after = \"orders\""),
+    );
+    let dir = project(&declaration);
+    let p = dir.path();
+    std::fs::write(p.join("inventory.sql"), "SELECT id, CAST(count(*) AS BIGINT) AS n FROM orders_items GROUP BY id").unwrap();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let (_daemon, url) = external(p);
+    let (status, answer) = post(&url);
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(fast.targets(), ["/v1/orders"], "the head landed during the wake");
+    assert_eq!(answer["fired"], serde_json::json!([]), "{answer}");
+    assert_eq!(answer["pending"], serde_json::json!(["job:refresh-inventory", "orders", "tail"]), "{answer}");
+}
+
 /// An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises
 /// `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.
 // spec: surface.reconcile.fail-static@59ee4328

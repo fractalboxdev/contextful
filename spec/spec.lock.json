@@ -13796,6 +13796,31 @@
       ]
     },
     {
+      "id": "run.export.group-quiesce",
+      "contract": "run",
+      "operation": "export",
+      "subject": "group-quiesce",
+      "kind": "behavior",
+      "statement": "`contextful export group <name>` first takes the publication's dispatch intent, so serve starts no unit over its inputs, then holds those inputs exclusively through its pull, read, staging and delivery.",
+      "why": "because a commit during the export moves the producer frontier the export rechecks",
+      "file": "spec/31-pipeline.md",
+      "line": 422,
+      "scenarios": [
+        "WHEN serve's cycle finds the producer due while an export of its publication awaits the receiver, THEN the cycle reports the producer pending and the export acknowledges its group."
+      ]
+    },
+    {
+      "id": "run.export.group-quiesce-wait",
+      "contract": "run",
+      "operation": "export",
+      "subject": "group-quiesce-wait",
+      "kind": "refusal",
+      "statement": "An export finding the publication's intent or inputs still held after 300 s raises `PublicationInputsBusy` before its pull, read or staging; the outbox stays unchanged.",
+      "why": "because a running producer ends on its own schedule, and the next attempt exports its completed frontier",
+      "file": "spec/31-pipeline.md",
+      "line": 424
+    },
+    {
       "id": "run.export.group-incompatible",
       "contract": "run",
       "operation": "export",
@@ -13804,7 +13829,7 @@
       "statement": "Membership drift, incarnation mismatch, a changed pending read identity, an incompatible checkpoint, an incomplete producer frontier, or a predecessor/order mismatch raises `PublicationIncompatible` before delivery or activation.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 422
+      "line": 426
     },
     {
       "id": "run.export.group-storage",
@@ -13815,7 +13840,7 @@
       "statement": "A coordinated publication under `postgres` raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery; a `cloudflare-d1` sender state over 8 MiB raises it before staging.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 424
+      "line": 428
     },
     {
       "id": "run.export.group-sender-profile",
@@ -13826,7 +13851,7 @@
       "statement": "{{run.export.group-storage}} reads the sender's storage profile alone; under the local profile a group keeps its sender state in `machine.sqlite` and delivers to any `changes-v1` receiver, a D1-backed one included.",
       "why": "because the outbox is the sender's durable state, and a receiver's storage is behind its endpoint",
       "file": "spec/31-pipeline.md",
-      "line": 426
+      "line": 430
     },
     {
       "id": "run.export.group-d1-state",
@@ -13837,7 +13862,7 @@
       "statement": "Under {{run.journal.d1-profile}}, D1 holds each group's producer frontier, sender outbox and active namespace; one D1 batch commits a completing acknowledgement with its promoted state and active namespace.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 428,
+      "line": 432,
       "scenarios": [
         "WHEN a replacement loses the acknowledgement of the group-complete batch, THEN it reoffers that batch, and the receiver's accepted group absorbs the retry without a second activation."
       ]
@@ -13851,7 +13876,7 @@
       "statement": "A `cloudflare-d1` group writer holds one durable D1 lease per publication, and every sender write predicates on that lease and the row's prior version.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 430
+      "line": 434
     },
     {
       "id": "run.export.group-d1-spill",
@@ -13862,7 +13887,7 @@
       "statement": "A `cloudflare-d1` sender row over 64 KiB holds the SHA-256 of an R2 object written before the row commits; the blob sweep keeps every object a publication row references.",
       "why": "because a D1 write crosses the binding once and never resends, an R2 put resends, and an object reached only through a committed row is never half visible",
       "file": "spec/31-pipeline.md",
-      "line": 432
+      "line": 436
     },
     {
       "id": "run.export.group-d1-acknowledge",
@@ -13873,7 +13898,7 @@
       "statement": "A `cloudflare-d1` acknowledgement short of group completion advances the sender row's version and records the group and acknowledged sequence in a row of its own, leaving the outbox body unwritten.",
       "why": "because the outbox holds the group's delivered base and next state, so rewriting it per batch scales every acknowledgement with the published tables",
       "file": "spec/31-pipeline.md",
-      "line": 434,
+      "line": 438,
       "scenarios": [
         "WHEN a receiver completes a group of 880 deletes whose final acknowledgement the sender lost, THEN the replacement reoffers from the last recorded sequence, the receiver absorbs the retry, and the sender promotes the group."
       ]
@@ -13887,7 +13912,7 @@
       "statement": "Reading a `cloudflare-d1` outbox resumes after the event carrying its recorded acknowledged sequence, whatever batch boundaries the reading binary cuts; a sequence naming no unacknowledged event of the pending group fails every read.",
       "why": "because batch boundaries follow the reading binary's request ceiling, row cap and event encoding, which a replacement binary may change",
       "file": "spec/31-pipeline.md",
-      "line": 436,
+      "line": 440,
       "scenarios": [
         "WHEN a replacement whose batches end elsewhere reads an outbox acknowledged through a sequence inside its first batch, THEN it offers from the next event."
       ]
@@ -13901,7 +13926,7 @@
       "statement": "`contextful export group <name> --take-over` under `cloudflare-d1` takes the publication lease whatever its holder or expiry and advances its fence, so the prior holder's next write, a producer completion included, matches no lease and refuses.",
       "why": "because a delivery killed at its caller's time bound holds the lease until expiry, and a fenced producer's build retry records its completion again",
       "file": "spec/31-pipeline.md",
-      "line": 438,
+      "line": 442,
       "scenarios": [
         "WHEN a delivery is killed before its acknowledgement while its lease runs, THEN a retry with `--take-over` delivers at once and the killed writer's next write refuses as fenced."
       ]
@@ -13915,7 +13940,7 @@
       "statement": "After an empty-disk replacement, `contextful export group` resumes a staged or partially acknowledged `cloudflare-d1` group from D1, reoffering identical group and event identifiers before staging a later frontier.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 440,
+      "line": 444,
       "scenarios": [
         "WHEN the container stops after D1 commits a staged group and before any delivery, THEN its replacement delivers that group's exact bytes and the receiver activates every member together."
       ]
@@ -13929,7 +13954,7 @@
       "statement": "The catalog records one phase per pipeline: `planning` computes the chunk plan with nothing fetched, `seeding` loads consumer-held history, `backfilling` runs chunks across ticks, `streaming` pulls the incremental delta.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 460
+      "line": 465
     },
     {
       "id": "run.backfill.chunk-plan",
@@ -13940,7 +13965,7 @@
       "statement": "Plan shape follows cursor kind: `monotonic` plans independent time-window or id-range chunks, `opaque-token` one sequential chunk walked in order, `snapshot-id` version ranges sequential per stream and parallel across streams.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 461
+      "line": 466
     },
     {
       "id": "run.backfill.chunk-parallelism",
@@ -13951,7 +13976,7 @@
       "statement": "A sequential chunk plan declared beside a parallelism above one raises `PipelineChunkParallelism`, naming the plan and the value.",
       "why": "because two workers walking one continuation token skip or duplicate pages silently",
       "file": "spec/31-pipeline.md",
-      "line": 462
+      "line": 467
     },
     {
       "id": "run.backfill.chunk",
@@ -13962,7 +13987,7 @@
       "statement": "A chunk row carries pipeline id, chunk id, predicate, status, attempt count, start and completion instants and a cursor-committed flag; an interrupted plan resumes at the first chunk not done.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 464
+      "line": 469
     },
     {
       "id": "run.backfill.chunk-lease",
@@ -13973,7 +13998,7 @@
       "statement": "A worker leases a chunk row, recording node id and attempt, for a 300 s time-to-live renewed every 60 s, and writes under a path segmented by run, node, chunk and attempt.",
       "why": "because an unquantified lease cannot be tested against a paused worker",
       "file": "spec/31-pipeline.md",
-      "line": 465
+      "line": 470
     },
     {
       "id": "run.backfill.fenced-commit",
@@ -13984,7 +14009,7 @@
       "statement": "A chunk commits in one catalog update conditioned on `attempt = :mine AND status != 'done'`; an update matching no row leaves that worker's files uncommitted.",
       "why": "because an expired holder otherwise commits over its successor",
       "file": "spec/31-pipeline.md",
-      "line": 467
+      "line": 472
     },
     {
       "id": "run.backfill.commit-signal",
@@ -13995,7 +14020,7 @@
       "statement": "The catalog row, not directory presence, is the commit signal; files under a path with no done row are collected by a retention window.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 469
+      "line": 474
     },
     {
       "id": "run.backfill.attempt-isolation",
@@ -14006,7 +14031,7 @@
       "statement": "An expired lease lets a second worker claim the chunk, increment the attempt and write under its own path.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 470
+      "line": 475
     },
     {
       "id": "run.backfill.tick",
@@ -14017,7 +14042,7 @@
       "statement": "While a pipeline backfills, a tick dispatches up to the per-tick chunk cap or no-ops when the queue is full; the declared cadence resumes once the position catches up.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 471
+      "line": 476
     },
     {
       "id": "run.backfill.block",
@@ -14028,7 +14053,7 @@
       "statement": "`[pipeline.backfill]` declares `max_chunks`, the bound on a plan's chunk count; `chunk_size`, one clock-ranged chunk's width in cursor units; and `start_from`, the floor, default zero.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 472
+      "line": 477
     },
     {
       "id": "run.backfill.rewind",
@@ -14039,7 +14064,7 @@
       "statement": "A rewind returns every chunk overlapping the half-open range to pending and appends one reason row per rewound chunk to an audit log a catalog rebuild leaves untouched.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 473
+      "line": 478
     },
     {
       "id": "run.backfill.rewind-invalid",
@@ -14050,7 +14075,7 @@
       "statement": "An inverted, empty or scale-incomparable rewind window raises `PipelineRewindWindowInvalid`; a window overlapping no chunk is a no-op.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 474
+      "line": 479
     },
     {
       "id": "run.backfill.available-instant",
@@ -14061,7 +14086,7 @@
       "statement": "A backfill lands each row's availability column as {{store.available-time.declaration}} resolves it from the source, while `_ingested_at` stays the commit instant {{run.own.stage-instant}} writes.",
       "why": "because a 2026 backfill of 2014 history stamped with its commit instant answers no availability bound before 2026",
       "file": "spec/31-pipeline.md",
-      "line": 476
+      "line": 481
     },
     {
       "id": "run.seed.block",
@@ -14072,7 +14097,7 @@
       "statement": "`[pipeline.seed]` attaches a bulk-load source with a ceiling `below` expressed on the seeded table's `order_by` scale.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 495
+      "line": 500
     },
     {
       "id": "run.seed.one-land-path",
@@ -14083,7 +14108,7 @@
       "statement": "Seeded rows travel {{run.land.stage-order}} unchanged; attribution survives only in the load id and a run recorded under the `seeding` phase.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 496
+      "line": 501
     },
     {
       "id": "run.seed.available-instant",
@@ -14094,7 +14119,7 @@
       "statement": "A seeded row lands its availability instant and `_ingested_at` as {{run.backfill.available-instant}} lands a backfilled row's.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 497
+      "line": 502
     },
     {
       "id": "run.seed.declaration-missing",
@@ -14105,7 +14130,7 @@
       "statement": "A seeded table without `primary_key`, or with `order_by` left at the ingest stamp, raises `PipelineSeedDeclarationMissing` at plan and validate.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 498
+      "line": 503
     },
     {
       "id": "run.seed.ceiling-breached",
@@ -14116,7 +14141,7 @@
       "statement": "A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 500
+      "line": 505
     },
     {
       "id": "run.seed.ceiling-point",
@@ -14127,7 +14152,7 @@
       "statement": "The ceiling is evaluated on the root batch after normalize and the chain, before the write.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 502
+      "line": 507
     },
     {
       "id": "run.seed.ceiling-unevaluable",
@@ -14138,7 +14163,7 @@
       "statement": "A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`; a text stamp orders only when `Z`-suffixed at the ceiling's fractional width.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 503
+      "line": 508
     },
     {
       "id": "run.seed.scope",
@@ -14149,7 +14174,7 @@
       "statement": "Seed chunk and cursor state live under a `<table>#seed` scope apart from the live pipeline's.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 505
+      "line": 510
     },
     {
       "id": "run.seed.connector-pin",
@@ -14160,7 +14185,7 @@
       "statement": "A seeding run is exempt from {{run.own.pinned-plan-changed}} and records its connector identity as provenance.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 506
+      "line": 511
     },
     {
       "id": "run.seed.ceiling-binding",
@@ -14171,7 +14196,7 @@
       "statement": "On seed commit, an unset `monotonic` live position takes the ceiling when `below` parses as an integer; under the other cursor kinds the live position stays unset and starts from the source's beginning.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 507
+      "line": 512
     },
     {
       "id": "run.seed.fingerprint",
@@ -14182,7 +14207,7 @@
       "statement": "Each run probes the seed source for a cheap fingerprint, a stat or a HEAD and never a download, and compares it with the one stamped at commit.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 508
+      "line": 513
     },
     {
       "id": "run.seed.source-changed",
@@ -14193,7 +14218,7 @@
       "statement": "A differing fingerprint raises `PipelineSeedSourceChanged` naming both values; an equal one skips the load, and an unavailable one skips with a warning.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 509
+      "line": 514
     },
     {
       "id": "run.seed.commands",
@@ -14204,7 +14229,7 @@
       "statement": "`seed status` prints each seeded table's ceiling, commit state and fingerprint match; `seed reset <pipeline> [--table T]` clears the seed's chunk plan and commit stamp, so the next run loads it again.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 511
+      "line": 516
     },
     {
       "id": "run.seed.parity",
@@ -14215,7 +14240,7 @@
       "statement": "Over keys the vendor still returns, seeding then running live across an overlapping window yields a pure live backfill's row count and per-key winners; a key the vendor stopped returning keeps its seeded value.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 512
+      "line": 517
     },
     {
       "id": "run.seed.parity-audit",
@@ -14226,7 +14251,7 @@
       "statement": "`validate` audits the seed ordering over every landed row, not over the deduped view.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 513
+      "line": 518
     },
     {
       "id": "run.seed.compaction-cadence",
@@ -14237,7 +14262,7 @@
       "statement": "A seeded table that no job meeting {{store.declare.fold-job}} covers raises `PipelineSeedCompactionMissing` at validate and before a fire, naming the table.",
       "why": "A-store",
       "file": "spec/31-pipeline.md",
-      "line": 514
+      "line": 519
     },
     {
       "id": "run.model.model-block",
@@ -14248,7 +14273,7 @@
       "statement": "A `[[model]]` block carries `id`, {{run.model.statement-source}}, optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]`, `[[model.test]]`, {{disclosure.release.model-policy}} and {{disclosure.set-mode.opt-out-record}}; an unknown key refuses as {{run.declare.spec-invalid}}.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 521
+      "line": 526
     },
     {
       "id": "run.model.statement-source",
@@ -14259,7 +14284,7 @@
       "statement": "A model declares exactly one of inline `sql` and `sql_file`; the latter reads UTF-8 text relative to the manifest containing the model.",
       "why": "because a manifest-relative statement file keeps a model portable across project roots",
       "file": "spec/31-pipeline.md",
-      "line": 523
+      "line": 528
     },
     {
       "id": "run.model.top-level-block",
@@ -14270,7 +14295,7 @@
       "statement": "A manifest's top-level key outside the set the engine enumerates raises `PipelineUnknownBlock`, naming the key, the file and the accepted set.",
       "why": "because a misspelled block parses as nothing, and its declaration silently never runs",
       "file": "spec/31-pipeline.md",
-      "line": 525
+      "line": 530
     },
     {
       "id": "run.model.model-id",
@@ -14281,7 +14306,7 @@
       "statement": "A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 527
+      "line": 532
     },
     {
       "id": "run.model.sql",
@@ -14292,7 +14317,7 @@
       "statement": "The selected model statement is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through its last published table.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 528
+      "line": 533
     },
     {
       "id": "run.model.validate-statements",
@@ -14303,7 +14328,7 @@
       "statement": "`pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to {{run.model.restricted-input}}, and raises the error the build raises.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 529
+      "line": 534
     },
     {
       "id": "run.model.validate-undeclared",
@@ -14314,7 +14339,7 @@
       "statement": "`pipeline validate` names on stderr each relation a model's `sql` or test reads that no manifest table, pipeline destination or model declares, and still validates the model; `build` resolves that relation against the store.",
       "why": "because a table landed without a manifest declaration is a legal input, while a misspelled name otherwise surfaces only at `build`",
       "file": "spec/31-pipeline.md",
-      "line": 530
+      "line": 535
     },
     {
       "id": "run.model.restricted-input",
@@ -14325,7 +14350,7 @@
       "statement": "A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.",
       "why": "because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader",
       "file": "spec/31-pipeline.md",
-      "line": 532
+      "line": 537
     },
     {
       "id": "run.model.materialized",
@@ -14336,7 +14361,7 @@
       "statement": "`materialized` is `table`, the default: each build replaces the model's rows whole.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 534
+      "line": 539
     },
     {
       "id": "run.model.unique-key",
@@ -14347,7 +14372,7 @@
       "statement": "`unique_key` is the model's grain; a build whose rows repeat one grain value, or hold a null in a grain column, refuses as {{run.publish.contract-mismatch}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 535
+      "line": 540
     },
     {
       "id": "run.model.contract-block",
@@ -14358,7 +14383,7 @@
       "statement": "`[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a `name`, a `type` spelled as {{store.reconcile.typed-landing}} reads it, and `nullable`, default true.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 536
+      "line": 541
     },
     {
       "id": "run.model.contract-required",
@@ -14369,7 +14394,7 @@
       "statement": "A model whose `publish` is true, the default, and which declares no `[model.contract]` raises `ModelContractUndeclared` at validation.",
       "why": "because a published table without a declared contract has no identity a reader can pin against",
       "file": "spec/31-pipeline.md",
-      "line": 537
+      "line": 542
     },
     {
       "id": "run.model.unpublished",
@@ -14380,7 +14405,7 @@
       "statement": "A model declaring `publish = false` commits its rows with no manifest section, so no build entry, hold or contract history names it.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 539
+      "line": 544
     },
     {
       "id": "run.model.contract-major",
@@ -14391,7 +14416,7 @@
       "statement": "Under the published build's major, a contract that drops or retypes a published column, makes a non-null one nullable, adds a non-null column or changes the grain refuses as {{run.publish.contract-mismatch}}, naming the column and the major to bump.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 540
+      "line": 545
     },
     {
       "id": "run.model.contract-minor",
@@ -14402,7 +14427,7 @@
       "statement": "Under the published build's major, a contract that only adds nullable columns or makes nullable ones non-null publishes once its minor exceeds the published one, else refuses as {{run.publish.contract-mismatch}}, naming the added or tightened column and the bumped minor.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 542,
+      "line": 547,
       "scenarios": [
         "WHEN contract `1.0.0` gains nullable column `tag` as `1.1.0`, THEN the build publishes and the manifest section carries `1.1.0` and the new fingerprint; as `1.0.0` it refuses naming `tag` and `1.1.0`."
       ]
@@ -14416,7 +14441,7 @@
       "statement": "A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 544
+      "line": 549
     },
     {
       "id": "run.model.freshness-block",
@@ -14427,7 +14452,7 @@
       "statement": "`[model.freshness]` declares `max_lag` as an integer followed by `s`, `m`, `h` or `d`; a model declaring none publishes a null `max_lag` and never computes stale.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 545
+      "line": 550
     },
     {
       "id": "run.model.test-block",
@@ -14438,7 +14463,7 @@
       "statement": "A `[[model.test]]` carries a `name` and one `SELECT` over the staged rows, registered under the model's id, and the store's tables; a test returning any row fails.",
       "why": "because a test must inspect the candidate build before its rows become visible to readers",
       "file": "spec/31-pipeline.md",
-      "line": 546
+      "line": 551
     },
     {
       "id": "run.model.test-failed",
@@ -14449,7 +14474,7 @@
       "statement": "A failing test raises `ModelTestFailed`, naming the test and its row count; the build publishes nothing.",
       "why": "because a test exists to stop a build before readers trust it",
       "file": "spec/31-pipeline.md",
-      "line": 548,
+      "line": 553,
       "scenarios": [
         "WHEN a test `SELECT * FROM daily WHERE n < 0` returns 2 rows, THEN the build raises `ModelTestFailed` naming the test and 2, and `daily` reads its prior build."
       ]
@@ -14463,7 +14488,7 @@
       "statement": "`contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 550
+      "line": 555
     },
     {
       "id": "run.model.build-boundary",
@@ -14474,7 +14499,7 @@
       "statement": "A guarded model build admits its caller's execution boundary after staging and before changing the persistent schema or published pointer; a refusal discards staging and preserves prior schema, membership and watermark.",
       "why": "because a stopped execution must not publish its staged model",
       "file": "spec/31-pipeline.md",
-      "line": 551
+      "line": 556
     },
     {
       "id": "run.model.unknown-model",
@@ -14485,7 +14510,7 @@
       "statement": "`build` naming no declared model raises `ModelUndeclared`, naming the declared models.",
       "why": "because a build of a misspelled id otherwise reports nothing to do",
       "file": "spec/31-pipeline.md",
-      "line": 553
+      "line": 558
     },
     {
       "id": "run.model.build-frontier",
@@ -14496,7 +14521,7 @@
       "statement": "`build` reads each input at its committed frontier and fires no pipeline; a build ordered after a landing is a `build` job naming that pipeline in `after`, under {{surface.fire.build-dependency}}.",
       "why": "because `after` already orders builds behind pipelines, and a verb firing sources needs their credentials and quota, and repeats paid calls on every retry",
       "file": "spec/31-pipeline.md",
-      "line": 555,
+      "line": 560,
       "scenarios": [
         "WHEN the `http` pipeline feeding a model's input points at an unreachable endpoint, THEN `build` succeeds, records no new run, and its watermark names only runs already committed.",
         "WHEN a `build` job naming `orders` in `after` fires in the cycle that lands `orders` run `r`, THEN the published build's watermark `through` under `orders_items` reaches the `commit_seq` of `r`."
@@ -14511,7 +14536,7 @@
       "statement": "A model whose `sql` reaches its own id through one or more other models raises `ModelCycle` at `pipeline validate`, import, apply and `build`, before any store is read, naming every model on the cycle.",
       "why": "because no member of a cycle has a first build, and once one exists each build folds in the other's previous output",
       "file": "spec/31-pipeline.md",
-      "line": 557,
+      "line": 562,
       "scenarios": [
         "WHEN model `a` reads `b` and `b` reads `a`, THEN `pipeline validate` raises `ModelCycle` naming `a`, `b`, and `build a` reads no row."
       ]
@@ -14525,7 +14550,7 @@
       "statement": "A build's id is the snapshot id it publishes.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 559
+      "line": 564
     },
     {
       "id": "run.model.watermark",
@@ -14536,7 +14561,7 @@
       "statement": "A build's watermark is `{at, inputs}`: per input table the snapshot id, `through`, the greatest `commit_seq` read, and `omitted`, the count and digest of runs read outside the snapshot chain; `at` is the newest commit instant.",
       "why": "because a list of omitted runs grows by one key per run on an input no fold covers",
       "file": "spec/31-pipeline.md",
-      "line": 561
+      "line": 566
     },
     {
       "id": "run.model.watermark-digest",
@@ -14547,7 +14572,7 @@
       "statement": "`omitted.digest` is the lowercase hex SHA-256 over the sorted keys `<run-id>/<node-id>` of the omitted runs, each followed by a newline.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 563
+      "line": 568
     },
     {
       "id": "run.model.watermark-listed-runs",
@@ -14558,7 +14583,7 @@
       "statement": "A watermark input carrying a `runs` list and no `omitted` reads with those runs included under {{run.publish.staleness}}; no build writes `runs`, and every echo of that watermark keeps the list.",
       "why": "because a manifest committed with listed runs stays readable",
       "file": "spec/31-pipeline.md",
-      "line": 564
+      "line": 569
     },
     {
       "id": "run.model.build-horizon",
@@ -14569,7 +14594,7 @@
       "statement": "`contextful build <model> --available-as-of <t>` reads every input at `available_as_of` equal to `t` and records `t` as the watermark's `horizon`; a build without the flag records a null horizon.",
       "why": "because a build is reused across horizons only when its own bound is recorded beside it",
       "file": "spec/31-pipeline.md",
-      "line": 566
+      "line": 571
     },
     {
       "id": "run.model.hold-verb",
@@ -14580,7 +14605,7 @@
       "statement": "`build hold --for <n>[smhd] <model> <build>` commits a hold until now plus the duration and prints `Held`, or `Renewed` over an unexpired hold; `--json` prints the receipt as an object.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 568,
+      "line": 573,
       "scenarios": [
         "WHEN `build hold --for 7d daily <build>` runs twice, THEN the first prints `Held` and the second `Renewed`, each with the new expiry."
       ]
@@ -14594,7 +14619,7 @@
       "statement": "`build status <model>` reports the last attempt separately from the published build; `--json` carries their ids, status, freshness and staleness computed at the requested instant.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 569
+      "line": 574
     },
     {
       "id": "run.model.hold-unknown-build",
@@ -14605,7 +14630,7 @@
       "statement": "A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.",
       "why": "because a hold on a build that does not exist protects nothing and reads as protection",
       "file": "spec/31-pipeline.md",
-      "line": 570
+      "line": 575
     },
     {
       "id": "run.model.hold-manifest",
@@ -14616,7 +14641,7 @@
       "statement": "A hold commits as the hold manifest `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 572
+      "line": 577
     },
     {
       "id": "run.model.log-regeneration",
@@ -14627,7 +14652,7 @@
       "statement": "The history logs sit in the model's table directory; each build and hold rewrites them, replacing an entry a manifest disagrees with and keeping entries of collected builds.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 574
+      "line": 579
     },
     {
       "id": "run.publish.manifest-commit",
@@ -14638,7 +14663,7 @@
       "statement": "A published table's contract identity, freshness and current build ride the snapshot manifest commit that publishes its data; no separate file is authoritative for any of them.",
       "why": "because separately written artifacts make a torn publication representable",
       "file": "spec/31-pipeline.md",
-      "line": 593
+      "line": 598
     },
     {
       "id": "run.publish.contract-identity",
@@ -14649,7 +14674,7 @@
       "statement": "A published table's identity is `contract_version` beside `schema_fingerprint`, taken over the declared columns, their types and the grain.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 595
+      "line": 600
     },
     {
       "id": "run.publish.contract-mismatch",
@@ -14660,7 +14685,7 @@
       "statement": "A materialization whose columns, types or grain miss the declared contract raises `PipelineContractMismatch`, naming the column and the expectation.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 596
+      "line": 601
     },
     {
       "id": "run.publish.staging",
@@ -14671,7 +14696,7 @@
       "statement": "A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 598
+      "line": 603
     },
     {
       "id": "run.publish.history-logs",
@@ -14682,7 +14707,7 @@
       "statement": "`contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests and build-attempt records; a log disagreeing with a source record is regenerated from it.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 600
+      "line": 605
     },
     {
       "id": "run.publish.build-entry",
@@ -14693,7 +14718,7 @@
       "statement": "A build entry carries build id, start and completion instants, a status of published, refused, partial or failed, the contract identity, and the partition values it left unfilled.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 601
+      "line": 606
     },
     {
       "id": "run.publish.failed-attempt",
@@ -14704,7 +14729,7 @@
       "statement": "A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.",
       "why": "because a process killed before publication cannot write its own failure, while its attempt record and released lock survive",
       "file": "spec/31-pipeline.md",
-      "line": 602
+      "line": 607
     },
     {
       "id": "run.publish.freshness",
@@ -14715,7 +14740,7 @@
       "statement": "Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness follows {{run.publish.staleness}} and is never stored.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 604
+      "line": 609
     },
     {
       "id": "run.publish.staleness",
@@ -14726,7 +14751,7 @@
       "statement": "A published model is stale at `t` when an input holds a committed run outside its watermark snapshot chain, its `commit_seq` above `through`, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 605,
+      "line": 610,
       "scenarios": [
         "WHEN no input lands after a build and `max_lag` is `1h`, THEN `build status` at 100 days later reports `stale` false.",
         "WHEN `events` lands a run 1 second past the build and `max_lag` is `1h`, THEN status reports fresh at 1 hour after the landing and stale, `stale_inputs` `[\"events\"]`, 1 second later.",
@@ -14742,7 +14767,7 @@
       "statement": "An input whose runs outside the watermark snapshot chain, at or below `through`, differ in count or digest from `omitted` holds a waiting run counted as committed before `t` minus `max_lag`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 607,
+      "line": 612,
       "scenarios": [
         "WHEN a run merged from another node carries a `commit_seq` below `through` and the build never read it, THEN status reports the input stale at once.",
         "WHEN a relational run's group marker lands after a build read a plain run committed above it, THEN status reports the input stale at once."
@@ -14757,7 +14782,7 @@
       "statement": "A run carrying no `commit_seq` counts as at or below `through` when committed at or before the watermark's `at`.",
       "why": "because a run manifest may carry no sequence, and {{run.publish.staleness-omitted-check}} catches one the build never read",
       "file": "spec/31-pipeline.md",
-      "line": 609
+      "line": 614
     },
     {
       "id": "run.publish.staleness-collected-covered",
@@ -14768,7 +14793,7 @@
       "statement": "A run whose manifest retention collected counts as at or below `through` when the current snapshot folding it records a `commit_seq` at or below `through`.",
       "why": "because a snapshot's `commit_seq` bounds every run it folds",
       "file": "spec/31-pipeline.md",
-      "line": 611
+      "line": 616
     },
     {
       "id": "run.publish.staleness-model-input",
@@ -14779,7 +14804,7 @@
       "statement": "An input that is a model also waits on each of its published builds newer than the watermark snapshot, aged by that build's `created_at`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 613,
+      "line": 618,
       "scenarios": [
         "WHEN `daily` rebuilds after `weekly` read it and `max_lag` is `1d`, THEN `weekly` reports stale, `stale_inputs` `[\"daily\"]`, 1 day after the rebuild."
       ]
@@ -14793,7 +14818,7 @@
       "statement": "A waiting run whose manifest retention collected counts as committed before `t` minus `max_lag`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 615
+      "line": 620
     },
     {
       "id": "run.publish.hold",
@@ -14804,7 +14829,7 @@
       "statement": "A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 617
+      "line": 622
     },
     {
       "id": "run.publish.manifest-section",
@@ -14815,7 +14840,7 @@
       "statement": "The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` follows {{run.model.watermark}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 618
+      "line": 623
     },
     {
       "id": "run.publish.semantics-version",
@@ -14826,7 +14851,7 @@
       "statement": "`semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 619
+      "line": 624
     },
     {
       "id": "run.publish.disclosure-digest",
@@ -14837,7 +14862,7 @@
       "statement": "A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 620
+      "line": 625
     },
     {
       "id": "run.select.required-key",
@@ -25745,6 +25770,17 @@
       "line": 69
     },
     {
+      "id": "surface.arm.wake-pending-steps",
+      "contract": "surface",
+      "operation": "arm",
+      "subject": "wake-pending-steps",
+      "kind": "behavior",
+      "statement": "A wake or cycle answer naming a unit pending also names each of its landing steps and dependent jobs pending, so a job due behind a pipeline that landed during the wake reads pending until its unit ends.",
+      "why": "because a caller checking one job before reading its output otherwise finds it in neither `fired` nor `pending`",
+      "file": "spec/70-control-plane.md",
+      "line": 71
+    },
+    {
       "id": "surface.arm.tick-interval",
       "contract": "surface",
       "operation": "arm",
@@ -25753,7 +25789,7 @@
       "statement": "The in-process adapter evaluates the armed set every 500 ms.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 71
+      "line": 73
     },
     {
       "id": "surface.arm.trigger-select",
@@ -25764,7 +25800,7 @@
       "statement": "`[control] trigger` selects `in-process`, the default, or `external`, under which `pipeline serve --http <address>` answers `POST /wake` and runs no tick of its own.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 72
+      "line": 74
     },
     {
       "id": "surface.arm.grammar",
@@ -25775,7 +25811,7 @@
       "statement": "A schedule is `every <n><unit>` with unit `s`, `m`, `h` or `d`, or a UTC cron expression of five fields, minute, hour, day of month, month and day of week, each `*`, a value, range, list or `/` step.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 73
+      "line": 75
     },
     {
       "id": "surface.arm.next-fire-from-history",
@@ -25786,7 +25822,7 @@
       "statement": "An armed entry's next fire is the first instant its schedule admits after the later of its last journaled run start and its last dispatch, which the catalog records before start; an entry with neither is due when armed.",
       "why": "because a restarted daemon then keeps the cadence its run history shows instead of restarting every interval from boot",
       "file": "spec/70-control-plane.md",
-      "line": 74
+      "line": 76
     },
     {
       "id": "surface.arm.catch-up",
@@ -25797,7 +25833,7 @@
       "statement": "A daemon arming an entry whose next fire has passed fires it once, whatever count of intervals elapsed, and arms the following fire from that run.",
       "why": "because replaying each missed interval against an incremental source pulls the same delta once per interval",
       "file": "spec/70-control-plane.md",
-      "line": 76
+      "line": 78
     },
     {
       "id": "surface.arm.pulled-history",
@@ -25808,7 +25844,7 @@
       "statement": "A pipeline's last journaled run start is the latest start across this node's catalog and every run state {{store.push.run-state}} carries that records the pipeline.",
       "why": "because a cold node's empty catalog otherwise finds every scheduled entry due at once",
       "file": "spec/70-control-plane.md",
-      "line": 78
+      "line": 80
     },
     {
       "id": "surface.arm.pulled-future",
@@ -25819,7 +25855,7 @@
       "statement": "A pulled run start later than the scheduler's current instant counts as no start for {{surface.arm.pulled-history}}.",
       "why": "because one node's fast clock or one bucket writer otherwise defers every replica's cadence until that instant",
       "file": "spec/70-control-plane.md",
-      "line": 80
+      "line": 82
     },
     {
       "id": "surface.arm.unarmed-named",
@@ -25830,7 +25866,7 @@
       "statement": "An applied pipeline declaring no schedule, or held back by {{surface.arm.unreadable-schedule}}, arms no entry; serve names each such pipeline with its reason once per applied version, and `--cycle` lists them under `unarmed`.",
       "why": "because a pipeline silently left out of the armed set reads as armed until its data goes stale",
       "file": "spec/70-control-plane.md",
-      "line": 82
+      "line": 84
     },
     {
       "id": "surface.reconcile.poll-cadence",
@@ -25841,7 +25877,7 @@
       "statement": "`poll` takes a schedule string, and a `[control]` block declaring none polls every 30 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 117
+      "line": 119
     },
     {
       "id": "surface.reconcile.pointer-malformed",
@@ -25852,7 +25888,7 @@
       "statement": "A pointer body that is not wholly a version raises `ControlPointerMalformed`.",
       "why": "because an integer read out of leading bytes arms a version nobody applied",
       "file": "spec/70-control-plane.md",
-      "line": 118
+      "line": 120
     },
     {
       "id": "surface.reconcile.fail-static",
@@ -25863,7 +25899,7 @@
       "statement": "An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 120
+      "line": 122
     },
     {
       "id": "surface.reconcile.loopback-only",
@@ -25874,7 +25910,7 @@
       "statement": "A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 122
+      "line": 124
     },
     {
       "id": "surface.reconcile.pulled-control",
@@ -25885,7 +25921,7 @@
       "statement": "A reconciler adopts the project-scoped head {{store.pull.control-head}} carries, descending from its local head, only after verifying the receipt under a locally pinned issuer key and validating the snapshot against this node's declarations.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 124,
+      "line": 126,
       "scenarios": [
         "WHEN a cold node holds a signed bucket head whose snapshot validates against its declarations, THEN it installs that head and arms its schedules.",
         "WHEN a signed bucket head contains one of two locally declared pipelines, THEN the reconciler adopts that partial apply and leaves the other pipeline unarmed."
@@ -25900,7 +25936,7 @@
       "statement": "A reconciler reads pulled-control issuer pins through {{authority.verify.pin-source}} and refuses a receipt whose signer is absent from those pins.",
       "why": "because a bucket writer can sign its own unauthorized snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 126
+      "line": 128
     },
     {
       "id": "surface.reconcile.pulled-control-untrusted",
@@ -25911,7 +25947,7 @@
       "statement": "A pulled control head with an invalid signature, project, digest, predecessor chain or local validation raises `ControlSnapshotUntrusted`, names the reason and arms none of that version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 128,
+      "line": 130,
       "scenarios": [
         "WHEN a bucket writer replaces the snapshot bytes without a matching signature, THEN the node names the failed verification and arms none of that version."
       ]
@@ -25925,7 +25961,7 @@
       "statement": "A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.",
       "why": "because one layout serves a snapshot directory unchanged over loopback HTTP",
       "file": "spec/70-control-plane.md",
-      "line": 130
+      "line": 132
     },
     {
       "id": "surface.reconcile.learns-by-reading",
@@ -25936,7 +25972,7 @@
       "statement": "A daemon learns of a new snapshot only by reading its control source, on each poll and on each wake; nothing pushes a snapshot to it.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 132
+      "line": 134
     },
     {
       "id": "surface.fire.job-kind-unknown",
@@ -25947,7 +25983,7 @@
       "statement": "A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 169
+      "line": 171
     },
     {
       "id": "surface.fire.target-unbound",
@@ -25958,7 +25994,7 @@
       "statement": "A `fold` target naming no produced table, or a `build` target naming no declared `[[model]]`, raises `JobTargetUnbound` at validation.",
       "why": "P1",
       "file": "spec/70-control-plane.md",
-      "line": 171
+      "line": 173
     },
     {
       "id": "surface.fire.cycle-control-source",
@@ -25969,7 +26005,7 @@
       "statement": "A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 173
+      "line": 175
     },
     {
       "id": "surface.fire.store-driven-concurrency",
@@ -25980,7 +26016,7 @@
       "statement": "A `store-driven` block declaring no positive integer `max_in_flight` raises `JobConcurrencyUnset` at validation; no default applies.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 175
+      "line": 177
     },
     {
       "id": "surface.fire.store-driven-body",
@@ -25991,7 +26027,7 @@
       "statement": "A `store-driven` block whose `body` names no body the embedding binary registers and no delegate under {{surface.delegate.binding}} raises `JobBodyUnregistered` at validation.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 177
+      "line": 179
     },
     {
       "id": "surface.fire.scheduled-body",
@@ -26002,7 +26038,7 @@
       "statement": "A scheduled `store-driven` job runs through the cadence lease and dispatch pool under `job:<name>`, using the embedding executable's registered body or its bound delegate, and the applied snapshot's job declaration.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 179
+      "line": 181
     },
     {
       "id": "surface.fire.scheduled-history",
@@ -26013,7 +26049,7 @@
       "statement": "A scheduled `store-driven` job computes its next fire from its host execution's recorded start, including failed attempts; a restarted daemon resumes pending execution through {{run.journal.input-pin}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 181
+      "line": 183
     },
     {
       "id": "surface.fire.job-snapshot",
@@ -26024,7 +26060,7 @@
       "statement": "Import and full apply retain validated job declarations in the immutable snapshot; a pipeline-only apply preserves the snapshot's jobs, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 183
+      "line": 185
     },
     {
       "id": "surface.fire.model-snapshot",
@@ -26035,7 +26071,7 @@
       "statement": "Import and full apply retain validated model declarations with file SQL resolved inline; pipeline-only apply preserves applied models, and applied build dispatch reads that version's model, contract and tests without consulting draft definitions.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 185
+      "line": 187
     },
     {
       "id": "surface.fire.standalone-snapshot",
@@ -26046,7 +26082,7 @@
       "statement": "Import and full apply retain standalone table contracts in immutable snapshot metadata; pipeline-only apply preserves that metadata, including absent metadata.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 187
+      "line": 189
     },
     {
       "id": "surface.fire.applied-data-contract",
@@ -26057,7 +26093,7 @@
       "statement": "Applied store-driven and build jobs resolve standalone and pipeline table declarations and models from their snapshot; unapplied edits to them change neither input selection nor output landing contracts.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 189
+      "line": 191
     },
     {
       "id": "surface.fire.applied-current-authority",
@@ -26068,7 +26104,7 @@
       "statement": "Before opening an applied job execution, differing current table authority or model disclosure refuses under {{surface.apply.validation}}; current writer admission remains authoritative.",
       "why": "because a pinned read structure must not preserve authority the live declaration has changed",
       "file": "spec/70-control-plane.md",
-      "line": 191
+      "line": 193
     },
     {
       "id": "surface.fire.applied-contract-missing",
@@ -26079,7 +26115,7 @@
       "statement": "Applied jobs lacking standalone contract metadata refuse under {{surface.apply.validation}} until full apply captures those contracts; no live declaration substitutes for missing snapshot metadata.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 193
+      "line": 195
     },
     {
       "id": "surface.fire.executable-pin",
@@ -26090,7 +26126,7 @@
       "statement": "Store-driven and build executions pin table declarations, model definitions, output membership, and memory shapes and relations; changed structure meets {{run.own.pinned-plan-changed}} before replay or publication.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 195
+      "line": 197
     },
     {
       "id": "surface.fire.scheduled-build",
@@ -26101,7 +26137,7 @@
       "statement": "A scheduled `build` job dispatches the native model publisher through the cadence lease and pool under `job:<name>`; its execution records starts and outcomes for restart cadence, including failed attempts.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 197
+      "line": 199
     },
     {
       "id": "surface.fire.build-dependency",
@@ -26112,7 +26148,7 @@
       "statement": "A build job's `after` names a pipeline and inherits its dependent-run head schedule; builds follow all pipeline steps and run only after a successful unit. Jobs without `after` read already committed inputs.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 199
+      "line": 201
     },
     {
       "id": "surface.fire.build-dependency-invalid",
@@ -26123,7 +26159,7 @@
       "statement": "Import and apply refuse a job dependency naming no pipeline, combining `after` with `schedule`, or naming a kind other than `build`, under {{surface.apply.validation}}.",
       "why": "because a dependency has one native cadence and never dispatches an unsupported job graph",
       "file": "spec/70-control-plane.md",
-      "line": 201
+      "line": 203
     },
     {
       "id": "surface.fire.job-identity",
@@ -26134,7 +26170,7 @@
       "statement": "A pipeline sharing a job's `job:<name>` dispatch identity fails {{surface.apply.validation}} before a version is claimed.",
       "why": "because one exclusion key cannot dispatch two distinct operations",
       "file": "spec/70-control-plane.md",
-      "line": 203
+      "line": 205
     },
     {
       "id": "surface.fire.plan-job",
@@ -26145,7 +26181,7 @@
       "statement": "A `plan` block names a compiled plan file beside its manifest; `job fire` lowers that plan onto one execution under host scope `job:<name>`, pinned to the plan's version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 205
+      "line": 207
     },
     {
       "id": "surface.fire.cycle",
@@ -26156,7 +26192,7 @@
       "statement": "`serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 207
+      "line": 209
     },
     {
       "id": "surface.fire.cycle-exit",
@@ -26167,7 +26203,7 @@
       "statement": "`serve --cycle` exits non-zero when any unit it dispatched failed, after printing its answer; a cycle with no failed unit, or one finding the cadence lease held, exits zero.",
       "why": "because a scheduler running the cycle reads the exit status, and a zero over a failed fire reports success",
       "file": "spec/70-control-plane.md",
-      "line": 208
+      "line": 210
     },
     {
       "id": "surface.dispatch.not-a-head",
@@ -26178,7 +26214,7 @@
       "statement": "A `[[pipeline]]` block naming `after = \"<id>\"` is a landing step of that entry's dependent run; the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 215
+      "line": 217
     },
     {
       "id": "surface.dispatch.step-result",
@@ -26189,7 +26225,7 @@
       "statement": "A completion callback carries a pointer, an object-store key or a catalog row id, or the failed step's last error line, as JSON of at most 1 MiB; any other callback body raises `StepResultRefused` and records nothing.",
       "why": "because a step result rides one journal row, and bulk output belongs in the object store it points into",
       "file": "spec/70-control-plane.md",
-      "line": 217
+      "line": 219
     },
     {
       "id": "surface.dispatch.in-band-tool-error",
@@ -26200,7 +26236,7 @@
       "statement": "A step driving the engine over the tool protocol judges the tool result, not transport status: a `200` carrying a protocol error or a result flagged `isError` raises `StepToolError`.",
       "why": "P2",
       "file": "spec/70-control-plane.md",
-      "line": 219
+      "line": 221
     },
     {
       "id": "surface.dispatch.callback-skew",
@@ -26211,7 +26247,7 @@
       "statement": "The relay accepts a callback timestamp within 300 s of its own clock.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 221
+      "line": 223
     },
     {
       "id": "surface.dispatch.callback-rejected",
@@ -26222,7 +26258,7 @@
       "statement": "A heartbeat or callback whose signature fails, whose attempt is not the step's current attempt, whose timestamp falls outside {{surface.dispatch.callback-skew}}, or whose step has closed, raises `DispatchCallbackRejected` and changes no step.",
       "why": "because a partitioned worker's late result otherwise overwrites its successor's, and a captured callback replays indefinitely",
       "file": "spec/70-control-plane.md",
-      "line": 222
+      "line": 224
     },
     {
       "id": "surface.dispatch.heartbeat-beat",
@@ -26233,7 +26269,7 @@
       "statement": "A worker heartbeats every 15 s with a signed `GET` on its step's awakeable route, and posts its outcome to that route with a signed `POST`.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 224
+      "line": 226
     },
     {
       "id": "surface.dispatch.worker-target",
@@ -26244,7 +26280,7 @@
       "statement": "`[control] workers` lists worker URLs and `[control] relay` the URL whose `/awake/:token` route `serve` binds; with workers listed, each landing step posts to a worker's `POST /submit`, keyed by run, step and attempt.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 226
+      "line": 228
     },
     {
       "id": "surface.dispatch.worker-key",
@@ -26255,7 +26291,7 @@
       "statement": "Heartbeats and callbacks sign under the key `CONTEXTFUL_WORKER_KEY` holds; `serve` listing workers without a relay or without that key refuses at startup and binds nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 228
+      "line": 230
     },
     {
       "id": "surface.dispatch.submit-signed",
@@ -26266,7 +26302,7 @@
       "statement": "A worker admits a `POST /submit` only when it carries an HMAC under the worker key over its timestamp and body, within {{surface.dispatch.callback-skew}}, naming a callback under its own `[control] relay`; any other submission raises `DispatchSubmitRejected` and starts nothing.",
       "why": "because an unsigned submission lets any caller start a step and have the worker sign heartbeats and callbacks for a route of its choosing",
       "file": "spec/70-control-plane.md",
-      "line": 229
+      "line": 231
     },
     {
       "id": "surface.dispatch.submit-exhausted",
@@ -26277,7 +26313,7 @@
       "statement": "A step every listed worker refuses in turn at `POST /submit` fails its unit naming the last refusal, each worker tried once.",
       "why": "because a step bouncing between refusing workers holds its pool slot and exclusion key while never running",
       "file": "spec/70-control-plane.md",
-      "line": 231
+      "line": 233
     },
     {
       "id": "surface.dispatch.heartbeat-lapse",
@@ -26288,7 +26324,7 @@
       "statement": "A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker under the next attempt number.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "surface.dispatch.pool-bound",
@@ -26299,7 +26335,7 @@
       "statement": "A deployment's fire pool runs at most 4 units at once, `[control] pool` replacing the bound; a due unit past the bound stays armed and reports pending.",
       "why": "because one bound per deployment caps the process's concurrent pulls, where a bound per exclusion key caps nothing as pipelines are added",
       "file": "spec/70-control-plane.md",
-      "line": 234
+      "line": 236
     },
     {
       "id": "surface.dispatch.admission-order",
@@ -26310,7 +26346,7 @@
       "statement": "Due units start by earliest next fire, then highest `[[pipeline]]` `priority`, an integer defaulting to 0, then the least recent of each unit's last run start and last dispatch, a unit with neither first, then id.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 236
+      "line": 238
     },
     {
       "id": "surface.dispatch.refill",
@@ -26321,7 +26357,7 @@
       "statement": "A wake whose fire ends before its answer admits each unit its evaluation left pending into the freed slot, through the cadence lease; a unit falling due after the evaluation waits for the next wake.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 238
+      "line": 240
     },
     {
       "id": "surface.dispatch.exclusion-key",
@@ -26332,7 +26368,29 @@
       "statement": "A unit's exclusion key is its pipeline id: a unit due while another under its key is in flight starts no second instance, and its next fire recomputes once the first ends.",
       "why": "because two fires of one pipeline race for one cursor",
       "file": "spec/70-control-plane.md",
-      "line": 240
+      "line": 242
+    },
+    {
+      "id": "surface.dispatch.export-quiesced",
+      "contract": "surface",
+      "operation": "dispatch",
+      "subject": "export-quiesced",
+      "kind": "behavior",
+      "statement": "A due unit whose head or a landing step writes a member of a publication, or a relation its producer reads, starts nothing while `contextful export group` holds that publication, and stays due, reporting pending.",
+      "why": "because a producer commit between an export's frontier reads raises {{run.export.group-incompatible}}, and a deferred unit costs one beat where stopping serve costs every dispatch",
+      "file": "spec/70-control-plane.md",
+      "line": 244
+    },
+    {
+      "id": "surface.dispatch.export-claim",
+      "contract": "surface",
+      "operation": "dispatch",
+      "subject": "export-claim",
+      "kind": "behavior",
+      "statement": "A started unit writing a publication's inputs holds them shared from its start until it ends, so an export of that publication waits for it.",
+      "why": "because serve admits a unit before its child commits, so a check at admission alone misses a unit already running",
+      "file": "spec/70-control-plane.md",
+      "line": 246
     },
     {
       "id": "surface.dispatch.lease-gated",
@@ -26343,7 +26401,7 @@
       "statement": "A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease held arms nothing and, under `--cycle`, exits naming the holder.",
       "why": "because two daemons reading one snapshot otherwise fire every due unit twice",
       "file": "spec/70-control-plane.md",
-      "line": 242
+      "line": 248
     },
     {
       "id": "surface.dispatch.children-reaped",
@@ -26354,7 +26412,7 @@
       "statement": "A serve process starts each child run in its own process group; on `SIGTERM`, `SIGINT`, a `--cycle` exit or an unwind it signals each live group `SIGTERM`, `SIGKILL`s the remainder after 10 s, and exits once every child has.",
       "why": "because a child outliving its serve also outlives the cadence lease, and a second scheduler then fires the same pipeline concurrently",
       "file": "spec/70-control-plane.md",
-      "line": 244
+      "line": 250
     },
     {
       "id": "surface.dispatch.fire-credential",
@@ -26365,7 +26423,7 @@
       "statement": "Under `--issuer-key`, serve mints each store-driven or synthesize child fire one credential for `svc://job/<name>` in the project's default zone, granting {{surface.dispatch.fire-reach}}, in that child's `CONTEXTFUL_TOKEN`; the seed reaches no child argument or variable.",
       "why": "because a serve outlives any credential the ceiling admits, and a credential minted per fire narrows each child to its own job's tables",
       "file": "spec/70-control-plane.md",
-      "line": 246
+      "line": 252
     },
     {
       "id": "surface.dispatch.fire-reach",
@@ -26376,7 +26434,7 @@
       "statement": "A store-driven fire reaches `read` on its statement's relations and `write` on its `tables`; a synthesize fire reaches `read` on its source, its target and the declared entities table, and `write` on its target.",
       "why": "because a synthesize pass consolidates against live claims and resolves mentions against entities, and writes no table but its claims and their dead letters",
       "file": "spec/70-control-plane.md",
-      "line": 248
+      "line": 254
     },
     {
       "id": "surface.dispatch.fire-credential-lifetime",
@@ -26387,7 +26445,7 @@
       "statement": "A fire credential lives 600 s, or {{authority.issue.ceiling}} when lower; the child admits it once at start.",
       "why": "because a fire admits its credential before its first read, and a short lifetime bounds a leaked fire credential's exposure",
       "file": "spec/70-control-plane.md",
-      "line": 250
+      "line": 256
     },
     {
       "id": "surface.dispatch.fire-credential-pins",
@@ -26398,7 +26456,7 @@
       "statement": "Each child holding a minted fire credential also receives `CONTEXTFUL_ISSUER_PUBKEY`, the seed's public key, and `CONTEXTFUL_AUDIENCE`, the issuance policy's default audience the credential carries, replacing values serve inherited.",
       "why": "because the child admits its credential from inherited variables, and a pin or audience other than the minting one refuses every fire",
       "file": "spec/70-control-plane.md",
-      "line": 252
+      "line": 258
     },
     {
       "id": "surface.dispatch.fire-credential-inherited",
@@ -26409,7 +26467,7 @@
       "statement": "A serve holding no `--issuer-key` passes its own `CONTEXTFUL_TOKEN` to each child it starts.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 254
+      "line": 260
     },
     {
       "id": "surface.dispatch.fire-credential-missing",
@@ -26420,7 +26478,7 @@
       "statement": "A serve dispatching to child processes, whose applied snapshot schedules a store-driven or synthesize job, holding neither `--issuer-key` nor `CONTEXTFUL_TOKEN`, raises `FireCredentialMissing` at start and fires nothing.",
       "why": "because a missing credential otherwise fails every fire while the serve reports healthy",
       "file": "spec/70-control-plane.md",
-      "line": 255
+      "line": 261
     },
     {
       "id": "surface.dispatch.fire-credential-zone",
@@ -26431,7 +26489,7 @@
       "statement": "A serve under `--issuer-key`, whose applied snapshot schedules a store-driven or synthesize job, under a root whose `[project.zone]` declares no `default`, raises `FireCredentialZoneUnset` at start and fires nothing.",
       "why": "because a credential signing no zone asserts an undeclared zone, which {{authority.place.undeclared}} admits nowhere but `*`, so every fire reads no row",
       "file": "spec/70-control-plane.md",
-      "line": 257
+      "line": 263
     },
     {
       "id": "surface.delegate.binding",
@@ -26442,7 +26500,7 @@
       "statement": "`[control.delegates.<name>]` binds a delegate by `url`, a `mode` of `call` or `submit`, and under `call` a `timeout`; a `store-driven` `body = { delegate = \"<name>\" }` naming no bound delegate raises `JobDelegateUnbound` at arm or fire.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 293
+      "line": 299
     },
     {
       "id": "surface.delegate.host",
@@ -26453,7 +26511,7 @@
       "statement": "A delegate `url` is `http` to a loopback host or the `contextful.delegate` virtual host, carrying no credential; any other spelling raises `DelegateHostRefused` at startup and arms nothing.",
       "why": "because the stock container reaches a delegate only through a loopback relay or the deploy's outbound interception, and a public URL turns daemon configuration into egress",
       "file": "spec/70-control-plane.md",
-      "line": 295,
+      "line": 301,
       "scenarios": [
         "WHEN a delegate `url` names a host that is neither loopback nor the virtual host, THEN startup refuses and arms nothing."
       ]
@@ -26467,7 +26525,7 @@
       "statement": "A delegate request carries `job`, `execution_id`, `step`, `input_hash`, `idempotency_key` under {{run.journal.idempotency-key}}, `attempt`, `entity` with namespace, key and fence, `as_of`, `version` when fired from an applied snapshot, `pins`, `tables`, the input `row` and `deadline`.",
       "why": "because a delegate holds no state of its own, and a request naming its version and fence lets it refuse before a paid call",
       "file": "spec/70-control-plane.md",
-      "line": 297
+      "line": 303
     },
     {
       "id": "surface.delegate.signed",
@@ -26478,7 +26536,7 @@
       "statement": "A request is signed under the worker key over `call`, its timestamp and body, and an answer over `answer`, the request's `idempotency_key`, its timestamp and body, each as {{surface.dispatch.submit-signed}} signs a submission.",
       "why": "because an answer bound to its request cannot be replayed onto another item's call",
       "file": "spec/70-control-plane.md",
-      "line": 299
+      "line": 305
     },
     {
       "id": "surface.delegate.rejected",
@@ -26489,7 +26547,7 @@
       "statement": "An answer unsigned or skewed past {{surface.dispatch.callback-skew}} raises `DelegateAnswerRejected` and closes the attempt `Transient`; one outside {{surface.delegate.outcome}} or over {{surface.dispatch.step-result}} raises it and closes the attempt `Permanent`.",
       "why": "because an unsigned answer lets any process on the loopback land rows, and a malformed one cannot change on retry",
       "file": "spec/70-control-plane.md",
-      "line": 301
+      "line": 307
     },
     {
       "id": "surface.delegate.call-mode",
@@ -26500,7 +26558,7 @@
       "statement": "Under `call`, one request per attempt holds its connection open and the response body is the attempt's answer; a response arriving after the delegate's `timeout` closes the attempt `Transient`, and its late body records nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 303,
+      "line": 309,
       "scenarios": [
         "WHEN a delegate answers `ok` with rows for one item and the daemon restarts before that item's landing commits, THEN the resumed item lands the recorded rows and the delegate receives no second request."
       ]
@@ -26514,7 +26572,7 @@
       "statement": "A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; a terminal receipt follows a signed `permanent` answer, a `Permanent` rejection or an exhausted budget under {{run.items.retry-budget}}.",
       "why": "because a refusal before work is deployment drift an operator fixes, and a terminal receipt outlives the fix",
       "file": "spec/70-control-plane.md",
-      "line": 305
+      "line": 311
     },
     {
       "id": "surface.delegate.call-timeout",
@@ -26525,7 +26583,7 @@
       "statement": "A `call` delegate's `timeout` defaults to 300 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 307
+      "line": 313
     },
     {
       "id": "surface.delegate.call-timeout-ceiling",
@@ -26536,7 +26594,7 @@
       "statement": "A `call` `timeout` above 3600 s raises `DelegateTimeoutRefused` at validation.",
       "why": "because an item holding a `max_in_flight` slot for over an hour is a stalled delegate, not a slow one",
       "file": "spec/70-control-plane.md",
-      "line": 308
+      "line": 314
     },
     {
       "id": "surface.delegate.submit-mode",
@@ -26547,7 +26605,7 @@
       "statement": "Under `submit`, the request is a {{surface.dispatch.worker-target}} submission answered at once; the delegate heartbeats under {{surface.dispatch.heartbeat-beat}}, posts its answer to the callback, and a lapse follows {{surface.dispatch.heartbeat-lapse}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 310
+      "line": 316
     },
     {
       "id": "surface.delegate.outcome",
@@ -26558,7 +26616,7 @@
       "statement": "An answer is `ok` with rows per declared output table, `defer` with a `retry_at` instant, `transient`, or `permanent` with a reason; `ok` lands as {{run.items.completion}}, `defer` parks, and `transient` and `permanent` follow {{run.items.retry-budget}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 312
+      "line": 318
     },
     {
       "id": "surface.delegate.defer-parks",
@@ -26569,7 +26627,7 @@
       "statement": "A `defer` parks the item until its `retry_at` under {{run.items.retry-budget}}; the first fire after that instant re-admits it under {{run.items.replay}}, no run sleeps on it, and a row of a job without `isolated_items` closes `Transient` instead.",
       "why": "because a provider budget clears on the provider's clock, and a slot held through the wait starves every other entity",
       "file": "spec/70-control-plane.md",
-      "line": 314,
+      "line": 320,
       "scenarios": [
         "WHEN a delegate answers `defer` with a `retry_at` ten minutes ahead, THEN the item's failed-attempt count is unchanged and the first fire after that instant sends the request again."
       ]
@@ -26583,7 +26641,7 @@
       "statement": "The fence in {{surface.delegate.envelope}} is checked immediately before the request under {{run.items.fence}}; under `submit`, the heartbeat `GET` answers the current attempt and fence, so a delegate learns before a paid call whether it is superseded.",
       "why": "because a delegate that pays after its owner was replaced spends a call whose answer nothing records",
       "file": "spec/70-control-plane.md",
-      "line": 316
+      "line": 322
     },
     {
       "id": "surface.delegate.version",
@@ -26594,7 +26652,7 @@
       "statement": "A binding's optional `version` joins the item's owner pins as a body dependency, so a changed version opens a fresh execution identity and a pending item under the old one refuses as {{run.own.pinned-plan-changed}}.",
       "why": "because a prompt or model change inside a delegate otherwise resumes recorded work under new semantics",
       "file": "spec/70-control-plane.md",
-      "line": 318
+      "line": 324
     },
     {
       "id": "surface.delegate.clocks",
@@ -26605,7 +26663,7 @@
       "statement": "Signature timestamps on a request and an answer ride each side's system clock; the `deadline` and a `defer` wait ride the engine's instant.",
       "why": "because the engine's instant is injectable while a delegate shares only wall time, and a wait measured on two clocks never fires",
       "file": "spec/70-control-plane.md",
-      "line": 320
+      "line": 326
     },
     {
       "id": "surface.delegate.submit-relay",
@@ -26616,7 +26674,7 @@
       "statement": "A `submit` binding on a daemon declaring no `[control] relay` or holding no worker key refuses at startup, as {{surface.dispatch.worker-key}} refuses a worker list.",
       "why": "because a submit delegate posts its answer to the awakeable route the relay binds",
       "file": "spec/70-control-plane.md",
-      "line": 322
+      "line": 328
     },
     {
       "id": "surface.edit.secret-in-document",
@@ -26627,7 +26685,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 357
+      "line": 363
     },
     {
       "id": "surface.edit.connector-upload",
@@ -26638,7 +26696,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 359
+      "line": 365
     },
     {
       "id": "surface.edit.store-draft",
@@ -26649,7 +26707,7 @@
       "statement": "An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 361
+      "line": 367
     },
     {
       "id": "surface.apply.version-race",
@@ -26660,7 +26718,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 368
+      "line": 374
     },
     {
       "id": "surface.apply.validation",
@@ -26671,7 +26729,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 370
+      "line": 376
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -26682,7 +26740,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 372
+      "line": 378
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -26693,7 +26751,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 374
+      "line": 380
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -26704,7 +26762,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 376
+      "line": 382
     },
     {
       "id": "surface.apply.local-claim",
@@ -26715,7 +26773,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 378
+      "line": 384
     },
     {
       "id": "surface.apply.synced-attestation",
@@ -26726,7 +26784,7 @@
       "statement": "In a project with `[sync]`, import and apply admit an admin capability, then sign a receipt over the project, version, predecessor receipt digest and snapshot digest through {{authority.issue.signing-port}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 380
+      "line": 386
     },
     {
       "id": "surface.apply.receipt-message",
@@ -26737,7 +26795,7 @@
       "statement": "A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\\n<project>\\n<version>\\n<parent-or-minus>\\n<snapshot-sha256>\\n<signer>\\n`; its parent is `-` only for the first version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 382,
+      "line": 388,
       "scenarios": [
         "WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify."
       ]
@@ -26751,7 +26809,7 @@
       "statement": "A predecessor and the bucket head name the lowercase SHA-256 hex digest of a receipt's RFC 8785 canonical JSON bytes.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 384
+      "line": 390
     },
     {
       "id": "surface.apply.receipt-file",
@@ -26762,7 +26820,7 @@
       "statement": "A synced claim writes immutable `receipt@v<N>.json` beside its snapshot before advancing the applied pointer.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 386,
+      "line": 392,
       "scenarios": [
         "WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version."
       ]
@@ -26776,7 +26834,7 @@
       "statement": "A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 388,
+      "line": 394,
       "scenarios": [
         "WHEN a synced apply presents no admin capability, THEN no version or receipt is claimed."
       ]
@@ -26790,7 +26848,7 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; an import over a directory holding a version claims nothing, names that version and exits zero.",
       "why": "because a restart on a warm disk runs import before apply, and a refusal there stops the restart",
       "file": "spec/70-control-plane.md",
-      "line": 390,
+      "line": 396,
       "scenarios": [
         "WHEN a warm synced node restarts through pull, import, apply and push, THEN import claims nothing, apply reports the version unchanged, and the restart succeeds."
       ]
@@ -26804,7 +26862,7 @@
       "statement": "Import or apply over a snapshot directory holding no version first adopts a pulled head verified under {{surface.reconcile.issuer-pin}} against the verb's `--public-key` and meeting {{surface.apply.self-valid}}, though the declarations drop its pipelines or jobs; an import that adopts claims nothing.",
       "why": "because a replacement host claiming a fresh v1 diverges from the bucket's signed head, and the claim that follows removes what a release dropped",
       "file": "spec/70-control-plane.md",
-      "line": 392,
+      "line": 398,
       "scenarios": [
         "WHEN a cold node pulls a signed bucket head and runs import, THEN import claims nothing, and apply of one added pipeline claims the head's successor and pushes.",
         "WHEN a release changes only the schedules of pipelines a build job runs `after`, THEN a cold node adopts the old head and apply claims its successor.",
@@ -26820,7 +26878,7 @@
       "statement": "Import and full apply retain validated `[[external]]` declarations in the snapshot; a pipeline-only apply preserves them, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.",
       "why": "because Admin reads external steps from the applied version, beside the jobs {{surface.fire.job-snapshot}} retains",
       "file": "spec/70-control-plane.md",
-      "line": 394
+      "line": 400
     },
     {
       "id": "surface.apply.self-valid",
@@ -26831,7 +26889,7 @@
       "statement": "Import, apply and adoption validate a snapshot's document, build plans and each job's `after` against that snapshot's own pipelines, so apply signs no head its adoption refuses.",
       "why": "because a signed head failing its own adoption refuses every cold start until a reset",
       "file": "spec/70-control-plane.md",
-      "line": 396
+      "line": 402
     },
     {
       "id": "surface.apply.draft-claim",
@@ -26842,7 +26900,7 @@
       "statement": "An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 398
+      "line": 404
     },
     {
       "id": "surface.apply.operator-attestation",
@@ -26853,7 +26911,7 @@
       "statement": "An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.",
       "why": "because a shared store capability cannot identify the person who used the console",
       "file": "spec/70-control-plane.md",
-      "line": 400
+      "line": 406
     },
     {
       "id": "surface.apply.draft-table-contracts",
@@ -26864,7 +26922,7 @@
       "statement": "Pipeline editing preserves standalone table metadata from the draft's expected immutable version; apply regenerates that metadata and refuses an altered saved draft under {{surface.apply.validation}} before advancing the pointer.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 402
+      "line": 408
     },
     {
       "id": "surface.apply.draft-absent",
@@ -26875,7 +26933,7 @@
       "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
       "why": "because an absent draft supplies no document for the version claim",
       "file": "spec/70-control-plane.md",
-      "line": 404
+      "line": 410
     },
     {
       "id": "surface.apply.served-admin-grant",
@@ -26886,7 +26944,7 @@
       "statement": "A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.",
       "why": "because the control document arms work over every table and tenant of the store",
       "file": "spec/70-control-plane.md",
-      "line": 406
+      "line": 412
     },
     {
       "id": "surface.apply.served-malformed",
@@ -26897,7 +26955,7 @@
       "statement": "A served Admin edit or apply whose body is not a JSON object holding exactly its route's fields raises `ControlRequestMalformed`, answered `400`, and changes nothing.",
       "why": "because an absent or extra field leaves the operator's intended version or draft ambiguous",
       "file": "spec/70-control-plane.md",
-      "line": 408
+      "line": 414
     },
     {
       "id": "surface.apply.served-unavailable",
@@ -26908,7 +26966,7 @@
       "statement": "A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.",
       "why": "because a storage or owner fault message can disclose paths and endpoints to the console",
       "file": "spec/70-control-plane.md",
-      "line": 410
+      "line": 416
     },
     {
       "id": "surface.reside.region-entries",
@@ -26919,7 +26977,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 457
+      "line": 463
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -26930,7 +26988,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 458
+      "line": 464
     },
     {
       "id": "surface.reside.site-regions",
@@ -26941,7 +26999,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 460
+      "line": 466
     },
     {
       "id": "surface.open-console.page-routes",
@@ -39091,6 +39149,10 @@
             "clause": "run.export.group-incompatible",
             "gloss": "A coordinated publication, predecessor, membership or checkpoint differs from its durable binding."
           },
+          "PublicationInputsBusy": {
+            "clause": "run.export.group-quiesce-wait",
+            "gloss": "A coordinated export whose publication inputs a running unit or another export still holds past the wait bound."
+          },
           "PublicationStorageUnsupported": {
             "clause": "run.export.group-storage",
             "gloss": "A storage profile lacks the coordinated publication outbox capability."
@@ -39508,6 +39570,13 @@
             "unit": "completion",
             "basis": "chosen",
             "gloss": "Producer completions a publication ledger keeps per publication."
+          },
+          "publication-quiesce-wait": {
+            "clause": "run.export.group-quiesce-wait",
+            "value": 300,
+            "unit": "s",
+            "basis": "chosen",
+            "gloss": "Longest a coordinated export waits for its publication intent and inputs."
           },
           "receive-group-bytes": {
             "clause": "run.land.receive-group",
