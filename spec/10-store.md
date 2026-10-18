@@ -496,6 +496,8 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *because the immutable copy keeps the first commit, and a push reporting success names a state `pull --generation` does not restore*
 - `run-state` — `sync push` and `sync manifest --emit` first write the node's run state to `nodes/<node-id>/run-state.json`: each pipeline's newest run and each cursor row with its commit marker.
   *because run history and cursors live outside the store root, and a node starting cold otherwise sees neither*
+- `run-state-upload` — A push uploads its node's run state whatever digest the bucket manifest lists for it.
+  *because the run state rewrites one key in place, and an interrupted push leaves an object its listed digest no longer describes*
 - `control-version` — `sync push` and `sync manifest --emit` record the default local applied control version in each node's run state; a replica uses it only as a verification input.
   *because a cold node needs the version a writer applied, while an unverified snapshot must not arm work*
 - `run-state-format` — A run state carries `format`, `1` for this layout; one whose `format` exceeds 1 contributes no run or cursor to a reader.
@@ -555,8 +557,10 @@ unsettled: Which pointer does the bucket keep when a local fold's snapshot desce
 
 Fetching a bucket into a store: the digest diff, the parallel download, and the pointer written last.
 
-- `digest-mismatch` — A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.
+- `digest-mismatch` — A downloaded object, other than a run state per {{store.pull.run-state-torn}}, whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.
   *P4*
+- `run-state-torn` — A downloaded `nodes/<node-id>/run-state.json` whose digest differs from its entry is discarded with a warning naming the key, and the pull continues without it.
+  *because a push writes its run state before its manifest commit, and an interrupted push otherwise refuses every later pull of the bucket*
 - `identity-conflict` — A pull into a store holding a different {{store.init.store-identity}} raises `StoreIdentityConflict` before downloading files.
   *because importing another UUID lets that store's owner credential read local rows*
 - `convergence` — When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts.
