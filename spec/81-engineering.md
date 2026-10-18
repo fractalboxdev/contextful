@@ -76,6 +76,8 @@ Typed subcommands over compiled binaries, and the boundary shell keeps.
   *because a local reproduction and a gate run then execute one code path*
 - `unchecked-shell` — A shell file in the tree that `shellcheck` rejects raises `ShellCheckFailed` in the toolchain stage.
   *P7*
+- `test-shellcheck` — A gate stage starting a test process over a tree tracking a shell file puts the `shellcheck` {{assurance.automate.unchecked-shell}} runs first on that process's `PATH`.
+  *because a suite asserting a script passes `shellcheck` otherwise depends on whether the sandbox image ships the linter*
 - `build-time-toolchain` — The automation toolchain links into no build profile and enters no release artifact.
 
 ## test

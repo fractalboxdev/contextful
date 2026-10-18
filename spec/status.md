@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 324 | 66 | 24 | 5 | 282 | 0 | 282 |
+| `assurance` | 3 | 18 | 325 | 66 | 24 | 5 | 283 | 0 | 283 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 2 | 14 | 380 | 92 | 22 | 12 | 297 | 0 | 297 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 299 | 64 | 15 | 10 | 288 | 0 | 288 |
 | `surface` | 2 | 21 | 171 | 66 | 24 | 0 | 145 | 0 | 145 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2692 | 680 | 214 | 75 | 2407 | 0 | |
+| **total** | 22 | 169 | 2693 | 680 | 214 | 75 | 2408 | 0 | |
 
 Decision records: 18.
 
@@ -25,7 +25,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
-| 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
+| 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 185 | 175 | passing | closed |
 | 3 — The run path | 12 | 289 | 278 | passing | closed |
@@ -68,6 +68,7 @@ Unscheduled operations: 13.
 | `assurance.automate.build-time-toolchain` | `tools/ci/tests/integration/automate.rs::no_runtime_package_depends_on_the_automation_toolchain` | performed |
 | `assurance.automate.one-path` | `tools/ci/tests/integration/workflow.rs::proposed_required_checks_match_every_gate_part` | performed |
 | `assurance.automate.subcommand-surface` | `tools/ci/tests/integration/automate.rs::every_subcommand_has_generated_help_and_refuses_an_untyped_option` | performed |
+| `assurance.automate.test-shellcheck` | `tools/ci/tests/integration/shell.rs::a_test_process_the_gate_starts_resolves_the_provisioned_shellcheck` | performed |
 | `assurance.automate.typed-subcommand` | `tools/ci/tests/integration/automate.rs::every_automation_step_is_at_most_five_commands_without_a_branch_loop_or_retry` | performed |
 | `assurance.automate.unchecked-shell` | `tools/ci/tests/integration/shell.rs::a_shell_file_shellcheck_rejects_fails_the_toolchain_stage` | performed |
 | `assurance.backtest.answer-key-only` | `tools/eval/tests/integration/backtest.rs::a_case_resolved_inside_the_judges_knowledge_is_scored_by_answer_key_alone` | performed |

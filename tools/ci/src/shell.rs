@@ -43,6 +43,22 @@ pub fn check(root: &Path) -> Result<()> {
     Err(refuse("ShellCheckFailed", format!("{} finding(s) in the tracked shell files, first {}", findings.len(), findings[0])))
 }
 
+/// `assurance.automate.test-shellcheck`: put the `shellcheck` [`provision`] resolves first
+/// on `PATH` for every test process this gate run starts. A tree tracking no shell file,
+/// or a host whose `PATH` already runs `shellcheck`, is left untouched.
+pub fn provision_on_path(root: &Path) -> Result<()> {
+    if !crate::tracked(root)?.iter().any(|p| is_shell(root, p)) {
+        return Ok(());
+    }
+    let binary = provision(root)?;
+    let Some(dir) = binary.parent().filter(|d| !d.as_os_str().is_empty()) else { return Ok(()) };
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let joined = std::env::join_paths(std::iter::once(dir.to_path_buf()).chain(std::env::split_paths(&path)))?;
+    std::env::set_var("PATH", joined);
+    eprintln!("shellcheck: {} first on PATH", binary.display());
+    Ok(())
+}
+
 /// A tracked file named `*.sh` or `*.bash`, or an extensionless file opening with a `sh`,
 /// `bash`, `dash` or `ksh` shebang.
 fn is_shell(root: &Path, path: &str) -> bool {

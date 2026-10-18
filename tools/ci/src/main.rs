@@ -514,17 +514,20 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
         "test-first" => {
             provision_lean(root)?;
             provision_wasm(root)?;
+            shell::provision_on_path(root)?;
             test_first(root, base, bound, only)?
         }
         "workspace" => {
             provision_lean(root)?;
             provision_wasm(root)?;
+            shell::provision_on_path(root)?;
             workspace(root, only)?
         }
         "acceptance" => acceptance(root)?,
         "evaluate" => {
             provision_lean(root)?;
             provision_wasm(root)?;
+            shell::provision_on_path(root)?;
             measure::evaluate(root)?
         }
         "features" => features(root, only)?,
@@ -714,6 +717,7 @@ fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
         provision_lean(root)?;
         provision_wasm(root)?;
     }
+    shell::provision_on_path(root)?;
     if featured.is_empty() {
         eprintln!("features: no workspace package declares a feature");
     }

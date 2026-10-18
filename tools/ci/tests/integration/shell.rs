@@ -94,6 +94,54 @@ fn every_tracked_shell_file_and_only_those_reach_shellcheck() {
     assert_eq!(seen, ["bin/release", "scripts/build.sh"]);
 }
 
+fn executable(path: &std::path::Path, script: &str) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, format!("#!/bin/sh\n{script}")).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// A host whose `shellcheck` fails to run, as an image without the linter does, while the
+/// toolchain stage's pinned copy sits in the gate directory: the test process the stage
+/// starts resolves the pinned copy first on `PATH`.
+// spec: assurance.automate.test-shellcheck@f86ba617
+#[test]
+fn a_test_process_the_gate_starts_resolves_the_provisioned_shellcheck() {
+    let r = Repo::init();
+    r.write("scripts/build.sh", "#!/bin/sh\necho \"$1\"\n");
+    r.write("crates/demo/Cargo.toml", &crate::manifest("demo", ""));
+    r.write("crates/demo/tests/integration/main.rs", "#[test]\nfn lints() {}\n");
+    let meta = serde_json::json!({"packages": [{"name": "demo", "manifest_path": r.root.join("crates/demo/Cargo.toml"), "features": {}}]});
+    r.write("metadata.json", &meta.to_string());
+    r.commit("a package and a shell file");
+    executable(&r.root.join("target/gate/shellcheck-v0.10.0/shellcheck"), "echo provisioned\n");
+    let tools = tempfile::tempdir().unwrap();
+    let bin = tools.path().join("bin");
+    let wasm = tools.path().join("wasm-lib");
+    std::fs::create_dir_all(&wasm).unwrap();
+    std::fs::write(wasm.join("libstd.rlib"), "").unwrap();
+    executable(&bin.join("shellcheck"), "exit 127\n");
+    executable(&bin.join("rustc"), "printf '%s\\n' \"$WASM_LIB\"\n");
+    executable(&bin.join("cargo"), r#"
+if test "$1" = metadata; then cat metadata.json; exit 0; fi
+test "$1" = test
+test "$(shellcheck --version)" = provisioned || { echo 'the test process resolved the host shellcheck' >&2; exit 94; }
+printf '%s\n' "$*" >> child-commands
+"#);
+    let host_path = std::env::var("PATH").unwrap();
+    let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&host_path))).unwrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["gate", "--stage", "workspace.foundation"])
+        .current_dir(&r.root)
+        .env("PATH", path)
+        .env("WASM_LIB", &wasm)
+        .env_remove("CARGO_TARGET_DIR")
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let commands = std::fs::read_to_string(r.root.join("child-commands")).unwrap_or_default();
+    assert!(commands.contains("test --package demo"), "the stage started no test process: {commands}");
+}
+
 #[test]
 fn a_tree_tracking_no_shell_file_needs_no_shellcheck() {
     let r = Repo::init();
