@@ -347,3 +347,32 @@ fn a_generation_pull_takes_the_current_schema() {
     assert!(schema.contains("\"pages\""), "{schema}");
     assert_eq!(files(&c), ["tables/filings/data/runs/run-1/ingest-a/part-00000.parquet"]);
 }
+
+/// A commit round lists `manifests/` whole to find the newest `gen-<N>.json`, so its listing grows with every commit
+/// the bucket keeps. Over 1000 generations, one push of one round records the keys it listed under `manifests/`.
+#[test]
+fn a_commit_round_counts_the_generation_keys_it_lists() {
+    const GENERATIONS: u64 = 1000;
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let counted = Arc::new(Scripted { inner: inner.clone(), script: Script::default() });
+    let a = node("ingest-a", counted.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    let (read, etag) = inner.get("team/manifest.json").unwrap().unwrap();
+    let mut seeded: BucketManifest = serde_json::from_slice(&read).unwrap();
+    seeded.generation = GENERATIONS;
+    let bytes = serde_json::to_vec_pretty(&seeded).unwrap();
+    inner.put("team/manifest.json", &bytes, Condition::IfMatch(etag)).unwrap();
+    for n in 1..=GENERATIONS {
+        inner.put(&format!("team/{}", generation_key(n)), &bytes, Condition::None).unwrap();
+    }
+    counted.script.reset();
+    a.land("run-2", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    let report = a.syncer.push(at(NOW)).unwrap();
+    assert_eq!((report.generation, report.rounds), (GENERATIONS + 1, 1), "one round commits past the seeded generations");
+    assert_eq!(inner.list("team/manifests/").unwrap().len() as u64, GENERATIONS + 1);
+    let listed = counted.script.listed_under("team/manifests/");
+    eprintln!("one commit round over {GENERATIONS} generations listed {listed} key(s) under manifests/");
+    contextful_eval::record::emit("push-generation-list-per-round", listed as f64, u64::from(report.rounds), 0x5eed_0093);
+}

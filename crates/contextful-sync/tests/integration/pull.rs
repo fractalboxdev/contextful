@@ -762,3 +762,214 @@ fn a_run_state_torn_by_an_uncommitted_push_is_discarded_and_the_next_push_heals_
     assert!(report.discarded.is_empty(), "{:?}", report.discarded);
     assert!(reader.root().join("nodes/ingest-a/run-state.json").exists());
 }
+
+/// Bytes of one seeded object.
+const OBJECT_BYTES: usize = 1024;
+
+/// `len` bytes of a xorshift stream from `seed`.
+fn seeded_bytes(seed: u64, len: usize) -> Vec<u8> {
+    let mut x = seed | 1;
+    (0..len)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x as u8
+        })
+        .collect()
+}
+
+/// A bucket holding `foreign` run parts owned by `ingest-a` and `own` owned by `ingest-b`, each 1,024 seeded bytes put
+/// through the bucket, and `team/manifest.json` listing every one; returns the bucket and the manifest's bytes.
+fn seeded_bucket(dir: &std::path::Path, foreign: usize, own: usize, seed: u64) -> (Arc<dyn ObjectStore>, Vec<u8>) {
+    let b = bucket(dir);
+    let mut manifest = BucketManifest::default();
+    let keys = (0..foreign)
+        .map(|i| (format!("research/tables/filings/data/runs/r{i:05}/ingest-a/part-00000.parquet"), "ingest-a"))
+        .chain((0..own).map(|i| (format!("research/tables/filings/data/runs/b{i:02}/ingest-b/part-00000.parquet"), "ingest-b")));
+    for (i, (key, owner)) in keys.enumerate() {
+        let bytes = seeded_bytes(seed.wrapping_add(i as u64), OBJECT_BYTES);
+        b.put(&format!("team/{key}"), &bytes, Condition::None).unwrap();
+        manifest.entries.insert(key, Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: owner.into() });
+    }
+    let bytes = serde_json::to_vec_pretty(&manifest).unwrap();
+    b.put("team/manifest.json", &bytes, Condition::None).unwrap();
+    (b, bytes)
+}
+
+/// A pull with nothing to fetch still reads the whole bucket manifest, reads every local copy it lists and hashes
+/// each copy another node owns, and lists the project's `tables/` prefix to find pointers. Over 1,000 and 10,000
+/// foreign objects plus 10 of the puller's own, a second pull right after a cold one records the keys it listed, the
+/// local bytes it read and hashed, and the manifest bytes it fetched. Under `contextful-ci measure` the sizes are
+/// 1,000 and 10,000; elsewhere 100 and 1,000 exercise the path.
+#[test]
+fn a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes() {
+    const SEED: u64 = 0x5eed_0090;
+    const OWN: usize = 10;
+    let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
+    let sizes = if measuring { [1_000, 10_000] } else { [100, 1_000] };
+    for (size, label) in sizes.into_iter().zip(["1k", "10k"]) {
+        let dir = tempfile::tempdir().unwrap();
+        let (inner, manifest_bytes) = seeded_bucket(dir.path(), size, OWN, SEED);
+        let counted = Arc::new(Scripted { inner, script: Script::default() });
+        let puller = node("ingest-b", counted.clone(), "");
+        let cold = puller.syncer.pull(&PullScope::default()).unwrap();
+        assert_eq!(cold.downloaded.len(), size + OWN, "a cold pull fetches every listed object, its own included");
+        counted.script.reset();
+        let noop = puller.syncer.pull(&PullScope::default()).unwrap();
+        assert!(noop.downloaded.is_empty() && noop.removed.is_empty(), "{noop:?}");
+        let listed = counted.script.listed_under("team/research/tables/");
+        let manifest = counted.script.fetched_bytes("team/manifest.json");
+        assert_eq!(manifest % manifest_bytes.len(), 0, "the pull fetches the manifest whole");
+        eprintln!(
+            "no-op pull over {size} foreign objects: {listed} key(s) listed, {} B read, {} B hashed, {manifest} manifest B",
+            noop.bytes_read, noop.bytes_hashed
+        );
+        contextful_eval::record::emit(&format!("sync-noop-pull-keys-listed-{label}"), listed as f64, size as u64, SEED);
+        contextful_eval::record::emit(&format!("sync-noop-pull-hashed-{label}"), noop.bytes_hashed as f64, size as u64, SEED);
+        if label == "10k" {
+            contextful_eval::record::emit("sync-noop-pull-read-10k", noop.bytes_read as f64, size as u64, SEED);
+            contextful_eval::record::emit("sync-noop-pull-manifest-bytes-10k", manifest as f64, size as u64, SEED);
+        }
+    }
+}
+
+/// Whether `key` is an object get of a pull's download loop, not a manifest or pointer read.
+fn object_get(key: &str) -> bool {
+    key.starts_with("team/research/tables/") && !key.ends_with("_pointer.json")
+}
+
+/// A bucket wrapper holding each object get until `bound` gets, or as many as remain, are in flight, and recording the
+/// peak in flight. A first get alone for 2 s marks the downloads sequential, and nothing is held after that.
+struct Gathering {
+    inner: Arc<dyn ObjectStore>,
+    bound: usize,
+    total: usize,
+    /// Gets in flight, gets finished, peak in flight, and whether the downloads read as sequential.
+    state: std::sync::Mutex<(usize, usize, usize, bool)>,
+    turn: std::sync::Condvar,
+}
+
+impl ObjectStore for Gathering {
+    fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, contextful_core::store::object::ObjectError> {
+        if !object_get(key) {
+            return self.inner.get(key);
+        }
+        {
+            let mut s = self.state.lock().unwrap();
+            s.0 += 1;
+            s.2 = s.2.max(s.0);
+            self.turn.notify_all();
+            let target = self.bound.min(self.total.saturating_sub(s.1)).max(1);
+            let window = if s.0 == 1 && s.1 == 0 { 2 } else { 30 };
+            let (mut s, wait) = self.turn.wait_timeout_while(s, std::time::Duration::from_secs(window), |s| !s.3 && s.0 < target).unwrap();
+            if wait.timed_out() {
+                s.3 = true;
+                self.turn.notify_all();
+            }
+        }
+        let got = self.inner.get(key);
+        let mut s = self.state.lock().unwrap();
+        s.0 -= 1;
+        s.1 += 1;
+        self.turn.notify_all();
+        got
+    }
+
+    fn put(&self, key: &str, bytes: &[u8], condition: Condition) -> Result<contextful_core::store::object::Put, contextful_core::store::object::ObjectError> {
+        self.inner.put(key, bytes, condition)
+    }
+
+    fn delete(&self, key: &str) -> Result<(), contextful_core::store::object::ObjectError> {
+        self.inner.delete(key)
+    }
+
+    fn list(&self, prefix: &str) -> Result<Vec<String>, contextful_core::store::object::ObjectError> {
+        self.inner.list(prefix)
+    }
+
+    fn cas_scope(&self) -> contextful_core::store::object::CasScope {
+        self.inner.cas_scope()
+    }
+}
+
+/// A cold pull of 32 seeded objects through a bucket that holds each object get until 16, or as many as remain, are in
+/// flight; the record is the peak number of object gets in flight at once.
+#[test]
+fn a_cold_pull_reports_its_peak_in_flight_object_gets() {
+    const SEED: u64 = 0x5eed_0091;
+    const OBJECTS: usize = 32;
+    let dir = tempfile::tempdir().unwrap();
+    let (inner, _) = seeded_bucket(dir.path(), OBJECTS, 0, SEED);
+    let gathering = Arc::new(Gathering { inner, bound: 16, total: OBJECTS, state: Default::default(), turn: Default::default() });
+    let cold = node("ingest-b", gathering.clone(), "");
+    let report = cold.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(report.downloaded.len(), OBJECTS);
+    let (in_flight, finished, peak, sequential) = *gathering.state.lock().unwrap();
+    assert_eq!((in_flight, finished), (0, OBJECTS), "every object get finished");
+    eprintln!("a cold pull of {OBJECTS} objects peaked at {peak} object get(s) in flight (sequential: {sequential})");
+    contextful_eval::record::emit("sync-cold-pull-overlap", peak as f64, OBJECTS as u64, SEED);
+}
+
+/// A bucket wrapper adding a fixed delay to each object get, as a round trip to a remote bucket.
+struct Delayed {
+    inner: Arc<dyn ObjectStore>,
+    delay: std::time::Duration,
+}
+
+impl ObjectStore for Delayed {
+    fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, contextful_core::store::object::ObjectError> {
+        if object_get(key) {
+            std::thread::sleep(self.delay);
+        }
+        self.inner.get(key)
+    }
+
+    fn put(&self, key: &str, bytes: &[u8], condition: Condition) -> Result<contextful_core::store::object::Put, contextful_core::store::object::ObjectError> {
+        self.inner.put(key, bytes, condition)
+    }
+
+    fn delete(&self, key: &str) -> Result<(), contextful_core::store::object::ObjectError> {
+        self.inner.delete(key)
+    }
+
+    fn list(&self, prefix: &str) -> Result<Vec<String>, contextful_core::store::object::ObjectError> {
+        self.inner.list(prefix)
+    }
+
+    fn cas_scope(&self) -> contextful_core::store::object::CasScope {
+        self.inner.cas_scope()
+    }
+}
+
+/// Wall time of one cold pull of 32 seeded objects into a fresh store, each object get delayed 2 ms; the node is
+/// built outside the timed span. p50 and p95 over 200 timed pulls after 20 warm-up, the median of 5 batches
+/// (`assurance.measure.timing-iterations`, `assurance.measure.timing-batches`). Under `contextful-ci measure` that is
+/// the schedule; elsewhere 3 pulls after 1 exercise the path.
+#[test]
+fn cold_pull_wall_over_a_fixed_latency_bucket() {
+    const SEED: u64 = 0x5eed_0091;
+    const OBJECTS: usize = 32;
+    let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
+    let (warm_up, repeats, batches) = if measuring { (20, 200, 5) } else { (1, 3, 1) };
+    let dir = tempfile::tempdir().unwrap();
+    let (inner, _) = seeded_bucket(dir.path(), OBJECTS, 0, SEED);
+    let delayed: Arc<dyn ObjectStore> = Arc::new(Delayed { inner, delay: std::time::Duration::from_millis(2) });
+    let pull_ms = || {
+        let fresh = node("ingest-b", delayed.clone(), "");
+        let started = std::time::Instant::now();
+        let report = fresh.syncer.pull(&PullScope::default()).unwrap();
+        let ms = started.elapsed().as_secs_f64() * 1e3;
+        assert_eq!(report.downloaded.len(), OBJECTS);
+        ms
+    };
+    for _ in 0..warm_up {
+        pull_ms();
+    }
+    let timed: Vec<Vec<f64>> = (0..batches).map(|_| (0..repeats).map(|_| pull_ms()).collect()).collect();
+    let (p50, p95) = contextful_eval::trend::median_batch(&timed).unwrap();
+    eprintln!("a cold pull of {OBJECTS} objects at 2 ms per get: p50 {p50:.1} ms, p95 {p95:.1} ms");
+    assert!(p50 > 0.0 && p95 >= p50);
+    contextful_eval::record::emit("sync-cold-pull-wall-p50", p50, repeats as u64, SEED);
+    contextful_eval::record::emit("sync-cold-pull-wall-p95", p95, repeats as u64, SEED);
+}
