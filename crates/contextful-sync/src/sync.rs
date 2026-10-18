@@ -862,7 +862,7 @@ impl Syncer {
         let mut report = PushReport::default();
         // A copy of a key another node owns is never pushed; a shared mergeable key commits by its merge.
         for (key, entry) in &plan.mine {
-            // A run state rewrites one key in place, so a listed digest proves nothing of the object; it uploads on every push (`store.pull.run-state-torn`).
+            // A run state rewrites one key in place, so a listed digest proves nothing of the object; it uploads on every push (`store.push.run-state-upload`).
             let run_state = run_state_node(key).is_some_and(|n| *key == format!("{}/nodes/{n}/run-state.json", self.project));
             if !run_state && remote.entries.get(key).is_some_and(|e| e.sha256 == entry.sha256) {
                 continue;
