@@ -911,6 +911,7 @@ version = "0.16.0"
 dependencies = [
  "contextful-core",
  "contextful-decode",
+ "contextful-eval",
  "contextful-outbound",
  "encoding_rs",
  "flate2",

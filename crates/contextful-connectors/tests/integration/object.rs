@@ -388,3 +388,178 @@ fn delimited_keys_refuse_against_another_format_and_a_malformed_delimiter_refuse
         assert!(ObjectConfig::parse(&config).is_ok(), "{config}: a zip suffix or no suffix admits `member`");
     }
 }
+
+/// Objects in each quarantine prefix below.
+const PREFIX_OBJECTS: usize = 1000;
+
+/// One pull from `position`: its rows, its position and whether it claims a complete snapshot.
+fn pulled_rows(s: &mut ObjectSource, position: Option<Value>) -> Result<(Vec<Value>, Option<Value>, bool), contextful_core::run::Failure> {
+    let pulled: Value = serde_json::from_slice(&s.pull(&request(position), &Never)?).unwrap();
+    let rows = pulled["rows"].as_array().cloned().unwrap_or_default();
+    Ok((rows, pulled.get("cursor").cloned().filter(|c| !c.is_null()), pulled["snapshot_complete"] == json!(true)))
+}
+
+/// The readable objects whose row landed, each readable object `i` holding the one row `{"n": i}`.
+fn objects_landed(rows: &[Value], bad: usize) -> usize {
+    let mut landed: Vec<usize> = rows
+        .iter()
+        .filter_map(|r| r.get("n"))
+        .filter_map(|n| n.as_u64().map(|i| i as usize).or_else(|| n.as_str().and_then(|s| s.parse().ok())))
+        .filter(|i| *i != bad && *i < PREFIX_OBJECTS)
+        .collect();
+    landed.sort_unstable();
+    landed.dedup();
+    landed.len()
+}
+
+/// A prefix of 1000 objects with one unreadable among them, in three shapes: a JSON Lines line that is no object, a
+/// truncated gzip stream, and a two-member archive read without `member`. The figure is the fewest readable objects
+/// any shape lands.
+#[test]
+fn a_prefix_of_1000_objects_with_one_unreadable_lands_the_rest() {
+    let bad = PREFIX_OBJECTS / 2;
+    let (jsonl, csv_gz, zips) = (MemBucket::default(), MemBucket::default(), MemBucket::default());
+    for i in 0..PREFIX_OBJECTS {
+        let csv = format!("n\n{i}\n");
+        if i == bad {
+            jsonl.put(&format!("d/{i:04}.jsonl"), b"{\"n\":\"unreadable\"}\n[3]\n", Condition::None).unwrap();
+            let whole = gz(b"n\nunreadable\n");
+            csv_gz.put(&format!("g/{i:04}.csv.gz"), &whole[..whole.len() / 2], Condition::None).unwrap();
+            zips.put(&format!("z/{i:04}.csv.zip"), &zipped(&[("a.csv", b"n\nunreadable\n"), ("b.csv", b"n\nunreadable\n")]), Condition::None).unwrap();
+        } else {
+            jsonl.put(&format!("d/{i:04}.jsonl"), format!("{{\"n\":{i}}}\n").as_bytes(), Condition::None).unwrap();
+            csv_gz.put(&format!("g/{i:04}.csv.gz"), &gz(csv.as_bytes()), Condition::None).unwrap();
+            zips.put(&format!("z/{i:04}.csv.zip"), &zipped(&[("a.csv", csv.as_bytes())]), Condition::None).unwrap();
+        }
+    }
+    let cases = [
+        (json!({"bucket": "lake", "prefix": "d/", "format": "jsonl"}), Arc::new(jsonl)),
+        (json!({"bucket": "lake", "prefix": "g/", "format": "csv"}), Arc::new(csv_gz)),
+        (json!({"bucket": "lake", "prefix": "z/", "format": "csv"}), Arc::new(zips)),
+    ];
+    let mut fewest = PREFIX_OBJECTS;
+    for (config, bucket) in &cases {
+        let rows = match pulled_rows(&mut source(config.clone(), bucket.clone()), None) {
+            Ok((rows, _, _)) => rows,
+            Err(f) => {
+                assert!(f.message.contains(&format!("{bad:04}")), "{config}: a refusal names the unreadable object: {f}");
+                Vec::new()
+            }
+        };
+        assert!(!rows.iter().any(|r| r["n"] == json!("unreadable")), "{config}: no row of the unreadable object lands");
+        fewest = fewest.min(objects_landed(&rows, bad));
+    }
+    contextful_eval::record::emit("ingest-prefix-one-corrupt", fewest as f64, cases.len() as u64, 0);
+}
+
+/// Under `skip_unchanged`, a read of 1000 objects whose last is unreadable: whether the first read's position holds
+/// every readable object, and how many readable objects the second read downloads again.
+#[test]
+fn a_read_with_one_unreadable_object_commits_the_position_of_the_rest() {
+    let unreadable = format!("d/{:04}.jsonl", PREFIX_OBJECTS - 1);
+    let bucket = Arc::new(MemBucket::default());
+    for i in 0..PREFIX_OBJECTS - 1 {
+        bucket.put(&format!("d/{i:04}.jsonl"), format!("{{\"n\":{i}}}\n").as_bytes(), Condition::None).unwrap();
+    }
+    bucket.put(&unreadable, b"{\"n\":\"unreadable\"}\n[3]\n", Condition::None).unwrap();
+    let mut s = source(json!({"bucket": "lake", "prefix": "d/", "format": "jsonl", "skip_unchanged": true}), bucket.clone());
+    let position = match pulled_rows(&mut s, None) {
+        Ok((_, at, _)) => at,
+        Err(f) => {
+            assert!(f.message.contains(&unreadable), "a refusal names the unreadable object: {f}");
+            None
+        }
+    };
+    let held = position.as_ref().and_then(|p| p["objects"].as_object()).map_or(0, |o| o.keys().filter(|k| **k != unreadable).count());
+    let advanced = u64::from(held == PREFIX_OBJECTS - 1);
+
+    bucket.gets.lock().unwrap().clear();
+    let _ = pulled_rows(&mut s, position);
+    let redownloaded = bucket.gets.lock().unwrap().iter().filter(|k| **k != unreadable).count();
+    contextful_eval::record::emit("ingest-prefix-position-advances", advanced as f64, 1, 0);
+    contextful_eval::record::emit("ingest-prefix-redecodes", redownloaded as f64, 1, 0);
+}
+
+/// A prefix of 100 objects declared JSON Lines, every one holding CSV, refuses the read.
+#[test]
+fn a_prefix_where_every_object_is_unreadable_still_refuses() {
+    let bucket = Arc::new(MemBucket::default());
+    for i in 0..100 {
+        bucket.put(&format!("d/{i:03}.jsonl"), format!("a,b\n{i},x\n").as_bytes(), Condition::None).unwrap();
+    }
+    let refused = match pulled_rows(&mut source(json!({"bucket": "lake", "prefix": "d/", "format": "jsonl"}), bucket), None) {
+        Err(f) => u64::from(f.message.starts_with("PipelineUnreadableInput")),
+        Ok(_) => 0,
+    };
+    assert_eq!(refused, 1, "a read whose every object is unreadable refuses");
+    contextful_eval::record::emit("ingest-prefix-all-corrupt-refused", refused as f64, 1, 0);
+}
+
+/// Two prefixes of 100 objects, one holding a single unreadable object and one holding two. The figure counts the
+/// prefixes read as a one-in-a-hundred ceiling reads them: the first lands its 99 readable objects, the second refuses.
+#[test]
+fn one_unreadable_in_a_hundred_lands_and_two_refuse() {
+    let prefix = |bad: &[usize]| {
+        let bucket = Arc::new(MemBucket::default());
+        for i in 0..100 {
+            let body = if bad.contains(&i) { b"[3]\n".to_vec() } else { format!("{{\"n\":{i}}}\n").into_bytes() };
+            bucket.put(&format!("d/{i:03}.jsonl"), &body, Condition::None).unwrap();
+        }
+        pulled_rows(&mut source(json!({"bucket": "lake", "prefix": "d/", "format": "jsonl"}), bucket), None)
+    };
+    let one_lands = match prefix(&[50]) {
+        Ok((rows, _, _)) => rows.len() == 99,
+        Err(f) => {
+            assert!(f.message.contains("d/050.jsonl"), "a refusal names the unreadable object: {f}");
+            false
+        }
+    };
+    let two_refuse = prefix(&[25, 75]).is_err();
+    assert!(two_refuse, "two unreadable objects in a hundred refuse the read");
+    let held = u64::from(one_lands) + u64::from(two_refuse);
+    contextful_eval::record::emit("ingest-prefix-ceiling-boundary", held as f64, 2, 0);
+}
+
+/// A prefix read in full twice, one object turned unreadable before the second read: the rows of that object the
+/// second read would retire, every one of them when it lands without the object and claims a complete snapshot.
+#[test]
+fn a_skipped_object_tombstones_none_of_its_earlier_rows() {
+    let bucket = MemBucket::with(&[("d/1.jsonl", b"{\"n\":1}\n"), ("d/2.jsonl", b"{\"n\":2}\n{\"n\":3}\n"), ("d/3.jsonl", b"{\"n\":4}\n")]);
+    let mut s = source(json!({"bucket": "lake", "prefix": "d/", "format": "jsonl"}), bucket.clone());
+    let (first, _, complete) = pulled_rows(&mut s, None).unwrap();
+    assert_eq!((first.len(), complete), (4, true));
+    bucket.put("d/2.jsonl", b"{\"n\":2}\n[3]\n", Condition::None).unwrap();
+    let retired = match pulled_rows(&mut s, None) {
+        Ok((rows, _, true)) => [json!({"n": 2}), json!({"n": 3})].iter().filter(|r| !rows.contains(r)).count(),
+        _ => 0,
+    };
+    assert_eq!(retired, 0, "a read leaving an object out never claims the snapshot whole");
+    contextful_eval::record::emit("ingest-skip-prior-rows-tombstoned", retired as f64, 1, 0);
+}
+
+/// A prefix of 1000 gzip objects whose last expands past the 256 MiB ceiling: the readable objects that land.
+#[test]
+fn a_prefix_with_one_object_expanding_past_the_ceiling_lands_the_rest() {
+    let bad = PREFIX_OBJECTS - 1;
+    let mut big = GzEncoder::new(Vec::new(), Compression::fast());
+    let chunk = vec![0u8; 1024 * 1024];
+    for _ in 0..=EXPANSION_CEILING / chunk.len() as u64 {
+        big.write_all(&chunk).unwrap();
+    }
+    let big = big.finish().unwrap();
+    let bucket = Arc::new(MemBucket::default());
+    for i in 0..bad {
+        bucket.put(&format!("big/{i:04}.jsonl.gz"), &gz(format!("{{\"n\":{i}}}\n").as_bytes()), Condition::None).unwrap();
+    }
+    bucket.put(&format!("big/{bad:04}.jsonl.gz"), &big, Condition::None).unwrap();
+    let rows = match pulled_rows(&mut source(json!({"bucket": "lake", "prefix": "big/", "format": "jsonl"}), bucket), None) {
+        Ok((rows, _, _)) => rows,
+        Err(f) => {
+            let named = f.message.contains(&format!("big/{bad:04}.jsonl.gz")) && f.message.contains(&EXPANSION_CEILING.to_string());
+            assert!(named, "a refusal names the oversize object and the ceiling: {f}");
+            Vec::new()
+        }
+    };
+    let landed = objects_landed(&rows, bad);
+    contextful_eval::record::emit("ingest-prefix-one-oversize", landed as f64, 1, 0);
+}
