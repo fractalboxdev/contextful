@@ -1133,9 +1133,15 @@ dependencies = [
 name = "contextful-probe"
 version = "0.16.0"
 dependencies = [
+ "contextful-connectors",
+ "contextful-context",
+ "contextful-core",
+ "contextful-decode",
  "contextful-eval",
+ "contextful-outbound",
  "contextful-policy",
  "hex",
+ "libc",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
