@@ -11,7 +11,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 587 | 127 | 48 | 18 | 547 | 0 | 541 |
+| `run` | 3 | 29 | 587 | 127 | 48 | 18 | 547 | 0 | 547 |
 | `store` | 3 | 19 | 318 | 64 | 18 | 11 | 307 | 0 | 307 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
@@ -1439,7 +1439,7 @@ Unscheduled operations: 13.
 | `run.advance.snapshot-completion` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
 | `run.advance.turning-incremental-on` | `crates/contextful-cli/tests/integration/pipeline.rs::enabling_incremental_over_a_held_position_starts_from_none_once` | performed |
 | `run.advance.unorderable-position` | `crates/contextful-core/tests/integration/run/advance.rs::an_unorderable_clock_value_refuses_the_pull` | performed |
-| `run.advance.walk-position` | `crates/contextful-engine/tests/integration/runner.rs::a_monotonic_checkpoint_waits_for_a_strict_frontier_advance` | performed |
+| `run.advance.walk-position` | `crates/contextful-engine/tests/integration/runner.rs::a_monotonic_walk_ends_when_the_source_repeats_its_position` | performed |
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
 | `run.advance.zero-row-commit` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
 | `run.backfill.attempt-isolation` | `crates/contextful-engine/tests/integration/chunk_lease.rs::an_expired_lease_lets_a_second_worker_claim_the_next_attempt_under_its_own_path` | performed |

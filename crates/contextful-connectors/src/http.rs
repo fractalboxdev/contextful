@@ -696,7 +696,7 @@ pub struct HttpSource {
     clock_field: Option<String>,
     /// Tokens this walk served, for `ConnectorPageLoop`, and the requests it issued
     /// since it began or, under a watermark, since its clock last strictly advanced.
-    seen: Vec<String>,
+    seen: std::collections::HashSet<String>,
     requests: usize,
     /// The greatest clock value this walk served.
     served: Option<Value>,
@@ -735,7 +735,7 @@ impl HttpSource {
             probed: false,
             watermarked: false,
             clock_field: None,
-            seen: Vec::new(),
+            seen: std::collections::HashSet::new(),
             requests: 0,
             served: None,
             next_url: None,
@@ -908,14 +908,13 @@ impl HttpSource {
     }
 
     /// Hold the walk to one visit per token and to [`PAGE_CAP`] requests.
-    fn advance(seen: &mut Vec<String>, next: &str, base: &Url) -> Result<(), Failure> {
-        if seen.iter().any(|s| s == next) {
+    fn advance(seen: &mut std::collections::HashSet<String>, next: &str, base: &Url) -> Result<(), Failure> {
+        if !seen.insert(next.to_string()) {
             return Err(Failure::deterministic(
                 FailureTag::Permanent,
                 ConnectorError::ConnectorPageLoop(format!("`{}` served a page token it served before", scrub(base))).to_string(),
             ));
         }
-        seen.push(next.to_string());
         Ok(())
     }
 
@@ -928,7 +927,7 @@ impl HttpSource {
         let mut budget = ExpansionBudget::new(EXPANSION_BYTES, EXPANSION_TIME);
         let base = self.base_url(request)?;
         let mut rows = Vec::new();
-        let mut seen: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut token: Option<String> = None;
         for _ in 0..PAGE_CAP {
             if cancel.requested() {
@@ -1092,6 +1091,7 @@ impl HttpSource {
         let (rows, next) = self.page(base, token, request, None)?;
         if self.advances(&rows, request) {
             self.requests = 0;
+            self.seen.clear();
         }
         if let Some(n) = &next {
             HttpSource::advance(&mut self.seen, n, base)?;
@@ -1331,7 +1331,7 @@ impl HttpSource {
         let base = self.base_url(request)?;
         let mut digest = <sha2::Sha256 as sha2::Digest>::new();
         let mut rows = Vec::new();
-        let mut seen: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut token: Option<String> = None;
         for _ in 0..PAGE_CAP {
             if cancel.requested() {

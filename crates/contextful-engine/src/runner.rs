@@ -552,7 +552,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     let advanced = next != at;
                     at = next;
                     position = at.clone().map(|v| watermark(&field, v));
-                    let walking = pull.cursor.filter(|_| pull.more);
+                    // A walk continues only to a position other than the one this pull asked, so
+                    // a source repeating its position ends the run (`run.advance.walk-position`).
+                    let walking = pull.cursor.filter(|cursor| pull.more && Some(cursor) != request.position.as_ref());
                     let continues = walking.is_some();
                     continue_walk(walking);
                     (admitted, !(continues || (pull.more && advanced)), strict)
@@ -807,7 +809,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                         if let Some(clock) = clock(&row, field) { if admits(floor, clock).map_err(preparation_failure)? { rows.push(row); } }
                     }
                     let advanced = next.as_ref() != at;
-                    let walk = pull.cursor.filter(|_| pull.more);
+                    let walk = pull.cursor.filter(|cursor| pull.more && Some(cursor) != request.position.as_ref());
                     let last = !(walk.is_some() || (pull.more && advanced));
                     (rows, next.map(|value| watermark(field, value)), last, walk, strict)
                 } else {

@@ -528,7 +528,9 @@ Decision: a terminal receipt names its job, keys, attempts and outcome, and the 
 
 ## A backfill commits at checkpoints and walks one page per pull
 
-A run commits its staged parts and the position after its last staged pull each time they reach 512 MiB, then keeps pulling, so a window of any size lands in one fire with bounded staging. Each commit takes its own run id; the catalog caches its position while the owner stays pending. Under a monotonic cursor a checkpoint waits for a pull whose every clock passes the frontier, so no instant spans two commits. The HTTP source hands the runner one page per pull, its position carrying the watermark and page token, or a page count under next-URL pagination; the page cap counts from the walk's last strict clock advance.
+A backfill window outgrows one commit's staging bound, and a watermark walk outgrows one pull.
+
+Decision: a run commits its staged parts and the position after its last staged pull each time they reach 512 MiB, then keeps pulling, so a window of any size lands in one fire with bounded staging. Under a monotonic cursor a checkpoint waits for a pull whose every clock passes the frontier, so no instant spans two commits. The HTTP source hands the runner one page per pull, its position carrying the watermark and page token, or a page count under next-URL pagination; the page cap counts from the walk's last strict clock advance.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

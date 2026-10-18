@@ -266,7 +266,7 @@ clause = "connector.source.page-cap"
 metric = "ingest.backfill.http_fires_to_complete"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_engine::runner::a_2000_page_vendor_lands_every_page_through_successive_fires" }
+method = { test = "contextful_engine::runner::a_2000_page_vendor_lands_every_page_in_one_fire" }
 target = { op = "==", value = 1 }
 seed   = 0x5eed_0b02
 
@@ -275,7 +275,7 @@ clause = "connector.source.page-cap"
 metric = "ingest.backfill.http_rows_landed_once"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_engine::runner::a_2000_page_vendor_lands_every_page_through_successive_fires" }
+method = { test = "contextful_engine::runner::a_2000_page_vendor_lands_every_page_in_one_fire" }
 target = { op = "==", value = 1 }
 seed   = 0x5eed_0b02
 

@@ -345,8 +345,8 @@ fn restoring_the_recorded_build_resumes_and_clears_the_owner() {
     assert!(rig.catalog().owner("feed", "filings").unwrap().is_none());
 }
 
-/// One run produces one atomic commit per table; a crash mid-run leaves parts under that run's own directory, and
-/// a resumption continues from the last recorded step.
+/// One run produces one atomic commit per table, plus one per checkpoint; a crash mid-run leaves parts under that
+/// run's own directory, and a resumption continues from the last recorded step or commit.
 // spec: run.own.one-commit-per-run@7976ecb6
 #[test]
 fn a_run_commits_once_and_a_crash_commits_nothing() {
@@ -547,7 +547,6 @@ impl Source for DatedWalk {
 
 /// Under a monotonic cursor a pull carrying a position continues its walk, and a checkpoint waits for a pull whose
 /// every clock passes the run's frontier, so no commit's position splits the rows of one instant.
-// spec: run.advance.walk-position@feba270e
 // spec: run.own.checkpoint-frontier@f7da4141
 #[test]
 fn a_monotonic_checkpoint_waits_for_a_strict_frontier_advance() {
@@ -561,6 +560,42 @@ fn a_monotonic_checkpoint_waits_for_a_strict_frontier_advance() {
     let at = |n: i64| Some(json!({ "field": "updated_at", "at": n }));
     assert_eq!(sink.commits.iter().map(|c| c.cursor.clone()).collect::<Vec<_>>(), [at(1), at(2), at(3)]);
     assert_eq!(sink.commits.iter().map(ids).collect::<Vec<_>>(), [vec![vec!["a", "b"], vec!["c"]], vec![vec!["d"], vec!["e"]], vec![vec!["f"]]]);
+}
+
+/// A source walking `pages` as [`DatedWalk`] does, then answering every later pull with no rows, the position it
+/// was asked and more to come, until `cap` pulls end it.
+struct StallingWalk {
+    pages: Vec<Vec<Value>>,
+    pulls: usize,
+    cap: usize,
+}
+
+impl Source for StallingWalk {
+    fn pull(&mut self, request: &PullRequest, _: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        self.pulls += 1;
+        let n = request.position.as_ref().and_then(|p| p.get("next")).and_then(Value::as_u64).unwrap_or(0) as usize;
+        let body = match self.pages.get(n) {
+            Some(rows) => json!({ "rows": rows, "cursor": { "next": n + 1 }, "more": true }),
+            None => json!({ "rows": [], "cursor": request.position, "more": self.pulls < self.cap }),
+        };
+        Ok(serde_json::to_vec(&body).unwrap())
+    }
+}
+
+/// Under a monotonic cursor a pull answering the position it asked, with no frontier advance, ends the walk, so a
+/// source reporting more forever cannot hold the run open.
+// spec: run.advance.walk-position@b835b6ce
+#[test]
+fn a_monotonic_walk_ends_when_the_source_repeats_its_position() {
+    let rig = Rig::new();
+    let row = |id: &str, at: i64| json!({ "id": id, "updated_at": at });
+    let mut source = StallingWalk { pages: vec![vec![row("a", 1)], vec![row("b", 2)]], pulls: 0, cap: 50 };
+    let mut sink = Sink::default();
+    let p = plan("kind = \"monotonic\"\nfield = \"updated_at\"", "");
+    assert_eq!(rig.run(&p, "1.0.0", "run-1", &mut source, &mut sink).unwrap().status, RunStatus::Success);
+    assert_eq!(source.pulls, 3, "the walk ends on the pull that repeats its position");
+    assert_eq!(sink.commits.iter().flat_map(ids).flatten().collect::<Vec<_>>(), ["a", "b"]);
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, Some(json!({ "field": "updated_at", "at": 2 })));
 }
 
 /// A vendor answering `GET /bars?page=<n>[&since=<date>]` from `pages` pages of `per_page` daily bars, ordered
@@ -601,9 +636,9 @@ impl contextful_outbound::Transport for SyntheticVendor {
 }
 
 /// A 2000-page vendor of ten bars a page, fifty symbols to a date, read through the generic HTTP source under a
-/// `date` watermark, a fresh source each fire as the scheduler builds one; up to three fires land it.
+/// `date` watermark, a fresh source each fire as the scheduler builds one; one fire lands it.
 #[test]
-fn a_2000_page_vendor_lands_every_page_through_successive_fires() {
+fn a_2000_page_vendor_lands_every_page_in_one_fire() {
     use contextful_connectors::http::{HttpConfig, HttpSource, Mediation};
     let vendor = Arc::new(SyntheticVendor { pages: 2000, per_page: 10, symbols: 50, requests: Default::default() });
     let config = HttpConfig::parse(&json!({ "endpoint": "https://vendor.example/bars", "records": "/data", "page_param": "page", "start_page": 1, "since_param": "since" })).unwrap();

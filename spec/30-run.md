@@ -241,7 +241,7 @@ Committing an incremental read position under its declared kind, and the boundar
 - `field-rename` — Opening a position whose stored field differs from the declared `incremental` field raises `CursorFieldMismatch` before any request leaves the host.
   *A-run*
 - `frontier` — The frontier counts every fetched row, landed or not. A committed position moves forward or holds; an empty or older window never rewinds it.
-- `walk-position` — Under a `monotonic` cursor, a pull reporting more and carrying a position continues its walk: the next pull asks that position and admits rows from the walk's floor, and the run commits the frontier.
+- `walk-position` — Under a `monotonic` cursor, a pull reporting more and carrying a position other than the one it asked continues its walk: the next pull asks that position and admits rows from the walk's floor, and the run commits the frontier.
   *A-run*
 - `unorderable-position` — A row with no orderable value in the clock field, or a stream switching between text and numeric positions mid-pass, raises `CursorPositionUnorderable`, terminal for the pull.
   *A-run*
@@ -259,6 +259,7 @@ Committing an incremental read position under its declared kind, and the boundar
 - `run.advance.zero-row-commit`: WHEN a complete snapshot holds zero rows after a non-empty replacing run, THEN the current read is empty and a bounded read before the commit retains the older rows.
 - `run.advance.zero-row-commit`: WHEN an unchanged input is skipped, THEN the current read and cursor retain their prior values.
 - `run.advance.zero-row-commit`: WHEN a pull fails before completion, THEN no replacement marker becomes readable.
+- `run.advance.walk-position`: WHEN a `monotonic` walk's pull returns no rows, the position it asked and more, THEN the run ends and commits its frontier.
 
 ## suspend
 
@@ -426,7 +427,7 @@ The execution owner a scope holds and the connector build it pins while pending.
 - `checkpoint-run-id` — A run's first commit lands under its run id and each later one under `<run id>.<n>`, `n` its zero-padded six-digit ordinal, so every commit names its own parts.
   *because the store holds one manifest per run id, and a later commit naming an earlier one's directory finds it committed*
 - `checkpoint-scope` — A table replacing its source state, a body's prepared landing, and a seeding or receiving scope take no checkpoint; each such run commits once.
-  *because a replacement publishes one complete inventory, and a seeding or receiving scope's cursor answers to its own window, not the live table's*
+  *because a replacement publishes one complete inventory, a body's landing publishes with its body's outcome, and a seeding or receiving scope's cursor answers to its own window*
 - `stage-schema` — A stage refuses against `schema.json` and the run's earlier stages, then merges its columns into the run's own staged schema; only the commit merges them into `schema.json`.
   *because otherwise rows no commit publishes fix a column's type in the table's schema*
 - `source-stage-schema` — A deterministic `SchemaIncompatible` from staging an ordinary source batch, raw or prepared, retires its owner unless another live attempt holds it; the failed run changes neither committed cursor nor published rows. This exception excludes prepared body-emission staging.
