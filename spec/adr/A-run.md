@@ -410,21 +410,21 @@ Consequences: an origin later than the frozen bound refuses.
 
 ## A build is stale by the landings it has not read
 
-Context: a published model's reader asks whether its figures trail the corpus by more than `max_lag`. Comparing the newest input commit with the clock reads a quiet input as stale forever, and no rebuild clears it.
+Context: a published model's reader asks whether its figures trail the corpus by more than `max_lag`. The newest input commit against the clock reads a quiet input stale forever.
 
-Decision: per input, a build reads the readable prefix and records the greatest `commit_seq` read as `through`, and the count and digest of runs read outside its snapshot chain as `omitted`. A run outside the watermark snapshot's chain waits when its `commit_seq` exceeds `through`; the runs at or below it must reproduce `omitted`, or the input waits as past every lag. A model input's published builds newer than the watermark snapshot wait too. The build is stale when a waiting landing is older than `max_lag`; `stale_inputs` names each input holding one.
+Decision: per input, a build reads every readable run, recording the greatest `commit_seq` as `through`, and the count and digest of runs read outside its snapshot chain as `omitted`. A run outside the watermark snapshot's chain waits when its `commit_seq` exceeds `through`; the runs at or below it must reproduce `omitted`, or the input waits as past every lag. A model input's published builds newer than the watermark snapshot wait too. The build is stale when a waiting landing is older than `max_lag`; `stale_inputs` names each input holding one.
 
-Criteria: a rebuild over the current frontier always clears staleness, which decided it.
+Criteria: a rebuild over the current frontier always clears staleness.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| A sequence frontier per input *(chosen)* | — | A run merged below `through` reads stale until a rebuild. |
+| A sequence frontier per input *(chosen)* | — | A run merged, or a group published, below `through` reads stale until a rebuild. |
 | The omitted runs listed per input | Size | An input no fold covers adds one key per run to every watermark. |
 | The newest commit instant against the clock | Clearable | A quiet input reads stale, and no rebuild fixes it. |
 | A single-instant watermark | Comparability | Two writers commit out of stamp order, so an instant names no landing set. |
 | The maximum across inputs | Attribution | One input that never reaches a build hides behind fresher ones. |
 
-Consequences: a watermark holds a fixed size per input, and a manifest listing runs still reads.
+Consequences: a watermark holds a fixed size per input, a manifest listing runs still reads, and an unpublished group holds no build back.
 
 ## A minor contract bump admits only what an old reader still reads
 
@@ -557,3 +557,16 @@ Decision: a run of a position-addressed source commits its staged parts and the 
 | A next-URL position counting pages | Correctness | A resumed walk re-follows a moved listing by count and lands a row twice or skips it; a replacing table publishes nothing. |
 
 Consequences: a next-URL walk, a replacing table, a body's landing and a seeding or receiving scope commit once.
+
+## The run record folds inside its own append
+
+Context: every run appends two store runs to `_runs`, and the session that fires `store.fold.triggers` for a producer landing skips the engine's own appends. Nothing else folds the record, so its listing, every watermark reading it and every push grow by run. Criteria: the record's object count stays bounded without an operator command; a run's row never fails on the record's upkeep.
+
+Decision: an append counts the record's unfolded runs as a landing session counts them, reading a manifest only when another writer moved the table, and runs a pass once the trigger fires. The row commits first; a pass that fails is dropped, and the next append fires it again.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A pass inside the append, its failure dropped *(chosen)* | — | The append that fires the trigger pays one pass and its collection. |
+| Operator `context compact _runs` alone | No operator command | The record grows until someone runs it. |
+| A scheduled pass in `serve` | Every writer folds | A one-shot `run` never folds its record. |
+| A pass inside the append, its failure raised | Row never fails on upkeep | A durable row reports a failed run. |

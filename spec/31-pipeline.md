@@ -545,12 +545,10 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
   *because no member of a cycle has a first build, and once one exists each build folds in the other's previous output*
 - `build-id` — A build's id is the snapshot id it publishes.
   *A-run*
-- `build-prefix` — A build reads each input's runs only below the lowest `commit_seq` among grouped runs awaiting their group marker, the prefix {{read.subscribe.commit-order}} delivers.
-  *because one readable prefix serves every ordered read, and a run read past an unpublished group leaves a lower `commit_seq` unread*
 - `watermark` — A build's watermark is `{at, inputs}`: per input table the snapshot id, `through`, the greatest `commit_seq` read, and `omitted`, the count and digest of runs read outside the snapshot chain; `at` is the newest commit instant.
   *because a list of omitted runs grows by one key per run on an input no fold covers*
 - `watermark-digest` — `omitted.digest` is the lowercase hex SHA-256 over the sorted keys `<run-id>/<node-id>` of the omitted runs, each followed by a newline.
-- `watermark-listed-runs` — A watermark input carrying a `runs` list and no `omitted` reads with those runs included under {{run.publish.staleness}}; no build writes `runs`.
+- `watermark-listed-runs` — A watermark input carrying a `runs` list and no `omitted` reads with those runs included under {{run.publish.staleness}}; no build writes `runs`, and every echo of that watermark keeps the list.
   *because a manifest committed with listed runs stays readable*
 - `build-horizon` — `contextful build <model> --available-as-of <t>` reads every input at `available_as_of` equal to `t` and records `t` as the watermark's `horizon`; a build without the flag records a null horizon.
   *because a build is reused across horizons only when its own bound is recorded beside it*
@@ -630,6 +628,7 @@ flowchart LR
 - `run.publish.staleness`: WHEN `events` lands a run 1 second past the build and `max_lag` is `1h`, THEN status reports fresh at 1 hour after the landing and stale, `stale_inputs` `["events"]`, 1 second later.
 - `run.publish.staleness`: WHEN a fold folds the runs a build read into a new snapshot, THEN status still reports the build fresh.
 - `run.publish.staleness-omitted-check`: WHEN a run merged from another node carries a `commit_seq` below `through` and the build never read it, THEN status reports the input stale at once.
+- `run.publish.staleness-omitted-check`: WHEN a relational run's group marker lands after a build read a plain run committed above it, THEN status reports the input stale at once.
 - `run.publish.staleness-model-input`: WHEN `daily` rebuilds after `weekly` read it and `max_lag` is `1d`, THEN `weekly` reports stale, `stale_inputs` `["daily"]`, 1 day after the rebuild.
 
 unsettled: Is a build with a non-null horizon stale by landings committed after its horizon? owner: pipeline affects: run.publish

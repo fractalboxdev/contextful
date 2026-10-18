@@ -602,36 +602,37 @@ direction = "lower_is_better"
 method = { test = "contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers" }
 seed   = 0x5eed_0102
 
-# A ratchet: a model reading `_runs` over 524 unit runs (1048 store runs, 48 past the last
-# 50-run fold multiple) serializes a 48301 B watermark; growth past that reds evaluate.
+# A model reading `_runs` over 524 unit runs (1048 store runs, 48 past the last 50-run fold
+# multiple) serializes a 225 B watermark: a frontier of fixed size per input.
 [entry.watermark-bytes-runs-record]
 clause = "run.model.watermark"
 metric = "run.model.watermark_bytes"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs" }
-target = { op = "<=", value = 48301 }
+target = { op = "<=", value = 512 }
 seed   = 0x5eed_0615
 
-# A ratchet: the same watermark lists 1048 `_runs` run ids, read through JSON.
+# The same watermark lists no `_runs` run id, read through JSON; its test also checks the
+# omitted count against the store, so a renamed field fails it.
 [entry.watermark-ids-runs-record]
 clause = "run.model.watermark"
 metric = "run.model.watermark_ids"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs" }
-target = { op = "<=", value = 1048 }
+target = { op = "<=", value = 0 }
 seed   = 0x5eed_0615
 
 # A ratchet: the source completion a grouped publication records from that build's
-# watermark is 48408 B.
+# watermark is 332 B.
 [entry.source-completion-bytes]
 clause = "run.export.group-source"
 metric = "run.export.source_completion_bytes"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs" }
-target = { op = "<=", value = 48408 }
+target = { op = "<=", value = 332 }
 seed   = 0x5eed_0615
 
 [entry.status-latency-runs-record]
@@ -645,23 +646,22 @@ seed   = 0x5eed_0615
 
 # The ledger keeps the latest completion per publication (run.export.group-source-latest): 1 row after 200 builds.
 [entry.source-history-rows]
-clause = "run.export.group-source"
+clause = "run.export.group-source-latest"
 metric = "run.export.source_history_rows"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_sqlite::export::source_history_stays_bounded_per_publication" }
-target = { op = "<=", value = 200 }
+target = { op = "<=", value = 16 }
 seed   = 0x5eed_0615
 
-# A synthetic watermark input: history pruning moves this figure, a bounded watermark
-# alone does not.
+# 1 retained completion of a bounded watermark: 265 B after 200 builds.
 [entry.source-history-bytes]
-clause = "run.export.group-source"
+clause = "run.export.group-source-latest"
 metric = "run.export.source_history_bytes"
 kind   = "test"
-tier   = "trend"
-direction = "lower_is_better"
+tier   = "gate"
 method = { test = "contextful_sqlite::export::source_history_stays_bounded_per_publication" }
+target = { op = "<=", value = 16384 }
 seed   = 0x5eed_0615
 
 # ---------------------------------------------------------------- store
@@ -971,31 +971,38 @@ method = { test = "contextful_sync::generation::a_commit_round_counts_the_genera
 target = { op = "<=", value = 1 }
 seed   = 0x5eed_0093
 
+# The run record folds every fifth hourly tick and collects past its 7 d window: 0.4 live
+# `_runs` entries per tick, the snapshot each pass adds.
 [entry.runs-record-objects-per-tick]
-clause = "store.fold.triggers"
+clause = "run.record.record-folds"
 metric = "store.objects_per_tick_steady_state"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick" }
-target = { op = "<=", value = 20 }
+method = { test = "contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick" }
+target = { op = "<=", value = 1 }
 seed   = 0x5eed_0615
 
+# A ratchet: 3497 live `_runs` entries after 240 ticks, 7 d of store runs and every snapshot.
 [entry.runs-record-live-objects]
 clause = "store.fold.retention"
 metric = "store.objects.runs_record_live_after_240_ticks"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick" }
-target = { op = "<=", value = 4801 }
+method = { test = "contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick" }
+target = { op = "<=", value = 3497 }
 seed   = 0x5eed_0615
 
+# A ratchet: 20.4 `_runs` manifest keys per tick, 20 store-run entries and 0.4 snapshot
+# entries, each listed live or as a tombstone for 30 d.
+# cost: 0.4 keys per tick over 20, the snapshot each pass of the run record adds, so the
+# record's live entries stop growing past its 7 d window.
 [entry.runs-record-manifest-keys-per-tick]
 clause = "store.push.generation"
 metric = "sync.manifest_keys_per_tick_steady_state"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick" }
-target = { op = "<=", value = 20 }
+method = { test = "contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick" }
+target = { op = "<=", value = 20.4 }
 seed   = 0x5eed_0615
 
 [entry.bucket-keys-per-tick]
@@ -1004,7 +1011,7 @@ metric = "sync.bucket_keys_per_tick_steady_state"
 kind   = "test"
 tier   = "trend"
 direction = "lower_is_better"
-method = { test = "contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick" }
+method = { test = "contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick" }
 seed   = 0x5eed_0615
 
 [entry.sync-noop-pull-keys-listed-1k]

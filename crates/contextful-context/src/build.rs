@@ -442,7 +442,7 @@ mod materialize {
     /// snapshot, the greatest `commit_seq` read and the count and digest of the runs read
     /// beside the snapshot, with the newest commit instant among them (`run.model.watermark`).
     fn frontier(state: Option<&TableState>) -> (InputFrontier, Option<Instant>) {
-        let Some(state) = state else { return (InputFrontier::read(None, &[]), None) };
+        let Some(state) = state else { return (InputFrontier::default(), None) };
         let snapshot = state.chain.first();
         let runs = state.unfolded_runs();
         let at = snapshot.map(|s| s.created_at).into_iter().chain(runs.iter().map(|r| r.committed_at)).max();

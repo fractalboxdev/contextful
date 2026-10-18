@@ -391,10 +391,11 @@ fn the_watermark_stays_a_fixed_size_across_unfolded_runs() {
     assert!(many <= one + 2, "{one} bytes over 1 run, {many} over 41");
 }
 
-/// A build reads each input's runs only below the lowest `commit_seq` among grouped runs awaiting their group marker, the prefix `read.subscribe.commit-order` delivers.
-// spec: run.model.build-prefix@2ed385c0
+/// A build reads past a grouped run awaiting its group marker, so a group that never
+/// publishes holds no later build back; once the marker lands below `through`, the input
+/// is stale at once (`run.publish.staleness-omitted-check`).
 #[test]
-fn a_build_reads_no_run_above_an_unpublished_group() {
+fn a_group_published_below_through_makes_the_build_stale() {
     use contextful_context::land::{commit_parts_group, publish_group, Position, RunContext};
     use contextful_core::store::lay_out::NodeId;
     use contextful_core::store::reserve::Injection;
@@ -409,12 +410,17 @@ fn a_build_reads_no_run_above_an_unpublished_group() {
     p.land("plain", json!([{"day": "d9", "v": 1}]), "2030-01-01T00:20:00Z");
     let built = p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
     let events = &built.watermark.inputs["events"];
-    assert_eq!(events.through, Some(1), "{events:?}");
-    assert_eq!(events.omitted.as_ref().map(|o| o.count), Some(1));
-    assert_eq!(p.rows("SELECT count(*) FROM daily WHERE day = 'd9'"), [[json!("0")]]);
+    assert_eq!(events.through, Some(3), "{events:?}");
+    assert_eq!(events.omitted.as_ref().map(|o| o.count), Some(2));
+    assert_eq!(p.rows("SELECT count(*) FROM daily WHERE day = 'd9'"), [[json!("1")]]);
+    // A fold of the readable runs leaves the unpublished group outside the snapshot.
+    contextful_context::fold::fold(&p.fx.store, &d, at("2030-01-01T01:30:00Z")).unwrap();
+    let folded = p.build(MODEL, "2030-01-01T02:00:00Z").unwrap();
+    assert_eq!(folded.watermark.inputs["events"].through, Some(3));
+    assert_eq!(status(&p.fx.store, "daily", at("2030-01-01T03:00:00Z")).unwrap()["stale"], false);
     publish_group(&p.fx.store, "events", &["events".to_string()], &ctx).unwrap();
-    assert_eq!(status(&p.fx.store, "daily", at("2030-01-01T23:00:00Z")).unwrap()["stale"], false);
-    assert_eq!(status(&p.fx.store, "daily", at("2030-01-02T00:20:01Z")).unwrap()["stale_inputs"], json!(["events"]));
+    let stale = status(&p.fx.store, "daily", at("2030-01-01T03:00:00Z")).unwrap();
+    assert_eq!(stale["stale_inputs"], json!(["events"]), "{stale}");
 }
 
 /// An input whose runs outside the watermark snapshot chain, at or below `through`, differ in count or digest from `omitted` holds a waiting run counted as committed before `t` minus `max_lag`.
@@ -433,8 +439,8 @@ fn a_run_below_through_the_build_never_read_makes_the_input_stale() {
     assert_eq!(stale["stale_inputs"], json!(["events"]), "{stale}");
 }
 
-/// A watermark input carrying a `runs` list and no `omitted` reads with those runs included under `run.publish.staleness`; no build writes `runs`.
-// spec: run.model.watermark-listed-runs@3fa44f2d
+/// A watermark input carrying a `runs` list and no `omitted` reads with those runs included under `run.publish.staleness`; no build writes `runs`, and every echo of that watermark keeps the list.
+// spec: run.model.watermark-listed-runs@a0f202c1
 #[test]
 fn a_watermark_listing_runs_is_still_honored() {
     let p = Project::new();
@@ -444,6 +450,8 @@ fn a_watermark_listing_runs_is_still_honored() {
     manifest["publish"]["watermark"]["inputs"]["events"] = json!({"snapshot_id": null, "runs": ["r1/ingest-a"]});
     std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
     assert_eq!(current_section(&p.fx.store, "daily").unwrap().unwrap().watermark.inputs["events"].runs, ["r1/ingest-a"]);
+    let echoed = status(&p.fx.store, "daily", at("2030-04-01T00:00:00Z")).unwrap();
+    assert_eq!(echoed["freshness"]["watermark"]["inputs"]["events"]["runs"], json!(["r1/ingest-a"]), "{echoed}");
     assert_eq!(status(&p.fx.store, "daily", at("2030-04-01T00:00:00Z")).unwrap()["stale"], false);
     p.land("r2", json!([{"day": "d3", "v": 1}]), "2030-04-01T00:00:00Z");
     assert_eq!(status(&p.fx.store, "daily", at("2030-04-02T00:00:01Z")).unwrap()["stale_inputs"], json!(["events"]));
@@ -827,11 +835,12 @@ fn append_unit_runs(p: &Project, units: u64) -> contextful_core::time::Instant {
     last
 }
 
-/// A model reading `_runs` carries every unfolded run-record store run in its watermark
-/// (#615). Under `contextful-ci measure` the fixture holds 524 unit runs, 1048 store runs,
-/// 48 past the last multiple of the 50-run fold trigger; elsewhere 24 unit runs exercise
-/// the path. The ledger records the watermark's serialized bytes and run ids, and the bytes
-/// of the source completion a grouped publication records from it.
+/// A model reading `_runs` records a frontier of fixed size whatever the run record holds:
+/// no run id, at most 512 bytes, and the count of the store runs the snapshot omits. Under
+/// `contextful-ci measure` the fixture holds 524 unit runs, 1048 store runs, 48 past the
+/// last multiple of the 50-run fold trigger; elsewhere 24 unit runs exercise the path. The
+/// ledger records the watermark's serialized bytes and run ids, and the bytes of the source
+/// completion a grouped publication records from it.
 #[test]
 fn a_watermark_over_the_run_record_stays_bounded_after_n_runs() {
     let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
@@ -851,15 +860,18 @@ fn a_watermark_over_the_run_record_stays_bounded_after_n_runs() {
     let completion_bytes = serde_json::to_vec(&completion).unwrap().len();
     eprintln!("watermark over {units} unit runs: {ids} ids, {bytes} B; source completion {completion_bytes} B");
     assert!(watermark["inputs"].get("_runs").is_some(), "{watermark}");
-    assert!(ids as u64 <= 2 * units, "{ids} ids over {units} unit runs");
+    assert_eq!(ids, 0, "{watermark}");
+    assert!(bytes <= 512, "{bytes} B over {units} unit runs");
+    let unfolded = p.fx.store.state(&contextful_context::run_record::decl()).unwrap().unfolded_runs().len();
+    assert_eq!(watermark["inputs"]["_runs"]["omitted"]["count"], json!(unfolded), "{watermark}");
     assert!(completion_bytes > bytes);
     contextful_eval::record::emit("watermark-bytes-runs-record", bytes as f64, units, RUNS_SEED);
     contextful_eval::record::emit("watermark-ids-runs-record", ids as f64, units, RUNS_SEED);
     contextful_eval::record::emit("source-completion-bytes", completion_bytes as f64, units, RUNS_SEED);
 }
 
-/// `build status` over a model whose `_runs` input holds every run-record store run
-/// unfolded: p95 of 200 timed calls after 20 warm-up, the median of 5 batches
+/// `build status` over a model whose `_runs` input holds every run-record store run, the
+/// record folding as its trigger fires (`run.record.record-folds`): p95 of 200 timed calls after 20 warm-up, the median of 5 batches
 /// (`assurance.measure.timing-iterations`, `assurance.measure.timing-batches`), in
 /// microseconds. Under `contextful-ci measure` the fixture holds 1000 unit runs, 2000 store
 /// runs; elsewhere 24 unit runs and 5 calls after 1 exercise the path.
