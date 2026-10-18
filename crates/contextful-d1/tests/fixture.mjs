@@ -13,12 +13,21 @@ function execute({ sql, params }) {
   return { rows, changes: Number(db.prepare("SELECT changes() AS n").get().n) };
 }
 
+// Every request served, by path; `GET /stats` answers them and counts itself in none.
+const requests = { total: 0, paths: {} };
+
 const server = createServer(async (request, response) => {
   try {
     const path = new URL(request.url, "http://contextful.d1").pathname;
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const body = Buffer.concat(chunks);
+    if (path === "/stats" && request.method === "GET") {
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(requests));
+      return;
+    }
+    requests.total += 1;
+    requests.paths[path] = (requests.paths[path] ?? 0) + 1;
     let value;
     if (path === "/health") {
       value = { d1: true, r2: true };

@@ -1,3 +1,4 @@
+mod catalog_cost;
 mod publication;
 mod size;
 mod transport;

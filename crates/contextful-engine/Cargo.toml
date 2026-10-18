@@ -28,6 +28,10 @@ libc = "0.2"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
 
 [dev-dependencies]
+# The generic HTTP source and its transport port, which the backfill suite drives over an
+# in-process vendor, linking no HTTP stack.
+contextful-connectors = { path = "../contextful-connectors", default-features = false }
+contextful-outbound = { path = "../contextful-outbound" }
 # The exFAT volume the journal suite mounts.
 contextful-fs = { path = "../contextful-fs" }
 # Ledger measures record their figures (`assurance.measure.record`).

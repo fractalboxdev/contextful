@@ -235,6 +235,66 @@ fn a_run_lands_the_same_whether_its_projection_drops_every_event_or_none() {
     assert_eq!(snapshot.status, seen_stored.status);
 }
 
+/// Where the catalog calls of one received landing are written, for the D1 replay.
+const RECEIVE_LANDING_TRACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/catalog/receive-landing.json");
+
+/// A delivered one-row batch lands through `run_receive` over a counting catalog: one
+/// warm-up landing under key `k0`, then the measured landing under key `k1`.
+#[test]
+fn a_received_batch_counts_its_catalog_calls_per_landing() {
+    use crate::support::{Counted, CATALOG_WRITES};
+    use contextful_core::run::ports::Unshaped;
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new(crate::support::T0);
+    let counted = Arc::new(Counted::new(LocalCatalog::open(dir.path(), Arc::new(clock.clone()))));
+    // A keeper whose poll and renewal never come due inside a landing, so every call is the runner's own.
+    let engine = Engine {
+        catalog: counted.clone(),
+        journal: Journal::open(dir.path()),
+        awakeables: None,
+        keeper: Keeper::new(Cadence { poll: Duration::from_secs(3600), renew: Duration::from_secs(3600) }),
+        emitter: None,
+        worlds: Vec::new(),
+    };
+    let p = plan("kind = \"opaque-token\"", "");
+    let land = |key: &str| {
+        let spec = contextful_engine::RunSpec {
+            connector: p.connector_pin("artifact-1"),
+            plan: p.clone(),
+            run_id: format!("receive-{key}.filings"),
+            site_id: "site-a".into(),
+            pid: 4242,
+            boot_id: "boot-a".into(),
+            trace_id: None,
+        };
+        let mut delivered = Pages::new(vec![vec![json!({ "id": format!("{key}-row") })]]);
+        let row = engine.run_receive(&spec, key, &mut delivered, &Unshaped, &mut Sink::default()).unwrap();
+        assert_eq!(row.status, RunStatus::Success, "{:?}", row.error_message);
+        row
+    };
+    let first = land("k0");
+    let warmup = counted.take();
+    clock.advance(1);
+    let measured = land("k1");
+    let landing = counted.take();
+
+    let writes = landing.iter().filter(|c| CATALOG_WRITES.contains(&c["op"].as_str().unwrap())).count();
+    assert!(!landing.is_empty() && writes > 0, "a landing reads and writes the catalog");
+    contextful_eval::record::emit("catalog-calls-per-landing", landing.len() as f64, 1, 0);
+    contextful_eval::record::emit("catalog-calls-per-landing-writes", writes as f64, 1, 0);
+
+    // Execution ids are random; the trace names them by landing so its bytes stay fixed.
+    let mut text = serde_json::to_string_pretty(&json!({ "warmup": warmup, "landing": landing })).unwrap();
+    for (row, name) in [(&first, "execution-k0"), (&measured, "execution-k1")] {
+        text = text.replace(&row.execution_id, name);
+    }
+    let path = std::path::Path::new(RECEIVE_LANDING_TRACE);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    if std::fs::read_to_string(path).ok().as_deref() != Some(&*format!("{text}\n")) {
+        std::fs::write(path, text + "\n").unwrap();
+    }
+}
+
 #[test]
 fn a_refused_fence_record_releases_the_lease() {
     let rig = Rig::new();
