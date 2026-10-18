@@ -1,0 +1,738 @@
+{
+  "landing": [
+    {
+      "args": {
+        "run_id": "receive-k1.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "run_id": "receive-k1.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {},
+      "op": "now"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-4f970fa4c4f49408"
+        }
+      },
+      "op": "owner_at"
+    },
+    {
+      "args": {
+        "row": {
+          "batches": 0,
+          "bytes": 0,
+          "connector_hash": "artifact-1",
+          "connector_id": "vendor",
+          "connector_version": "1.0.0",
+          "ended_at": null,
+          "error_kind": null,
+          "error_message": null,
+          "execution_id": "execution-k1",
+          "owner": {
+            "boot_id": "boot-a",
+            "lease_expires_at": "2030-01-01T00:00:31Z",
+            "pid": 4242
+          },
+          "phase": "plan",
+          "pipeline_id": "feed",
+          "plan_ref": "a712544f569dd057c35818012bcfaa6604cee652a799b5092dac3d7e3bd4354b",
+          "rows": 0,
+          "run_id": "receive-k1.filings",
+          "site_id": "site-a",
+          "started_at": "2030-01-01T00:00:01Z",
+          "status": "running",
+          "stop": null,
+          "table": "filings#receive-4f970fa4c4f49408",
+          "trace_id": null
+        }
+      },
+      "op": "put_run"
+    },
+    {
+      "args": {
+        "run_id": "receive-k1.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "holder": "receive-k1.filings",
+        "key": {
+          "pipeline": "feed/filings"
+        },
+        "ttl_secs": 30
+      },
+      "op": "acquire"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-4f970fa4c4f49408"
+        }
+      },
+      "op": "cursor_at"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-4f970fa4c4f49408"
+        }
+      },
+      "op": "retired_at"
+    },
+    {
+      "args": {},
+      "op": "now"
+    },
+    {
+      "args": {
+        "owner": {
+          "attempts": [
+            "receive-k1.filings"
+          ],
+          "execution_id": "execution-k1",
+          "opened_at": "2030-01-01T00:00:01Z",
+          "pins": {
+            "connector": {
+              "hash": "artifact-1",
+              "id": "vendor",
+              "version": "1.0.0",
+              "world": "native"
+            },
+            "content_hash": "a712544f569dd057c35818012bcfaa6604cee652a799b5092dac3d7e3bd4354b",
+            "input_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "pipeline_id": "feed",
+          "table": "filings#receive-4f970fa4c4f49408"
+        }
+      },
+      "op": "put_owner"
+    },
+    {
+      "args": {
+        "lease": {
+          "expires_at": "2030-01-01T00:00:31Z",
+          "fence": 2,
+          "holder": "receive-k1.filings",
+          "key": "pipeline.feed%2Ffilings"
+        }
+      },
+      "op": "lease_holds"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-4f970fa4c4f49408"
+        }
+      },
+      "op": "owner_at"
+    },
+    {
+      "args": {
+        "run_id": "receive-k1.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "lease": {
+          "expires_at": "2030-01-01T00:00:31Z",
+          "fence": 2,
+          "holder": "receive-k1.filings",
+          "key": "pipeline.feed%2Ffilings"
+        }
+      },
+      "op": "lease_holds"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-4f970fa4c4f49408"
+        }
+      },
+      "op": "owner_at"
+    },
+    {
+      "args": {
+        "run_id": "receive-k1.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "leases": [
+          {
+            "expires_at": "2030-01-01T00:00:31Z",
+            "fence": 2,
+            "holder": "receive-k1.filings",
+            "key": "pipeline.feed%2Ffilings"
+          }
+        ],
+        "owners": [
+          {
+            "execution_id": "execution-k1",
+            "pins": {
+              "connector": {
+                "hash": "artifact-1",
+                "id": "vendor",
+                "version": "1.0.0",
+                "world": "native"
+              },
+              "content_hash": "a712544f569dd057c35818012bcfaa6604cee652a799b5092dac3d7e3bd4354b",
+              "input_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            "run_id": "receive-k1.filings",
+            "scope": {
+              "pipeline_id": "feed",
+              "table": "filings#receive-4f970fa4c4f49408"
+            }
+          }
+        ],
+        "publication": false
+      },
+      "op": "execution_guard"
+    },
+    {
+      "args": {},
+      "op": "now"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-4f970fa4c4f49408"
+        }
+      },
+      "op": "owner_at"
+    },
+    {
+      "args": {
+        "run_id": "receive-k1.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "lease": {
+          "expires_at": "2030-01-01T00:00:31Z",
+          "fence": 2,
+          "holder": "receive-k1.filings",
+          "key": "pipeline.feed%2Ffilings"
+        }
+      },
+      "op": "lease_holds"
+    },
+    {
+      "args": {
+        "leases": [
+          {
+            "expires_at": "2030-01-01T00:00:31Z",
+            "fence": 2,
+            "holder": "receive-k1.filings",
+            "key": "pipeline.feed%2Ffilings"
+          }
+        ],
+        "owners": [
+          {
+            "execution_id": "execution-k1",
+            "pins": {
+              "connector": {
+                "hash": "artifact-1",
+                "id": "vendor",
+                "version": "1.0.0",
+                "world": "native"
+              },
+              "content_hash": "a712544f569dd057c35818012bcfaa6604cee652a799b5092dac3d7e3bd4354b",
+              "input_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            "run_id": "receive-k1.filings",
+            "scope": {
+              "pipeline_id": "feed",
+              "table": "filings#receive-4f970fa4c4f49408"
+            }
+          }
+        ],
+        "publication": true
+      },
+      "op": "execution_guard"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-4f970fa4c4f49408"
+        }
+      },
+      "op": "owner_at"
+    },
+    {
+      "args": {
+        "run_id": "receive-k1.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "lease": {
+          "expires_at": "2030-01-01T00:00:31Z",
+          "fence": 2,
+          "holder": "receive-k1.filings",
+          "key": "pipeline.feed%2Ffilings"
+        }
+      },
+      "op": "lease_holds"
+    },
+    {
+      "args": {
+        "cursor": [
+          {
+            "marker_committed_at": "2030-01-01T00:00:01Z",
+            "marker_run_id": "receive-k1.filings",
+            "position": "p1",
+            "version": 0
+          },
+          0
+        ],
+        "execution_id": "execution-k1",
+        "fence": {
+          "expires_at": "2030-01-01T00:00:31Z",
+          "fence": 2,
+          "holder": "receive-k1.filings",
+          "key": "pipeline.feed%2Ffilings"
+        },
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-4f970fa4c4f49408"
+        }
+      },
+      "op": "retire_at"
+    },
+    {
+      "args": {
+        "lease": {
+          "expires_at": "2030-01-01T00:00:31Z",
+          "fence": 2,
+          "holder": "receive-k1.filings",
+          "key": "pipeline.feed%2Ffilings"
+        }
+      },
+      "op": "release"
+    },
+    {
+      "args": {},
+      "op": "now"
+    },
+    {
+      "args": {
+        "after": {
+          "batches": 1,
+          "bytes": 0,
+          "connector_hash": "artifact-1",
+          "connector_id": "vendor",
+          "connector_version": "1.0.0",
+          "ended_at": "2030-01-01T00:00:01Z",
+          "error_kind": null,
+          "error_message": null,
+          "execution_id": "execution-k1",
+          "fetched": 1,
+          "kept": 1,
+          "owner": null,
+          "phase": "commit",
+          "pipeline_id": "feed",
+          "plan_ref": "a712544f569dd057c35818012bcfaa6604cee652a799b5092dac3d7e3bd4354b",
+          "rows": 1,
+          "run_id": "receive-k1.filings",
+          "site_id": "site-a",
+          "started_at": "2030-01-01T00:00:01Z",
+          "status": "success",
+          "stop": null,
+          "table": "filings#receive-4f970fa4c4f49408",
+          "trace_id": null
+        },
+        "run_id": "receive-k1.filings"
+      },
+      "op": "update_run"
+    }
+  ],
+  "warmup": [
+    {
+      "args": {
+        "run_id": "receive-k0.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "run_id": "receive-k0.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {},
+      "op": "now"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-f5c88951428058b1"
+        }
+      },
+      "op": "owner_at"
+    },
+    {
+      "args": {
+        "row": {
+          "batches": 0,
+          "bytes": 0,
+          "connector_hash": "artifact-1",
+          "connector_id": "vendor",
+          "connector_version": "1.0.0",
+          "ended_at": null,
+          "error_kind": null,
+          "error_message": null,
+          "execution_id": "execution-k0",
+          "owner": {
+            "boot_id": "boot-a",
+            "lease_expires_at": "2030-01-01T00:00:30Z",
+            "pid": 4242
+          },
+          "phase": "plan",
+          "pipeline_id": "feed",
+          "plan_ref": "a712544f569dd057c35818012bcfaa6604cee652a799b5092dac3d7e3bd4354b",
+          "rows": 0,
+          "run_id": "receive-k0.filings",
+          "site_id": "site-a",
+          "started_at": "2030-01-01T00:00:00Z",
+          "status": "running",
+          "stop": null,
+          "table": "filings#receive-f5c88951428058b1",
+          "trace_id": null
+        }
+      },
+      "op": "put_run"
+    },
+    {
+      "args": {
+        "run_id": "receive-k0.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "holder": "receive-k0.filings",
+        "key": {
+          "pipeline": "feed/filings"
+        },
+        "ttl_secs": 30
+      },
+      "op": "acquire"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-f5c88951428058b1"
+        }
+      },
+      "op": "cursor_at"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-f5c88951428058b1"
+        }
+      },
+      "op": "retired_at"
+    },
+    {
+      "args": {},
+      "op": "now"
+    },
+    {
+      "args": {
+        "owner": {
+          "attempts": [
+            "receive-k0.filings"
+          ],
+          "execution_id": "execution-k0",
+          "opened_at": "2030-01-01T00:00:00Z",
+          "pins": {
+            "connector": {
+              "hash": "artifact-1",
+              "id": "vendor",
+              "version": "1.0.0",
+              "world": "native"
+            },
+            "content_hash": "a712544f569dd057c35818012bcfaa6604cee652a799b5092dac3d7e3bd4354b",
+            "input_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "pipeline_id": "feed",
+          "table": "filings#receive-f5c88951428058b1"
+        }
+      },
+      "op": "put_owner"
+    },
+    {
+      "args": {
+        "lease": {
+          "expires_at": "2030-01-01T00:00:30Z",
+          "fence": 1,
+          "holder": "receive-k0.filings",
+          "key": "pipeline.feed%2Ffilings"
+        }
+      },
+      "op": "lease_holds"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-f5c88951428058b1"
+        }
+      },
+      "op": "owner_at"
+    },
+    {
+      "args": {
+        "run_id": "receive-k0.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "lease": {
+          "expires_at": "2030-01-01T00:00:30Z",
+          "fence": 1,
+          "holder": "receive-k0.filings",
+          "key": "pipeline.feed%2Ffilings"
+        }
+      },
+      "op": "lease_holds"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-f5c88951428058b1"
+        }
+      },
+      "op": "owner_at"
+    },
+    {
+      "args": {
+        "run_id": "receive-k0.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "leases": [
+          {
+            "expires_at": "2030-01-01T00:00:30Z",
+            "fence": 1,
+            "holder": "receive-k0.filings",
+            "key": "pipeline.feed%2Ffilings"
+          }
+        ],
+        "owners": [
+          {
+            "execution_id": "execution-k0",
+            "pins": {
+              "connector": {
+                "hash": "artifact-1",
+                "id": "vendor",
+                "version": "1.0.0",
+                "world": "native"
+              },
+              "content_hash": "a712544f569dd057c35818012bcfaa6604cee652a799b5092dac3d7e3bd4354b",
+              "input_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            "run_id": "receive-k0.filings",
+            "scope": {
+              "pipeline_id": "feed",
+              "table": "filings#receive-f5c88951428058b1"
+            }
+          }
+        ],
+        "publication": false
+      },
+      "op": "execution_guard"
+    },
+    {
+      "args": {},
+      "op": "now"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-f5c88951428058b1"
+        }
+      },
+      "op": "owner_at"
+    },
+    {
+      "args": {
+        "run_id": "receive-k0.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "lease": {
+          "expires_at": "2030-01-01T00:00:30Z",
+          "fence": 1,
+          "holder": "receive-k0.filings",
+          "key": "pipeline.feed%2Ffilings"
+        }
+      },
+      "op": "lease_holds"
+    },
+    {
+      "args": {
+        "leases": [
+          {
+            "expires_at": "2030-01-01T00:00:30Z",
+            "fence": 1,
+            "holder": "receive-k0.filings",
+            "key": "pipeline.feed%2Ffilings"
+          }
+        ],
+        "owners": [
+          {
+            "execution_id": "execution-k0",
+            "pins": {
+              "connector": {
+                "hash": "artifact-1",
+                "id": "vendor",
+                "version": "1.0.0",
+                "world": "native"
+              },
+              "content_hash": "a712544f569dd057c35818012bcfaa6604cee652a799b5092dac3d7e3bd4354b",
+              "input_hash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+            },
+            "run_id": "receive-k0.filings",
+            "scope": {
+              "pipeline_id": "feed",
+              "table": "filings#receive-f5c88951428058b1"
+            }
+          }
+        ],
+        "publication": true
+      },
+      "op": "execution_guard"
+    },
+    {
+      "args": {
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-f5c88951428058b1"
+        }
+      },
+      "op": "owner_at"
+    },
+    {
+      "args": {
+        "run_id": "receive-k0.filings"
+      },
+      "op": "run"
+    },
+    {
+      "args": {
+        "lease": {
+          "expires_at": "2030-01-01T00:00:30Z",
+          "fence": 1,
+          "holder": "receive-k0.filings",
+          "key": "pipeline.feed%2Ffilings"
+        }
+      },
+      "op": "lease_holds"
+    },
+    {
+      "args": {
+        "cursor": [
+          {
+            "marker_committed_at": "2030-01-01T00:00:00Z",
+            "marker_run_id": "receive-k0.filings",
+            "position": "p1",
+            "version": 0
+          },
+          0
+        ],
+        "execution_id": "execution-k0",
+        "fence": {
+          "expires_at": "2030-01-01T00:00:30Z",
+          "fence": 1,
+          "holder": "receive-k0.filings",
+          "key": "pipeline.feed%2Ffilings"
+        },
+        "scope": {
+          "pipeline_id": "feed",
+          "table": "filings#receive-f5c88951428058b1"
+        }
+      },
+      "op": "retire_at"
+    },
+    {
+      "args": {
+        "lease": {
+          "expires_at": "2030-01-01T00:00:30Z",
+          "fence": 1,
+          "holder": "receive-k0.filings",
+          "key": "pipeline.feed%2Ffilings"
+        }
+      },
+      "op": "release"
+    },
+    {
+      "args": {},
+      "op": "now"
+    },
+    {
+      "args": {
+        "after": {
+          "batches": 1,
+          "bytes": 0,
+          "connector_hash": "artifact-1",
+          "connector_id": "vendor",
+          "connector_version": "1.0.0",
+          "ended_at": "2030-01-01T00:00:00Z",
+          "error_kind": null,
+          "error_message": null,
+          "execution_id": "execution-k0",
+          "fetched": 1,
+          "kept": 1,
+          "owner": null,
+          "phase": "commit",
+          "pipeline_id": "feed",
+          "plan_ref": "a712544f569dd057c35818012bcfaa6604cee652a799b5092dac3d7e3bd4354b",
+          "rows": 1,
+          "run_id": "receive-k0.filings",
+          "site_id": "site-a",
+          "started_at": "2030-01-01T00:00:00Z",
+          "status": "success",
+          "stop": null,
+          "table": "filings#receive-f5c88951428058b1",
+          "trace_id": null
+        },
+        "run_id": "receive-k0.filings"
+      },
+      "op": "update_run"
+    }
+  ]
+}

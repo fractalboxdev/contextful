@@ -463,6 +463,112 @@ fn a_run_staging_past_the_bound_commits_nothing() {
     assert_eq!(rig.run(&opaque(), "1.0.0", "run-1", &mut Pages::new(two), &mut sink).unwrap().status, RunStatus::Success);
 }
 
+/// The fire count a backfill reports when it has not landed every row within its fires.
+const NOT_DONE: u64 = 4;
+
+/// Sixteen one-row pages, each staging a 128 MiB part, make a 2 GiB window; the window is given three fires
+/// to land every row, and reports [`NOT_DONE`] when it has not.
+#[test]
+fn a_window_staging_two_gib_completes_in_one_fire() {
+    let rig = Rig::new();
+    let pages: Vec<Vec<Value>> = (0..16).map(|n| vec![json!({ "id": format!("d{n:02}") })]).collect();
+    let mut source = Pages::new(pages);
+    let mut sink = Sink { part_bytes: 128 * 1024 * 1024, ..Sink::default() };
+    let mut fires = NOT_DONE;
+    for fire in 1..=3 {
+        rig.run(&opaque(), "1.0.0", &format!("run-{fire}"), &mut source, &mut sink).unwrap();
+        let landed: std::collections::BTreeSet<String> = sink.commits.iter().flat_map(ids).flatten().collect();
+        if landed.len() == 16 {
+            fires = fire;
+            break;
+        }
+        rig.clock.advance(60);
+    }
+    let committed: Vec<String> = sink.commits.iter().flat_map(ids).flatten().collect();
+    let distinct: std::collections::BTreeSet<&String> = committed.iter().collect();
+    assert_eq!(distinct.len(), committed.len(), "no row lands twice across fires");
+    let parts_min = sink.commits.iter().map(|c| c.batches.len()).min().unwrap_or(0);
+    let seed = 0x5eed_0b01;
+    contextful_eval::record::emit("backfill-fires-to-complete", fires as f64, 1, seed);
+    contextful_eval::record::emit("backfill-window-commits", sink.commits.len() as f64, 1, seed);
+    contextful_eval::record::emit("backfill-parts-per-commit-min", parts_min as f64, 1, seed);
+}
+
+/// A vendor answering `GET /bars?page=<n>[&since=<date>]` from `pages` pages of `per_page` daily bars, ordered
+/// by date then symbol, `symbols` to a date; a page past the last answers no rows.
+struct SyntheticVendor {
+    pages: usize,
+    per_page: usize,
+    symbols: usize,
+    requests: std::sync::atomic::AtomicUsize,
+}
+
+impl SyntheticVendor {
+    /// The `n`th bar: its symbol and its date, an instant one day past the previous date.
+    fn bar(&self, n: usize) -> Value {
+        let date = contextful_core::time::Instant::parse("2000-01-03T00:00:00Z").unwrap().plus_secs(86_400 * (n / self.symbols) as u64);
+        json!({ "symbol": format!("S{:02}", n % self.symbols), "date": date.to_rfc3339(), "close": n })
+    }
+}
+
+impl contextful_outbound::Transport for SyntheticVendor {
+    fn resolve(&self, _: &str, port: u16) -> Result<Vec<std::net::SocketAddr>, String> {
+        Ok(vec![std::net::SocketAddr::new("93.184.216.34".parse().unwrap(), port)])
+    }
+
+    fn send(&self, request: &contextful_outbound::egress::Outbound<'_>) -> Result<contextful_outbound::egress::Inbound, contextful_outbound::egress::TransportFault> {
+        self.requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let query = |name: &str| request.url.query_pairs().find(|(k, _)| k == name).map(|(_, v)| v.into_owned());
+        let page: usize = query("page").and_then(|p| p.parse().ok()).unwrap_or(1);
+        let since = query("since");
+        let total = self.pages * self.per_page;
+        // `since` is inclusive: the bars of the stored date are served again.
+        let first = since.map_or(0, |s| (0..total).find(|&n| self.bar(n)["date"].as_str().unwrap() >= s.as_str()).unwrap_or(total));
+        let start = (first + (page - 1) * self.per_page).min(total);
+        let end = (start + self.per_page).min(total);
+        let rows: Vec<Value> = (start..end).map(|n| self.bar(n)).collect();
+        Ok(contextful_outbound::egress::Inbound { status: 200, headers: vec![], body: serde_json::to_vec(&json!({ "data": rows })).unwrap() })
+    }
+}
+
+/// A 2000-page vendor of ten bars a page, fifty symbols to a date, read through the generic HTTP source under a
+/// `date` watermark, a fresh source each fire as the scheduler builds one; up to three fires land it.
+#[test]
+fn a_2000_page_vendor_lands_every_page_through_successive_fires() {
+    use contextful_connectors::http::{HttpConfig, HttpSource, Mediation};
+    let vendor = Arc::new(SyntheticVendor { pages: 2000, per_page: 10, symbols: 50, requests: Default::default() });
+    let config = HttpConfig::parse(&json!({ "endpoint": "https://vendor.example/bars", "records": "/data", "page_param": "page", "start_page": 1, "since_param": "since" })).unwrap();
+    let clock = Arc::new(contextful_core::ports::FixedClock(crate::support::at(crate::support::T0)));
+    let resolver = Arc::new(contextful_outbound::Resolver::new(Vec::new(), false, clock));
+    let rig = Rig::new();
+    let watermark = plan("kind = \"monotonic\"\nfield = \"date\"", "");
+    let mut sink = Sink::default();
+    let mut fires = NOT_DONE;
+    let total = vendor.pages * vendor.per_page;
+    let landed = |sink: &Sink| -> std::collections::BTreeMap<(String, String), usize> {
+        let mut count = std::collections::BTreeMap::new();
+        for row in sink.commits.iter().flat_map(|c| c.batches.iter().flatten()) {
+            *count.entry((row["symbol"].as_str().unwrap().to_string(), row["date"].as_str().unwrap().to_string())).or_default() += 1;
+        }
+        count
+    };
+    for fire in 1..=3 {
+        let mediation = Mediation { transport: Some(vendor.clone()), ..Mediation::default() };
+        let mut source = HttpSource::mediated(config.clone(), "bars", resolver.clone(), mediation).unwrap().watermarked_for("date");
+        rig.run(&watermark, "1.0.0", &format!("run-{fire}"), &mut source, &mut sink).unwrap();
+        if landed(&sink).len() == total {
+            fires = fire;
+            break;
+        }
+        rig.clock.advance(3600);
+    }
+    let once = landed(&sink).values().filter(|&&n| n == 1).count();
+    assert!(landed(&sink).len() <= total, "every landed bar is one the vendor serves");
+    let seed = 0x5eed_0b02;
+    contextful_eval::record::emit("backfill-http-fires-to-complete", fires as f64, 1, seed);
+    contextful_eval::record::emit("backfill-http-rows-landed", once as f64 / total as f64, total as u64, seed);
+}
+
 /// A source whose every pull moves the clock 5 s on.
 struct Ticking {
     inner: Pages,
