@@ -659,6 +659,10 @@ fn a_sidecar_past_64_mib_of_resident_bytes_stays_unloaded() {
             graph.extend((if d == hot { 1.0f32 } else { 0.0 }).to_le_bytes());
         }
     }
+    // No node carries an availability instant.
+    for _ in 0..count {
+        graph.extend(i64::MIN.to_le_bytes());
+    }
     graph.resize(graph.len() + count.next_multiple_of(4), 0);
     for n in 0..count {
         let mut slots = vec![2u32, ((n + 1) % count) as u32, ((n + count - 1) % count) as u32];

@@ -1,31 +1,48 @@
 //! The full-text sidecar's one file, `postings.bin` (`store.index.postings`): a header, a
-//! document table, the identifiers, a term dictionary sorted by term bytes, the terms, and
-//! per term its postings. Every integer is little-endian; a reader binary-searches the
-//! dictionary in place, over mapped or decrypted bytes, and decodes only the postings of
-//! the terms it asks for.
+//! document table, the identifiers, an availability timeline, a term dictionary sorted by
+//! term bytes, the terms, and per term its postings. Every integer is little-endian; a
+//! reader binary-searches the dictionary in place, over mapped or decrypted bytes, and
+//! decodes only the postings of the terms it asks for.
 //!
 //! ```text
-//! header    b"CFPOST01", doc_count u32, term_count u32, total_terms u64,
-//!           docs, ids, dict, terms, postings, end: u64 offsets
-//! docs      doc_count x (id_start u64, id_len u32, length u32)       id_start from `ids`
+//! header    b"CFPOST02", doc_count u32, term_count u32, stamped u32, 0 u32, total_terms u64,
+//!           docs, ids, timeline, dict, terms, postings, end: u64 offsets
+//! docs      doc_count x (id_start u64, id_len u32, length u32,
+//!                        available i64)                            i64::MIN when unstamped
+//! timeline  stamped x (available i64, through u64)                 ascending; `through` sums
+//!                                                                   the lengths up to it
 //! dict      term_count x (term_start u64, term_len u32, df u32,
 //!                         postings_start u64, postings_len u64)     starts from their blobs
 //! postings  per term, df x (doc u32, tf u32, tf x position u32), docs ascending
 //! ```
+//!
+//! The timeline gives the document count and summed length of the documents available by
+//! any bound in one binary search (`read.horizon.rank-statistics`).
 
 use std::collections::BTreeMap;
 
-const MAGIC: &[u8; 8] = b"CFPOST01";
-const HEADER: usize = 8 + 4 + 4 + 8 + 6 * 8;
-const DOC: usize = 16;
+const MAGIC: &[u8; 8] = b"CFPOST02";
+const HEADER: usize = 8 + 4 + 4 + 4 + 4 + 8 + 7 * 8;
+const DOC: usize = 24;
+const STEP: usize = 16;
 const TERM: usize = 32;
 
-/// Lay out the postings of `docs`, each an identifier and its terms in position order. One
-/// document list lays out one byte sequence.
-pub fn build(docs: &[(String, Vec<String>)]) -> Vec<u8> {
+/// The `available` of a document carrying no availability instant.
+pub const UNSTAMPED: i64 = i64::MIN;
+
+/// One document to lay out: its identifier, its terms in position order, and its
+/// availability instant in Unix nanoseconds, if it carries one.
+pub struct Doc {
+    pub id: String,
+    pub terms: Vec<String>,
+    pub available: Option<i64>,
+}
+
+/// Lay out the postings of `docs`. One document list lays out one byte sequence.
+pub fn build(docs: &[Doc]) -> Vec<u8> {
     let mut terms: BTreeMap<&str, Vec<(u32, Vec<u32>)>> = BTreeMap::new();
     let mut total: u64 = 0;
-    for (d, (_, doc_terms)) in docs.iter().enumerate() {
+    for (d, Doc { terms: doc_terms, .. }) in docs.iter().enumerate() {
         total += doc_terms.len() as u64;
         for (p, t) in doc_terms.iter().enumerate() {
             let list = terms.entry(t.as_str()).or_default();
@@ -38,11 +55,21 @@ pub fn build(docs: &[(String, Vec<String>)]) -> Vec<u8> {
 
     let mut doc_table = Vec::with_capacity(docs.len() * DOC);
     let mut ids: Vec<u8> = Vec::new();
-    for (id, doc_terms) in docs {
+    for Doc { id, terms: doc_terms, available } in docs {
         doc_table.extend((ids.len() as u64).to_le_bytes());
         doc_table.extend((id.len() as u32).to_le_bytes());
         doc_table.extend((doc_terms.len() as u32).to_le_bytes());
+        doc_table.extend(available.unwrap_or(UNSTAMPED).to_le_bytes());
         ids.extend(id.as_bytes());
+    }
+    let mut stamped: Vec<(i64, u64)> = docs.iter().filter_map(|d| Some((d.available?, d.terms.len() as u64))).collect();
+    stamped.sort_by_key(|(at, _)| *at);
+    let mut timeline = Vec::with_capacity(stamped.len() * STEP);
+    let mut through = 0u64;
+    for (at, length) in &stamped {
+        through += length;
+        timeline.extend(at.to_le_bytes());
+        timeline.extend(through.to_le_bytes());
     }
     let mut dict = Vec::with_capacity(terms.len() * TERM);
     let mut term_bytes: Vec<u8> = Vec::new();
@@ -66,7 +93,8 @@ pub fn build(docs: &[(String, Vec<String>)]) -> Vec<u8> {
 
     let docs_at = HEADER as u64;
     let ids_at = docs_at + doc_table.len() as u64;
-    let dict_at = ids_at + ids.len() as u64;
+    let timeline_at = ids_at + ids.len() as u64;
+    let dict_at = timeline_at + timeline.len() as u64;
     let terms_at = dict_at + dict.len() as u64;
     let postings_at = terms_at + term_bytes.len() as u64;
     let end = postings_at + postings.len() as u64;
@@ -74,12 +102,15 @@ pub fn build(docs: &[(String, Vec<String>)]) -> Vec<u8> {
     out.extend(MAGIC);
     out.extend((docs.len() as u32).to_le_bytes());
     out.extend((terms.len() as u32).to_le_bytes());
+    out.extend((stamped.len() as u32).to_le_bytes());
+    out.extend(0u32.to_le_bytes());
     out.extend(total.to_le_bytes());
-    for at in [docs_at, ids_at, dict_at, terms_at, postings_at, end] {
+    for at in [docs_at, ids_at, timeline_at, dict_at, terms_at, postings_at, end] {
         out.extend(at.to_le_bytes());
     }
     out.extend(doc_table);
     out.extend(ids);
+    out.extend(timeline);
     out.extend(dict);
     out.extend(term_bytes);
     out.extend(postings);
@@ -94,6 +125,10 @@ fn u64_at(b: &[u8], at: usize) -> Option<u64> {
     Some(u64::from_le_bytes(b.get(at..at.checked_add(8)?)?.try_into().ok()?))
 }
 
+fn i64_at(b: &[u8], at: usize) -> Option<i64> {
+    Some(i64::from_le_bytes(b.get(at..at.checked_add(8)?)?.try_into().ok()?))
+}
+
 /// Where each region of a laid-out file sits. Parsing checks the regions tile the file; a
 /// read past a region's end within it returns `None`, never panics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,8 +136,11 @@ pub struct Layout {
     pub doc_count: usize,
     pub term_count: usize,
     pub total_terms: u64,
+    /// Documents carrying an availability instant.
+    pub stamped: usize,
     docs: usize,
     ids: usize,
+    timeline: usize,
     dict: usize,
     terms: usize,
     postings: usize,
@@ -135,22 +173,27 @@ impl Layout {
         }
         let doc_count = u32_at(b, 8)? as usize;
         let term_count = u32_at(b, 12)? as usize;
-        let total_terms = u64_at(b, 16)?;
-        let at = |i: usize| u64_at(b, 24 + 8 * i).and_then(|v| usize::try_from(v).ok());
+        let stamped = u32_at(b, 16)? as usize;
+        let total_terms = u64_at(b, 24)?;
+        let at = |i: usize| u64_at(b, 32 + 8 * i).and_then(|v| usize::try_from(v).ok());
         let l = Layout {
             doc_count,
             term_count,
             total_terms,
+            stamped,
             docs: at(0)?,
             ids: at(1)?,
-            dict: at(2)?,
-            terms: at(3)?,
-            postings: at(4)?,
-            end: at(5)?,
+            timeline: at(2)?,
+            dict: at(3)?,
+            terms: at(4)?,
+            postings: at(5)?,
+            end: at(6)?,
         };
         let tiles = l.docs == HEADER
+            && stamped <= doc_count
             && l.ids == l.docs.checked_add(doc_count.checked_mul(DOC)?)?
-            && l.ids <= l.dict
+            && l.ids <= l.timeline
+            && l.dict == l.timeline.checked_add(stamped.checked_mul(STEP)?)?
             && l.terms == l.dict.checked_add(term_count.checked_mul(TERM)?)?
             && l.terms <= l.postings
             && l.postings <= l.end
@@ -164,7 +207,7 @@ impl Layout {
         let start = self.ids.checked_add(usize::try_from(u64_at(b, row)?).ok()?)?;
         let len = u32_at(b, row + 8)? as usize;
         let end = start.checked_add(len)?;
-        (end <= self.dict).then_some(())?;
+        (end <= self.timeline).then_some(())?;
         std::str::from_utf8(b.get(start..end)?).ok()
     }
 
@@ -172,6 +215,30 @@ impl Layout {
     pub fn length(&self, b: &[u8], d: u32) -> Option<u32> {
         ((d as usize) < self.doc_count).then_some(())?;
         u32_at(b, self.docs + d as usize * DOC + 12)
+    }
+
+    /// Document `d`'s availability instant in Unix nanoseconds, [`UNSTAMPED`] when it
+    /// carries none.
+    pub fn available(&self, b: &[u8], d: u32) -> Option<i64> {
+        ((d as usize) < self.doc_count).then_some(())?;
+        i64_at(b, self.docs + d as usize * DOC + 16)
+    }
+
+    /// How many documents `admits` keeps, and their summed length, where `admits` holds for
+    /// every instant up to some point and for none after it: one binary search over the
+    /// timeline.
+    pub fn within(&self, b: &[u8], admits: impl Fn(i64) -> bool) -> Option<(u64, u64)> {
+        let (mut lo, mut hi) = (0usize, self.stamped);
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if admits(i64_at(b, self.timeline + mid * STEP)?) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        let through = if lo == 0 { 0 } else { u64_at(b, self.timeline + (lo - 1) * STEP + 8)? };
+        Some((lo as u64, through))
     }
 
     fn term_at<'b>(&self, b: &'b [u8], i: usize) -> Option<&'b [u8]> {

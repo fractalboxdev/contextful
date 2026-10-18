@@ -323,7 +323,7 @@ fn a_sealed_full_text_sidecar_opens_into_memory_alone() {
     assert_eq!(files.len(), 2, "{files:?}");
     for (path, bytes) in &files {
         assert!(bytes.starts_with(b"SEALED"), "{} is not sealed", path.display());
-        for cleartext in [canary.as_bytes(), b"CFPOST01".as_slice(), b"zephyrine".as_slice(), b"passage_id".as_slice()] {
+        for cleartext in [canary.as_bytes(), b"CFPOST02".as_slice(), b"zephyrine".as_slice(), b"passage_id".as_slice()] {
             assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
             assert!(!bytes.windows(cleartext.len()).any(|w| w == cleartext), "{} carries cleartext {cleartext:?}", path.display());
         }

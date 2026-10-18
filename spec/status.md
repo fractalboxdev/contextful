@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 386 | 92 | 22 | 14 | 303 | 0 | 303 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
-| `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
+| `read` | 2 | 20 | 314 | 53 | 29 | 14 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 594 | 128 | 48 | 18 | 554 | 0 | 554 |
 | `store` | 3 | 19 | 319 | 64 | 19 | 11 | 308 | 0 | 308 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2760 | 682 | 221 | 79 | 2466 | 0 | |
+| **total** | 22 | 169 | 2760 | 681 | 221 | 78 | 2466 | 0 | |
 
 Decision records: 18.
 
@@ -1208,7 +1208,7 @@ Unscheduled operations: 13.
 | `read.horizon.inherited-bound` | `crates/contextful-agent/tests/integration/mcp.rs::every_read_tool_called_unbounded_reads_at_the_horizon` | performed |
 | `read.horizon.late-columns` | `crates/contextful-agent/tests/integration/point_in_time.rs::a_column_first_available_after_the_horizon_is_absent` | performed |
 | `read.horizon.local-rank` | `crates/contextful-agent/tests/integration/point_in_time.rs::a_horizon_ranking_reads_the_pinned_capture` | performed |
-| `read.horizon.rank-statistics` | `crates/contextful-context/tests/integration/read/fulltext.rs::a_ranking_under_a_horizon_refuses_a_sidecar_indexing_later_rows` | performed |
+| `read.horizon.rank-statistics` | `crates/contextful-context/tests/integration/read/fulltext.rs::a_ranking_under_a_horizon_scores_only_rows_available_by_it` | performed |
 | `read.horizon.recall-horizon` | `crates/contextful-agent/tests/integration/mcp.rs::recall_under_a_horizon_reads_the_claims_table_at_it` | performed |
 | `read.query.declaration-default` | `crates/contextful-cli/tests/integration/query.rs::a_declaration_path_supplies_the_manifest` | performed |
 | `read.query.discovered-project` | `crates/contextful-cli/tests/integration/query.rs::a_discovered_project_registers_its_tables` | performed |

@@ -70,9 +70,6 @@ pub enum ReadError {
     /// A model table holds no build whose recorded horizon is at or before the credential's. (`read.horizon.build-resolution`)
     #[error("ReadNoBuildWithinHorizon: {0}")]
     ReadNoBuildWithinHorizon(String),
-    /// A ranking under a horizon reached a sidecar indexing rows available after it. (`read.horizon.rank-statistics`)
-    #[error("ReadIndexBeyondHorizon: {0}")]
-    ReadIndexBeyondHorizon(String),
     /// A subscription's `after` position names no committed run of its table. (`read.subscribe.position-unavailable`)
     #[error("SubscriptionPositionUnavailable: {0}")]
     SubscriptionPositionUnavailable(String),
@@ -109,7 +106,6 @@ impl ReadError {
             ReadError::ExtensionAutoloadRefused(_) => "ExtensionAutoloadRefused",
             ReadError::ReadBoundExceedsHorizon(_) => "ReadBoundExceedsHorizon",
             ReadError::ReadNoBuildWithinHorizon(_) => "ReadNoBuildWithinHorizon",
-            ReadError::ReadIndexBeyondHorizon(_) => "ReadIndexBeyondHorizon",
             ReadError::SubscriptionPositionUnavailable(_) => "SubscriptionPositionUnavailable",
             ReadError::SubscriptionUnderHorizon(_) => "SubscriptionUnderHorizon",
         }

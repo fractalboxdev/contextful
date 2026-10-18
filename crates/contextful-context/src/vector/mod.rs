@@ -17,6 +17,7 @@ use arrow_array::types::{Float16Type, Float32Type};
 use arrow_array::{Array, RecordBatch, StringArray};
 use arrow_schema::DataType;
 use contextful_core::read::rank::sidecar_over_cap;
+use contextful_core::store::bound_time::Bound;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::encrypt::FileCipher;
 use contextful_core::store::index::{
@@ -160,7 +161,9 @@ fn write(
     let models = rows.column_by_name(EMBEDDING_MODEL_COLUMN).and_then(|c| arrow_cast::cast(c, &DataType::Utf8).ok());
     let models = models.as_ref().and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
+    let available = crate::available::instants(decl, rows)?;
     let mut kept_ids = Vec::new();
+    let mut kept_available = Vec::new();
     let mut kept = Vec::new();
     for (i, id) in ids.into_iter().enumerate() {
         let Some(id) = id else { continue };
@@ -174,8 +177,17 @@ fn write(
         }
         kept.extend(v.iter().map(|x| x / norm));
         kept_ids.push(id);
+        kept_available.push(available.as_ref().and_then(|a| a[i]).unwrap_or(graph::UNSTAMPED));
     }
-    let bytes = graph::build(&kept, dim, &kept_ids, index.m() as usize, index.ef_construction() as usize, seed(snapshot_id, &index.column));
+    let bytes = graph::build(
+        &kept,
+        dim,
+        &kept_ids,
+        &kept_available,
+        index.m() as usize,
+        index.ef_construction() as usize,
+        seed(snapshot_id, &index.column),
+    );
 
     let path = index.path(crate::fold::escape);
     let dir = snapshot_dir.join(&path);
@@ -221,6 +233,14 @@ fn write(
 
 fn manifest_bytes(entry: &VectorEntry) -> Vec<u8> {
     serde_json::to_vec_pretty(entry).expect("an entry serializes")
+}
+
+/// Whether a sidecar entry available at `at`, in Unix nanoseconds, falls within `bound`;
+/// an entry carrying no availability instant falls within none, as its row answers no
+/// bounded read (`read.horizon.rank-statistics`).
+pub(crate) fn admits(bound: Bound, at: i64) -> bool {
+    let limit = bound.at.unix_nanos();
+    at != graph::UNSTAMPED && if bound.inclusive { i128::from(at) <= limit } else { i128::from(at) < limit }
 }
 
 /// Why a read takes the exact scan instead of a sidecar (`read.retrieve.sidecar-falls-back`,
@@ -364,6 +384,12 @@ impl VectorSidecar {
     /// The `k` candidates nearest `query` across every segment's graph, nearest first. A
     /// query of another dimension or of zero length probes nothing.
     pub fn probe(&self, query: &[f32], k: usize) -> std::result::Result<Vec<Candidate>, Fallback> {
+        self.probe_within(query, k, None)
+    }
+
+    /// [`VectorSidecar::probe`] returning only nodes `bound` admits; each segment's
+    /// traversal walks through the others (`read.horizon.rank-statistics`).
+    pub fn probe_within(&self, query: &[f32], k: usize, bound: Option<Bound>) -> std::result::Result<Vec<Candidate>, Fallback> {
         if query.len() != self.entry.dim as usize {
             return Err(Fallback::DimensionMismatch);
         }
@@ -375,10 +401,12 @@ impl VectorSidecar {
         let mut found: Vec<Candidate> = Vec::new();
         for segment in &self.segments {
             let bytes = segment.backing.bytes();
+            let nearest = match bound {
+                None => segment.layout.search(bytes, &q, k, k.max(EF_SEARCH_FLOOR)),
+                Some(b) => segment.layout.search_admitting(bytes, &q, k, k.max(EF_SEARCH_FLOOR), |at| admits(b, at)),
+            };
             found.extend(
-                segment
-                    .layout
-                    .search(bytes, &q, k, k.max(EF_SEARCH_FLOOR))
+                nearest
                     .into_iter()
                     .filter_map(|(n, similarity)| Some(Candidate { id: segment.layout.id(bytes, n)?.to_string(), similarity })),
             );

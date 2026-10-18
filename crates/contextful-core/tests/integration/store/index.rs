@@ -364,3 +364,28 @@ fn an_extended_sidecar_without_segments_declares_the_current_format() {
     assert_eq!(FormatVersion::of_manifest(&parts, &[entry(0)]).to_string(), "1.0");
     assert_eq!(FormatVersion::of_manifest(&parts, &[entry(1)]).to_string(), "2.0");
 }
+
+/// A sidecar written before its entries carried an availability instant records builder
+/// version 1, so the next pass rebuilds it in full and a past horizon reads it filtered
+/// (`store.index.rebuild`, `read.horizon.rank-statistics`).
+#[test]
+fn a_sidecar_without_per_entry_availability_rebuilds() {
+    let entry = |kind: &str, version: u32| -> IndexEntry {
+        let mut e = serde_json::json!({
+            "kind": kind, "path": "indexes/x", "table": "passages", "snapshot_id": "snapshot-01742054400000000000",
+            "column": "body", "id_column": "passage_id", "builder_version": version, "row_count": 2, "key_version": 0
+        });
+        let extra = if kind == "vector" {
+            serde_json::json!({"model": "e5-small", "dim": 384, "metric": "cosine", "m": DEFAULT_M, "ef_construction": DEFAULT_EF_CONSTRUCTION, "builder": VECTOR_BUILDER})
+        } else {
+            serde_json::json!({"tokenizer": "unicode", "term_count": 3, "builder": FULLTEXT_BUILDER})
+        };
+        e.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        serde_json::from_value(e).unwrap()
+    };
+    for kind in ["vector", "fulltext"] {
+        assert!(entry(kind, 1).needs_rebuild(), "{kind}");
+    }
+    assert!(!entry("vector", VECTOR_BUILDER_VERSION).needs_rebuild());
+    assert!(!entry("fulltext", FULLTEXT_BUILDER_VERSION).needs_rebuild());
+}

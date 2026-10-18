@@ -441,8 +441,8 @@ fn a_pass_finding_sixteen_extensions_rebuilds_the_graph_in_full() {
     assert_eq!((e.extensions, e.row_count, e.segments.len()), (0, 3, 0));
 }
 
-/// A sidecar copies no row value besides its `id_column` and indexed column, save the tenant column and zone label a filtered traversal reads; every other filter applies at {{store.index.candidate-ids}}.
-// spec: store.index.filter-copies@ca1ef51a
+/// A sidecar copies no row value besides its `id_column` and indexed column, save the tenant column, zone label and availability instant a filtered traversal reads; every other filter applies at {{store.index.candidate-ids}}.
+// spec: store.index.filter-copies@0020a7d0
 #[test]
 fn a_sidecar_copies_no_other_column_value() {
     let f = Fixture::new();
@@ -469,6 +469,43 @@ fn a_sidecar_copies_no_other_column_value() {
     // The identifiers and the indexed text are the sidecars' own; no other column's value is.
     assert!(has(&all, b"p1") && has(&all, b"solar"));
     assert!(!has(&all, b"canaryregionzq"));
+}
+
+/// A vector probe under an availability bound yields the nearest nodes the bound admits,
+/// walking the graph through later nodes to reach them.
+#[test]
+fn a_bounded_vector_probe_yields_the_nearest_nodes_available_by_the_bound() {
+    use contextful_core::store::bound_time::Bound;
+    let f = Fixture::new();
+    let d = decl(&format!("name = \"passages\"\n{INDEX}id_column = \"passage_id\"\n[pipeline.tables.available_time]\ncolumn = \"published_at\"\n"));
+    let types = [("embedding", ColumnType::FixedSizeList(FloatItem::Float32, 3)), ("published_at", ColumnType::Timestamp)];
+    let mut rows = vec![
+        json!({"passage_id": "late-a", "embedding": [1.0, 0.0, 0.0], "published_at": "2016-01-01T00:00:00Z"}),
+        json!({"passage_id": "late-b", "embedding": [0.98, 0.02, 0.0], "published_at": "2017-01-01T00:00:00Z"}),
+        json!({"passage_id": "early-a", "embedding": [0.9, 0.1, 0.0], "published_at": "2014-01-01T00:00:00Z"}),
+        json!({"passage_id": "early-b", "embedding": [0.6, 0.4, 0.0], "published_at": "2013-01-01T00:00:00Z"}),
+        json!({"passage_id": "edge", "embedding": [0.7, 0.3, 0.0], "published_at": "2015-01-01T00:00:00Z"}),
+    ];
+    // Later, farther nodes the walk passes through.
+    rows.extend((0..40).map(|i| {
+        let t = i as f32 / 40.0;
+        json!({"passage_id": format!("later-{i:02}"), "embedding": [t, 1.0 - t, 0.5], "published_at": "2018-01-01T00:00:00Z"})
+    }));
+    f.land_typed(&d, "run-1", Value::Array(rows), "2030-01-01T00:00:00Z", &types).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, dir) = current(&f, "passages");
+    let sidecar = VectorSidecar::open(&dir, "passages", &m.indexes[0], &Sealing::Plaintext).unwrap();
+    let ids = |found: Vec<contextful_context::vector::Candidate>| found.into_iter().map(|c| c.id).collect::<Vec<_>>();
+    let query = [1.0, 0.0, 0.0];
+    assert_eq!(ids(sidecar.probe(&query, 2).unwrap()), ["late-a", "late-b"]);
+    // An inclusive bound admits the node available at it; an exclusive one does not.
+    let inclusive = Bound { at: at("2015-01-01T00:00:00Z"), inclusive: true };
+    assert_eq!(ids(sidecar.probe_within(&query, 3, Some(inclusive)).unwrap()), ["early-a", "edge", "early-b"]);
+    let exclusive = Bound { at: at("2015-01-01T00:00:00Z"), inclusive: false };
+    assert_eq!(ids(sidecar.probe_within(&query, 3, Some(exclusive)).unwrap()), ["early-a", "early-b"]);
+    // A bound before every node yields none.
+    let before = Bound { at: at("2000-01-01T00:00:00Z"), inclusive: true };
+    assert!(sidecar.probe_within(&query, 3, Some(before)).unwrap().is_empty());
 }
 
 /// Collecting a snapshot collects its sidecars in the same step, save a segment {{store.fold.reference-retention}} keeps.
@@ -736,7 +773,7 @@ fn one_row_set_lays_out_one_postings_file_a_probe_reads_by_term() {
     let (a, e, probe) = postings("2030-01-01T01:00:00Z");
     let (b, _, _) = postings("2030-01-02T01:00:00Z");
     assert!(a == b, "one row set laid out two postings files");
-    assert_eq!(&a[..8], b"CFPOST01");
+    assert_eq!(&a[..8], b"CFPOST02");
     // Distinct terms: the row numbers, `routine`, `entry`, `gamma`, `alpha`, `beta`.
     assert_eq!((e.row_count, e.term_count), (N as u64, N as u64 + 5));
     // Rows with both terms lead, then rows with `alpha` alone; ties by row order.

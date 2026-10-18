@@ -11,7 +11,8 @@
 pub mod postings;
 
 use crate::error::{IoPath, Result};
-use crate::vector::{identifiers, Backing, Fallback, Sealing};
+use crate::vector::{admits, identifiers, Backing, Fallback, Sealing};
+use contextful_core::store::bound_time::Bound;
 use arrow_array::{Array, RecordBatch, StringArray};
 use contextful_core::read::rank::{bm25_idf, bm25_term, fulltext_sealed_over_cap};
 use contextful_core::read::tokens::PLURAL_SUFFIX_FLOOR;
@@ -87,12 +88,14 @@ fn write(
         .downcast_ref::<StringArray>()
         .ok_or_else(|| StoreError::StoreIndexColumnType(format!("table `{table}`: `{}` is not text", index.column)))?;
     let tokenizer = index.tokenizer();
-    let docs: Vec<(String, Vec<String>)> = ids
+    let available = crate::available::instants(decl, rows)?;
+    let docs: Vec<postings::Doc> = ids
         .into_iter()
         .enumerate()
         .filter_map(|(i, id)| {
             let terms = tokenizer.terms(if text.is_null(i) { "" } else { text.value(i) });
-            Some((id?, terms)).filter(|(_, t)| !t.is_empty())
+            let available = available.as_ref().and_then(|a| a[i]);
+            Some(postings::Doc { id: id?, terms, available }).filter(|d| !d.terms.is_empty())
         })
         .collect();
     let bytes = postings::build(&docs);
@@ -325,16 +328,44 @@ impl FulltextSidecar {
     /// frequency summed across segments; ties break by segment, then row order. A document
     /// matching no token is absent.
     pub fn probe(&self, tokens: &[String], k: usize) -> std::result::Result<Probe, Fallback> {
-        let docs: usize = self.segments.iter().map(|s| s.layout.doc_count).sum();
-        let total: u64 = self.segments.iter().map(|s| s.layout.total_terms).sum();
-        let n = docs as f64;
-        let average = if docs == 0 { 0.0 } else { total as f64 / n };
+        self.probe_within(tokens, k, None)
+    }
+
+    /// [`FulltextSidecar::probe`] over the documents `bound` admits alone: the document
+    /// count, average length and document frequencies BM25 reads count only those, summed
+    /// across segments, so the ranking equals a sidecar built over them
+    /// (`read.horizon.rank-statistics`). A document carrying no availability instant passes
+    /// no bound.
+    pub fn probe_within(&self, tokens: &[String], k: usize, bound: Option<Bound>) -> std::result::Result<Probe, Fallback> {
+        let (mut count, mut length) = (0u64, 0u64);
+        for segment in &self.segments {
+            let (c, l) = match bound {
+                None => (segment.layout.doc_count as u64, segment.layout.total_terms),
+                Some(b) => segment.layout.within(segment.backing.bytes(), |at| admits(b, at)).ok_or(Fallback::Unreadable)?,
+            };
+            count += c;
+            length += l;
+        }
+        let n = count as f64;
+        let average = if count == 0 { 0.0 } else { length as f64 / n };
         let mut scores: HashMap<(usize, u32), f64> = HashMap::new();
         let mut decoded = 0u64;
         for token in tokens {
             let mut hits = Vec::with_capacity(self.segments.len());
             for segment in &self.segments {
-                hits.push(self.occurrences(segment, token, &mut decoded)?);
+                let found = self.occurrences(segment, token, &mut decoded)?;
+                let Some(b) = bound else {
+                    hits.push(found);
+                    continue;
+                };
+                let bytes = segment.backing.bytes();
+                let mut kept = HashMap::with_capacity(found.len());
+                for (doc, tf) in found {
+                    if admits(b, segment.layout.available(bytes, doc).ok_or(Fallback::Unreadable)?) {
+                        kept.insert(doc, tf);
+                    }
+                }
+                hits.push(kept);
             }
             let idf = bm25_idf(n, hits.iter().map(HashMap::len).sum::<usize>() as f64);
             for (at, (segment, hits)) in self.segments.iter().zip(hits).enumerate() {

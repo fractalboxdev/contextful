@@ -6,6 +6,7 @@
 //! ```text
 //! header      magic[8] dim count m max_level entry reserved      (u32 each, 32 B)
 //! vectors     count * dim f32, unit length
+//! available   count i64: Unix nanoseconds, i64::MIN when unstamped
 //! levels      count u8, padded to 4 B
 //! layer 0     count * (1 + 2m) u32: a neighbour count, then the slots
 //! layer l>0   n_l u32, n_l node ids (ascending), n_l * (1 + m) u32 slots
@@ -16,7 +17,10 @@ use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 
 /// The format's magic and version.
-pub const MAGIC: &[u8; 8] = b"CFHNSW\x00\x01";
+pub const MAGIC: &[u8; 8] = b"CFHNSW\x00\x02";
+
+/// The `available` of a node carrying no availability instant.
+pub const UNSTAMPED: i64 = i64::MIN;
 
 const HEADER_LEN: usize = 32;
 
@@ -106,13 +110,29 @@ fn search_layer(
     neighbours: &impl Fn(u32, usize, &mut Vec<u32>),
     distance: &impl Fn(u32) -> f32,
 ) -> Vec<Scored> {
+    search_layer_admitting(entry, ef, layer, visited, neighbours, distance, &|_| true)
+}
+
+/// [`search_layer`] keeping only nodes `admits` holds for: every reached node still extends
+/// the walk, so a node it refuses bridges to admitted ones beyond it.
+fn search_layer_admitting(
+    entry: &[Scored],
+    ef: usize,
+    layer: usize,
+    visited: &mut Visited,
+    neighbours: &impl Fn(u32, usize, &mut Vec<u32>),
+    distance: &impl Fn(u32) -> f32,
+    admits: &impl Fn(u32) -> bool,
+) -> Vec<Scored> {
     visited.clear();
     let mut candidates: BinaryHeap<Reverse<Scored>> = BinaryHeap::new();
     let mut found: BinaryHeap<Scored> = BinaryHeap::new();
     for e in entry {
         if visited.insert(e.node) {
             candidates.push(Reverse(*e));
-            found.push(*e);
+            if admits(e.node) {
+                found.push(*e);
+            }
         }
     }
     while found.len() > ef {
@@ -133,9 +153,11 @@ fn search_layer(
             if found.len() < ef || found.peek().is_some_and(|w| d < w.dist) {
                 let s = Scored { dist: d, node: n };
                 candidates.push(Reverse(s));
-                found.push(s);
-                if found.len() > ef {
-                    found.pop();
+                if admits(n) {
+                    found.push(s);
+                    if found.len() > ef {
+                        found.pop();
+                    }
                 }
             }
         }
@@ -299,10 +321,11 @@ impl Builder<'_> {
 }
 
 /// Build the graph over `vectors` (`count * dim` unit-length floats, row-major) and lay it
-/// out with `ids`, one per vector.
-pub fn build(vectors: &[f32], dim: usize, ids: &[String], m: usize, ef_construction: usize, seed: u64) -> Vec<u8> {
+/// out with `ids` and `available`, one each per vector.
+pub fn build(vectors: &[f32], dim: usize, ids: &[String], available: &[i64], m: usize, ef_construction: usize, seed: u64) -> Vec<u8> {
     let count = ids.len();
     debug_assert_eq!(vectors.len(), count * dim);
+    debug_assert_eq!(available.len(), count);
     let mut b = Builder {
         vectors,
         dim,
@@ -320,14 +343,14 @@ pub fn build(vectors: &[f32], dim: usize, ids: &[String], m: usize, ef_construct
         b.insert(q);
     }
     b.reconnect();
-    lay_out(&b, ids)
+    lay_out(&b, ids, available)
 }
 
 fn put(out: &mut Vec<u8>, v: u32) {
     out.extend_from_slice(&v.to_le_bytes());
 }
 
-fn lay_out(b: &Builder<'_>, ids: &[String]) -> Vec<u8> {
+fn lay_out(b: &Builder<'_>, ids: &[String], available: &[i64]) -> Vec<u8> {
     let count = ids.len();
     let mut out = Vec::with_capacity(HEADER_LEN + b.vectors.len() * 4 + count * (1 + 2 * b.m) * 4);
     out.extend_from_slice(MAGIC);
@@ -336,6 +359,9 @@ fn lay_out(b: &Builder<'_>, ids: &[String]) -> Vec<u8> {
     }
     for f in b.vectors {
         out.extend_from_slice(&f.to_le_bytes());
+    }
+    for at in available {
+        out.extend_from_slice(&at.to_le_bytes());
     }
     out.extend_from_slice(&b.levels);
     out.resize(out.len().next_multiple_of(4), 0);
@@ -378,6 +404,7 @@ pub struct Layout {
     max_level: usize,
     entry: u32,
     vectors: usize,
+    available: usize,
     layer0: usize,
     /// Per upper layer: node count, node-id offset, slot offset.
     upper: Vec<(usize, usize, usize)>,
@@ -405,7 +432,8 @@ impl Layout {
             return None;
         }
         let vectors = HEADER_LEN;
-        let levels = vectors.checked_add(count.checked_mul(dim)?.checked_mul(4)?)?;
+        let available = vectors.checked_add(count.checked_mul(dim)?.checked_mul(4)?)?;
+        let levels = available.checked_add(count.checked_mul(8)?)?;
         let layer0 = levels.checked_add(count)?.next_multiple_of(4);
         let mut at = layer0.checked_add(count.checked_mul(1 + 2 * m)?.checked_mul(4)?)?;
         let mut upper = Vec::with_capacity(max_level);
@@ -422,7 +450,7 @@ impl Layout {
         if blob.checked_add(blob_len)? != bytes.len() {
             return None;
         }
-        Some(Layout { dim, count, m, max_level, entry, vectors, layer0, upper, id_offsets, blob })
+        Some(Layout { dim, count, m, max_level, entry, vectors, available, layer0, upper, id_offsets, blob })
     }
 
     pub fn m(&self) -> usize {
@@ -473,9 +501,22 @@ impl Layout {
         std::str::from_utf8(bytes.get(self.blob.checked_add(from)?..self.blob.checked_add(to)?)?).ok()
     }
 
+    /// Node `n`'s availability instant in Unix nanoseconds, [`UNSTAMPED`] when it carries
+    /// none.
+    pub fn available(&self, bytes: &[u8], n: u32) -> i64 {
+        let at = self.available + n as usize * 8;
+        bytes.get(at..at + 8).map_or(UNSTAMPED, |b| i64::from_le_bytes(b.try_into().expect("8 bytes")))
+    }
+
     /// The `k` nodes nearest `query` (unit length, `dim` wide) with their cosine
     /// similarity, nearest first, searching the base layer `ef` wide.
     pub fn search(&self, bytes: &[u8], query: &[f32], k: usize, ef: usize) -> Vec<(u32, f32)> {
+        self.search_admitting(bytes, query, k, ef, |_| true)
+    }
+
+    /// [`Layout::search`] returning only nodes whose availability instant `admits` holds
+    /// for; the walk still passes through the others (`read.horizon.rank-statistics`).
+    pub fn search_admitting(&self, bytes: &[u8], query: &[f32], k: usize, ef: usize, admits: impl Fn(i64) -> bool) -> Vec<(u32, f32)> {
         if self.count == 0 || k == 0 || query.len() != self.dim {
             return Vec::new();
         }
@@ -486,7 +527,8 @@ impl Layout {
         for layer in (1..=self.max_level).rev() {
             ep = search_layer(&ep, 1, layer, &mut visited, &neighbours, &distance);
         }
-        let found = search_layer(&ep, ef.max(k), 0, &mut visited, &neighbours, &distance);
+        let admitted = |n: u32| admits(self.available(bytes, n));
+        let found = search_layer_admitting(&ep, ef.max(k), 0, &mut visited, &neighbours, &distance, &admitted);
         found.into_iter().take(k).map(|s| (s.node, 1.0 - s.dist)).collect()
     }
 }
