@@ -252,6 +252,7 @@ fn eight_writers_landing_new_keys_scan_no_history() {
     });
     let timeouts = outcomes.iter().filter(|o| o.as_ref().is_err_and(|e| e.to_string().contains("held by another process"))).count();
     assert_eq!(timeouts, 0, "no landing outwaits a lock: {outcomes:?}");
+    assert_eq!(outcomes.len(), writers * runs, "every landing reports an outcome");
     assert!(outcomes.iter().all(Result::is_ok), "{outcomes:?}");
     let commits = writers * runs;
     assert_eq!(stored(&f, &d, "symbol"), commits * per_run);

@@ -446,7 +446,7 @@ fn a_prefix_of_1000_objects_with_one_unreadable_lands_the_rest() {
                 Vec::new()
             }
         };
-        assert!(!rows.iter().any(|r| r["n"] == json!("unreadable")), "{config}: no row of the unreadable object lands");
+        assert_eq!(rows.iter().filter(|r| r["n"] == json!("unreadable")).count(), 0, "{config}: no row of the unreadable object lands");
         fewest = fewest.min(objects_landed(&rows, bad));
     }
     contextful_eval::record::emit("ingest-prefix-one-corrupt", fewest as f64, cases.len() as u64, 0);

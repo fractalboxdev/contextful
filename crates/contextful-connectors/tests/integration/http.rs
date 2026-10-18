@@ -867,6 +867,7 @@ fn a_watermarked_walk_hands_the_runner_one_page_per_pull() {
     });
     let mut s = source(json!({"endpoint": vendor.url("/v1"), "page_param": "p", "since_param": "since"}), vec![]).watermarked();
     let (most, landed) = rows_per_pull(&mut s, Some(json!({"field": "at", "at": "2030-01-01"})));
+    assert!(!vendor.received("/v1").is_empty(), "the walk reaches the vendor");
     assert!(vendor.received("/v1").iter().all(|r| r.query("since").as_deref() == Some("2030-01-01")));
     assert_every_backfill_row_once(landed);
     contextful_eval::record::emit("backfill-http-rows-per-pull", most as f64, 1, 0);

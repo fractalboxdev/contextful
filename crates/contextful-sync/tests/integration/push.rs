@@ -809,6 +809,7 @@ fn sibling_disks_sharing_a_node_id_count_tombstoned_runs() {
     let runs: Vec<Vec<String>> = (0..RUNS)
         .map(|r| pushed.entries.keys().filter(|k| k.starts_with(&format!("research/tables/t0/data/runs/run-a{r}/conformance/"))).cloned().collect())
         .collect();
+    assert_eq!(runs.len(), RUNS);
     assert!(runs.iter().all(|keys| !keys.is_empty()), "A's push lists each of its runs: {runs:?}");
     sibling.land_into("t1", "run-b", json!([{"id": 9}]), "2030-01-01T00:00:00Z");
     let outcome = sibling.syncer.push(at(NOW));
