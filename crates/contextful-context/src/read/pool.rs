@@ -52,11 +52,19 @@ pub struct SessionPool {
     hits: AtomicU64,
     misses: AtomicU64,
     opens: AtomicU64,
+    /// Rows the table and Parquet scans of the pool's connections emitted.
+    scanned: Arc<AtomicU64>,
 }
 
 impl Default for SessionPool {
     fn default() -> SessionPool {
-        SessionPool { entries: Mutex::new(VecDeque::new()), hits: AtomicU64::new(0), misses: AtomicU64::new(0), opens: AtomicU64::new(0) }
+        SessionPool {
+            entries: Mutex::new(VecDeque::new()),
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+            opens: AtomicU64::new(0),
+            scanned: Arc::default(),
+        }
     }
 }
 
@@ -193,7 +201,9 @@ impl SessionPool {
             Some(engine) => engine,
             None => {
                 self.opens.fetch_add(1, Ordering::Relaxed);
-                SqlEngine::open(session, parquet_key)?
+                let mut engine = SqlEngine::open(session, parquet_key)?;
+                engine.tally_scans(self.scanned.clone());
+                engine
             }
         };
         Ok(Lease { engine: Some(engine), home })
@@ -205,6 +215,12 @@ impl SessionPool {
             session_misses: self.misses.load(Ordering::Relaxed),
             engine_opens: self.opens.load(Ordering::Relaxed),
         }
+    }
+
+    /// Rows the table and Parquet scans of the pool's connections emitted since the face
+    /// opened.
+    pub fn rows_scanned(&self) -> u64 {
+        self.scanned.load(Ordering::Relaxed)
     }
 
     /// Pooled entries.
