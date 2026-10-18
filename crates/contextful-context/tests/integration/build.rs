@@ -701,3 +701,111 @@ fn a_refused_release_step_publishes_nothing() {
     assert!(current_section(&p.fx.store, "daily").unwrap().is_none(), "nothing was published");
     assert!(!p.dir().join(POINTER_FILE).exists());
 }
+
+/// The seed the run-record growth fixtures derive their run ids and instants from.
+const RUNS_SEED: u64 = 0x5eed_0615;
+
+const RUN_COUNTS: &str = r#"
+[[model]]
+id = "run_counts"
+sql = "SELECT status, CAST(count(*) AS BIGINT) AS n FROM \"_runs\" GROUP BY status"
+unique_key = ["status"]
+
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "status", type = "utf8", nullable = false }, { name = "n", type = "int64", nullable = false }]
+
+[model.freshness]
+max_lag = "1d"
+"#;
+
+/// Append `units` unit runs to `_runs` on `ingest-a`: per unit a plan row and a commit
+/// row, one store run each, 60 s apart from the seed's base instant. Returns the last
+/// commit instant.
+fn append_unit_runs(p: &Project, units: u64) -> contextful_core::time::Instant {
+    use contextful_core::run::record::RunRow;
+    let node = contextful_core::store::lay_out::NodeId::parse("ingest-a").unwrap();
+    let base = at("2030-01-01T00:00:00Z").plus_secs(RUNS_SEED % 60);
+    let mut last = base;
+    for i in 0..units {
+        let started = base.plus_secs(i * 60);
+        for (phase, state, offset) in [("plan", "running", 0), ("commit", "success", 1)] {
+            let row: RunRow = serde_json::from_value(json!({
+                "run_id": format!("u{RUNS_SEED:x}-{i:06}"), "pipeline_id": "feed", "table": "events", "site_id": "site-a",
+                "status": state, "started_at": started.to_rfc3339(), "rows": 0, "bytes": 0, "batches": 0,
+                "connector_id": "vendor", "connector_version": "1", "connector_hash": "h",
+                "phase": phase, "execution_id": format!("x-{i:06}"),
+            }))
+            .unwrap();
+            last = started.plus_secs(offset);
+            contextful_context::run_record::append(&p.fx.store, &node, &row, last).unwrap();
+        }
+    }
+    last
+}
+
+/// A model reading `_runs` carries every unfolded run-record store run in its watermark
+/// (#615). Under `contextful-ci measure` the fixture holds 524 unit runs, 1048 store runs,
+/// 48 past the last multiple of the 50-run fold trigger; elsewhere 24 unit runs exercise
+/// the path. The ledger records the watermark's serialized bytes and run ids, and the bytes
+/// of the source completion a grouped publication records from it.
+#[test]
+fn a_watermark_over_the_run_record_stays_bounded_after_n_runs() {
+    let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
+    let units: u64 = if measuring { 524 } else { 24 };
+    let p = Project::new();
+    let last = append_unit_runs(&p, units);
+    let built = p.build(RUN_COUNTS, &last.plus_secs(60).to_rfc3339()).unwrap();
+    let watermark = serde_json::to_value(&built.watermark).unwrap();
+    let bytes = serde_json::to_vec(&watermark).unwrap().len();
+    // Read through JSON so the figure stays measurable whatever shape the frontier takes.
+    let ids = watermark["inputs"]["_runs"]["runs"].as_array().map_or(0, Vec::len);
+    let completion = contextful_core::export::publication::SourcePublication {
+        run: built.build_id.clone(),
+        input: watermark.clone(),
+        frontiers: [("run_counts".to_string(), built.build_id.clone())].into(),
+    };
+    let completion_bytes = serde_json::to_vec(&completion).unwrap().len();
+    eprintln!("watermark over {units} unit runs: {ids} ids, {bytes} B; source completion {completion_bytes} B");
+    assert!(watermark["inputs"].get("_runs").is_some(), "{watermark}");
+    assert!(ids as u64 <= 2 * units, "{ids} ids over {units} unit runs");
+    assert!(completion_bytes > bytes);
+    contextful_eval::record::emit("watermark-bytes-runs-record", bytes as f64, units, RUNS_SEED);
+    contextful_eval::record::emit("watermark-ids-runs-record", ids as f64, units, RUNS_SEED);
+    contextful_eval::record::emit("source-completion-bytes", completion_bytes as f64, units, RUNS_SEED);
+}
+
+/// `build status` over a model whose `_runs` input holds every run-record store run
+/// unfolded: p95 of 200 timed calls after 20 warm-up, the median of 5 batches
+/// (`assurance.measure.timing-iterations`, `assurance.measure.timing-batches`), in
+/// microseconds. Under `contextful-ci measure` the fixture holds 1000 unit runs, 2000 store
+/// runs; elsewhere 24 unit runs and 5 calls after 1 exercise the path.
+#[test]
+fn status_over_an_unfolded_run_record_at_two_thousand_runs() {
+    use contextful_eval::trend::median_batch;
+    use std::time::Instant as Clock;
+    let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
+    let (units, warm_up, repeats, batches): (u64, usize, usize, usize) = if measuring { (1000, 20, 200, 5) } else { (24, 1, 5, 1) };
+    let p = Project::new();
+    let last = append_unit_runs(&p, units);
+    let built = p.build(RUN_COUNTS, &last.plus_secs(60).to_rfc3339()).unwrap();
+    let now = last.plus_secs(120);
+    let first = status(&p.fx.store, "run_counts", now).unwrap();
+    assert_eq!(first["stale"], false, "{first}");
+    assert_eq!(first["last_build_id"], json!(built.build_id), "{first}");
+    let batch = || -> Vec<f64> {
+        (0..warm_up + repeats)
+            .filter_map(|i| {
+                let started = Clock::now();
+                std::hint::black_box(status(&p.fx.store, "run_counts", now).unwrap());
+                let us = started.elapsed().as_secs_f64() * 1e6;
+                (i >= warm_up).then_some(us)
+            })
+            .collect()
+    };
+    let timed: Vec<Vec<f64>> = (0..batches).map(|_| batch()).collect();
+    let (p50, p95) = median_batch(&timed).unwrap();
+    eprintln!("status over {} store runs: p50 {p50:.0} us, p95 {p95:.0} us", 2 * units);
+    assert!(p95 > 0.0);
+    contextful_eval::record::emit("status-latency-runs-record", p95, repeats as u64, RUNS_SEED);
+}
