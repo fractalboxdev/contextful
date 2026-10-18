@@ -54,7 +54,7 @@ fn json(bytes: usize, draw: &mut Draw) -> Vec<u8> {
     body.into_bytes()
 }
 
-/// GDELT-shaped event lines: identifiers, dates, actor codes, counts and coordinates.
+/// Tab-separated news-event lines: identifiers, dates, actor codes, counts and coordinates.
 fn tsv(bytes: usize, draw: &mut Draw) -> Vec<u8> {
     let mut body = String::new();
     for i in 0.. {

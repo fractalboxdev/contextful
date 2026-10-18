@@ -115,7 +115,7 @@ impl Draw {
 
 // ---------------------------------------------------------------- events
 
-/// Unkeyed GDELT-style events, partitioned by day.
+/// Unkeyed news events, partitioned by day.
 const EVENTS: &str = "name = \"events\"\npartition_by = [\"day\"]";
 
 fn event(draw: &mut Draw, id: &str, day: u64) -> Map<String, Value> {
