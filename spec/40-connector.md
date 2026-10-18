@@ -433,10 +433,10 @@ The declared behavior of each source compiled into the engine.
   *A-connector*
 - `http-page-pull` — Under page-number, next-cursor or no pagination and without an incremental field, one generic HTTP source pull reads one page and carries the next page's token as its position. The walk's last page carries a position naming the first page.
   *because a failed walk resumes at the page it stopped on, and the next run walks the whole table again*
-- `http-url-walk` — Under next-URL or Link-header pagination, one generic HTTP source pull walks every page, and no position carries a page URL.
+- `http-url-walk` — Under next-URL or Link-header pagination, one generic HTTP source pull reads one page; its position counts the pages read and carries no URL, and a source holding no next URL re-follows the walk to that count.
   *because a next URL's query may carry a credential, and a position lands unscrubbed in the journal*
-- `http-watermark-walk` — Under an incremental field, one generic HTTP source pull walks every page from the stored watermark.
-  *because a watermark position carries no page token*
+- `http-watermark-walk` — Under an incremental field, one generic HTTP source pull reads one page from the stored watermark; its position carries that watermark and the next page's token, and the walk's last page carries none.
+  *A-run*
 - `http-limiter` — The generic HTTP source reads its {{connector.meter.limiter-declaration}} from a `limiter` config table, and the project manifest holds each {{connector.meter.limiter-binding}} under `[limiters.<quota>]`.
 - `http-scope-probe` — The generic HTTP source reads its {{connector.declare-capability.scope-probe}} from a `scope_probe` config table and carries its first reference-bound header as the bound credential.
 - `http-compression` — The generic HTTP source decompresses a body under a declared `compression` of `gzip` or `zip` alone, never by URL extension, bounded by {{connector.source.object-expansion}}.
@@ -473,7 +473,8 @@ The declared behavior of each source compiled into the engine.
 - `pagination` — A walk declares exactly one pagination shape: a page parameter with a start page, a next-cursor path with a cursor parameter, a next-URL path, or link-header following.
 - `pagination-ambiguity` — Declaring two pagination shapes raises `ConnectorPaginationAmbiguous`.
   *P1*
-- `page-cap` — One walk issues at most 1000 requests.
+- `page-cap` — One walk issues at most 1000 requests; a watermark walk counts them from its last page whose every clock passes every clock the walk served before.
+  *A-run*
 - `page-loop` — A vendor returning a token or link it already served raises `ConnectorPageLoop`.
   *P4*
 - `next-link-origin` — A vendor-supplied next link is judged as a hop under {{connector.attach.weakened-hop}}.

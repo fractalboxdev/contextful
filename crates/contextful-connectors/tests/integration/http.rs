@@ -436,8 +436,9 @@ fn two_pagination_shapes_are_refused() {
     }
 }
 
-/// One walk issues at most 1000 requests.
-// spec: connector.source.page-cap@ded4550b
+/// One walk issues at most 1000 requests; a watermark walk counts them from its last page whose every clock passes
+/// every clock it served before.
+// spec: connector.source.page-cap@6fdbdd46
 #[test]
 fn a_walk_stops_at_1000_requests() {
     assert_eq!(PAGE_CAP, 1000);
@@ -447,6 +448,38 @@ fn a_walk_stops_at_1000_requests() {
     let f = s.walk(&request(None), &Never).unwrap_err();
     assert!(f.message.contains("1000 requests"), "{f}");
     assert_eq!(vendor.received("/v1").len(), 1000);
+
+    // A 1500-page watermark walk whose clock advances every third page reads every page.
+    let advancing = Server::start(|r| {
+        let page: usize = r.query("p").and_then(|p| p.parse().ok()).unwrap_or(1);
+        let rows = if page <= 1500 { json!([{"id": page.to_string(), "at": 100_000 + (page - 1) / 3}]) } else { json!([]) };
+        Response::json(200, &rows.to_string())
+    });
+    let mut s = source(json!({"endpoint": advancing.url("/v1"), "page_param": "p", "since_param": "since"}), vec![]).watermarked_for("at");
+    let mut position = Some(json!({"field": "at", "at": 1}));
+    let mut read = 0;
+    loop {
+        let (rows, cursor, more) = pulled(&mut s, position).unwrap();
+        read += rows.len();
+        if !more {
+            break;
+        }
+        position = cursor;
+    }
+    assert_eq!((read, advancing.received("/v1").len()), (1500, 1501));
+
+    // A watermark walk whose clock never advances stops 1000 requests past its first page.
+    let flat = Server::start(|r| Response::json(200, &json!([{"id": r.query("p").unwrap_or_default(), "at": 7}]).to_string()));
+    let mut s = source(json!({"endpoint": flat.url("/v1"), "page_param": "p", "since_param": "since"}), vec![]).watermarked_for("at");
+    let mut position = Some(json!({"field": "at", "at": 1}));
+    let f = loop {
+        match pulled(&mut s, position) {
+            Ok((_, cursor, _)) => position = cursor,
+            Err(f) => break f,
+        }
+    };
+    assert!(f.message.contains("1000 requests"), "{f}");
+    assert_eq!(flat.received("/v1").len(), 1001);
 }
 
 /// A vendor returning a token or link it already served raises `ConnectorPageLoop`.
@@ -760,9 +793,9 @@ fn an_http_page_marks_only_the_terminal_snapshot_complete() {
     assert_eq!(empty["snapshot_complete"], json!(true));
 }
 
-/// Under next-URL or Link-header pagination, one generic HTTP source pull walks every page, and no position carries
-/// a page URL.
-// spec: connector.source.http-url-walk@ef55a50e
+/// Under next-URL or Link-header pagination, a pull reads one page and its position carries the pages read, never a
+/// page URL; a source holding no next URL for that count re-follows the walk from its first page.
+// spec: connector.source.http-url-walk@bb7457fd
 #[test]
 fn a_next_url_walk_keeps_the_next_urls_query_out_of_every_position() {
     for (key, value) in [("next_url_path", json!("/next")), ("link_header", json!(true))] {
@@ -781,18 +814,21 @@ fn a_next_url_walk_keeps_the_next_urls_query_out_of_every_position() {
         let mut config = json!({"endpoint": vendor.url("/v1"), "records": "/data"});
         config[key] = value.clone();
         let mut s = source(config.clone(), vec![]);
-        // A page failing mid-walk leaves no pulled bytes behind, and its message carries no query.
-        let f = s.pull(&request(None), &Never).unwrap_err();
-        assert!(!f.message.contains(secret), "{key}: {f}");
-
-        fail.store(false, std::sync::atomic::Ordering::SeqCst);
-        let mut s = source(config, vec![]);
         let bytes = s.pull(&request(None), &Never).unwrap();
         let text = String::from_utf8(bytes.clone()).unwrap();
         assert!(!text.contains(secret), "{key}: {text}");
         let v: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!((v["more"].as_bool(), v.get("cursor")), (Some(false), None), "{key}: {text}");
-        assert_eq!(v["rows"].as_array().map(Vec::len), Some(2), "{key}: one pull walks every page");
+        assert_eq!((v["rows"].as_array().map(Vec::len), v["more"].as_bool(), v.get("cursor")), (Some(1), Some(true), Some(&json!({"page": 1}))), "{key}: {text}");
+        // A page failing mid-walk leaves no pulled bytes behind, and its message carries no query.
+        let f = s.pull(&request(Some(json!({"page": 1}))), &Never).unwrap_err();
+        assert!(!f.message.contains(secret), "{key}: {f}");
+
+        // A fresh source holds no next URL, so it re-follows the walk from the first page.
+        fail.store(false, std::sync::atomic::Ordering::SeqCst);
+        let mut s = source(config, vec![]);
+        let (rows, cursor, more) = pulled(&mut s, Some(json!({"page": 1}))).unwrap();
+        assert_eq!((rows, cursor, more), (vec!["b".to_string()], Some(json!({"page": null})), false), "{key}");
+        assert_eq!(vendor.received("/v1").len(), 2, "{key}: the fresh source re-follows the first page");
     }
 }
 
@@ -806,18 +842,23 @@ fn an_empty_url_walk_marks_the_whole_snapshot_complete() {
     assert_eq!(out["snapshot_complete"], json!(true));
 }
 
-/// Under an incremental field, one generic HTTP source pull walks every page from the stored watermark.
-// spec: connector.source.http-watermark-walk@eb93fe37
+/// Under an incremental field, one generic HTTP source pull reads one page from the stored watermark, its position
+/// carrying that watermark and the next page's token; the walk's last page carries no position.
+// spec: connector.source.http-watermark-walk@de5a96fd
 #[test]
-fn a_watermarked_read_walks_every_page_in_one_pull() {
+fn a_watermarked_read_pulls_one_page_carrying_its_floor() {
     let vendor = Server::start(|r| match r.query("p").as_deref() {
         Some("1") => Response::json(200, "[{\"id\":\"w1\",\"at\":\"2030-01-02\"}]"),
         Some("2") => Response::json(200, "[{\"id\":\"w2\",\"at\":\"2030-01-03\"}]"),
         _ => Response::json(200, "[]"),
     });
     let mut s = source(json!({"endpoint": vendor.url("/v1"), "page_param": "p", "since_param": "since"}), vec![]).watermarked();
-    let (rows, cursor, more) = pulled(&mut s, Some(json!({"field": "at", "at": "2030-01-01"}))).unwrap();
-    assert_eq!((rows, cursor, more), (vec!["w1".to_string(), "w2".to_string()], None, false));
+    let floor = json!({"field": "at", "at": "2030-01-01"});
+    let walking = json!({"field": "at", "at": "2030-01-01", "next": "2"});
+    assert_eq!(pulled(&mut s, Some(floor.clone())).unwrap(), (vec!["w1".to_string()], Some(walking.clone()), true));
+    let ending = json!({"field": "at", "at": "2030-01-01", "next": "3"});
+    assert_eq!(pulled(&mut s, Some(walking)).unwrap(), (vec!["w2".to_string()], Some(ending.clone()), true));
+    assert_eq!(pulled(&mut s, Some(ending)).unwrap(), (vec![], None, false));
     assert!(!vendor.received("/v1").is_empty(), "the exclusion below ranges over no element");
     assert!(vendor.received("/v1").iter().all(|r| r.query("since").as_deref() == Some("2030-01-01")));
     let pulled: Value = serde_json::from_slice(&s.pull(&request(Some(json!({"field": "at", "at": "2030-01-01"}))), &Never).unwrap()).unwrap();
@@ -870,6 +911,7 @@ fn a_watermarked_walk_hands_the_runner_one_page_per_pull() {
     assert!(!vendor.received("/v1").is_empty(), "the walk reaches the vendor");
     assert!(vendor.received("/v1").iter().all(|r| r.query("since").as_deref() == Some("2030-01-01")));
     assert_every_backfill_row_once(landed);
+    assert!(most <= BACKFILL_PAGE_ROWS, "one pull handed the runner {most} rows");
     contextful_eval::record::emit("backfill-http-rows-per-pull", most as f64, 1, 0);
 }
 
@@ -884,6 +926,7 @@ fn a_next_url_walk_hands_the_runner_one_page_per_pull() {
     let mut s = source(json!({"endpoint": vendor.url("/v1"), "records": "/data", "next_url_path": "/next"}), vec![]);
     let (most, landed) = rows_per_pull(&mut s, None);
     assert_every_backfill_row_once(landed);
+    assert!(most <= BACKFILL_PAGE_ROWS, "one pull handed the runner {most} rows");
     contextful_eval::record::emit("backfill-http-rows-per-pull-url", most as f64, 1, 0);
 }
 

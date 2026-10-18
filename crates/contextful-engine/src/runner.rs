@@ -10,7 +10,7 @@ use crate::journal::{Journal, Resolved};
 use crate::project::Emitter;
 use crate::stores::{FileBlobStore, FileJournalStore};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
-use contextful_core::run::advance::{admits, advance, clock, frontier, open_watermark, resolve_concurrent, rewind, watermark, CursorKind};
+use contextful_core::run::advance::{admits, advance, clock, compare, frontier, open_watermark, resolve_concurrent, rewind, watermark, CursorKind};
 use contextful_core::run::cancel::{mark, same_grain, Scope};
 use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{admission_pin, resolve_pinned, Artifacts, ConnectorPin, OwnerScope, Pins};
@@ -94,6 +94,43 @@ struct RecordedPull {
     declined: BTreeMap<String, u64>,
     #[serde(default)]
     audit: Vec<String>,
+    /// The position a monotonic walk's next pull asks (`run.advance.walk-position`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    walk: Option<Value>,
+    /// Whether every fetched clock passed the frontier the pull opened on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    strict: bool,
+}
+
+/// Bytes a run stages before it commits a checkpoint and keeps pulling: 512 MiB
+/// (`run.own.checkpoint-commit`).
+pub const CHECKPOINT_BYTES: u64 = 512 * 1024 * 1024;
+
+/// The run id a run's `n`th commit lands under: the run's own id for its first commit, then
+/// `<run id>.<n>` with `n` zero-padded to six digits, so each commit names its own parts.
+fn segment_run_id(run_id: &str, n: u32) -> String {
+    if n == 0 { run_id.to_string() } else { format!("{run_id}.{n:06}") }
+}
+
+/// Whether `marker_run_id` names a commit of attempt `run_id`: its first or a later checkpoint's.
+fn segment_of(marker_run_id: &str, run_id: &str) -> bool {
+    marker_run_id == run_id || marker_run_id.strip_prefix(run_id).and_then(|rest| rest.strip_prefix('.')).is_some_and(|n| n.len() == 6 && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// Whether every clock of `rows` lies strictly past `at`: a pull at a strict frontier
+/// advance, where no row shares the frontier's instant (`run.own.checkpoint-frontier`).
+fn strictly_past(field: &str, rows: &[contextful_core::run::ports::Row], at: Option<&Value>) -> Result<bool, RunError> {
+    if rows.is_empty() {
+        return Ok(false);
+    }
+    let Some(at) = at else { return Ok(true) };
+    for row in rows {
+        match clock(row, field) {
+            Some(v) if compare(v, at)? == std::cmp::Ordering::Greater => {}
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
 }
 
 fn recorded(bytes: &[u8]) -> Result<RecordedPull, Failure> {
@@ -202,7 +239,11 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         if !newer {
             return Ok(());
         }
-        let producer = self.catalog.owner(pipeline_id, table)?.filter(|o| o.produced(&marker.run_id)).map(|o| o.execution_id);
+        let producer = self
+            .catalog
+            .owner(pipeline_id, table)?
+            .filter(|o| o.produced(&marker.run_id) || o.attempts.iter().any(|a| segment_of(&marker.run_id, a)))
+            .map(|o| o.execution_id);
         let cursor = CursorRow {
             position: marker.cursor.clone(),
             version: 0,
@@ -357,7 +398,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         // Every pull passes the secret guard before the journal records it (`run.guard-secrets.placement`).
         let mut source = Guarded { inner: source, report: log_counts };
         let input = match emissions { Some(emissions) => BodyInput::Effects(emissions), None => BodyInput::Source { authority:authority.as_deref(),parent } };
-        let outcome = self.body(spec, &mut execution, &mut source, shape, dest, input);
+        // The run id the parts staged since the run's last commit carry.
+        let mut staging = spec.run_id.clone();
+        let outcome = self.body(spec, &mut execution, &mut source, shape, dest, input, &mut staging);
         if outcome.is_err() {
             // Abandoned work, a stop's `Canceled` included, settles the request ledger on
             // this ordinary failure path and leaves the position alone
@@ -366,13 +409,14 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             // A run id names one attempt, so no later commit names a failed run's staged
             // parts (`run.own.stage-discard`). The run closes on its own failure; a part the
             // discard leaves joins no file list.
-            let _ = dest.discard(&plan.spec.table, &spec.run_id);
+            let _ = dest.discard(&plan.spec.table, &staging);
         }
         execution.record_credentials(source.credential_providers());
         execution.close_with(outcome)
     }
 
-    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, input: BodyInput<'_>) -> Result<(Landed, Tally), Close> {
+    #[allow(clippy::too_many_arguments)]
+    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, input: BodyInput<'_>, staging: &mut String) -> Result<(Landed, Tally), Close> {
         let (authority, emitted,parent) = match input { BodyInput::Source { authority,parent } => (authority, None,parent), BodyInput::Effects(emitted) => (None, Some(emitted),Some(emitted.owner)) };
         let emissions = emitted.map(|input| input.frames);
         let plan = &spec.plan;
@@ -390,7 +434,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             dest.open_fence(pipeline_id, table, fence)?;
         }
 
-        let cached = execution.cursor_row()?;
+        let mut cached = execution.cursor_row()?;
         execution.claim()?;
         let execution_id = execution.execution_id().to_string();
 
@@ -401,6 +445,14 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             CursorKind::Monotonic => open_watermark(position.as_ref(), &field)?.cloned(),
             _ => None,
         };
+        // A live table's ordinary source run commits a checkpoint each time its staged
+        // parts reach the bound; a replacement, a body's landing and a seeding or receiving
+        // scope commit once (`run.own.checkpoint-commit`, `run.own.checkpoint-scope`).
+        let checkpoints = emissions.is_none() && parent.is_none() && !dest.replaces(table) && *execution.scope() == OwnerScope::table(pipeline_id, table);
+        let (mut commits, mut committed_batches, mut landed_before) = (0u32, 0u64, Landed::default());
+        // A monotonic walk's next position and the floor it admits rows from
+        // (`run.advance.walk-position`).
+        let (mut walk, mut walk_floor): (Option<Value>, Option<Value>) = (None, None);
         // Each shaped batch stages before the next pull, so the run holds one pulled batch
         // in memory; the commit names the staged parts (`run.own.backpressure`).
         let mut parts: Vec<Part> = Vec::new();
@@ -425,9 +477,14 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             // the committed position itself never rewinds (`run.advance.allowed-lateness`).
             let floor = match (plan.cursor_kind, ordinal, at.as_ref()) {
                 (CursorKind::Monotonic, 0, Some(stored)) if lateness > 0 => Some(rewind(stored, lateness)?),
+                (CursorKind::Monotonic, _, _) if walk.is_some() => walk_floor.clone(),
                 _ => at.clone(),
             };
-            let asked = if floor != at { floor.clone().map(|v| watermark(&field, v)) } else { position.clone() };
+            let asked = match &walk {
+                Some(walking) => Some(walking.clone()),
+                None if floor != at => floor.clone().map(|v| watermark(&field, v)),
+                None => position.clone(),
+            };
             let key = EntryKey::new(&execution_id, &label, &json_bytes(&asked));
             let request = PullRequest { step_label: label.clone(), position: asked, idempotency_key: key.idempotency_key() };
             let emission = emissions.and_then(|emissions| emissions.get(ordinal));
@@ -458,14 +515,30 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 return Err(refusal.failure().into());
             }
             for (column, ty) in shaped_types { types.entry(column).or_insert(ty); }
-            let (rows, last) = if let Some(prepared) = &prepared {
+            // The position after the last staged pull, which a checkpoint commits.
+            let before = position.clone();
+            // A walk continuing under a monotonic cursor asks the position its pull carried.
+            let mut continue_walk = |next: Option<Value>| match next {
+                Some(next) => {
+                    if walk.is_none() {
+                        walk_floor = floor.clone();
+                    }
+                    walk = Some(next);
+                }
+                None => walk = None,
+            };
+            let (rows, last, strict) = if let Some(prepared) = &prepared {
                 position = prepared.next.clone();
-                if plan.cursor_kind == CursorKind::Monotonic { at = open_watermark(position.as_ref(), &field)?.cloned(); }
-                (Vec::new(), prepared.last)
+                if plan.cursor_kind == CursorKind::Monotonic {
+                    at = open_watermark(position.as_ref(), &field)?.cloned();
+                    continue_walk(prepared.walk.clone());
+                }
+                (Vec::new(), prepared.last, prepared.strict)
             } else { match plan.cursor_kind {
                 CursorKind::Monotonic => {
                     // The frontier counts every fetched row; the load admits those at or after
                     // the stored position less the table's allowed lateness.
+                    let strict = strictly_past(&field, &pull.rows, at.as_ref())?;
                     let f = frontier(&field, &pull.rows)?;
                     let next = advance(at.as_ref(), f.as_ref())?;
                     let mut admitted = Vec::new();
@@ -479,13 +552,16 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     let advanced = next != at;
                     at = next;
                     position = at.clone().map(|v| watermark(&field, v));
-                    (admitted, !(pull.more && advanced))
+                    let walking = pull.cursor.filter(|_| pull.more);
+                    let continues = walking.is_some();
+                    continue_walk(walking);
+                    (admitted, !(continues || (pull.more && advanced)), strict)
                 }
                 _ => {
                     if let Some(c) = pull.cursor {
                         position = Some(c);
                     }
-                    (pull.rows, !pull.more)
+                    (pull.rows, !pull.more, false)
                 }
             }};
             if last {
@@ -503,13 +579,26 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             };
             fetched = fetched.saturating_add(entering);
             kept = kept.saturating_add(count);
+            // Before staging more rows, a run whose staged parts reached the bound commits them
+            // with the position after its last staged pull; under a monotonic cursor only where
+            // this pull's every clock passes that position, so no commit splits an instant
+            // (`run.own.checkpoint-commit`, `run.own.checkpoint-frontier`).
+            let boundary = plan.cursor_kind != CursorKind::Monotonic || strict;
+            if checkpoints && count > 0 && boundary && staged_bytes >= CHECKPOINT_BYTES && !parts.is_empty() {
+                committed_batches += parts.len() as u64;
+                let landed = self.checkpoint(execution, spec, dest, staging, std::mem::take(&mut parts), before, &mut cached)?;
+                landed_before = Landed { rows: landed_before.rows + landed.rows, bytes: landed_before.bytes + landed.bytes };
+                commits += 1;
+                *staging = segment_run_id(&spec.run_id, commits);
+                (staged_rows, staged_bytes) = (0, 0);
+            }
             if count > 0 {
                 let columns = effect_summary.as_ref().map(|summary| summary.columns.clone()).unwrap_or_else(|| prepared.as_ref().map(|prepared| prepared.columns.clone()).unwrap_or_else(|| rows.iter().flat_map(|r| r.keys()).cloned().collect()));
                 undeclared.extend(columns.into_iter().filter(|c| !types.contains_key(c)));
                 let stage = Stage {
                     pipeline_id: pipeline_id.to_string(),
                     table: table.to_string(),
-                    run_id: spec.run_id.clone(),
+                    run_id: staging.clone(),
                     site_id: spec.site_id.clone(),
                     ordinal: u32::try_from(parts.len()).map_err(|_| RunError::Invalid(format!("run `{}` stages more batches than a part ordinal numbers", spec.run_id)))?,
                     row_offset: staged_rows,
@@ -533,7 +622,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     // A replay stages the same recorded pulls past the bound again.
                     execution.discard();
                     return Err(RunError::RunStagedBytesExceeded(format!(
-                        "run `{}` staged {staged_bytes} bytes in {} parts of `{pipeline_id}`/`{table}`, past the {STAGED_BYTES_PER_RUN}-byte bound; it commits nothing and retires its owner",
+                        "run `{}` staged {staged_bytes} bytes in {} parts of `{pipeline_id}`/`{table}` since its last commit, past the {STAGED_BYTES_PER_RUN}-byte bound; it commits nothing more and retires its owner",
                         spec.run_id,
                         parts.len()
                     ))
@@ -551,7 +640,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         // A reported partial inventory cannot displace a complete replacement. Sources
         // predating the completion field retain their existing nonempty-run behavior.
         if dest.replaces(table) && plan.cursor_kind != CursorKind::Monotonic && (skipped > 0 || (completion_reported && !snapshot_complete)) {
-            dest.discard(table, &spec.run_id)?;
+            dest.discard(table, staging)?;
             parts.clear();
             position = cached.position.clone();
         }
@@ -582,7 +671,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 Commit {
                     pipeline_id: pipeline_id.to_string(),
                     table: table.to_string(),
-                    run_id: spec.run_id.clone(),
+                    run_id: staging.clone(),
                     site_id: spec.site_id.clone(),
                     parts,
                     cursor: position.clone(),
@@ -600,7 +689,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let mut next = CursorRow {
             position,
             version: 0,
-            marker_run_id: if committed { Some(spec.run_id.clone()) } else { cached.marker_run_id.clone() },
+            marker_run_id: if committed { Some(staging.clone()) } else { cached.marker_run_id.clone() },
             marker_committed_at: if committed { Some(committed_at) } else { cached.marker_committed_at },
         };
         let mut expected = cached.version;
@@ -624,7 +713,72 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             }
         }
         self.journal.collect(&execution_id)?;
-        Ok((landed, Tally { batches: batch_count, skipped, fetched, kept, declined, audit }))
+        let landed = Landed { rows: landed_before.rows + landed.rows, bytes: landed_before.bytes + landed.bytes };
+        Ok((landed, Tally { batches: committed_batches + batch_count, skipped, fetched, kept, declined, audit }))
+    }
+
+    /// Commit the parts a run staged since its last commit, carrying `position`, the position
+    /// after its last staged pull, and cache that position in the catalog while the owner
+    /// stays pending. The journal's recorded pulls behind the commit are collected, so a
+    /// resumption pulls afresh from the checkpoint (`run.own.checkpoint-commit`).
+    #[allow(clippy::too_many_arguments)]
+    fn checkpoint(&self, execution: &mut Execution<'_, J, B>, spec: &RunSpec, dest: &mut dyn Destination, staging: &str, parts: Vec<Part>, position: Option<Value>, cached: &mut CursorRow) -> Result<Landed, Close> {
+        let plan = &spec.plan;
+        let lease = execution.lease();
+        let precommit = || -> Result<(), Failure> {
+            execution.assert_publication_current()?;
+            let Some(l) = execution.lease() else { return Ok(()) };
+            if self.catalog.lease_holds(&l)? {
+                Ok(())
+            } else {
+                Err(Failure::new(
+                    FailureTag::Storage,
+                    contextful_core::store::StoreError::LeaseFenced(format!("lease `{}` at fence {} no longer holds; the checkpoint lands nothing", l.key, l.fence)).to_string(),
+                ))
+            }
+        };
+        precommit()?;
+        let committed_at = self.catalog.now()?;
+        let landed = {
+            let _guard = execution.guard(None, true)?;
+            dest.commit(
+                Commit {
+                    pipeline_id: plan.spec.pipeline.clone(),
+                    table: plan.spec.table.clone(),
+                    run_id: staging.to_string(),
+                    site_id: spec.site_id.clone(),
+                    parts,
+                    cursor: position.clone(),
+                    cursor_kind: plan.cursor_kind,
+                    committed_at,
+                    fence: lease.as_ref().map(|l| l.fence),
+                    replace_frontier: false,
+                },
+                &precommit,
+            )?
+        };
+        let scope = execution.scope().clone();
+        let next = CursorRow { position: position.clone(), version: 0, marker_run_id: Some(staging.to_string()), marker_committed_at: Some(committed_at) };
+        let mut expected = cached.version;
+        loop {
+            match self.catalog.cursor_cas_at(&scope, expected, next.clone(), lease.as_ref())? {
+                Cas::Applied => break,
+                Cas::Fenced(e) => return Err(Close::Failed(Failure::new(FailureTag::Storage, e.to_string()))),
+                Cas::VersionMoved if plan.cursor_kind == CursorKind::Monotonic => {
+                    // A concurrent monotonic writer committed first: the highest position wins.
+                    let current = self.catalog.cursor_at(&scope)?;
+                    match (&current.position, &position) {
+                        (Some(theirs), Some(ours)) if resolve_concurrent(CursorKind::Monotonic, theirs, ours)? == *theirs && theirs != ours => break,
+                        (Some(_), None) => break,
+                        _ => expected = current.version,
+                    }
+                }
+                Cas::VersionMoved => return Err(Close::Failed(Failure::new(FailureTag::Storage, "the cursor row moved under the checkpointing run's lease"))),
+            }
+        }
+        *cached = self.catalog.cursor_at(&scope)?;
+        self.journal.collect(execution.execution_id())?;
+        Ok(landed)
     }
 
     /// Resolve one pull through the execution's journal under the plan's retry schedule.
@@ -644,7 +798,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     return Err(refusal.failure());
                 }
                 let field = spec.plan.spec.cursor.field.as_deref().unwrap_or_default();
-                let (rows, next, last) = if spec.plan.cursor_kind == CursorKind::Monotonic {
+                let (rows, next, last, walk, strict) = if spec.plan.cursor_kind == CursorKind::Monotonic {
+                    let strict = strictly_past(field, &pull.rows, at).map_err(preparation_failure)?;
                     let front = frontier(field, &pull.rows).map_err(preparation_failure)?;
                     let next = advance(at, front.as_ref()).map_err(preparation_failure)?;
                     let mut rows = Vec::new();
@@ -652,16 +807,18 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                         if let Some(clock) = clock(&row, field) { if admits(floor, clock).map_err(preparation_failure)? { rows.push(row); } }
                     }
                     let advanced = next.as_ref() != at;
-                    (rows, next.map(|value| watermark(field, value)), !(pull.more && advanced))
+                    let walk = pull.cursor.filter(|_| pull.more);
+                    let last = !(walk.is_some() || (pull.more && advanced));
+                    (rows, next.map(|value| watermark(field, value)), last, walk, strict)
                 } else {
-                    (pull.rows, pull.cursor.or_else(|| request.position.clone()), !pull.more)
+                    (pull.rows, pull.cursor.or_else(|| request.position.clone()), !pull.more, None, false)
                 };
                 let fetched = Some(rows.len() as u64);
                 let rows = shape.shape(rows).map_err(preparation_failure)?;
                 let count = rows.len() as u64;
                 let columns = rows.iter().flat_map(|row| row.keys()).cloned().collect();
                 let prepared = if rows.is_empty() { Value::Null } else { dest.prepare_recorded(&spec.plan.spec.table, rows, types.clone(), execution.execution_id())? };
-                let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, fetched, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined, audit:pull.audit };
+                let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, fetched, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined, audit:pull.audit, walk, strict };
                 serde_json::to_vec(&recorded).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))
             }, parent);
             if late { execution.discard(); }

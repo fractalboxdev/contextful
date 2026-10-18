@@ -525,3 +525,16 @@ Decision: a terminal receipt names its job, keys, attempts and outcome, and the 
 | Job and entity fields on the attempt's `_runs` row | One row per run phase | A per-entity question folds plan and commit rows of every attempt, failed retries included. |
 | Append before the receipt commits | No false terminal | A refused commit leaves a row claiming an outcome the item never reached. |
 | A relation over the catalog's cursor positions | Complete mediation | A read reaches catalog state outside the store's registered relations. |
+
+## A backfill commits at checkpoints and walks one page per pull
+
+A run commits its staged parts and the position after its last staged pull each time they reach 512 MiB, then keeps pulling, so a window of any size lands in one fire with bounded staging. Each commit takes its own run id; the catalog caches its position while the owner stays pending. Under a monotonic cursor a checkpoint waits for a pull whose every clock passes the frontier, so no instant spans two commits. The HTTP source hands the runner one page per pull, its position carrying the watermark and page token, or a page count under next-URL pagination; the page cap counts from the walk's last strict clock advance.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Checkpoints and one page per pull *(chosen)* | — | A run publishes several commits; after a crash, a vendor unordered by its clock loses rows a checkpoint passed. |
+| One commit under a 1 GiB staging bound | Completion | A larger window fails every fire. |
+| A larger staging bound | Memory and disk | Staging grows with the window, and a crash discards it. |
+| A whole walk in one pull | Memory | A pull holds every page, and the page cap fails a long backfill. |
+
+Consequences: a replacing table, a body's landing and a seeding or receiving scope commit once.

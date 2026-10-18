@@ -171,9 +171,15 @@ pub struct Sink {
     pub on_stage: Option<Box<dyn FnMut(&Stage)>>,
     /// Every run whose staged parts a discard removed, as `(table, run_id)`.
     pub discarded: Vec<(String, String)>,
+    /// Whether every table replaces its source state.
+    pub replace: bool,
 }
 
 impl Destination for Sink {
+    fn replaces(&self, _: &str) -> bool {
+        self.replace
+    }
+
     fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> {
         if let Some(observe) = self.on_stage.as_mut() {
             observe(&stage);

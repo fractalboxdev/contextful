@@ -179,7 +179,8 @@ parse-child-deadline       = { clause = "run.land.parse-deadline", value = 60, u
 parse-child-memory         = { clause = "run.land.parse-memory", value = 512, unit = "MiB", basis = "chosen", gloss = "Memory one input's decoder child may consume." }
 receive-retry-after        = { clause = "run.land.receive-retry-after", value = 1, unit = "s", basis = "chosen", gloss = "Interval a backpressured sender waits before resending." }
 receive-push-wait          = { clause = "run.land.receive-push-wait", value = 30, unit = "s", basis = "chosen", gloss = "Longest wait a delivered batch spends on the push guard before answering retryable." }
-staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages before its commit." }
+staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages between two of its commits." }
+checkpoint-bytes           = { clause = "run.own.checkpoint-commit", value = 512, unit = "MiB", basis = "chosen", gloss = "Bytes one run stages before it commits a checkpoint and keeps pulling." }
 owner-lease-renewal        = { clause = "run.record.owner-lease", value = 10, unit = "s", basis = "chosen", gloss = "Renewal cadence of a run row's owner lease." }
 owner-lease-ttl            = { clause = "run.record.owner-lease", value = 30, unit = "s", basis = "chosen", gloss = "Life of an unrenewed run owner lease." }
 site-id-min-length         = { clause = "run.record.site-id-length", value = 1, unit = "chars", basis = "chosen", gloss = "Shortest site id." }

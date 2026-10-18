@@ -347,7 +347,7 @@ fn restoring_the_recorded_build_resumes_and_clears_the_owner() {
 
 /// One run produces one atomic commit per table; a crash mid-run leaves parts under that run's own directory, and
 /// a resumption continues from the last recorded step.
-// spec: run.own.one-commit-per-run@4d8fdd9d
+// spec: run.own.one-commit-per-run@7976ecb6
 #[test]
 fn a_run_commits_once_and_a_crash_commits_nothing() {
     let rig = Rig::new();
@@ -432,14 +432,16 @@ fn each_batch_stages_before_the_next_pull() {
     assert_eq!(ids(&sink.commits[0]), [vec!["d1", "d2"], vec!["d3"], vec!["d4"]]);
 }
 
-/// A stage carrying one run's staged parts past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run
-/// commits nothing and retires its owner, so the next fire pulls afresh from the stored position.
-// spec: run.own.staged-bytes@f0b10952
+/// A stage carrying the parts a run staged since its last commit past 1 GiB raises `RunStagedBytesExceeded`,
+/// deterministic; the run commits nothing more and retires its owner, so the next fire pulls afresh from the stored
+/// position. A replacing table takes no checkpoint, so its run reaches the bound.
+// spec: run.own.staged-bytes@0ba44514
+// spec: run.own.checkpoint-scope@c1944746
 #[test]
 fn a_run_staging_past_the_bound_commits_nothing() {
     let rig = Rig::new();
     let mut source = Pages::new(three_pages());
-    let mut sink = Sink { part_bytes: 400 * 1024 * 1024, ..Sink::default() };
+    let mut sink = Sink { part_bytes: 400 * 1024 * 1024, replace: true, ..Sink::default() };
     let row = rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut sink).unwrap();
     assert_eq!((row.status, row.error_kind), (RunStatus::Failed, Some(FailureTag::Permanent)));
     let m = row.error_message.unwrap();
@@ -458,7 +460,7 @@ fn a_run_staging_past_the_bound_commits_nothing() {
 
     // Two parts of 512 MiB sit at the bound and commit.
     let rig = Rig::new();
-    let mut sink = Sink { part_bytes: 512 * 1024 * 1024, ..Sink::default() };
+    let mut sink = Sink { part_bytes: 512 * 1024 * 1024, replace: true, ..Sink::default() };
     let two = vec![vec![json!({"id": "d1"})], vec![json!({"id": "d2"})]];
     assert_eq!(rig.run(&opaque(), "1.0.0", "run-1", &mut Pages::new(two), &mut sink).unwrap().status, RunStatus::Success);
 }
@@ -467,7 +469,10 @@ fn a_run_staging_past_the_bound_commits_nothing() {
 const NOT_DONE: u64 = 4;
 
 /// Sixteen one-row pages, each staging a 128 MiB part, make a 2 GiB window; the window is given three fires
-/// to land every row, and reports [`NOT_DONE`] when it has not.
+/// to land every row, and reports [`NOT_DONE`] when it has not. Each time the parts staged since the run's last
+/// commit reach 512 MiB, the run commits them with the position after its last staged pull and keeps pulling.
+// spec: run.own.checkpoint-commit@a772e124
+// spec: run.own.checkpoint-run-id@17b3a540
 #[test]
 fn a_window_staging_two_gib_completes_in_one_fire() {
     let rig = Rig::new();
@@ -492,6 +497,70 @@ fn a_window_staging_two_gib_completes_in_one_fire() {
     contextful_eval::record::emit("backfill-fires-to-complete", fires as f64, 1, seed);
     contextful_eval::record::emit("backfill-window-commits", sink.commits.len() as f64, 1, seed);
     contextful_eval::record::emit("backfill-parts-per-commit-min", parts_min as f64, 1, seed);
+    assert_eq!(fires, 1, "one fire lands the window");
+    assert_eq!(sink.commits.iter().map(|c| c.batches.len()).collect::<Vec<_>>(), [4, 4, 4, 4], "a commit per 512 MiB staged");
+    let cursors: Vec<Option<Value>> = sink.commits.iter().map(|c| c.cursor.clone()).collect();
+    assert_eq!(cursors, [Some(json!("p4")), Some(json!("p8")), Some(json!("p12")), Some(json!("p16"))], "each commit carries the position after its last staged pull");
+    let runs: Vec<&str> = sink.commits.iter().map(|c| c.run_id.as_str()).collect();
+    assert_eq!(runs, ["run-1", "run-1.000001", "run-1.000002", "run-1.000003"], "each commit names its own parts");
+    assert_eq!(rig.row("run-1").status, RunStatus::Success);
+    assert!(rig.catalog().owner("feed", "filings").unwrap().is_none(), "the run retires its owner once");
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, Some(json!("p16")));
+}
+
+/// A run dying after a checkpoint commit keeps what the checkpoint committed: the catalog caches the checkpoint's
+/// position, so the next fire pulls from it and lands every later row once.
+// spec: run.own.checkpoint-resume@2e38b3b8
+#[test]
+fn a_fire_after_a_crash_resumes_from_the_last_checkpoint() {
+    let rig = Rig::new();
+    let pages: Vec<Vec<Value>> = (0..16).map(|n| vec![json!({ "id": format!("d{n:02}") })]).collect();
+    let mut source = Pages::new(pages);
+    source.die_after = Some(9);
+    let mut sink = Sink { part_bytes: 128 * 1024 * 1024, ..Sink::default() };
+    rig.crash(&opaque(), "run-1", &mut source, &mut sink);
+    assert_eq!(sink.commits.iter().map(|c| c.cursor.clone()).collect::<Vec<_>>(), [Some(json!("p4")), Some(json!("p8"))]);
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, Some(json!("p8")), "the catalog caches the checkpoint");
+    rig.clock.advance(60);
+    let row = rig.run(&opaque(), "1.0.0", "run-2", &mut source, &mut sink).unwrap();
+    assert_eq!(row.status, RunStatus::Success);
+    let asked: Vec<Option<Value>> = source.calls().iter().skip(10).map(|(p, _)| p.clone()).collect();
+    assert_eq!(asked.first(), Some(&Some(json!("p8"))), "the next fire pulls from the checkpoint");
+    let committed: Vec<String> = sink.commits.iter().flat_map(ids).flatten().collect();
+    let distinct: std::collections::BTreeSet<&String> = committed.iter().collect();
+    assert_eq!((committed.len(), distinct.len()), (16, 16), "every row lands once");
+}
+
+/// A source serving `pages` of dated rows one page a pull, carrying the next page's index as its position.
+struct DatedWalk {
+    pages: Vec<Vec<Value>>,
+}
+
+impl Source for DatedWalk {
+    fn pull(&mut self, request: &PullRequest, _: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        let n = request.position.as_ref().and_then(|p| p.get("next")).and_then(Value::as_u64).unwrap_or(0) as usize;
+        let more = n + 1 < self.pages.len();
+        let cursor = more.then(|| json!({ "next": n + 1 }));
+        Ok(serde_json::to_vec(&json!({ "rows": self.pages[n], "cursor": cursor, "more": more })).unwrap())
+    }
+}
+
+/// Under a monotonic cursor a pull carrying a position continues its walk, and a checkpoint waits for a pull whose
+/// every clock passes the run's frontier, so no commit's position splits the rows of one instant.
+// spec: run.advance.walk-position@feba270e
+// spec: run.own.checkpoint-frontier@f7da4141
+#[test]
+fn a_monotonic_checkpoint_waits_for_a_strict_frontier_advance() {
+    let rig = Rig::new();
+    let row = |id: &str, at: i64| json!({ "id": id, "updated_at": at });
+    let pages = vec![vec![row("a", 1), row("b", 1)], vec![row("c", 1)], vec![row("d", 2)], vec![row("e", 2)], vec![row("f", 3)]];
+    let mut source = DatedWalk { pages };
+    let mut sink = Sink { part_bytes: 512 * 1024 * 1024, ..Sink::default() };
+    let p = plan("kind = \"monotonic\"\nfield = \"updated_at\"", "");
+    assert_eq!(rig.run(&p, "1.0.0", "run-1", &mut source, &mut sink).unwrap().status, RunStatus::Success);
+    let at = |n: i64| Some(json!({ "field": "updated_at", "at": n }));
+    assert_eq!(sink.commits.iter().map(|c| c.cursor.clone()).collect::<Vec<_>>(), [at(1), at(2), at(3)]);
+    assert_eq!(sink.commits.iter().map(ids).collect::<Vec<_>>(), [vec![vec!["a", "b"], vec!["c"]], vec![vec!["d"], vec!["e"]], vec![vec!["f"]]]);
 }
 
 /// A vendor answering `GET /bars?page=<n>[&since=<date>]` from `pages` pages of `per_page` daily bars, ordered
@@ -569,6 +638,10 @@ fn a_2000_page_vendor_lands_every_page_through_successive_fires() {
     let seed = 0x5eed_0b02;
     contextful_eval::record::emit("backfill-http-fires-to-complete", fires as f64, 1, seed);
     contextful_eval::record::emit("backfill-http-rows-landed", once as f64 / total as f64, total as u64, seed);
+    assert_eq!(fires, 1, "one fire walks every page");
+    assert_eq!(once, total, "every bar lands exactly once");
+    let last = vendor.bar(total - 1)["date"].clone();
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, Some(json!({ "field": "date", "at": last })), "the watermark advances when the walk ends");
 }
 
 /// A source whose every pull moves the clock 5 s on.
