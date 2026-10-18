@@ -34,6 +34,8 @@ pub struct Store {
     writer: crate::redaction::Writer,
     frontier: Option<FrontierLease>,
     schema_cache: Option<Arc<SchemaCache>>,
+    /// Stored rows the vintage comparison decoded, shared across clones.
+    vintage_rows: Arc<std::sync::atomic::AtomicU64>,
     #[cfg(feature = "read")]
     pub(crate) erasure_verifier: Option<Arc<crate::erasure_frontier::Verifier>>,
 }
@@ -102,6 +104,7 @@ impl Store {
             encryption,
             frontier: None,
             schema_cache: None,
+            vintage_rows: Arc::default(),
             #[cfg(feature = "read")]
             erasure_verifier: None,
         })
@@ -413,6 +416,16 @@ impl Store {
     /// How many times this store's schema cache parsed a `schema.json`; zero without one.
     pub fn schema_reads(&self) -> usize {
         self.schema_cache.as_ref().map_or(0, |c| c.reads.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
+    /// How many rows the vintage comparison of this store and its clones decoded, counted
+    /// before any `_commit_seq` filter (`store.available-time.vintage-hash`).
+    pub fn vintage_rows_read(&self) -> u64 {
+        self.vintage_rows.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn count_vintage_rows(&self, rows: usize) {
+        self.vintage_rows.fetch_add(rows as u64, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// The table's merged schema, or `None` before its first batch.

@@ -387,3 +387,61 @@ fn a_commit_log_entry_for_a_kind_that_takes_no_lease_is_refused() {
         serde_json::from_slice(&std::fs::read(f.store.root().join("cursors/feed/ingest-a/00000000000000000002.json")).unwrap()).unwrap();
     assert_eq!(stored["cursor_kind"], "opaque-token");
 }
+
+/// 8 landers each committing 4 runs of 2000 bars into one table, concurrently: the
+/// landings refused because the table's `commit.lock` outlasted their wait (ledger
+/// `commit-lock-refusals-w8`), and the p95 milliseconds one commit holds the lock (ledger
+/// `commit-lock-hold-w8`). Commits serialise on the lock while every lander queues, so the
+/// gap between consecutive commits is one holder's hold. Under `contextful-ci measure` the
+/// fixture runs at full size; elsewhere 4 landers commit 2 runs of 200.
+#[test]
+fn eight_pipelines_share_one_table_commit_lock() {
+    const SEED: u64 = 0x5eed_0103;
+    let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
+    let (landers, runs, rows) = if measuring { (8, 4, 2000) } else { (4, 2, 200) };
+    let f = Fixture::new();
+    let d = decl("name = \"bars\"\nprimary_key = [\"symbol\", \"day\"]");
+    let started = std::time::Instant::now();
+    let outcomes: Vec<(contextful_context::Result<()>, std::time::Duration)> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..landers)
+            .map(|w| {
+                let (store, d) = (f.store.clone(), d.clone());
+                scope.spawn(move || {
+                    let batches: Vec<Batch> = (0..runs)
+                        .map(|r| {
+                            let day = format!("2030-01-{:02}", 1 + r);
+                            let rows = (0..rows).map(|i| json!({"symbol": format!("P{w}-S{i:05}"), "day": day, "close": 100 + i, "volume": 1_000 * w}));
+                            batch(serde_json::Value::Array(rows.collect()))
+                        })
+                        .collect();
+                    batches
+                        .iter()
+                        .enumerate()
+                        .map(|(r, b)| {
+                            let ctx = RunContext {
+                                node: NodeId::parse("ingest-a").unwrap(),
+                                injection: Injection { run_id: format!("p{w}-run-{r}"), site_id: "site-a".into(), batch_seq: None, authored_by: None, authored_agent: None, taint: None },
+                                committed_at: at("2030-01-10T00:00:00Z"),
+                            };
+                            let landed = land_batches(&store, &d, std::slice::from_ref(b), &ctx, &Position::default(), &|| Ok(())).map(drop);
+                            (landed, started.elapsed())
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        handles.into_iter().flat_map(|h| h.join().unwrap()).collect()
+    });
+    let refused = outcomes.iter().filter(|(o, _)| o.as_ref().is_err_and(|e| e.to_string().contains("commit.lock"))).count();
+    let failed: Vec<_> = outcomes.iter().filter_map(|(o, _)| o.as_ref().err()).filter(|e| !e.to_string().contains("commit.lock")).collect();
+    assert!(failed.is_empty(), "every landing commits or outwaits the commit lock: {failed:?}");
+    let committed = outcomes.len() - refused;
+    assert_eq!(contextful_context::rows::table_rows(&f.store, &d, &["symbol"]).unwrap().len(), committed * rows);
+    let mut done: Vec<f64> = outcomes.iter().filter(|(o, _)| o.is_ok()).map(|(_, at)| at.as_secs_f64() * 1e3).collect();
+    done.sort_by(f64::total_cmp);
+    let holds: Vec<f64> = done.windows(2).map(|w| w[1] - w[0]).collect();
+    let hold_p95 = contextful_eval::trend::percentile(&holds, 95.0);
+    eprintln!("{landers} landers × {runs} runs × {rows} rows: {refused} refused at the commit lock, hold p95 {hold_p95:.1} ms");
+    contextful_eval::record::emit("commit-lock-refusals-w8", refused as f64, outcomes.len() as u64, SEED);
+    contextful_eval::record::emit("commit-lock-hold-w8", hold_p95, holds.len() as u64, SEED);
+}
