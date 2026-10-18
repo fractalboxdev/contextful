@@ -494,6 +494,10 @@ pub struct PullReport {
     /// Run states whose bucket object differs from its entry, each discarded with a warning
     /// (`store.pull.run-state-torn`).
     pub discarded: Vec<String>,
+    /// Bytes of local copies the pull read to compare against manifest entries.
+    pub bytes_read: u64,
+    /// Bytes of local copies the pull hashed to compare against manifest entries.
+    pub bytes_hashed: u64,
 }
 
 /// Which tables a pull reaches.
@@ -1282,6 +1286,7 @@ impl Syncer {
             for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k))) {
                 let Some(path) = self.local_path(key) else { continue };
                 let local = std::fs::read(&path).ok();
+                report.bytes_read += local.as_ref().map_or(0, |l| l.len() as u64);
                 // This node's own keys are authoritative here, except in a restore or where a
                 // store that never pushed as this node lacks them (`store.pull.cold-own-keys`).
                 if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) && (pushed || local.is_some()) {
@@ -1290,6 +1295,9 @@ impl Syncer {
                 let schema = key.ends_with("/schema.json");
                 // A restore takes a schema as the bucket holds it now (`store.pull.generation-schema`).
                 let current_schema = generation.is_some() && schema;
+                if !current_schema {
+                    report.bytes_hashed += local.as_ref().map_or(0, |l| l.len() as u64);
+                }
                 if !current_schema && local.as_deref().map(sha256_hex).as_deref() == Some(entry.sha256.as_str()) {
                     continue;
                 }
