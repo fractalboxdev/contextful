@@ -719,7 +719,7 @@ clause = "store.available-time.vintage-scope"
 metric = "vintage.rows_scanned.backfill_100_days"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_context::vintage_cost::a_daily_backfill_scans_linearly_in_its_rows" }
+method = { test = "contextful_context::vintage_cost::a_daily_backfill_reads_no_stored_vintage" }
 target = { op = "==", value = 0 }
 seed   = 0x5eed_7101
 

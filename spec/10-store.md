@@ -358,8 +358,10 @@ sequenceDiagram
 Sidecar index kinds and identity, clustering, partitioning and the tenant partition.
 
 - `kinds` — Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW vector graph, a positional full-text index, and opt-in per-column bloom filters.
-- `bloom-parts` — A column a table names in `bloom_filter` carries a bloom filter in every part a run or a fold writes, sized for that part's rows.
+- `bloom-parts` — In a project binding no encryption key, a column a table names in `bloom_filter` carries a bloom filter, sized for that part's rows, in every part a run lands or a fold writes; an erasure rewrite carries none.
   *A-store*
+- `bloom-encrypted` — A project binding an encryption key writes no bloom filter in any part, whatever its tables name in `bloom_filter`.
+  *because Parquet modular encryption leaves a bloom filter in plaintext, where it answers key membership without the key*
 - `declaration` — A sidecar is declared per table under `indexes` with a kind, a `column`, an `id_column` and builder parameters; the `vector` kind takes `model`, `dim`, the `cosine` metric, `m` and `ef_construction`, the `fulltext` kind a `tokenizer`.
 - `id-column` — A sidecar's `id_column` defaults to a single-column primary key on a table declaring no `valid_time`, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.
   *A-store*

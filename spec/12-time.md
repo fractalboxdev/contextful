@@ -79,9 +79,9 @@ Availability time: the declared instant each row's value became public, how land
   *A-store*
 - `vintage-fold-key` — A fold over a vintage table partitions as {{store.fold.valid-time-line}} or {{store.declare.dedup-view}} prescribes with the availability column added, and drops no vintage.
   *A-store*
-- `vintage-scope` — A vintage landing compares each row only against stored vintages of its own key, decoding no row group whose key bloom filter, or footer bounds on a key or valid-time column, exclude every landing row.
+- `vintage-scope` — A vintage landing compares rows only against its own keys' stored vintages, skipping each row group a text or signed-integer key's bloom filter, or footer bounds on a text, integer or temporal key or temporal valid time, excludes.
   *A-store*
-- `vintage-fold-order` — A fold over a vintage table declaring `valid_time` and no `cluster_by` sorts its snapshot by valid-time `from`, then primary key, so footer bounds serve {{store.available-time.vintage-scope}} after the fold.
+- `vintage-fold-order` — A fold over a vintage table declaring `valid_time` and no `cluster_by` sorts its snapshot by valid-time `from`, then primary key, instead of by key alone, so footer bounds serve {{store.available-time.vintage-scope}} after the fold.
   *A-store*
 - `adjustment-factors` — `available_time.adjustment = { table = "<name>", factor_column = "<column>", adjust_columns = [...] }` keeps values raw; an `available_as_of` read multiplies each listed numeric column by the product of factor vintages available by the bound.
   *because a back-adjusted 2014 price encodes splits announced after 2014*

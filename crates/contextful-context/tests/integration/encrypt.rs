@@ -416,6 +416,49 @@ fn a_bound_store_shares_one_opaque_cipher_with_persistent_adapters() {
     assert!(plain.unwrap().file_cipher().is_none());
 }
 
+/// A table naming `bloom_filter` in an encrypted project carries no bloom filter in a run
+/// part or a fold snapshot, since Parquet would store it outside the encryption.
+// spec: store.index.bloom-encrypted@b02178bf
+#[test]
+fn an_encrypted_project_writes_no_bloom_filter() {
+    use contextful_context::land::{Batch, RunContext};
+    use contextful_core::store::bound_time::Bounds;
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::reserve::Injection;
+    use contextful_core::time::Instant;
+    use serde_json::json;
+
+    let key_var = "CONTEXTFUL_TEST_KEY_BLOOM_ENCRYPTED";
+    // This unique variable is read only by this test's store; no other test changes it.
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (_dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let decl = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"filings\"\nprimary_key = [\"doc_id\"]\nbloom_filter = [\"doc_id\"]\n").unwrap().remove(0);
+    for (run, doc, at) in [("run-1", "a1", "2030-01-01T00:00:00Z"), ("run-2", "b2", "2030-01-02T00:00:00Z")] {
+        let batch = Batch { rows: vec![json!({"doc_id": doc, "title": "x"}).as_object().unwrap().clone()], types: Default::default() };
+        let ctx = RunContext {
+            node: NodeId::parse("ingest-a").unwrap(),
+            injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
+            committed_at: Instant::parse(at).unwrap(),
+        };
+        contextful_context::land::land_run(&store, &decl, std::slice::from_ref(&batch), &ctx, &Default::default(), &|| Ok(())).unwrap();
+    }
+    let filters = |store: &Store| -> Vec<bool> {
+        contextful_context::scan::scan(store, &decl, Bounds::default()).unwrap().files.iter().flat_map(|file| {
+            let builder = store.parquet_builder(&store.logical_path(file).unwrap()).unwrap();
+            builder.metadata().row_groups().iter().flat_map(|g| g.columns().iter().map(|c| c.bloom_filter_offset().is_some())).collect::<Vec<_>>()
+        }).collect()
+    };
+    let landed = filters(&store);
+    assert!(!landed.is_empty(), "the exclusion below ranges over no element");
+    assert!(landed.iter().all(|held| !held), "a run part carries a bloom filter: {landed:?}");
+    contextful_context::fold::fold(&store, &decl, Instant::parse("2030-01-03T00:00:00Z").unwrap()).unwrap();
+    let folded = filters(&store);
+    assert!(!folded.is_empty(), "the exclusion below ranges over no element");
+    assert!(folded.iter().all(|held| !held), "the fold snapshot carries a bloom filter: {folded:?}");
+}
+
 /// A bound project key opens a store, and a landed row stays encrypted through a store read.
 #[test]
 fn a_bound_store_lands_ciphertext_and_reads_its_row() {

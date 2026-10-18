@@ -149,7 +149,7 @@
 | `vector-resident` | `read.retrieve.sidecar-size-cap` | `vector.probe.rss_anon_delta_mib` | scheduled | issue 43 | `< 64` | open (issue 43) |
 | `vintage-after-fold-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.append_after_fold` | gate | test `contextful_context::vintage_cost::an_append_after_a_fold_reads_no_stored_vintage` | `== 0` | gated |
 | `vintage-append-day-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.append_day` | gate | test `contextful_context::vintage_cost::a_one_day_append_reads_no_stored_vintage` | `== 0` | gated |
-| `vintage-backfill-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.backfill_100_days` | gate | test `contextful_context::vintage_cost::a_daily_backfill_scans_linearly_in_its_rows` | `== 0` | gated |
+| `vintage-backfill-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.backfill_100_days` | gate | test `contextful_context::vintage_cost::a_daily_backfill_reads_no_stored_vintage` | `== 0` | gated |
 | `vintage-commit-latency-p50` | `store.available-time.vintage-scope` | `vintage.commit_20k.latency_ms.p50` | trend | test `contextful_context::vintage_cost::vintage_commit_latency_at_twenty_thousand_rows` | — | recorded |
 | `vintage-commit-latency-p95` | `store.available-time.vintage-scope` | `vintage.commit_20k.latency_ms.p95` | trend | test `contextful_context::vintage_cost::vintage_commit_latency_at_twenty_thousand_rows` | — | recorded |
 | `vintage-commit-memory` | `store.available-time.vintage-scope` | `vintage.one_day_commit_1m.peak_rss` | scheduled | test `contextful_context::vintage_cost::a_one_day_commit_on_a_million_vintages_holds_bounded_memory` | — | scheduled |

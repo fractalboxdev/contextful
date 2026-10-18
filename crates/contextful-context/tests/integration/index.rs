@@ -98,7 +98,7 @@ fn a_snapshot_carries_each_of_the_five_index_kinds() {
 
 /// A column a table names in `bloom_filter` carries a bloom filter in every part a run or a
 /// fold writes, sized for that part's rows; an unnamed column carries none.
-// spec: store.index.bloom-parts@75a04898
+// spec: store.index.bloom-parts@7d914097
 #[test]
 fn every_part_a_run_or_fold_writes_carries_the_declared_bloom_filter() {
     use parquet::file::reader::{FileReader, SerializedFileReader};

@@ -140,9 +140,12 @@ impl Probe {
     }
 
     /// Clear each row group whose bloom filter on this column holds no landing value. Only a
-    /// text or signed integer column probes: its stored bytes are the value a key matches.
+    /// text or signed integer key column probes: its stored bytes are the value a key
+    /// matches. A valid-time column never probes, since the comparison key normalizes its
+    /// text and two spellings of one instant hash apart.
     fn exclude_by_bloom(&self, builder: &ParquetRecordBatchReaderBuilder<File>, admitted: &mut [bool]) {
         use arrow_schema::DataType as T;
+        if self.instant_only { return }
         let schema = builder.schema();
         let Ok(field) = schema.field_with_name(&self.name) else { return };
         let text = matches!(field.data_type(), T::Utf8 | T::LargeUtf8 | T::Utf8View);
@@ -181,8 +184,8 @@ impl VintageHistory {
     /// The stored vintages of the keys `landing` carries, read before `before_commit_seq`
     /// where given. A part's row group is decoded only when its footer bounds on each key
     /// and valid-time column, and its key bloom filters, admit some landing row; the read
-    /// projects the comparison's columns and holds one record batch at a time
-    /// (`store.available-time.vintage-scope`).
+    /// holds the landing's key and valid-time values and one projected stored record batch
+    /// at a time (`store.available-time.vintage-scope`).
     pub(crate) fn load<'a>(
         store: &Store,
         decl: &TableDecl,
@@ -266,11 +269,18 @@ impl VintageHistory {
         rows.retain(|_| { let accepted = keep[i]; i += 1; accepted });
     }
 
+    /// The columns that scope a vintage comparison's read: the key and valid-time `from`
+    /// where declared.
+    pub(crate) fn scoped_columns(decl: &TableDecl) -> Vec<String> {
+        let mut names = decl.primary_key().to_vec();
+        names.extend(decl.valid_time.as_ref().map(|valid| valid.from.clone()));
+        names
+    }
+
     /// The columns a vintage comparison reads of a vintage table's row: its key, valid-time
     /// `from` where declared, availability instant and content hash.
     pub(crate) fn compared_columns(decl: &TableDecl) -> Vec<String> {
-        let mut names = decl.primary_key().to_vec();
-        names.extend(decl.valid_time.as_ref().map(|valid| valid.from.clone()));
+        let mut names = Self::scoped_columns(decl);
         names.extend(decl.available_time.as_ref().map(|available| available.column.clone()));
         names.extend(decl.content_hash_column().map(str::to_string));
         names

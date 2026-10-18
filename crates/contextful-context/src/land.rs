@@ -1192,22 +1192,28 @@ fn commit_parts_inner(
             }
         }
         if decl.is_vintage() {
-            // Each staged part's comparison columns, read first so the stored history loads
-            // for the run's keys alone (`store.available-time.vintage-scope`).
+            // The staged rows' key and valid-time values, read first so the stored history
+            // loads for the run's keys alone (`store.available-time.vintage-scope`).
+            let keys = crate::available::VintageHistory::scoped_columns(decl);
+            let key_names: Vec<&str> = keys.iter().map(String::as_str).collect();
+            let mut scope = Vec::new();
+            for name in parts {
+                store.each_parquet_batch(&stage_dir.join(name), &mut |batch| {
+                    scope.extend(crate::rows::batch_rows(&batch, &key_names)?);
+                    Ok(())
+                })?;
+            }
+            let mut history = crate::available::VintageHistory::load(store, decl, None, &scope)?.expect("a vintage table loads its history");
+            drop(scope);
             let columns = crate::available::VintageHistory::compared_columns(decl);
             let names: Vec<&str> = columns.iter().map(String::as_str).collect();
-            let mut staged = Vec::with_capacity(parts.len());
             for name in parts {
                 let mut rows = Vec::new();
                 store.each_parquet_batch(&stage_dir.join(name), &mut |batch| {
                     rows.extend(crate::rows::batch_rows(&batch, &names)?);
                     Ok(())
                 })?;
-                staged.push(rows);
-            }
-            let mut history = crate::available::VintageHistory::load(store, decl, None, staged.iter().flatten())?.expect("a vintage table loads its history");
-            for (name, rows) in parts.iter().zip(&staged) {
-                let keep = history.mask(rows);
+                let keep = history.mask(&rows);
                 if keep.iter().all(|accepted| *accepted) { continue }
                 let path = stage_dir.join(name);
                 let batches = store.read_parquet(&path)?;

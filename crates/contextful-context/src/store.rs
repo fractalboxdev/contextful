@@ -291,7 +291,7 @@ impl Store {
 
     /// A reader over one store part, under this store's key, for a caller choosing its own
     /// row groups and projection.
-    pub(crate) fn parquet_builder(&self, path: &Path) -> Result<parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder<std::fs::File>> {
+    pub fn parquet_builder(&self, path: &Path) -> Result<parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder<std::fs::File>> {
         crate::parquet_io::builder_with_key(path, self.parquet_key())
     }
 

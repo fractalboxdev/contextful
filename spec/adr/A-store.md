@@ -427,7 +427,7 @@ Revisit: an estimate-revision source whose vintage rows outgrow the table's part
 
 Context: the content-hash comparison runs under the table's commit lock. Decoding every stored vintage there makes a daily backfill quadratic in its days and holds every concurrent writer behind history it never matches. Criteria: commit cost independent of table size; no new structure to keep in step.
 
-Decision: the comparison decodes only row groups whose key bloom filters and footer bounds on key and valid-time columns admit a landing row, projecting the compared columns one record batch at a time. Run parts carry declared bloom filters, sized per part. A fold over a valid-time vintage table sorts by valid-time `from` before key.
+Decision: the comparison decodes only row groups whose key bloom filters and footer bounds on key and valid-time columns admit a landing row, projecting the compared columns one record batch at a time. Run parts carry declared bloom filters, sized per part, except in an encrypted project, where Parquet would leave them in plaintext. A fold over a valid-time vintage table sorts by valid-time `from` before key.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

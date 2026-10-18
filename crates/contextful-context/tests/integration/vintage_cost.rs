@@ -1,6 +1,6 @@
-//! `store.available-time.vintage-hash`: what a vintage landing reads of the table's stored
+//! `store.available-time.vintage-scope`: what a vintage landing reads of the table's stored
 //! vintages, counted by `Store::vintage_rows_read`, and what one commit costs in time and
-//! memory as the table grows (`store.available-time.vintage-scope`).
+//! memory as the table grows.
 //!
 //! Under `contextful-ci measure` the fixtures run at full size; elsewhere, the workspace
 //! stage among them, a scaled-down fixture exercises the same path.
@@ -123,7 +123,7 @@ fn a_one_day_append_reads_no_stored_vintage() {
 /// Day 50 restated for every symbol: half with a new digest, half re-pulling the stored
 /// digest under a later publication instant. The rows its vintage comparison reads
 /// (ledger `vintage-restate-day-scan`).
-// spec: store.available-time.vintage-scope@3e41e348
+// spec: store.available-time.vintage-scope@10ef927d
 #[test]
 fn a_one_day_restatement_reads_only_that_days_vintages() {
     const SEED: u64 = 0x5eed_7101;
@@ -141,7 +141,7 @@ fn a_one_day_restatement_reads_only_that_days_vintages() {
 /// 100 daily runs of 100 symbols landed into an empty table: the rows every vintage
 /// comparison of the backfill reads in total (ledger `vintage-backfill-scan`).
 #[test]
-fn a_daily_backfill_scans_linearly_in_its_rows() {
+fn a_daily_backfill_reads_no_stored_vintage() {
     const SEED: u64 = 0x5eed_7101;
     let (symbols, days) = bars_size();
     let f = Fixture::new();
@@ -307,8 +307,25 @@ fn vintage_commit_latency_at_twenty_thousand_rows() {
     emit("vintage-commit-latency-p95", p95, repeats as u64, SEED);
 }
 
+/// A re-pull spelling its valid time another way, with an unchanged digest, lands no
+/// vintage, though the table names the valid-time column in `bloom_filter`.
+#[test]
+fn a_repull_respelling_its_valid_time_lands_no_vintage() {
+    let f = Fixture::new();
+    let d = decl("name = \"bars\"\nprimary_key = [\"symbol\"]\ncontent_hash_column = \"digest\"\nbloom_filter = [\"day\"]\n[pipeline.tables.valid_time]\nfrom = \"day\"\n[pipeline.tables.available_time]\ncolumn = \"published_at\"");
+    let types = bars_types();
+    let pull = |run: &str, day: &str, late: u64| {
+        let row = object(json!({"symbol": "S0001", "day": day, "digest": "same", "published_at": published(0, late).to_rfc3339()}));
+        land(&f.store, &d, &Batch { rows: vec![row], types: types.clone() }, &ctx(run, published(0, late + 1))).unwrap();
+    };
+    pull("first", "2030-01-01T00:00:00Z", 0);
+    pull("offset", "2030-01-01T00:00:00+00:00", 2);
+    pull("fraction", "2030-01-01T00:00:00.000Z", 4);
+    assert_eq!(stored(&f, &d, "symbol"), 1, "each spelling of one valid time matches the stored vintage");
+}
+
 /// Bars landed newest day first fold into a snapshot ordered by valid time, then symbol.
-// spec: store.available-time.vintage-fold-order@ca3e6d71
+// spec: store.available-time.vintage-fold-order@3f46959d
 #[test]
 fn a_vintage_fold_orders_its_snapshot_by_valid_time() {
     let f = Fixture::new();
