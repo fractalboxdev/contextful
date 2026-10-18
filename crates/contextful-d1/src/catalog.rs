@@ -63,6 +63,28 @@ impl D1Catalog {
         Ok(Self { db })
     }
 
+    /// Acquire `key` whatever its current holder or expiry, advancing the fence so every
+    /// write predicated on the prior holder's lease stops matching.
+    pub fn take_over(&self, key: &LeaseKey, holder: &str, ttl_secs: u64) -> Result<Lease, Failure> {
+        let key = key.spelling();
+        self.assert_mutable()?;
+        self.db.query("INSERT OR IGNORE INTO contextful_lease (key, fence) SELECT ?, 0 WHERE NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global')", vec![json!(key)]).map_err(storage)?;
+        let sql = format!("UPDATE contextful_lease SET holder = ?, expires_us = {NOW_US} + ?, fence = fence + 1 WHERE key = ? AND NOT EXISTS (SELECT 1 FROM contextful_guard WHERE scope = 'global') RETURNING fence, expires_us");
+        let result = self
+            .db
+            .query(&sql, vec![json!(holder), json!(ttl_us(ttl_secs)), json!(key)])
+            .map_err(storage)?;
+        let row = result.rows.first().ok_or_else(|| {
+            Failure::new(FailureTag::Transient, "execution callback guard blocks D1 lease or owner transfer")
+        })?;
+        Ok(Lease {
+            key,
+            holder: holder.into(),
+            fence: number(row, "fence")? as u64,
+            expires_at: instant(number(row, "expires_us")?)?,
+        })
+    }
+
     /// An orphaned callback guard remains visible until its external effect is resolved.
     pub fn pending_guard(&self) -> Result<Option<String>, Failure> {
         let rows = self

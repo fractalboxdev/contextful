@@ -154,6 +154,8 @@ fn coordinated_exports_require_a_completed_producer_and_rebuild_full_state() {
         cf(p,&args,&[("CONTEXTFUL_TOKEN",&token)])
     };
     assert!(err(&invoke("group",&[])).contains("completed producer"));
+    // The machine file lock dies with its process, so a local take-over finds nothing to fence.
+    assert!(err(&invoke("group",&["--take-over"])).contains("completed producer"));
     assert!(collector.received().is_empty());
     // The producer's immutable completion record is the boundary exercised by job tests.
     let store = contextful_context::Store::open(p,"research").unwrap();

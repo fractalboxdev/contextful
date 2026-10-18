@@ -39,20 +39,26 @@ impl Ledger {
     fn restore(&mut self, name: &str, namespace: &str, bytes: &[u8], incarnation: &str, identity: &str) -> Result<()> { each!(self, l => l.restore(name, namespace, bytes, incarnation, identity)) }
 }
 
-/// Under `cloudflare-d1` the publication's durable lease, not the machine file lock, fences writers.
-fn ledger(store: &contextful_context::Store, name: &str) -> Result<Ledger> {
+/// Under `cloudflare-d1` the publication's durable lease, not the machine file lock, fences writers;
+/// `take_over` takes that lease from a holder killed before its expiry (`run.export.group-d1-takeover`).
+fn ledger(store: &contextful_context::Store, name: &str, take_over: bool) -> Result<Ledger> {
     supported()?;
     if let Some(crate::storage::Remote::D1 { endpoint, .. }) = crate::storage::remote()? {
         #[cfg(feature = "d1-catalog")]
         {
             let holder = format!("{}:{}:{}", crate::run::boot_id(), std::process::id(), wall_clock()?.unix_nanos());
             let mut ledger = contextful_d1::D1PublicationLedger::connect(&endpoint)?;
-            ledger.claim(name, &holder, contextful_core::coordinate::CADENCE_LEASE_TTL_SECS)?;
+            let ttl = contextful_core::coordinate::CADENCE_LEASE_TTL_SECS;
+            if take_over {
+                ledger.take_over(name, &holder, ttl)?;
+            } else {
+                ledger.claim(name, &holder, ttl)?;
+            }
             return Ok(Ledger::D1(Box::new(ledger)));
         }
         #[cfg(not(feature = "d1-catalog"))]
         {
-            let _ = (endpoint, name);
+            let _ = (endpoint, name, take_over);
             anyhow::bail!("ProfileCapabilityAbsent: D1 publication state requires `d1-catalog`");
         }
     }
@@ -121,7 +127,7 @@ pub(crate) fn record_completion(
                 Ok((export.table.clone(), source_frontier(store, &export.table)?))
             })
             .collect::<Result<_>>()?;
-        ledger(store, &group.name)?.record_source(
+        ledger(store, &group.name, false)?.record_source(
             &group.name,
             &SourcePublication {
                 run: run.into(),
@@ -209,6 +215,7 @@ pub(super) fn deliver(
     declaration: Option<PathBuf>,
     admit: &AdmitArgs,
     restore: Option<PathBuf>,
+    take_over: bool,
 ) -> Result<()> {
     supported()?;
     let located = project.locate(declaration)?;
@@ -243,7 +250,7 @@ pub(super) fn deliver(
         )?;
     }
     let identity = identity(&face, &session, &authority, &exports)?;
-    let mut ledger = ledger(face.store(), name)?;
+    let mut ledger = ledger(face.store(), name, take_over)?;
     let incarnation = ledger.incarnation(&format!(
         "{:x}",
         Sha256::digest(format!(
@@ -380,7 +387,7 @@ pub(super) fn checkpoint(
     crate::sync::pull_before_run(&located)?;
     let _held = lock(&located)?;
     let face = face(&located)?;
-    let bytes = ledger(face.store(), name)?.checkpoint(name, namespace)?;
+    let bytes = ledger(face.store(), name, false)?.checkpoint(name, namespace)?;
     face.store().metadata_files().replace(out, &bytes)?;
     Ok(())
 }

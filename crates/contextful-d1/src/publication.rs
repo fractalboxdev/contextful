@@ -95,6 +95,16 @@ impl D1PublicationLedger {
         Ok(())
     }
 
+    /// Take the publication lease from whoever holds it; the fence advances, so the prior
+    /// holder's next write refuses (`run.export.group-d1-takeover`).
+    pub fn take_over(&mut self, name: &str, holder: &str, ttl_secs: u64) -> Result<(), Failure> {
+        let lease = self
+            .catalog
+            .take_over(&LeaseKey::Cadence(format!("publication:{name}")), holder, ttl_secs)?;
+        self.leases.insert(name.into(), (lease, ttl_secs));
+        Ok(())
+    }
+
     pub fn release(&mut self) -> Result<(), Failure> {
         for (_, (lease, _)) in std::mem::take(&mut self.leases) {
             self.catalog.release(&lease)?;
