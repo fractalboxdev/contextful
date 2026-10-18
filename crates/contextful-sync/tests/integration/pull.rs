@@ -188,7 +188,7 @@ fn a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it() {
 }
 
 /// A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.
-// spec: store.pull.digest-mismatch@5acf85aa
+// spec: store.pull.digest-mismatch@e4fabb02
 #[test]
 fn an_object_whose_digest_differs_from_its_entry_is_refused_and_discarded() {
     let (dir, b, _a) = pushed();
@@ -723,4 +723,42 @@ fn a_tombstone_for_a_key_never_held_raises_nothing_on_pull() {
     let reader = node("ingest-b", b.clone(), "");
     let report = reader.syncer.pull(&PullScope::default()).unwrap();
     assert!(report.unverified.is_empty(), "{:?}", report.unverified);
+}
+
+/// A run state overwritten in place by a push that never committed is discarded with a warning, the pull
+/// lands every other key, and the node's next push lists its fresh run state.
+// spec: store.pull.run-state-torn@f0e7f46d
+// spec: store.push.run-state-upload@f31449b9
+#[test]
+fn a_run_state_torn_by_an_uncommitted_push_is_discarded_and_the_next_push_heals_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let first = node("ingest-a", b.clone(), "");
+    first.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    let store = contextful_context::Store::open(first._dir.path(), "research").unwrap();
+    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: "ingest-a".into(), runs: Default::default(), cursors: Vec::new(), control_version: None };
+    contextful_sync::run_state::record(&store, &state).unwrap();
+    first.syncer.push(at(NOW)).unwrap();
+    let key = "research/nodes/ingest-a/run-state.json";
+    let part = "research/tables/filings/data/runs/run-1/ingest-a/part-00000.parquet";
+    std::fs::write(dir.path().join("context-team/team").join(key), br#"{"format":1,"node_id":"ingest-a","control_version":7}"#).unwrap();
+
+    for id in ["ingest-a", "ingest-b"] {
+        let cold = node(id, b.clone(), "");
+        let report = cold.syncer.pull(&PullScope::default()).unwrap();
+        assert_eq!(report.discarded.len(), 1, "{:?}", report.discarded);
+        assert!(report.discarded[0].contains(key), "{}", report.discarded[0]);
+        assert!(report.downloaded.iter().any(|k| k == part), "{:?}", report.downloaded);
+        assert!(!cold.root().join("nodes/ingest-a/run-state.json").exists());
+    }
+
+    let replacement = node("ingest-a", b.clone(), "");
+    replacement.syncer.pull(&PullScope::default()).unwrap();
+    let store = contextful_context::Store::open(replacement._dir.path(), "research").unwrap();
+    contextful_sync::run_state::record(&store, &state).unwrap();
+    replacement.syncer.push(at("2030-01-01T02:00:00Z")).unwrap();
+    let reader = node("ingest-b", b, "");
+    let report = reader.syncer.pull(&PullScope::default()).unwrap();
+    assert!(report.discarded.is_empty(), "{:?}", report.discarded);
+    assert!(reader.root().join("nodes/ingest-a/run-state.json").exists());
 }

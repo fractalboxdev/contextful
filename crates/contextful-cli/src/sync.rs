@@ -299,6 +299,9 @@ impl PendingPull {
     pub fn run(self) -> Result<()> {
         use std::io::Write;
         let r = self.syncer.pull(&self.scope).context("`pull_before_run`")?;
+        for discarded in &r.discarded {
+            let _ = writeln!(std::io::stderr(), "pull_before_run: warning: {discarded}");
+        }
         let _ = writeln!(std::io::stderr(), "pull_before_run: pulled {} objects and {} pointers", r.downloaded.len(), r.pointers.len());
         Ok(())
     }
@@ -418,7 +421,7 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
         SyncCmd::Pull { args, tables, generation } => {
             let (s, decls) = open(&args)?;
             let r = s.pull(&PullScope { tables, replicate_off: replicate_off(&decls)?, generation })?;
-            for refusal in &r.unverified {
+            for refusal in r.unverified.iter().chain(&r.discarded) {
                 eprintln!("warning: {refusal}");
             }
             println!("pulled {} objects and {} pointers in {} attempt(s)", r.downloaded.len(), r.pointers.len(), r.attempts);

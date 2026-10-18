@@ -491,6 +491,9 @@ pub struct PullReport {
     /// Tombstones the pull applied nothing for, each a `SyncTombstoneUnverified` refusal
     /// (`store.merge.tombstone-unverified`).
     pub unverified: Vec<String>,
+    /// Run states whose bucket object differs from its entry, each discarded with a warning
+    /// (`store.pull.run-state-torn`).
+    pub discarded: Vec<String>,
 }
 
 /// Which tables a pull reaches.
@@ -859,7 +862,9 @@ impl Syncer {
         let mut report = PushReport::default();
         // A copy of a key another node owns is never pushed; a shared mergeable key commits by its merge.
         for (key, entry) in &plan.mine {
-            if remote.entries.get(key).is_some_and(|e| e.sha256 == entry.sha256) {
+            // A run state rewrites one key in place, so a listed digest proves nothing of the object; it uploads on every push (`store.push.run-state-upload`).
+            let run_state = run_state_node(key).is_some_and(|n| *key == format!("{}/nodes/{n}/run-state.json", self.project));
+            if !run_state && remote.entries.get(key).is_some_and(|e| e.sha256 == entry.sha256) {
                 continue;
             }
             let uploaded = match class(key, &self.node) {
@@ -1299,6 +1304,13 @@ impl Syncer {
                     continue;
                 };
                 if !current_schema && sha256_hex(&bytes) != entry.sha256 {
+                    // A push writes its run state before its manifest commit; one it never committed is a summary to drop, not a refusal (`store.pull.run-state-torn`).
+                    if run_state_node(key).is_some_and(|n| *key == format!("{}/nodes/{n}/run-state.json", self.project)) {
+                        if !report.discarded.iter().any(|d| d.starts_with(&format!("`{key}`"))) {
+                            report.discarded.push(format!("`{key}` holds a run state other than its entry's, written by a push that never committed; it is discarded and its node's next push replaces it"));
+                        }
+                        continue;
+                    }
                     return Err(StoreError::SyncObjectDigestMismatch(format!("`{key}` arrived with a digest other than its entry's; the object is discarded")).into());
                 }
                 let merged = match (&local, schema) {
