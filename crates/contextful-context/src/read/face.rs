@@ -800,6 +800,11 @@ impl Face {
         self.pool.rows_scanned()
     }
 
+    /// Profile scan output on later reads through this face.
+    pub fn enable_engine_scan_tally(&self) {
+        self.pool.enable_scan_tally();
+    }
+
     /// Refuse a `valid_as_of` read touching a table that declares no valid-time pair
     /// (`store.bound-time.valid-time-undeclared`), and an `available_as_of` read touching
     /// one that declares no availability time (`store.available-time.undeclared`). The

@@ -146,8 +146,8 @@ fn every_change_to_the_whole_key_misses_and_reads_the_new_state() {
     assert_eq!(counts(&r), (0, 6, 6), "no entry is reused across a change");
 }
 
-/// The pool tallies the rows its connections' table and Parquet scans emit, the figure the
-/// export scan-amplification measures divide by the rows a read returns.
+/// An instrumented pool tallies the rows its connections' table and Parquet scans emit;
+/// ordinary reads leave profiling disabled.
 #[test]
 fn the_pool_tallies_the_rows_each_statement_scans() {
     let r = Reads::new();
@@ -156,6 +156,9 @@ fn the_pool_tallies_the_rows_each_statement_scans() {
     }
     let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&[EVENTS], None)]);
     assert_eq!(r.face.engine_rows_scanned(), 0);
+    assert_eq!(events(&r, &authority).len(), 12);
+    assert_eq!(r.face.engine_rows_scanned(), 0, "ordinary reads do not profile scans");
+    r.face.enable_engine_scan_tally();
     assert_eq!(events(&r, &authority).len(), 12);
     let once = r.face.engine_rows_scanned();
     assert!(once >= 12, "a read of 12 rows scanned {once}");

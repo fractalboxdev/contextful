@@ -239,6 +239,11 @@ impl SqlEngine {
     /// (`read.register.connection-views`). Every file a view names is immutable under the
     /// pool key the connection serves, so the connection keeps Parquet footers it read.
     pub fn open(session: &Session, parquet_key: Option<&[u8]>) -> Result<SqlEngine, ReadFault> {
+        Self::open_with_tally(session, parquet_key, None)
+    }
+
+    /// A connection whose scans report to `scanned` when the caller requests profiling.
+    pub(crate) fn open_with_tally(session: &Session, parquet_key: Option<&[u8]>, scanned: Option<Arc<AtomicU64>>) -> Result<SqlEngine, ReadFault> {
         let mut engine = SqlEngine::connect()?;
         let conn = &engine.conn;
         engine.bind_parquet_key(parquet_key)?;
@@ -286,16 +291,17 @@ impl SqlEngine {
             conn.execute_batch(&format!("CREATE OR REPLACE TEMP VIEW {} AS {}", ident(r.name()), r.sql())).map_err(fault)?;
         }
         let files: Vec<String> = session.relations().chain(session.ledgers()).flat_map(|r| r.files().iter().cloned()).collect();
-        // Per-operator row counts, kept in memory, feed the scanned-row tally.
-        conn.execute_batch(PROFILING).map_err(fault)?;
+        if scanned.is_some() {
+            conn.execute_batch(PROFILING).map_err(fault)?;
+        }
         engine.lock(&files)?;
         engine.admitted = Some(session.clone());
+        engine.scanned = scanned;
         Ok(engine)
     }
 
-    /// Add the rows each later statement's table and Parquet scans emit to `scanned`.
-    pub(crate) fn tally_scans(&mut self, scanned: Arc<AtomicU64>) {
-        self.scanned = Some(scanned);
+    pub(crate) fn tallies_scans(&self) -> bool {
+        self.scanned.is_some()
     }
 
     /// Add the last statement's scanned rows to the tally, where one is set.
