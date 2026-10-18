@@ -49,7 +49,8 @@ fn a_keyed_query_digest_matches_no_unkeyed_dictionary_entry() {
     assert!(result.n >= 100);
 }
 
-// The arms below hold a record's presence, sample count and seed, not a target.
+// The arms below hold a record's presence, sample count and seed, not a target. A
+// resident-set probe reads getrusage, so its arm runs on unix alone.
 
 #[test]
 fn a_fold_peak_heap_probe_records_the_growth_across_held_sizes() {
@@ -60,6 +61,7 @@ fn a_fold_peak_heap_probe_records_the_growth_across_held_sizes() {
 }
 
 #[test]
+#[cfg(unix)]
 fn a_fold_events_peak_rss_probe_records_the_median_child() {
     let result = probe("fold-events-peak-rss", "fold-events-peak-rss");
     assert_eq!(result.n, if small() { 20_000 } else { 1_000_000 });
@@ -68,6 +70,7 @@ fn a_fold_events_peak_rss_probe_records_the_median_child() {
 }
 
 #[test]
+#[cfg(unix)]
 fn a_fold_passages_peak_rss_probe_records_the_median_child() {
     let result = probe("fold-passages-peak-rss", "fold-passages-peak-rss");
     assert_eq!(result.n, if small() { 500 } else { 20_000 });
@@ -84,6 +87,7 @@ fn a_backfill_decode_probe_records_the_worst_of_three_formats() {
 }
 
 #[test]
+#[cfg(unix)]
 fn a_backfill_walk_probe_records_the_median_child() {
     let result = probe("backfill-walk-peak-rss", "backfill-walk-peak-rss");
     assert_eq!(result.n, if small() { 5_000 } else { 99_900 });
