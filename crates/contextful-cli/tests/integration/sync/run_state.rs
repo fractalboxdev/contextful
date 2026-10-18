@@ -144,3 +144,24 @@ fn a_future_dated_run_state_leaves_a_cold_nodes_cadence_alone() {
     assert_eq!(cycle["fired"], serde_json::json!(["shop"]), "{cycle}");
     assert_eq!(cycle["next_due"], "2030-01-02T01:00:00Z", "{cycle}");
 }
+
+/// A run state a push rewrote and never committed reaches `sync pull` as a warning naming the key, and the pull exits 0.
+// spec: store.pull.run-state-torn@f0e7f46d
+#[test]
+fn sync_pull_warns_of_a_torn_run_state_and_succeeds() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"s1\",\"at\":5}]".into()));
+    let bucket = tempfile::tempdir().unwrap();
+    let a = shop("ingest-a", bucket.path(), &vendor);
+    fire(a.path(), "f1", "2030-01-01T00:00:00Z");
+    ok(&cf(a.path(), &["sync", "push", "--project", "research"], &[]));
+    let object = bucket.path().join("context-team/team/research/nodes/ingest-a/run-state.json");
+    assert!(object.exists(), "{}", object.display());
+    std::fs::write(&object, br#"{"format":1,"node_id":"ingest-a","control_version":7}"#).unwrap();
+
+    let b = shop("ingest-b", bucket.path(), &vendor);
+    let out = cf(b.path(), &["sync", "pull", "--project", "research"], &[]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert!(stderr.contains("warning: `research/nodes/ingest-a/run-state.json`"), "{stderr}");
+    assert!(!b.path().join(STORE).join("nodes/ingest-a/run-state.json").exists());
+}
