@@ -287,9 +287,10 @@ impl Face {
         // content token, skips it (`read.retrieve.dedup-is-gated`).
         let deduplicating = floor.is_some();
         self.bind_bounds(session, &touched, bounds)?;
-        // A sidecar probe admits only entries the bounded relation holds, under the bound a
-        // horizon imposes when the call supplies none (`read.horizon.rank-statistics`).
-        let available = contextful_core::read::horizon::inherit(contextful_core::read::horizon::horizon(session.grants()), bounds)?.available_as_of;
+        // Under a horizon, a sidecar probe admits only entries the bounded relation holds
+        // (`read.horizon.rank-statistics`); without one, the probe reads every entry.
+        let horizon = contextful_core::read::horizon::horizon(session.grants());
+        let available = contextful_core::read::horizon::inherit(horizon, bounds)?.available_as_of.filter(|_| horizon.is_some());
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let anchor = request.anchor;
         let memory_tables: Vec<String> = self.memory().tables.iter().map(|t| t.name.clone()).collect();

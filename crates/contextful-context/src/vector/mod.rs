@@ -192,7 +192,7 @@ fn write(
     let path = index.path(crate::fold::escape);
     let dir = snapshot_dir.join(&path);
     fs::create_dir_all(&dir).at(&dir)?;
-    let latest = crate::available::latest(decl, rows)?;
+    let latest = crate::available::latest(available.as_deref())?;
     let (extensions, carried, segments, available_through) = match prior {
         None => (0, 0, Vec::new(), latest),
         Some((p, at)) => {

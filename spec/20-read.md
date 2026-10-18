@@ -540,6 +540,8 @@ Reading under a credential's {{authority.grant.horizon}}: the bound every read i
 
 unsettled: Where does the engine record the instant a column first landed in a table, for a schema that predates the record? owner: read-path affects: read.horizon
 
+unsettled: Does a vintage table's sidecar count only each key's newest vintage available by the horizon, so its statistics and candidates match the bounded relation's one vintage per key? owner: read-path affects: read.horizon
+
 ## subscribe
 
 The stream of one notification per committed run of each named table, read from the store's durable commit record, resumable from a run position, and the operator verb carrying it.

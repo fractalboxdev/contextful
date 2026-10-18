@@ -391,10 +391,10 @@ pub(crate) fn instants(decl: &TableDecl, rows: &arrow_array::RecordBatch) -> Res
     Ok(Some((0..nanos.len()).map(|i| (!nanos.is_null(i)).then(|| nanos.value(i))).collect()))
 }
 
-/// The latest availability instant among `rows`, on a table declaring `available_time`:
-/// what a sidecar built over them records as `available_through`. `None` where the table
-/// declares none or no row carries an instant.
-pub(crate) fn latest(decl: &TableDecl, rows: &arrow_array::RecordBatch) -> Result<Option<Instant>> {
-    let latest = instants(decl, rows)?.and_then(|all| all.into_iter().flatten().max());
+/// The latest of `instants`, as [`instants`] returns them: what a sidecar records as
+/// `available_through`, an informational field no read consults. `None` where the table
+/// declares no availability time or no row carries an instant.
+pub(crate) fn latest(instants: Option<&[Option<i64>]>) -> Result<Option<Instant>> {
+    let latest = instants.and_then(|all| all.iter().flatten().copied().max());
     latest.map(|n| Instant::from_unix_nanos(i128::from(n)).map_err(|e| ContextError::Invalid(e.to_string()))).transpose()
 }

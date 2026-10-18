@@ -7507,7 +7507,7 @@
       "statement": "A subscription reads run manifests and commit logs on disk, never the {{run.project.emission-never-blocks}} channel, so a run one process commits reaches a subscriber in another.",
       "why": "because an in-process hub ties every reader to the landing process and loses its state on restart",
       "file": "spec/20-read.md",
-      "line": 547
+      "line": 549
     },
     {
       "id": "read.subscribe.after-commit",
@@ -7518,7 +7518,7 @@
       "statement": "A run notifies only once {{store.lay-out.uncommitted-run}} no longer holds it: a run with no manifest, or a logged run absent from its node's commit log, never notifies.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 549,
+      "line": 551,
       "scenarios": [
         "WHEN a leased pipeline's run writes its manifest and its commit-log entry is absent, THEN no subscription notifies it."
       ]
@@ -7532,7 +7532,7 @@
       "statement": "A notification carries `table`, `run_id`, `node_id`, `committed_at` and `frontier`, the pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows carry.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 551
+      "line": 553
     },
     {
       "id": "read.subscribe.frontier-covers-run",
@@ -7543,7 +7543,7 @@
       "statement": "A read of the table bounded `as_of` a notification's frontier covers the notified run's files.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 552
+      "line": 554
     },
     {
       "id": "read.subscribe.commit-order",
@@ -7554,7 +7554,7 @@
       "statement": "Notifications of one table arrive in ascending `commit_seq`, the order {{store.reserve.commit-order}} makes runs readable, and each committed run notifies exactly once per subscription.",
       "why": "because a subscriber applying notifications in order rebuilds the table's commit sequence",
       "file": "spec/20-read.md",
-      "line": 554,
+      "line": 556,
       "scenarios": [
         "WHEN a relational run commits `events` at `commit_seq` 5 before its group marker lands and a plain run commits at 6, THEN a subscription sends neither until the marker lands, then 5 before 6."
       ]
@@ -7568,7 +7568,7 @@
       "statement": "A notification carries no row content and no row count.",
       "why": "because a count over a table under row policy or tenant scope discloses rows the reader cannot see",
       "file": "spec/20-read.md",
-      "line": 556
+      "line": 558
     },
     {
       "id": "read.subscribe.resume",
@@ -7579,7 +7579,7 @@
       "statement": "`after` maps a table to a `<run-id>/<node-id>` position; the subscription replays every later committed run of that table once, then continues live, a fold between leaving the replay unchanged.",
       "why": "because a fold leaves run manifests in place until retention collects them",
       "file": "spec/20-read.md",
-      "line": 558,
+      "line": 560,
       "scenarios": [
         "WHEN runs `r1`, `r2` and `r3` commit to `events` and a subscription names `after` `events=r1/ingest-a`, THEN it sends `r2` then `r3`, and a fold before the call changes neither."
       ]
@@ -7593,7 +7593,7 @@
       "statement": "An `after` position naming no committed run of its table raises `SubscriptionPositionUnavailable`, naming the table's oldest resolvable position.",
       "why": "because a replay from a collected position cannot tell which later runs retention also removed",
       "file": "spec/20-read.md",
-      "line": 560
+      "line": 562
     },
     {
       "id": "read.subscribe.overrun",
@@ -7604,7 +7604,7 @@
       "statement": "A subscription holding more than 1000 notifications undelivered sends 1000, then a terminal `overrun` message naming each table's last delivered position, and ends.",
       "why": "because a bounded queue never drops a notification silently, and the terminal position resumes the stream",
       "file": "spec/20-read.md",
-      "line": 562
+      "line": 564
     },
     {
       "id": "read.subscribe.operator-verb",
@@ -7615,7 +7615,7 @@
       "statement": "`contextful context subscribe <table>... [--after <table>=<run-id>/<node-id>] [--follow]` prints one JSON notification per line; without `--follow` it ends once the replay is sent.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 564
+      "line": 566
     },
     {
       "id": "read.subscribe.tool-poll",
@@ -7626,7 +7626,7 @@
       "statement": "`context.subscribe` takes `tables` and an optional `after` map and answers one page: `messages`, what {{read.subscribe.resume}} sends under {{read.subscribe.overrun}}, and `after`, each table's last delivered position for the next call.",
       "why": "because the tool protocol's request and response hold no stream, and a returned position resumes a poll exactly as it resumes a stream",
       "file": "spec/20-read.md",
-      "line": 565
+      "line": 567
     },
     {
       "id": "read.subscribe.ungranted-table",
@@ -7637,7 +7637,7 @@
       "statement": "On the tool protocol, a subscription naming a table outside the session's relations, existing or not, is refused by {{authority.refuse.ungranted-table}} before any `after` position resolves.",
       "why": "because a position refusal or a notification on an ungranted table discloses that the table exists and commits",
       "file": "spec/20-read.md",
-      "line": 567
+      "line": 569
     },
     {
       "id": "read.subscribe.horizon-refusal",
@@ -7648,7 +7648,7 @@
       "statement": "On the tool protocol, a subscription under a credential carrying a horizon raises `SubscriptionUnderHorizon` before any table or `after` position resolves.",
       "why": "because a notification carries the run's commit instant and sequence, which {{read.horizon.engine-stamps}} withholds, and runs committed after the horizon",
       "file": "spec/20-read.md",
-      "line": 569
+      "line": 571
     },
     {
       "id": "read.declare.canonical-column",

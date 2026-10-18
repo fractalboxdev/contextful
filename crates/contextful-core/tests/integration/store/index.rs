@@ -365,8 +365,8 @@ fn an_extended_sidecar_without_segments_declares_the_current_format() {
     assert_eq!(FormatVersion::of_manifest(&parts, &[entry(1)]).to_string(), "2.0");
 }
 
-/// A sidecar written before its entries carried an availability instant records builder
-/// version 1, so the next pass rebuilds it in full and a past horizon reads it filtered
+/// A sidecar recording builder version 1 carries no per-entry availability instant, so the
+/// next pass rebuilds it in full and a past horizon reads it filtered
 /// (`store.index.rebuild`, `read.horizon.rank-statistics`).
 #[test]
 fn a_sidecar_without_per_entry_availability_rebuilds() {
