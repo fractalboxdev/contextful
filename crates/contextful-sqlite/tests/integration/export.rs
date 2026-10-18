@@ -276,3 +276,64 @@ fn sealed_export_refuses_plaintext_and_corrupt_envelopes_without_fallback() {
     assert!(ExportLedger::open_sealed(&sealed_path, cipher()).is_err());
     assert_eq!(std::fs::read(&sealed_path).unwrap(), corrupted);
 }
+
+/// The `_runs` key a unit run's store run carries, `<phase>-<19-digit nanos>-<8 hex>/<node>`,
+/// its nonce drawn from `seed`.
+fn run_key(phase: &str, unit: u64, seed: u64) -> String {
+    let mut z = seed.wrapping_add(unit.wrapping_mul(0x9e37_79b9_7f4a_7c15));
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    let nanos = 1_893_456_000_000_000_000 + unit * 60_000_000_000 + u64::from(phase == "commit") * 1_000_000_000;
+    format!("{phase}-{nanos:019}-{:08x}/ingest-a", (z ^ (z >> 31)) as u32)
+}
+
+/// B=200 completions of publication `g`, build b recording a model watermark over `_runs`
+/// that omits 2b store runs, as a model reading an unfolded run record does. The ledger
+/// records the `source-history` row count and body bytes; a retry of the newest run with
+/// identical bytes succeeds and one with different bytes is refused.
+#[test]
+fn source_history_stays_bounded_per_publication() {
+    use contextful_core::pipeline::model::{InputFrontier, Watermark};
+    use contextful_core::time::Instant;
+    use contextful_sqlite::{PublicationLedger, SourcePublication};
+    const SEED: u64 = 0x5eed_0615;
+    const BUILDS: u64 = 200;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("publication.sqlite");
+    let ledger = PublicationLedger::open(&path).unwrap();
+    let completion = |b: u64| {
+        let runs = (0..b).flat_map(|u| [run_key("plan", u, SEED), run_key("commit", u, SEED)]).collect();
+        let watermark = Watermark {
+            at: Some(Instant::from_unix_secs(1_893_456_000 + b as i64 * 60).unwrap()),
+            inputs: [("_runs".to_string(), InputFrontier { snapshot_id: None, runs })].into(),
+            horizon: None,
+        };
+        SourcePublication {
+            run: format!("b{b:04}"),
+            input: serde_json::to_value(&watermark).unwrap(),
+            frontiers: [("run_counts".to_string(), format!("snapshot-{b:04}"))].into(),
+        }
+    };
+    for b in 1..=BUILDS {
+        ledger.record_source("g", &completion(b)).unwrap();
+    }
+    let newest = completion(BUILDS);
+    ledger.record_source("g", &newest).unwrap();
+    let mut divergent = newest.clone();
+    divergent.frontiers.insert("run_counts".into(), "snapshot-other".into());
+    assert!(ledger.record_source("g", &divergent).is_err());
+    assert_eq!(ledger.source("g").unwrap(), Some(newest));
+    drop(ledger);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let (rows, bytes): (i64, i64) = conn
+        .query_row(
+            "SELECT count(*), coalesce(sum(length(body)), 0) FROM coordinated_publication WHERE role='source-history' AND name='g'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert!((1..=BUILDS as i64).contains(&rows), "{rows} source-history rows after {BUILDS} builds");
+    eprintln!("source-history after {BUILDS} builds: {rows} rows, {bytes} bytes");
+    contextful_eval::record::emit("source-history-rows", rows as f64, BUILDS, SEED);
+    contextful_eval::record::emit("source-history-bytes", bytes as f64, BUILDS, SEED);
+}
