@@ -1,6 +1,6 @@
 //! `store.available-time.vintage-hash`: what a vintage landing reads of the table's stored
 //! vintages, counted by `Store::vintage_rows_read`, and what one commit costs in time and
-//! memory as the table grows. Each figure is today's value, recorded for the ledger.
+//! memory as the table grows (`store.available-time.vintage-scope`).
 //!
 //! Under `contextful-ci measure` the fixtures run at full size; elsewhere, the workspace
 //! stage among them, a scaled-down fixture exercises the same path.
@@ -116,12 +116,14 @@ fn a_one_day_append_reads_no_stored_vintage() {
     let read = read_during(&f.store, || land_bars(&f.store, &d, "append", days, day_rows(symbols, days)));
     assert_eq!(stored(&f, &d, "symbol"), symbols * (days + 1));
     eprintln!("a one-day append over {} stored vintages read {read} rows", symbols * days);
+    assert_eq!(read, 0, "a day past every stored valid time reads no stored vintage");
     emit("vintage-append-day-scan", read as f64, symbols as u64, SEED);
 }
 
 /// Day 50 restated for every symbol: half with a new digest, half re-pulling the stored
 /// digest under a later publication instant. The rows its vintage comparison reads
 /// (ledger `vintage-restate-day-scan`).
+// spec: store.available-time.vintage-scope@3e41e348
 #[test]
 fn a_one_day_restatement_reads_only_that_days_vintages() {
     const SEED: u64 = 0x5eed_7101;
@@ -132,6 +134,7 @@ fn a_one_day_restatement_reads_only_that_days_vintages() {
     let read = read_during(&f.store, || land_bars(&f.store, &d, "restate", day, rows));
     assert_eq!(stored(&f, &d, "symbol"), symbols * days + symbols.div_ceil(2), "only a changed digest lands a vintage");
     eprintln!("a one-day restatement over {} stored vintages read {read} rows", symbols * days);
+    assert!(read <= symbols as u64, "a restatement reads only its own day's {symbols} vintages, read {read}");
     emit("vintage-restate-day-scan", read as f64, symbols as u64, SEED);
 }
 
@@ -150,6 +153,7 @@ fn a_daily_backfill_scans_linearly_in_its_rows() {
     });
     assert_eq!(stored(&f, &d, "symbol"), symbols * days);
     eprintln!("a backfill of {days} runs × {symbols} rows read {read} stored rows");
+    assert_eq!(read, 0, "each day of a backfill lands past every stored valid time");
     emit("vintage-backfill-scan", read as f64, days as u64, SEED);
 }
 
@@ -199,6 +203,7 @@ fn a_fresh_filing_id_reads_no_stored_vintage() {
     let plain = fresh_filing_scan(FILINGS, runs, per_run, SEED);
     let bloom = fresh_filing_scan(FILINGS_KEYED_BLOOM, runs, per_run, SEED);
     eprintln!("fresh ids over {} stored filings read {plain} rows, {bloom} with a key bloom filter", runs * per_run);
+    assert_eq!(bloom, 0, "a key bloom filter excludes every stored part holding none of the fresh ids");
     emit("vintage-random-key-scan", bloom as f64, per_run as u64, SEED);
 }
 
@@ -216,12 +221,12 @@ fn an_append_after_a_fold_reads_no_stored_vintage() {
     let read = read_during(&f.store, || land_bars(&f.store, &d, "append", days, day_rows(symbols, days)));
     assert_eq!(stored(&f, &d, "symbol"), symbols * (days + 1));
     eprintln!("a one-day append after a fold over {} vintages read {read} rows", symbols * days);
+    assert_eq!(read, 0, "the snapshot's footer bounds exclude a day past every stored valid time");
     emit("vintage-after-fold-scan", read as f64, symbols as u64, SEED);
 }
 
 /// 8 threads each landing 25 runs of 100 never-seen keys into one bars table: the rows
-/// every vintage comparison reads in total. Commits serialise on the table's commit lock,
-/// so the total is fixed by the run count (ledger `vintage-concurrent-scan`).
+/// every vintage comparison reads in total (ledger `vintage-concurrent-scan`).
 #[test]
 fn eight_writers_landing_new_keys_scan_no_history() {
     const SEED: u64 = 0x5eed_7108;
@@ -257,7 +262,7 @@ fn eight_writers_landing_new_keys_scan_no_history() {
     let commits = writers * runs;
     assert_eq!(stored(&f, &d, "symbol"), commits * per_run);
     let read = f.store.vintage_rows_read();
-    assert_eq!(read as usize, per_run * commits * (commits - 1) / 2, "each commit reads every row committed before it");
+    assert_eq!(read, 0, "no commit reads another writer's keys or another day's vintages");
     eprintln!("{writers} writers × {runs} runs × {per_run} new keys read {read} stored rows");
     emit("vintage-concurrent-scan", read as f64, commits as u64, SEED);
 }
@@ -300,6 +305,31 @@ fn vintage_commit_latency_at_twenty_thousand_rows() {
     eprintln!("a vintage commit over {base} rows: p50 {p50:.2} ms, p95 {p95:.2} ms");
     emit("vintage-commit-latency-p50", p50, repeats as u64, SEED);
     emit("vintage-commit-latency-p95", p95, repeats as u64, SEED);
+}
+
+/// Bars landed newest day first fold into a snapshot ordered by valid time, then symbol.
+// spec: store.available-time.vintage-fold-order@ca3e6d71
+#[test]
+fn a_vintage_fold_orders_its_snapshot_by_valid_time() {
+    let f = Fixture::new();
+    let d = decl(BARS);
+    for day in (0..4).rev() {
+        land_bars(&f.store, &d, &format!("day-{day:04}"), day, day_rows(3, day));
+    }
+    fold::fold(&f.store, &d, published(4, 0)).unwrap();
+    let scan = contextful_context::scan::scan(&f.store, &d, Default::default()).unwrap();
+    assert_eq!(scan.files.len(), 1, "one snapshot part: {:?}", scan.files);
+    let path = f.store.logical_path(&scan.files[0]).unwrap();
+    let file = std::fs::File::open(&path).unwrap();
+    let reader = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file).unwrap().build().unwrap();
+    let mut order = Vec::new();
+    for batch in reader {
+        order.extend(contextful_context::rows::batch_rows(&batch.unwrap(), &["day", "symbol"]).unwrap().into_iter().map(|row| (row["day"].as_str().unwrap().to_string(), row["symbol"].as_str().unwrap().to_string())));
+    }
+    assert_eq!(order.len(), 12);
+    let mut sorted = order.clone();
+    sorted.sort();
+    assert_eq!(order, sorted, "the snapshot holds its rows in valid-time order");
 }
 
 /// Set in the re-executed child to the project directory it commits into.
@@ -351,5 +381,6 @@ fn a_one_day_commit_on_a_million_vintages_holds_bounded_memory() {
     assert_eq!(stored(&f, &decl(BARS), "symbol"), symbols * (days + 1));
     let mib = bytes as f64 / (1024.0 * 1024.0);
     eprintln!("a one-day commit over {} vintages peaked at {mib:.1} MiB", symbols * days);
+    assert!(mib <= 256.0, "a one-day commit holds only its own keys' history, peaked at {mib:.1} MiB");
     emit("vintage-commit-memory", mib, 1, SEED);
 }

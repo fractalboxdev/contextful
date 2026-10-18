@@ -245,8 +245,13 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     }
     // A keyed table declaring no clustering sorts by its key, so each part's footer bounds
     // on the key form a sparse map a point lookup probes (`store.index.kinds`).
+    // A vintage table with valid time sorts by valid-time `from` first, so footer bounds keep
+    // pruning a landing's history read (`store.available-time.vintage-fold-order`).
     if !decl.cluster_by().is_empty() {
         rows = sort(&rows, decl.cluster_by()).map_err(invalid)?;
+    } else if let (true, Some(valid)) = (decl.is_vintage(), &decl.valid_time) {
+        let order: Vec<String> = std::iter::once(valid.from.clone()).chain(decl.primary_key().iter().cloned()).collect();
+        rows = sort(&rows, &order).map_err(invalid)?;
     } else if decl.is_keyed() {
         rows = sort(&rows, decl.primary_key()).map_err(invalid)?;
     }

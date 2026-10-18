@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 267 |
 | `run` | 3 | 29 | 565 | 127 | 46 | 17 | 526 | 0 | 449 |
-| `store` | 3 | 19 | 307 | 64 | 17 | 10 | 296 | 0 | 286 |
+| `store` | 3 | 19 | 310 | 64 | 17 | 10 | 299 | 0 | 286 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 135 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 61 |
-| **total** | 22 | 169 | 2713 | 681 | 217 | 75 | 2420 | 0 | |
+| **total** | 22 | 169 | 2716 | 681 | 217 | 75 | 2423 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
-| 2 — The store | 9 | 185 | 175 | passing | closed |
+| 2 — The store | 9 | 186 | 176 | passing | closed |
 | 3 — The run path | 12 | 290 | 278 | passing | closed |
 | 4 — Ingest | 25 | 609 | 504 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
@@ -40,7 +40,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 12 — The operator console | 12 | 61 | 49 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
 | 14 — Assurance | 7 | 171 | 136 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
+| 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
 | 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
@@ -1967,12 +1967,14 @@ Unscheduled operations: 13.
 | `store.available-time.vintage-dedup-key` | `crates/contextful-core/tests/integration/store/available_time.rs::a_vintage_table_dedupes_per_availability_instant_then_resolves` | performed |
 | `store.available-time.vintage-first` | `crates/contextful-context/tests/integration/available_time.rs::vintage_first_returns_the_initial_release` | performed |
 | `store.available-time.vintage-fold-key` | `crates/contextful-context/tests/integration/available_time.rs::a_fold_keeps_every_vintage` | performed |
+| `store.available-time.vintage-fold-order` | `crates/contextful-context/tests/integration/vintage_cost.rs::a_vintage_fold_orders_its_snapshot_by_valid_time` | performed |
 | `store.available-time.vintage-hash` | `crates/contextful-context/tests/integration/available_time.rs::an_unchanged_re_pull_lands_no_new_vintage` | performed |
 | `store.available-time.vintage-hash-undeclared` | `crates/contextful-core/tests/integration/store/available_time.rs::a_vintage_table_without_a_content_hash_is_refused` | performed |
 | `store.available-time.vintage-interval-key` | `crates/contextful-core/tests/integration/store/available_time.rs::a_vintage_table_with_valid_time_keys_on_interval_and_vintage` | performed |
 | `store.available-time.vintage-resolution` | `crates/contextful-context/tests/integration/available_time.rs::a_vintage_read_returns_the_latest_release_the_bound_admits` | performed |
 | `store.available-time.vintage-retain-rows` | `crates/contextful-core/tests/integration/store/available_time.rs::a_vintage_table_retaining_rows_by_age_is_refused` | performed |
 | `store.available-time.vintage-rows` | `crates/contextful-context/tests/integration/available_time.rs::a_restatement_lands_beside_the_value_it_revises` | performed |
+| `store.available-time.vintage-scope` | `crates/contextful-context/tests/integration/vintage_cost.rs::a_one_day_restatement_reads_only_that_days_vintages` | performed |
 | `store.bound-time.as-of` | `crates/contextful-core/tests/integration/store/bound_time.rs::as_of_resolves_to_the_newest_snapshot_at_or_before_it_plus_omitted_runs` | performed |
 | `store.bound-time.as-of-unretained` | `crates/contextful-core/tests/integration/store/bound_time.rs::an_as_of_before_collected_history_is_unretained` | performed |
 | `store.bound-time.beneath-enforcement` | `crates/contextful-context/tests/integration/read/register.rs::historical_retrieval_keeps_row_and_column_enforcement` | performed |
@@ -2044,6 +2046,7 @@ Unscheduled operations: 13.
 | `store.fold.triggers` | `crates/contextful-core/tests/integration/store/fold.rs::a_pass_fires_at_fifty_runs_or_six_hours` | performed |
 | `store.fold.unknown-table` | `crates/contextful-context/tests/integration/fold.rs::a_pass_over_an_unknown_table_halts` | performed |
 | `store.fold.valid-time-line` | `crates/contextful-context/tests/integration/fold.rs::a_valid_time_table_keeps_one_row_per_key_and_line` | performed |
+| `store.index.bloom-parts` | `crates/contextful-context/tests/integration/index.rs::every_part_a_run_or_fold_writes_carries_the_declared_bloom_filter` | performed |
 | `store.index.candidate-ids` | `crates/contextful-context/tests/integration/read/retrieve.rs::sidecar_candidates_are_identifier_values_rejoined_through_the_relation` | performed |
 | `store.index.clustering` | `crates/contextful-context/tests/integration/index.rs::cluster_by_sorts_rows_within_a_file_in_declared_order` | performed |
 | `store.index.column-absent` | `crates/contextful-core/tests/integration/store/index.rs::an_index_or_identifier_the_schema_lacks_is_refused` | performed |

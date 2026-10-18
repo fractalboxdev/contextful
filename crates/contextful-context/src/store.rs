@@ -276,7 +276,7 @@ impl Store {
         crate::parquet_io::write_with_key(path, batch, self.parquet_key())
     }
 
-    /// [`Store::write_parquet`] with a bloom filter on each of `bloom` (`store.index.kinds`).
+    /// [`Store::write_parquet`] with a bloom filter on each of `bloom` (`store.index.bloom-parts`).
     pub(crate) fn write_parquet_blooming(&self, path: &Path, batch: &arrow_array::RecordBatch, bloom: &[String]) -> Result<()> {
         crate::parquet_io::write_with_key_blooming(path, batch, self.parquet_key(), bloom)
     }
@@ -287,6 +287,12 @@ impl Store {
 
     pub(crate) fn parquet_row_count(&self, path: &Path) -> Result<u64> {
         crate::parquet_io::row_count_with_key(path, self.parquet_key())
+    }
+
+    /// A reader over one store part, under this store's key, for a caller choosing its own
+    /// row groups and projection.
+    pub(crate) fn parquet_builder(&self, path: &Path) -> Result<parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder<std::fs::File>> {
+        crate::parquet_io::builder_with_key(path, self.parquet_key())
     }
 
     pub(crate) fn each_parquet_batch(&self, path: &Path, each: &mut dyn FnMut(arrow_array::RecordBatch) -> Result<()>) -> Result<()> {

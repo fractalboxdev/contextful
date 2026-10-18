@@ -423,6 +423,21 @@ Decision: a keyed table declaring `available_time` keys each row on its availabi
 Consequences: a fold and the expiry of `retain_runs` leave every vintage readable.
 Revisit: an estimate-revision source whose vintage rows outgrow the table's partition bounds.
 
+## A vintage landing reads only its own keys' history
+
+Context: the content-hash comparison runs under the table's commit lock. Decoding every stored vintage there makes a daily backfill quadratic in its days and holds every concurrent writer behind history it never matches. Criteria: commit cost independent of table size; no new structure to keep in step.
+
+Decision: the comparison decodes only row groups whose key bloom filters and footer bounds on key and valid-time columns admit a landing row, projecting the compared columns one record batch at a time. Run parts carry declared bloom filters, sized per part. A fold over a valid-time vintage table sorts by valid-time `from` before key.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Pruned read of the stored parts *(chosen)* | — | A random-key table without valid time prunes only where it declares `bloom_filter`. |
+| Decode the whole table per landing | Commit cost | A 100-day backfill of 100 symbols decodes 495,000 stored rows. |
+| A latest-vintage sidecar per table | No new structure | Every commit, fold, erasure and sync keeps a second file in step. |
+
+Consequences: a valid-time vintage snapshot sorts by time, so a key lookup in it reads every row group's key bounds.
+Revisit: a random-key vintage table declaring no bloom filter whose landings decode its history.
+
 ## A column records the commit that first landed it
 
 `schema.json` carries `first_landed_at` per column, set once by the merge that first adds the column and never moved by a later merge; bucket sync carries it with the schema. On a table declaring `available_time` the instant is the earliest availability among that batch's rows carrying the column, so a backfill landed years later keeps its fields visible at the horizons its rows answer; elsewhere it is the commit instant. `read.horizon.late-columns` drops a column first landed after the horizon.
