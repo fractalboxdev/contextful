@@ -1273,8 +1273,11 @@ impl ChildDispatch {
             Some((job, located)) => {
                 cmd.args(["job", "fire", &job.name]);
                 if let (JobKind::StoreDriven(driven), Some((seed, root))) = (&job.kind, &self.issuer) {
-                    let token = fire_credential(&located, root, seed, &job.name, driven).map_err(|e| ChildStepError::Infrastructure(format!("{id}: minting the fire credential: {e:#}")))?;
-                    cmd.env(crate::admit::TOKEN_VAR, token);
+                    let credential = fire_credential(&located, root, seed, &job.name, driven).map_err(|e| ChildStepError::Infrastructure(format!("{id}: minting the fire credential: {e:#}")))?;
+                    // The child admits under the pin and audience it was minted with (`surface.dispatch.fire-credential-pins`).
+                    cmd.env(crate::admit::TOKEN_VAR, credential.token)
+                        .env(crate::admit::PUBKEY_VAR, credential.public_key)
+                        .env(crate::admit::AUDIENCE_VAR, credential.audience);
                 }
             }
             None => { cmd.args(["pipeline", "run", id]); }
@@ -1314,7 +1317,7 @@ const FIRE_CREDENTIAL_SECS: u64 = 600;
 /// One credential for a store-driven fire of `job`, on behalf of `svc://job/<job>`: `read`
 /// over the relations its statement names and `write` over its declared `tables`
 /// (`surface.dispatch.fire-credential`).
-fn fire_credential(located: &Located, root: &Path, seed: &Path, job: &str, driven: &StoreDriven) -> Result<String> {
+fn fire_credential(located: &Located, root: &Path, seed: &Path, job: &str, driven: &StoreDriven) -> Result<crate::token::ServiceCredential> {
     let tree = crate::admit::face(located)?.serialize(&driven.input.statement)?;
     let read = contextful_core::read::guard::admit(&tree, |_| true)?.relations;
     let grant = |action: Action, tables: Vec<String>| -> Result<Grant> {
