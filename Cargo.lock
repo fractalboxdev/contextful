@@ -944,6 +944,7 @@ dependencies = [
  "getrandom 0.3.4",
  "half",
  "jiff",
+ "libc",
  "memmap2",
  "parquet",
  "ring",

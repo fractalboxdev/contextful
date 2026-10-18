@@ -54,6 +54,8 @@ fts = ["read"]
 [dev-dependencies]
 # Ledger measures record their figures (`assurance.measure.record`).
 contextful-eval = { path = "../../tools/eval" }
+# A measure child reports its own peak resident set through `getrusage`.
+libc = "0.2"
 tempfile = "3"
 
 # The read face without the lexical backend, beside none and all (`assurance.build.profile-build`).
