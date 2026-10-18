@@ -563,7 +563,9 @@ fn a_2000_page_vendor_lands_every_page_through_successive_fires() {
         rig.clock.advance(3600);
     }
     let once = landed(&sink).values().filter(|&&n| n == 1).count();
-    assert!(landed(&sink).len() <= total, "every landed bar is one the vendor serves");
+    let served: std::collections::BTreeSet<(String, String)> =
+        (0..total).map(|n| vendor.bar(n)).map(|b| (b["symbol"].as_str().unwrap().to_string(), b["date"].as_str().unwrap().to_string())).collect();
+    assert!(landed(&sink).keys().all(|k| served.contains(k)), "every landed bar is one the vendor serves");
     let seed = 0x5eed_0b02;
     contextful_eval::record::emit("backfill-http-fires-to-complete", fires as f64, 1, seed);
     contextful_eval::record::emit("backfill-http-rows-landed", once as f64 / total as f64, total as u64, seed);
