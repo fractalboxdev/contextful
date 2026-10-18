@@ -263,8 +263,9 @@ fn eight_writers_landing_new_keys_scan_no_history() {
 
 /// One commit re-pulling 10 unchanged bars over a table of 2 × 10⁴ vintages, in
 /// milliseconds: p50 and p95 of 200 timed commits after 20 warm-up, the median of 5 batches.
-/// An unchanged re-pull lands no vintage, so the table's rows and parts stay fixed across
-/// the commits (ledger `vintage-commit-latency-p50`, `vintage-commit-latency-p95`).
+/// An unchanged re-pull lands no vintage, so the table's rows stay fixed across the commits;
+/// each commit still adds one run manifest holding no row (ledger
+/// `vintage-commit-latency-p50`, `vintage-commit-latency-p95`).
 #[test]
 fn vintage_commit_latency_at_twenty_thousand_rows() {
     const SEED: u64 = 0x5eed_7104;
