@@ -274,6 +274,7 @@ pub fn lease_key_json(key: &LeaseKey) -> Value {
         LeaseKey::Partition { pipeline, partition } => json!({ "partition": [pipeline, partition] }),
         LeaseKey::Compaction(t) => json!({ "compaction": t }),
         LeaseKey::Cadence(d) => json!({ "cadence": d }),
+        LeaseKey::Dispatch(u) => json!({ "dispatch": u }),
     }
 }
 

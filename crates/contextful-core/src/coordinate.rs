@@ -26,6 +26,9 @@ pub enum LeaseKey {
     Partition { pipeline: String, partition: String },
     Compaction(String),
     Cadence(String),
+    /// A unit's dispatch record: each dispatch takes this key for zero seconds, so the
+    /// row's expiry is the unit's last dispatch instant (`surface.arm.next-fire-from-history`).
+    Dispatch(String),
 }
 
 impl LeaseKey {
@@ -37,6 +40,9 @@ impl LeaseKey {
             LeaseKey::Partition { pipeline, partition } => format!("partition.{}.{}", clean(pipeline), clean(partition)),
             LeaseKey::Compaction(t) => format!("compaction.{}", clean(t)),
             LeaseKey::Cadence(d) => format!("cadence.{}", clean(d)),
+            // A scheduled job's unit id is `job:<name>`, and the file catalog names one file per
+            // key, where Windows refuses ':'. Escaping '%' first keeps the spelling injective.
+            LeaseKey::Dispatch(u) => format!("dispatch.{}", clean(&u.replace('%', "%25")).replace(':', "%3A")),
         }
     }
 }

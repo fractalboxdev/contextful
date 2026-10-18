@@ -6,13 +6,15 @@
 //! or renews the cadence lease first and dispatches nothing without it
 //! (`surface.dispatch.lease-gated`); due-ness counts from history, so a boot past several
 //! intervals fires once (`surface.arm.catch-up`); admission holds a key in flight and caps
-//! the pool (`surface.dispatch.exclusion-key`, `surface.dispatch.pool-bound`). A head entry
+//! the pool (`surface.dispatch.exclusion-key`, `surface.dispatch.pool-bound`) in admission
+//! order (`surface.dispatch.admission-order`); a wake refills each slot a fire frees with the
+//! units its beat left pending (`surface.dispatch.refill`). A head entry
 //! dispatches its dependent run's landing steps with it, and a due step starts nothing
 //! (`surface.dispatch.not-a-head`).
 
 use contextful_core::coordinate::{Catalog, Lease, LeaseKey, CADENCE_LEASE_RENEWAL_SECS, CADENCE_LEASE_TTL_SECS};
 use contextful_core::run::own::OwnerScope;
-use contextful_core::run::Failure;
+use contextful_core::run::{Failure, FailureTag};
 use contextful_core::surface::arm::{next_fire, Schedule};
 use contextful_core::surface::dispatch::{admit, Due};
 use contextful_core::surface::worker::unit_of;
@@ -64,11 +66,13 @@ pub fn fire_ordered(
     if failures.is_empty() { Ok(lines.join("; ")) } else { Err(failures.join("; ")) }
 }
 
-/// One armed entry: a pipeline id and its schedule.
+/// One armed entry: a pipeline id, its schedule and its dispatch priority.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     pub id: String,
     pub schedule: Schedule,
+    /// Higher starts first among units due at one instant (`surface.dispatch.admission-order`).
+    pub priority: i64,
 }
 
 /// Who holds the cadence lease after a beat.
@@ -87,6 +91,16 @@ pub struct Beat {
     pub held: Vec<String>,
     /// Due ids that are landing steps of a dependent run, each with its refusal.
     pub refused: Vec<(String, String)>,
+}
+
+/// What a wake's refills did after its beat (`surface.dispatch.refill`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Refill {
+    /// Units a freed slot started, in start order.
+    pub started: Vec<String>,
+    /// Why refilling stopped before the deadline: a lost cadence lease or a failed catalog
+    /// read. The units still waiting stay pending.
+    pub stopped: Option<String>,
 }
 
 /// One unit that ended.
@@ -113,7 +127,14 @@ pub struct Scheduler {
     /// Each landing step's head entry.
     head_of: BTreeMap<String, String>,
     armed_at: BTreeMap<String, Instant>,
+    /// Each entry's last dispatch: this process's, or the catalog's record of an earlier one.
     last_dispatch: BTreeMap<String, Instant>,
+    /// Entries whose catalog dispatch record this process has read since taking the lease.
+    recorded: BTreeSet<String>,
+    /// Units the last beat left pending or held; a wake's refill admits only these.
+    waiting: Vec<String>,
+    /// The refills since the last [`Scheduler::beat`].
+    refill: Refill,
     /// Each pipeline's newest run start that other nodes' run states record
     /// (`surface.arm.pulled-history`).
     pulled: BTreeMap<String, Instant>,
@@ -139,6 +160,9 @@ impl Scheduler {
             head_of: BTreeMap::new(),
             armed_at: BTreeMap::new(),
             last_dispatch: BTreeMap::new(),
+            recorded: BTreeSet::new(),
+            waiting: Vec::new(),
+            refill: Refill::default(),
             pulled: BTreeMap::new(),
             in_flight: Arc::default(),
             ended: Arc::default(),
@@ -174,8 +198,29 @@ impl Scheduler {
         for e in &entries {
             self.armed_at.entry(e.id.clone()).or_insert(now);
         }
+        // The new entries' dispatch records are read before they replace the armed set, so a
+        // failed read leaves the previous set armed.
+        self.read_dispatches(&entries)?;
         self.version = version;
         self.armed = entries;
+        Ok(())
+    }
+
+    /// Read the catalog's dispatch record of each of `entries` not yet read, so a fresh
+    /// process counts a dispatch whose unit failed before journaling a run
+    /// (`surface.arm.next-fire-from-history`). A failed read records nothing.
+    fn read_dispatches(&mut self, entries: &[Entry]) -> Result<(), Failure> {
+        let mut read = Vec::new();
+        for e in entries.iter().filter(|e| !self.recorded.contains(&e.id)) {
+            read.push((e.id.clone(), self.catalog.lease_row(&LeaseKey::Dispatch(e.id.clone()))?.expires_at));
+        }
+        for (id, at) in read {
+            if let Some(at) = at {
+                let last = self.last_dispatch.entry(id.clone()).or_insert(at);
+                *last = (*last).max(at);
+            }
+            self.recorded.insert(id);
+        }
         Ok(())
     }
 
@@ -212,6 +257,10 @@ impl Scheduler {
             Some(lease) => {
                 self.lease = Some(lease);
                 self.renewed_at = Some(now);
+                // Another holder may have dispatched while this process held no lease.
+                self.recorded.clear();
+                let armed = self.armed.clone();
+                self.read_dispatches(&armed)?;
                 Ok(LeaseState::Held)
             }
             None => {
@@ -253,6 +302,12 @@ impl Scheduler {
 
     /// One evaluation of the armed set.
     pub fn beat(&mut self) -> Result<Beat, Failure> {
+        self.refill = Refill::default();
+        self.beat_among(None)
+    }
+
+    /// One evaluation of the armed set, starting only units in `only` when it names a set.
+    fn beat_among(&mut self, only: Option<&BTreeSet<String>>) -> Result<Beat, Failure> {
         let now = self.catalog.now()?;
         self.reap();
         let lease = self.hold_lease(now)?;
@@ -263,11 +318,12 @@ impl Scheduler {
         let mut due = Vec::new();
         for e in &self.armed {
             let at = self.next_of(e, now)?;
-            if at > now {
+            if at > now || only.is_some_and(|o| !o.contains(&e.id)) {
                 continue;
             }
+            let base = self.last_run(&e.id, now)?.max(self.last_dispatch.get(&e.id).copied());
             match unit_of(&e.id, &self.head_of) {
-                Ok(_) => due.push(Due { key: e.id.clone(), at }),
+                Ok(_) => due.push(Due { key: e.id.clone(), at, priority: e.priority, base }),
                 Err(refusal) => beat.refused.push((e.id.clone(), refusal.to_string())),
             }
         }
@@ -279,6 +335,13 @@ impl Scheduler {
         let admitted = admit(&due, &in_flight, self.pool);
         beat.pending = admitted.pending.into_iter().map(|d| d.key).collect();
         beat.held = admitted.held.into_iter().map(|d| d.key).collect();
+        // Every admitted unit's dispatch record lands before any unit starts, so a failed write
+        // returns with nothing running and the waiting set unchanged. A unit failing before its
+        // run row, or a process ending mid-fire, still moves the unit's next fire past this instant.
+        for unit in &admitted.start {
+            self.record_dispatch(&unit.key)?;
+        }
+        self.waiting = beat.pending.iter().chain(&beat.held).cloned().collect();
         for unit in admitted.start {
             self.start(unit.key.clone(), now);
             beat.started.push(unit.key);
@@ -286,6 +349,16 @@ impl Scheduler {
         Ok(beat)
     }
 
+    /// Write `id`'s dispatch record: its zero-second lease row, whose expiry is the catalog's now.
+    fn record_dispatch(&self, id: &str) -> Result<(), Failure> {
+        match self.catalog.acquire(&LeaseKey::Dispatch(id.to_string()), &self.holder, 0)? {
+            Some(_) => Ok(()),
+            // A row whose expiry lies past the catalog's now, written under another node's clock.
+            None => Err(Failure::new(FailureTag::Transient, format!("recording the dispatch of `{id}`: its dispatch record expires after the catalog's now"))),
+        }
+    }
+
+    /// Start the unit on its own thread.
     fn start(&mut self, id: String, now: Instant) {
         if let Ok(mut s) = self.in_flight.lock() {
             s.insert(id.clone());
@@ -321,16 +394,42 @@ impl Scheduler {
     }
 
     /// Wait for dispatched units until each ended or `deadline` passes, answering each that
-    /// ended; a unit still running stays in flight (`surface.arm.wake-answer`).
+    /// ended; a unit still running stays in flight (`surface.arm.wake-answer`). Each slot a
+    /// fire frees before the deadline admits the next unit the last beat left pending, through
+    /// the cadence lease (`surface.dispatch.refill`).
     pub fn settle(&mut self, deadline: std::time::Instant) -> Vec<Fired> {
         loop {
+            let running = self.handles.len();
             self.reap();
+            let freed = self.handles.len() < running;
+            if freed && self.refill.stopped.is_none() && !self.waiting.is_empty() && std::time::Instant::now() < deadline {
+                let only: BTreeSet<String> = self.waiting.iter().cloned().collect();
+                // A lost lease or a failed read admits nothing more this wake; the units still
+                // waiting stay pending.
+                match self.beat_among(Some(&only)) {
+                    Ok(beat) => match beat.lease {
+                        LeaseState::Held => self.refill.started.extend(beat.started),
+                        LeaseState::HeldBy(holder) => self.refill.stopped = Some(format!("the cadence lease is held by {holder}")),
+                    },
+                    Err(e) => self.refill.stopped = Some(e.to_string()),
+                }
+            }
             if self.handles.is_empty() || std::time::Instant::now() >= deadline {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         self.ended()
+    }
+
+    /// The units the last beat or refill left pending or held, as a wake reports them.
+    pub fn waiting(&self) -> Vec<String> {
+        self.waiting.clone()
+    }
+
+    /// The refills since the last [`Scheduler::beat`].
+    pub fn refill(&self) -> &Refill {
+        &self.refill
     }
 
     /// The ids of units dispatched and not yet ended, sorted.

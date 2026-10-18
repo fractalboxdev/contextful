@@ -1460,7 +1460,7 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
         }
         let reason = match spec.schedule.as_deref().map(Schedule::parse) {
             Some(Ok(schedule)) => {
-                entries.push(Entry { id: spec.id.clone(), schedule });
+                entries.push(Entry { id: spec.id.clone(), schedule, priority: spec.priority() });
                 continue;
             }
             Some(Err(e)) => e.to_string(),
@@ -1487,7 +1487,7 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
                 if control.relay.is_some() && !control.workers.is_empty() {
                     bail!("scheduled job `{}` requires the local registered host; worker dispatch handles pipelines", job.name);
                 }
-                entries.push(Entry { id, schedule: Schedule::parse(text)? });
+                entries.push(Entry { id, schedule: Schedule::parse(text)?, priority: 0 });
                 scheduled_jobs += 1;
                 continue;
             }
@@ -1770,8 +1770,9 @@ fn answer_wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
 }
 
 /// One wake: take the cadence lease, reconcile the applied snapshot, evaluate due-ness once,
-/// and wait for the units it dispatched until `deadline`. A unit still running at the deadline
-/// reports pending; a failed reconcile leaves the armed set running and reports its
+/// and wait for the units it dispatched until `deadline`, each freed slot admitting a unit the
+/// evaluation left pending. A unit still running or still pending at the deadline reports
+/// pending; a failed reconcile leaves the armed set running and reports its
 /// diagnostic (`surface.reconcile.fail-static`).
 fn wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, declaration: &Path, tasks: &Tasks, deadline: std::time::Instant) -> Result<serde_json::Value> {
     if let LeaseState::HeldBy(holder) = scheduler.hold()? {
@@ -1791,13 +1792,24 @@ fn wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, d
         eprintln!("fire {id}: started");
     }
     let ended = scheduler.settle(deadline);
+    let refill = scheduler.refill().clone();
+    for id in &refill.started {
+        eprintln!("fire {id}: started");
+    }
+    if let Some(reason) = refill.stopped {
+        let line = format!("refill stopped: {reason}; the waiting units report pending");
+        eprintln!("{line}");
+        diagnostics.push(line);
+    }
     report(ended.clone());
     let mut fired: Vec<&str> = ended.iter().filter(|f| f.result.is_ok()).map(|f| f.id.as_str()).collect();
     let mut failed: Vec<&str> = ended.iter().filter(|f| f.result.is_err()).map(|f| f.id.as_str()).chain(beat.refused.iter().map(|(id, _)| id.as_str())).collect();
     fired.sort();
     failed.sort();
     let in_flight = scheduler.in_flight();
-    let mut pending: Vec<&str> = beat.pending.iter().chain(&beat.held).map(String::as_str).chain(in_flight.iter().map(String::as_str)).collect();
+    // A refilled slot started some of what the beat left pending (`surface.dispatch.refill`).
+    let waiting = scheduler.waiting();
+    let mut pending: Vec<&str> = waiting.iter().map(String::as_str).chain(in_flight.iter().map(String::as_str)).collect();
     pending.sort();
     pending.dedup();
     let next_due = scheduler.next_due()?.map(|t| t.to_rfc3339());

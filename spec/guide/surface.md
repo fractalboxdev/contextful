@@ -63,7 +63,9 @@ armed set running ({{surface.reconcile.fail-static}}). Arm holds back an unreada
 alone ({{surface.arm.unreadable-schedule}}) and evaluates due-ness from an in-process tick
 ({{surface.arm.tick-interval}}) or an external wake ({{surface.arm.wake-answer}}). Fire runs
 only the closed kind union ({{surface.fire.job-kind-unknown}}), and dispatch fences worker
-callbacks by attempt ({{surface.dispatch.callback-rejected}}). An item can run on a bound
+callbacks by attempt ({{surface.dispatch.callback-rejected}}). Ties start by priority, then
+staleness ({{surface.dispatch.admission-order}}); wakes refill freed slots
+({{surface.dispatch.refill}}). An item can run on a bound
 delegate ({{surface.delegate.binding}}), its answer landing as rows
 ({{surface.delegate.outcome}}). Reside refuses to serve from a region the policy omits
 ({{surface.reside.region-mismatch}}).
@@ -73,8 +75,8 @@ Synced apply records an admin-attested snapshot ({{surface.apply.synced-attestat
 Each page and API route verifies the operator's identity assertion and that page's grant
 ({{surface.open-console.page-routes}}, {{surface.open-console.wrong-page}}).
 Admin edit and apply also require the server's admin capability
-({{surface.open-console.admin-grant}}). The Admin canvas projects pipelines, schedules,
-steps and run outcomes; its edits reach the control document the reconciler reads.
+({{surface.open-console.admin-grant}}). Admin canvas edits reach the reconciler's
+control document.
 
 Query turns one question into one answer ({{surface.plan-turn.turn-flow}}). The server, never the client, chooses
 every capability a turn exercises: tools come from the turn's admitted packs
@@ -86,7 +88,7 @@ every capability a turn exercises: tools come from the turn's admitted packs
 
 ## Worked example
 
-Admin displays the pipeline, schedule, steps and latest run. The operator applies a nightly `fold` targeting `meta_ads_insights`. The
+Admin displays each pipeline, schedule, step and run. The operator applies a nightly `fold` targeting `meta_ads_insights`. The
 target resolves to a produced table ({{surface.fire.target-unbound}}), so validation
 passes. A second operator applied a minute earlier; the compare-and-swap loses, and the
 surface reloads the winner and reapplies the pending edit. The next poll arms the
