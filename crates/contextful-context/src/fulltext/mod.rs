@@ -16,7 +16,9 @@ use arrow_array::{Array, RecordBatch, StringArray};
 use contextful_core::read::rank::{bm25_idf, bm25_term, fulltext_sealed_over_cap};
 use contextful_core::read::tokens::PLURAL_SUFFIX_FLOOR;
 use contextful_core::store::declare::TableDecl;
-use contextful_core::store::index::{FulltextEntry, IndexDecl, IndexEntry, IndexKind, FULLTEXT_BUILDER, FULLTEXT_BUILDER_VERSION};
+use contextful_core::store::index::{
+    own_rows, FulltextEntry, IndexDecl, IndexEntry, IndexKind, IndexSegment, FULLTEXT_BUILDER, FULLTEXT_BUILDER_VERSION,
+};
 use contextful_core::store::lay_out::{SnapshotId, MANIFEST_FILE};
 use contextful_core::store::StoreError;
 use sha2::{Digest, Sha256};
@@ -40,6 +42,36 @@ pub fn build(
     decl: &TableDecl,
     index: &IndexDecl,
     sealing: &Sealing<'_>,
+) -> Result<FulltextEntry> {
+    write(snapshot_dir, snapshot_id, rows, decl, index, sealing, None)
+}
+
+/// Extend `prior`, the sidecar of the snapshot `prior_snapshot`, by a segment over `rows`,
+/// rows whose identifiers it does not hold: the new directory's postings cover `rows`
+/// alone and the entry carries every earlier segment by reference
+/// (`store.index.sidecar-segments`).
+#[allow(clippy::too_many_arguments)]
+pub fn extend(
+    snapshot_dir: &Path,
+    snapshot_id: &SnapshotId,
+    rows: &RecordBatch,
+    decl: &TableDecl,
+    index: &IndexDecl,
+    sealing: &Sealing<'_>,
+    prior: &FulltextEntry,
+    prior_snapshot: &SnapshotId,
+) -> Result<FulltextEntry> {
+    write(snapshot_dir, snapshot_id, rows, decl, index, sealing, Some((prior, prior_snapshot)))
+}
+
+fn write(
+    snapshot_dir: &Path,
+    snapshot_id: &SnapshotId,
+    rows: &RecordBatch,
+    decl: &TableDecl,
+    index: &IndexDecl,
+    sealing: &Sealing<'_>,
+    prior: Option<(&FulltextEntry, &SnapshotId)>,
 ) -> Result<FulltextEntry> {
     let table = decl.name.as_str();
     let id_column = decl
@@ -69,6 +101,18 @@ pub fn build(
     let path = index.path(crate::fold::escape);
     let dir = snapshot_dir.join(&path);
     fs::create_dir_all(&dir).at(&dir)?;
+    let latest = crate::available::latest(decl, rows)?;
+    let (extensions, carried, segments, available_through) = match prior {
+        None => (0, 0, Vec::new(), latest),
+        Some((p, at)) => {
+            let mut segments = p.segments.clone();
+            let own = own_rows(p.row_count, &p.segments);
+            if own > 0 {
+                segments.push(IndexSegment { snapshot_id: at.to_string(), row_count: own, key_version: p.key_version });
+            }
+            (p.extensions + 1, p.row_count, segments, latest.max(p.available_through))
+        }
+    };
     let entry = FulltextEntry {
         kind: IndexKind::Fulltext,
         path,
@@ -79,21 +123,47 @@ pub fn build(
         tokenizer,
         builder: FULLTEXT_BUILDER.to_string(),
         builder_version: FULLTEXT_BUILDER_VERSION,
-        row_count: docs.len() as u64,
+        extensions,
+        row_count: carried + docs.len() as u64,
         term_count: layout.term_count as u64,
         key_version: sealing.key_version(),
-        available_through: crate::available::latest(decl, rows)?,
+        available_through,
+        segments,
     };
     sealing.write(&dir.join(POSTINGS_FILE), &bytes)?;
     sealing.write(&dir.join(MANIFEST_FILE), &serde_json::to_vec_pretty(&entry).expect("an entry serializes"))?;
     Ok(entry)
 }
 
-/// An opened full-text sidecar.
+/// An opened full-text sidecar: its carried segments oldest first, then its own directory's.
 pub struct FulltextSidecar {
     entry: FulltextEntry,
+    segments: Vec<Segment>,
+}
+
+/// One segment's postings file, opened.
+struct Segment {
     backing: Backing,
     layout: postings::Layout,
+}
+
+/// Open the postings at `file`, sealed under `key_version` in an encrypted project.
+fn open_postings(file: &Path, sealing: &Sealing<'_>, key_version: u32) -> std::result::Result<Segment, Fallback> {
+    let backing = match (sealing, key_version) {
+        (Sealing::Plaintext, 0) => {
+            let f = fs::File::open(file).map_err(|_| Fallback::Unreadable)?;
+            // SAFETY: the file sits in a published snapshot directory, which no writer
+            // rewrites; a pass stages a new snapshot beside it instead.
+            Backing::Mapped(unsafe { memmap2::Mmap::map(&f) }.map_err(|_| Fallback::Unreadable)?)
+        }
+        (Sealing::Sealed(c), v) if v > 0 => {
+            let raw = fs::read(file).map_err(|_| Fallback::Unreadable)?;
+            Backing::Owned(c.open(&raw).map_err(|_| Fallback::Unreadable)?)
+        }
+        _ => return Err(Fallback::Unreadable),
+    };
+    let layout = postings::Layout::parse(backing.bytes()).ok_or(Fallback::Unreadable)?;
+    Ok(Segment { backing, layout })
 }
 
 /// A candidate a probe returns: an `id_column` value and its BM25 score over the snapshot.
@@ -140,46 +210,56 @@ impl FulltextSidecar {
         if own != entry {
             return Err(Fallback::ManifestMismatch);
         }
-        let file = dir.join(POSTINGS_FILE);
-        let backing = match (sealing, entry.key_version) {
-            (Sealing::Plaintext, 0) => {
-                let f = fs::File::open(&file).map_err(|_| Fallback::Unreadable)?;
-                // SAFETY: the file sits in a published snapshot directory, which no writer
-                // rewrites; a pass stages a new snapshot beside it instead.
-                Backing::Mapped(unsafe { memmap2::Mmap::map(&f) }.map_err(|_| Fallback::Unreadable)?)
+        // Each carried segment sits at the same path under the snapshot holding it, beside
+        // this one (`store.index.sidecar-segments`).
+        let mut files: Vec<(PathBuf, u32, u64)> = Vec::new();
+        for s in &entry.segments {
+            let id = SnapshotId::try_from(s.snapshot_id.clone()).map_err(|_| Fallback::ManifestMismatch)?;
+            let holder = snapshot_dir.parent().map(|p| p.join(id.to_string())).ok_or(Fallback::Unreadable)?;
+            files.push((holder.join(rel).join(POSTINGS_FILE), s.key_version, s.row_count));
+        }
+        files.push((dir.join(POSTINGS_FILE), entry.key_version, own_rows(entry.row_count, &entry.segments)));
+        if matches!(sealing, Sealing::Sealed(_)) {
+            // Checked before any file is read, so an oversized sidecar is never decrypted
+            // into memory to learn it is oversized.
+            let mut size = 0u64;
+            for (file, _, _) in &files {
+                size = size.saturating_add(fs::metadata(file).map_err(|_| Fallback::Unreadable)?.len());
             }
-            (Sealing::Sealed(_), v) if v > 0 => {
-                // Checked before the file is read, so an oversized sidecar is never decrypted
-                // into memory to learn it is oversized.
-                let size = fs::metadata(&file).map_err(|_| Fallback::Unreadable)?.len();
-                if fulltext_sealed_over_cap(size) {
-                    return Err(Fallback::OverCap);
-                }
-                Backing::Owned(read(POSTINGS_FILE)?)
+            if fulltext_sealed_over_cap(size) {
+                return Err(Fallback::OverCap);
             }
-            _ => return Err(Fallback::Unreadable),
-        };
-        let layout = postings::Layout::parse(backing.bytes()).ok_or(Fallback::Unreadable)?;
-        if layout.doc_count as u64 != entry.row_count || layout.term_count as u64 != entry.term_count {
+        }
+        let mut segments = Vec::with_capacity(files.len());
+        for (file, key_version, rows) in &files {
+            let segment = open_postings(file, sealing, *key_version)?;
+            if segment.layout.doc_count as u64 != *rows {
+                return Err(Fallback::ManifestMismatch);
+            }
+            segments.push(segment);
+        }
+        if segments.last().is_some_and(|s| s.layout.term_count as u64 != entry.term_count) {
             return Err(Fallback::ManifestMismatch);
         }
-        Ok(FulltextSidecar { entry, backing, layout })
+        Ok(FulltextSidecar { entry, segments })
     }
 
     pub fn entry(&self) -> &FulltextEntry {
         &self.entry
     }
 
-    /// Whether the postings are memory-mapped from a plaintext file rather than held in
+    /// Whether the postings are memory-mapped from plaintext files rather than held in
     /// process memory.
     pub fn is_mapped(&self) -> bool {
-        matches!(self.backing, Backing::Mapped(_))
+        self.segments.iter().all(|s| matches!(s.backing, Backing::Mapped(_)))
     }
 
-    /// Each document holding `token` and how often: a token the tokenizer keeps whole
-    /// matches its term, and an ASCII word token its plural too; a token it splits matches
-    /// its terms at consecutive positions (`read.retrieve.fulltext-probe`).
-    fn occurrences(&self, bytes: &[u8], token: &str, decoded: &mut u64) -> std::result::Result<HashMap<u32, u32>, Fallback> {
+    /// Each document of `segment` holding `token` and how often: a token the tokenizer
+    /// keeps whole matches its term, and an ASCII word token its plural too; a token it
+    /// splits matches its terms at consecutive positions (`read.retrieve.fulltext-probe`).
+    fn occurrences(&self, segment: &Segment, token: &str, decoded: &mut u64) -> std::result::Result<HashMap<u32, u32>, Fallback> {
+        let bytes = segment.backing.bytes();
+        let layout = &segment.layout;
         let terms = self.entry.tokenizer.terms(token);
         let mut out: HashMap<u32, u32> = HashMap::new();
         let mut lists = Vec::with_capacity(terms.len());
@@ -196,9 +276,9 @@ impl FulltextSidecar {
             _ => Vec::new(),
         };
         let fetch = |term: &str, decoded: &mut u64| -> std::result::Result<Option<Vec<postings::Posting>>, Fallback> {
-            let Some(e) = self.layout.lookup(bytes, term).map_err(|_| Fallback::Unreadable)? else { return Ok(None) };
+            let Some(e) = layout.lookup(bytes, term).map_err(|_| Fallback::Unreadable)? else { return Ok(None) };
             *decoded += u64::from(e.df);
-            self.layout.postings(bytes, e).map(Some).ok_or(Fallback::Unreadable)
+            layout.postings(bytes, e).map(Some).ok_or(Fallback::Unreadable)
         };
         if !variants.is_empty() {
             for v in &variants {
@@ -241,29 +321,39 @@ impl FulltextSidecar {
     }
 
     /// The `k` best candidates for the content `tokens` over the whole snapshot, by BM25
-    /// over one should-clause per token; ties break by row order. A document matching no
-    /// token is absent.
+    /// over one should-clause per token, with document count, average length and document
+    /// frequency summed across segments; ties break by segment, then row order. A document
+    /// matching no token is absent.
     pub fn probe(&self, tokens: &[String], k: usize) -> std::result::Result<Probe, Fallback> {
-        let bytes = self.backing.bytes();
-        let n = self.layout.doc_count as f64;
-        let average = if self.layout.doc_count == 0 { 0.0 } else { self.layout.total_terms as f64 / n };
-        let mut scores: HashMap<u32, f64> = HashMap::new();
+        let docs: usize = self.segments.iter().map(|s| s.layout.doc_count).sum();
+        let total: u64 = self.segments.iter().map(|s| s.layout.total_terms).sum();
+        let n = docs as f64;
+        let average = if docs == 0 { 0.0 } else { total as f64 / n };
+        let mut scores: HashMap<(usize, u32), f64> = HashMap::new();
         let mut decoded = 0u64;
         for token in tokens {
-            let hits = self.occurrences(bytes, token, &mut decoded)?;
-            let idf = bm25_idf(n, hits.len() as f64);
-            for (doc, tf) in hits {
-                let length = self.layout.length(bytes, doc).ok_or(Fallback::Unreadable)?;
-                let norm = if average > 0.0 { f64::from(length) / average } else { 0.0 };
-                *scores.entry(doc).or_insert(0.0) += bm25_term(idf, f64::from(tf), norm);
+            let mut hits = Vec::with_capacity(self.segments.len());
+            for segment in &self.segments {
+                hits.push(self.occurrences(segment, token, &mut decoded)?);
+            }
+            let idf = bm25_idf(n, hits.iter().map(HashMap::len).sum::<usize>() as f64);
+            for (at, (segment, hits)) in self.segments.iter().zip(hits).enumerate() {
+                for (doc, tf) in hits {
+                    let length = segment.layout.length(segment.backing.bytes(), doc).ok_or(Fallback::Unreadable)?;
+                    let norm = if average > 0.0 { f64::from(length) / average } else { 0.0 };
+                    *scores.entry((at, doc)).or_insert(0.0) += bm25_term(idf, f64::from(tf), norm);
+                }
             }
         }
-        let mut ranked: Vec<(u32, f64)> = scores.into_iter().collect();
+        let mut ranked: Vec<((usize, u32), f64)> = scores.into_iter().collect();
         ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
         ranked.truncate(k);
         let candidates = ranked
             .into_iter()
-            .map(|(doc, score)| Ok(Candidate { id: self.layout.id(bytes, doc).ok_or(Fallback::Unreadable)?.to_string(), score }))
+            .map(|((at, doc), score)| {
+                let segment = &self.segments[at];
+                Ok(Candidate { id: segment.layout.id(segment.backing.bytes(), doc).ok_or(Fallback::Unreadable)?.to_string(), score })
+            })
             .collect::<std::result::Result<Vec<_>, Fallback>>()?;
         Ok(Probe { candidates, postings_scored: decoded })
     }

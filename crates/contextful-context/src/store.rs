@@ -299,6 +299,17 @@ impl Store {
         crate::parquet_io::each_batch_with_key(path, self.parquet_key(), each)
     }
 
+    /// A store part's record batches, decoded one at a time, projected to `columns` where given.
+    pub(crate) fn parquet_batches(&self, path: &Path, columns: Option<&[String]>) -> Result<impl Iterator<Item = Result<arrow_array::RecordBatch>>> {
+        crate::parquet_io::batches_with_key(path, self.parquet_key(), columns)
+    }
+
+    /// A store part written batch by batch under the project's key, its bloom filters sized
+    /// for at most `rows` rows.
+    pub(crate) fn parquet_writer(&self, path: &Path, schema: std::sync::Arc<arrow_schema::Schema>, bloom: &[String], rows: u64) -> Result<crate::parquet_io::StreamWriter> {
+        crate::parquet_io::StreamWriter::create(path, schema, self.parquet_key(), bloom, rows)
+    }
+
     pub(crate) fn parquet_columns(&self, path: &Path) -> Result<Vec<String>> {
         crate::parquet_io::columns_with_key(path, self.parquet_key())
     }

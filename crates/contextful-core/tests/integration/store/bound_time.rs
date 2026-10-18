@@ -8,6 +8,21 @@ use contextful_core::store::relation::relation;
 use contextful_core::store::resolve::TableState;
 use contextful_core::store::StoreError;
 
+/// A snapshot's carried part resolves to its origin's directory beside its own delta, and
+/// the file list stays sorted (`store.fold.carry-by-reference`).
+#[test]
+fn a_carried_part_resolves_under_its_origin_snapshot() {
+    use contextful_core::store::lay_out::PartEntry;
+    let s0 = snapshot("2030-01-01T02:00:00Z", None, &["run-1"]);
+    let mut s1 = snapshot("2030-01-01T04:00:00Z", Some(&s0.snapshot_id), &["run-2"]);
+    s1.parts = vec![PartEntry::new("part-00000.parquet", 0), PartEntry { origin: Some(s0.snapshot_id.clone()), ..PartEntry::new("part-00000.parquet", 0) }];
+    let runs = vec![run("run-1", "2030-01-01T01:00:00Z", 1), run("run-2", "2030-01-01T03:00:00Z", 1)];
+    let state = TableState { table: "filings".into(), runs, chain: vec![s1.clone(), s0.clone()], ..TableState::default() };
+    let files = state.resolve(None).unwrap().files();
+    let expected = [s0.snapshot_id.to_string(), s1.snapshot_id.to_string()].map(|id| format!("data/snapshots/{id}/part-00000.parquet"));
+    assert_eq!(files, expected);
+}
+
 fn state() -> TableState {
     let s0 = snapshot("2030-01-01T02:00:00Z", None, &["run-1", "run-2"]);
     let s1 = snapshot("2030-01-01T04:00:00Z", Some(&s0.snapshot_id), &["run-3"]);

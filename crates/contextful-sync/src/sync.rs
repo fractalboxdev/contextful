@@ -1740,8 +1740,9 @@ fn missing_parts(store: &Store, table_dir: &Path, snapshot: &str) -> Result<Opti
     let Ok(bytes) = std::fs::read(&manifest_path) else { return Ok(Some(MANIFEST_FILE.to_string())) };
     let bytes = store.open_metadata_bytes(&manifest_path, &bytes)?;
     let m: SnapshotManifest = serde_json::from_slice(&bytes).map_err(|e| SyncError::Context(ContextError::Invalid(format!("{}: {e}", manifest_path.display()))))?;
-    let present: BTreeSet<String> = std::fs::read_dir(&dir).map_err(|e| io(&dir, e))?.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
-    Ok(m.parts.iter().map(|p| p.name.clone()).find(|n| !present.contains(n)))
+    // A part carried by reference sits under its origin's directory, beside this one
+    // (`store.fold.carry-by-reference`).
+    Ok(m.parts.iter().map(|p| p.locator()).find(|l| !dir.join(l).is_file()))
 }
 
 /// Two copies of a table's `schema.json` merged column by column.

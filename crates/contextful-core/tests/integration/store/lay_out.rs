@@ -187,3 +187,28 @@ fn no_writable_state_directory_takes_local() {
     let (id, src) = resolve_node_id(None, None, || None).unwrap();
     assert_eq!((id.as_str(), src), ("local", NodeIdSource::Local));
 }
+
+/// A part carried by reference names its origin snapshot: its file sits under that
+/// snapshot's directory, and the manifest naming it declares `2.0`.
+#[test]
+fn a_part_carried_by_reference_resolves_under_its_origin() {
+    use contextful_core::store::lay_out::{FormatVersion, PartEntry};
+    let own = SnapshotId::next(at("2025-03-15T16:00:00Z"), None);
+    let origin = SnapshotId::next(at("2025-03-15T15:00:00Z"), None);
+    let delta = PartEntry::new("day=2025-03-15/part-00000.parquet", 0);
+    let carried = PartEntry { origin: Some(origin.clone()), rows: Some(12), ..PartEntry::new("day=2025-03-14/part-00001.parquet", 3) };
+    assert_eq!(delta.location(&own), format!("data/snapshots/{own}/day=2025-03-15/part-00000.parquet"));
+    assert_eq!(carried.location(&own), format!("data/snapshots/{origin}/day=2025-03-14/part-00001.parquet"));
+    assert_eq!((delta.locator(), carried.locator()), ("day=2025-03-15/part-00000.parquet".to_string(), format!("../{origin}/day=2025-03-14/part-00001.parquet")));
+    assert_eq!((delta.partition(), PartEntry::new("part-00000.parquet", 0).partition()), ("day=2025-03-15", ""));
+    assert_eq!(FormatVersion::of_manifest(std::slice::from_ref(&delta), &[]).to_string(), "1.0");
+    assert_eq!(FormatVersion::of_manifest(&[delta.clone(), carried.clone()], &[]).to_string(), "2.0");
+    // The entry round-trips; a part in its own directory writes neither field.
+    let json = serde_json::to_value(&carried).unwrap();
+    assert_eq!(json["origin"], serde_json::json!(origin.to_string()));
+    assert_eq!(serde_json::from_value::<PartEntry>(json).unwrap(), carried);
+    let plain = serde_json::to_value(&delta).unwrap();
+    assert!(plain.get("origin").is_none() && plain.get("rows").is_none());
+    assert_eq!(FormatVersion::default().to_string(), "1.0");
+    assert_eq!(FormatVersion::CURRENT.to_string(), "2.0");
+}

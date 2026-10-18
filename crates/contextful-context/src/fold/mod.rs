@@ -1,6 +1,9 @@
 //! The fold: a pass over one table that merges the committed runs its current snapshot
 //! omits into a new snapshot, then publishes it by a version-checked pointer replace.
 
+mod carry;
+mod merge;
+
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
 use crate::store::{FileLock, Store};
@@ -130,6 +133,31 @@ fn merge_ledgers(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
     Ok(())
 }
 
+/// The columns a folded part's rows sort by. A table declaring `cluster_by` sorts by it. A
+/// keyed table declaring no clustering sorts by its key, so each part's footer bounds on the
+/// key form a sparse map a point lookup probes (`store.index.kinds`). A vintage table with
+/// valid time sorts by valid-time `from` first instead, so footer bounds keep pruning a
+/// landing's history read and its key bounds form no sparse map
+/// (`store.available-time.vintage-fold-order`).
+pub(crate) fn sort_order(decl: &TableDecl) -> Vec<String> {
+    if !decl.cluster_by().is_empty() {
+        decl.cluster_by().to_vec()
+    } else if let (true, Some(valid)) = (decl.is_vintage(), &decl.valid_time) {
+        std::iter::once(valid.from.clone()).chain(decl.primary_key().iter().cloned()).collect()
+    } else if decl.is_keyed() {
+        decl.primary_key().to_vec()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Whether a pass over `decl`'s table carries untouched parts by reference
+/// (`store.fold.carry-by-reference`): an append table whose rows no derived supersession
+/// rewrites. A `replace` table and a derive output table stage their whole row set.
+pub fn carries_by_reference(decl: &TableDecl) -> bool {
+    decl.write_mode() == WriteMode::Append && !is_derive_key(decl.primary_key())
+}
+
 /// Stage the next snapshot: select the committed runs the current snapshot omits,
 /// dedupe by key or union, reconcile to the merged schema, sort by `cluster_by`,
 /// partition, and write Parquet and the manifest under `<id>.staging/`
@@ -173,13 +201,59 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     if unfolded.is_empty() && decl.retain_rows.is_none() && !rebuild {
         return Ok(Prepared::NothingLanded);
     }
+    let cutoff = decl.retain_rows_secs().map_err(|e| ContextError::Invalid(e.to_string()))?.map(|age| now.minus_secs(age));
+    if carries_by_reference(decl) {
+        let staged = carry::stage(carry::Input {
+            store,
+            decl,
+            state: &state,
+            unfolded: &unfolded_runs,
+            target: parquet_io::arrow_schema(&schema),
+            cutoff,
+            built: &built,
+            now,
+        })?;
+        let Some(out) = staged else { return Ok(Prepared::NothingLanded) };
+        let warnings = contextful_core::store::index::partition_warnings(decl.partition_by(), &out.sizes);
+        let manifest = SnapshotManifest {
+            format_version: contextful_core::store::lay_out::FormatVersion::of_manifest(&out.parts, &out.indexes),
+            snapshot_id: out.snapshot_id,
+            parent: state.chain.first().map(|s| s.snapshot_id.clone()),
+            ancestors: SnapshotManifest::ancestors_after(state.chain.first()),
+            table: table.to_string(),
+            created_at: now,
+            includes_runs: unfolded.clone(),
+            primary_key: decl.primary_key().to_vec(),
+            order_by: Some(decl.order_by().to_string()),
+            row_count: out.row_count,
+            valid_time: decl.valid_time.clone(),
+            parts: out.parts,
+            indexes: out.indexes,
+            fence,
+            commit_seq: unfolded_runs.iter().map(|r| r.commit_seq).chain(state.chain.first().map(|s| s.commit_seq)).flatten().max(),
+            publish: None,
+        };
+        let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
+        store.metadata().write(&out.staging.join(MANIFEST_FILE), &bytes)?;
+        return Ok(Prepared::Staged(Box::new(Staged {
+            table: table.to_string(),
+            manifest,
+            staging: out.staging,
+            etag,
+            runs: unfolded.len(),
+            retention: out.retention,
+            warnings,
+            built,
+            _in_flight: Some(std::sync::Arc::new(out.in_flight)),
+        })));
+    }
     let table_dir = store.table_dir(table)?;
     let inputs: Vec<String> = match decl.write_mode() {
         WriteMode::Replace => state.resolve(None)?.files(),
         WriteMode::Append => {
             let mut files = Vec::new();
             if let Some(s) = state.chain.first() {
-                files.extend(s.parts.iter().map(|p| format!("data/snapshots/{}/{}", s.snapshot_id, p.name)));
+                files.extend(s.part_files());
             }
             for r in &unfolded_runs {
                 files.extend(r.parts.iter().map(|p| format!("data/runs/{}/{}/{}", r.run_id, r.node_id, p.name)));
@@ -192,7 +266,6 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     let mut batches = Vec::new();
     let mut footer_expired = 0;
     let mut footer_partitions = BTreeSet::new();
-    let cutoff = decl.retain_rows_secs().map_err(|e| ContextError::Invalid(e.to_string()))?.map(|age| now.minus_secs(age));
     for f in &inputs {
         let path = table_dir.join(f);
         let partition_dir = f.split('/').filter(|part| decl.partition_by().iter().any(|key| part.starts_with(&format!("{key}=")))).collect::<Vec<_>>().join("/");
@@ -243,18 +316,9 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     if unfolded.is_empty() && retention.as_ref().is_none_or(|r| r.rows_expired == 0) && !rebuild {
         return Ok(Prepared::NothingLanded);
     }
-    // A keyed table declaring no clustering sorts by its key, so each part's footer bounds
-    // on the key form a sparse map a point lookup probes (`store.index.kinds`).
-    // A vintage table with valid time sorts by valid-time `from` first instead, so footer
-    // bounds keep pruning a landing's history read and its key bounds form no sparse map
-    // (`store.available-time.vintage-fold-order`).
-    if !decl.cluster_by().is_empty() {
-        rows = sort(&rows, decl.cluster_by()).map_err(invalid)?;
-    } else if let (true, Some(valid)) = (decl.is_vintage(), &decl.valid_time) {
-        let order: Vec<String> = std::iter::once(valid.from.clone()).chain(decl.primary_key().iter().cloned()).collect();
+    let order = sort_order(decl);
+    if !order.is_empty() {
         rows = sort(&rows, &order).map_err(invalid)?;
-    } else if decl.is_keyed() {
-        rows = sort(&rows, decl.primary_key()).map_err(invalid)?;
     }
     crate::vector::check_identifiers(&rows, decl)?;
 
@@ -278,7 +342,7 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
             let path = staging.join(&name);
             store.write_parquet_blooming(&path, &batch, &crate::available::bloom_columns(decl))?;
             sizes.push(fs::metadata(&path).at(&path)?.len());
-            parts.push(PartEntry { name, key_version: store.sealing().key_version() });
+            parts.push(PartEntry { rows: Some(batch.num_rows() as u64), ..PartEntry::new(name, store.sealing().key_version()) });
         }
     }
     let warnings = contextful_core::store::index::partition_warnings(decl.partition_by(), &sizes);
@@ -377,8 +441,9 @@ pub(crate) fn claim(store: &Store, table: &str, first: SnapshotId, now: Instant)
 pub fn commit(store: &Store, mut staged: Staged) -> Result<Committed> {
     let table = staged.table.clone();
     let table = table.as_str();
+    // A part carried by reference sits under its origin, beside the staging directory.
     for p in &staged.manifest.parts {
-        if !staged.staging.join(&p.name).is_file() {
+        if !staged.staging.join(p.locator()).is_file() {
             return Err(StoreError::StorePartialSnapshot(format!(
                 "table `{table}`: snapshot {} names part `{}`, which is not in its directory; nothing was published",
                 staged.manifest.snapshot_id, p.name
@@ -433,7 +498,13 @@ pub fn commit(store: &Store, mut staged: Staged) -> Result<Committed> {
 /// reaches whose id precedes the current snapshot's (`store.fold.staging-collected`).
 /// A staging directory whose pass still holds its lock is in flight, whatever id it
 /// carries, and survives until that pass ends.
-fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest], held: &BTreeSet<String>) -> Result<Vec<String>> {
+fn collect_unreachable(
+    store: &Store,
+    table: &str,
+    chain: &[SnapshotManifest],
+    held: &BTreeSet<String>,
+    keep: &BTreeMap<String, Vec<String>>,
+) -> Result<Vec<String>> {
     let Some(current) = chain.first() else { return Ok(Vec::new()) };
     let mut removed = Vec::new();
     let reachable: BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
@@ -455,9 +526,64 @@ fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest], h
         } else {
             None
         };
-        fs::remove_dir_all(&dir).at(&dir)?;
-        removed.push(format!("data/snapshots/{name}"));
+        if remove_unreferenced(&dir, keep.get(&name))? {
+            removed.push(format!("data/snapshots/{name}"));
+        }
     }
+    Ok(removed)
+}
+
+/// Per snapshot directory, the paths under it that `survivors` name from elsewhere: each
+/// part they carry by reference and each sidecar segment directory
+/// (`store.fold.reference-retention`).
+fn referenced<'a>(survivors: impl IntoIterator<Item = &'a SnapshotManifest>) -> BTreeMap<String, Vec<String>> {
+    let mut keep: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for s in survivors {
+        for p in &s.parts {
+            if let Some(origin) = &p.origin {
+                keep.entry(origin.to_string()).or_default().push(p.name.clone());
+            }
+        }
+        for index in &s.indexes {
+            let Some(path) = index.path() else { continue };
+            for segment in index.segments() {
+                keep.entry(segment.snapshot_id.clone()).or_default().push(path.to_string());
+            }
+        }
+    }
+    keep
+}
+
+/// Remove the snapshot directory `dir`, save each path under it in `keep` and the
+/// directories holding them; whether anything was removed.
+fn remove_unreferenced(dir: &std::path::Path, keep: Option<&Vec<String>>) -> Result<bool> {
+    let Some(keep) = keep.filter(|k| !k.is_empty()) else {
+        fs::remove_dir_all(dir).at(dir)?;
+        return Ok(true);
+    };
+    fn walk(root: &std::path::Path, at: &std::path::Path, keep: &[String], removed: &mut bool) -> Result<()> {
+        for entry in fs::read_dir(at).at(at)? {
+            let path = entry.at(at)?.path();
+            let rel = path.strip_prefix(root).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            if keep.iter().any(|k| *k == rel || rel.starts_with(&format!("{k}/"))) {
+                continue;
+            }
+            if path.is_dir() {
+                if keep.iter().any(|k| k.starts_with(&format!("{rel}/"))) {
+                    walk(root, &path, keep, removed)?;
+                } else {
+                    fs::remove_dir_all(&path).at(&path)?;
+                    *removed = true;
+                }
+            } else {
+                fs::remove_file(&path).at(&path)?;
+                *removed = true;
+            }
+        }
+        Ok(())
+    }
+    let mut removed = false;
+    walk(dir, dir, keep, &mut removed)?;
     Ok(removed)
 }
 
@@ -474,17 +600,30 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<Vec<Stri
     let window = decl.retain_runs_secs().map_err(|e| ContextError::Invalid(e.to_string()))?;
     let cutoff = now.minus_secs(window);
     let (chain, _) = store.chain(table)?;
-    let mut removed = collect_unreachable(store, table, &chain, held)?;
+    let expired = |pair: &[SnapshotManifest]| pair[0].created_at <= cutoff && !held.contains(&pair[1].snapshot_id.to_string());
+    // What the snapshots left after this collection name in other directories stays, so a
+    // part or segment outlives every snapshot that carries it (`store.fold.reference-retention`).
+    let mut survivors: Vec<SnapshotManifest> = chain.first().cloned().into_iter().collect();
+    survivors.extend(chain.windows(2).filter(|pair| !expired(pair)).map(|pair| pair[1].clone()));
+    let reachable: BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
+    for id in held.iter().filter(|id| !reachable.contains(*id)) {
+        let Ok(id) = SnapshotId::try_from(id.clone()) else { continue };
+        let path = store.snapshot_dir(table, &id)?.join(MANIFEST_FILE);
+        if let Some(bytes) = store.metadata().read_optional(&path)? {
+            if let Ok(m) = serde_json::from_slice::<SnapshotManifest>(&bytes) {
+                survivors.push(m);
+            }
+        }
+    }
+    let keep = referenced(&survivors);
+    let mut removed = collect_unreachable(store, table, &chain, held, &keep)?;
     let runs: BTreeMap<String, RunManifest> = store.committed_runs(table)?.into_iter().map(|r| (r.key(), r)).collect();
     let runs_dir = store.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR);
-    for pair in chain.windows(2) {
-        let (successor, superseded) = (&pair[0], &pair[1]);
-        if successor.created_at <= cutoff && !held.contains(&superseded.snapshot_id.to_string()) {
-            let dir = store.snapshot_dir(table, &superseded.snapshot_id)?;
-            if dir.exists() {
-                fs::remove_dir_all(&dir).at(&dir)?;
-                removed.push(format!("data/snapshots/{}", superseded.snapshot_id));
-            }
+    for pair in chain.windows(2).filter(|pair| expired(pair)) {
+        let superseded = &pair[1];
+        let dir = store.snapshot_dir(table, &superseded.snapshot_id)?;
+        if dir.exists() && remove_unreferenced(&dir, keep.get(&superseded.snapshot_id.to_string()))? {
+            removed.push(format!("data/snapshots/{}", superseded.snapshot_id));
         }
     }
     for s in &chain {

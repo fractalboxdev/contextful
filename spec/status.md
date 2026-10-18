@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 581 | 127 | 47 | 18 | 541 | 0 | 541 |
-| `store` | 3 | 19 | 312 | 64 | 17 | 10 | 301 | 0 | 301 |
+| `store` | 3 | 19 | 318 | 64 | 18 | 10 | 307 | 0 | 301 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2734 | 681 | 218 | 76 | 2440 | 0 | |
+| **total** | 22 | 169 | 2740 | 681 | 219 | 76 | 2446 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
-| 2 — The store | 9 | 188 | 178 | passing | closed |
+| 2 — The store | 9 | 194 | 184 | passing | closed |
 | 3 — The run path | 12 | 298 | 286 | passing | closed |
 | 4 — Ingest | 25 | 617 | 511 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
@@ -2042,6 +2042,8 @@ Unscheduled operations: 13.
 | `store.endpoint.schemes` | `crates/contextful-core/tests/integration/store/sync.rs::each_endpoint_scheme_resolves_its_adapter_address` | performed |
 | `store.endpoint.transport` | `spec/pins.toml` | performed |
 | `store.endpoint.unsupported-scheme` | `crates/contextful-core/tests/integration/store/sync.rs::an_endpoint_no_adapter_answers_is_refused_by_name` | performed |
+| `store.fold.bounded-memory` | `tools/probe/tests/integration/main.rs::a_fold_peak_heap_probe_records_the_growth_across_held_sizes` | performed |
+| `store.fold.carry-by-reference` | `crates/contextful-context/tests/integration/fold_carry.rs::a_pass_carries_every_part_its_runs_do_not_reach_by_reference` | performed |
 | `store.fold.collection-failed` | `crates/contextful-context/tests/integration/fold.rs::a_failed_collection_does_not_unpublish_the_snapshot` | performed |
 | `store.fold.compaction-lease` | `crates/contextful-cli/tests/integration/sync/catalogs.rs::a_compaction_stamps_its_lease_fence_into_the_snapshot_manifest_and_the_pointer` | performed |
 | `store.fold.declared-trigger` | `crates/contextful-context/tests/integration/session.rs::a_scheduled_pass_fires_at_the_declared_run_count` | performed |
@@ -2051,6 +2053,7 @@ Unscheduled operations: 13.
 | `store.fold.partial-snapshot` | `crates/contextful-context/tests/integration/fold.rs::a_snapshot_missing_a_file_it_names_is_not_published` | performed |
 | `store.fold.pass` | `crates/contextful-context/tests/integration/fold.rs::a_pass_folds_the_omitted_runs_into_one_snapshot` | performed |
 | `store.fold.pointer-commit` | `crates/contextful-context/tests/integration/fold.rs::the_pointer_replace_is_conditioned_on_the_etag_read_at_pass_start` | performed |
+| `store.fold.reference-retention` | `crates/contextful-context/tests/integration/fold_carry.rs::collection_keeps_a_part_a_retained_snapshot_carries` | performed |
 | `store.fold.result` | `crates/contextful-cli/tests/integration/context.rs::a_scheduled_pass_reports_every_table_and_continues_past_nothing_landed` | performed |
 | `store.fold.retention` | `crates/contextful-context/tests/integration/fold.rs::folded_runs_and_superseded_snapshots_are_collected_after_seven_days` | performed |
 | `store.fold.row-retention` | `spec/pins.toml` | performed |
@@ -2058,6 +2061,7 @@ Unscheduled operations: 13.
 | `store.fold.session-trigger` | `crates/contextful-context/tests/integration/session.rs::a_session_counts_runs_another_writer_commits_or_folds` | performed |
 | `store.fold.staging-collected` | `crates/contextful-context/tests/integration/fold.rs::the_next_pass_collects_staging_and_unreachable_snapshots` | performed |
 | `store.fold.supersedes` | `crates/contextful-context/tests/integration/fold.rs::a_new_snapshot_supersedes_without_deleting` | performed |
+| `store.fold.tiered-merge` | `crates/contextful-context/tests/integration/fold_carry.rs::four_parts_of_one_tier_merge_into_one` | performed |
 | `store.fold.triggers` | `crates/contextful-core/tests/integration/store/fold.rs::a_pass_fires_at_fifty_runs_or_six_hours` | performed |
 | `store.fold.unknown-table` | `crates/contextful-context/tests/integration/fold.rs::a_pass_over_an_unknown_table_halts` | performed |
 | `store.fold.valid-time-line` | `crates/contextful-context/tests/integration/fold.rs::a_valid_time_table_keeps_one_row_per_key_and_line` | performed |
@@ -2089,6 +2093,7 @@ Unscheduled operations: 13.
 | `store.index.paths` | `crates/contextful-context/tests/integration/index.rs::each_sidecar_sits_at_its_kind_path_inside_the_snapshot_it_indexes` | performed |
 | `store.index.postings` | `crates/contextful-context/tests/integration/index.rs::one_row_set_lays_out_one_postings_file_a_probe_reads_by_term` | performed |
 | `store.index.rebuild` | `crates/contextful-context/tests/integration/index.rs::a_pass_rebuilds_a_sidecar_another_builder_version_wrote` | performed |
+| `store.index.sidecar-segments` | `crates/contextful-context/tests/integration/index.rs::a_pass_of_new_identifiers_extends_each_sidecar_by_a_segment` | performed |
 | `store.index.tenant-outermost` | `crates/contextful-context/tests/integration/index.rs::the_tenant_identifier_is_the_outermost_partition_directory` | performed |
 | `store.index.tenant-verbatim` | `crates/contextful-context/tests/integration/index.rs::a_tenant_value_is_kept_byte_for_byte` | performed |
 | `store.index.tokenizer` | `crates/contextful-core/tests/integration/store/index.rs::the_cjk_tokenizer_indexes_unspaced_stretches_as_bigrams` | performed |
@@ -2112,6 +2117,7 @@ Unscheduled operations: 13.
 | `store.lay-out.components` | `crates/contextful-cli/tests/integration/sync/catalogs.rs::a_store_holds_its_canonical_tree_beside_two_disposable_catalogs` | performed |
 | `store.lay-out.cursor-in-commit` | `crates/contextful-cli/tests/integration/sync/catalogs.rs::a_lost_machine_catalog_resumes_from_the_cursor_inside_the_newest_commit` | performed |
 | `store.lay-out.derived-catalog` | `crates/contextful-cli/tests/integration/context.rs::rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree` | performed |
+| `store.lay-out.format-migrate` | `crates/contextful-context/tests/integration/lay_out.rs::a_one_point_x_snapshot_reads_whole_and_its_next_pass_carries_it` | performed |
 | `store.lay-out.format-newer` | `crates/contextful-context/tests/integration/lay_out.rs::a_newer_major_refuses_the_table_naming_the_file_and_both_versions` | performed |
 | `store.lay-out.format-version` | `crates/contextful-context/tests/integration/lay_out.rs::a_manifest_carries_its_format_version_and_reads_a_newer_minor` | performed |
 | `store.lay-out.immutable-files` | `crates/contextful-context/tests/integration/lay_out.rs::a_fold_writes_a_new_snapshot_and_edits_nothing_published` | performed |

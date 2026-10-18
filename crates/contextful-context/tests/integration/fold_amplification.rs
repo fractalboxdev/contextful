@@ -1,8 +1,8 @@
 //! `store.fold.pass` and `store.fold.triggers`: the bytes a pass writes per byte its runs
 //! landed, and the rows its sidecars index per row landed, as the table's history grows.
 //! Landed bytes are the part files a run's manifest names; written bytes are the files
-//! under the snapshot directory a pass publishes. Each figure is today's value, recorded
-//! for the ledger.
+//! under the snapshot directory a pass publishes. Each figure is recorded for the ledger,
+//! and each test holds its entry's bound.
 //!
 //! Under `contextful-ci measure` the fixtures run at full size; elsewhere, the workspace
 //! stage among them, a scaled-down history exercises the same path.
@@ -12,7 +12,7 @@ use contextful_context::fold::fold;
 use contextful_context::land::{land, Batch, LandSession, Position, RunContext, SessionLanding};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
-use contextful_core::store::index::IndexEntry;
+use contextful_core::store::index::{own_rows, IndexEntry};
 use contextful_core::store::lay_out::{NodeId, RunManifest};
 use contextful_core::store::reconcile::{ColumnType, FloatItem};
 use contextful_core::store::reserve::Injection;
@@ -181,6 +181,10 @@ fn a_day_of_quarter_hour_landings_writes_bounded_bytes_per_byte_landed() {
     let growth = large / small;
     eprintln!("events write amplification {small:.2} at {} and {large:.2} at {}: {growth:.2}×", sweep[0], sweep[1]);
     emit("fold-events-write-amp-growth", growth, 2, SEED);
+    // Delta parts and the tiered merge keep both figures flat as history grows
+    // (`store.fold.carry-by-reference`, `store.fold.tiered-merge`).
+    assert!(day.amplification() <= 2.0, "{:.2} B written per B landed", day.amplification());
+    assert!(growth <= 1.3, "write amplification grew {growth:.2}× over four times the history");
 }
 
 /// 500 runs of 10 events, 7 s apart, over a folded history of 10⁵: the 50-run trigger fires
@@ -196,6 +200,7 @@ fn many_small_commits_fold_by_run_count_with_bounded_amplification() {
     assert_eq!(cost.passes, runs / contextful_core::store::fold::COMPACTION_RUN_COUNT);
     eprintln!("{runs} small runs over {history}: {} B landed, {} B written, {:.2} B per B", cost.landed, cost.written, cost.amplification());
     emit("fold-events-write-amp-by-count", cost.amplification(), cost.passes as u64, SEED);
+    assert!(cost.amplification() <= 8.0, "{:.2} B written per B landed", cost.amplification());
 }
 
 // ---------------------------------------------------------------- bars
@@ -240,6 +245,8 @@ fn daily_keyed_bars_with_restatements_write_bounded_bytes_per_byte_landed() {
     assert_eq!(held, symbols * (days + live), "a restatement replaces its key's row");
     eprintln!("bars over {}: {} B landed, {} B written, {:.2} B per B", symbols * days, cost.landed, cost.written, cost.amplification());
     emit("fold-bars-write-amp", cost.amplification(), cost.passes as u64, SEED);
+    // A restatement rewrites the part holding its key alone.
+    assert!(cost.amplification() <= 8.0, "{:.2} B written per B landed", cost.amplification());
 }
 
 // ---------------------------------------------------------------- sidecars
@@ -260,13 +267,12 @@ fn passage(draw: &mut Draw, id: &str) -> Map<String, Value> {
 }
 
 /// Rows the pass publishing `entry` indexed: every row it holds after a full build, the
-/// rows added since `prior` after an in-place extension (`store.index.graph-extensions`).
-fn indexed(entry: &IndexEntry, prior: Option<&IndexEntry>) -> u64 {
-    match (entry, prior) {
-        (IndexEntry::Vector(e), Some(IndexEntry::Vector(p))) if e.extensions > 0 => e.row_count - p.row_count,
-        (IndexEntry::Vector(e), _) => e.row_count,
-        (IndexEntry::Fulltext(e), _) => e.row_count,
-        (other, _) => panic!("a declared sidecar reads as {other:?}"),
+/// rows its own segment holds after an extension (`store.index.sidecar-segments`).
+fn indexed(entry: &IndexEntry, _prior: Option<&IndexEntry>) -> u64 {
+    match entry {
+        IndexEntry::Vector(e) => own_rows(e.row_count, &e.segments),
+        IndexEntry::Fulltext(e) => own_rows(e.row_count, &e.segments),
+        other => panic!("a declared sidecar reads as {other:?}"),
     }
 }
 
@@ -305,6 +311,8 @@ fn sidecars_indexed_per_quarter_hour_landing_stay_bounded() {
     let landed = (per_pass * passes) as f64;
     let (vector, fulltext) = (vector as f64 / landed, fulltext as f64 / landed);
     assert!(vector >= 1.0 && fulltext >= 1.0, "each pass indexes at least the rows it folds");
+    // A pass of new identifiers indexes its delta alone (`store.index.sidecar-segments`).
+    assert!(vector <= 1.5 && fulltext <= 1.5, "vector {vector:.2}, full text {fulltext:.2} rows indexed per row landed");
     eprintln!("over {history} passages: vector indexes {vector:.2} and full text {fulltext:.2} rows per row landed");
     emit("fold-vector-rows-indexed", vector, passes as u64, SEED);
     emit("fold-fulltext-rows-indexed", fulltext, passes as u64, SEED);

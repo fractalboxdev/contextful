@@ -2,7 +2,7 @@
 
 # Target ledger
 
-154 entries: 94 gated, 46 recorded, 6 scheduled, 8 open.
+154 entries: 96 gated, 44 recorded, 6 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -49,17 +49,17 @@
 | `eval-through-enforcement` | `assurance.evaluate.policy-labels` | `retrieval.hybrid.forbidden_row_rate` | gate | test `contextful_cli::eval::the_native_golden_set_holds_its_floors_and_baseline` | `== 0` | gated |
 | `exclusive-create-no-hardlink` | `store.lease.commit-log` | `lease.race_winners.max` | gate | test `contextful_fs::create::racing_creates_land_exactly_one` | `== 1` | gated |
 | `execution-resume` | `run.journal.plan-pin` | `execution.replayed_effects` | gate | test `contextful_engine::execution::a_dropped_execution_resumes_under_its_scope_and_replays_its_steps` | `== 0` | gated |
-| `fold-bars-write-amp` | `store.fold.pass` | `fold.bars.bytes_written_per_byte_landed` | gate | test `contextful_context::fold_amplification::daily_keyed_bars_with_restatements_write_bounded_bytes_per_byte_landed` | `<= 44.11` | gated |
-| `fold-events-peak-rss` | `store.fold.pass` | `fold.events.peak_rss` | trend | probe `fold-events-peak-rss` | — | recorded |
-| `fold-events-write-amp` | `store.fold.pass` | `fold.events.bytes_written_per_byte_landed` | gate | test `contextful_context::fold_amplification::a_day_of_quarter_hour_landings_writes_bounded_bytes_per_byte_landed` | `<= 11.68` | gated |
-| `fold-events-write-amp-by-count` | `store.fold.triggers` | `fold.events.bytes_written_per_byte_landed_by_count` | gate | test `contextful_context::fold_amplification::many_small_commits_fold_by_run_count_with_bounded_amplification` | `<= 13.86` | gated |
-| `fold-events-write-amp-growth` | `store.fold.pass` | `fold.events.write_amp_growth_4x` | gate | test `contextful_context::fold_amplification::a_day_of_quarter_hour_landings_writes_bounded_bytes_per_byte_landed` | `<= 2.1` | gated |
-| `fold-fulltext-docs-rebuilt` | `store.index.fulltext-by-fold` | `index.fold.fulltext_docs_rebuilt_per_increment` | gate | test `contextful_context::fulltext_rebuild::ten_folds_of_a_thousand_rows_reindex_only_the_increment` | `<= 10000` | gated |
-| `fold-fulltext-rows-indexed` | `store.index.fulltext-by-fold` | `fold.fulltext.rows_indexed_per_row_landed` | trend | test `contextful_context::fold_amplification::sidecars_indexed_per_quarter_hour_landing_stay_bounded` | — | recorded |
-| `fold-passages-peak-rss` | `store.fold.pass` | `fold.passages.peak_rss` | trend | probe `fold-passages-peak-rss` | — | recorded |
-| `fold-peak-heap-growth` | `store.fold.pass` | `fold.peak_heap_growth_10x` | gate | probe `fold-peak-heap` | `<= 8.48` | gated |
+| `fold-bars-write-amp` | `store.fold.carry-by-reference` | `fold.bars.bytes_written_per_byte_landed` | gate | test `contextful_context::fold_amplification::daily_keyed_bars_with_restatements_write_bounded_bytes_per_byte_landed` | `<= 8` | gated |
+| `fold-events-peak-rss` | `store.fold.bounded-memory` | `fold.events.peak_rss` | trend | probe `fold-events-peak-rss` | — | recorded |
+| `fold-events-write-amp` | `store.fold.carry-by-reference` | `fold.events.bytes_written_per_byte_landed` | gate | test `contextful_context::fold_amplification::a_day_of_quarter_hour_landings_writes_bounded_bytes_per_byte_landed` | `<= 2` | gated |
+| `fold-events-write-amp-by-count` | `store.fold.tiered-merge` | `fold.events.bytes_written_per_byte_landed_by_count` | gate | test `contextful_context::fold_amplification::many_small_commits_fold_by_run_count_with_bounded_amplification` | `<= 8` | gated |
+| `fold-events-write-amp-growth` | `store.fold.carry-by-reference` | `fold.events.write_amp_growth_4x` | gate | test `contextful_context::fold_amplification::a_day_of_quarter_hour_landings_writes_bounded_bytes_per_byte_landed` | `<= 1.3` | gated |
+| `fold-fulltext-docs-rebuilt` | `store.index.sidecar-segments` | `index.fold.fulltext_docs_rebuilt_per_increment` | gate | test `contextful_context::fulltext_rebuild::ten_folds_of_a_thousand_rows_reindex_only_the_increment` | `<= 1000` | gated |
+| `fold-fulltext-rows-indexed` | `store.index.sidecar-segments` | `fold.fulltext.rows_indexed_per_row_landed` | gate | test `contextful_context::fold_amplification::sidecars_indexed_per_quarter_hour_landing_stay_bounded` | `<= 1.5` | gated |
+| `fold-passages-peak-rss` | `store.fold.bounded-memory` | `fold.passages.peak_rss` | trend | probe `fold-passages-peak-rss` | — | recorded |
+| `fold-peak-heap-growth` | `store.fold.bounded-memory` | `fold.peak_heap_growth_10x` | gate | probe `fold-peak-heap` | `<= 1.5` | gated |
 | `fold-single-publisher` | `store.fold.pointer-commit` | `fold.publishes_per_start_etag` | gate | test `contextful_context::fold::a_pass_losing_the_pointer_publishes_nothing` | `== 1` | gated |
-| `fold-vector-rows-indexed` | `store.index.graph-extensions` | `fold.vector.rows_indexed_per_row_landed` | trend | test `contextful_context::fold_amplification::sidecars_indexed_per_quarter_hour_landing_stay_bounded` | — | recorded |
+| `fold-vector-rows-indexed` | `store.index.sidecar-segments` | `fold.vector.rows_indexed_per_row_landed` | gate | test `contextful_context::fold_amplification::sidecars_indexed_per_quarter_hour_landing_stay_bounded` | `<= 1.5` | gated |
 | `guard-catalogue` | `run.guard-secrets.matchers` | `guard.recall_per_kind.min` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `== 1` | gated |
 | `guard-compound-keys` | `run.guard-secrets.assignment-key` | `guard.compound_keys.masked_rate` | gate | test `contextful_core::pipeline::guard::a_compound_key_assignment_is_masked_keeping_its_key` | `== 1` | gated |
 | `guard-false-positives` | `run.guard-secrets.matchers` | `guard.false_positives` | gate | test `contextful_core::pipeline::guard::the_catalogue_holds_its_precision_and_recall_fixture` | `== 0` | gated |

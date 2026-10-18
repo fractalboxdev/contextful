@@ -19,6 +19,26 @@ pub const COMPACTION_RUN_COUNT: usize = 50;
 /// Elapsed time after a table's previous pass that fires the next: 6 h (`store.fold.triggers`).
 pub const COMPACTION_INTERVAL_SECS: u64 = 6 * 60 * 60;
 
+/// Parts of one size tier in one partition at which a pass merges them into one: 4, the
+/// `store-fold-merge-fanout` bound of `store.fold.tiered-merge`.
+pub const FOLD_MERGE_FANOUT: usize = 4;
+
+/// The size tier of a part holding `rows` rows: the floor of their base-4 logarithm, so
+/// a part enters the next tier once it holds [`FOLD_MERGE_FANOUT`] times the rows
+/// (`store.fold.tiered-merge`).
+pub fn size_tier(rows: u64) -> u32 {
+    let mut tier = 0;
+    let mut bound = FOLD_MERGE_FANOUT as u64;
+    while rows >= bound {
+        tier += 1;
+        bound = bound.saturating_mul(FOLD_MERGE_FANOUT as u64);
+        if bound == u64::MAX {
+            break;
+        }
+    }
+    tier
+}
+
 /// Whether a table's trigger has fired: it holds committed runs its current snapshot
 /// omits, and either as many as `decl`'s run count — [`COMPACTION_RUN_COUNT`] unless the
 /// table declares one (`store.fold.declared-trigger`) — or [`COMPACTION_INTERVAL_SECS`] have

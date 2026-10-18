@@ -548,41 +548,35 @@ fn recover_collection(store: &Store, mut boundary: impl FnMut(&Store, Option<&Fr
     })
 }
 
+/// The name a rewritten snapshot's one part takes until every retained snapshot is read.
+const ERASURE_PART: &str = ".erasure-part.parquet";
+
 fn rebuild_snapshots(store: &Store, decl: &TableDecl, directory: &Path) -> Result<()> {
+    let snapshots = directory.join(SNAPSHOTS_DIR);
+    // Every retained snapshot reads its rows, a part carried by reference at its origin,
+    // and writes them whole under a staged name before any part file leaves, since another
+    // snapshot may still name the file (`store.fold.carry-by-reference`).
+    let mut rewritten = Vec::new();
     for path in files(directory)? {
         if path.file_name().is_none_or(|name| name != MANIFEST_FILE) { continue; }
-        if path.parent().and_then(Path::parent) != Some(directory.join(SNAPSHOTS_DIR).as_path()) { continue; }
+        if path.parent().and_then(Path::parent) != Some(snapshots.as_path()) { continue; }
         let bytes = store.metadata().read(&path)?;
         let mut manifest: SnapshotManifest = serde_json::from_slice(&bytes).map_err(|_| incomplete("a retained snapshot manifest does not decode"))?;
         if manifest.table != decl.name { return Err(incomplete("a retained snapshot names another table")); }
-        let snapshot = path.parent().ok_or_else(|| incomplete("a retained snapshot has no directory"))?;
+        let snapshot = path.parent().ok_or_else(|| incomplete("a retained snapshot has no directory"))?.to_path_buf();
+        let holder = |part: &contextful_core::store::lay_out::PartEntry| -> Result<PathBuf> {
+            Ok(snapshots.join(part.holder(&manifest.snapshot_id).to_string()).join(relative_path(&part.name)?))
+        };
         let mut batches = Vec::new();
-        for part in &manifest.parts { batches.extend(store.read_parquet(&snapshot.join(relative_path(&part.name)?))?); }
+        for part in &manifest.parts { batches.extend(store.read_parquet(&holder(part)?)?); }
         let rows = match batches.first() {
             Some(first) => concat_batches(&first.schema(), &batches).map_err(|_| incomplete("a retained snapshot has incompatible parts"))?,
             None => match manifest.parts.first() {
-                Some(part) => empty_part(store, &snapshot.join(relative_path(&part.name)?))?,
+                Some(part) => empty_part(store, &holder(part)?)?,
                 None => RecordBatch::new_empty(crate::parquet_io::arrow_schema(&store.schema(&decl.name)?)),
             },
         };
-        for part in &manifest.parts {
-            let old = snapshot.join(relative_path(&part.name)?);
-            std::fs::remove_file(&old).at(&old)?;
-        }
-        fn remove_empty_directories(directory: &Path) -> Result<()> {
-            for entry in std::fs::read_dir(directory).at(directory)? {
-                let entry = entry.at(directory)?;
-                if entry.file_type().at(entry.path())?.is_dir() {
-                    remove_empty_directories(&entry.path())?;
-                    if std::fs::read_dir(entry.path()).at(entry.path())?.next().is_none() { std::fs::remove_dir(entry.path()).at(entry.path())?; }
-                }
-            }
-            Ok(())
-        }
-        remove_empty_directories(snapshot)?;
-        let name = contextful_core::store::lay_out::part_name(0);
-        store.write_parquet(&snapshot.join(&name), &rows)?;
-        manifest.parts = vec![contextful_core::store::lay_out::PartEntry { name, key_version:store.sealing().key_version() }];
+        store.write_parquet(&snapshot.join(ERASURE_PART), &rows)?;
         for index in &manifest.indexes {
             if matches!(index, IndexEntry::Unrecognized(_)) { return Err(unsupported("an unrecognized sidecar has no erasure rewrite adapter")); }
             let relative = index.path().ok_or_else(|| unsupported("a sidecar names no physical directory"))?;
@@ -590,10 +584,41 @@ fn rebuild_snapshots(store: &Store, decl: &TableDecl, directory: &Path) -> Resul
             if path.exists() { std::fs::remove_dir_all(&path).at(&path)?; }
         }
         manifest.indexes = decl.indexes().iter().map(|index| match index.kind {
-            IndexKind::Vector => crate::vector::build(snapshot, &manifest.snapshot_id, &rows, decl, index, &store.sealing()).map(IndexEntry::Vector),
-            IndexKind::Fulltext => crate::fulltext::build(snapshot, &manifest.snapshot_id, &rows, decl, index, &store.sealing()).map(IndexEntry::Fulltext),
+            IndexKind::Vector => crate::vector::build(&snapshot, &manifest.snapshot_id, &rows, decl, index, &store.sealing()).map(IndexEntry::Vector),
+            IndexKind::Fulltext => crate::fulltext::build(&snapshot, &manifest.snapshot_id, &rows, decl, index, &store.sealing()).map(IndexEntry::Fulltext),
         }).collect::<Result<_>>()?;
         manifest.row_count = rows.num_rows() as u64;
+        rewritten.push((path, snapshot, manifest));
+    }
+    // Then every other part file leaves, with the sidecar segments a collected snapshot's
+    // directory still held: no manifest names either once each snapshot holds its rows whole.
+    fn clear(directory: &Path, root: bool) -> Result<()> {
+        for entry in std::fs::read_dir(directory).at(directory)? {
+            let entry = entry.at(directory)?;
+            let path = entry.path();
+            if entry.file_type().at(&path)?.is_dir() {
+                if !root && path.file_name().is_some_and(|n| n == contextful_core::store::index::INDEXES_DIR) && !directory.join(MANIFEST_FILE).exists() {
+                    std::fs::remove_dir_all(&path).at(&path)?;
+                    continue;
+                }
+                clear(&path, false)?;
+                if std::fs::read_dir(&path).at(&path)?.next().is_none() { std::fs::remove_dir(&path).at(&path)?; }
+            } else if path.extension().is_some_and(|e| e == "parquet") && path.file_name().is_some_and(|n| n != ERASURE_PART) {
+                std::fs::remove_file(&path).at(&path)?;
+            }
+        }
+        Ok(())
+    }
+    if snapshots.is_dir() { clear(&snapshots, true)?; }
+    // Each snapshot then holds its one row-independent part.
+    for (path, snapshot, mut manifest) in rewritten {
+        let name = contextful_core::store::lay_out::part_name(0);
+        std::fs::rename(snapshot.join(ERASURE_PART), snapshot.join(&name)).at(snapshot.join(&name))?;
+        manifest.parts = vec![contextful_core::store::lay_out::PartEntry {
+            rows: Some(manifest.row_count),
+            ..contextful_core::store::lay_out::PartEntry::new(name, store.sealing().key_version())
+        }];
+        manifest.format_version = contextful_core::store::lay_out::FormatVersion::of_manifest(&manifest.parts, &manifest.indexes);
         store.metadata().write(&path, &serde_json::to_vec(&manifest).map_err(|_| incomplete("the rewritten snapshot manifest does not encode"))?)?;
     }
     Ok(())

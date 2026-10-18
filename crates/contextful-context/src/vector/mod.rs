@@ -20,7 +20,8 @@ use contextful_core::read::rank::sidecar_over_cap;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::encrypt::FileCipher;
 use contextful_core::store::index::{
-    IndexDecl, IndexEntry, IndexKind, VectorEntry, EMBEDDING_MODEL_COLUMN, VECTOR_BUILDER, VECTOR_BUILDER_VERSION,
+    own_rows, IndexDecl, IndexEntry, IndexKind, IndexSegment, VectorEntry, EMBEDDING_MODEL_COLUMN, VECTOR_BUILDER,
+    VECTOR_BUILDER_VERSION,
 };
 use contextful_core::store::lay_out::{SnapshotId, MANIFEST_FILE};
 use contextful_core::store::StoreError;
@@ -109,6 +110,36 @@ pub fn build(
     index: &IndexDecl,
     sealing: &Sealing<'_>,
 ) -> Result<VectorEntry> {
+    write(snapshot_dir, snapshot_id, rows, decl, index, sealing, None)
+}
+
+/// Extend `prior`, the graph of the snapshot `prior_snapshot`, by a segment over `rows`,
+/// rows whose identifiers it does not hold: the new directory's graph covers `rows` alone
+/// and the entry carries every earlier segment by reference, one more extension
+/// (`store.index.graph-extensions`, `store.index.sidecar-segments`).
+#[allow(clippy::too_many_arguments)]
+pub fn extend(
+    snapshot_dir: &Path,
+    snapshot_id: &SnapshotId,
+    rows: &RecordBatch,
+    decl: &TableDecl,
+    index: &IndexDecl,
+    sealing: &Sealing<'_>,
+    prior: &VectorEntry,
+    prior_snapshot: &SnapshotId,
+) -> Result<VectorEntry> {
+    write(snapshot_dir, snapshot_id, rows, decl, index, sealing, Some((prior, prior_snapshot)))
+}
+
+fn write(
+    snapshot_dir: &Path,
+    snapshot_id: &SnapshotId,
+    rows: &RecordBatch,
+    decl: &TableDecl,
+    index: &IndexDecl,
+    sealing: &Sealing<'_>,
+    prior: Option<(&VectorEntry, &SnapshotId)>,
+) -> Result<VectorEntry> {
     let table = decl.name.as_str();
     let id_column = decl
         .id_column()?
@@ -149,6 +180,18 @@ pub fn build(
     let path = index.path(crate::fold::escape);
     let dir = snapshot_dir.join(&path);
     fs::create_dir_all(&dir).at(&dir)?;
+    let latest = crate::available::latest(decl, rows)?;
+    let (extensions, carried, segments, available_through) = match prior {
+        None => (0, 0, Vec::new(), latest),
+        Some((p, at)) => {
+            let mut segments = p.segments.clone();
+            let own = own_rows(p.row_count, &p.segments);
+            if own > 0 {
+                segments.push(IndexSegment { snapshot_id: at.to_string(), row_count: own, key_version: p.key_version });
+            }
+            (p.extensions + 1, p.row_count, segments, latest.max(p.available_through))
+        }
+    };
     let entry = VectorEntry {
         kind: IndexKind::Vector,
         path,
@@ -163,12 +206,13 @@ pub fn build(
         ef_construction: index.ef_construction(),
         builder: VECTOR_BUILDER.to_string(),
         builder_version: VECTOR_BUILDER_VERSION,
-        // Every build lays the graph out whole from the staged rows
-        // (`store.index.graph-extensions`).
-        extensions: 0,
-        row_count: kept_ids.len() as u64,
+        // A full build lays the graph out whole from the staged rows and records 0; an
+        // extension counts one more (`store.index.graph-extensions`).
+        extensions,
+        row_count: carried + kept_ids.len() as u64,
         key_version: sealing.key_version(),
-        available_through: crate::available::latest(decl, rows)?,
+        available_through,
+        segments,
     };
     sealing.write(&dir.join(GRAPH_FILE), &bytes)?;
     sealing.write(&dir.join(MANIFEST_FILE), &manifest_bytes(&entry))?;
@@ -217,11 +261,10 @@ impl Backing {
     }
 }
 
-/// An opened vector sidecar.
+/// An opened vector sidecar: its carried segments oldest first, then its own directory's.
 pub struct VectorSidecar {
     entry: VectorEntry,
-    backing: Backing,
-    layout: graph::Layout,
+    segments: Vec<GraphSegment>,
 }
 
 /// A candidate a probe returns: an `id_column` value and its cosine similarity.
@@ -247,13 +290,28 @@ impl VectorSidecar {
             return Err(Fallback::ManifestMismatch);
         }
         let dir = snapshot_dir.join(rel);
+        // Each carried segment sits at the same path under the snapshot holding it, beside
+        // this one (`store.index.sidecar-segments`).
+        let mut files: Vec<(std::path::PathBuf, u32, u64)> = Vec::new();
+        for s in &entry.segments {
+            let id = SnapshotId::try_from(s.snapshot_id.clone()).map_err(|_| Fallback::ManifestMismatch)?;
+            let holder = snapshot_dir.parent().map(|p| p.join(id.to_string())).ok_or(Fallback::Unreadable)?;
+            files.push((holder.join(rel).join(GRAPH_FILE), s.key_version, s.row_count));
+        }
+        files.push((dir.join(GRAPH_FILE), entry.key_version, own_rows(entry.row_count, &entry.segments)));
         // Checked before any sidecar byte is read, so an oversized graph is never loaded to
         // learn it is oversized. A plaintext graph is mapped and counts its probe marks; a
-        // sealed one opens whole into memory and adds its sealed graph file, at least as long
+        // sealed one opens whole into memory and adds its sealed graph files, at least as long
         // as the decrypted bytes.
         let sealed_graph_file_bytes = match sealing {
             Sealing::Plaintext => None,
-            Sealing::Sealed(_) => Some(fs::metadata(dir.join(GRAPH_FILE)).map_err(|_| Fallback::Unreadable)?.len()),
+            Sealing::Sealed(_) => {
+                let mut size = 0u64;
+                for (file, _, _) in &files {
+                    size = size.saturating_add(fs::metadata(file).map_err(|_| Fallback::Unreadable)?.len());
+                }
+                Some(size)
+            }
         };
         if sidecar_over_cap(entry.resident_bytes(sealed_graph_file_bytes)) {
             return Err(Fallback::OverCap);
@@ -269,37 +327,44 @@ impl VectorSidecar {
         if own != entry {
             return Err(Fallback::ManifestMismatch);
         }
-        let backing = match (sealing, entry.key_version) {
-            (Sealing::Plaintext, 0) => {
-                let file = fs::File::open(dir.join(GRAPH_FILE)).map_err(|_| Fallback::Unreadable)?;
-                // SAFETY: the file sits in a published snapshot directory, which no writer
-                // rewrites; a pass stages a new snapshot beside it instead.
-                Backing::Mapped(unsafe { memmap2::Mmap::map(&file) }.map_err(|_| Fallback::Unreadable)?)
+        let mut segments = Vec::with_capacity(files.len());
+        for (file, key_version, rows) in &files {
+            let backing = match (sealing, *key_version) {
+                (Sealing::Plaintext, 0) => {
+                    let file = fs::File::open(file).map_err(|_| Fallback::Unreadable)?;
+                    // SAFETY: the file sits in a published snapshot directory, which no writer
+                    // rewrites; a pass stages a new snapshot beside it instead.
+                    Backing::Mapped(unsafe { memmap2::Mmap::map(&file) }.map_err(|_| Fallback::Unreadable)?)
+                }
+                (Sealing::Sealed(c), v) if v > 0 => {
+                    let raw = fs::read(file).map_err(|_| Fallback::Unreadable)?;
+                    Backing::Owned(c.open(&raw).map_err(|_| Fallback::Unreadable)?)
+                }
+                _ => return Err(Fallback::Unreadable),
+            };
+            let layout = graph::Layout::parse(backing.bytes()).ok_or(Fallback::Unreadable)?;
+            if layout.dim != entry.dim as usize || layout.count as u64 != *rows || layout.m() != entry.m as usize {
+                return Err(Fallback::ManifestMismatch);
             }
-            (Sealing::Sealed(_), v) if v > 0 => Backing::Owned(read(GRAPH_FILE)?),
-            _ => return Err(Fallback::Unreadable),
-        };
-        let layout = graph::Layout::parse(backing.bytes()).ok_or(Fallback::Unreadable)?;
-        if layout.dim != entry.dim as usize || layout.count as u64 != entry.row_count || layout.m() != entry.m as usize {
-            return Err(Fallback::ManifestMismatch);
+            segments.push(GraphSegment { backing, layout });
         }
-        Ok(VectorSidecar { entry, backing, layout })
+        Ok(VectorSidecar { entry, segments })
     }
 
     pub fn entry(&self) -> &VectorEntry {
         &self.entry
     }
 
-    /// Whether the graph is memory-mapped from a plaintext file rather than held in
+    /// Whether the graphs are memory-mapped from plaintext files rather than held in
     /// process memory.
     pub fn is_mapped(&self) -> bool {
-        matches!(self.backing, Backing::Mapped(_))
+        self.segments.iter().all(|s| matches!(s.backing, Backing::Mapped(_)))
     }
 
-    /// The `k` candidates nearest `query`, nearest first. A query of another dimension or
-    /// of zero length probes nothing.
+    /// The `k` candidates nearest `query` across every segment's graph, nearest first. A
+    /// query of another dimension or of zero length probes nothing.
     pub fn probe(&self, query: &[f32], k: usize) -> std::result::Result<Vec<Candidate>, Fallback> {
-        if query.len() != self.layout.dim {
+        if query.len() != self.entry.dim as usize {
             return Err(Fallback::DimensionMismatch);
         }
         let norm = query.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -307,14 +372,29 @@ impl VectorSidecar {
             return Ok(Vec::new());
         }
         let q: Vec<f32> = query.iter().map(|x| x / norm).collect();
-        let bytes = self.backing.bytes();
-        Ok(self
-            .layout
-            .search(bytes, &q, k, k.max(EF_SEARCH_FLOOR))
-            .into_iter()
-            .filter_map(|(n, similarity)| Some(Candidate { id: self.layout.id(bytes, n)?.to_string(), similarity }))
-            .collect())
+        let mut found: Vec<Candidate> = Vec::new();
+        for segment in &self.segments {
+            let bytes = segment.backing.bytes();
+            found.extend(
+                segment
+                    .layout
+                    .search(bytes, &q, k, k.max(EF_SEARCH_FLOOR))
+                    .into_iter()
+                    .filter_map(|(n, similarity)| Some(Candidate { id: segment.layout.id(bytes, n)?.to_string(), similarity })),
+            );
+        }
+        if self.segments.len() > 1 {
+            found.sort_by(|a, b| b.similarity.total_cmp(&a.similarity));
+            found.truncate(k);
+        }
+        Ok(found)
     }
+}
+
+/// One segment's graph, opened.
+struct GraphSegment {
+    backing: Backing,
+    layout: graph::Layout,
 }
 
 /// The snapshot directory and manifest entry of `table`'s current sidecar over `column`

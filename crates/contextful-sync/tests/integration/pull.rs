@@ -358,6 +358,27 @@ fn a_pointer_is_written_only_once_its_snapshot_is_home() {
     assert_eq!(files(&c), [format!("tables/filings/data/snapshots/{snapshot_id}/part-00000.parquet")]);
 }
 
+/// A pulled snapshot carrying a part by reference is home once that part is under its
+/// origin's directory, so the pull writes its pointer and reads every row
+/// (`store.fold.carry-by-reference`).
+#[test]
+fn a_pulled_snapshot_finds_its_carried_part_under_the_origin() {
+    let (_dir, b, a) = pushed();
+    let decl = TableDecl::named("filings");
+    let held = a.syncer.acquire("filings", at(NOW)).unwrap();
+    let FoldOutcome::Folded { snapshot_id: first, .. } = fold(&a.syncer.store, &decl, at(NOW)).unwrap() else { panic!() };
+    a.land("run-2", json!([{"id": 2, "title": "b"}]), "2030-01-01T02:00:00Z");
+    let FoldOutcome::Folded { snapshot_id: second, .. } = fold(&a.syncer.store, &decl, at("2030-01-01T03:00:00Z")).unwrap() else { panic!() };
+    a.syncer.push(at("2030-01-01T03:00:00Z")).unwrap();
+    a.syncer.publish("filings", &second, &held).unwrap();
+    let c = node("ingest-b", b, "");
+    c.syncer.pull(&PullScope::default()).unwrap();
+    let (chain, _) = c.syncer.store.chain("filings").unwrap();
+    assert_eq!(chain[0].snapshot_id.to_string(), second);
+    assert_eq!(chain[0].parts.iter().filter_map(|p| p.origin.as_ref().map(ToString::to_string)).collect::<Vec<_>>(), [first.clone()]);
+    assert_eq!(files(&c), [first, second].map(|id| format!("tables/filings/data/snapshots/{id}/part-00000.parquet")));
+}
+
 /// A pulled `schema.json` differing from the local copy merges into it column by column through
 /// {{store.reconcile.incompatible}}'s lattice rather than replacing it.
 // spec: store.pull.schema-merge@36368f45

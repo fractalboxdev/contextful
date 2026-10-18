@@ -49,15 +49,19 @@ fn a_keyed_query_digest_matches_no_unkeyed_dictionary_entry() {
     assert!(result.n >= 100);
 }
 
-// The arms below hold a record's presence, sample count and seed, not a target. A
-// resident-set probe reads getrusage, so its arm runs on unix alone.
+// The arms below hold a record's presence, sample count and seed; the fold heap arm also
+// holds its bound. A resident-set probe reads getrusage, so its arm runs on unix alone.
 
+/// A carrying pass building no sidecar in full holds its delta and one record batch per part it reads or merges, so its peak memory follows the rows landed, not the rows held.
+// spec: store.fold.bounded-memory@252d98ee
 #[test]
 fn a_fold_peak_heap_probe_records_the_growth_across_held_sizes() {
     let result = probe("fold-peak-heap", "fold-peak-heap-growth");
     assert_eq!(result.n, if small() { 20_000 } else { 200_000 });
     assert_eq!(result.seed, 0x5eed_00f4);
     assert!(result.value > 0.0, "{}", result.value);
+    // Ten times the rows held, one landing folded: the pass's peak heap stays within 1.5×.
+    assert!(result.value <= 1.5, "peak heap grew {}× over ten times the rows held", result.value);
 }
 
 #[test]

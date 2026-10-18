@@ -266,8 +266,25 @@ Decision: each manifest carries `format_version` as `<major>.<minor>`. A minor a
 | One store-wide version file | Version in the governed file | A synced manifest arrives without the file that interprets it. |
 | No version; parse what parses | Silent misreading | A field whose meaning changed reads under the old meaning. |
 
-Consequences: a mixed fleet refuses a newer major by name instead of folding it.
-Revisit: a second major, which needs a migration path.
+Consequences: a mixed fleet refuses a newer major by name instead of folding it. The second major, `2.0`, marks a snapshot carrying a part or segment by reference; its migration is the section below.
+
+## A pass carries untouched parts and sidecar segments by reference
+
+**Status:** accepted; supersedes the whole-snapshot rewrite of `store.fold.pass`.
+
+Context: a pass that rewrote every part and rebuilt every sidecar wrote bytes and held memory in proportion to the table, so a quarter-hour landing over a growing history slowed with age. Criteria: bytes written per byte landed stay bounded as history grows; a pass's memory follows the rows landed; readers and collection see one file list.
+
+Decision: a part entry names its `origin` snapshot; a pass writes delta parts, rewrites only a part a delta row replaces or retention trims, and merges four parts of one size tier. A sidecar extends by a segment while no stored row changes. Collection keeps every file a retained snapshot names. A snapshot carrying a reference declares `2.0`; a `1.x` snapshot reads as self-contained, and its next pass migrates it.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Parts and segments by reference, tiered merge *(chosen)* | — | A partition holds several parts, a restated key rewrites its part, and an older build refuses a `2.0` table. |
+| Rewrite every part each pass | Bytes per byte landed | Write volume grows with history. |
+| Per-row deletion vectors over immutable parts | Readers | Every reader applies a mask the engine does not know. |
+| Hard links into each new snapshot directory | Object stores | A bucket has no link, so a push copies every part. |
+
+Consequences: a mixed fleet upgrades every reader before a writer folds by reference.
+Revisit: restatements that rewrite large parts on every pass.
 
 ## A sidecar's builder is recorded, not encoded in its path
 
@@ -275,7 +292,7 @@ Revisit: a second major, which needs a migration path.
 
 Context: `store.index.paths` fixes one sidecar per column and model or tokenizer, and the graph layout changes with its builder. Criteria: one path per declaration; no reader opens bytes another builder wrote; bounded drift from repeated extension.
 
-Decision: a sidecar's entry and `derived.sqlite` record its builder and builder version. The graph format stays uncommitted: a reader opens only its own builder's version and otherwise takes the exact scan. A pass whose current sidecar records another builder, or 16 in-place extensions, rebuilds it in full into a new snapshot.
+Decision: a sidecar's entry and `derived.sqlite` record its builder and builder version. The graph format stays uncommitted: a reader opens only its own builder's version and otherwise takes the exact scan. A pass whose current sidecar records another builder, or 16 segment extensions, rebuilds it in full into a new snapshot.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

@@ -4,7 +4,7 @@
 use crate::support::{at, decl, Fixture};
 use contextful_context::fold::fold;
 use contextful_core::store::fold::FoldOutcome;
-use contextful_core::store::index::IndexEntry;
+use contextful_core::store::index::{own_rows, IndexEntry};
 use serde_json::{json, Value};
 
 const SEED: u64 = 0x5eed_0605;
@@ -28,19 +28,22 @@ fn ten_folds_of_a_thousand_rows_reindex_only_the_increment() {
         let outcome = fold(&f.store, &d, at(&format!("2030-01-01T{:02}:00:00Z", pass + 1))).unwrap();
         assert!(matches!(outcome, FoldOutcome::Folded { runs: 1, .. }), "pass {pass}: {outcome:?}");
         let (chain, _) = f.store.chain("passages").unwrap();
-        let rows = chain[0]
+        let entry = chain[0]
             .indexes
             .iter()
             .find_map(|e| match e {
-                IndexEntry::Fulltext(e) => Some(e.row_count),
+                IndexEntry::Fulltext(e) => Some(e.clone()),
                 _ => None,
             })
             .expect("each pass records a full-text entry");
-        // Each pass indexes at least the increment it lands.
-        assert!(rows >= increment as u64, "pass {pass} indexed {rows} rows");
+        // Each pass indexes the increment it lands, in its own segment, and answers for every row.
+        let rows = own_rows(entry.row_count, &entry.segments);
+        assert_eq!(rows, increment as u64, "pass {pass} indexed {rows} rows");
+        assert_eq!(entry.row_count, ((pass + 1) * increment) as u64);
         built.push(rows);
     }
     let last = *built.last().unwrap();
     eprintln!("full-text rows built per pass: {built:?}");
+    assert!(last <= increment as u64, "the last pass rebuilt {last} documents");
     contextful_eval::record::emit("fold-fulltext-docs-rebuilt", last as f64, FOLDS as u64, SEED);
 }

@@ -32,8 +32,8 @@ pub const VECTOR_BUILDER: &str = "contextful-hnsw";
 /// is no committed format (`store.index.graph-format`).
 pub const VECTOR_BUILDER_VERSION: u32 = 1;
 
-/// In-place extensions after which a pass rebuilds a vector graph in full: 16, the
-/// `store-graph-extensions` bound of `store.index.graph-extensions`.
+/// Segment extensions after which a pass rebuilds a vector graph or full-text postings in
+/// full: 16, the `store-graph-extensions` bound of `store.index.graph-extensions`.
 pub const GRAPH_EXTENSIONS_MAX: u32 = 16;
 
 /// The builder a full-text sidecar records, with [`FULLTEXT_BUILDER_VERSION`]; both sit in
@@ -302,9 +302,14 @@ pub struct FulltextEntry {
     pub tokenizer: Tokenizer,
     pub builder: String,
     pub builder_version: u32,
-    /// Rows the postings hold.
+    /// Passes since the last full build that extended the sidecar by a segment
+    /// (`store.index.sidecar-segments`); a full build records 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub extensions: u32,
+    /// Rows the postings hold, across its own directory's segment and every segment in
+    /// `segments`.
     pub row_count: u64,
-    /// Distinct terms the dictionary holds.
+    /// Distinct terms the dictionary in its own directory holds.
     pub term_count: u64,
     /// The key version sealing the sidecar's files; 0 for plaintext.
     pub key_version: u32,
@@ -312,6 +317,26 @@ pub struct FulltextEntry {
     /// declaring `available_time` (`read.horizon.rank-statistics`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available_through: Option<crate::time::Instant>,
+    /// Earlier segments the sidecar carries by reference, oldest first
+    /// (`store.index.sidecar-segments`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<IndexSegment>,
+}
+
+/// A segment a sidecar carries by reference: the sidecar directory at the same path under
+/// an earlier snapshot, whose own file holds `row_count` rows (`store.index.sidecar-segments`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IndexSegment {
+    pub snapshot_id: String,
+    pub row_count: u64,
+    /// The key version sealing the segment's file; 0 for plaintext.
+    pub key_version: u32,
+}
+
+/// Rows a sidecar entry's own directory holds: its total less every carried segment's.
+pub fn own_rows(row_count: u64, segments: &[IndexSegment]) -> u64 {
+    row_count.saturating_sub(segments.iter().map(|s| s.row_count).sum())
 }
 
 /// The entry a built vector sidecar records in its snapshot manifest's `indexes`, and
@@ -333,11 +358,12 @@ pub struct VectorEntry {
     pub ef_construction: u32,
     pub builder: String,
     pub builder_version: u32,
-    /// Passes since the last full build that extended the graph in place
+    /// Passes since the last full build that extended the graph by a segment
     /// (`store.index.graph-extensions`); a full build records 0.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub extensions: u32,
-    /// Rows the graph holds.
+    /// Rows the graph holds, across its own directory's segment and every segment in
+    /// `segments`.
     pub row_count: u64,
     /// The key version sealing the sidecar's files; 0 for plaintext.
     pub key_version: u32,
@@ -345,6 +371,10 @@ pub struct VectorEntry {
     /// declaring `available_time` (`read.horizon.rank-statistics`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available_through: Option<crate::time::Instant>,
+    /// Earlier segments the graph carries by reference, oldest first
+    /// (`store.index.sidecar-segments`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<IndexSegment>,
 }
 
 /// One entry of a snapshot manifest's `indexes`: a built sidecar of a kind this build
@@ -413,16 +443,28 @@ impl IndexEntry {
     }
 
     /// Whether a pass rebuilds this sidecar in full though no run landed: it records
-    /// another builder or builder version than this build's (`store.index.rebuild`), or a
-    /// vector graph has reached [`GRAPH_EXTENSIONS_MAX`] in-place extensions
-    /// (`store.index.graph-extensions`). An unrecognised entry is left as written.
+    /// another builder or builder version than this build's (`store.index.rebuild`), or it
+    /// has reached [`GRAPH_EXTENSIONS_MAX`] segment extensions
+    /// (`store.index.graph-extensions`, `store.index.sidecar-segments`). An unrecognised
+    /// entry is left as written.
     pub fn needs_rebuild(&self) -> bool {
         match self {
             IndexEntry::Vector(e) => {
                 e.builder != VECTOR_BUILDER || e.builder_version != VECTOR_BUILDER_VERSION || e.extensions >= GRAPH_EXTENSIONS_MAX
             }
-            IndexEntry::Fulltext(e) => e.builder != FULLTEXT_BUILDER || e.builder_version != FULLTEXT_BUILDER_VERSION,
+            IndexEntry::Fulltext(e) => {
+                e.builder != FULLTEXT_BUILDER || e.builder_version != FULLTEXT_BUILDER_VERSION || e.extensions >= GRAPH_EXTENSIONS_MAX
+            }
             IndexEntry::Unrecognized(_) => false,
+        }
+    }
+
+    /// The segments a recognised entry carries by reference, oldest first.
+    pub fn segments(&self) -> &[IndexSegment] {
+        match self {
+            IndexEntry::Vector(e) => &e.segments,
+            IndexEntry::Fulltext(e) => &e.segments,
+            IndexEntry::Unrecognized(_) => &[],
         }
     }
 
