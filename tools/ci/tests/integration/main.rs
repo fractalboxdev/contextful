@@ -33,6 +33,7 @@ mod stages;
 mod test_first;
 mod topology;
 mod vacuous;
+mod verdict;
 mod wasm;
 mod workflow;
 

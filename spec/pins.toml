@@ -205,12 +205,15 @@
 "store.endpoint.transport" = { test = "crates/contextful-sync/tests/integration/s3.rs::transport::a_stalled_get_gives_up_its_attempt_within_the_answer_bound_and_resends" }
 "run.journal.corpus-unavailable" = { test = "crates/contextful-cli/tests/integration/storage.rs::d1_storage_initialization_and_history_survive_a_new_cli_process" }
 "assurance.consumer.d1-release" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
+"assurance.consumer.verdict-exit" = { test = "tools/ci/tests/integration/verdict.rs::a_suite_exiting_on_its_failing_verdict_records_no_process_failure" }
+"assurance.consumer.d1-absent" = { test = "tools/ci/tests/integration/verdict.rs::a_full_cell_without_a_d1_binding_declares_the_d1_pass_absent" }
+"assurance.consumer.release-notes" = { test = "tools/ci/tests/integration/verdict.rs::formula_writes_release_notes_stating_every_cells_verdict" }
 
 # The floor is machine-maintained: `contextful-spec pins` sets each contract's entry to
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 296
+assurance = 299
 authority = 277
 connector = 303
 corpus = 80

@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 338 | 69 | 24 | 5 | 296 | 0 | 296 |
+| `assurance` | 3 | 18 | 341 | 70 | 24 | 5 | 299 | 0 | 299 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 2 | 14 | 386 | 92 | 22 | 14 | 303 | 0 | 303 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 4 | 19 | 327 | 67 | 21 | 12 | 316 | 0 | 316 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2790 | 688 | 224 | 82 | 2498 | 0 | |
+| **total** | 23 | 169 | 2793 | 689 | 224 | 82 | 2501 | 0 | |
 
 Decision records: 18.
 
@@ -139,6 +139,7 @@ Unscheduled operations: 13.
 | `assurance.build.wasi-probe` | `tools/ci/tests/integration/artifact.rs::the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget` | performed |
 | `assurance.consumer.command-diagnostic` | `spec/pins.toml` | performed |
 | `assurance.consumer.credential-isolation` | `spec/pins.toml` | performed |
+| `assurance.consumer.d1-absent` | `spec/pins.toml` | performed |
 | `assurance.consumer.d1-admission` | `spec/pins.toml` | performed |
 | `assurance.consumer.d1-profile` | `spec/pins.toml` | performed |
 | `assurance.consumer.d1-release` | `spec/pins.toml` | performed |
@@ -146,10 +147,12 @@ Unscheduled operations: 13.
 | `assurance.consumer.mutation-controls` | `spec/pins.toml` | performed |
 | `assurance.consumer.provenance` | `spec/pins.toml` | performed |
 | `assurance.consumer.release-distribution` | `spec/pins.toml` | performed |
+| `assurance.consumer.release-notes` | `spec/pins.toml` | performed |
 | `assurance.consumer.report` | `spec/pins.toml` | performed |
 | `assurance.consumer.requirements` | `spec/pins.toml` | performed |
 | `assurance.consumer.scenarios` | `spec/pins.toml` | performed |
 | `assurance.consumer.suite` | `spec/pins.toml` | performed |
+| `assurance.consumer.verdict-exit` | `spec/pins.toml` | performed |
 | `assurance.differential-test.builds` | `crates/contextful-cli/tests/integration/differential.rs::a_webassembly_build_deciding_apart_from_the_native_build_is_a_disagreement` | performed |
 | `assurance.differential-test.case-classes` | `crates/contextful-cli/tests/integration/differential.rs::the_report_names_the_three_case_classes` | performed |
 | `assurance.differential-test.command` | `crates/contextful-cli/tests/integration/differential.rs::the_command_replays_then_generates_and_stops_at_the_first_disagreement` | performed |

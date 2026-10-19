@@ -22,6 +22,7 @@ consumer          = {}
 
 [error]
 ConformanceAlreadyRunning        = { clause = "assurance.consumer.d1-admission", gloss = "Another suite holds a live admission lease on the bound D1 database." }
+ConformanceBindingAbsent         = { clause = "assurance.consumer.d1-absent", gloss = "A native full release cell holds no D1 binding, so its cloudflare-d1 pass does not run." }
 FormalPackageDependency          = { clause = "assurance.model.declared-dependency", gloss = "The Lean package manifest declares an external library." }
 ProofToolchainDrift              = { clause = "assurance.model.toolchain-drift", gloss = "The resolved toolchain release string differs from the pinned one." }
 UnmodelledConstructor            = { clause = "assurance.model.unmodelled-constructor", gloss = "A placement category the manifest admits has no case in the model's inductive." }
