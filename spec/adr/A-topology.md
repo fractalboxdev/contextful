@@ -140,18 +140,19 @@ Consequences: landing never waits on a target; a mirror is at-least-once. Accept
 
 **Status:** accepted; amends the export decision above.
 
-Context: a lock spanning the Parquet write serializes a table's landings, and one queued behind it refuses untyped. Criteria: readable runs hold a prefix of the commit sequence; a dead landing stalls no later commit; a lock refusal retries.
+Context: a lock spanning the Parquet write serializes a table's landings. Criteria: readable runs hold a prefix of the commit sequence; a dead landing stalls no later commit; a lock refusal retries.
 
-Decision: a commit takes the lock to assign its `_commit_seq` value and lock a ticket file naming it, writes its parts holding only the ticket, then waits until no live holder locks a lower ticket and takes the lock again for its manifest. A dead holder's ticket unlocks with its process, leaving a gap. Each wait ends at the commit wait with `StoreCommitLockTimeout`, which a receive answers retryable. A vintage table keeps the lock across its comparison and part write.
+Decision: a commit takes the lock to assign its `_commit_seq` value and lock a ticket file naming it, writes its parts holding only the ticket, then takes the lock again for its manifest once no live holder locks a lower ticket. A dead holder's ticket unlocks with its process, leaving a gap. Each wait ends at the commit wait, retryable. A vintage table keeps the lock across its part write. The reservation writes the counter as JSON, which a build locking across its part write parses as an integer and refuses.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Lock to reserve and publish, publication ordered by ticket *(chosen)* | — | A slow part write delays every later publication on its table. |
-| Lock over the part write | Throughput | Landings on one table write their parts one at a time. |
-| Tickets without liveness, ordered by counter | Dead landings | A landing dying with a ticket stalls every later commit. |
+| Lock to reserve and publish, publication ordered by ticket *(chosen)* | — | A slow part write delays later publications. |
+| Lock over the part write | Throughput | A table's landings write parts serially. |
+| Tickets without liveness, ordered by counter | Dead landings | A dead ticket holder stalls later commits. |
 | Readers skip unpublished values | Prefix | An export cursor passes a value that publishes later. |
+| A newer manifest major | Order | That build's commit reads no version, so it still publishes out of order. |
 
-Consequences: a table's landings write parts in parallel and publish serially. Accepted cost: a commit outwaiting the commit wait refuses, retryable; a vintage table's landings stay serial; a writer locking across its part write ignores tickets, so beside a reserving writer it can publish out of order.
+Consequences: a table's landings write parts in parallel and publish serially. Accepted cost: a vintage table's landings stay serial; a build locking across its part write refuses, after merging its schema, every table a reserving build committed to.
 
 ## A managed queue extends ingress behind a port; the writer stays in the engine
 

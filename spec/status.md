@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 53 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 600 | 128 | 49 | 19 | 560 | 0 | 560 |
-| `store` | 3 | 19 | 321 | 65 | 19 | 11 | 310 | 0 | 310 |
+| `store` | 3 | 19 | 322 | 65 | 19 | 11 | 311 | 0 | 310 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2768 | 682 | 222 | 80 | 2474 | 0 | |
+| **total** | 22 | 169 | 2769 | 682 | 222 | 80 | 2475 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
-| 2 — The store | 9 | 197 | 187 | passing | closed |
+| 2 — The store | 9 | 198 | 188 | passing | closed |
 | 3 — The run path | 12 | 306 | 294 | passing | closed |
 | 4 — Ingest | 25 | 634 | 528 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
@@ -2279,6 +2279,7 @@ Unscheduled operations: 13.
 | `store.reserve.authored-agent` | `crates/contextful-context/tests/integration/reserve.rs::an_authored_write_carries_its_agent_beside_its_principal` | performed |
 | `store.reserve.column-name` | `crates/contextful-core/tests/integration/store/reserve.rs::a_producer_column_in_the_namespace_is_refused` | performed |
 | `store.reserve.commit-lock-span` | `crates/contextful-context/tests/integration/reserve.rs::a_landing_writes_its_parts_outside_the_commit_lock_and_publishes_in_sequence_order` | performed |
+| `store.reserve.commit-marker` | `crates/contextful-context/tests/integration/reserve.rs::a_reserving_commit_marks_its_counter_so_a_writer_of_the_bare_integer_refuses_the_table` | performed |
 | `store.reserve.commit-order` | `crates/contextful-context/tests/integration/reserve.rs::concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read` | performed |
 | `store.reserve.commit-seq` | `crates/contextful-context/tests/integration/reserve.rs::a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp` | performed |
 | `store.reserve.commit-seq-seed` | `crates/contextful-context/tests/integration/reserve.rs::a_store_holding_no_counter_continues_above_the_values_its_manifests_record` | performed |

@@ -13,7 +13,7 @@ use contextful_core::store::resolve::TableState;
 use contextful_core::store::commit_log;
 use contextful_core::store::reserve::COMMIT_LOCK_WAIT_SECS;
 use contextful_core::store::StoreError;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use contextful_fs::tmp_sibling;
@@ -512,19 +512,22 @@ impl Store {
     /// repeat (`store.reserve.commit-seq`, `store.reserve.commit-seq-seed`). The counter
     /// is node-local and a push carries no dot file; the manifests travel with the rows.
     /// The caller holds [`Store::lock_commit`].
+    ///
+    /// The counter is written as [`CommitCounter`] JSON (`store.reserve.commit-marker`): a
+    /// build that holds the commit lock across its part write parses it as a bare integer,
+    /// fails, and so refuses the table instead of publishing out of ticket order.
     pub fn assign_commit_seq(&self, table: &str) -> Result<i64> {
         let data = self.table_dir(table)?.join("data");
         let path = data.join(COMMIT_SEQ_FILE);
         let counter = match self.metadata().read_optional(&path)? {
-            Some(bytes) => std::str::from_utf8(&bytes).map_err(|e| ContextError::Invalid(format!("{}: {e}", path.display())))?.trim().parse::<i64>().map_err(|e| {
-                StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
-            })?,
+            Some(bytes) => CommitCounter::read(&bytes, &format!("table `{table}`: file `{}`", path.display()))?,
             None => 0,
         };
         let held = counter.max(self.recorded_commit_seq(table)?);
         let next = held.checked_add(1).ok_or_else(|| ContextError::Invalid(format!("table `{table}` exhausted its commit sequence")))?;
         fs::create_dir_all(&data).at(&data)?;
-        self.metadata().replace(&path, next.to_string().as_bytes())?;
+        let marked = CommitCounter { format_version: FormatVersion::CURRENT, commit_seq: next };
+        self.metadata().replace(&path, &serde_json::to_vec(&marked).expect("a counter serializes"))?;
         Ok(next)
     }
 
@@ -818,6 +821,30 @@ const COMMIT_LOCK_FILE: &str = "commit.lock";
 /// The last commit sequence value a table assigned, under `data/`. The leading `.` keeps
 /// it node-local: a push uploads no dot file.
 const COMMIT_SEQ_FILE: &str = ".commit_seq";
+
+/// A table's node-local commit counter (`store.reserve.commit-marker`).
+#[derive(Debug, Serialize, Deserialize)]
+struct CommitCounter {
+    format_version: FormatVersion,
+    commit_seq: i64,
+}
+
+impl CommitCounter {
+    /// The value `bytes` record: a bare integer, which a build locking across its part write
+    /// leaves, or the JSON form, whose newer major refuses as `store.lay-out.format-newer`.
+    fn read(bytes: &[u8], file: &str) -> Result<i64> {
+        let unreadable = |why: String| ContextError::from(StoreError::StoreManifestUnreadable(format!("{file}: {why}")));
+        let text = std::str::from_utf8(bytes).map_err(|e| unreadable(e.to_string()))?;
+        if let Ok(bare) = text.trim().parse::<i64>() {
+            return Ok(bare);
+        }
+        if let Some(v) = FormatVersion::declared(bytes) {
+            v.admit(file)?;
+        }
+        let counter: CommitCounter = serde_json::from_str(text).map_err(|e| unreadable(e.to_string()))?;
+        Ok(counter.commit_seq)
+    }
+}
 
 /// How long a landing waits for a lock another landing holds before refusing.
 pub const LOCK_WAIT_SECS: u64 = 30;

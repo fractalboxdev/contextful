@@ -233,6 +233,8 @@ The column and table namespaces the engine holds, the provenance columns it inje
   *A-topology*
 - `commit-wait` — A commit waits at most 30 s for its table's commit lock or for a lower value's publication, then raises `StoreCommitLockTimeout`, a transient failure.
   *A-topology*
+- `commit-marker` — A commit rewrites its table's counter `data/.commit_seq` as JSON naming `format_version` and `commit_seq`, so a build reading a bare integer refuses the table before writing a part; a newer major refuses as {{store.lay-out.format-newer}}.
+  *A-topology*
 - `commit-seq-seed` — A commit assigns one above the greatest of the node's counter, every run manifest's `commit_seq` and the current snapshot's, so a store restored by a pull, or holding no counter, never reissues a value.
   *A-topology*
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
