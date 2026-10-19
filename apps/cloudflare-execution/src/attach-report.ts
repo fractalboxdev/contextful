@@ -27,7 +27,9 @@ type Release = {
     source_commit: string;
     suite_revision: string;
     storage_profile: string;
+    binding_origin?: string;
     compatible: boolean;
+    scenarios?: Scenario[];
   };
 };
 
@@ -89,7 +91,8 @@ export function attachConformanceReport(releasePath: string, providerPath: strin
     writeFileSync(join(staged, `${stem}.release.json`), JSON.stringify({
       ...release,
       sha256: archiveDigest,
-      d1_compatibility: { ...release.d1_compatibility, compatible: true },
+      d1_compatibility: { ...release.d1_compatibility, binding_origin: provider.binding_origin,
+        compatible: true, scenarios: provider.scenarios },
     }, null, 2) + "\n");
     rmSync(unpacked, { recursive: true });
     renameSync(staged, output);

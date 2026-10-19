@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const ARTIFACT: &[u8] = b"synthetic release artifact\n";
-const D1_KEYS: [&str; 7] = [
+pub(crate) const D1_KEYS: [&str; 7] = [
     "CONTEXTFUL_CONFORMANCE_D1_ENDPOINT", "CONTEXTFUL_CONFORMANCE_R2_ENDPOINT", "CONTEXTFUL_CONFORMANCE_R2_BUCKET",
     "CONTEXTFUL_CONFORMANCE_R2_ACCESS_KEY_ID", "CONTEXTFUL_CONFORMANCE_R2_SECRET_ACCESS_KEY",
     "CONTEXTFUL_CONFORMANCE_RECOVERY_ID", "CONTEXTFUL_CONFORMANCE_D1_DISPOSABLE",
@@ -43,8 +43,9 @@ fn executable(path: &Path, text: &str) {
     std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 }
 
-/// One native `contextful-ci release` whose consumer suite writes `scenarios` and exits `exit`,
-/// appending each `--storage-profile` it receives to `invocations`.
+/// One `contextful-ci release` cell whose consumer suite writes `scenarios`, or no report when
+/// `scenarios` is null, and exits `exit`, appending each `--storage-profile` it receives to
+/// `invocations`.
 struct Cell {
     _bin: tempfile::TempDir,
     _target: tempfile::TempDir,
@@ -56,6 +57,11 @@ struct Cell {
 
 impl Cell {
     fn package(profile: &str, scenarios: serde_json::Value, exit: i32, env: &[(&str, &str)]) -> Cell {
+        Cell::package_on(profile, &native_target(), scenarios, exit, env)
+    }
+
+    fn package_on(profile: &str, triple: &str, scenarios: serde_json::Value, exit: i32, env: &[(&str, &str)]) -> Cell {
+        let writes = if scenarios.is_null() { String::new() } else { String::from("printf '%s\\n' {} > \"$out\"\n") };
         let bin = tempfile::tempdir().unwrap();
         let target = tempfile::tempdir().unwrap();
         let dist = tempfile::tempdir().unwrap();
@@ -66,17 +72,16 @@ impl Cell {
         });
         let suite = bin.path().join("suite");
         executable(&suite, &format!(
-            "#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  case \"$1\" in\n    --output) shift; out=$1 ;;\n    --storage-profile) shift; printf '%s\\n' \"$1\" >> {} ;;\n  esac\n  shift\ndone\nprintf '%s\\n' {} > \"$out\"\nexit {exit}\n",
-            quote(invocations.to_str().unwrap()), quote(&report.to_string()),
+            "#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  case \"$1\" in\n    --output) shift; out=$1 ;;\n    --storage-profile) shift; printf '%s\\n' \"$1\" >> {} ;;\n  esac\n  shift\ndone\n{}exit {exit}\n",
+            quote(invocations.to_str().unwrap()), writes.replace("{}", &quote(&report.to_string())),
         ));
         let real = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         executable(&bin.path().join("cargo"), &format!(
             "#!/bin/sh\nif [ \"$1\" = build ]; then\n  t=''; b=contextful; prev=''\n  for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; [ \"$prev\" = --bin ] && b=\"$a\"; prev=\"$a\"; done\n  d=\"$CARGO_TARGET_DIR/$t/release\"\n  mkdir -p \"$d\"\n  if [ \"$b\" = contextful ]; then printf 'synthetic release artifact\\n' > \"$d/$b\"; else cp {} \"$d/$b\"; fi\n  chmod +x \"$d/$b\"\n  exit 0\nfi\nexec {} \"$@\"\n",
             quote(suite.to_str().unwrap()), quote(&real),
         ));
-        let triple = native_target();
         let mut command = Command::new(env!("CARGO_BIN_EXE_contextful-ci"));
-        command.args(["release", "--profile", profile, "--target", &triple, "--target-dir"]).arg(target.path())
+        command.args(["release", "--profile", profile, "--target", triple, "--target-dir"]).arg(target.path())
             .arg("--out").arg(dist.path()).current_dir(repo_root())
             .env("PATH", format!("{}:{}", bin.path().display(), std::env::var("PATH").unwrap_or_default()));
         for key in D1_KEYS {
@@ -131,6 +136,14 @@ fn a_suite_exiting_on_its_failing_verdict_records_no_process_failure() {
     let cases = crashed.report()["scenarios"].as_array().unwrap().clone();
     assert!(cases.iter().any(|case| case["id"] == "suite-exit" && case["outcome"] == "failed" && case["exit_code"] == 2),
         "a suite exiting 2 left no process failure: {cases:?}");
+
+    let silent = Cell::package("contextful-edge", serde_json::Value::Null, 2, &[]);
+    assert!(silent.run.status.success(), "{}", String::from_utf8_lossy(&silent.run.stderr));
+    let report = silent.report();
+    let cases = report["scenarios"].as_array().unwrap();
+    assert!(cases.iter().any(|case| case["id"] == "suite-exit" && case["outcome"] == "failed" && case["exit_code"] == 2),
+        "a suite exiting 2 without a report left no process failure: {report}");
+    assert_eq!(report["compatible"], false);
 }
 
 /// A native full cell holding no D1 binding runs no `cloudflare-d1` pass and declares the
@@ -153,6 +166,7 @@ fn a_full_cell_without_a_d1_binding_declares_the_d1_pass_absent() {
     let metadata = cell.metadata();
     assert_eq!(metadata["d1_compatibility"]["binding_origin"], "absent");
     assert_eq!(metadata["d1_compatibility"]["compatible"], false);
+    assert_eq!(metadata["d1_compatibility"]["scenarios"], d1["scenarios"], "release metadata omits the D1 outcomes");
     let archived = Command::new("tar").arg("-xzOf").arg(cell.dist.path().join(format!("{}.tar.gz", cell.stem)))
         .arg(format!("{}/cloudflare-d1.compatibility.json", cell.stem)).output().unwrap();
     assert_eq!(serde_json::from_slice::<serde_json::Value>(&archived.stdout).unwrap(), d1);
@@ -161,8 +175,9 @@ fn a_full_cell_without_a_d1_binding_declares_the_d1_pass_absent() {
     assert!(bound.run.status.success(), "{}", String::from_utf8_lossy(&bound.run.stderr));
     assert_eq!(bound.profiles_run(), ["local", "cloudflare-d1"]);
     let d1 = bound.json(&format!("{}.cloudflare-d1.compatibility.json", bound.stem));
-    assert_eq!(d1["binding_origin"], "unverified", "an R2-less binding reads as a worker binding");
+    assert_eq!(d1["binding_origin"], "unverified", "an R2-less binding counts as a worker binding");
     assert_eq!(d1["compatible"], false);
+    assert_eq!(bound.metadata()["d1_compatibility"]["scenarios"], d1["scenarios"], "release metadata omits the D1 outcomes");
 }
 
 /// One release cell's metadata, as `contextful-ci release` writes it, with the given verdicts.
@@ -198,7 +213,14 @@ fn formula_writes_release_notes_stating_every_cells_verdict() {
             _ => serde_json::json!({"compatible":false, "scenarios":[
                 {"id":"pagination-checkpoint", "required":true, "outcome":"skipped", "diagnostic":"ConformanceTargetNotExecutable"}]}),
         };
-        let d1 = (profile == "contextful-full").then(|| serde_json::json!({"compatible":false, "binding_origin":"absent"}));
+        let d1 = (profile == "contextful-full").then(|| match target {
+            "x86_64-unknown-linux-musl" => serde_json::json!({"compatible":false, "binding_origin":"unverified", "scenarios":[
+                {"id":"pagination-checkpoint", "required":true, "outcome":"failed"}]}),
+            "aarch64-apple-darwin" => serde_json::json!({"compatible":false, "binding_origin":"absent", "scenarios":[
+                {"id":"pagination-checkpoint", "required":true, "outcome":"skipped", "diagnostic":"ConformanceTargetNotExecutable"}]}),
+            _ => serde_json::json!({"compatible":false, "binding_origin":"absent", "scenarios":[
+                {"id":"pagination-checkpoint", "required":true, "outcome":"skipped", "diagnostic":"ConformanceBindingAbsent"}]}),
+        });
         cell_metadata(profile, target, local, d1)
     }).collect();
     std::fs::write(&manifest, serde_json::to_vec(&cells).unwrap()).unwrap();
@@ -218,6 +240,10 @@ fn formula_writes_release_notes_stating_every_cells_verdict() {
     assert!(row("contextful-edge", "aarch64-apple-darwin").contains("ConformanceTargetNotExecutable"), "{notes}");
     let full_arm = row("contextful-full", "aarch64-unknown-linux-musl");
     assert!(full_arm.contains("absent"), "the D1 column hides the absent binding: {full_arm}");
+    let full_x86 = row("contextful-full", "x86_64-unknown-linux-musl");
+    assert!(full_x86.trim_end().ends_with("| incompatible: 1 failed |"), "the D1 column hides the failed outcomes: {full_x86}");
+    let full_darwin = row("contextful-full", "aarch64-apple-darwin");
+    assert!(full_darwin.trim_end().ends_with("| not executed: `ConformanceTargetNotExecutable` |"), "the D1 column hides the target diagnostic: {full_darwin}");
     assert!(control.trim_end().ends_with("| — |"), "a profile without a D1 pass reports one: {control}");
 
     cells[0]["compatibility"].as_object_mut().unwrap().remove("compatible");
@@ -225,4 +251,6 @@ fn formula_writes_release_notes_stating_every_cells_verdict() {
     let missing = tempfile::tempdir().unwrap();
     let refused = formula(missing.path());
     assert!(!refused.status.success(), "a cell without a verdict produced release notes");
+    assert!(!missing.path().join("SHA256SUMS").exists() && !missing.path().join("Formula").exists(),
+        "a refused manifest left formulae and checksums behind");
 }

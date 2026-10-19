@@ -12,6 +12,9 @@ const LINUX_X86: &str = "x86_64-unknown-linux-musl";
 fn ci(args: &[&str], bin: Option<&Path>) -> Output {
     let mut c = Command::new(env!("CARGO_BIN_EXE_contextful-ci"));
     c.args(args).current_dir(repo_root());
+    for key in crate::verdict::D1_KEYS {
+        c.env_remove(key);
+    }
     if let Some(bin) = bin {
         c.env("PATH", format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default()));
     }
