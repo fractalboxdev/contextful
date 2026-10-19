@@ -325,8 +325,8 @@ fn required_tools() {
     assert_eq!(bin.calls(), ["elan toolchain list"]);
 }
 
-/// The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, and reports the floor and baseline verdicts.
-// spec: assurance.gate.evaluate-stage@316d20b1
+/// The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.
+// spec: assurance.gate.evaluate-stage@94fe67c3
 #[test]
 fn the_evaluate_stage_runs_the_native_case_set_and_reports_both_verdicts() {
     const MEASURED: &str = r#"

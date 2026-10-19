@@ -27,6 +27,7 @@ mod secrets;
 mod shell;
 mod source_lint;
 mod source_binding;
+mod split_parts;
 mod target_dirs;
 mod stages;
 mod test_first;

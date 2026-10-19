@@ -124,8 +124,8 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
     }
 }
 
-/// Workspace compilation and both CLI partitions run separately; four groups run every other package.
-// spec: assurance.gate.workspace-parts@4ac089c3
+/// Workspace compilation, the differential CLI partition and the first CLI shard run separately; four groups run every other package.
+// spec: assurance.gate.workspace-parts@f8703584
 #[test]
 fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let r = Repo::init();
@@ -146,12 +146,13 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     assert_eq!(calls.lines().count(), 1, "compile runs no package suite: {calls}");
 
     std::fs::remove_file(&log).unwrap();
-    let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli"]);
+    let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli-1"]);
     assert!(tested.status.success(), "{}", stderr(&tested));
     let calls = std::fs::read_to_string(&log).unwrap();
-    assert!(calls.contains("test --package contextful-cli"), "{calls}");
-    assert!(calls.contains("--skip differential::"), "{calls}");
-    assert_eq!(calls.lines().count(), 1, "CLI runs no workspace compile: {calls}");
+    assert!(calls.contains("test --package contextful-cli --lib"), "{calls}");
+    assert!(calls.contains("test --package contextful-cli --doc"), "{calls}");
+    assert!(calls.contains("test --package contextful-cli --test integration -- --list --format terse"), "{calls}");
+    assert!(!calls.contains("--workspace"), "CLI runs no workspace compile: {calls}");
 
     std::fs::remove_file(&log).unwrap();
     let formal = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli-formal"]);

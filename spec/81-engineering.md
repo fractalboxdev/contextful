@@ -156,7 +156,7 @@ Target directories, the engine-linked invocation, linked query functions, build 
   *because every engine-linked test binary embeds the bundled engine, and full debug information multiplies each past a sandbox's disk*
 - `release-profile` — Release builds compile with thin link-time optimization, one codegen unit per crate and symbols stripped, and unwind on panic.
   *because the run keeper survives a panicking job only by unwinding to its guard*
-- `profile-build` — The features stage tests each package under every feature set its manifest lists in `feature-runs`: other packages share one check; each binary feature run has separate checks for differential tests and all remaining tests.
+- `profile-build` — The features stage tests each package under every feature set its manifest lists in `feature-runs`: each other package has its own check; each binary feature run has separate checks for differential tests and all remaining tests.
   *because one cold build of the binary under one feature set fills most of a stage's wall clock, and a listed set reaches what none and all miss*
 - `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
@@ -218,7 +218,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `test-first-parts` — Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package checks only its own changed tests against the base in a separate dispatch.
   *because one base build per package fits the sandbox's wall clock more reliably*
-- `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run differential and remaining CLI tests separately, and run each other non-acceptance package suite in exactly one of four groups.
+- `workspace-parts` — Remote workspace checks compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in four name-hashed shards, the first adding unit tests and doctests, and each other non-acceptance package suite in one of four groups.
   *A-assurance*
 - `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
   *A-assurance*
@@ -235,7 +235,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `timeout-cleanup` — A timed-out part retains phase timings and stdout/stderr diagnostics, terminates its owned process tree, verifies descendant exit and reports a failed verdict before releasing its build slot.
   *A-assurance*
 - `pins-stage` — The pins stage resolves every pinned artifact identity a run depends on before any compilation.
-- `evaluate-stage` — The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, and reports the floor and baseline verdicts.
+- `evaluate-stage` — The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.
 - `schema-stage` — The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`.
 - `secret-ciphertext` — In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file other than `.env.example` holding a value without the `encrypted:` prefix, or a tracked `.env.keys`, raises `SecretPlaintext`, naming file and key.
   *because a tracked file reaches every clone, and only dotenvx ciphertext is safe there while its private key stays untracked*

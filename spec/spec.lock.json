@@ -28872,7 +28872,7 @@
       "operation": "build",
       "subject": "profile-build",
       "kind": "behavior",
-      "statement": "The features stage tests each package under every feature set its manifest lists in `feature-runs`: other packages share one check; each binary feature run has separate checks for differential tests and all remaining tests.",
+      "statement": "The features stage tests each package under every feature set its manifest lists in `feature-runs`: each other package has its own check; each binary feature run has separate checks for differential tests and all remaining tests.",
       "why": "because one cold build of the binary under one feature set fills most of a stage's wall clock, and a listed set reaches what none and all miss",
       "file": "spec/81-engineering.md",
       "line": 159
@@ -29167,7 +29167,7 @@
       "operation": "gate",
       "subject": "workspace-parts",
       "kind": "behavior",
-      "statement": "Remote workspace checks compile the feature-unified workspace without running tests, run differential and remaining CLI tests separately, and run each other non-acceptance package suite in exactly one of four groups.",
+      "statement": "Remote workspace checks compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in four name-hashed shards, the first adding unit tests and doctests, and each other non-acceptance package suite in one of four groups.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 221
@@ -29278,7 +29278,7 @@
       "operation": "gate",
       "subject": "evaluate-stage",
       "kind": "behavior",
-      "statement": "The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, and reports the floor and baseline verdicts.",
+      "statement": "The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 238
