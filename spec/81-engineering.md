@@ -198,13 +198,17 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `affected-every` — A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every required part.
   *A-assurance*
-- `affected-spec` — A change under `spec/` or `references/` reaches test-first validation and, for each clause whose statement or `spec/pins.toml` entry changed, the parts running its pinned test or theorem.
+- `affected-spec` — A change under `spec/` or `references/` reaches test-first validation, one under `spec/` the foundation workspace part, and each clause whose statement or `spec/pins.toml` entry changed the parts running its pinned test or theorem.
   *A-assurance*
+- `affected-spec-inputs` — A change to `spec/01-topology.md` or `spec/capabilities.toml` reaches crate-graph, to `spec/adr/A-assurance.md` the formal stage, and to `spec/terms/assurance.toml` every budget part.
+  *because those stages read the file directly, apart from any clause pin*
+- `affected-removed` — A clause the merge base's lock holds and HEAD's lacks reaches the evaluate stage.
+  *because the evaluate stage refuses a ledger entry naming a clause the lock lacks*
 - `affected-unplaced` — An unreadable spec lock or pins file, or a changed clause pinned outside every workspace package, reaches every required part.
   *because a pin the listing cannot place runs on a part the listing cannot name*
-- `affected-surfaces` — A change under `apps/` or `packages/` reaches the TypeScript surfaces part beside pins, toolchain and schema.
+- `affected-surfaces` — A change under `apps/` or `packages/` reaches the TypeScript surfaces, acceptance and crate-graph parts.
   *A-assurance*
-- `affected-formal` — A change under `formal/` other than its toolchain file reaches the formal stage and every CLI differential part.
+- `affected-formal` — A change under `formal/` other than a `lean-toolchain` file reaches the formal and evaluate stages, the foundation, CLI and CLI differential workspace parts, and every feature part.
   *A-assurance*
 - `windows-checks` — Windows native checks run only as optional diagnostics and contribute no required merge or release verdict.
   *A-assurance*

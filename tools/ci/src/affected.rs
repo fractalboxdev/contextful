@@ -9,7 +9,7 @@ use std::process::Command;
 const LOCK: &str = "spec/spec.lock.json";
 const PINS: &str = "spec/pins.toml";
 
-/// The parts every listing holds (`assurance.gate.affected-always`).
+/// The parts every listing holds (`assurance.gate.affected-parts`).
 const ALWAYS: [&str; 3] = ["pins", "toolchain", "schema"];
 
 /// A required part, or every part sharing a prefix.
@@ -34,9 +34,41 @@ fn part(p: &str) -> Match {
     Match::Part(p.to_string())
 }
 
-/// The formal stage and every CLI differential part (`assurance.gate.affected-formal`).
+/// The formal stage and every CLI differential part: the parts running a pinned theorem.
 fn formal() -> Vec<Match> {
     vec![part("formal"), part("workspace.cli-formal"), Match::Prefix("features.formal-")]
+}
+
+/// Every part reading the Lean tree under `formal/` (`assurance.gate.affected-formal`): the
+/// formal stage, the CLI's `formal::` and differential suites, the foundation package that
+/// builds `formal/reference`, the evaluate stage's protocol differential entry, and every
+/// feature part re-running those suites.
+fn lean_tree() -> Vec<Match> {
+    vec![
+        part("formal"),
+        part("evaluate"),
+        part("workspace.cli"),
+        part("workspace.cli-formal"),
+        part("workspace.foundation"),
+        Match::Prefix("features."),
+    ]
+}
+
+/// What a changed path under `spec/` or `references/` reaches (`assurance.gate.affected-spec`,
+/// `-spec-inputs`): test-first validation; for `spec/`, the foundation part, whose corpus and
+/// store suites read the live spec; and the stage reading the file directly.
+fn reach_of_spec(path: &str) -> Vec<Match> {
+    let mut m = vec![part("test-first.validate")];
+    if path.starts_with("spec/") {
+        m.push(part("workspace.foundation"));
+    }
+    match path {
+        "spec/01-topology.md" | "spec/capabilities.toml" => m.push(part("crate-graph")),
+        "spec/adr/A-assurance.md" => m.push(part("formal")),
+        "spec/terms/assurance.toml" => m.push(Match::Prefix("budget.")),
+        _ => {}
+    }
+    m
 }
 
 /// The subset of `required`, in its order, that the change HEAD against the merge base of
@@ -48,7 +80,7 @@ pub(crate) fn select(root: &Path, base: &str, required: Vec<String>) -> Result<V
     for path in changed_paths(&merge_base)? {
         let reach = if path.starts_with("spec/") || path.starts_with("references/") {
             spec = true;
-            Some(vec![part("test-first.validate")])
+            Some(reach_of_spec(&path))
         } else {
             reach_of_path(&path)
         };
@@ -71,20 +103,22 @@ pub(crate) fn select(root: &Path, base: &str, required: Vec<String>) -> Result<V
 }
 
 /// What a changed path outside `spec/` and `references/` reaches
-/// (`assurance.gate.affected-surfaces`, `-formal`, `-every`).
+/// (`assurance.gate.affected-surfaces`, `-formal`, `-every`). A TypeScript path also reaches
+/// acceptance, which builds `apps/console`, and crate-graph, which scans scripts for
+/// capability homes.
 fn reach_of_path(path: &str) -> Reach {
     let build_input = path == "Cargo.lock"
         || path == "Cargo.toml"
         || path.ends_with("/Cargo.toml")
         || path.starts_with("rust-toolchain")
-        || path == "formal/lean-toolchain"
+        || (path.starts_with("formal/") && (path == "formal/lean-toolchain" || path.ends_with("/lean-toolchain")))
         || ["crates/", "tools/", ".github/"].iter().any(|dir| path.starts_with(dir));
     if build_input {
         None
     } else if path.starts_with("apps/") || path.starts_with("packages/") {
-        Some(vec![part("surfaces")])
+        Some(vec![part("surfaces"), part("acceptance"), part("crate-graph")])
     } else if path.starts_with("formal/") {
-        Some(formal())
+        Some(lean_tree())
     } else {
         None
     }
@@ -123,6 +157,9 @@ impl Packages {
         } else if featured.contains(package) {
             m.push(part("features.packages"));
         }
+        if crate::stage::CONNECTOR_PACKAGES.contains(&package) {
+            m.push(part("connectors"));
+        }
         Ok(Some(m))
     }
 }
@@ -149,11 +186,16 @@ fn pinned(root: &Path, merge_base: &str, packages: &mut Packages) -> Result<Reac
             ids.insert(id);
         }
     }
+    let mut out = Vec::new();
+    // The evaluate stage refuses a ledger entry naming a clause the lock lacks
+    // (`assurance.gate.affected-removed`).
+    if before.keys().any(|id| !after.contains_key(id)) {
+        out.push(part("evaluate"));
+    }
     if ids.is_empty() {
-        return Ok(Some(Vec::new()));
+        return Ok(Some(out));
     }
     let tags = tags()?;
-    let mut out = Vec::new();
     for id in ids {
         for path in tags.get(id).into_iter().flatten() {
             match reach_of_pinned_file(root, path, packages)? {
