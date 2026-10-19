@@ -28,6 +28,7 @@ fn cli_repo() -> Repo {
     r.write("crates/contextful-cli/src/lib.rs", lib);
     let mut suite: String = (0..ORDINARY).map(|i| marking(&format!("ordinary_{i:02}"))).collect();
     suite.push_str("mod differential {\n    #[test]\n    fn reference() { std::fs::write(\"reference.ran\", \"yes\").unwrap(); }\n}\n");
+    suite.push_str("mod protocol_differential {\n    #[test]\n    fn seeded() { std::fs::write(\"protocol.ran\", \"yes\").unwrap(); }\n}\n");
     r.write("crates/contextful-cli/tests/integration/main.rs", &suite);
     r.lock();
     r.commit("a CLI suite of twelve ordinary tests, a unit test and a doctest");
@@ -74,6 +75,7 @@ fn the_remaining_cli_tests_run_once_across_four_hash_shards_and_the_first_runs_d
     let expected: Vec<String> = (0..ORDINARY).map(|i| format!("ordinary_{i:02}")).chain(["doctest".into(), "unit".into()]).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
     assert_eq!(seen, expected, "the shards together ran another set than the suite");
     assert!(!package.join("reference.ran").exists(), "a shard ran the differential partition");
+    assert!(!package.join("protocol.ran").exists(), "a shard ran a test the differential filter reaches");
 
     // A failure reds exactly the one shard holding the failing test.
     for name in ran(&package) {
@@ -139,17 +141,31 @@ fn entry(id: &str, test: &str, op: &str) -> String {
     format!("[entry.{id}]\nclause = \"run.journal.entry-key\"\nmetric = \"figure.value\"\nkind = \"test\"\ntier = \"gate\"\nmethod = {{ test = \"{test}\" }}\ntarget = {{ op = \"{op}\", value = 4 }}\n\n")
 }
 
+const NATIVE: &str = r#"
+#[test]
+fn native_set() {
+    let dir = std::path::PathBuf::from(std::env::var_os("CONTEXTFUL_MEASURE_DIR").expect("a measure run"));
+    let record = "{\"id\": \"native-golden-floor\", \"value\": 0.75, \"n\": 30, \"seed\": 7, \"run\": {\"processor\": \"t\", \"nproc\": 1, \"memory_limit\": null}}";
+    std::fs::write(dir.join("native-golden-floor.json"), record).unwrap();
+}
+"#;
+
+const NATIVE_ENTRY: &str = "[entry.native-golden-floor]\nclause = \"assurance.baseline.native-gate\"\nmetric = \"retrieval.hybrid.r_precision\"\nkind = \"eval\"\ntier = \"gate\"\nmethod = { test = \"demo::measured::native_set\" }\ntarget = { op = \">=\", value = 0.6 }\nseed = 7\n\n";
+
+/// The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.
+// spec: assurance.gate.evaluate-stage@94fe67c3
 #[test]
 fn the_evaluate_stage_dispatches_one_part_per_package_group_each_holding_its_own_floor() {
     let r = Repo::init();
-    r.write("spec/spec.lock.json", "{\"clauses\": [{\"id\": \"run.journal.entry-key\"}]}\n");
+    r.write("spec/spec.lock.json", "{\"clauses\": [{\"id\": \"run.journal.entry-key\"}, {\"id\": \"assurance.baseline.native-gate\"}]}\n");
+    r.write("evals/cases/native.jsonl", "{}\n");
     r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod measured;\n");
-    r.write("crates/demo/tests/integration/measured.rs", MEASURED);
+    r.write("crates/demo/tests/integration/measured.rs", &format!("{MEASURED}{NATIVE}"));
     r.write("crates/engine/Cargo.toml", &manifest("contextful-engine", ""));
     r.write("crates/engine/src/lib.rs", "");
     r.write("crates/engine/tests/integration/main.rs", "mod measured;\n");
     r.write("crates/engine/tests/integration/measured.rs", MEASURED);
-    r.write("evals/ledger.toml", &(entry("demo-figure", "demo::measured::measured", "==") + &entry("engine-figure", "contextful_engine::measured::measured", "==")));
+    r.write("evals/ledger.toml", &(entry("demo-figure", "demo::measured::measured", "==") + &entry("engine-figure", "contextful_engine::measured::measured", "==") + NATIVE_ENTRY));
     r.lock();
     r.commit("a foundation entry and a runtime entry");
 
@@ -167,18 +183,31 @@ fn the_evaluate_stage_dispatches_one_part_per_package_group_each_holding_its_own
     assert!(out.status.success(), "{err}");
     assert!(err.contains("measure: engine-figure = 4") && !err.contains("demo-figure"), "the runtime part measured beyond its group: {err}");
     assert!(err.contains("evaluate: floor verdict held"), "{err}");
+    assert!(!err.contains("baseline verdict"), "the runtime part reported the native set's verdict: {err}");
+
+    // The native case set's part reports its baseline verdict beside the floor.
+    let out = r.gate(&["--stage", "evaluate.foundation"]);
+    let err = stderr(&out);
+    assert!(out.status.success(), "{err}");
+    assert!(err.contains("measure: native-golden-floor = 0.75") && !err.contains("engine-figure"), "{err}");
+    assert!(err.contains("evaluate: baseline verdict held for evals/cases/native.jsonl (native-golden-floor)"), "{err}");
+
+    let out = r.gate(&["--stage", "evaluate.probe"]);
+    assert!(out.status.success(), "the probe part with no probe entry fails: {}", stderr(&out));
+    assert!(!stderr(&out).contains("-figure") && !stderr(&out).contains("native-golden-floor ="), "{}", stderr(&out));
 
     let out = r.gate(&["--stage", "evaluate.read"]);
     assert!(out.status.success(), "a part with no entry fails: {}", stderr(&out));
     assert!(!stderr(&out).contains("-figure"), "{}", stderr(&out));
 
     // A missed target reds its group's part alone, and the whole stage with it.
-    r.write("evals/ledger.toml", &(entry("demo-figure", "demo::measured::measured", ">") + &entry("engine-figure", "contextful_engine::measured::measured", "==")));
+    r.write("evals/ledger.toml", &(entry("demo-figure", "demo::measured::measured", ">") + &entry("engine-figure", "contextful_engine::measured::measured", "==") + NATIVE_ENTRY));
     r.commit("the foundation figure misses its target");
     let out = r.gate(&["--stage", "evaluate.foundation"]);
     let err = stderr(&out);
     assert!(!out.status.success(), "{err}");
     assert!(err.contains("demo-figure = 4 against > 4") && err.contains("evaluate: floor verdict red"), "{err}");
+    assert!(err.contains("evaluate: baseline verdict held for evals/cases/native.jsonl"), "a missed figure beside the native set reds its baseline: {err}");
     assert!(r.gate(&["--stage", "evaluate.runtime"]).status.success(), "the foundation miss reds the runtime part");
     assert!(!r.gate(&["--stage", "evaluate"]).status.success(), "the whole stage holds over a red part");
 }

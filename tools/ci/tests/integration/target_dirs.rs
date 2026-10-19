@@ -16,6 +16,18 @@ fn recording(log: &std::path::Path, code: i32) -> String {
     )
 }
 
+/// [`recording`], answering a `--list` invocation with `names` as libtest's terse listing.
+fn listing(log: &std::path::Path, names: &[String]) -> String {
+    let real = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let listed: String = names.iter().map(|n| format!(" '{n}: test'")).collect();
+    format!(
+        "case \"$1\" in metadata|tree) exec '{real}' \"$@\" ;; esac\necho \"$CARGO_TARGET_DIR $*\" >> '{}'\n\
+         case \" $* \" in *\" --list \"*) printf '%s\\n'{listed} ;; esac\n\
+         mkdir -p \"$CARGO_TARGET_DIR\" && touch \"$CARGO_TARGET_DIR/built\"\nexit 0\n",
+        log.display()
+    )
+}
+
 fn with_acceptance(r: &Repo) {
     r.write("crates/acceptance/Cargo.toml", &manifest("contextful-acceptance", ""));
     r.write("crates/acceptance/src/lib.rs", "");
@@ -153,6 +165,24 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     assert!(calls.contains("test --package contextful-cli --doc"), "{calls}");
     assert!(calls.contains("test --package contextful-cli --test integration -- --list --format terse"), "{calls}");
     assert!(!calls.contains("--workspace"), "CLI runs no workspace compile: {calls}");
+
+    // The four shards run every ordinary integration test once by exact name, and no test
+    // any `differential::` filter reaches, `protocol_differential::` among them.
+    let ordinary: Vec<String> = (0..16).map(|i| format!("ordinary_{i:02}")).collect();
+    let differential = ["differential::reference", "protocol_differential::seeded", "protocol_differential::replays"];
+    let names: Vec<String> = ordinary.iter().cloned().chain(differential.iter().map(|n| n.to_string())).collect();
+    let mut sharded = Vec::new();
+    for k in 1..=4 {
+        std::fs::remove_file(&log).unwrap();
+        let shard = r.gate_with_cargo(&listing(&log, &names), &["--stage", &format!("workspace.cli-{k}")]);
+        assert!(shard.status.success(), "cli-{k}: {}", stderr(&shard));
+        let calls = std::fs::read_to_string(&log).unwrap();
+        for line in calls.lines().filter(|l| l.contains("--exact")) {
+            sharded.extend(line.split("--exact").nth(1).unwrap().split_whitespace().map(str::to_string));
+        }
+    }
+    sharded.sort();
+    assert_eq!(sharded, ordinary, "the shards ran another multiset than the ordinary tests");
 
     std::fs::remove_file(&log).unwrap();
     let formal = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli-formal"]);

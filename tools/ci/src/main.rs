@@ -726,8 +726,12 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
     run_staged(root, "workspace", &args)
 }
 
+/// The libtest name filter selecting the differential CLI tests: a substring match, so it
+/// also reaches `protocol_differential::`.
+const DIFFERENTIAL_FILTER: &str = "differential::";
+
 /// Shard `k` of the remaining CLI tests (`assurance.gate.workspace-parts`): every
-/// integration test outside the differential module whose name hashes to `k` of
+/// integration test [`DIFFERENTIAL_FILTER`] does not reach whose name hashes to `k` of
 /// [`CLI_SHARDS`], run by exact name; the first shard also runs the library and binary unit
 /// tests and the doctests, which no hash partition reaches.
 fn cli_shard(root: &Path, k: usize) -> Result<()> {
@@ -756,7 +760,7 @@ fn cli_shard(root: &Path, k: usize) -> Result<()> {
     let names: Vec<String> = String::from_utf8_lossy(&out.stdout)
         .lines()
         .filter_map(|line| line.strip_suffix(": test"))
-        .filter(|name| !name.starts_with("differential::") && shard_of(name) == k)
+        .filter(|name| !name.contains(DIFFERENTIAL_FILTER) && shard_of(name) == k)
         .map(str::to_string)
         .collect();
     eprintln!("workspace: CLI shard {k} of {CLI_SHARDS} runs {} integration test(s)", names.len());
@@ -796,9 +800,9 @@ fn target_kinds(root: &Path, package: &str) -> Result<Vec<String>> {
 /// selecting both partitions retains Cargo's complete suite, including doctests.
 fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
     if !ordinary {
-        args.extend(["--test", "integration", "differential::"]);
+        args.extend(["--test", "integration", DIFFERENTIAL_FILTER]);
     } else if !formal {
-        args.extend(["--", "--skip", "differential::"]);
+        args.extend(["--", "--skip", DIFFERENTIAL_FILTER]);
     }
 }
 
