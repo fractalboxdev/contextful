@@ -89,6 +89,7 @@ The pipeline specification, its serializations, manifest discovery, the content 
 
 unsettled: What retires a key a source stops serving under `append`: a run declaring itself complete state, or a per-connector delete signal? owner: pipeline affects: run.declare
 
+unsettled: How does a read driven by object-arrival keys tolerate duplicate, reordered or missed notifications without exposing an incomplete prefix? owner: pipeline affects: run.land
 unsettled: Does `on_table_error` take a per-table override, and a cap on failed tables before a fire halts anyway? owner: pipeline affects: run.declare
 
 ## compile
@@ -229,7 +230,21 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a batch without a key can neither replay nor resume under {{run.land.receive-batch-key}}*
 - `receive-pipeline-unknown` — A delivery to a pipeline id that no declaration names, or whose source is not `receive`, raises `ReceivePipelineUnknown` before the body is read, and no table lands.
   *because a sender's misaddressed batch must not land in another pipeline's tables*
+<<<<<<< HEAD
 - `receive-endpoint-status` — The receive route answers `400` for {{run.land.receive-key-missing}}, `404` for {{run.land.receive-pipeline-unknown}}, `403` for {{run.land.receive-write-not-granted}}, `413` for {{run.land.receive-batch-too-large}}, `410` for {{run.land.receive-key-expired}}, `503` with `Retry-After` for {{run.land.receive-backpressure}}, {{run.land.receive-push-wait}} or a retryable failed table, and `422` otherwise.
+=======
+- `receive-endpoint-status` — The receive route answers `400` for {{run.land.receive-key-missing}}, `404` for {{run.land.receive-pipeline-unknown}}, `403` for {{run.land.receive-write-not-granted}}, `413` for {{run.land.receive-batch-too-large}}, `410` for {{run.land.receive-key-expired}}, `503` with `Retry-After` for {{run.land.receive-backpressure}} or a retryable failed table, and `422` for other refused batches.
+- `receive-queued` — Under {{topology.compose.queue-extension}}, a request asking for a queued answer gets `202` with its batch key once admitted and queued; a `202` is custody, never {{run.land.receive-ack}}'s success.
+  *because a sender must not read a queued batch as committed when a later landing can still refuse it*
+- `receive-queued-admission` — A queued delivery passes every check {{run.land.receive-endpoint}} runs before reading a body, and a refused delivery queues nothing.
+  *because a revoked or under-granted sender must learn its refusal before handing over custody*
+- `receive-queued-outcome` — `GET /receive/:pipeline/:key` answers a queued batch's outcome: `pending`, each table's committed run, or the typed refusal its landing raised.
+  *because a sender holding only a queued receipt reads success or refusal from one place*
+- `receive-queued-window` — A queued batch's key window opens when it queues; a consumer reaching it past {{run.land.receive-key-expired}}'s window records that refusal as its outcome and lands nothing.
+  *because a batch delayed in the queue must end typed rather than land after its replay guarantee lapsed*
+- `receive-queued-spill` — A body past the queue's message cap is written to the bucket under its batch key before its message queues, and deleted once its outcome records.
+  *because a queue message carries a reference when a body under `max_batch_bytes` still exceeds the provider's cap*
+>>>>>>> c0f5f047 (spec(run): a queued receive answers custody, admits before queueing and ends typed past its key window)
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
 - `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull.
@@ -313,6 +328,8 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because a target the export cannot authenticate to is known before a batch is built*
 - `cursor-after-ack` — The cursor, the last delivered `_commit_seq` and `_row_seq`, commits only after the target answers 2xx for the batch.
   *because an unacknowledged batch remains eligible for delivery after a restart*
+- `queue-wake` — A post-commit queue message only wakes an exporter, which reads through {{run.export.commit-order}} and advances under {{run.export.cursor-after-ack}}; a lost message delays delivery to the next wake and skips no row.
+  *because a message lost between commit and enqueue must not lose the rows it announced*
 - `local-state` — The local storage profile keeps log cursors in `.contextful/exports/<project>/<name>.json`, outside corpus sync, and typed delivery state in `machine.sqlite`.
 - `remote-state` — Under {{run.journal.container-profile}}, PostgreSQL holds typed outboxes, acknowledged keyed state and log checkpoints in the execution database; a replacement reoffers identical pending event ids before advancing its acknowledged frontier.
   *A-run*

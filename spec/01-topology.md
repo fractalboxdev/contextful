@@ -70,10 +70,8 @@ The two halves of the engine, the three crossings between them, complete mediati
 - `enforcement-span` — The enforcement stack spans both halves: capability allowlists and the journal on the run path; the statement guard, visibility semi-join, row and column restriction, masking and the audit chain on the read path.
 - `semantic-layer` — Enforcement interprets no content. Retrieval, memory synthesis, the operator console and inference placement interpret content and reach enforcement through the three crossings alone.
 - `one-tree` — Laptop through cluster runs from one source tree. A single-node or edge deployment runs no external queue, cache or coordination process; a multi-node deployment adds one shared database.
-- `queue-extension` — A target profile declaring a `queue` role routes `receive` ingress, object arrival and post-commit fan-out through that managed queue behind the `Queue` port; a profile declaring none uses the local spool, and every store write stays in the engine.
+- `queue-extension` — A target profile declaring a `queue` role carries `receive` batches, object-arrival keys and post-commit wake-ups on that managed queue behind the `Queue` port; a profile declaring none uses the local spool. Only the engine writes the store.
   *A-topology*
-- `queue-answer` — Under a `queue` role, a `receive` answers once its batch is queued, carrying the batch key, or after its commit when the request asks for it.
-  *because a sender needing read-your-write waits for the commit while every other sender keeps its buffer through eviction*
 - `connector-pillar` — A connector is an interface world run in a sandboxed component host that mediates every capability. A native connector, the first-party path for stateful sources, satisfies the same schema, record and cursor contract.
 - `open-store` — Table data sits in columnar parts with a JSON manifest and a rebuildable catalog on plain object storage, readable by standard SQL tooling. No proprietary container or opaque blob holds table data.
 - `inference-egress` — Model access leaves the process through one operator-configured endpoint speaking OpenAI-compatible HTTP. The one provider-shaped step serializes a tool's parameter schema into the provider's envelope.
@@ -221,6 +219,7 @@ flowchart LR
   REF -. "ParityDivergence" .-> REFUSED
 ```
 
+unsettled: Which primitive fills an optional `queue` role in each target file, and how `corpus.targets` checks a shape declaring it? owner: topology affects: topology.deploy
 unsettled: Which role hosts heavy compute on a provider exposing neither a container primitive nor a long-running function? owner: topology affects: topology.deploy
 
 ## publish-hostname
