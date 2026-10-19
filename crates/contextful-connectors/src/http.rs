@@ -702,6 +702,9 @@ pub struct HttpSource {
     served: Option<Value>,
     /// Under next-URL pagination: the pages this walk read and the URL of the page after them.
     next_url: Option<(u64, String)>,
+    /// Whether this walk re-followed its pages to a position's count, so its last page
+    /// vouches for no complete snapshot (`connector.source.http-url-refollow`).
+    refollowed: bool,
 }
 
 impl HttpSource {
@@ -739,6 +742,7 @@ impl HttpSource {
             requests: 0,
             served: None,
             next_url: None,
+            refollowed: false,
         })
     }
 
@@ -1078,6 +1082,7 @@ impl HttpSource {
         self.requests = 0;
         self.served = None;
         self.next_url = None;
+        self.refollowed = false;
     }
 
     /// Fetch the page `token` names as one request of the walk, held to [`PAGE_CAP`]
@@ -1128,9 +1133,12 @@ impl HttpSource {
     }
 
     /// Follow the walk from its first page past `read` pages, landing none of their rows: the
-    /// URL of the page after them, or `None` when the walk ends first.
+    /// URL of the page after them, or `None` when the walk ends first. The vendor's listing may
+    /// have moved since those pages were read, so the walk then reports no complete snapshot
+    /// (`connector.source.http-url-refollow`).
     fn refollow(&mut self, base: &Url, request: &PullRequest, read: u64) -> Result<Option<String>, Failure> {
         self.restart();
+        self.refollowed = true;
         let mut token: Option<String> = None;
         for _ in 0..read {
             match self.counted_page(base, token.as_deref(), request)? {
@@ -1197,7 +1205,7 @@ impl HttpSource {
             pulled.insert("cursor".into(), Value::Object(cursor));
         }
         pulled.insert("more".into(), Value::Bool(more));
-        pulled.insert("snapshot_complete".into(), Value::Bool(!more && !self.watermarked));
+        pulled.insert("snapshot_complete".into(), Value::Bool(!more && !self.watermarked && !self.refollowed));
         Ok(Value::Object(pulled))
     }
 }

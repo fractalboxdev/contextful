@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 325 | 66 | 24 | 5 | 283 | 0 | 283 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 2 | 14 | 380 | 92 | 22 | 12 | 297 | 0 | 297 |
+| `connector` | 2 | 14 | 381 | 92 | 22 | 12 | 298 | 0 | 298 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 587 | 127 | 48 | 18 | 547 | 0 | 547 |
-| `store` | 3 | 19 | 318 | 64 | 18 | 11 | 307 | 0 | 307 |
+| `run` | 3 | 29 | 589 | 128 | 48 | 18 | 549 | 0 | 547 |
+| `store` | 3 | 19 | 319 | 64 | 19 | 11 | 308 | 0 | 307 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2746 | 681 | 220 | 77 | 2452 | 0 | |
+| **total** | 22 | 169 | 2750 | 682 | 221 | 77 | 2456 | 0 | |
 
 Decision records: 18.
 
@@ -27,9 +27,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
-| 2 — The store | 9 | 194 | 184 | passing | closed |
-| 3 — The run path | 12 | 304 | 292 | passing | closed |
-| 4 — Ingest | 25 | 617 | 511 | passing | closed |
+| 2 — The store | 9 | 195 | 185 | passing | closed |
+| 3 — The run path | 12 | 306 | 294 | passing | closed |
+| 4 — Ingest | 25 | 618 | 512 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -857,6 +857,7 @@ Unscheduled operations: 13.
 | `connector.source.http-limiter` | `crates/contextful-cli/tests/integration/pipeline.rs::a_bound_quota_meters_every_page_of_a_run` | performed |
 | `connector.source.http-page-pull` | `crates/contextful-connectors/tests/integration/http.rs::a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page` | performed |
 | `connector.source.http-scope-probe` | `crates/contextful-connectors/tests/integration/http.rs::the_scope_probe_runs_before_the_first_page` | performed |
+| `connector.source.http-url-refollow` | `crates/contextful-connectors/tests/integration/http.rs::a_refollowed_url_walk_reports_its_snapshot_incomplete` | performed |
 | `connector.source.http-url-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_next_url_walk_keeps_the_next_urls_query_out_of_every_position` | performed |
 | `connector.source.http-watermark-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_watermarked_read_pulls_one_page_carrying_its_floor` | performed |
 | `connector.source.image-header` | `spec/pins.toml` | performed |
@@ -1775,6 +1776,8 @@ Unscheduled operations: 13.
 | `run.own.body-public-configuration` | `spec/pins.toml` | performed |
 | `run.own.checkpoint-commit` | `crates/contextful-engine/tests/integration/runner.rs::a_window_staging_two_gib_completes_in_one_fire` | performed |
 | `run.own.checkpoint-frontier` | `crates/contextful-engine/tests/integration/runner.rs::a_monotonic_checkpoint_waits_for_a_strict_frontier_advance` | performed |
+| `run.own.checkpoint-id-length` | `crates/contextful-engine/tests/integration/runner.rs::a_run_id_too_long_for_a_checkpoint_commits_nothing` | performed |
+| `run.own.checkpoint-landed` | `crates/contextful-engine/tests/integration/runner.rs::a_failed_run_records_what_its_checkpoints_landed` | performed |
 | `run.own.checkpoint-resume` | `crates/contextful-engine/tests/integration/runner.rs::a_fire_after_a_crash_resumes_from_the_last_checkpoint` | performed |
 | `run.own.checkpoint-run-id` | `crates/contextful-engine/tests/integration/runner.rs::a_window_staging_two_gib_completes_in_one_fire` | performed |
 | `run.own.checkpoint-scope` | `crates/contextful-engine/tests/integration/runner.rs::a_run_staging_past_the_bound_commits_nothing` | performed |
@@ -2140,6 +2143,7 @@ Unscheduled operations: 13.
 | `store.lay-out.node-segment` | `crates/contextful-context/tests/integration/lay_out.rs::two_nodes_writing_one_run_id_land_in_disjoint_files` | performed |
 | `store.lay-out.part-name` | `crates/contextful-core/tests/integration/store/lay_out.rs::a_part_name_pads_its_ordinal_to_five_digits` | performed |
 | `store.lay-out.run-conflict` | `crates/contextful-context/tests/integration/lay_out.rs::a_relanded_run_with_other_rows_or_a_logged_position_conflicts` | performed |
+| `store.lay-out.run-id-shape` | `crates/contextful-context/tests/integration/lay_out.rs::a_run_id_past_128_chars_lands_nothing` | performed |
 | `store.lay-out.run-manifest` | `crates/contextful-context/tests/integration/lay_out.rs::a_run_commits_by_creating_its_manifest_once` | performed |
 | `store.lay-out.run-replay` | `crates/contextful-context/tests/integration/lay_out.rs::a_relanded_run_with_equal_rows_answers_the_committed_manifest` | performed |
 | `store.lay-out.schema-file` | `crates/contextful-context/tests/integration/lay_out.rs::each_batch_merges_into_schema_json` | performed |

@@ -55,6 +55,7 @@ ExecutionRewindNotPending      = { clause = "run.own.rewind-not-pending", gloss 
 ExecutionRewindPlanCurrent     = { clause = "run.own.rewind-plan-current", gloss = "An unforced rewind of an owner no attempt has asked another plan reference of." }
 ExecutionRewindUnsafe          = { clause = "run.own.rewind-unsafe", gloss = "A retirement of an owner a live attempt, a waiting attempt or a pending awakeable still holds." }
 RunStagedBytesExceeded         = { clause = "run.own.staged-bytes", gloss = "A run whose staged parts pass the per-run staged-bytes bound." }
+RunCheckpointIdTooLong         = { clause = "run.own.checkpoint-id-length", gloss = "A checkpointing run whose next commit's run id passes the store's run-id bound." }
 CancelTargetNotInFlight        = { clause = "run.cancel.not-in-flight", gloss = "A stop matching no pending, running or waiting run." }
 CancelUnauthorized             = { clause = "run.cancel.stop-unauthorized", gloss = "A credentialed stop whose grants cover no execute over the recorded pipeline." }
 SiteIdUnresolved               = { clause = "run.record.site-id-unresolved", gloss = "A site id with no declaration, two in one place, or an unset variable." }

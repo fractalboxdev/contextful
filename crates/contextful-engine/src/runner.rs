@@ -13,7 +13,7 @@ use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
 use contextful_core::run::advance::{admits, advance, clock, compare, frontier, open_watermark, resolve_concurrent, rewind, watermark, CursorKind};
 use contextful_core::run::cancel::{mark, same_grain, Scope};
 use contextful_core::run::journal::EntryKey;
-use contextful_core::run::own::{admission_pin, resolve_pinned, Artifacts, ConnectorPin, OwnerScope, Pins};
+use contextful_core::run::own::{admission_pin, resolve_pinned, segment_run_id, Artifacts, ConnectorPin, OwnerScope, Pins};
 use contextful_core::run::plan::Plan;
 use contextful_core::run::ports::{
     AwakeableStore, BlobStore, Cancellation, Commit, Destination, JournalStore, Landed, OpenExecution, Part, Pull, PullRequest, Shape, Source, Stage, Types, Unshaped,
@@ -105,12 +105,6 @@ struct RecordedPull {
 /// Bytes a run stages before it commits a checkpoint and keeps pulling: 512 MiB
 /// (`run.own.checkpoint-commit`).
 pub const CHECKPOINT_BYTES: u64 = 512 * 1024 * 1024;
-
-/// The run id a run's `n`th commit lands under: the run's own id for its first commit, then
-/// `<run id>.<n>` with `n` zero-padded to six digits, so each commit names its own parts.
-fn segment_run_id(run_id: &str, n: u32) -> String {
-    if n == 0 { run_id.to_string() } else { format!("{run_id}.{n:06}") }
-}
 
 /// Whether `marker_run_id` names a commit of attempt `run_id`: its first or a later checkpoint's.
 fn segment_of(marker_run_id: &str, run_id: &str) -> bool {
@@ -400,8 +394,12 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let input = match emissions { Some(emissions) => BodyInput::Effects(emissions), None => BodyInput::Source { authority:authority.as_deref(),parent } };
         // The run id the parts staged since the run's last commit carry.
         let mut staging = spec.run_id.clone();
-        let outcome = self.body(spec, &mut execution, &mut source, shape, dest, input, &mut staging);
+        // What the run's checkpoints landed, which its row records on failure too
+        // (`run.own.checkpoint-landed`).
+        let mut checkpointed = Landed::default();
+        let outcome = self.body(spec, &mut execution, &mut source, shape, dest, input, &mut staging, &mut checkpointed);
         if outcome.is_err() {
+            execution.record_checkpointed(checkpointed);
             // Abandoned work, a stop's `Canceled` included, settles the request ledger on
             // this ordinary failure path and leaves the position alone
             // (`run.cancel.abandoned-work`); the run closes on its own failure.
@@ -416,7 +414,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, input: BodyInput<'_>, staging: &mut String) -> Result<(Landed, Tally), Close> {
+    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, input: BodyInput<'_>, staging: &mut String, checkpointed: &mut Landed) -> Result<(Landed, Tally), Close> {
         let (authority, emitted,parent) = match input { BodyInput::Source { authority,parent } => (authority, None,parent), BodyInput::Effects(emitted) => (None, Some(emitted),Some(emitted.owner)) };
         let emissions = emitted.map(|input| input.frames);
         let plan = &spec.plan;
@@ -449,7 +447,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         // parts reach the bound; a replacement, a body's landing and a seeding or receiving
         // scope commit once (`run.own.checkpoint-commit`, `run.own.checkpoint-scope`).
         let checkpoints = emissions.is_none() && parent.is_none() && !dest.replaces(table) && *execution.scope() == OwnerScope::table(pipeline_id, table);
-        let (mut commits, mut committed_batches, mut landed_before) = (0u32, 0u64, Landed::default());
+        let (mut commits, mut committed_batches) = (0u32, 0u64);
         // A monotonic walk's next position and the floor it admits rows from
         // (`run.advance.walk-position`).
         let (mut walk, mut walk_floor): (Option<Value>, Option<Value>) = (None, None);
@@ -587,11 +585,15 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             // (`run.own.checkpoint-commit`, `run.own.checkpoint-frontier`).
             let boundary = plan.cursor_kind != CursorKind::Monotonic || strict;
             if checkpoints && count > 0 && boundary && staged_bytes >= CHECKPOINT_BYTES && !parts.is_empty() {
+                // The run id the parts after this checkpoint carry fits the store's bound, or the
+                // run refuses before the checkpoint commits; a replay refuses identically
+                // (`run.own.checkpoint-id-length`).
+                let after = segment_run_id(&spec.run_id, commits + 1).inspect_err(|_| execution.discard())?;
                 committed_batches += parts.len() as u64;
                 let landed = self.checkpoint(execution, spec, dest, staging, std::mem::take(&mut parts), before, &mut cached)?;
-                landed_before = Landed { rows: landed_before.rows + landed.rows, bytes: landed_before.bytes + landed.bytes };
+                *checkpointed = Landed { rows: checkpointed.rows + landed.rows, bytes: checkpointed.bytes + landed.bytes };
                 commits += 1;
-                *staging = segment_run_id(&spec.run_id, commits);
+                *staging = after;
                 (staged_rows, staged_bytes) = (0, 0);
             }
             if count > 0 {
@@ -715,7 +717,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             }
         }
         self.journal.collect(&execution_id)?;
-        let landed = Landed { rows: landed_before.rows + landed.rows, bytes: landed_before.bytes + landed.bytes };
+        let landed = Landed { rows: checkpointed.rows + landed.rows, bytes: checkpointed.bytes + landed.bytes };
         Ok((landed, Tally { batches: committed_batches + batch_count, skipped, fetched, kept, declined, audit }))
     }
 

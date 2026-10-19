@@ -102,3 +102,21 @@ fn the_declared_reference_is_the_input_identity_else_the_plan_reference() {
     let verified: OwnerPins = PlanPins { plan_ref: "owner-a".into(), identities: [("input".to_string(), "input-a".to_string())].into() }.into();
     assert_eq!(verified.declared_ref(), "input-a");
 }
+
+/// A run's first commit lands under its run id and each later one under `<run id>.<n>`; a run id whose later
+/// commits would pass the store's 128-char bound raises `RunCheckpointIdTooLong`.
+#[test]
+fn a_checkpoint_run_id_past_the_store_bound_is_refused() {
+    use contextful_core::run::own::{segment_run_id, RUN_ID_MAX_CHARS};
+    use contextful_core::run::RunError;
+    assert_eq!(RUN_ID_MAX_CHARS, 128);
+    assert_eq!(segment_run_id("run-1", 0).unwrap(), "run-1");
+    assert_eq!(segment_run_id("run-1", 3).unwrap(), "run-1.000003");
+    let fits = "r".repeat(121);
+    assert_eq!(segment_run_id(&fits, 1).unwrap().len(), 128);
+    let long = "r".repeat(122);
+    assert_eq!(segment_run_id(&long, 0).unwrap(), long, "the first commit lands under the run id itself");
+    let refused = segment_run_id(&long, 1).unwrap_err();
+    assert!(matches!(refused, RunError::RunCheckpointIdTooLong(_)), "{refused}");
+    assert!(refused.to_string().contains("129-char"), "{refused}");
+}

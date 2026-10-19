@@ -531,6 +531,63 @@ fn a_fire_after_a_crash_resumes_from_the_last_checkpoint() {
     assert_eq!((committed.len(), distinct.len()), (16, 16), "every row lands once");
 }
 
+/// A run whose later commits would land under a run id past the store's 128-char bound refuses before its first
+/// checkpoint commits, so no part of its window lands.
+// spec: run.own.checkpoint-id-length@fd2d05c6
+#[test]
+fn a_run_id_too_long_for_a_checkpoint_commits_nothing() {
+    let rig = Rig::new();
+    let run_id = "r".repeat(122);
+    let pages: Vec<Vec<Value>> = (0..16).map(|n| vec![json!({ "id": format!("d{n:02}") })]).collect();
+    let mut sink = Sink { part_bytes: 128 * 1024 * 1024, ..Sink::default() };
+    let row = rig.run(&opaque(), "1.0.0", &run_id, &mut Pages::new(pages), &mut sink).unwrap();
+    assert_eq!((row.status, row.error_kind), (RunStatus::Failed, Some(FailureTag::Permanent)));
+    assert!(row.error_message.as_deref().unwrap_or_default().starts_with("RunCheckpointIdTooLong"), "{:?}", row.error_message);
+    assert!(sink.commits.is_empty(), "no checkpoint commits: {:?}", sink.commits.iter().map(|c| &c.run_id).collect::<Vec<_>>());
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, None, "the cursor stays where it stood");
+    assert!(rig.catalog().owner("feed", "filings").unwrap().is_none(), "the refusal retires its owner");
+
+    // A run id of 121 chars leaves room for every later commit's segment.
+    let rig = Rig::new();
+    let pages: Vec<Vec<Value>> = (0..8).map(|n| vec![json!({ "id": format!("d{n:02}") })]).collect();
+    let mut sink = Sink { part_bytes: 128 * 1024 * 1024, ..Sink::default() };
+    let row = rig.run(&opaque(), "1.0.0", &"r".repeat(121), &mut Pages::new(pages), &mut sink).unwrap();
+    assert_eq!(row.status, RunStatus::Success);
+    assert_eq!(sink.commits.iter().map(|c| c.run_id.len()).collect::<Vec<_>>(), [121, 128]);
+}
+
+/// A source serving [`Pages`] and failing deterministically on its `fail_at`th pull.
+struct FailingAt {
+    inner: Pages,
+    pulls: usize,
+    fail_at: usize,
+}
+
+impl Source for FailingAt {
+    fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        self.pulls += 1;
+        if self.pulls == self.fail_at {
+            return Err(Failure::deterministic(FailureTag::Permanent, "the vendor refused the page"));
+        }
+        self.inner.pull(request, cancel)
+    }
+}
+
+/// A run failing after a checkpoint commits records on its row the rows and bytes its checkpoints landed.
+// spec: run.own.checkpoint-landed@ef9f66c5
+#[test]
+fn a_failed_run_records_what_its_checkpoints_landed() {
+    let rig = Rig::new();
+    let pages: Vec<Vec<Value>> = (0..16).map(|n| vec![json!({ "id": format!("d{n:02}") })]).collect();
+    let mut source = FailingAt { inner: Pages::new(pages), pulls: 0, fail_at: 10 };
+    let mut sink = Sink { part_bytes: 128 * 1024 * 1024, ..Sink::default() };
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut sink).unwrap();
+    assert_eq!(row.status, RunStatus::Failed);
+    assert_eq!(sink.commits.len(), 2, "two checkpoints committed before the failure");
+    assert_eq!((row.rows, row.bytes), (8, 8 * 128 * 1024 * 1024), "the row counts what the checkpoints landed");
+    assert_eq!(rig.row("run-1").rows, 8);
+}
+
 /// A source serving `pages` of dated rows one page a pull, carrying the next page's index as its position.
 struct DatedWalk {
     pages: Vec<Vec<Value>>,

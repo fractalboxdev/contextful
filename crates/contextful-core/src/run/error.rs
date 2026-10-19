@@ -48,6 +48,9 @@ pub enum RunError {
     /// A run whose staged parts pass the per-run staged-bytes bound. (`run.own.staged-bytes`)
     #[error("RunStagedBytesExceeded: {0}")]
     RunStagedBytesExceeded(String),
+    /// A checkpointing run whose later commits' run id passes the store's run-id bound. (`run.own.checkpoint-id-length`)
+    #[error("RunCheckpointIdTooLong: {0}")]
+    RunCheckpointIdTooLong(String),
     /// A declared command that is not an executable file. (`run.exec.missing-binary`)
     #[error("DeriveBinaryMissing: {0}")]
     DeriveBinaryMissing(String),

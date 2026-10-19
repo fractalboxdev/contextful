@@ -832,6 +832,33 @@ fn a_next_url_walk_keeps_the_next_urls_query_out_of_every_position() {
     }
 }
 
+/// A next-URL walk re-following its pages to a position's count reports its snapshot incomplete, so a replacing
+/// table publishes nothing over a page the vendor's current listing moved behind the count.
+// spec: connector.source.http-url-refollow@ae2f8dba
+#[test]
+fn a_refollowed_url_walk_reports_its_snapshot_incomplete() {
+    let vendor = Server::start(|r| {
+        let page: usize = r.query("p").and_then(|p| p.parse().ok()).unwrap_or(1);
+        let next = if page < 3 { json!(format!("/v1?p={}", page + 1)) } else { Value::Null };
+        Response::json(200, &json!({"data": [{"id": format!("r{page}")}], "next": next}).to_string())
+    });
+    let config = json!({"endpoint": vendor.url("/v1"), "records": "/data", "next_url_path": "/next"});
+    let snapshot = |s: &mut HttpSource, position: Option<Value>| -> (Vec<Value>, bool) {
+        let out: Value = serde_json::from_slice(&s.pull(&request(position), &Never).unwrap()).unwrap();
+        (out["rows"].as_array().cloned().unwrap_or_default(), out["snapshot_complete"].as_bool().unwrap_or(true))
+    };
+
+    // An uninterrupted walk vouches for its whole listing on its last page.
+    let mut s = source(config.clone(), vec![]);
+    assert!(!snapshot(&mut s, None).1);
+    assert!(!snapshot(&mut s, Some(json!({"page": 1}))).1);
+    assert_eq!(snapshot(&mut s, Some(json!({"page": 2}))), (vec![json!({"id": "r3"})], true));
+
+    // A fresh source asked the third page re-follows two and vouches for nothing.
+    let mut s = source(config, vec![]);
+    assert_eq!(snapshot(&mut s, Some(json!({"page": 2}))), (vec![json!({"id": "r3"})], false));
+}
+
 #[test]
 fn an_empty_url_walk_marks_the_whole_snapshot_complete() {
     let vendor = Server::start(|_| Response::json(200, "{\"data\":[],\"next\":null}"));

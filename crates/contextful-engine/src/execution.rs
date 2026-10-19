@@ -161,6 +161,8 @@ pub struct Execution<'e, J: JournalStore = FileJournalStore, B: BlobStore = File
     waited: Option<Instant>,
     /// The step and instant the last parked step waits on.
     waiting: Mutex<Option<(String, Instant)>>,
+    /// What the run's checkpoints landed before it closed.
+    checkpointed: Landed,
 }
 
 impl<J: JournalStore, B: BlobStore> Engine<J, B> {
@@ -262,6 +264,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             park_waits: false,
             waited: None,
             waiting: Mutex::new(None),
+            checkpointed: Landed::default(),
         };
         execution.emit(Change::Status { status: RunStatus::Running, at: Some(now), error: None });
         execution.registration = Some(self.keeper.register(self.catalog.clone(), &open.run_id, token, held));
@@ -343,6 +346,12 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
     /// answering adapter. The closing row carries it on success and on failure.
     pub fn record_credentials(&mut self, providers: std::collections::BTreeMap<String, String>) {
         self.credentials = providers;
+    }
+
+    /// Record what the run's checkpoints landed, which a failing close counts on its row
+    /// (`run.own.checkpoint-landed`).
+    pub(crate) fn record_checkpointed(&mut self, landed: Landed) {
+        self.checkpointed = landed;
     }
 
     /// The token the keeper fires on a stop.
@@ -716,6 +725,10 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
                     };
                     r.error_kind = Some(tag);
                     r.error_message = Some(cap_error(&message));
+                    if self.checkpointed != Landed::default() {
+                        r.rows = self.checkpointed.rows;
+                        r.bytes = self.checkpointed.bytes;
+                    }
                 }
             }
             Ok(())

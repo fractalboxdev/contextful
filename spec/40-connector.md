@@ -435,6 +435,8 @@ The declared behavior of each source compiled into the engine.
   *because a failed walk resumes at the page it stopped on, and the next run walks the whole table again*
 - `http-url-walk` — Under next-URL or Link-header pagination, one generic HTTP source pull reads one page; its position counts the pages read and carries no URL, and a source holding no next URL re-follows the walk to that count.
   *because a next URL's query may carry a credential, and a position lands unscrubbed in the journal*
+- `http-url-refollow` — A next-URL or Link-header walk that re-follows its pages to a position's count reports its snapshot incomplete, so under {{run.advance.snapshot-completion}} a replacing table publishes nothing from it and its next fire walks from the first page.
+  *because the vendor's listing may move between fires, and a re-followed count skips any row that moved behind it*
 - `http-watermark-walk` — Under an incremental field, one generic HTTP source pull reads one page from the stored watermark; its position carries that watermark and the next page's token, and the walk's last page carries none.
   *A-run*
 - `http-limiter` — The generic HTTP source reads its {{connector.meter.limiter-declaration}} from a `limiter` config table, and the project manifest holds each {{connector.meter.limiter-binding}} under `[limiters.<quota>]`.
