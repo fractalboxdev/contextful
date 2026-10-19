@@ -189,7 +189,7 @@ Target directories, the engine-linked invocation, linked query functions, build 
 
 Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.
 
-- `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name; a run naming none runs both tiers.
+- `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — all of both tiers when none is named, else the named subset, which `--plan` prints unrun.
 - `nightly-tier` — `contextful-ci stages --parts --tier nightly` prints the features, formal and budget parts in run order; `stages --parts` prints the remaining parts, the required pull-request checks, and `gate --stage` runs a part of either tier.
   *A-assurance*
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
@@ -266,7 +266,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `parallel-jobs` — Parallel build jobs number the memory ceiling divided by 3 GiB.
 - `free-disk` — A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.
   *P7*
-- `build-size` — The budget stage holds total build size to 12 GiB, printing that size, the free space and the largest artifacts; a larger build raises `BuildSizeCeilingExceeded`, naming the head of that list.
+- `build-size` — The nightly budget stage holds total build size to 12 GiB, printing that size, the free space and the largest artifacts; a larger build raises `BuildSizeCeilingExceeded`, naming the head of that list.
   *P7*
 - `edge-budget` — The edge profile holds to 50 MiB compressed and 60 MiB idle resident set.
 - `full-budget` — The full profile holds to 150 MiB compressed and 180 MiB idle resident set.

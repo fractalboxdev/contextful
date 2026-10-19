@@ -29002,7 +29002,7 @@
       "operation": "gate",
       "subject": "stage-sequence",
       "kind": "behavior",
-      "statement": "The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name; a run naming none runs both tiers.",
+      "statement": "The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — all of both tiers when none is named, else the named subset, which `--plan` prints unrun.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 192
@@ -29465,7 +29465,7 @@
       "operation": "gate",
       "subject": "build-size",
       "kind": "refusal",
-      "statement": "The budget stage holds total build size to 12 GiB, printing that size, the free space and the largest artifacts; a larger build raises `BuildSizeCeilingExceeded`, naming the head of that list.",
+      "statement": "The nightly budget stage holds total build size to 12 GiB, printing that size, the free space and the largest artifacts; a larger build raises `BuildSizeCeilingExceeded`, naming the head of that list.",
       "why": "P7",
       "file": "spec/81-engineering.md",
       "line": 269

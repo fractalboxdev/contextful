@@ -84,6 +84,9 @@ enum Cmd {
         /// Also run every stage whose output a selected stage reads.
         #[arg(long)]
         predecessors: bool,
+        /// Print the stages the run selects, one per line in run order, and run none.
+        #[arg(long)]
+        plan: bool,
         /// The revision the change is measured against.
         #[arg(long, default_value = "origin/HEAD")]
         base: String,
@@ -323,7 +326,7 @@ fn main() {
                 Ok(())
             })
         }
-        Cmd::Gate { stages, predecessors, base, base_bound_secs } => gate(&stages, predecessors, &base, Duration::from_secs(base_bound_secs)),
+        Cmd::Gate { stages, predecessors, plan, base, base_bound_secs } => gate(&stages, predecessors, plan, &base, Duration::from_secs(base_bound_secs)),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
@@ -499,7 +502,7 @@ fn dispatched(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
     Ok(out)
 }
 
-fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Result<()> {
+fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Duration) -> Result<()> {
     let root = repo_root()?;
     // A named part selects its stage and narrows it to the named parts; a stage named whole
     // runs whole.
@@ -521,7 +524,12 @@ fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Re
         }
     }
     narrowed.retain(|stage, _| !whole.contains(stage));
-    for stage in stage::select(&root, &stages, predecessors)? {
+    let selected = stage::select(&root, &stages, predecessors)?;
+    if plan {
+        selected.iter().for_each(|stage| println!("{stage}"));
+        return Ok(());
+    }
+    for stage in selected {
         eprintln!("--- stage {stage}");
         free_disk(&root, stage)?;
         let mut mark = stage::mark();

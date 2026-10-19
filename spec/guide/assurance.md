@@ -119,7 +119,7 @@ flowchart LR
 
 ## Worked example
 
-A contributor reorders the engine's layers, masking before filtering.
+A contributor reorders the engine's layers so masking runs before filtering.
 
 Its test fails at base, or the test-first stage stops it; the nightly
 run reaches the formal stage
@@ -136,7 +136,7 @@ cases to the reference binary and the engine ({{assurance.differential-test.harn
 A case where a masked column meets a row filter decides differently, shrinks to a minimal
 form ({{assurance.differential-test.minimized}}), enters the counterexample corpus
 ({{assurance.differential-test.discarded-counterexample}}), and replays before fresh cases
-on every later run ({{assurance.differential-test.corpus-replay}}), reproducible from the
+on later runs ({{assurance.differential-test.corpus-replay}}), reproducible from the
 recorded seed ({{assurance.differential-test.seed}}).
 
 The composition theorem is not a

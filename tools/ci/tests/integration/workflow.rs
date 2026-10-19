@@ -54,7 +54,11 @@ fn native_transport_refuses_broad_triggers_credentials_and_unbound_runners() {
 
 
 fn listed(args: &[&str]) -> Vec<String> {
-    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(args).current_dir(repo_root()).output().unwrap();
+    listed_in(repo_root(), args)
+}
+
+fn listed_in(root: &std::path::Path, args: &[&str]) -> Vec<String> {
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(args).current_dir(root).output().unwrap();
     assert!(out.status.success(), "{args:?}: {}", crate::stderr(&out));
     String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect()
 }
@@ -94,11 +98,18 @@ fn the_nightly_tier_holds_the_features_formal_and_budget_parts() {
     let bogus = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(["stages", "--parts", "--tier", "weekly"]).current_dir(repo_root()).output().unwrap();
     assert!(!bogus.status.success(), "an unknown tier lists parts");
 
-    // A nightly part stays runnable by name: the fixture declares no profile, so the
-    // budget stage reports so and passes.
+    // A nightly part stays runnable by name, a dotted part as FlareDispatch dispatches it
+    // and a whole stage alike: the fixture declares no profile, so the budget stage
+    // reports so and passes.
     let r = crate::Repo::init();
     r.lock();
     r.commit("lock");
+    let parts = listed_in(&r.root, &["stages", "--parts", "--tier", "nightly"]);
+    assert_eq!(parts.first().map(String::as_str), Some("features.packages"), "{parts:?}");
+    let o = r.gate(&["--stage", "features.packages"]);
+    let err = crate::stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(err.contains("--- stage features") && !err.contains("--- stage pins"), "{err}");
     let o = r.gate(&["--stage", "budget"]);
     assert!(o.status.success(), "{}", crate::stderr(&o));
 }

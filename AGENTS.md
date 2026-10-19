@@ -142,8 +142,8 @@ which leave the required set.
 FlareDispatch runs them nightly against the default-branch head, names the change range
 since the last passing run, and opens an issue on failure
 (`assurance.gate.nightly-tier`). `contextful-ci gate --stage <part>` runs a nightly part
-locally, and `contextful-ci gate` with no stage runs both tiers; run the touched nightly
-parts before merging a change to features, proofs or profiles.
+locally, `contextful-ci gate` with no stage runs both tiers, and `gate --plan` prints a
+run's stages without running them.
 
 FlareDispatch runs `contextful-measures` nightly against the default
 branch and attaches its report to `refs/notes/measures`. A `v*` tag starts

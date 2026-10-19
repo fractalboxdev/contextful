@@ -232,9 +232,9 @@ Consequences: a part non-terminal 60 min after dispatch is stalled. A part neari
 
 **Status:** accepted
 
-Context: the pull-request gate runs about 6 h of wall clock at two parts at a time; the features, formal and budget parts sum to over 2 h of it, each a cold build of its own feature set or release profile. Criteria: a pull-request verdict within 30 min; every check still runs against every merged change; P7 holds.
+Context: the pull-request gate runs about 6 h of wall clock at two parts at a time; the features, formal and budget parts sum to over 2 h of it, each a cold build of its own feature set or release profile. Criteria: a pull-request verdict within 30 min; every check still runs against every merged change; P7 holds. P7 rejects a nightly cadence for every assertion and keeps one for a check too costly per change, naming the change range.
 
-Decision: `assurance.gate.nightly-tier` moves the features, formal and budget parts out of the required pull-request checks. `assurance.measure.scheduled` runs them against the default-branch head, names the change range since the last passing run, and opens an issue on failure. `contextful-ci gate` with no stage runs both tiers.
+Decision: `assurance.gate.nightly-tier` moves the features, formal and budget parts out of the required pull-request checks. `assurance.measure.scheduled` runs them against the default-branch head, names the change range since the last passing run, and opens an issue on failure.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -243,7 +243,7 @@ Decision: `assurance.gate.nightly-tier` moves the features, formal and budget pa
 | Per-change parts selected by changed paths alone | Detectability | A spec or dependency change reaches proofs and footprints no path filter names. |
 | One shared build cache across parts | Operability | A cache bucket and credential become part of the gate, and feature runs still resolve separately. |
 
-Consequences: a contributor runs `contextful-ci gate --stage <part>` for a nightly part before merging a change that touches features, proofs or profiles.
+Consequences: `contextful-ci gate --stage <part>` reproduces a nightly part locally; a nightly part runs remotely only through `assurance.measure.scheduled`.
 
 Revisit: pull-request parts share builds, so the nightly parts fit the 30 min verdict.
 

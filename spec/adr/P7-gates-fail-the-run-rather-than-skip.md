@@ -11,7 +11,7 @@ A gate that skips what it cannot evaluate disables itself silently: a renamed ba
 A check the gate cannot evaluate fails the run, and a gated number is asserted, never logged. A guard proves itself by firing: the state it stands against reds the suite.
 
 - `assurance.test` requires an absence assertion to construct and verify the condition it names first, and refuses an exclusion over an empty collection.
-- `assurance.gate` starts a stage only with 2 GiB free disk, holds build size to 12 GiB, and asserts each profile's compressed size and dynamic dependencies nightly against the default-branch head; the multi-day residency soak runs on its own cadence.
+- `assurance.gate` starts a stage only with 2 GiB free disk and, nightly against the default-branch head, holds build size to 12 GiB and asserts each profile's compressed size and dynamic dependencies; the multi-day residency soak runs on its own cadence.
 - `assurance.baseline` refuses an unresolvable path, an empty sample, a malformed entry and a drifted run stamp, ahead of the suite wherever the check needs no report.
 - `assurance.automate` puts control flow in typed subcommands the gate and a contributor invoke identically; surviving shell passes `shellcheck`.
 - `assurance.gate` checks every TypeScript surface in one stage; a surface declaring no script for a check skips that check, a declared absence rather than an unevaluable input.
@@ -22,11 +22,11 @@ A check the gate cannot evaluate fails the run, and a gated number is asserted, 
 | --- | --- | --- |
 | Fail the run on anything unevaluable *(chosen)* | — | A typo in a baseline or a full disk reds an unrelated change until fixed. |
 | Log the figure or warn | Diagnosability | A number nobody gates on is read by nobody, and the first signal is an outage. |
-| Check on a nightly cadence | Drift window | The failure arrives detached from the change that caused it. |
+| Check every assertion on a nightly cadence | Drift window | A cheap check's failure arrives detached from its change; only a check too costly per change runs nightly, naming a change range. |
 | Review assertions for vacuity by eye | Detectability | A vacuous assertion is textually identical to a real one. |
 | Auto-update a baseline when a path stops resolving | Self-disabling | The gate rewrites its own bar in response to the regression. |
 
 ## Consequences
 
 - Every gate outcome is reproducible locally with the same command.
-- Cheap assertions run per change; the expensive nightly tier — feature runs, formal checks and profile budgets — runs against the default-branch head, names the change range since its last passing run, and opens an issue on failure.
+- Cheap assertions run per change; the nightly tier — feature runs, formal checks and profile budgets — runs against the default-branch head, names the change range it covers, and opens an issue on failure.
