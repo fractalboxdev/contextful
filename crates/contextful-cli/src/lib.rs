@@ -49,6 +49,8 @@ mod project;
 #[cfg(feature = "read-plane")]
 mod query;
 #[cfg(feature = "data-plane")]
+mod queue;
+#[cfg(feature = "data-plane")]
 mod receive;
 #[cfg(feature = "read-plane")]
 mod reside;
@@ -135,7 +137,7 @@ const READ_PLANE: [&str; 4] = ["sync", "query", "mcp", "serve"];
 /// The run-path subcommands, which a build without the run path, the read replica
 /// included, answers with `ProfileCapabilityAbsent` (`topology.package.edge-profile`).
 #[cfg(not(feature = "data-plane"))]
-const RUN_PLANE: [&str; 13] = ["init", "context", "derive", "build", "pipeline", "export", "job", "run", "memory", "eval", "connector", "visibility", "secrets"];
+const RUN_PLANE: [&str; 14] = ["init", "context", "derive", "build", "pipeline", "export", "queue", "job", "run", "memory", "eval", "connector", "visibility", "secrets"];
 
 /// The refusal of a subcommand this build's profile does not link. `Display` begins with
 /// the identifier.
@@ -212,6 +214,10 @@ enum Cmd {
     #[cfg(feature = "data-plane")]
     #[command(subcommand)]
     Export(export::ExportCmd),
+    /// Wake the exports and object reads the project's local queue spool names.
+    #[cfg(feature = "data-plane")]
+    #[command(subcommand)]
+    Queue(queue::QueueCmd),
     /// Validate job blocks and fire a store-driven job.
     #[cfg(feature = "data-plane")]
     #[command(subcommand)]
@@ -299,6 +305,8 @@ pub fn main_host(host: Host) {
         Cmd::Job(c) => job::run(c, &bodies),
         #[cfg(feature = "data-plane")]
         Cmd::Export(c) => export::run(c),
+        #[cfg(feature = "data-plane")]
+        Cmd::Queue(c) => queue::run(c),
         #[cfg(feature = "read-plane")]
         Cmd::Sync(c) => sync::run(c),
         #[cfg(feature = "data-plane")]

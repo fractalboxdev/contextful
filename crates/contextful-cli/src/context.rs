@@ -256,6 +256,7 @@ fn land_session(
             .land(&Batch { rows: batch.rows, types: types.clone() }, injection(batch.run_id), committed_at, &Position::default(), precommit)
             .with_context(|| format!("stdin line {n}"))?;
         let (m, verb) = (&landing.manifest, if landing.replay { "replayed" } else { "committed" });
+        if !landing.replay { crate::queue::announce(store, &table, &m.run_id, m.commit_seq); }
         let folded = landing.fold.map(|f| format!("; {f}")).unwrap_or_default();
         writeln!(out, "{table}: {verb} {} on {} ({} parts, {rows} rows){folded}", m.run_id, m.node_id, m.parts.len())?;
         out.flush()?;
@@ -438,6 +439,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             let ctx = RunContext { node, injection: injection(run_id), committed_at: now(at)? };
             let l = land_run(&o.store, &o.decl(&table), std::slice::from_ref(&batch), &ctx, &Position::default(), &precommit)?;
             let (m, verb) = (&l.manifest, if l.replay { "replayed" } else { "committed" });
+            if !l.replay { crate::queue::announce(&o.store, &table, &m.run_id, m.commit_seq); }
             println!("{table}: {verb} {} on {} ({} parts, {} rows)", m.run_id, m.node_id, m.parts.len(), batch.rows.len());
             Ok(())
         }

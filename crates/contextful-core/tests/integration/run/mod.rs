@@ -13,6 +13,7 @@ mod own;
 mod plan;
 mod preparation;
 mod project;
+mod queue;
 mod record;
 mod retry;
 mod suspend;

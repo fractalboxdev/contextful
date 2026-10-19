@@ -532,6 +532,8 @@ impl Destination for StoreDestination {
         self.schema_diffs.clear();
         if grouped { publish_group(&self.store, &commit.table, &group_tables, &ctx).map_err(store_failure)?; }
         self.relational_parts.clear();
+        // The published manifests wake the exports reading their tables (`run.export.queue-wake`).
+        for table in &group_tables { crate::queue::announce(&self.store, table, &commit.run_id, manifest.commit_seq); }
         // The committed parts carry `_commit_seq`, so their bytes are measured after the commit.
         let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&commit.run_id).join(&manifest.node_id);
         let mut bytes = 0;

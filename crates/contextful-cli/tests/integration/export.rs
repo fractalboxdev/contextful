@@ -821,3 +821,67 @@ fn a_refused_delivery_leaves_the_cursor_where_it_stood() {
     let unreachable = err(&export(dir.path(), &public, &token, &[]));
     assert!(unreachable.contains("ExportDeliveryRefused"), "{unreachable}");
 }
+
+fn drain(dir: &Path, public: &str, token: &str) -> Output {
+    cf(dir, &["queue", "drain", "--project", "research", "--public-key", public, "--audience", AUD], &[("CONTEXTFUL_TOKEN", token)])
+}
+
+fn spooled(dir: &Path) -> Vec<std::path::PathBuf> {
+    let spool = dir.join(".contextful/queue/research");
+    let mut files: Vec<_> = std::fs::read_dir(&spool).map(|d| d.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect()).unwrap_or_default();
+    files.sort();
+    files
+}
+
+/// A post-commit queue message only wakes an exporter, which reads through {{run.export.commit-order}} and advances
+/// under {{run.export.cursor-after-ack}}; a lost message delays delivery to the next wake and skips no row.
+// spec: run.export.queue-wake@72b348c7
+#[test]
+fn a_wake_up_runs_the_export_from_its_cursor_and_a_lost_one_skips_no_row() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&block(&collector.endpoint(), ""), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
+    land(p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 2));
+    assert_eq!(spooled(p).len(), 1, "one pending wake-up per table");
+
+    // Both runs' wake-ups are lost between commit and enqueue: no export runs.
+    for f in spooled(p) {
+        std::fs::remove_file(f).unwrap();
+    }
+    let idle = ok(&drain(p, &public, &token));
+    assert!(idle.contains("drained 0 wake-ups") && !idle.contains("spans-mirror"), "{idle}");
+    assert!(collector.received().is_empty());
+
+    // The next wake-up delivers every row past the cursor, the earlier runs' included, in commit order.
+    land(p, "load-3", "2030-01-01T00:02:00Z", &ids("c", 2));
+    let woke = ok(&drain(p, &public, &token));
+    assert!(woke.contains("spans-mirror: delivered 6 rows in 1 batches") && woke.contains("drained 1 wake-ups"), "{woke}");
+    let mut expected = ids("a", 2);
+    expected.extend(ids("b", 2));
+    expected.extend(ids("c", 2));
+    assert_eq!(collector.received().iter().flat_map(span_ids).collect::<Vec<_>>(), expected);
+    let last = records(collector.received().last().unwrap()).last().cloned().unwrap();
+    assert_eq!(cursor(p)["commit_seq"].to_string(), attribute(&last, "contextful.commit_seq").unwrap());
+    assert!(spooled(p).is_empty(), "the settled wake-up is acknowledged");
+
+    // A repeated wake-up only wakes: the export finds nothing past its cursor and sends nothing.
+    land(p, "load-4", "2030-01-01T00:03:00Z", &ids("d", 1));
+    let wake = std::fs::read(&spooled(p)[0]).unwrap();
+    ok(&drain(p, &public, &token));
+    std::fs::write(p.join(".contextful/queue/research/repeat.json"), wake).unwrap();
+    let repeated = ok(&drain(p, &public, &token));
+    assert!(repeated.contains("delivered 0 rows in 0 batches"), "{repeated}");
+    assert_eq!(collector.received().len(), 2);
+
+    // A refused delivery leaves its wake-up queued and the cursor where it stood.
+    land(p, "load-5", "2030-01-01T00:04:00Z", &ids("e", 1));
+    let before = cursor(p);
+    collector.answer(503);
+    let refused = err(&drain(p, &public, &token));
+    assert!(refused.contains("ExportDeliveryRefused"), "{refused}");
+    assert_eq!((cursor(p), spooled(p).len()), (before, 1));
+    collector.answer(200);
+    assert!(ok(&drain(p, &public, &token)).contains("delivered 1 rows"));
+    assert!(spooled(p).is_empty());
+}

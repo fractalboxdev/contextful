@@ -17,6 +17,7 @@ pub mod own;
 pub mod plan;
 pub mod ports;
 pub mod project;
+pub mod queue;
 pub mod record;
 pub mod retry;
 pub mod suspend;

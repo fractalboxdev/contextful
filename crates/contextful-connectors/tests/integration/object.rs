@@ -127,6 +127,21 @@ fn a_prefix_lands_each_listed_object_in_key_order_and_latest_lands_one() {
     assert!(matches!(refusal(json!({"bucket": "b", "key": "k", "pick": "all"})), ConfigError::Run(_)), "`pick` narrows a listing alone");
 }
 
+/// An address covers the keys its read lists: a fixed key alone, or a key under the prefix
+/// ending in the suffix.
+#[test]
+fn an_address_covers_exactly_the_keys_its_read_lists() {
+    let address = |config: Value| ObjectConfig::parse(&config).unwrap().address;
+    let prefix = address(json!({"bucket": "b", "prefix": "feed/", "suffix": ".jsonl", "format": "jsonl"}));
+    assert!(prefix.covers("feed/2026-01.jsonl"));
+    for key in ["feed/readme.txt", "feedback/2026-03.jsonl", "other/2026-01.jsonl"] {
+        assert!(!prefix.covers(key), "{key}");
+    }
+    assert!(address(json!({"bucket": "b", "prefix": "feed/", "format": "jsonl", "pick": "latest"})).covers("feed/readme.txt"), "no suffix narrows nothing");
+    let fixed = address(json!({"bucket": "b", "key": "feed/orders.jsonl", "format": "jsonl"}));
+    assert!(fixed.covers("feed/orders.jsonl") && !fixed.covers("feed/orders.jsonl.gz") && !fixed.covers("feed/"));
+}
+
 /// `compression = "gzip"`, or a `.gz` key with `compression` undeclared, decompresses before
 /// decode; `compression = "none"` reads the object as stored.
 // spec: connector.source.object-gzip@1d996fa5

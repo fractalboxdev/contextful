@@ -196,3 +196,65 @@ fn a_signed_read_passes_the_backends_signature_check_and_a_skip_downloads_nothin
     assert!(said.contains("answered 403") && !said.contains("1 rows"), "{said}");
     assert_eq!(server.gets(), 3);
 }
+
+/// An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a
+/// duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.
+// spec: run.land.object-arrival-wake@3d0668f8
+#[test]
+fn an_arrival_key_wakes_the_prefix_read_covering_it_and_lands_nothing_twice() {
+    use contextful_core::run::queue::{Queue, QueueMessage};
+    use contextful_engine::queue::LocalSpool;
+
+    let server = S3Server::start("lake");
+    let keys = S3Credentials { access_key_id: Hydrated::new(ACCESS_KEY), secret_access_key: Hydrated::new(SECRET_KEY), session_token: None };
+    let writer = S3Bucket::open(&server.endpoint, "us-east-1", "lake", keys).unwrap();
+    writer.put("feed/01.jsonl", b"{\"n\":1}\n", Condition::None).unwrap();
+    let env = [("LAKE_KEY_ID", ACCESS_KEY), ("LAKE_SECRET", SECRET_KEY), ("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")];
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n[[pipeline]]\nid = \"feed\"\ntables = [\"orders\"]\n[pipeline.source]\nname = \"s3\"\nconfig = {{ bucket = \"lake\", endpoint = \"{}\", prefix = \"feed/\", suffix = \".jsonl\", format = \"jsonl\", skip_unchanged = true, access_key_id = \"secret://lake-key-id\", secret_access_key = \"secret://lake-secret\" }}\n",
+        server.endpoint
+    ));
+    let p = dir.path();
+    let spool = LocalSpool::open(&p.join(".contextful/queue/research")).unwrap();
+    let arrive = |bucket: &str, key: &str| spool.send(&QueueMessage::ObjectArrival { bucket: bucket.into(), key: key.into() }).unwrap();
+    let drain = |now: &str| {
+        let out = Command::new(env!("CARGO_BIN_EXE_contextful"))
+            .args(["queue", "drain", "--project", "research", "--now", now])
+            .current_dir(p)
+            .env_remove("CONTEXTFUL_NODE_ID")
+            .env_remove("CONTEXTFUL_SECRETS_BACKEND")
+            .envs(env.iter().copied())
+            .output()
+            .unwrap();
+        ok(&out)
+    };
+    assert!(ok(&fire(p, "f1", "2030-01-01T00:00:00Z", &env)).contains("1 rows"));
+
+    // A key outside every read's address, or in another bucket, wakes nothing and is acknowledged.
+    writer.put("other/09.jsonl", b"{\"n\":9}\n", Condition::None).unwrap();
+    arrive("lake", "other/09.jsonl");
+    arrive("lake", "feed/readme.txt");
+    arrive("archive", "feed/02.jsonl");
+    let none = drain("2030-01-01T00:01:00Z");
+    assert!(none.contains("and 3 arrivals") && !none.contains("rows"), "{none}");
+    assert_eq!(server.gets(), 1);
+
+    // A new key, repeated and arriving beside an older one, wakes one read from the held position.
+    writer.put("feed/02.jsonl", b"{\"n\":2}\n{\"n\":3}\n", Condition::None).unwrap();
+    arrive("lake", "feed/02.jsonl");
+    arrive("lake", "feed/01.jsonl");
+    arrive("lake", "feed/02.jsonl");
+    let woke = drain("2030-01-01T00:02:00Z");
+    assert!(woke.contains("· 2 rows") && woke.contains("2 arrivals"), "{woke}");
+    assert_eq!(server.gets(), 2, "the held ETags skip the landed object");
+
+    // A duplicate after the landing lands nothing.
+    arrive("lake", "feed/02.jsonl");
+    let again = drain("2030-01-01T00:03:00Z");
+    assert!(again.contains("· 0 rows"), "{again}");
+    assert_eq!(server.gets(), 2);
+
+    // An object whose notification never arrives lands on the source's next scheduled fire.
+    writer.put("feed/03.jsonl", b"{\"n\":4}\n", Condition::None).unwrap();
+    assert!(ok(&fire(p, "f9", "2030-01-01T00:09:00Z", &env)).contains("f9 success · 1 rows"));
+}
