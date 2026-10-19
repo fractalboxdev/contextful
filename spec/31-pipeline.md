@@ -80,6 +80,8 @@ The pipeline specification, its serializations, manifest discovery, the content 
 - `config-key` — A source config key outside the set that source enumerates raises `PipelineUnknownConfigKey` before any I/O, naming the key and the accepted keys; request headers and the forwarded guest table are exempt.
   *P1*
 - `lifecycle-verbs` — `plan` diffs desired state against the store with no side effect, `--json` emitting a structured diff; `apply` converges every pipeline or one; `run` fires one pipeline once; `serve` reconciles continuously.
+- `plan-externals` — `plan` reports added, removed, changed and unchanged external steps against the applied snapshot in text and under `externals` in `--json`, with the same change fields as other declaration kinds.
+  *because external-only edits affect the applied snapshot and need a visible diff*
 - `apply-fires-nothing` — Applying a manifest fires nothing of itself; a second `apply` over unchanged sources is a no-op modulo elapsed schedules.
 - `table-error` — `on_table_error` is abort, the default, halting the fire at the first failing table, or continue, landing every other table and reporting the failed run ids through {{run.declare.table-error-exit}}.
 - `table-error-exit` — Under continue, `run` exits non-zero naming the failed runs, and a scheduled fire appends its failure count to its log line.

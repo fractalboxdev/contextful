@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 315 | 54 | 29 | 16 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 600 | 128 | 49 | 19 | 562 | 0 | 562 |
+| `run` | 3 | 29 | 601 | 128 | 49 | 19 | 563 | 0 | 563 |
 | `store` | 4 | 19 | 328 | 68 | 21 | 12 | 317 | 0 | 317 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2794 | 690 | 224 | 82 | 2502 | 0 | |
+| **total** | 23 | 169 | 2795 | 690 | 224 | 82 | 2503 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
-| 4 — Ingest | 25 | 633 | 529 | passing | closed |
+| 4 — Ingest | 25 | 634 | 530 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 103 | 102 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -1529,6 +1529,7 @@ Unscheduled operations: 13.
 | `run.declare.manifest-missing` | `crates/contextful-cli/tests/integration/pipeline.rs::validate_over_no_manifest_is_refused` | performed |
 | `run.declare.order-by-default` | `crates/contextful-cli/tests/integration/pipeline.rs::order_by_defaults_to_the_ingest_stamp_and_a_keyless_table_keeps_every_row` | performed |
 | `run.declare.pipeline-spec` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_specification_carries_three_required_and_eleven_optional_keys` | performed |
+| `run.declare.plan-externals` | `crates/contextful-cli/tests/integration/pipeline.rs::plan_reports_external_additions_input_changes_and_removals` | performed |
 | `run.declare.replace-unsupported` | `crates/contextful-core/tests/integration/pipeline/declare.rs::replace_beside_a_windowed_load_is_refused` | performed |
 | `run.declare.serialization` | `crates/contextful-cli/tests/integration/pipeline.rs::schema_export_writes_the_pipeline_and_plan_schemas_under_the_project` | performed |
 | `run.declare.source-block` | `crates/contextful-core/tests/integration/pipeline/declare.rs::source_and_destination_are_a_name_and_a_config_object` | performed |
