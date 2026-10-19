@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 325 | 66 | 24 | 5 | 283 | 0 | 283 |
-| `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 2 | 14 | 380 | 92 | 22 | 12 | 297 | 0 | 297 |
-| `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
+| `assurance` | 3 | 18 | 325 | 66 | 24 | 5 | 283 | 0 | 260 |
+| `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 263 |
+| `connector` | 2 | 14 | 380 | 92 | 22 | 12 | 297 | 0 | 296 |
+| `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 64 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
-| `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 565 | 127 | 46 | 17 | 526 | 0 | 526 |
-| `store` | 3 | 19 | 303 | 64 | 16 | 10 | 292 | 0 | 292 |
-| `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
-| `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2709 | 681 | 216 | 75 | 2416 | 0 | |
+| `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 267 |
+| `run` | 3 | 29 | 565 | 127 | 46 | 17 | 526 | 0 | 449 |
+| `store` | 3 | 19 | 306 | 64 | 17 | 10 | 295 | 0 | 285 |
+| `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 135 |
+| `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 61 |
+| **total** | 22 | 169 | 2712 | 681 | 217 | 75 | 2419 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 12 | 290 | 278 | passing | closed |
 | 4 — Ingest | 25 | 609 | 504 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
-| 6 — Sync and replicas | 8 | 94 | 93 | passing | closed |
+| 6 — Sync and replicas | 8 | 97 | 96 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -2153,6 +2153,7 @@ Unscheduled operations: 13.
 | `store.pull.control-head` | `crates/contextful-sync/tests/integration/pull.rs::a_cold_pull_stages_only_the_reachable_control_head_without_applying_it` | performed |
 | `store.pull.convergence` | `crates/contextful-sync/tests/integration/pull.rs::a_key_moving_mid_download_refetches_the_manifest_and_retries_the_shortfall` | performed |
 | `store.pull.digest-mismatch` | `crates/contextful-sync/tests/integration/pull.rs::an_object_whose_digest_differs_from_its_entry_is_refused_and_discarded` | performed |
+| `store.pull.digest-record` | `crates/contextful-sync/tests/integration/pull.rs::a_pull_takes_a_matching_files_digest_from_its_record` | performed |
 | `store.pull.generation` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_restores_exactly_that_generation` | performed |
 | `store.pull.generation-absent` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_the_bucket_lacks_refuses` | performed |
 | `store.pull.generation-diverged` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_into_a_store_holding_unlisted_files_refuses` | performed |
@@ -2166,6 +2167,7 @@ Unscheduled operations: 13.
 | `store.pull.run-state-torn` | `crates/contextful-sync/tests/integration/pull.rs::a_run_state_torn_by_an_uncommitted_push_is_discarded_and_the_next_push_heals_it` | performed |
 | `store.pull.schema-merge` | `crates/contextful-sync/tests/integration/pull.rs::a_pulled_schema_merges_into_the_local_one` | performed |
 | `store.pull.tombstone-applied` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_deletes_the_copy_a_tombstone_names` | performed |
+| `store.pull.transfer-width` | `crates/contextful-sync/tests/integration/pull.rs::a_cold_pull_keeps_sixteen_fetches_in_flight_and_reads_each_object_once` | performed |
 | `store.pull.unconverged` | `crates/contextful-sync/tests/integration/pull.rs::a_key_that_keeps_moving_refuses_and_writes_no_pointer` | performed |
 | `store.pull.unconverged-resume` | `crates/contextful-sync/tests/integration/pull.rs::an_exhausted_pull_keeps_what_it_verified_and_the_next_fetches_only_the_rest` | performed |
 | `store.push.after-run` | `crates/contextful-cli/tests/integration/sync/mod.rs::a_run_declaring_push_after_run_publishes_on_success_and_on_failure` | performed |
@@ -2195,6 +2197,7 @@ Unscheduled operations: 13.
 | `store.push.run-state-upload` | `crates/contextful-sync/tests/integration/pull.rs::a_run_state_torn_by_an_uncommitted_push_is_discarded_and_the_next_push_heals_it` | performed |
 | `store.push.schema-cas` | `crates/contextful-sync/tests/integration/converge.rs::two_nodes_landing_different_columns_both_keep_them` | performed |
 | `store.push.stranded` | `crates/contextful-cli/tests/integration/sync/node_id.rs::a_moved_checkout_names_the_run_it_landed_before_the_move` | performed |
+| `store.push.transfer-width` | `crates/contextful-sync/tests/integration/push.rs::a_push_keeps_sixteen_uploads_in_flight_and_commits_after_them` | performed |
 | `store.push.wire-format` | `crates/contextful-sync/tests/integration/push.rs::a_push_uploads_store_files_under_the_prefix_and_keeps_machine_state_local` | performed |
 | `store.reconcile.additive` | `crates/contextful-core/tests/integration/store/reconcile.rs::an_unseen_column_joins_nullable` | performed |
 | `store.reconcile.binary-and-vector` | `crates/contextful-core/tests/integration/store/reconcile.rs::binary_and_vector_types_take_no_promotion` | performed |

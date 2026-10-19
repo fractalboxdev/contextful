@@ -107,6 +107,7 @@ store-kdf-iterations        = { clause = "store.encrypt.password-kdf", value = 3
 store-kdf-lanes             = { clause = "store.encrypt.password-kdf", value = 4, unit = "lanes", basis = "standard:rfc9106", gloss = "Argon2id parallelism." }
 store-clock-skew            = { clause = "store.lease.clock-skew", value = 30, unit = "s", basis = "chosen", gloss = "Largest clock difference between two machines coordination assumes." }
 store-pull-convergence      = { clause = "store.pull.convergence", value = 3, unit = "attempts", basis = "chosen", gloss = "Manifest re-fetches a pull performs against keys moving beneath it." }
+store-transfer-width        = { clause = "store.pull.transfer-width", value = 16, unit = "requests", basis = "chosen", gloss = "Object requests a pull or a push keeps in flight at once." }
 store-tombstone-ttl         = { clause = "store.merge.tombstone-ttl", value = 30, unit = "d", basis = "chosen", gloss = "Age at which a tombstone leaves the bucket manifest." }
 store-push-retries          = { clause = "store.merge.retries", value = 5, unit = "attempts", basis = "chosen", gloss = "Default consecutive re-commit rounds meeting no newer generation on a lost bucket manifest compare-and-set." }
 store-push-round-ceiling    = { clause = "store.merge.round-ceiling", value = 64, unit = "rounds", basis = "chosen", gloss = "Manifest commit rounds one push makes, whatever generations they meet." }

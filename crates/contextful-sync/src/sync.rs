@@ -11,6 +11,7 @@ use contextful_core::store::sync::{
     admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge_verified, owner_of, run_state_node, BucketManifest, ControlHead, Coordination, Entry, HeldKeys,
     SyncConfig, Tombstone, GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE, PUSH_ROUND_CEILING,
 };
+use crate::transfer::{each, DigestRecord};
 use contextful_core::ports::SigningPort;
 use contextful_core::revoke::KeySetLedger;
 use contextful_policy::issue::sign_through;
@@ -25,6 +26,7 @@ use contextful_policy::issue::SignerKey;
 use contextful_core::time::Instant;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 /// Why a sync operation refused.
@@ -217,6 +219,7 @@ impl Redistribution {
 /// Every syncable file of `store`, keyed under `project`, with its entry and path.
 pub fn local_entries(store: &Store, project: &str) -> Result<BTreeMap<String, (Entry, PathBuf)>> {
     let root = store.root().to_path_buf();
+    let record = DigestRecord::open(&root, project);
     let mut out = BTreeMap::new();
     let mut stack = vec![root.clone()];
     while let Some(dir) = stack.pop() {
@@ -237,13 +240,21 @@ pub fn local_entries(store: &Store, project: &str) -> Result<BTreeMap<String, (E
             if !syncable(&rel) {
                 continue;
             }
-            let bytes = std::fs::read(&path).map_err(|e| io(&path, e))?;
+            let Some(digest) = record.digest(&rel, &path).map_err(|e| io(&path, e))? else { continue };
             let key = format!("{project}/{rel}");
             let owner = owner_of(&key).unwrap_or_default();
-            out.insert(key, (Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner }, path));
+            out.insert(key, (Entry { sha256: digest.sha256, size: digest.size, owner }, path));
         }
     }
+    record.retain(|rel| out.contains_key(&format!("{project}/{rel}")));
+    record.save();
     Ok(out)
+}
+
+/// The machine-local directory beside the store at `root`, never synced:
+/// `.contextful/context/<project>` → `.contextful/sync/<project>/`.
+pub(crate) fn sync_dir(root: &Path, project: &str) -> PathBuf {
+    root.parent().and_then(Path::parent).map(|p| p.join("sync").join(project)).unwrap_or_else(|| root.join(".sync"))
 }
 
 /// What a push of one store commits, computed from its files alone (`store.emit`).
@@ -492,6 +503,17 @@ pub struct GenerationSummary {
     pub committed_by: Option<String>,
     pub entries: usize,
     pub tombstones: usize,
+}
+
+/// What a pull's download did with one listed key.
+enum Fetched {
+    /// The local copy stands.
+    Kept,
+    Downloaded,
+    /// The bucket held no object under the key.
+    Missing,
+    /// A torn run state, dropped (`store.pull.run-state-torn`).
+    Discarded,
 }
 
 /// What a pull did.
@@ -886,15 +908,15 @@ impl Syncer {
 
     /// Every table pointer of this project the bucket holds, keyed under the project.
     fn project_pointers(&self) -> Result<BTreeMap<String, BucketPointer>> {
-        let mut out = BTreeMap::new();
-        for bucket_key in self.bucket.list(&self.key(&format!("{}/tables/", self.project))?)?.into_iter().filter(|k| is_pointer(k)) {
-            let rel_key = bucket_key.strip_prefix(&format!("{}/", self.prefix)).unwrap_or(&bucket_key).to_string();
-            let Some((bytes, _)) = self.bucket.get(&bucket_key)? else { continue };
-            let clear = self.store.open_metadata_bytes(Path::new(&bucket_key), &bytes)?;
+        let keys: Vec<String> = self.bucket.list(&self.key(&format!("{}/tables/", self.project))?)?.into_iter().filter(|k| is_pointer(k)).collect();
+        let read = each(&keys, |bucket_key| {
+            let rel_key = bucket_key.strip_prefix(&format!("{}/", self.prefix)).unwrap_or(bucket_key).to_string();
+            let Some((bytes, _)) = self.bucket.get(bucket_key)? else { return Ok(None) };
+            let clear = self.store.open_metadata_bytes(Path::new(bucket_key), &bytes)?;
             let pointer: BucketPointer = serde_json::from_slice(&clear).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
-            out.insert(rel_key, pointer);
-        }
-        Ok(out)
+            Ok(Some((rel_key, pointer)))
+        })?;
+        Ok(read.into_iter().flatten().collect())
     }
 
     /// Demonstrate conditional writes with a live sentinel inside the prefix (`store.probe`).
@@ -958,28 +980,24 @@ impl Syncer {
         self.check_root_objects(&plan, &remote)?;
         let mut report = PushReport::default();
         // A copy of a key another node owns is never pushed; a shared mergeable key commits by its merge.
-        for (key, entry) in &plan.mine {
-            // A run state rewrites one key in place, so a listed digest proves nothing of the object; it uploads on every push (`store.push.run-state-upload`).
-            let run_state = run_state_node(key).is_some_and(|n| *key == format!("{}/nodes/{n}/run-state.json", self.project));
-            if !run_state && remote.entries.get(key).is_some_and(|e| e.sha256 == entry.sha256) {
-                continue;
-            }
-            let uploaded = match class(key, &self.node) {
-                KeyClass::Owned => {
-                    self.put_owned(key, &plan.read(key)?)?;
-                    true
-                }
-                _ => self.put_immutable(key, &plan.read(key)?, &entry.sha256)?,
-            };
-            if uploaded {
-                report.uploaded.push(key.clone());
-            }
-        }
-        for key in plan.shared.keys() {
-            if self.put_merged(key, &plan.read(key)?)? {
-                report.uploaded.push(key.clone());
-            }
-        }
+        let differing: Vec<(&String, &Entry)> = plan
+            .mine
+            .iter()
+            .filter(|(key, entry)| {
+                // A run state rewrites one key in place, so a listed digest proves nothing of the object; it uploads on every push (`store.push.run-state-upload`).
+                let run_state = run_state_node(key).is_some_and(|n| **key == format!("{}/nodes/{n}/run-state.json", self.project));
+                run_state || remote.entries.get(*key).is_none_or(|e| e.sha256 != entry.sha256)
+            })
+            .collect();
+        // Uploads run up to the transfer width at once, every one returned before the commit (`store.push.transfer-width`).
+        let uploaded = each(&differing, |(key, entry)| match class(key, &self.node) {
+            KeyClass::Owned => self.put_owned(key, &plan.read(key)?).map(|()| true),
+            _ => self.put_immutable(key, &plan.read(key)?, &entry.sha256),
+        })?;
+        report.uploaded.extend(differing.iter().zip(uploaded).filter(|(_, up)| *up).map(|((key, _), _)| (*key).clone()));
+        let shared: Vec<&String> = plan.shared.keys().collect();
+        let merged = each(&shared, |key| self.put_merged(key, &plan.read(key)?))?;
+        report.uploaded.extend(shared.iter().zip(merged).filter(|(_, up)| *up).map(|(key, _)| (*key).clone()));
         // An object a concurrent writer uploaded for a withheld table refuses before the commit (`authority.bound-redistribution.two-checks`).
         self.check_left_behind()?;
         // A table under a standing compaction lease is the holder's to publish (`store.push.pointer-leased`).
@@ -1322,6 +1340,14 @@ impl Syncer {
     /// Under `scope.generation`, restore that generation's entries and pointers instead
     /// (`store.pull.generation`).
     pub fn pull(&self, scope: &PullScope) -> Result<PullReport> {
+        let record = DigestRecord::open(self.store.root(), &self.project);
+        let pulled = self.pull_recorded(scope, &record);
+        record.save();
+        pulled
+    }
+
+    /// The pull, each local file's digest read through `record` (`store.pull.digest-record`).
+    fn pull_recorded(&self, scope: &PullScope, record: &DigestRecord) -> Result<PullReport> {
         let replica = self.store.replica_of().is_some();
         if replica {
             // A concrete name requests its table; a prefix or `*` skips replicate-off tables as an unscoped refresh does.
@@ -1395,23 +1421,29 @@ impl Syncer {
                 shortfall = Some(missing);
                 continue;
             }
-            for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k))) {
-                let Some(path) = self.local_path(key) else { continue };
-                let local = std::fs::read(&path).ok();
-                report.bytes_read += local.as_ref().map_or(0, |l| l.len() as u64);
+            let wanted: Vec<(&String, &Entry)> = manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k))).collect();
+            // Each differing object downloads on its own request, up to the transfer width at once (`store.pull.transfer-width`).
+            let (read, hashed) = (AtomicU64::new(0), AtomicU64::new(0));
+            let fetched = each(&wanted, |(key, entry)| {
+                let Some(path) = self.local_path(key) else { return Ok(Fetched::Kept) };
+                let rel = &key[self.project.len() + 1..];
+                let local = record.digest(rel, &path).ok().flatten().map(|d| {
+                    read.fetch_add(d.read, Ordering::Relaxed);
+                    if !(generation.is_some() && key.ends_with("/schema.json")) {
+                        hashed.fetch_add(d.read, Ordering::Relaxed);
+                    }
+                    d.sha256
+                });
                 // This node's own keys are authoritative here, except in a restore or where a
                 // store that never pushed as this node lacks them (`store.pull.cold-own-keys`).
                 if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) && (pushed || local.is_some()) {
-                    continue;
+                    return Ok(Fetched::Kept);
                 }
                 let schema = key.ends_with("/schema.json");
                 // A restore takes a schema as the bucket holds it now (`store.pull.generation-schema`).
                 let current_schema = generation.is_some() && schema;
-                if !current_schema {
-                    report.bytes_hashed += local.as_ref().map_or(0, |l| l.len() as u64);
-                }
-                if !current_schema && local.as_deref().map(sha256_hex).as_deref() == Some(entry.sha256.as_str()) {
-                    continue;
+                if !current_schema && local.as_deref() == Some(entry.sha256.as_str()) {
+                    return Ok(Fetched::Kept);
                 }
                 if local.is_some() && is_commit_log(key) {
                     return Err(StoreError::SyncCursorConflict(format!(
@@ -1419,29 +1451,42 @@ impl Syncer {
                     ))
                     .into());
                 }
-                let Some((bytes, _)) = self.bucket.get(&self.key(key)?)? else {
-                    shortfall = Some(key.clone());
-                    continue;
-                };
+                let Some((bytes, _)) = self.bucket.get(&self.key(key)?)? else { return Ok(Fetched::Missing) };
                 if !current_schema && sha256_hex(&bytes) != entry.sha256 {
                     // A push writes its run state before its manifest commit; one it never committed is a summary to drop, not a refusal (`store.pull.run-state-torn`).
-                    if run_state_node(key).is_some_and(|n| *key == format!("{}/nodes/{n}/run-state.json", self.project)) {
-                        if !report.discarded.iter().any(|d| d.starts_with(&format!("`{key}`"))) {
-                            report.discarded.push(format!("`{key}` holds a run state other than its entry's, written by a push that never committed; it is discarded and its node's next push replaces it"));
-                        }
-                        continue;
+                    if run_state_node(key).is_some_and(|n| **key == format!("{}/nodes/{n}/run-state.json", self.project)) {
+                        return Ok(Fetched::Discarded);
                     }
                     return Err(StoreError::SyncObjectDigestMismatch(format!("`{key}` arrived with a digest other than its entry's; the object is discarded")).into());
                 }
-                let merged = match (&local, schema) {
-                    (Some(mine), true) => merge_schema_bytes(&self.store.metadata_files(), &path, mine, &bytes)?,
+                let merged = match (local.is_some(), schema) {
+                    (true, true) => {
+                        let mine = std::fs::read(&path).map_err(|e| io(&path, e))?;
+                        merge_schema_bytes(&self.store.metadata_files(), &path, &mine, &bytes)?
+                    }
                     _ => bytes,
                 };
-                if local.as_deref() == Some(merged.as_slice()) {
-                    continue;
+                let digest = sha256_hex(&merged);
+                if local.as_deref() == Some(digest.as_str()) {
+                    return Ok(Fetched::Kept);
                 }
                 write(&path, &merged)?;
-                report.downloaded.push(key.clone());
+                record.note(rel, &path, digest);
+                Ok(Fetched::Downloaded)
+            });
+            report.bytes_read += read.into_inner();
+            report.bytes_hashed += hashed.into_inner();
+            for ((key, _), outcome) in wanted.iter().zip(fetched?) {
+                match outcome {
+                    Fetched::Kept => {}
+                    Fetched::Downloaded => report.downloaded.push((*key).clone()),
+                    Fetched::Missing => shortfall = Some((*key).clone()),
+                    Fetched::Discarded => {
+                        if !report.discarded.iter().any(|d| d.starts_with(&format!("`{key}`"))) {
+                            report.discarded.push(format!("`{key}` holds a run state other than its entry's, written by a push that never committed; it is discarded and its node's next push replaces it"));
+                        }
+                    }
+                }
             }
             if shortfall.is_none() {
                 break;
@@ -1474,6 +1519,7 @@ impl Syncer {
                     );
                     continue;
                 }
+                record.forget(&key[self.project.len() + 1..]);
                 match std::fs::remove_file(&path) {
                     Ok(()) => report.removed.push(key.clone()),
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -1550,10 +1596,7 @@ impl Syncer {
     }
 
     fn held_path(&self, table: &str) -> PathBuf {
-        let root = self.store.root();
-        // `.contextful/context/<project>` → `.contextful/sync/<project>/held/`: machine-local, never synced.
-        let base = root.parent().and_then(Path::parent).map(|p| p.join("sync").join(&self.project)).unwrap_or_else(|| root.join(".sync"));
-        base.join("held").join(format!("{table}.json"))
+        sync_dir(self.store.root(), &self.project).join("held").join(format!("{table}.json"))
     }
 
     /// The compaction lease this node recorded as held for `table`.

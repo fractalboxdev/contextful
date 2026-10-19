@@ -663,6 +663,23 @@ method = { test = "contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_n
 target = { op = "==", value = 0 }
 seed   = 0x5eed_0005
 
+[entry.sync-cold-pull-requests-per-object]
+clause = "store.pull.transfer-width"
+metric = "pull.cold.requests_per_object"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_sync::pull::a_cold_pull_keeps_sixteen_fetches_in_flight_and_reads_each_object_once" }
+target = { op = "<=", value = 1.01 }
+seed   = 0x5eed_0643
+
+[entry.sync-cold-pull-objects-before-ready]
+clause = "store.pull.before-run"
+metric = "pull.cold.objects_before_ready"
+kind   = "test"
+tier   = "gate"
+method = { issue = 643 }
+target = { op = "<=", value = 3 }
+
 [entry.network-volume-refuses-cas]
 clause = "store.probe.unproven"
 metric = "probe.network_class_cas_pushes"
@@ -969,7 +986,7 @@ metric = "sync.pull.bytes_hashed_per_noop_pull.at_1k"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes" }
-target = { op = "<=", value = 1024000 }
+target = { op = "<=", value = 0 }
 seed   = 0x5eed_0090
 
 [entry.sync-noop-pull-hashed-10k]
@@ -978,7 +995,7 @@ metric = "sync.pull.bytes_hashed_per_noop_pull.at_10k"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes" }
-target = { op = "<=", value = 10240000 }
+target = { op = "<=", value = 0 }
 seed   = 0x5eed_0090
 
 [entry.sync-noop-pull-read-10k]
@@ -987,7 +1004,7 @@ metric = "sync.pull.bytes_read_per_noop_pull.at_10k"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes" }
-target = { op = "<=", value = 10250240 }
+target = { op = "<=", value = 0 }
 seed   = 0x5eed_0090
 
 [entry.sync-noop-pull-manifest-bytes-10k]

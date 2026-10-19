@@ -1117,3 +1117,24 @@ fn the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick() {
     contextful_eval::record::emit("runs-record-manifest-keys-per-tick", listed, window as u64, SEED);
     contextful_eval::record::emit("bucket-keys-per-tick", bucket_keys, window as u64, SEED);
 }
+
+/// A push of a store holding 256 unlisted files keeps 16 uploads in flight, and the manifest
+/// it commits lists every one.
+// spec: store.push.transfer-width@be963434
+#[test]
+fn a_push_keeps_sixteen_uploads_in_flight_and_commits_after_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let slow = Arc::new(crate::support::Slow::new(inner.clone(), std::time::Duration::from_millis(2)));
+    let a = node("ingest-a", slow.clone(), "");
+    for i in 0..256 {
+        let path = a.root().join(format!("tables/filings/_runs/runs/run-{i:05}/manifest.json"));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, format!("{{\"run\":{i}}}")).unwrap();
+    }
+    let report = a.syncer.push(at(NOW)).unwrap();
+    assert_eq!(report.uploaded.iter().filter(|k| k.contains("/_runs/")).count(), 256, "{:?}", report.uploaded);
+    assert_eq!(slow.peak.load(std::sync::atomic::Ordering::SeqCst), 16, "uploads in flight at once");
+    let listed: BucketManifest = serde_json::from_slice(&inner.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    assert!(report.uploaded.iter().all(|k| listed.entries.contains_key(k) && inner.get(&format!("team/{k}")).unwrap().is_some()));
+}

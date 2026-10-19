@@ -10,6 +10,7 @@ pub mod run_state;
 #[cfg(feature = "s3-sync")]
 pub mod s3_bucket;
 pub mod sync;
+pub mod transfer;
 
 pub use edge::ServingEdge;
 pub use fs_bucket::{FsBucket, VolumeClass};
