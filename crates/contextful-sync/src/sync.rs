@@ -970,7 +970,7 @@ impl Syncer {
             (StoreError::SyncCoordinationUnproven(m), CasScope::Machine(why)) => StoreError::SyncCoordinationUnproven(format!("{m}: {why}")),
             (e, _) => e,
         })?;
-        let plan = self.plan_manifest()?;
+        let mut plan = self.plan_manifest()?;
         let remote = self.manifest()?.0;
         self.admit_control_head(&plan, &remote)?;
         if let Some(r) = &self.residency {
@@ -990,11 +990,34 @@ impl Syncer {
             })
             .collect();
         // Uploads run up to the transfer width at once, every one returned before the commit (`store.push.transfer-width`).
-        let uploaded = each(&differing, |(key, entry)| match class(key, &self.node) {
-            KeyClass::Owned => self.put_owned(key, &plan.read(key)?).map(|()| true),
-            _ => self.put_immutable(key, &plan.read(key)?, &entry.sha256),
+        let uploaded = each(&differing, |(key, entry)| {
+            let bytes = plan.read(key)?;
+            // The manifest lists the digest of the bytes sent, whatever the plan read (`store.push.upload-digest`).
+            let sent = sha256_hex(&bytes);
+            let moved = (sent != entry.sha256).then(|| Entry { sha256: sent.clone(), size: bytes.len() as u64, owner: entry.owner.clone() });
+            let up = match class(key, &self.node) {
+                KeyClass::Owned => self.put_owned(key, &bytes).map(|()| true)?,
+                _ => self.put_immutable(key, &bytes, &sent)?,
+            };
+            Ok((up, moved))
         })?;
-        report.uploaded.extend(differing.iter().zip(uploaded).filter(|(_, up)| *up).map(|((key, _), _)| (*key).clone()));
+        let mut moved = Vec::new();
+        for ((key, _), (up, entry)) in differing.iter().zip(uploaded) {
+            if up {
+                report.uploaded.push((*key).clone());
+            }
+            if let Some(entry) = entry {
+                moved.push(((*key).clone(), entry));
+            }
+        }
+        if !moved.is_empty() {
+            let record = DigestRecord::open(self.store.root(), &self.project);
+            for (key, entry) in moved {
+                record.forget(&key[self.project.len() + 1..]);
+                plan.mine.insert(key, entry);
+            }
+            record.save();
+        }
         let shared: Vec<&String> = plan.shared.keys().collect();
         let merged = each(&shared, |key| self.put_merged(key, &plan.read(key)?))?;
         report.uploaded.extend(shared.iter().zip(merged).filter(|(_, up)| *up).map(|(key, _)| (*key).clone()));

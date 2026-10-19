@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 267 |
 | `run` | 3 | 29 | 565 | 127 | 46 | 17 | 526 | 0 | 449 |
-| `store` | 3 | 19 | 306 | 64 | 17 | 10 | 295 | 0 | 285 |
+| `store` | 3 | 19 | 307 | 64 | 17 | 10 | 296 | 0 | 286 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 135 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 61 |
-| **total** | 22 | 169 | 2712 | 681 | 217 | 75 | 2419 | 0 | |
+| **total** | 22 | 169 | 2713 | 681 | 217 | 75 | 2420 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 12 | 290 | 278 | passing | closed |
 | 4 — Ingest | 25 | 609 | 504 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
-| 6 — Sync and replicas | 8 | 97 | 96 | passing | closed |
+| 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -2198,6 +2198,7 @@ Unscheduled operations: 13.
 | `store.push.schema-cas` | `crates/contextful-sync/tests/integration/converge.rs::two_nodes_landing_different_columns_both_keep_them` | performed |
 | `store.push.stranded` | `crates/contextful-cli/tests/integration/sync/node_id.rs::a_moved_checkout_names_the_run_it_landed_before_the_move` | performed |
 | `store.push.transfer-width` | `crates/contextful-sync/tests/integration/push.rs::a_push_keeps_sixteen_uploads_in_flight_and_commits_after_them` | performed |
+| `store.push.upload-digest` | `crates/contextful-sync/tests/integration/push.rs::a_push_lists_the_digest_of_the_bytes_it_uploaded` | performed |
 | `store.push.wire-format` | `crates/contextful-sync/tests/integration/push.rs::a_push_uploads_store_files_under_the_prefix_and_keeps_machine_state_local` | performed |
 | `store.reconcile.additive` | `crates/contextful-core/tests/integration/store/reconcile.rs::an_unseen_column_joins_nullable` | performed |
 | `store.reconcile.binary-and-vector` | `crates/contextful-core/tests/integration/store/reconcile.rs::binary_and_vector_types_take_no_promotion` | performed |

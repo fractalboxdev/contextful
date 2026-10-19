@@ -1027,9 +1027,9 @@ fn a_refused_concurrent_pull_keeps_each_object_it_verified() {
     }
 }
 
-/// A local file whose size and modification time match its digest record is not rehashed: a
-/// rewrite that keeps both reads as the recorded digest, and one that moves the time re-downloads.
-// spec: store.pull.digest-record@f94088a8
+/// A pull reads no local file whose size, modification time, change time and inode match its
+/// digest record, and a rewrite restoring the size and modification time still re-downloads.
+// spec: store.pull.digest-record@4a0497aa
 #[test]
 fn a_pull_takes_a_matching_files_digest_from_its_record() {
     let dir = tempfile::tempdir().unwrap();
@@ -1037,6 +1037,9 @@ fn a_pull_takes_a_matching_files_digest_from_its_record() {
     let keys = crate::support::seed_objects(b.as_ref(), 4);
     let cold = node("ingest-b", b, "");
     cold.syncer.pull(&PullScope::default()).unwrap();
+    let again = cold.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!((again.bytes_read, again.bytes_hashed), (0, 0), "every record stands for its file");
+
     let path = cold.root().join(keys[0].strip_prefix("research/").unwrap());
     let original = std::fs::read(&path).unwrap();
     let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
@@ -1044,12 +1047,8 @@ fn a_pull_takes_a_matching_files_digest_from_its_record() {
     assert_ne!(forged, original);
     std::fs::write(&path, &forged).unwrap();
     std::fs::File::options().write(true).open(&path).unwrap().set_modified(modified).unwrap();
+    assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), modified);
     let report = cold.syncer.pull(&PullScope::default()).unwrap();
-    assert!(report.downloaded.is_empty(), "a matching record stands for the file: {:?}", report.downloaded);
-    assert_eq!(std::fs::read(&path).unwrap(), forged);
-
-    std::fs::File::options().write(true).open(&path).unwrap().set_modified(modified + std::time::Duration::from_secs(1)).unwrap();
-    let report = cold.syncer.pull(&PullScope::default()).unwrap();
-    assert_eq!(report.downloaded, vec![keys[0].clone()]);
+    assert_eq!(report.downloaded, vec![keys[0].clone()], "the rewrite moved the change time");
     assert_eq!(std::fs::read(&path).unwrap(), original);
 }

@@ -8,7 +8,6 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
-use std::time::UNIX_EPOCH;
 
 /// Object requests a pull or a push keeps in flight at once: 16 requests (`store.pull.transfer-width`).
 pub const TRANSFER_WIDTH: usize = 16;
@@ -43,11 +42,22 @@ pub(crate) fn each<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> Result<R> + 
     done.into_iter().map(|(_, r)| r).collect()
 }
 
-/// A file's size, modification time and the sha256 it hashed to.
+/// What marks a file unchanged: its size, modification and change times, inode and device.
+/// Setting a file's modification time moves its change time, so a rewrite that restores
+/// the size and modification time still reads as changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Stamp {
+    size: u64,
+    modified: (i64, i64),
+    changed: (i64, i64),
+    inode: u64,
+    device: u64,
+}
+
+/// A file's stamp and the sha256 it hashed to.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Recorded {
-    size: u64,
-    modified: (u64, u32),
+    stamp: Stamp,
     sha256: String,
 }
 
@@ -67,15 +77,30 @@ pub(crate) struct DigestRecord {
     dirty: AtomicBool,
 }
 
-/// The size and modification time of the file at `path`, `None` where none is there.
-fn stamp(path: &Path) -> std::io::Result<Option<(u64, (u64, u32))>> {
+/// The stamp of the file at `path`: `Ok(None)` where none is there, `Ok(Some(None))` on a
+/// platform without change times and inodes, where no record stands for a file.
+fn stamp(path: &Path) -> std::io::Result<Option<Option<Stamp>>> {
     let meta = match std::fs::metadata(path) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e),
     };
-    let modified = meta.modified()?.duration_since(UNIX_EPOCH).map(|d| (d.as_secs(), d.subsec_nanos())).unwrap_or_default();
-    Ok(Some((meta.len(), modified)))
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Ok(Some(Some(Stamp {
+            size: meta.len(),
+            modified: (meta.mtime(), meta.mtime_nsec()),
+            changed: (meta.ctime(), meta.ctime_nsec()),
+            inode: meta.ino(),
+            device: meta.dev(),
+        })))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        Ok(Some(None))
+    }
 }
 
 impl DigestRecord {
@@ -92,14 +117,16 @@ impl DigestRecord {
     }
 
     /// The sha256 and size of the file at `path`, kept under `rel`: the recorded digest when
-    /// its size and modification time match, else the file hashed and recorded.
+    /// the file's stamp matches the record's, else the file hashed and recorded.
     pub(crate) fn digest(&self, rel: &str, path: &Path) -> std::io::Result<Option<Digest>> {
-        let Some((size, modified)) = stamp(path)? else {
+        let Some(before) = stamp(path)? else {
             self.forget(rel);
             return Ok(None);
         };
-        if let Some(r) = self.entries().get(rel).filter(|r| r.size == size && r.modified == modified) {
-            return Ok(Some(Digest { sha256: r.sha256.clone(), size, read: 0 }));
+        if let Some(stamp) = before {
+            if let Some(r) = self.entries().get(rel).filter(|r| r.stamp == stamp) {
+                return Ok(Some(Digest { sha256: r.sha256.clone(), size: stamp.size, read: 0 }));
+            }
         }
         let bytes = match std::fs::read(path) {
             Ok(b) => b,
@@ -108,16 +135,18 @@ impl DigestRecord {
         };
         let sha256 = sha256_hex(&bytes);
         // A file rewritten between the stamp and the read records under the next hash.
-        if bytes.len() as u64 == size && stamp(path)? == Some((size, modified)) {
-            self.keep(rel, Recorded { size, modified, sha256: sha256.clone() });
+        if let Some(read) = before.filter(|s| s.size == bytes.len() as u64) {
+            if stamp(path)? == Some(Some(read)) {
+                self.keep(rel, Recorded { stamp: read, sha256: sha256.clone() });
+            }
         }
         Ok(Some(Digest { sha256, size: bytes.len() as u64, read: bytes.len() as u64 }))
     }
 
     /// Record `sha256` for the file just written at `path`.
     pub(crate) fn note(&self, rel: &str, path: &Path, sha256: String) {
-        if let Ok(Some((size, modified))) = stamp(path) {
-            self.keep(rel, Recorded { size, modified, sha256 });
+        if let Ok(Some(Some(stamp))) = stamp(path) {
+            self.keep(rel, Recorded { stamp, sha256 });
         }
     }
 
