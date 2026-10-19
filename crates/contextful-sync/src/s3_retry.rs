@@ -54,11 +54,13 @@ fn backoff(n: u32) -> Duration {
     ceiling.mul_f64(fraction)
 }
 
-pub(crate) fn resend_until<T>(
+/// Sends through `send` until an answer, a spent budget or a final loss. The adapter owns the
+/// client, so a transport loss arrives as any displayable error.
+pub(crate) fn resend_until<T, E: std::fmt::Display>(
     what: &str,
     mode: Resend,
     deadline: Option<Instant>,
-    send: impl Fn(Duration) -> Result<(u16, T), ureq::Error>,
+    send: impl Fn(Duration) -> Result<(u16, T), E>,
 ) -> Result<(u16, T), ObjectError> {
     let (mut lost, mut throttled) = (0u32, 0u32);
     loop {
