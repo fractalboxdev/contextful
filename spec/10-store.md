@@ -321,6 +321,8 @@ Compaction: pass order, triggers, retention, the compaction lease, and the point
 - `retention` — `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.
 - `reference-retention` — Collection keeps each part and sidecar segment a retained snapshot carries by reference, removing the rest of the collected snapshot's directory, manifest included, until no retained snapshot names them.
   *A-store*
+- `cached-inputs` — Under {{store.pull.lazy-parts}}, a fold fetches its input parts through {{store.pull.part-cache}}; inputs larger than the cache raise `FoldInputsExceedCache`, naming both byte counts, and the pass publishes nothing.
+  *A-store*
 - `row-retention` — A fold removes expired rows from its snapshot and sidecars after keyed winner selection and derived supersession; unkeyed partitions whose footer maximum precedes the cutoff skip row reads, and idle passes publish on expiry under {{store.declare.retain-rows}}.
   *because a time partition follows the sender's clock while the retention clock follows arrival*
 - `row-retention-report` — A pass reports the row-age cutoff, expired row count, dropped partition count and directories collected per table; `collect` returns the removed directory paths.
@@ -619,6 +621,12 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *because rows landed locally carry columns the bucket's copy may lack*
 - `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the bucket into the store before their first read, and a failed pull stops the command.
   *because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs*
+- `lazy-parts` — Under `[sync] lazy_parts = true`, a pull downloads every listed key but Parquet parts and sidecar segments, and the store fetches each of those whole when a read or fold first needs it, verified per {{store.pull.digest-mismatch}}.
+  *A-store*
+- `part-cache` — `[sync] part_cache_bytes`, default 8 GiB, bounds the fetched parts and segments held locally; past it, the least recently read one that no statement or fold holds leaves the disk.
+  *A-store*
+- `part-collected` — A part {{store.pull.lazy-parts}} needs that the bucket no longer holds raises `SyncPartCollected`, naming the part and its snapshot, and the next pull advances the pointer past it.
+  *because retention collects a superseded snapshot's parts while a container still holding its pointer reads them*
 - `generation` — `contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads each listed key in scope at its listed digest, and writes exactly that generation's pointers, whatever their fence.
 - `generation-list` — `contextful sync generations` lists each `gen-<N>.json` the bucket holds, ascending, with its `committed_at`, `committed_by` and the project's entry and tombstone counts, printing `-` for a stamp the manifest lacks.
   *because choosing a generation to restore needs the last commit before an unwanted tombstone, and generation numbers alone carry no time*
@@ -634,6 +642,8 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *because a collected run takes its manifest's cursor out of the bucket, and a cold node otherwise re-reads the source from its start*
 - `control-head` — A pull downloads the bucket manifest's project-scoped control head, its snapshot and receipt ancestry under their listed digests, leaving the local applied pointer untouched for {{surface.reconcile.pulled-control}}.
   *A-surface*
+
+unsettled: Under {{store.pull.lazy-parts}} a pointer lands before its parts are home: does {{store.pull.pointer-last}} hold the snapshot manifest and its listed digests alone, and does {{store.pull.before-run}} end once every table's metadata is home? owner: store affects: store.pull
 
 A pull converges on the bucket manifest and writes each table pointer last.
 

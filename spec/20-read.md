@@ -432,6 +432,8 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
 - `cold-start` — A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.
 - `warming-read` — A request other than `GET /health` reaching a retrieval container whose snapshot-set hydration is incomplete answers as {{read.register.past-ceiling}}; `/health` names the hydration state.
   *because a container ready before hydration completes otherwise answers a read from a partial snapshot set*
+- `miss-wait` — Under {{store.pull.lazy-parts}}, a statement touching a part absent locally waits while the part downloads, and past 30 s fails with `ReadPartUnavailable`, naming the part.
+  *A-store*
 - `result-key` — A cached result keys on the token's id, revocation epoch, grants and subject, the session zone and incognito state, each touched relation and the files it reads, the bounds, the statement, its parameter values and the applied row ceiling.
   *A-read*
 - `reranker-key` — A reranked result's key adds the reranker's identity and build to {{read.cache.result-key}}.
@@ -455,6 +457,8 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
   *because connections hold memory per authority, and an entry under a superseded store state is never hit again*
 - `pool-connections` — One pool entry keeps at most 4 connections idle; a concurrent statement past them opens its own and closes it afterwards.
   *because concurrency on one session is bursty, and an idle connection holds its footer cache in memory*
+
+unsettled: Does {{read.cache.hot-local-parquet}} admit the one fetch {{read.cache.miss-wait}} puts in a query's path, and does {{read.cache.warming-read}} end once metadata hydration completes? owner: read-path affects: read.cache
 
 ## resolve-pin
 
