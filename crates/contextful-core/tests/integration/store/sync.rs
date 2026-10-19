@@ -390,6 +390,17 @@ fn transfers_sets_the_transfer_width_from_one() {
     assert_eq!(parse("transfers = 0\n").transfers(), 1);
 }
 
+/// `lazy_parts` is off and `part_cache_bytes` reads 8 GiB unless declared.
+#[test]
+fn lazy_parts_is_off_and_the_part_cache_reads_eight_gib_by_default() {
+    let parse = |extra: &str| toml::from_str::<SyncConfig>(&format!("endpoint = \"file:///tmp/b\"\nbucket = \"b\"\n{extra}")).unwrap();
+    assert!(!parse("").lazy_parts());
+    assert_eq!(parse("").part_cache_bytes(), 8 << 30);
+    let declared = parse("lazy_parts = true\npart_cache_bytes = 1048576\n");
+    assert!(declared.lazy_parts());
+    assert_eq!(declared.part_cache_bytes(), 1 << 20);
+}
+
 /// A manifest carries its commit stamp through a round trip, and one predecessing the stamp reads none.
 #[test]
 fn a_manifest_carries_its_commit_stamp_and_a_legacy_one_reads_none() {

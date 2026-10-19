@@ -289,13 +289,26 @@ pub fn pending_pull(l: &Located) -> Result<Option<PendingPull>> {
 
 fn pending_pull_within(l: &Located, guard_wait: Option<u64>) -> Result<Option<PendingPull>> {
     let (Some(config), _) = sync_config(l)? else { return Ok(None) };
+    let lazy = config.lazy_parts();
     if config.pull_before_run != Some(true) {
+        if lazy {
+            register_parts(&open_with(l, config)?.0);
+        }
         return Ok(None);
     }
     let config = capped(config, guard_wait);
     let (syncer, decls) = open_with(l, config)?;
+    if lazy {
+        register_parts(&syncer);
+    }
     let replicate_off = replicate_off(&decls)?;
     Ok(Some(PendingPull { syncer, scope: PullScope { tables: Vec::new(), replicate_off, generation: None } }))
+}
+
+/// Every store this process opens at `syncer`'s root fetches each part it lacks through the
+/// syncer's bucket (`store.pull.lazy-parts`).
+fn register_parts(syncer: &Syncer) {
+    contextful_context::store::register_part_source(syncer.store.root(), syncer.part_source());
 }
 
 /// A resolved `pull_before_run` whose transfer has not run.

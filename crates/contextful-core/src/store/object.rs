@@ -69,3 +69,20 @@ pub trait ObjectStore: Send + Sync {
         CasScope::Backend
     }
 }
+
+/// Where a store fetches a Parquet part it does not hold (`store.pull.lazy-parts`).
+pub trait PartSource: Send + Sync + std::fmt::Debug {
+    /// Bring each of `files`, relative to the store root, home whole and verified, and keep
+    /// them on disk until the returned hold drops (`store.pull.part-cache`).
+    fn hold(&self, files: &[String]) -> Result<PartHold, super::StoreError>;
+}
+
+/// Parts a [`PartSource`] keeps on disk while it lives.
+#[derive(Clone)]
+pub struct PartHold(pub std::sync::Arc<dyn std::any::Any + Send + Sync>);
+
+impl std::fmt::Debug for PartHold {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PartHold")
+    }
+}

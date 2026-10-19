@@ -879,7 +879,9 @@ impl Syncer {
             HeldKeys::Every => (BTreeSet::new(), true),
         };
         let before = keys.len();
-        for key in manifest.entries.keys().filter(|k| owner_of(k).as_deref() == Some(self.node.as_str())) {
+        // A part the cache fetched may leave the disk, so it is never recorded as held.
+        let fetched = crate::lazy::fetched_parts(self.store.root(), &self.project);
+        for key in manifest.entries.keys().filter(|k| owner_of(k).as_deref() == Some(self.node.as_str()) && self.local_rel(k).is_none_or(|rel| !fetched.contains(rel))) {
             if every || self.local_path(key).is_some_and(|p| p.exists()) {
                 keys.insert(key.clone());
             }
@@ -1298,7 +1300,18 @@ impl Syncer {
     }
 
     fn local_path(&self, key: &str) -> Option<PathBuf> {
-        key.strip_prefix(&format!("{}/", self.project)).map(|rel| self.store.root().join(rel))
+        self.local_rel(key).map(|rel| self.store.root().join(rel))
+    }
+
+    /// `key`'s path relative to the store root, `None` for a key outside the project.
+    fn local_rel<'k>(&self, key: &'k str) -> Option<&'k str> {
+        key.strip_prefix(&self.project)?.strip_prefix('/')
+    }
+
+    /// The part source a lazy store's reads fetch through, holding at most `[sync]
+    /// part_cache_bytes` of fetched parts (`store.pull.lazy-parts`, `store.pull.part-cache`).
+    pub fn part_source(&self) -> Arc<dyn contextful_core::store::object::PartSource> {
+        Arc::new(crate::lazy::LazyParts::new(self.bucket.clone(), &self.prefix, &self.project, self.store.root(), self.config.part_cache_bytes(), self.config.transfers()))
     }
 
     /// Resolve only the receipt ancestry of the committed head; unrelated control files
@@ -1372,6 +1385,8 @@ impl Syncer {
     /// The pull, each local file's digest read through `record` (`store.pull.digest-record`).
     fn pull_recorded(&self, scope: &PullScope, record: &DigestRecord) -> Result<PullReport> {
         let replica = self.store.replica_of().is_some();
+        // A restore brings every part of its generation home.
+        let lazy = self.config.lazy_parts() && scope.generation.is_none();
         if replica {
             // A concrete name requests its table; a prefix or `*` skips replicate-off tables as an unscoped refresh does.
             let mut named = scope.tables.iter().filter_map(|p| match p {
@@ -1444,7 +1459,12 @@ impl Syncer {
                 shortfall = Some(missing);
                 continue;
             }
-            let wanted: Vec<(&String, &Entry)> = manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k))).collect();
+            // A lazy pull leaves each data part in the bucket until a read needs it (`store.pull.lazy-parts`).
+            let wanted: Vec<(&String, &Entry)> = manifest
+                .entries
+                .iter()
+                .filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k)) && !(lazy && crate::lazy::is_lazy_part(k)))
+                .collect();
             // Each differing object downloads on its own request, up to the transfer width at once (`store.pull.transfer-width`).
             let (read, hashed) = (AtomicU64::new(0), AtomicU64::new(0));
             let fetched = each(self.config.transfers(), &wanted, |(key, entry)| {
@@ -1582,7 +1602,12 @@ impl Syncer {
                 }
             }
             let table_dir = pointer_path.parent().map(Path::to_path_buf).unwrap_or_default();
-            if let Some(missing) = missing_parts(&self.store, &table_dir, &snapshot)? {
+            // A lazy store advances a pointer once its snapshot manifest is home; its parts follow on first read.
+            let missing = match lazy {
+                true => (!table_dir.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(&snapshot).join(MANIFEST_FILE).exists()).then(|| MANIFEST_FILE.to_string()),
+                false => missing_parts(&self.store, &table_dir, &snapshot)?,
+            };
+            if let Some(missing) = missing {
                 if replica {
                     return Err(StoreError::ReplicaPartialParquet(format!(
                         "snapshot `{snapshot}` lacks `{missing}` on this replica; the snapshot stays unpublished here"
@@ -1762,7 +1787,7 @@ pub fn merge_schema_bytes(codec: &MetadataFiles<'_>, path: &Path, mine: &[u8], t
     }
 }
 
-fn write(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
     }

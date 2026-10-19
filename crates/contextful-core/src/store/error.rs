@@ -189,6 +189,12 @@ pub enum StoreError {
     /// The conditional-write probe met an unsupported method, a forbidden response or a transport error. (`store.probe.inconclusive`)
     #[error("SyncProbeInconclusive: {0}")]
     SyncProbeInconclusive(String),
+    /// A part a lazy store needs is gone from the bucket. (`store.pull.part-collected`)
+    #[error("SyncPartCollected: {0}")]
+    SyncPartCollected(String),
+    /// A part a statement touches did not download within its wait. (`read.cache.miss-wait`)
+    #[error("ReadPartUnavailable: {0}")]
+    ReadPartUnavailable(String),
     /// A pull exhausted its retries against keys moving beneath it. (`store.pull.unconverged`)
     #[error("SyncPullDidNotConverge: {0}")]
     SyncPullDidNotConverge(String),

@@ -27,6 +27,9 @@ pub struct Scan {
     /// The publish section of the build the relation reads, where it reads one published
     /// snapshot and no run beside it.
     pub publish: Option<PublishSection>,
+    /// The fetched parts the relation reads, kept on disk while the scan lives
+    /// (`store.pull.part-cache`); none where the store holds every part.
+    pub hold: Option<contextful_core::store::object::PartHold>,
 }
 
 /// Resolve `decl`'s table under `bounds`. The file list comes from the pointer and the
@@ -64,6 +67,8 @@ fn scan_resolved(store: &Store, decl: &TableDecl, bounds: Bounds, resolution: Re
     }
     let table_rel = format!("tables/{table}");
     let files: Vec<String> = resolution.files().into_iter().map(|f| format!("{table_rel}/{f}")).collect();
+    // A lazy store fetches each part the relation reads before anything opens it (`store.pull.lazy-parts`).
+    let hold = store.hold_parts(&files)?;
     let absolute: Vec<String> = files.iter().map(|f| store.logical_path(f).map(|path| path.to_string_lossy().into_owned())).collect::<Result<_>>()?;
     let publish = resolution.snapshot.filter(|_| resolution.runs.is_empty()).and_then(|s| s.publish.clone());
 
@@ -92,5 +97,5 @@ fn scan_resolved(store: &Store, decl: &TableDecl, bounds: Bounds, resolution: Re
     let absent: Vec<Column> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
     let key_name = store.parquet_key().map(|_| crate::encrypt::PARQUET_KEY_NAME);
     let relation = relation_bounded(decl, &absolute, &schema.columns, &absent, bounds, key_name)?;
-    Ok(Scan { files, relation, columns: schema.columns, bounds: bounds.echo(), publish })
+    Ok(Scan { files, relation, columns: schema.columns, bounds: bounds.echo(), publish, hold })
 }

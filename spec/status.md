@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 315 | 54 | 29 | 16 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 600 | 128 | 49 | 19 | 562 | 0 | 562 |
-| `store` | 4 | 19 | 327 | 67 | 21 | 12 | 312 | 0 | 312 |
+| `store` | 4 | 19 | 327 | 67 | 21 | 12 | 314 | 0 | 314 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2778 | 686 | 224 | 82 | 2482 | 0 | |
+| **total** | 23 | 169 | 2778 | 686 | 224 | 82 | 2484 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
 | 4 — Ingest | 25 | 633 | 529 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 282 | passing | closed |
-| 6 — Sync and replicas | 8 | 102 | 98 | passing | closed |
+| 6 — Sync and replicas | 8 | 102 | 100 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -2217,6 +2217,8 @@ Unscheduled operations: 13.
 | `store.pull.generation-run-state` | `crates/contextful-sync/tests/integration/run_state.rs::a_restore_keeps_a_run_state_its_generation_does_not_list` | performed |
 | `store.pull.generation-schema` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_takes_the_current_schema` | performed |
 | `store.pull.identity-conflict` | `spec/pins.toml` | performed |
+| `store.pull.part-cache` | `crates/contextful-sync/tests/integration/lazy.rs::past_the_part_cache_bound_the_least_recently_read_part_leaves` | performed |
+| `store.pull.part-collected` | `crates/contextful-sync/tests/integration/lazy.rs::a_part_the_bucket_no_longer_holds_refuses_the_read` | performed |
 | `store.pull.pointer-advance` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies` | performed |
 | `store.pull.pointer-last` | `crates/contextful-sync/tests/integration/pull.rs::a_pointer_is_written_only_once_its_snapshot_is_home` | performed |
 | `store.pull.run-state-cursor` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_resumes_the_cursor_a_push_carried` | performed |
