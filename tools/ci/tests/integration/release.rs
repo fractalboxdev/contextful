@@ -122,6 +122,20 @@ impl Release {
         self.repo.git(&["tag", "-a", "-m", name, name, "HEAD~1"]);
     }
 
+    /// Commit `format` as the store format constant's `{ major, minor }` fields, in a commit
+    /// of its own so the bump that follows changes no source.
+    fn store_format(&self, format: &str) {
+        self.store_format_source(&format!("impl FormatVersion {{\n    pub const CURRENT: FormatVersion = FormatVersion {{ {format} }};\n}}\n"));
+    }
+
+    fn store_format_source(&self, source: &str) {
+        self.repo.write("crates/contextful-core/Cargo.toml", &manifest("contextful-core", ""));
+        self.repo.write("crates/contextful-core/src/lib.rs", "");
+        self.repo.write("crates/contextful-core/src/store/lay_out.rs", source);
+        self.repo.lock();
+        self.repo.commit("store format");
+    }
+
     /// Commit `rows` and `version` as the head, the bump commit a tag follows.
     fn bump(&self, rows: &[Row], version: &str) {
         self.repo.write("spec/status.md", &status(rows));
@@ -142,8 +156,8 @@ fn refused(o: &Output, code: &str) -> String {
     err
 }
 
-/// A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.
-// spec: assurance.release.version@63e7cc56
+/// A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.
+// spec: assurance.release.version@7a27ee41
 #[test]
 fn the_version_counts_closed_milestones_and_earlier_tags_of_that_count() {
     // Milestones 0, 2 and 5 close and 1 is open though its acceptance test passes: a count,
@@ -166,6 +180,157 @@ fn the_version_counts_closed_milestones_and_earlier_tags_of_that_count() {
     let o = r.tag(&[]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(r.tags(), "v0.3.0\nv0.3.1\nv0.4.0");
+}
+
+/// A commit's store format is the `FormatVersion::CURRENT` constant in its `crates/contextful-core/src/store/lay_out.rs`, and `1.0` where that constant is absent; a constant that does not parse raises `TagStoreFormatUnread`.
+// spec: assurance.release.store-format@5ede2a87
+#[test]
+fn a_store_format_major_past_one_raises_the_minor() {
+    // No constant reads as `1.0`, which adds nothing to the closed-milestone count.
+    let r = Release::new(&THREE_OF_FOUR, Some("0.3.0"));
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(r.tags(), "v0.3.0");
+
+    // A `1.x` constant still adds nothing; the next tag is a patch.
+    r.store_format("major: 1, minor: 4");
+    r.bump(&THREE_OF_FOUR, "0.3.1");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(r.tags(), "v0.3.0\nv0.3.1");
+
+    // Major 2 with the same three milestones closed computes the next minor.
+    r.store_format("major: 2, minor: 0");
+    r.bump(&THREE_OF_FOUR, "0.3.2");
+    let err = refused(&r.tag(&[]), "TagWorkspaceVersionMismatch");
+    assert!(err.contains("0.4.0"), "{err}");
+    r.bump(&THREE_OF_FOUR, "0.4.0");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(r.tags(), "v0.3.0\nv0.3.1\nv0.4.0");
+
+    // A constant whose fields do not parse is refused before the gate.
+    let r = Release::new(&THREE_OF_FOUR, Some("0.3.0"));
+    r.store_format("major: two, minor: 0");
+    let err = refused(&r.tag(&[]), "TagStoreFormatUnread");
+    assert!(err.contains("lay_out.rs"), "{err}");
+    assert!(!r.cargo_ran(), "the gate ran over an unread store format");
+    assert_eq!(r.tags(), "");
+}
+
+/// A tag whose store format major exceeds the highest existing tag's carries the message line `Store format <old> → <new>: upgrade every reader, then every writer together.`
+// spec: assurance.release.format-notes@2eef30a7
+#[test]
+fn a_tag_raising_the_store_format_major_names_the_upgrade_order() {
+    let line = "Store format 1.0 → 2.0: upgrade every reader, then every writer together.";
+    let r = Release::new(&THREE_OF_FOUR, Some("0.3.1"));
+    r.earlier("v0.3.0");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!r.repo.git(&["cat-file", "tag", "v0.3.1"]).contains("Store format"), "an unchanged format names an upgrade");
+
+    r.store_format("major: 2, minor: 0");
+    r.bump(&THREE_OF_FOUR, "0.4.0");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let object = r.repo.git(&["cat-file", "tag", "v0.4.0"]);
+    assert!(object.contains(line), "the message omits the upgrade order: {object}");
+
+    // A minor step within major 2 names no upgrade.
+    r.store_format("major: 2, minor: 1");
+    r.bump(&THREE_OF_FOUR, "0.4.1");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!r.repo.git(&["cat-file", "tag", "v0.4.1"]).contains("Store format"), "a minor format step names an upgrade");
+}
+
+/// A computed `<minor>` equal to the highest existing tag's, while `HEAD`'s store format major differs from that tag's, raises `TagFormatBreakPatch`, naming both formats.
+// spec: assurance.release.format-break-patch@1b146c18
+#[test]
+fn a_format_break_under_an_unchanged_minor_is_refused() {
+    // Milestone 5 reopens as the format moves to major 2: 2 closed plus 1 keeps minor 3.
+    let r = Release::new(&THREE_OF_FOUR, Some("0.3.1"));
+    r.earlier("v0.3.0");
+    let mut two = THREE_OF_FOUR;
+    two[3].2 = "open";
+    r.store_format("major: 2, minor: 0");
+    r.bump(&two, "0.3.1");
+    let err = refused(&r.tag(&[]), "TagFormatBreakPatch");
+    assert!(err.contains("1.0") && err.contains("2.0") && err.contains("v0.3.0"), "{err}");
+    assert!(!r.cargo_ran(), "the gate ran for a format break under a patch");
+    assert_eq!(r.tags(), "v0.3.0");
+}
+
+#[test]
+fn a_structural_store_format_constant_raises_the_minor_and_names_the_upgrade() {
+    for source in [
+        "impl FormatVersion { pub const CURRENT: Self = Self { major: 2, minor: 0 }; }",
+        "impl FormatVersion { pub const CURRENT : FormatVersion = FormatVersion {\n minor: 0,\n major: 2,\n }; }",
+        "impl FormatVersion { pub const CURRENT:\nSelf\n=\nFormatVersion { major: 2, minor: 0 }; }",
+        "impl self::FormatVersion { pub const CURRENT: Self = Self { major: 2, minor: 0 }; }",
+        "impl FormatVersion { pub const CURRENT: self::FormatVersion = self::FormatVersion { major: 2, minor: 0 }; }",
+    ] {
+        let r = Release::new(&THREE_OF_FOUR, Some("0.3.1"));
+        r.earlier("v0.3.0");
+        r.store_format_source(source);
+        let err = refused(&r.tag(&[]), "TagWorkspaceVersionMismatch");
+        assert!(err.contains("0.4.0"), "{source}: {err}");
+        assert!(!r.cargo_ran(), "the gate ran under a mismatched version");
+
+        r.bump(&THREE_OF_FOUR, "0.4.0");
+        let o = r.tag(&[]);
+        assert!(o.status.success(), "{source}: {}", stderr(&o));
+        let message = r.repo.git(&["cat-file", "tag", "v0.4.0"]);
+        assert!(message.contains("Store format 1.0 → 2.0: upgrade every reader, then every writer together."), "{message}");
+    }
+}
+
+#[test]
+fn a_structural_store_format_constant_cannot_hide_a_format_break_in_a_patch() {
+    let r = Release::new(&THREE_OF_FOUR, Some("0.3.0"));
+    r.store_format_source("impl FormatVersion { pub const CURRENT: Self = Self { major: 1, minor: 4 }; }");
+    r.bump(&THREE_OF_FOUR, "0.3.1");
+    r.earlier("v0.3.0");
+    r.store_format_source("impl FormatVersion { pub const CURRENT: Self = Self { major: 2, minor: 0 }; }");
+    let mut two = THREE_OF_FOUR;
+    two[3].2 = "open";
+    r.bump(&two, "0.3.1");
+    let err = refused(&r.tag(&[]), "TagFormatBreakPatch");
+    assert!(err.contains("1.4") && err.contains("2.0"), "{err}");
+    assert!(!r.cargo_ran(), "the gate ran for a format break under a patch");
+    assert_eq!(r.tags(), "v0.3.0");
+}
+
+#[test]
+fn a_present_unreadable_store_format_is_refused_before_the_gate() {
+    for source in [
+        "impl FormatVersion { pub const CURRENT: Self = Self::new(2, 0); }",
+        "impl self::FormatVersion { pub const CURRENT: Self = Self::new(2, 0); }",
+        "impl FormatVersion { pub const CURRENT: Self = Self { major: 2 + 0, minor: 0 }; }",
+        "impl FormatVersion { pub const CURRENT: Self = Self { major: 2 }; }",
+        "impl FormatVersion { pub const CURRENT: Self = Self { major: 1, major: 2, minor: 0 }; }",
+        "impl FormatVersion { pub const CURRENT: Self = Other { major: 2, minor: 0 }; }",
+        "impl FormatVersion { pub const CURRENT: u64 = 2; }",
+        "impl FormatVersion { pub const CURRENT: Self = Self { major: 2, minor: 0 }; pub const CURRENT: Self = Self { major: 3, minor: 0 }; }",
+        "impl FormatVersion { pub const CURRENT: Self = Self { major: 2, minor: }; }",
+    ] {
+        let r = Release::new(&THREE_OF_FOUR, Some("0.3.0"));
+        r.store_format_source(source);
+        let err = refused(&r.tag(&[]), "TagStoreFormatUnread");
+        assert!(err.contains("lay_out.rs"), "{err}");
+        assert!(!r.cargo_ran(), "the gate ran over {source}");
+        assert_eq!(r.tags(), "");
+    }
+}
+
+#[test]
+fn a_file_without_the_format_version_current_constant_keeps_the_historical_format() {
+    let r = Release::new(&THREE_OF_FOUR, Some("0.2.0"));
+    r.store_format_source("impl Other {\n    pub const CURRENT: FormatVersion = FormatVersion { major: 9, minor: 0 };\n}\nimpl FormatVersion { pub const OLD: Self = Self { major: 8, minor: 0 }; }");
+    r.bump(&THREE_OF_FOUR, "0.3.0");
+    let o = r.tag(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(r.tags(), "v0.3.0");
 }
 
 /// The `Closed` column is found by its header name wherever it sits, and a table without one

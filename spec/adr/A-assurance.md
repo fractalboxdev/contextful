@@ -180,6 +180,21 @@ Context: a consumer pinning a git dependency reads a bare commit that promises n
 Consequences: a consumer reads a tag's closed milestones from `spec/status.md` at that commit; publishing to a package registry stays a separate decision.
 Revisit: an external consumer needs a compatibility promise on a public surface, which opens `v1`.
 
+## A store format major moves the release minor
+
+**Status:** accepted; amends the closed-milestone count above.
+
+Context: a consumer pinning `~0.16` takes every `v0.16.*` tag as a patch, yet a patch can carry manifest format `2.0` and the commit counter marker, and a build reading `1.x` refuses a table either writes. Decision: the minor version adds each store format major past `1` to the closed-milestone count, the major read from `FormatVersion::CURRENT` at the tagged commit. The commit counter marker declares that same `format_version`, so it rides on the manifest major rather than counting apart. A tag whose format major differs from the last tag's under an unchanged minor is refused, and a tag raising the major says in its message that readers upgrade before writers. Criteria: a semver range never admits a store-format break; the version stays derivable from the tagged commit alone.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Minor adds the format major *(chosen)* | — | The minor no longer equals the closed-milestone count; the tag reads one Rust constant by its text. |
+| Refuse a format break under an unchanged minor, numbering unchanged | Derivability | A maintainer must close a milestone, or wait, to release a format break. |
+| A separate format field in the tag name | Semver tooling | Cargo and npm ranges ignore a build-metadata suffix. |
+
+Consequences: 16 closed milestones under format `2.0` compute `v0.17.0`; the tag message names the reader-first upgrade order.
+Revisit: the store format promises compatibility across majors, or `v1` opens.
+
 ## The remote workspace fits the stage wall clock through parts
 
 **Status:** accepted; answers the test-first decision's revisit trigger, a base-commit build exceeding the stage wall clock.
