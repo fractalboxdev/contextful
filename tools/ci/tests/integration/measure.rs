@@ -112,6 +112,48 @@ fn a_gate_method_writing_no_record_is_refused() {
     assert!(stderr(&o).contains("MeasureRecordMissing: `demo-doubles`"), "{}", stderr(&o));
 }
 
+/// A gate-tier target that rises under `<=`, falls under `>=` or moves under `==` carries a `# cost:` comment above its entry that its entry at `<rev>` lacks, or `contextful-ci measure --since <rev>` raises `MeasureThresholdLoosened`.
+// spec: assurance.measure.threshold-cost@607c7f3c
+#[test]
+fn a_loosened_gate_target_without_a_new_cost_note_is_refused() {
+    let method = "{ test = \"demo::measured::doubles_measured\" }";
+    let at = |op: &str, value: &str| entry("demo-doubles", "run.journal.entry-key", method, &format!("target = {{ op = \"{op}\", value = {value} }}"));
+    let r = repo(&at("<=", "4"));
+    let base = r.git(&["rev-parse", "HEAD"]).trim().to_string();
+    let since = |r: &Repo, base: &str| measure(r, &["--status", "--since", base]);
+
+    r.write("evals/ledger.toml", &at("<=", "3"));
+    let o = since(&r, &base);
+    assert!(o.status.success(), "a tightened target needs no note: {}", stderr(&o));
+
+    for ledger in [at("<=", "5"), format!("# Measured over one row.\n{}", at("<=", "5"))] {
+        r.write("evals/ledger.toml", &ledger);
+        let o = since(&r, &base);
+        assert!(!o.status.success(), "a raise without a cost note passed");
+        let err = stderr(&o);
+        assert!(err.contains("MeasureThresholdLoosened: `demo-doubles`") && err.contains("<= 4") && err.contains("<= 5"), "{err}");
+    }
+
+    r.write("evals/ledger.toml", &format!("# Measured over one row.\n# cost: one more call per landing.\n{}", at("<=", "5")));
+    let o = since(&r, &base);
+    assert!(o.status.success(), "a raise beside a new cost note passes: {}", stderr(&o));
+
+    // The note a base entry already carries buys no further raise.
+    let noted = r.commit("raise");
+    r.write("evals/ledger.toml", &format!("# cost: one more call per landing.\n{}", at("<=", "6")));
+    let err = stderr(&since(&r, noted.trim()));
+    assert!(err.contains("MeasureThresholdLoosened: `demo-doubles`"), "{err}");
+
+    // A lower bound loosens by falling, and an equality by moving.
+    for (before, after) in [(at(">=", "4"), at(">=", "3")), (at("==", "4"), at("==", "5"))] {
+        r.write("evals/ledger.toml", &before);
+        let base = r.commit("bound");
+        r.write("evals/ledger.toml", &after);
+        let err = stderr(&since(&r, base.trim()));
+        assert!(err.contains("MeasureThresholdLoosened: `demo-doubles`"), "{err}");
+    }
+}
+
 /// A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.
 // spec: assurance.baseline.native-gate@b7278bc1
 #[test]

@@ -450,6 +450,8 @@ target = { op = "==", value = 0 }
 # ---------------------------------------------------------------- run
 
 # A lone landing: its admission and replay lookups, then its run.
+# cost: 4 reads per landing, a scope cursor and a run read in each of the admission and
+# replay lookups, so a batch resent after its group committed replays the group's run.
 [entry.catalog-calls-per-landing]
 clause = "run.land.receive-entry"
 metric = "catalog.calls_per_landing"

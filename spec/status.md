@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 325 | 66 | 24 | 5 | 283 | 0 | 283 |
+| `assurance` | 3 | 18 | 326 | 67 | 24 | 5 | 284 | 0 | 284 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 2 | 14 | 386 | 92 | 22 | 14 | 303 | 0 | 303 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 53 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 600 | 128 | 49 | 19 | 560 | 0 | 560 |
-| `store` | 3 | 19 | 322 | 65 | 19 | 11 | 311 | 0 | 310 |
+| `store` | 3 | 19 | 322 | 65 | 19 | 11 | 311 | 0 | 311 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2769 | 682 | 222 | 80 | 2475 | 0 | |
+| **total** | 22 | 169 | 2770 | 683 | 222 | 80 | 2476 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 61 | 49 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 171 | 136 | passing | closed |
+| 14 — Assurance | 7 | 172 | 137 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
@@ -246,6 +246,7 @@ Unscheduled operations: 13.
 | `assurance.measure.runner-stamp` | `tools/eval/tests/integration/trend.rs::a_figure_compares_only_on_a_matching_runner` | performed |
 | `assurance.measure.seed-mismatch` | `tools/ci/tests/integration/measure.rs::a_record_under_another_seed_than_its_entry_declares_is_refused` | performed |
 | `assurance.measure.seeded` | `crates/contextful-cli/tests/integration/eval.rs::replaying_the_ledger_seed_reproduces_the_native_gate_figures` | performed |
+| `assurance.measure.threshold-cost` | `tools/ci/tests/integration/measure.rs::a_loosened_gate_target_without_a_new_cost_note_is_refused` | performed |
 | `assurance.measure.tier` | `tools/ci/tests/integration/measure.rs::a_failed_or_reseeded_trend_method_does_not_fail_the_measure_run` | performed |
 | `assurance.measure.trend-band` | `tools/eval/tests/integration/trend.rs::a_figure_past_the_band_is_annotated_and_fails_nothing` | performed |
 | `assurance.measure.trend-baseline` | `tools/ci/tests/integration/measure.rs::a_trend_report_uses_the_latest_successful_matching_history_without_failing_the_run` | performed |

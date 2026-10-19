@@ -81,6 +81,7 @@ EvalCaseResolvedBeforeFreeze     = { clause = "assurance.forecast.resolved-befor
 MeasureEntryUnresolved           = { clause = "assurance.measure.unresolved-entry", gloss = "A ledger entry naming no clause, method or metric path." }
 MeasureRecordMissing             = { clause = "assurance.measure.record", gloss = "A gate-tier method finishing without writing its record." }
 MeasureSeedMismatch              = { clause = "assurance.measure.seed-mismatch", gloss = "A record carrying another seed than its ledger entry declares." }
+MeasureThresholdLoosened         = { clause = "assurance.measure.threshold-cost", gloss = "A gate-tier target loosened since the base revision without a new cost note." }
 
 TagTreeDirty                     = { clause = "assurance.release.dirty-tree", gloss = "A tag requested over a working tree or index differing from HEAD." }
 TagOffDefaultBranch              = { clause = "assurance.release.off-branch", gloss = "A tag requested on a commit the default branch does not reach." }
