@@ -25,4 +25,4 @@ pub mod worker;
 pub use catalog::LocalCatalog;
 pub use execution::Execution;
 pub use journal::Journal;
-pub use runner::{Engine, EngineError, RunSpec};
+pub use runner::{receive_stem, Engine, EngineError, RunSpec};

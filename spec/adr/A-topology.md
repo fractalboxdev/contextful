@@ -125,17 +125,34 @@ Context: a deployment mirrors landed rows to another OTLP backend; `_ingested_at
 
 Criteria: credential custody; delivery semantics the commit model honors; every row read through the enforcement stack; a cursor that skips no committed row.
 
-Decision: export is a post-commit reader with one OTLP arm; target secrets resolve through `connector.resolve` and leave through egress. A cursor over a per-table commit sequence, committed after acknowledgement, gives at-least-once delivery. One lock per table spans assigning the value, the part write and the commit point; a node reseeds its unsynced counter from the manifests.
+Decision: export is a post-commit reader with one OTLP arm; target secrets resolve through `connector.resolve` and leave through egress. A cursor over a per-table commit sequence, committed after acknowledgement, gives at-least-once delivery. Runs become readable in commit-sequence order, under the commit-lock decision below; a node reseeds its unsynced counter from the manifests.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Commit-sequence cursor, commit lock over the part write *(chosen)* | — | Landings on one table write their parts one at a time. |
-| Lock released for the part write, commits ordered by ticket | Skipped rows | A landing dying with a ticket stalls every later commit. |
+| Commit-sequence cursor, runs readable in sequence order *(chosen)* | — | A commit waits for every lower value to publish. |
 | Export as a second land destination | Delivery semantics | A failing target fails the landing run. |
 | A consumer cursor over `_ingested_at` | Skipped rows | A late run under an earlier stamp is skipped. |
 | A sink plugin per backend | Credential custody | Loaded code holds target credentials. |
 
-Consequences: landing never waits on a target; a mirror is at-least-once. Accepted cost: a landing waiting 30 s behind another's part write refuses, a target sees duplicates on recovery, and rows with a null `_commit_seq` refuse the export.
+Consequences: landing never waits on a target; a mirror is at-least-once. Accepted cost: a target sees duplicates on recovery, and rows with a null `_commit_seq` refuse the export.
+
+## A commit holds the commit lock to reserve its value and to publish, not to write
+
+**Status:** accepted; amends the export decision above.
+
+Context: a lock spanning the Parquet write serializes a table's landings. Criteria: readable runs hold a prefix of the commit sequence; a dead landing stalls no later commit; a lock refusal retries.
+
+Decision: a commit takes the lock to assign its `_commit_seq` value and lock a ticket file naming it, writes its parts holding only the ticket, then takes the lock again for its manifest once no live holder locks a lower ticket. A dead holder's ticket unlocks with its process, leaving a gap. Each wait ends at the commit wait, retryable. A vintage table keeps the lock across its part write. The reservation writes the counter as JSON, which a build locking across its part write parses as an integer and refuses.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Lock to reserve and publish, publication ordered by ticket *(chosen)* | — | A slow part write delays later publications. |
+| Lock over the part write | Throughput | A table's landings write parts serially. |
+| Tickets without liveness, ordered by counter | Dead landings | A dead ticket holder stalls later commits. |
+| Readers skip unpublished values | Prefix | An export cursor passes a value that publishes later. |
+| A newer manifest major | Order | That build's commit reads no version, so it still publishes out of order. |
+
+Consequences: a table's landings write parts in parallel and publish serially. Accepted cost: a vintage table's landings stay serial; a build locking across its part write refuses, after merging its schema, every table a reserving build committed to.
 
 ## A managed queue extends ingress behind a port; the writer stays in the engine
 

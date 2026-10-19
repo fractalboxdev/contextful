@@ -449,13 +449,16 @@ target = { op = "==", value = 0 }
 
 # ---------------------------------------------------------------- run
 
+# A lone landing: its admission and replay lookups, then its run.
+# cost: 4 reads per landing, a scope cursor and a run read in each of the admission and
+# replay lookups, so a batch resent after its group committed replays the group's run.
 [entry.catalog-calls-per-landing]
 clause = "run.land.receive-entry"
 metric = "catalog.calls_per_landing"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing" }
-target = { op = "<=", value = 30 }
+target = { op = "<=", value = 34 }
 
 [entry.catalog-calls-per-landing-writes]
 clause = "run.land.receive-entry"
@@ -464,6 +467,24 @@ kind   = "test"
 tier   = "gate"
 method = { test = "contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing" }
 target = { op = "<=", value = 6 }
+
+# Calls per received batch in a group of 16, each member's lookups included: 111 calls,
+# 22 of them writes, for the group.
+[entry.catalog-calls-per-group-batch]
+clause = "run.land.receive-group"
+metric = "catalog.calls_per_group_batch"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing" }
+target = { op = "<=", value = 12 }
+
+[entry.catalog-calls-per-group-batch-writes]
+clause = "run.land.receive-group"
+metric = "catalog.writes_per_group_batch"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing" }
+target = { op = "<=", value = 1.375 }
 
 [entry.catalog-d1-requests-per-landing]
 clause = "run.journal.d1-profile"
@@ -502,31 +523,35 @@ method = { test = "contextful_engine::runner::a_window_staging_two_gib_completes
 target = { op = ">=", value = 4 }
 seed   = 0x5eed_0b01
 
+# Two rounds of 16 batches, the land lock held until all 16 spool, land as one group each:
+# 62.5 per 1000, the full-group figure rather than the grouping arrival timing forms.
 [entry.receive-group-commits]
-clause = "run.land.receive-queue"
+clause = "run.land.receive-group"
 metric = "land.receive.commits_per_1000_updates"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_cli::receive::batches_queued_behind_the_land_lock_commit_per_group" }
-target = { op = "<=", value = 1000 }
+target = { op = "<=", value = 63 }
 seed   = 0x5eed_0101
 
+# One part and one run manifest per group.
 [entry.receive-group-parts]
-clause = "run.land.receive-queue"
+clause = "run.land.receive-group"
 metric = "land.receive.parts_per_1000_updates"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_cli::receive::batches_queued_behind_the_land_lock_commit_per_group" }
-target = { op = "<=", value = 2000 }
+target = { op = "<=", value = 125 }
 seed   = 0x5eed_0101
 
+# One push of 16 puts per group of 16 batches.
 [entry.receive-group-bucket-puts]
-clause = "store.push.after-run"
+clause = "run.land.receive-group"
 metric = "land.receive.bucket_puts_per_1000_updates"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_cli::storage::queued_receive_batches_push_once_per_group" }
-target = { op = "<=", value = 15062.5 }
+target = { op = "<=", value = 1000 }
 seed   = 0x5eed_0101
 
 [entry.receive-rows-per-s-w1]
@@ -565,7 +590,9 @@ direction = "higher_is_better"
 method = { test = "contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers" }
 seed   = 0x5eed_0102
 
-# Counts every 503 answer, each 1 s retry of a refused writer included.
+# Counts every 503 answer, each 1 s retry of a refused writer included. Groups of up to 64
+# drain the queue; retry timing spreads the count from about 460 to 580 per round, so the
+# entry stays a trend.
 [entry.receive-backpressure-w256]
 clause = "run.land.receive-backpressure"
 metric = "land.receive.backpressure_refusals.w256"

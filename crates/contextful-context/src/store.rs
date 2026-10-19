@@ -11,8 +11,9 @@ use contextful_core::store::lay_out::{
 use contextful_core::store::reconcile::Schema;
 use contextful_core::store::resolve::TableState;
 use contextful_core::store::commit_log;
+use contextful_core::store::reserve::COMMIT_LOCK_WAIT_SECS;
 use contextful_core::store::StoreError;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use contextful_fs::tmp_sibling;
@@ -481,12 +482,28 @@ impl Store {
         FileLock::acquire(&dir.join(format!("{SCHEMA_FILE}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))
     }
 
-    /// Take the table's commit lock, which a landing holds from assigning `_commit_seq`
-    /// to the step that makes its run readable (`store.reserve.commit-order`).
+    /// Take the table's commit lock, waiting up to the commit wait and then refusing with
+    /// `StoreCommitLockTimeout` (`store.reserve.commit-wait`). A landing holds it to assign
+    /// `_commit_seq` and again to write its manifest (`store.reserve.commit-order`).
     pub fn lock_commit(&self, table: &str) -> Result<FileLock> {
         let dir = self.table_dir(table)?;
         fs::create_dir_all(&dir).at(&dir)?;
-        FileLock::acquire(&dir.join(COMMIT_LOCK_FILE), std::time::Duration::from_secs(LOCK_WAIT_SECS))
+        let path = dir.join(COMMIT_LOCK_FILE);
+        FileLock::acquire_within(&path, std::time::Duration::from_secs(COMMIT_LOCK_WAIT_SECS))?.ok_or_else(|| {
+            StoreError::StoreCommitLockTimeout(format!("table `{table}`: {} stayed held past the {COMMIT_LOCK_WAIT_SECS} s commit wait", path.display())).into()
+        })
+    }
+
+    /// Reserve the table's next commit sequence value under the commit lock, which releases
+    /// on return: the landing writes its parts holding only the returned ticket, and
+    /// [`CommitTicket::publish`] orders its manifest after every lower value
+    /// (`store.reserve.commit-order`).
+    pub fn reserve_commit_seq(&self, table: &str) -> Result<CommitTicket> {
+        let _commit = self.lock_commit(table)?;
+        let seq = self.assign_commit_seq(table)?;
+        let path = self.table_dir(table)?.join(format!("{COMMIT_TICKET_PREFIX}{seq:020}.lock"));
+        let lock = FileLock::try_acquire(&path)?.ok_or_else(|| ContextError::Invalid(format!("table `{table}`: commit ticket {seq} is already held")))?;
+        Ok(CommitTicket { table: table.to_string(), seq, _lock: lock })
     }
 
     /// Assign the table's next commit sequence value, one above the greatest of the node's
@@ -495,19 +512,22 @@ impl Store {
     /// repeat (`store.reserve.commit-seq`, `store.reserve.commit-seq-seed`). The counter
     /// is node-local and a push carries no dot file; the manifests travel with the rows.
     /// The caller holds [`Store::lock_commit`].
+    ///
+    /// The counter is written as [`CommitCounter`] JSON (`store.reserve.commit-marker`): a
+    /// build that holds the commit lock across its part write parses it as a bare integer,
+    /// fails, and so refuses the table instead of publishing out of ticket order.
     pub fn assign_commit_seq(&self, table: &str) -> Result<i64> {
         let data = self.table_dir(table)?.join("data");
         let path = data.join(COMMIT_SEQ_FILE);
         let counter = match self.metadata().read_optional(&path)? {
-            Some(bytes) => std::str::from_utf8(&bytes).map_err(|e| ContextError::Invalid(format!("{}: {e}", path.display())))?.trim().parse::<i64>().map_err(|e| {
-                StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
-            })?,
+            Some(bytes) => CommitCounter::read(&bytes, &format!("table `{table}`: file `{}`", path.display()))?,
             None => 0,
         };
         let held = counter.max(self.recorded_commit_seq(table)?);
         let next = held.checked_add(1).ok_or_else(|| ContextError::Invalid(format!("table `{table}` exhausted its commit sequence")))?;
         fs::create_dir_all(&data).at(&data)?;
-        self.metadata().replace(&path, next.to_string().as_bytes())?;
+        let marked = CommitCounter { format_version: FormatVersion::CURRENT, commit_seq: next };
+        self.metadata().replace(&path, &serde_json::to_vec(&marked).expect("a counter serializes"))?;
         Ok(next)
     }
 
@@ -612,56 +632,85 @@ impl Store {
         let mut out = Vec::new();
         let mut held: Option<i64> = None;
         // One read of each (pipeline, node) commit log per call.
-        let mut logs: std::collections::HashMap<(String, String), Vec<commit_log::CommitEntry>> = std::collections::HashMap::new();
+        let mut logs = CommitLogs::new();
         for run_dir in sorted_dirs(&runs_dir)? {
             for node_dir in sorted_dirs(&run_dir)? {
-                let path = node_dir.join(MANIFEST_FILE);
-                let Some(bytes) = self.metadata().read_optional(&path)? else { continue };
-                let unreadable =
-                    |why: String| StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {why}", path.display()));
-                if let Some(v) = FormatVersion::declared(&bytes) {
-                    v.admit(&format!("table `{table}`: file `{}`", path.display()))?;
-                }
-                let m: RunManifest = serde_json::from_slice(&bytes).map_err(|e| unreadable(e.to_string()))?;
-                let (run_seg, node_seg) = (file_name(&run_dir), file_name(&node_dir));
-                if m.run_id != run_seg || m.node_id != node_seg || m.table != table {
-                    return Err(unreadable(format!(
-                        "names run `{}` on node `{}` of table `{}`, but sits at `{run_seg}/{node_seg}`",
-                        m.run_id, m.node_id, m.table
-                    ))
-                    .into());
-                }
-                if let Some(root) = &m.group_root {
-                    let marker = self.table_dir(root)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&m.run_id).join(&m.node_id).join("_group.json");
-                    let bytes = match fs::read(&marker) {
-                        Ok(bytes) => bytes,
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                            if let Some(seq) = m.commit_seq {
-                                held = Some(held.map_or(seq, |h| h.min(seq)));
-                            }
-                            continue;
-                        }
-                        Err(e) => return Err(ContextError::Io { path: marker, source: e }),
-                    };
-                    let tables: Vec<String> = serde_json::from_slice(&bytes).map_err(|e| unreadable(format!("group marker: {e}")))?;
-                    if !tables.iter().any(|name| name == table) { continue; }
-                }
-                // A run written under the commit-log protocol is readable once its node's log
-                // records it under its fence; a manifest without the mark reads as committed.
-                if let (true, Some(fence), Some(pipeline)) = (m.logged, m.fence, m.pipeline_id.as_deref()) {
-                    let key = (pipeline.to_string(), m.node_id.clone());
-                    if !logs.contains_key(&key) {
-                        let log = crate::commit_log::read(self, pipeline, &m.node_id)?;
-                        logs.insert(key.clone(), log);
-                    }
-                    if !commit_log::committed(&logs[&key], table, &m.run_id, fence) {
-                        continue;
-                    }
-                }
-                out.push(m);
+                out.extend(self.committed_at(table, &run_dir, &node_dir, &mut logs, &mut held)?);
             }
         }
         Ok((out, held))
+    }
+
+    /// The rows run `run_id` of `table` committed, read from its own `data/runs/<run_id>/`
+    /// directory and its parts' footers alone; `None` while no node's manifest there reads as
+    /// committed under the rules of [`Store::committed_runs`].
+    pub fn committed_rows(&self, table: &str, run_id: &str) -> Result<Option<u64>> {
+        if run_id.is_empty() || run_id.contains(['/', '\\']) || run_id == "." || run_id == ".." {
+            return Err(ContextError::Invalid(format!("run id `{run_id}` names no run directory")));
+        }
+        let run_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR).join(run_id);
+        let (mut logs, mut held) = (CommitLogs::new(), None);
+        let mut rows: Option<u64> = None;
+        for node_dir in sorted_dirs(&run_dir)? {
+            let Some(m) = self.committed_at(table, &run_dir, &node_dir, &mut logs, &mut held)? else { continue };
+            let mut total = rows.unwrap_or(0);
+            for part in &m.parts {
+                let path = self.logical_path(&format!("tables/{table}/{}/{}/{}/{}", contextful_core::store::lay_out::RUNS_DIR, m.run_id, m.node_id, part.name))?;
+                total = total.saturating_add(self.parquet_row_count(&path)?);
+            }
+            rows = Some(total);
+        }
+        Ok(rows)
+    }
+
+    /// The manifest of `<run_dir>/<node_dir>` when it reads as committed: grouped manifests
+    /// still awaiting their group marker lower `held` to their `commit_seq`.
+    fn committed_at(&self, table: &str, run_dir: &Path, node_dir: &Path, logs: &mut CommitLogs, held: &mut Option<i64>) -> Result<Option<RunManifest>> {
+        let path = node_dir.join(MANIFEST_FILE);
+        let Some(bytes) = self.metadata().read_optional(&path)? else { return Ok(None) };
+        let unreadable = |why: String| StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {why}", path.display()));
+        if let Some(v) = FormatVersion::declared(&bytes) {
+            v.admit(&format!("table `{table}`: file `{}`", path.display()))?;
+        }
+        let m: RunManifest = serde_json::from_slice(&bytes).map_err(|e| unreadable(e.to_string()))?;
+        let (run_seg, node_seg) = (file_name(run_dir), file_name(node_dir));
+        if m.run_id != run_seg || m.node_id != node_seg || m.table != table {
+            return Err(unreadable(format!(
+                "names run `{}` on node `{}` of table `{}`, but sits at `{run_seg}/{node_seg}`",
+                m.run_id, m.node_id, m.table
+            ))
+            .into());
+        }
+        if let Some(root) = &m.group_root {
+            let marker = self.table_dir(root)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&m.run_id).join(&m.node_id).join("_group.json");
+            let bytes = match fs::read(&marker) {
+                Ok(bytes) => bytes,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    if let Some(seq) = m.commit_seq {
+                        *held = Some(held.map_or(seq, |h| h.min(seq)));
+                    }
+                    return Ok(None);
+                }
+                Err(e) => return Err(ContextError::Io { path: marker, source: e }),
+            };
+            let tables: Vec<String> = serde_json::from_slice(&bytes).map_err(|e| unreadable(format!("group marker: {e}")))?;
+            if !tables.iter().any(|name| name == table) {
+                return Ok(None);
+            }
+        }
+        // A run written under the commit-log protocol is readable once its node's log
+        // records it under its fence; a manifest without the mark reads as committed.
+        if let (true, Some(fence), Some(pipeline)) = (m.logged, m.fence, m.pipeline_id.as_deref()) {
+            let key = (pipeline.to_string(), m.node_id.clone());
+            if !logs.contains_key(&key) {
+                let log = crate::commit_log::read(self, pipeline, &m.node_id)?;
+                logs.insert(key.clone(), log);
+            }
+            if !commit_log::committed(&logs[&key], table, &m.run_id, fence) {
+                return Ok(None);
+            }
+        }
+        Ok(Some(m))
     }
 
     /// The pointer and the ETag of its bytes, or `None` before the first fold.
@@ -773,6 +822,30 @@ const COMMIT_LOCK_FILE: &str = "commit.lock";
 /// it node-local: a push uploads no dot file.
 const COMMIT_SEQ_FILE: &str = ".commit_seq";
 
+/// A table's node-local commit counter (`store.reserve.commit-marker`).
+#[derive(Debug, Serialize, Deserialize)]
+struct CommitCounter {
+    format_version: FormatVersion,
+    commit_seq: i64,
+}
+
+impl CommitCounter {
+    /// The value `bytes` record: a bare integer, which a build locking across its part write
+    /// leaves, or the JSON form, whose newer major refuses as `store.lay-out.format-newer`.
+    fn read(bytes: &[u8], file: &str) -> Result<i64> {
+        let unreadable = |why: String| ContextError::from(StoreError::StoreManifestUnreadable(format!("{file}: {why}")));
+        let text = std::str::from_utf8(bytes).map_err(|e| unreadable(e.to_string()))?;
+        if let Ok(bare) = text.trim().parse::<i64>() {
+            return Ok(bare);
+        }
+        if let Some(v) = FormatVersion::declared(bytes) {
+            v.admit(file)?;
+        }
+        let counter: CommitCounter = serde_json::from_str(text).map_err(|e| unreadable(e.to_string()))?;
+        Ok(counter.commit_seq)
+    }
+}
+
 /// How long a landing waits for a lock another landing holds before refusing.
 pub const LOCK_WAIT_SECS: u64 = 30;
 
@@ -843,6 +916,72 @@ impl Drop for FileLock {
     }
 }
 
+/// The prefix of a reserved commit sequence value's lock file beside `commit.lock`. Its
+/// `.lock` suffix keeps it off every push.
+const COMMIT_TICKET_PREFIX: &str = "commit-ticket-";
+
+/// A commit sequence value a landing reserved and has not yet published: a locked file the
+/// kernel releases when its holder exits, so a crashed landing's value reads as a gap.
+#[derive(Debug)]
+pub struct CommitTicket {
+    table: String,
+    seq: i64,
+    _lock: FileLock,
+}
+
+impl CommitTicket {
+    /// The reserved `_commit_seq` value.
+    pub fn seq(&self) -> i64 {
+        self.seq
+    }
+
+    /// Wait until every lower ticket of the table published or its holder died, then take the
+    /// commit lock the manifest is written under, so readable runs hold a prefix of the
+    /// sequence (`store.reserve.commit-order`). Past the commit wait it raises
+    /// `StoreCommitLockTimeout` (`store.reserve.commit-wait`). The ticket releases when it
+    /// drops, after the manifest.
+    pub fn publish(&self, store: &Store) -> Result<FileLock> {
+        let dir = store.table_dir(&self.table)?;
+        let wait = std::time::Duration::from_secs(COMMIT_LOCK_WAIT_SECS);
+        let started = std::time::Instant::now();
+        loop {
+            let mut held = None;
+            for entry in fs::read_dir(&dir).at(&dir)? {
+                let path = entry.at(&dir)?.path();
+                let Some(seq) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_prefix(COMMIT_TICKET_PREFIX)).and_then(|n| n.strip_suffix(".lock")).and_then(|n| n.parse::<i64>().ok()) else {
+                    continue;
+                };
+                if seq >= self.seq {
+                    continue;
+                }
+                // A lower ticket no live holder locks belongs to a landing that ended: taking it
+                // removes the file, and its value stays a gap.
+                if FileLock::try_acquire(&path)?.is_none() {
+                    held = Some(path);
+                    break;
+                }
+            }
+            let Some(path) = held else {
+                let remaining = wait.saturating_sub(started.elapsed());
+                let lock_path = dir.join(COMMIT_LOCK_FILE);
+                return FileLock::acquire_within(&lock_path, remaining)?.ok_or_else(|| {
+                    StoreError::StoreCommitLockTimeout(format!("table `{}`: {} stayed held past the {COMMIT_LOCK_WAIT_SECS} s commit wait", self.table, lock_path.display())).into()
+                });
+            };
+            if started.elapsed() >= wait {
+                return Err(StoreError::StoreCommitLockTimeout(format!(
+                    "table `{}`: commit sequence value {} waited past the {COMMIT_LOCK_WAIT_SECS} s commit wait for {} to publish",
+                    self.table,
+                    self.seq,
+                    path.display()
+                ))
+                .into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    }
+}
+
 /// Whether `path` still names the file `file` opened.
 fn names_file(path: &Path, file: &fs::File) -> Result<bool> {
     contextful_fs::names_file(path, file).at(path)
@@ -859,6 +998,9 @@ pub(crate) fn etag(bytes: &[u8]) -> String {
 pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
+
+/// The commit logs one listing has read, per (pipeline, node).
+type CommitLogs = std::collections::HashMap<(String, String), Vec<commit_log::CommitEntry>>;
 
 fn file_name(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()

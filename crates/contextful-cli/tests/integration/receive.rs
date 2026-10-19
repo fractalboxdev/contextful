@@ -77,7 +77,7 @@ fn a_batch_over_two_tables_answers_after_both_commit_naming_its_run_id() {
 
 /// A resend under a key whose tables all committed names the original run id and lands nothing; a key whose run
 /// committed one of two tables lands the other on resend.
-// spec: run.land.receive-batch-key@439b2557
+// spec: run.land.receive-batch-key@313f16ce
 #[test]
 fn a_resent_key_replays_committed_tables_and_lands_the_rest() {
     let dir = receiving(4096, 2);
@@ -183,9 +183,9 @@ fn a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second() {
     assert!(receive(dir.path(), "flush-3", &line("spans", serde_json::json!({ "id": "s3" }))).status.success(), "a freed slot admits the retry");
 }
 
-/// Batches of one pipeline land one at a time: a batch whose body arrived waits while another holds the land lock,
-/// and commits once it is released.
-// spec: run.land.receive-queue@e0e977ce
+/// One group of a pipeline's batches lands at a time: a batch whose body arrived waits while another holds the land
+/// lock, and commits once it is released.
+// spec: run.land.receive-queue@b983066a
 #[test]
 fn a_batch_waits_for_the_land_lock_another_batch_holds() {
     let dir = receiving(4096, 2);
@@ -440,6 +440,14 @@ pub(crate) fn queue_behind_the_land_lock(dir: &Path, rounds: usize, writers: usi
                 (child, err)
             })
             .collect();
+        // Every batch of the round spools before the lock releases, so one group holds the round.
+        let spool = queue.join("spool");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        let spooled = || std::fs::read_dir(&spool).map(|d| d.filter(|e| e.as_ref().is_ok_and(|e| e.path().extension().is_some_and(|x| x == "batch"))).count()).unwrap_or(0);
+        while spooled() < writers {
+            assert!(std::time::Instant::now() < deadline, "{} of {writers} batches spooled behind the land lock", spooled());
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         lock.unlock().unwrap();
         for (child, mut err) in held {
             let out = child.wait_with_output().unwrap();
@@ -450,6 +458,143 @@ pub(crate) fn queue_behind_the_land_lock(dir: &Path, rounds: usize, writers: usi
         }
     }
     (rounds * writers) as u64
+}
+
+/// The batches spooled in the pipeline `otel`'s queue and not yet claimed by a leader.
+fn spooled(dir: &Path) -> usize {
+    let spool = dir.join(".contextful/run/research/receive/otel/spool");
+    std::fs::read_dir(spool).map(|d| d.filter(|e| e.as_ref().is_ok_and(|e| e.path().extension().is_some_and(|x| x == "batch"))).count()).unwrap_or(0)
+}
+
+/// Hold the pipeline `otel`'s land lock, start a receiver of one `spans` row under `key`, and wait until its batch
+/// spools behind the lock.
+fn spooled_behind_the_land_lock(dir: &Path, key: &str, id: &str) -> (std::fs::File, std::process::Child) {
+    let queue = dir.join(".contextful/run/research/receive/otel");
+    std::fs::create_dir_all(&queue).unwrap();
+    let lock = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(queue.join("land.lock")).unwrap();
+    lock.lock().unwrap();
+    let mut child = receiver(dir, key).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    child.stdin.take().unwrap().write_all(line("spans", serde_json::json!({ "id": id })).as_bytes()).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while spooled(dir) < 1 {
+        assert!(std::time::Instant::now() < deadline, "the batch never spooled behind the land lock");
+        assert!(child.try_wait().unwrap().is_none(), "the receiver ended before spooling");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    (lock, child)
+}
+
+/// A receiver killed after spooling its batch behind the land lock leaves the batch spooled: the next batch's
+/// leader lands it in the same group, and a resend under the dead receiver's key replays that group's run.
+// spec: run.land.receive-spool@8c374dc9
+#[test]
+fn a_batch_spooled_by_a_dead_receiver_lands_in_the_next_group() {
+    let dir = receiving(4096, 4);
+    let (lock, mut child) = spooled_behind_the_land_lock(dir.path(), "flush-1", "s1");
+    child.kill().unwrap();
+    child.wait().unwrap();
+    lock.unlock().unwrap();
+    drop(lock);
+
+    let out = receive(dir.path(), "flush-2", &line("spans", serde_json::json!({ "id": "s2" })));
+    assert!(out.status.success(), "{}", stderr(&out));
+    let ack = answer(&out);
+    assert_eq!(ack["tables"][0]["outcome"], "committed", "{ack}");
+    assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans ORDER BY id"), serde_json::json!([["s1"], ["s2"]]), "the leader lands the orphaned batch");
+    assert_eq!(rows(dir.path(), "SELECT count(DISTINCT _run_id) FROM otel_spans"), serde_json::json!([["1"]]), "one group run holds both batches");
+    assert_eq!(spooled(dir.path()), 0, "the group leaves no batch spooled");
+
+    let again = receive(dir.path(), "flush-1", &line("spans", serde_json::json!({ "id": "s1" })));
+    assert!(again.status.success(), "{}", stderr(&again));
+    let again = answer(&again);
+    assert_eq!((again["tables"][0]["outcome"].clone(), again["tables"][0]["run_id"].clone()), (serde_json::json!("replayed"), ack["tables"][0]["run_id"].clone()), "{again}");
+    assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans ORDER BY id"), serde_json::json!([["s1"], ["s2"]]), "the resend lands nothing");
+}
+
+/// A group whose run fails with a class that does not retry lands each member alone: the well-formed batch commits
+/// and answers committed, and only the batch whose row sets a reserved column answers non-retryable.
+// spec: run.land.receive-group-isolation@1931267b
+#[test]
+fn a_bad_row_in_a_group_fails_only_its_own_batch() {
+    let dir = receiving(4096, 4);
+    let queue = dir.path().join(".contextful/run/research/receive/otel");
+    std::fs::create_dir_all(&queue).unwrap();
+    let lock = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(queue.join("land.lock")).unwrap();
+    lock.lock().unwrap();
+    let spawn = |key: &str, row: serde_json::Value| {
+        let mut child = receiver(dir.path(), key).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        child.stdin.take().unwrap().write_all(line("spans", row).as_bytes()).unwrap();
+        child
+    };
+    let good = spawn("flush-1", serde_json::json!({ "id": "s1" }));
+    let bad = spawn("flush-2", serde_json::json!({ "id": "s2", "_modality": "7" }));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while spooled(dir.path()) < 2 {
+        assert!(std::time::Instant::now() < deadline, "both batches spool behind the land lock");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    lock.unlock().unwrap();
+    drop(lock);
+
+    let good = good.wait_with_output().unwrap();
+    assert!(good.status.success(), "{}", stderr(&good));
+    let ack = answer(&good);
+    assert_eq!((ack["committed"].clone(), ack["tables"][0]["outcome"].clone()), (serde_json::json!(true), serde_json::json!("committed")), "{ack}");
+    let bad = bad.wait_with_output().unwrap();
+    assert!(!bad.status.success(), "{}", String::from_utf8_lossy(&bad.stdout));
+    let refused = answer(&bad);
+    assert_eq!((refused["committed"].clone(), refused["retryable"].clone()), (serde_json::json!(false), serde_json::json!(false)), "{refused}");
+    assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans"), serde_json::json!([["s1"]]), "only the well-formed batch lands");
+}
+
+/// A spooled batch that neither leads nor joins a group within the 30 s commit wait withdraws its spool and answers
+/// `ReceiveBackpressure`, retryable; the resend lands once the land lock frees.
+// spec: run.land.receive-wait@0252fe6a
+#[test]
+fn a_batch_no_group_claims_within_the_wait_withdraws_and_answers_retryable() {
+    let dir = receiving(4096, 2);
+    let (lock, child) = spooled_behind_the_land_lock(dir.path(), "flush-1", "s1");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let mut child = child;
+    while child.try_wait().unwrap().is_none() {
+        assert!(std::time::Instant::now() < deadline, "the batch outwaits the commit wait behind the held land lock");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let out = child.wait_with_output().unwrap();
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(stderr(&out).contains("ReceiveBackpressure"), "{}", stderr(&out));
+    let ack = answer(&out);
+    assert_eq!((ack["committed"].clone(), ack["retryable"].clone(), ack["retry_after_ms"].clone()), (serde_json::json!(false), serde_json::json!(true), serde_json::json!(1000)), "{ack}");
+    assert_eq!(spooled(dir.path()), 0, "the withdrawn batch leaves the spool");
+    lock.unlock().unwrap();
+    drop(lock);
+    let resent = receive(dir.path(), "flush-1", &line("spans", serde_json::json!({ "id": "s1" })));
+    assert!(resent.status.success(), "{}", stderr(&resent));
+    assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans"), serde_json::json!([["s1"]]));
+}
+
+/// A commit outwaiting its table's commit lock past the 30 s commit wait raises `StoreCommitLockTimeout`, which the
+/// batch answers retryable; the resend under its key lands once the lock frees.
+// spec: store.reserve.commit-wait@f56001f5
+#[test]
+fn a_commit_outwaiting_the_commit_lock_answers_retryable() {
+    let dir = receiving(4096, 2);
+    let table = dir.path().join(".contextful/context/research/tables/otel_spans");
+    std::fs::create_dir_all(&table).unwrap();
+    let commit = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(table.join("commit.lock")).unwrap();
+    commit.lock().unwrap();
+    let started = std::time::Instant::now();
+    let out = receive(dir.path(), "flush-1", &line("spans", serde_json::json!({ "id": "s1" })));
+    assert!(started.elapsed() >= std::time::Duration::from_secs(30), "the commit waits out the 30 s commit wait");
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(stderr(&out).contains("StoreCommitLockTimeout"), "{}", stderr(&out));
+    let ack = answer(&out);
+    assert_eq!((ack["committed"].clone(), ack["retryable"].clone()), (serde_json::json!(false), serde_json::json!(true)), "{ack}");
+    commit.unlock().unwrap();
+    drop(commit);
+    let resent = receive(dir.path(), "flush-1", &line("spans", serde_json::json!({ "id": "s1" })));
+    assert!(resent.status.success(), "{}", stderr(&resent));
+    assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans"), serde_json::json!([["s1"]]));
 }
 
 /// Every file under `dir`, recursively.
@@ -467,6 +612,7 @@ fn files_under(dir: &Path) -> Vec<std::path::PathBuf> {
 
 /// Batches queued behind the land lock: the commits, and the part files plus run manifests, landed per 1000
 /// one-row updates.
+// spec: run.land.receive-group@bf98bdda
 #[test]
 fn batches_queued_behind_the_land_lock_commit_per_group() {
     let dir = queued_project(None);
@@ -483,6 +629,198 @@ fn batches_queued_behind_the_land_lock_commit_per_group() {
     assert!(parts >= commits, "each commit lands at least one part: {parts} for {commits}");
     let per_1000 = |n: u64| n as f64 * 1000.0 / updates as f64;
     eprintln!("{updates} queued updates: {commits} commits, {parts} part files and run manifests");
+    assert!(per_1000(commits) <= 63.0, "a round queued behind the land lock commits as one group: {commits} commits for {updates} updates");
     contextful_eval::record::emit("receive-group-commits", per_1000(commits), updates, QUEUED_SEED);
     contextful_eval::record::emit("receive-group-parts", per_1000(parts), updates, QUEUED_SEED);
+}
+
+/// The point a group's leader dies at.
+#[derive(Debug, Clone, Copy)]
+enum Crash {
+    /// The group run opened: the members' scopes name the group and its run row is being recorded.
+    Opened,
+    /// The group run staged its parts and waits to reserve its commit.
+    Staged,
+    /// The group run's manifest committed and its run row closed; the leader dies before retiring the group's owner or
+    /// answering any member.
+    Committed,
+}
+
+/// Whether a run record waits on `_runs`' commit lock: a run directory holding no manifest.
+fn recording(tables: &Path) -> bool {
+    let runs = tables.join("_runs/data/runs");
+    let Ok(entries) = std::fs::read_dir(runs) else { return false };
+    entries.flatten().flat_map(|run| std::fs::read_dir(run.path()).into_iter().flatten().flatten()).any(|node| !node.path().join("_manifest.json").exists())
+}
+
+/// Whether a parquet file under `dir` sits inside a run's staging directory.
+fn staging(dir: &Path) -> bool {
+    files_under(dir).iter().any(|p| p.extension().is_some_and(|e| e == "parquet") && p.components().any(|c| c.as_os_str() == "stage.staging"))
+}
+
+fn held(path: &Path) -> std::fs::File {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let file = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(path).unwrap();
+    file.lock().unwrap();
+    file
+}
+
+/// Spool `flush-1` and `flush-2` behind the land lock, release it, and kill both receivers once the group's leader
+/// reaches `crash`.
+fn crash_a_group(dir: &Path, crash: Crash) {
+    let tables = dir.join(".contextful/context/research/tables");
+    let land = held(&dir.join(".contextful/run/research/receive/otel/land.lock"));
+    let mut children: Vec<_> = [("flush-1", "s1"), ("flush-2", "s2")]
+        .into_iter()
+        .map(|(key, id)| {
+            let mut child = receiver(dir, key).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+            child.stdin.take().unwrap().write_all(line("spans", serde_json::json!({ "id": id })).as_bytes()).unwrap();
+            child
+        })
+        .collect();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
+    let wait = |what: &str, done: &dyn Fn() -> bool, children: &mut Vec<std::process::Child>| {
+        while !done() {
+            assert!(std::time::Instant::now() < deadline, "the group never reached {what} before {crash:?}");
+            for child in children.iter_mut() {
+                assert!(child.try_wait().unwrap().is_none(), "a receiver ended before {crash:?}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    };
+    wait("the spool", &|| spooled(dir) == 2, &mut children);
+    let data = held(&tables.join("otel_spans/commit.lock"));
+    let record = matches!(crash, Crash::Opened).then(|| held(&tables.join("_runs/commit.lock")));
+    land.unlock().unwrap();
+    drop(land);
+    match crash {
+        Crash::Opened => wait("its run record", &|| recording(&tables), &mut children),
+        Crash::Staged => wait("its staged parts", &|| staging(&tables.join("otel_spans")), &mut children),
+        Crash::Committed => {
+            wait("its staged parts", &|| staging(&tables.join("otel_spans")), &mut children);
+            let record = held(&tables.join("_runs/commit.lock"));
+            data.unlock().unwrap();
+            let manifest = || files_under(&tables.join("otel_spans")).iter().any(|p| p.file_name().is_some_and(|n| n == "_manifest.json"));
+            wait("its manifest", &|| manifest() && recording(&tables), &mut children);
+            for mut child in children.drain(..) {
+                child.kill().unwrap();
+                child.wait().unwrap();
+            }
+            drop(record);
+        }
+    }
+    for mut child in children {
+        child.kill().unwrap();
+        child.wait().unwrap();
+    }
+    drop(record);
+    drop(data);
+}
+
+/// A leader killed with its group's run open, with its parts staged, or with its commit landed and no member answered
+/// leaves the group to the next leader: a later batch lands apart from it, each member's resend replays the group's
+/// run, and every row lands once.
+// spec: run.land.receive-adopt@e535fc89
+#[test]
+fn a_group_whose_leader_dies_lands_each_member_once() {
+    // The resends arrive once the dead leader's 30 s cursor lease has lapsed.
+    const LATER: &str = "2030-01-01T00:01:00Z";
+    for crash in [Crash::Opened, Crash::Staged, Crash::Committed] {
+        let dir = receiving(4096, 4);
+        crash_a_group(dir.path(), crash);
+        let later = send(receiver_at(dir.path(), "flush-3", LATER), &line("spans", serde_json::json!({ "id": "s3" })));
+        assert!(later.status.success(), "{crash:?}: {}", stderr(&later));
+        assert_eq!(answer(&later)["tables"][0]["outcome"], "committed", "{crash:?}");
+        let mut replayed = Vec::new();
+        for (key, id) in [("flush-1", "s1"), ("flush-2", "s2")] {
+            let out = send(receiver_at(dir.path(), key, LATER), &line("spans", serde_json::json!({ "id": id })));
+            assert!(out.status.success(), "{crash:?}: {}", stderr(&out));
+            let ack = answer(&out);
+            assert_eq!(ack["tables"][0]["outcome"], "replayed", "{crash:?}: {ack}");
+            replayed.push(ack["tables"][0]["run_id"].as_str().unwrap().to_string());
+        }
+        assert_eq!(replayed[0], replayed[1], "{crash:?}: both members replay one group run");
+        let landed = rows(dir.path(), "SELECT id, _run_id FROM otel_spans ORDER BY id");
+        let run_of = |id: &str| landed.as_array().unwrap().iter().filter(|r| r[0] == id).map(|r| r[1].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!((run_of("s1"), run_of("s2")), (vec![replayed[0].clone()], vec![replayed[0].clone()]), "{crash:?}: each member lands once, in its group's run: {landed}");
+        assert_eq!(run_of("s3").len(), 1, "{crash:?}: {landed}");
+        assert_ne!(run_of("s3")[0], replayed[0], "{crash:?}: the later batch lands apart from the dead leader's group: {landed}");
+        assert_eq!(spooled(dir.path()), 0, "{crash:?}: the group leaves no batch spooled");
+    }
+}
+
+/// Spool one `spans` row per `(key, id)` behind the held land lock at `now`, release it so they land as one group, and
+/// answer each sender's answer.
+fn land_as_group(dir: &Path, batches: &[(&str, &str)], now: &str) -> Vec<serde_json::Value> {
+    let land = held(&dir.join(".contextful/run/research/receive/otel/land.lock"));
+    let children: Vec<_> = batches
+        .iter()
+        .map(|(key, id)| {
+            let mut child = receiver_at(dir, key, now).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+            child.stdin.take().unwrap().write_all(line("spans", serde_json::json!({ "id": id })).as_bytes()).unwrap();
+            child
+        })
+        .collect();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
+    while spooled(dir) < batches.len() {
+        assert!(std::time::Instant::now() < deadline, "the batches never spooled behind the land lock");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    land.unlock().unwrap();
+    drop(land);
+    children
+        .into_iter()
+        .map(|child| {
+            let out = child.wait_with_output().unwrap();
+            assert!(out.status.success(), "{}", stderr(&out));
+            answer(&out)
+        })
+        .collect()
+}
+
+/// Leave run `run_id` as a leader dying between its commit and its run's close leaves it: the store holds its commit
+/// while its row stays `running` under a lapsing owner lease.
+fn tear(dir: &Path, run_id: &str) {
+    use contextful_core::coordinate::Catalog;
+    use contextful_core::run::record::{Owner, Phase, RunStatus};
+    let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse(NOW).unwrap()));
+    let catalog = contextful_sqlite::MachineCatalog::open(&dir.join(".contextful/context/research/machine.sqlite"), clock).unwrap();
+    let torn = catalog
+        .update_run(run_id, &mut |r| {
+            r.status = RunStatus::Running;
+            r.phase = Phase::Plan;
+            r.ended_at = None;
+            r.rows = 0;
+            r.owner = Some(Owner::leased(1, "dead-leader", r.started_at));
+            Ok(())
+        })
+        .unwrap();
+    assert!(matches!(torn, Some(Ok(_))), "run `{run_id}` is recorded");
+}
+
+/// A group whose commit landed while its run row never closed replays for each member resent later: alone, or beside
+/// a new batch in another group. The torn run closes committed with the rows its commit holds, and every row lands
+/// once.
+// spec: run.land.receive-torn@3d2cceb9
+#[test]
+fn a_member_resent_after_its_group_tore_replays_the_group() {
+    const LATER: &str = "2030-01-01T00:01:00Z";
+    let dir = receiving(4096, 4);
+    let first = land_as_group(dir.path(), &[("flush-1", "s1"), ("flush-2", "s2")], NOW);
+    let group = first[0]["tables"][0]["run_id"].as_str().unwrap().to_string();
+    assert_eq!(first[1]["tables"][0]["run_id"], group.as_str(), "both batches land as one group: {first:?}");
+    tear(dir.path(), &group);
+
+    let beside = land_as_group(dir.path(), &[("flush-2", "s2"), ("flush-3", "s3")], LATER);
+    assert_eq!((beside[0]["tables"][0]["outcome"].as_str(), beside[0]["tables"][0]["run_id"].as_str()), (Some("replayed"), Some(group.as_str())), "{beside:?}");
+    assert_eq!(beside[1]["tables"][0]["outcome"], "committed", "{beside:?}");
+    let alone = send(receiver_at(dir.path(), "flush-1", LATER), &line("spans", serde_json::json!({ "id": "s1" })));
+    assert!(alone.status.success(), "{}", stderr(&alone));
+    let alone = answer(&alone);
+    assert_eq!((alone["tables"][0]["outcome"].as_str(), alone["tables"][0]["run_id"].as_str()), (Some("replayed"), Some(group.as_str())), "{alone}");
+    assert_eq!(alone["tables"][0]["rows"], 2, "the settled run carries the rows its commit holds: {alone}");
+
+    let landed = rows(dir.path(), "SELECT id, count(*) FROM otel_spans GROUP BY id ORDER BY id");
+    assert_eq!(landed, serde_json::json!([["s1", "1"], ["s2", "1"], ["s3", "1"]]), "every row lands once");
+    assert_eq!(spooled(dir.path()), 0);
 }

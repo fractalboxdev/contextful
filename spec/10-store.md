@@ -227,7 +227,13 @@ The column and table namespaces the engine holds, the provenance columns it inje
   *because a run's rows share `_ingested_at` and `_run_id`, and keeping the last write per key needs an order among them*
 - `commit-seq` — The engine injects `_commit_seq`, a non-null int64 its commit assigns above every value the table holds; a run committing after a read carries a value above every row that read returned, whatever its `_ingested_at`.
   *A-topology*
-- `commit-order` — Commits of one table serialize from assigning `_commit_seq`, through the part write, to the step that makes the run readable, so the readable runs of a table always hold a prefix of its commit sequence.
+- `commit-order` — A commit's manifest waits until every lower `_commit_seq` value of its table published or its landing ended, so the readable runs of a table always hold a prefix of its commit sequence.
+  *A-topology*
+- `commit-lock-span` — A commit holds its table's commit lock to assign `_commit_seq` and to write its manifest, and writes its parts outside the lock unless the table keeps vintage history.
+  *A-topology*
+- `commit-wait` — A commit waits at most 30 s for its table's commit lock or for a lower value's publication, then raises `StoreCommitLockTimeout`, a transient failure.
+  *A-topology*
+- `commit-marker` — A commit rewrites its table's counter `data/.commit_seq` as JSON naming `format_version` and `commit_seq`, so a build reading a bare integer refuses the table before writing a part; a newer major refuses as {{store.lay-out.format-newer}}.
   *A-topology*
 - `commit-seq-seed` — A commit assigns one above the greatest of the node's counter, every run manifest's `commit_seq` and the current snapshot's, so a store restored by a pull, or holding no counter, never reissues a value.
   *A-topology*

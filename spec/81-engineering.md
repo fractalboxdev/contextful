@@ -521,6 +521,8 @@ The target ledger: each tracked target, the clause it serves, how it is measured
 - `trend-band` — A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.
 - `runner-stamp` — The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.
 - `absolute-threshold` — A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.
+- `threshold-cost` — A gate-tier target that rises under `<=`, falls under `>=` or moves under `==` carries a `# cost:` comment above its entry that its entry at `<rev>` lacks, or `contextful-ci measure --since <rev>` raises `MeasureThresholdLoosened`.
+  *because a loosened gate otherwise reads as a changed number, and the cost it accepts goes unrecorded*
 - `history` — A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.
   *A-assurance*
 - `run-report` — `contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — and a run id is an integer or a FlareDispatch execution id, each read back from history.

@@ -640,3 +640,18 @@ fn a_run_id_past_128_chars_lands_nothing() {
         assert_eq!(tree(&f.table_dir("filings")), before);
     }
 }
+
+/// One run's commit reads from its own run directory: the rows its committed parts hold, and nothing for a run whose
+/// directory holds no manifest or does not exist.
+#[test]
+fn a_run_answers_the_rows_it_committed_from_its_own_directory() {
+    let f = Fixture::new();
+    f.land(&decl("name = \"a\""), "run-1", json!([{"e": 1}, {"e": 2}]), "2030-01-01T00:00:00Z").unwrap();
+    f.land(&decl("name = \"a\""), "run-2", json!([{"e": 3}]), "2030-01-01T00:00:01Z").unwrap();
+    assert_eq!(f.store.committed_rows("a", "run-1").unwrap(), Some(2));
+    assert_eq!(f.store.committed_rows("a", "run-2").unwrap(), Some(1));
+    assert_eq!(f.store.committed_rows("a", "run-3").unwrap(), None);
+    std::fs::create_dir_all(f.store.table_dir("a").unwrap().join("data/runs/run-4/ingest-a")).unwrap();
+    assert_eq!(f.store.committed_rows("a", "run-4").unwrap(), None, "a run directory without a manifest is in flight");
+    assert!(f.store.committed_rows("a", "../a").is_err());
+}

@@ -116,6 +116,63 @@ fn resolved(root: &Path) -> Result<Option<Ledger>> {
     Ok(Some(l))
 }
 
+/// `--since <rev>`: refuse each gate-tier entry whose target loosened against its entry at
+/// `rev` without a `# cost:` comment that entry lacks (`assurance.measure.threshold-cost`).
+/// A ledger or entry absent at `rev` loosens nothing.
+pub fn raises(root: &Path, rev: &str) -> Result<()> {
+    let Ok(text) = std::fs::read_to_string(root.join(ledger::LEDGER_FILE)) else { return Ok(()) };
+    let Some(head) = load(root)? else { return Ok(()) };
+    let shown = Command::new("git").args(["show", &format!("{rev}:{}", ledger::LEDGER_FILE)]).current_dir(root).output().context("running git")?;
+    if !shown.status.success() {
+        return Ok(());
+    }
+    let base_text = String::from_utf8_lossy(&shown.stdout).into_owned();
+    let Ok(base) = toml::from_str::<Ledger>(&base_text) else { return Ok(()) };
+    let mut loosened = Vec::new();
+    for (id, e) in head.entry.iter().filter(|(_, e)| e.tier == Tier::Gate) {
+        let (Some(now), Some(then)) = (e.target, base.entry.get(id).and_then(|b| b.target)) else { continue };
+        if !loosens(then, now) {
+            continue;
+        }
+        let note = cost_note(&text, id);
+        if note.is_empty() || note == cost_note(&base_text, id) {
+            eprintln!("MeasureThresholdLoosened: `{id}`: target `{then}` at {rev} became `{now}` with no new `# cost:` comment above the entry");
+            loosened.push(id.clone());
+        }
+    }
+    if !loosened.is_empty() {
+        return Err(refuse("MeasureThresholdLoosened", format!("{} gate target(s) loosened since {rev} without a cost note", loosened.len())));
+    }
+    Ok(())
+}
+
+/// Whether `now` admits a figure `then` refused: a bound rising under `<=` or `<`, falling
+/// under `>=` or `>`, an equality moving, or any change of operator but a strict one.
+fn loosens(then: ledger::Target, now: ledger::Target) -> bool {
+    use ledger::Op;
+    match (then.op, now.op) {
+        (Op::Le | Op::Lt, Op::Le | Op::Lt) => now.value > then.value || (now.value == then.value && then.op == Op::Lt && now.op == Op::Le),
+        (Op::Ge | Op::Gt, Op::Ge | Op::Gt) => now.value < then.value || (now.value == then.value && then.op == Op::Gt && now.op == Op::Ge),
+        (Op::Eq, Op::Eq) => now.value != then.value,
+        _ => true,
+    }
+}
+
+/// The comment lines directly above `[entry.<id>]` in `text` from its first `# cost:` line
+/// on; empty when the block carries none.
+fn cost_note(text: &str, id: &str) -> Vec<String> {
+    let header = format!("[entry.{id}]");
+    let lines: Vec<&str> = text.lines().collect();
+    let Some(at) = lines.iter().position(|l| l.trim() == header) else { return Vec::new() };
+    let mut block: Vec<String> =
+        lines[..at].iter().rev().take_while(|l| l.trim_start().starts_with('#')).map(|l| l.trim_start().trim_start_matches('#').trim().to_string()).collect();
+    block.reverse();
+    match block.iter().position(|l| l.starts_with("cost:")) {
+        Some(first) => block.split_off(first),
+        None => Vec::new(),
+    }
+}
+
 /// `--status`: write `evals/ledger.md`, or with `check` refuse when the committed copy
 /// differs from the rendering.
 pub fn status(root: &Path, check: bool) -> Result<()> {

@@ -178,6 +178,7 @@ cancel-poll-interval       = { clause = "run.cancel.poll-interval", value = 500,
 normalize-nesting-depth    = { clause = "run.normalize.nesting-depth", value = 5, unit = "levels", basis = "chosen", gloss = "Nesting `native` keeps before a subtree lands as `Json`." }
 parse-child-deadline       = { clause = "run.land.parse-deadline", value = 60, unit = "s", basis = "chosen", gloss = "Wall clock one input's decoder child may run." }
 parse-child-memory         = { clause = "run.land.parse-memory", value = 512, unit = "MiB", basis = "chosen", gloss = "Memory one input's decoder child may consume." }
+receive-group-bytes        = { clause = "run.land.receive-group", value = 64, unit = "MiB", basis = "chosen", gloss = "Spooled body bytes one receive group lands." }
 receive-retry-after        = { clause = "run.land.receive-retry-after", value = 1, unit = "s", basis = "chosen", gloss = "Interval a backpressured sender waits before resending." }
 receive-push-wait          = { clause = "run.land.receive-push-wait", value = 30, unit = "s", basis = "chosen", gloss = "Longest wait a delivered batch spends on the push guard before answering retryable." }
 staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages between two of its commits." }

@@ -39,6 +39,15 @@ pub enum EngineError {
     Failure(#[from] Failure),
 }
 
+/// The field of a member key's receive-scope position naming the digest of the group it
+/// landed in (`run.land.receive-group`).
+pub const RECEIVE_GROUP_FIELD: &str = "receive_group";
+
+/// The run-id stem of batch `key`'s `table` in pipeline `pipeline_id`: `receive-<digest>.<table>`.
+pub fn receive_stem(pipeline_id: &str, table: &str, key: &str) -> String {
+    format!("receive-{}.{table}", contextful_core::run::own::receive_digest(pipeline_id, key))
+}
+
 /// One run to execute.
 #[derive(Debug, Clone)]
 pub struct RunSpec {
@@ -283,6 +292,116 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     pub fn run_receive(&self, spec: &RunSpec, key: &str, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
         let scope = OwnerScope::receive(&spec.plan.spec.pipeline, &spec.plan.spec.table, key);
         self.run_input(spec, Some(scope), source, shape, dest, None, None)
+    }
+
+    /// Execute one run landing a group of delivered batches under the scope `group_key`
+    /// fixes. Before the run opens, each `members` key's own scope records the group's
+    /// digest, so a resend under any member replays the group run once it commits and
+    /// lands again while it has not (`run.land.receive-batch-key`, `run.land.receive-group`).
+    pub fn run_receive_group(&self, spec: &RunSpec, group_key: &str, members: &[String], source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
+        let (pipeline_id, table) = (spec.plan.spec.pipeline.as_str(), spec.plan.spec.table.as_str());
+        let digest = contextful_core::run::own::receive_digest(pipeline_id, group_key);
+        for member in members {
+            self.name_receive_group(&OwnerScope::receive(pipeline_id, table, member), &digest)?;
+        }
+        self.run_receive(spec, group_key, source, shape, dest)
+    }
+
+    /// The digest of the group a batch `key` of `pipeline_id` landed `table` in, as its
+    /// scope records it; `None` for a key that never joined a group.
+    pub fn receive_group(&self, pipeline_id: &str, table: &str, key: &str) -> Result<Option<String>, Failure> {
+        let cursor = self.catalog.cursor_at(&OwnerScope::receive(pipeline_id, table, key))?;
+        Ok(cursor.position.as_ref().and_then(|p| p.get(RECEIVE_GROUP_FIELD)).and_then(Value::as_str).map(str::to_owned))
+    }
+
+    /// The run of `stem` that committed, or the id the next attempt takes: attempts are
+    /// `stem`, `stem.2`, `stem.3`, … since a run id names one attempt.
+    pub fn receive_attempt(&self, stem: &str) -> Result<Result<RunRow, String>, Failure> {
+        for n in 1u32.. {
+            let id = if n == 1 { stem.to_string() } else { format!("{stem}.{n}") };
+            match self.catalog.run(&id)? {
+                Some(row) if row.status == RunStatus::Success => return Ok(Ok(row)),
+                Some(_) => continue,
+                None => return Ok(Err(id)),
+            }
+        }
+        unreachable!("the attempt numbers are unbounded")
+    }
+
+    /// The run that committed batch `key`'s `table`, under the key's own stem or under the
+    /// group its scope names, or the id the key's next attempt takes
+    /// (`run.land.receive-batch-key`).
+    pub fn receive_landed(&self, pipeline_id: &str, table: &str, key: &str) -> Result<Result<RunRow, String>, Failure> {
+        let next = match self.receive_attempt(&receive_stem(pipeline_id, table, key))? {
+            Ok(row) => return Ok(Ok(row)),
+            Err(next) => next,
+        };
+        if let Some(digest) = self.receive_group(pipeline_id, table, key)? {
+            if let Ok(row) = self.receive_attempt(&format!("receive-{digest}.{table}"))? {
+                return Ok(Ok(row));
+            }
+        }
+        Ok(Err(next))
+    }
+
+    /// The first run that opened for batch `key`'s `table`: the key's own first attempt, or
+    /// the first attempt of the group its scope names (`run.land.receive-key-expired`).
+    pub fn receive_first(&self, pipeline_id: &str, table: &str, key: &str) -> Result<Option<RunRow>, Failure> {
+        if let Some(row) = self.catalog.run(&receive_stem(pipeline_id, table, key))? {
+            return Ok(Some(row));
+        }
+        match self.receive_group(pipeline_id, table, key)? {
+            Some(digest) => self.catalog.run(&format!("receive-{digest}.{table}")),
+            None => Ok(None),
+        }
+    }
+
+    /// Close attempt `run_id` of the receive scope `digest` names over `table` — a batch key's or
+    /// a group's — whose commit the store holds with `rows` while its run row never closed:
+    /// the scope's pending owner that produced it retires with its journal, and the row closes
+    /// `Success` carrying `rows`, so the attempt replays and no later attempt lands its rows
+    /// again (`run.land.receive-torn`).
+    pub fn receive_settle(&self, pipeline_id: &str, table: &str, digest: &str, run_id: &str, rows: u64) -> Result<RunRow, Failure> {
+        let scope = OwnerScope::table(pipeline_id, &format!("{table}{}{digest}", contextful_core::run::own::RECEIVE_INFIX));
+        if let Some(owner) = self.catalog.owner_at(&scope)?.filter(|o| o.produced(run_id)) {
+            self.catalog.retire_at(&scope, &owner.execution_id, None, None)?;
+            self.journal.collect(&owner.execution_id)?;
+        }
+        let now = self.catalog.now()?;
+        let closed = self.catalog.update_run(run_id, &mut |r| {
+            r.status = RunStatus::Success;
+            r.phase = contextful_core::run::record::Phase::Commit;
+            r.ended_at = Some(now);
+            r.owner = None;
+            r.rows = rows;
+            Ok(())
+        })?;
+        match closed {
+            Some(Ok(row)) => Ok(row),
+            Some(Err(e)) => Err(Failure::deterministic(FailureTag::Permanent, e.to_string())),
+            None => Err(Failure::new(FailureTag::Storage, format!("no run `{run_id}` is recorded to settle"))),
+        }
+    }
+
+    /// Record `digest` as the group of a member's receive `scope`: one conditional write
+    /// against a fresh scope; once its version moved, a read and a retry that keeps every
+    /// other field of the recorded position.
+    fn name_receive_group(&self, scope: &OwnerScope, digest: &str) -> Result<(), Failure> {
+        let mut held = CursorRow::default();
+        for _ in 0..8 {
+            let mut position = match held.position.clone() {
+                Some(Value::Object(map)) => map,
+                _ => serde_json::Map::new(),
+            };
+            position.insert(RECEIVE_GROUP_FIELD.to_string(), Value::String(digest.to_string()));
+            let next = CursorRow { position: Some(Value::Object(position)), version: held.version, ..held.clone() };
+            match self.catalog.cursor_cas_at(scope, held.version, next, None)? {
+                Cas::Applied => return Ok(()),
+                Cas::VersionMoved => held = self.catalog.cursor_at(scope)?,
+                Cas::Fenced(e) => return Err(Failure::new(FailureTag::Transient, e.to_string())),
+            }
+        }
+        Err(Failure::new(FailureTag::Transient, format!("the receive scope {scope} kept moving while its group was recorded")))
     }
 
     /// Execute one run under `scope` in place of the plan's table scope: a seed chunk runs

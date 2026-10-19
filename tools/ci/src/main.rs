@@ -205,6 +205,10 @@ enum Cmd {
         /// With `--status`, refuse when the committed `evals/ledger.md` differs.
         #[arg(long, requires = "status")]
         check: bool,
+        /// First refuse a gate-tier target loosened since this revision without a new
+        /// `# cost:` comment above its entry.
+        #[arg(long)]
+        since: Option<String>,
     },
     /// Build one measure report from collected records and earlier Git-note history.
     MeasureReport {
@@ -342,7 +346,10 @@ fn main() {
         Cmd::Tag { branch, base } => tag::tag(&branch, &base),
         Cmd::Deploy { cmd: DeployCmd::Probe { dir, resolve } } => repo_root().and_then(|root| probe::run(&root.join(dir), &resolve)),
         Cmd::Deploy { cmd: DeployCmd::Parity { reference, target } } => parity::run(&reference, &target),
-        Cmd::Measure { tiers, status, check } => repo_root().and_then(|root| {
+        Cmd::Measure { tiers, status, check, since } => repo_root().and_then(|root| {
+            if let Some(rev) = &since {
+                measure::raises(&root, rev)?;
+            }
             if status {
                 return measure::status(&root, check);
             }
@@ -508,6 +515,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
             if root.join(".github/workflows").is_dir() { native_transport::check(root)?; }
             secrets(root)?;
             mirrors(root)?;
+            measure::raises(root, base)?;
             stage::regenerate(root)?;
             run_staged(root, stage, &["run", "--locked", "-q", "-p", "contextful-spec", "--", "lint"])?
         }

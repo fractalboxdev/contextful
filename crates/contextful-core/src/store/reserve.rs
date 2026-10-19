@@ -38,6 +38,9 @@ pub const MODALITIES: [&str; 5] = ["text", "image", "audio", "structured", "mixe
 
 /// Age at which a request-ledger row is collected: 365 d (`store.reserve.ledger-retention`).
 pub const LEDGER_RETENTION_SECS: u64 = 365 * 24 * 60 * 60;
+/// Seconds a commit waits for its table's commit lock, or for every lower commit sequence
+/// value to publish, before it raises `StoreCommitLockTimeout` (`store.reserve.commit-wait`).
+pub const COMMIT_LOCK_WAIT_SECS: u64 = 30;
 
 /// The three table namespaces the engine holds (`store.reserve.table-namespaces`): the
 /// durable run record, the item record, and `_visibility`, under which each source's

@@ -559,8 +559,9 @@ fn commit_run(
     }
     let per_batch = rewritten.len() > 1 || position.pipeline_id.is_some();
     let (node_dir, manifest_path) = run_dir(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
-    // The commit lock holds the vintage comparison beside the file-list commit.
-    let _commit_lock = store.lock_commit(&decl.name)?;
+    // A vintage table's commit lock holds the vintage comparison beside the file-list
+    // commit; any other table's covers only its sequence value and its manifest.
+    let vintage_lock = if decl.is_vintage() { Some(store.lock_commit(&decl.name)?) } else { None };
     let before_commit_seq = if manifest_path.exists() {
         let bytes = store.metadata().read(&manifest_path)?;
         let held: RunManifest = serde_json::from_slice(&bytes)
@@ -577,14 +578,20 @@ fn commit_run(
     }
     let site = reconcile(store, decl, batches, &ctx.node, &ctx.injection, per_batch, None, Some(ctx.committed_at))?;
 
-    // The commit lock covers the vintage comparison, schema merge, Parquet write and
-    // manifest, so readers see a prefix of the table's commit sequence
-    // (`store.reserve.commit-order`).
+    // Readers see a prefix of the table's commit sequence (`store.reserve.commit-order`): a
+    // vintage table's lock spans the Parquet write; any other table writes its parts holding
+    // only a reserved ticket and publishes after every lower value.
+    // The run lock comes before the ticket, so a landing holding a lower ticket never
+    // waits on the run lock of one publishing behind it.
     let _run_lock = take_run_lock(&node_dir)?;
     if manifest_path.exists() {
         return replay(store, &manifest_path, &types, batches, ctx, position, per_batch);
     }
-    let commit_seq = store.assign_commit_seq(&decl.name)?;
+    let ticket = if vintage_lock.is_some() { None } else { Some(store.reserve_commit_seq(&decl.name)?) };
+    let commit_seq = match &ticket {
+        Some(ticket) => ticket.seq(),
+        None => store.assign_commit_seq(&decl.name)?,
+    };
 
     let mut parts = Vec::new();
     for (ordinal, rb) in run_parts(&site.arriving, batches, ctx, per_batch, commit_seq, ctx.committed_at)?.into_iter().enumerate() {
@@ -592,6 +599,7 @@ fn commit_run(
         write_batch(store, decl, &site.node_dir.join(&name), &rb)?;
         parts.push(PartEntry::new(name, store.sealing().key_version()));
     }
+    let _published = ticket.as_ref().map(|ticket| ticket.publish(store)).transpose()?;
     match create_manifest(store, &site, decl, ctx, parts, position, commit_seq, precommit, commit_point, None, &[])? {
         Some(manifest) => Ok(Landing { manifest, replay: false }),
         None => replay(store, &manifest_path, &types, batches, ctx, position, per_batch),
@@ -1183,10 +1191,18 @@ fn commit_parts_inner(
     let store = &bound;
     let (node_dir, manifest_path) = run_dir(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
     let stage_dir = node_dir.join(STAGE_DIR);
-    let _commit_lock = store.lock_commit(&decl.name)?;
+    // A vintage table's commit lock spans its staged parts' comparison and copy; any other
+    // table copies holding only a reserved ticket (`store.reserve.commit-order`).
+    let vintage_lock = if decl.is_vintage() { Some(store.lock_commit(&decl.name)?) } else { None };
     let _run_lock = lock_run(&node_dir, &manifest_path, &ctx.node, &ctx.injection.run_id)?;
     let mut written: Vec<PathBuf> = Vec::new();
     let committed = (|| {
+        let ticket = if vintage_lock.is_some() { None } else { Some(store.reserve_commit_seq(&decl.name)?) };
+        // A manifest standing once the reservation returns refuses before the schema merges
+        // or any part lands.
+        if manifest_path.exists() {
+            return Err(already_committed(&ctx.node, &ctx.injection.run_id));
+        }
         for name in parts {
             if !is_path_segment(name) || !stage_dir.join(name).is_file() {
                 return Err(ContextError::Invalid(format!("run `{}` commits part `{name}`, which no stage wrote on node `{}`", ctx.injection.run_id, ctx.node)));
@@ -1228,7 +1244,10 @@ fn commit_parts_inner(
         }
         let earlier = read_staged_schema(store, &stage_dir)?;
         let landing = reconcile(store, decl, &[], &ctx.node, &ctx.injection, true, earlier.as_ref(), Some(ctx.committed_at))?;
-        let commit_seq = store.assign_commit_seq(&decl.name)?;
+        let commit_seq = match &ticket {
+            Some(ticket) => ticket.seq(),
+            None => store.assign_commit_seq(&decl.name)?,
+        };
         let inserts = [
             parquet_io::Insert {
                 field: parquet_io::field(&Column::new(INGESTED_AT, ColumnType::Timestamp, false)),
@@ -1246,6 +1265,7 @@ fn commit_parts_inner(
             parquet_io::copy_inserting_with_key(&stage_dir.join(staged), &to, &inserts, store.parquet_key(), &bloom)?;
             entries.push(PartEntry::new(name, store.sealing().key_version()));
         }
+        let _published = ticket.as_ref().map(|ticket| ticket.publish(store)).transpose()?;
         create_manifest(store, &landing, decl, ctx, entries, position, commit_seq, precommit, commit_point, group_root, schema_diffs)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))
     })();
     if committed.is_err() && !manifest_path.exists() {

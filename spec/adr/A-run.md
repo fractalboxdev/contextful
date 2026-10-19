@@ -513,6 +513,23 @@ Decision: a `receive` source declares `key_retention_secs`, required and undefau
 | A late key lands as a fresh batch | No row lands twice | A resend after the window duplicates committed tables. |
 | A default window | Sender choice | The engine picks a retry horizon it cannot know. |
 
+## Received batches spooled behind a landing commit as one group
+
+**Status:** accepted; amends the batch-key decision above: a key's committed run may be its group's.
+
+Context: a batch landing its own run per table pays a commit, a part, a push and the run's catalog calls. Criteria: no row lands twice; an answer follows the commit; a malformed body fails no other batch; an orphaned batch lands; each member keeps its credential's commit boundary.
+
+Decision: a batch decodes alone and spools, synced, before contending for the land lock. The holder lands every batch spooled under its credential, within the group bounds, as one run per touched table under a key no sender holds; a lone member keeps its own. Each member's scope names the group first, so a resend replays. A group failing without retry lands each member alone. One push follows, then the answers; no timer lingers.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Leader lands what spooled behind the lock *(chosen)* | — | `_row_seq` numbers a group's rows across members, and a group run's count spans them. |
+| Answer on spool | Read-your-write | An acknowledged row reads after a later commit; a lost spool loses it. |
+| A linger timer | Latency | A lone writer waits out the timer on every batch. |
+| One run per batch | Throughput | Commits, parts and pushes grow with batches. |
+
+Consequences: commits, parts and pushes per batch fall by the group size. Accepted cost: batches under different credentials land in separate groups; a lone writer's synced spool write costs about a quarter of its throughput; a refused group lands twice.
+
 ## A terminal item's outcome is a row of a reserved relation
 
 Context: an isolated item's attempt runs under a host scope, so its `_runs` row names no job, and its run and execution ids are digests no reader inverts to an entity. Its terminal receipt sits in a coordination-catalog cursor no read face exposes. Criteria: a model answers per-job, per-entity questions through an ordinary read; `_runs` stays one row per run phase; a masked key stays masked.

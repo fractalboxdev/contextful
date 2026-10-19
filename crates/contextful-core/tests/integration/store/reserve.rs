@@ -151,3 +151,13 @@ fn the_ledger_path_is_disjoint_per_run_and_node() {
     assert_eq!(ledger_path("run-4815", "ingest-a"), "requests/run-4815.ingest-a.parquet");
     assert_ne!(ledger_path("run-4815", "ingest-a"), ledger_path("run-4815", "ingest-b"));
 }
+
+/// A commit waits at most 30 s for its table's commit lock, and the refusal past the wait names
+/// `StoreCommitLockTimeout`, the identifier a receive answers retryable.
+#[test]
+fn the_commit_wait_is_thirty_seconds_and_its_refusal_names_its_identifier() {
+    use contextful_core::store::reserve::COMMIT_LOCK_WAIT_SECS;
+    assert_eq!(COMMIT_LOCK_WAIT_SECS, 30);
+    let refused = StoreError::StoreCommitLockTimeout("table `spans`: commit.lock stayed held".into()).to_string();
+    assert_eq!(refused.split(':').next(), Some("StoreCommitLockTimeout"), "{refused}");
+}
