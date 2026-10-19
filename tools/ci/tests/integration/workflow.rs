@@ -102,11 +102,14 @@ fn the_nightly_tier_holds_the_features_formal_and_budget_parts() {
     // and a whole stage alike: the fixture declares no profile, so the budget stage
     // reports so and passes.
     let r = crate::Repo::init();
+    r.write("crates/gated/Cargo.toml", &(crate::manifest("gated", "") + "\n[features]\nextra = []\n"));
+    r.write("crates/gated/src/lib.rs", "");
+    r.write("crates/gated/tests/integration/main.rs", "#[test]\nfn builds() {}\n");
     r.lock();
-    r.commit("lock");
+    r.commit("a featured package");
     let parts = listed_in(&r.root, &["stages", "--parts", "--tier", "nightly"]);
-    assert_eq!(parts.first().map(String::as_str), Some("features.packages"), "{parts:?}");
-    let o = r.gate(&["--stage", "features.packages"]);
+    assert_eq!(parts.first().map(String::as_str), Some("features.gated"), "{parts:?}");
+    let o = r.gate(&["--stage", "features.gated"]);
     let err = crate::stderr(&o);
     assert!(o.status.success(), "{err}");
     assert!(err.contains("--- stage features") && !err.contains("--- stage pins"), "{err}");

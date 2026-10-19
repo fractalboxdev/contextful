@@ -141,7 +141,7 @@ fn the_features_stage_tests_each_listed_run_in_two_binary_parts() {
     assert!(at("features.binary-none") < at("features.binary-all") && at("features.binary-all") < at("features.binary-extra"), "{listed}");
     assert!(at("features.binary-extra") < at("formal") && !parts.contains(&"features"), "{listed}");
     let required = String::from_utf8_lossy(&r.run_ci(&["stages", "--parts"]).stdout).into_owned();
-    assert!(!required.is_empty() && required.lines().any(|l| l == "evaluate"), "{required}");
+    assert!(!required.is_empty() && required.lines().any(|l| l.starts_with("evaluate")), "{required}");
     assert!(!required.lines().any(|l| l.starts_with("features")), "{required}");
     for label in ["none", "all", "extra"] {
         assert!(at(&format!("features.binary-{label}")) < at(&format!("features.formal-{label}")), "{listed}");

@@ -1,5 +1,6 @@
 //! `assurance.gate.affected-*`: `contextful-ci stages --parts --base <rev> --affected` prints
-//! the required parts the change reaches, in run order.
+//! the parts of a tier the change reaches, in run order. Each listing here is the required
+//! tier followed by the nightly tier.
 
 use crate::{manifest, stderr, Repo};
 
@@ -80,14 +81,18 @@ fn listed(r: &Repo, args: &[&str]) -> Vec<String> {
 }
 
 fn affected(r: &Repo, base: &str) -> Vec<String> {
-    listed(r, &["stages", "--parts", "--base", base, "--affected"])
+    let mut parts = listed(r, &["stages", "--parts", "--base", base, "--affected"]);
+    parts.extend(listed(r, &["stages", "--parts", "--tier", "nightly", "--base", base, "--affected"]));
+    parts
 }
 
 fn required(r: &Repo, base: &str) -> Vec<String> {
-    listed(r, &["stages", "--parts", "--base", base])
+    let mut parts = listed(r, &["stages", "--parts", "--base", base]);
+    parts.extend(listed(r, &["stages", "--parts", "--tier", "nightly", "--base", base]));
+    parts
 }
 
-/// The listing is a run-order subsequence of the required set holding pins, toolchain and schema.
+/// The listing is a run-order subsequence of both tiers holding pins, toolchain and schema.
 fn assert_subset(r: &Repo, base: &str, got: &[String]) {
     let all = required(r, base);
     let mut at = 0;
@@ -162,7 +167,7 @@ fn a_spec_change_reaches_validation_and_the_parts_running_each_changed_clause_pi
 fn a_changed_clause_reaches_the_parts_running_its_package() {
     assert_eq!(
         after(&[(LOCK, &lock(&["assurance.gate.connected"]))]),
-        ["pins", "toolchain", "schema", "test-first.validate", "workspace.compile", "workspace.foundation", "workspace.runtime", "features.connectors", "connectors"]
+        ["pins", "toolchain", "schema", "test-first.validate", "workspace.compile", "workspace.foundation", "workspace.runtime", "connectors", "features.connectors"]
     );
     assert_eq!(
         after(&[(LOCK, &lock(&["assurance.gate.accepted"]))]),
@@ -235,8 +240,8 @@ fn a_formal_change_reaches_every_part_reading_the_lean_tree() {
     );
 }
 
-/// A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every required part.
-// spec: assurance.gate.affected-every@35219866
+/// A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every part of either tier.
+// spec: assurance.gate.affected-every@87831daf
 #[test]
 fn a_build_input_or_an_unmapped_path_reaches_every_required_part() {
     for path in [
@@ -306,8 +311,8 @@ fn affected_requires_a_base() {
     assert!(!o.status.success(), "{}", String::from_utf8_lossy(&o.stdout));
 }
 
-/// `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the required parts the diff from the merge base of `<rev>` and HEAD reaches, always including pins, toolchain and schema.
-// spec: assurance.gate.affected-parts@9f96acab
+/// `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including pins, toolchain and schema.
+// spec: assurance.gate.affected-parts@ce736da3
 #[test]
 fn affected_measures_from_the_merge_base() {
     let (r, base) = fixture();
@@ -321,6 +326,8 @@ fn affected_measures_from_the_merge_base() {
     assert_ne!(main, base);
     // The base gained a source change after the branch; the listing measures the branch alone.
     assert_eq!(affected(&r, &main), ["pins", "toolchain", "schema", "test-first.validate"]);
+    let nightly = listed(&r, &["stages", "--parts", "--tier", "nightly", "--base", &main, "--affected"]);
+    assert!(nightly.is_empty(), "prose reaches no nightly part: {nightly:?}");
 
     // An empty diff lists the three parts every listing holds.
     let (r, base) = fixture();

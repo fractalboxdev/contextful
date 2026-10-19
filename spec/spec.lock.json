@@ -29046,7 +29046,7 @@
       "operation": "gate",
       "subject": "affected-parts",
       "kind": "behavior",
-      "statement": "`contextful-ci stages --parts --base <rev> --affected` lists, in run order, the required parts the diff from the merge base of `<rev>` and HEAD reaches, always including pins, toolchain and schema.",
+      "statement": "`contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including pins, toolchain and schema.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 199
@@ -29057,7 +29057,7 @@
       "operation": "gate",
       "subject": "affected-every",
       "kind": "behavior",
-      "statement": "A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every required part.",
+      "statement": "A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every part of either tier.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 201

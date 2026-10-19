@@ -108,12 +108,14 @@ fn the_features_stage_dispatches_one_part_per_featured_package() {
     }
     r.lock();
     r.commit("two featured packages");
-    let parts = listed(&r);
-    assert!(parts.contains(&"crate-graph".to_string()), "{parts:?}");
+    let out = r.run_ci(&["stages", "--parts", "--tier", "nightly"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let parts: Vec<String> = String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect();
+    assert!(parts.contains(&"formal".to_string()), "{parts:?}");
     assert!(!parts.iter().any(|p| p == "features.packages"), "featured packages still share one part: {parts:?}");
     // Parts follow package-name order: `beta` sorts before `contextful-alpha`.
     assert!(position(&parts, "features.beta") < position(&parts, "features.alpha"), "{parts:?}");
-    assert!(position(&parts, "features.alpha") < position(&parts, "crate-graph"), "{parts:?}");
+    assert!(position(&parts, "features.alpha") < position(&parts, "formal"), "{parts:?}");
 
     let out = r.gate(&["--stage", "features.alpha"]);
     let err = stderr(&out);

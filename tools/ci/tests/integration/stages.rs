@@ -94,6 +94,10 @@ fn the_gate_defines_the_thirteen_stages_in_run_order_and_runs_a_named_subset() {
 
     // A run naming no stage selects all thirteen, the nightly tier included; `--plan`
     // prints a run's selection and runs none.
+    r.write("crates/gated/Cargo.toml", &(crate::manifest("gated", "") + "\n[features]\nextra = []\n"));
+    r.write("crates/gated/src/lib.rs", "");
+    r.lock();
+    r.commit("a featured package");
     let planned = |args: &[&str]| {
         let o = gate(&r, None, &[&["--plan"], args].concat());
         assert!(o.status.success(), "{}", stderr(&o));
@@ -101,7 +105,7 @@ fn the_gate_defines_the_thirteen_stages_in_run_order_and_runs_a_named_subset() {
         String::from_utf8_lossy(&o.stdout).lines().map(str::to_string).collect::<Vec<_>>()
     };
     assert_eq!(planned(&[]), SEQUENCE);
-    assert_eq!(planned(&["--stage", "budget", "--stage", "features.packages", "--stage", "pins"]), ["pins", "features", "budget"]);
+    assert_eq!(planned(&["--stage", "budget", "--stage", "features.gated", "--stage", "pins"]), ["pins", "features", "budget"]);
 }
 
 /// A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
