@@ -3,7 +3,7 @@
 //! method, read its record back and hold it to its threshold.
 
 use anyhow::{bail, Context, Result};
-use contextful_eval::ledger::{self, Ledger, Method, Tier, World};
+use contextful_eval::ledger::{self, Entry, Ledger, Method, Tier, World};
 use contextful_eval::record::{self, Record, MEASURE_DIR_VAR};
 use contextful_eval::trend::{self, Figure};
 use serde::{Deserialize, Serialize};
@@ -198,13 +198,14 @@ pub fn status(root: &Path, check: bool) -> Result<()> {
 /// Run every entry of `tiers` whose method is known, each test in its package's
 /// integration binary built in the evaluate directory, and hold each record to its target.
 pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
-    measure(root, tiers)?.1
+    measure(root, tiers, &|_| true)?.1
 }
 
-/// [`run`], every runnable entry measured before the outcome: the ids of the entries that
-/// failed — a test that failed, a gate-tier record missing, reseeded or red — and the
-/// outcome, which carries the first failed test's exit ahead of the refusals.
-fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)> {
+/// [`run`] over the runnable entries `keep` admits, every one measured before the outcome:
+/// the ids of the entries that failed — a test that failed, a gate-tier record missing,
+/// reseeded or red — and the outcome, which carries the first failed test's exit ahead of
+/// the refusals.
+fn measure(root: &Path, tiers: &[Tier], keep: &dyn Fn(&Entry) -> bool) -> Result<(BTreeSet<String>, Result<()>)> {
     let records = root.join(RECORDS_DIR);
     let _ = std::fs::remove_dir_all(&records);
     let Some(l) = resolved(root)? else {
@@ -218,7 +219,7 @@ fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)
     let mut ran_tests = BTreeSet::new();
     let started = Instant::now();
     for tier in tiers {
-        for (id, e) in l.runnable(*tier) {
+        for (id, e) in l.runnable(*tier).filter(|(_, e)| keep(e)) {
             let at = Instant::now();
             match e.method() {
                 Some(Method::Test(t)) => {
@@ -566,26 +567,45 @@ const NATIVE_CASES: &str = "evals/cases/native.jsonl";
 /// The clause owning the ledger entries that run the native case set.
 const NATIVE_GATE: &str = "assurance.baseline.native-gate";
 
-/// The evaluate stage (`assurance.gate.evaluate-stage`): every gate-tier entry, the native
-/// case set among them, then the floor and baseline verdicts and the build directory
-/// reclaimed. A tree carrying the native case set with no gate-tier entry running it fails.
-pub fn evaluate(root: &Path) -> Result<()> {
-    let native: Vec<String> = load(root)?
+/// The evaluate stage's parts, one per package group of its test entries, the workspace
+/// stage's groups, then the probes (`assurance.gate.evaluate-stage`).
+pub const EVALUATE_PARTS: [&str; 6] = ["foundation", "runtime", "read", "cli", "ci", "probe"];
+
+/// The part measuring `entry`: its test's package group, or `probe`; `None` for a method
+/// no part runs, which every part then reaches.
+fn evaluate_part(entry: &Entry) -> Option<&'static str> {
+    match entry.method() {
+        Some(Method::Test(t)) => ledger::test_target(t).map(|(package, _)| crate::workspace_part(&package)),
+        Some(Method::Probe(_)) => Some("probe"),
+        _ => None,
+    }
+}
+
+/// The evaluate stage (`assurance.gate.evaluate-stage`): every gate-tier entry of the
+/// `only` parts, every part when none is named, the native case set among them, then the
+/// floor and baseline verdicts over those entries and the build directory reclaimed. A
+/// tree carrying the native case set with no gate-tier entry running it fails every part.
+pub fn evaluate(root: &Path, only: Option<&[String]>) -> Result<()> {
+    let keep = |e: &Entry| only.is_none_or(|parts| evaluate_part(e).is_none_or(|part| parts.iter().any(|p| p == part)));
+    let ledger = load(root)?;
+    let carried = ledger.as_ref().is_some_and(|l| l.entry.values().any(|e| e.tier == Tier::Gate && e.clause == NATIVE_GATE && matches!(e.method(), Some(Method::Test(_)))));
+    if root.join(NATIVE_CASES).is_file() && !carried {
+        bail!("the tree carries {NATIVE_CASES}, and no gate-tier ledger entry owned by `{NATIVE_GATE}` runs it");
+    }
+    let native: Vec<String> = ledger
         .map(|l| {
             l.entry
                 .iter()
-                .filter(|(_, e)| e.tier == Tier::Gate && e.clause == NATIVE_GATE)
+                .filter(|(_, e)| e.tier == Tier::Gate && e.clause == NATIVE_GATE && keep(e))
                 .filter(|(_, e)| matches!(e.method(), Some(Method::Test(_))))
                 .map(|(id, _)| id.clone())
                 .collect()
         })
         .unwrap_or_default();
-    if root.join(NATIVE_CASES).is_file() && native.is_empty() {
-        bail!("the tree carries {NATIVE_CASES}, and no gate-tier ledger entry owned by `{NATIVE_GATE}` runs it");
-    }
-    let (failed, outcome) = measure(root, &[Tier::Gate])?;
+    let (failed, outcome) = measure(root, &[Tier::Gate], &keep)?;
     let baseline_red = native.iter().any(|id| failed.contains(id));
-    eprintln!("evaluate: floor verdict {} over the gate-tier targets", if outcome.is_err() { "red" } else { "held" });
+    let scope = only.map_or(String::new(), |parts| format!(" of part {}", parts.join(", ")));
+    eprintln!("evaluate: floor verdict {} over the gate-tier targets{scope}", if outcome.is_err() { "red" } else { "held" });
     if !native.is_empty() {
         eprintln!("evaluate: baseline verdict {} for {NATIVE_CASES} ({})", if baseline_red { "red" } else { "held" }, native.join(", "));
     }

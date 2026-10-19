@@ -201,16 +201,16 @@ Revisit: the store format promises compatibility across majors, or `v1` opens.
 
 Context: the feature-unified workspace suite exceeds the 1800 s sandbox cap on a cold remote build. Criteria: every package suite runs, the feature union compiles, and each dispatched command runs locally too.
 
-Decision: `assurance.gate.workspace-parts` compiles the full union without execution and runs differential and remaining CLI tests in separate checks. Four other parts partition the remaining non-acceptance package suites. Binary feature checks use the same test partition. The unsplit local workspace stage retains its one cargo invocation under `assurance.build.one-engine-build`.
+Decision: `assurance.gate.workspace-parts` compiles the full union without execution, runs the tests the `differential::` filter reaches in one check, and splits the remaining CLI integration tests into four shards by the SHA-256 of each test name, run by exact name through libtest. The first shard adds unit tests and doctests. Four other parts partition the remaining non-acceptance package suites. The unsplit local workspace stage retains its one cargo invocation under `assurance.build.one-engine-build`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| One union compile, two CLI partitions and four other suite groups *(chosen)* | — | Remote sandboxes rebuild shared dependencies; seven workspace checks replace one. |
-| A lock-keyed shared build cache | Operability | A cache bucket and credential become part of the gate; a cold lock still exceeds the cap. |
-| One check for the full workspace | Stage wall clock | A cold sandbox times out before it reports a verdict. |
-| A higher exec deadline alone | Stage wall clock | One cold check compiles the union and runs every package suite in series. |
+| One union compile, a differential check, four name-hashed CLI shards and four suite groups *(chosen)* | — | Each shard compiles the CLI suite cold; ten workspace checks replace one. |
+| `cargo nextest --partition hash:k/4` | Operability | The gate image carries no nextest, and nextest runs no doctests. |
+| One CLI check for all non-differential tests | Stage wall clock | It ran 2668 s, beyond the 1800 s sandbox cap. |
+| A lock-keyed shared build cache | Operability | A cache credential joins the gate; a cold lock still exceeds the cap. |
 
-Consequences: seven remote workspace checks cover the same package set as the unsplit local stage. Every binary feature set retains all tests across its two checks. Each CLI partition compiles independently; reference-program builds occupy only the differential partition.
+Consequences: ten remote workspace checks cover the same package set as the unsplit local stage, each ordinary CLI test in exactly one shard. Binary feature checks keep two partitions per feature set. A shard over its budget raises the shard count.
 
 ## Gate parts run under a 45 min exec deadline
 

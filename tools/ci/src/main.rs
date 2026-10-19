@@ -445,23 +445,38 @@ fn repo_root() -> Result<PathBuf> {
 }
 
 /// The stages whose work splits into parts FlareDispatch dispatches one check
-/// each, so each part fits one stage's wall clock (`assurance.build.profile-build`,
-/// `assurance.gate.budget-stage`).
-const SPLIT: [&str; 4] = ["test-first", "workspace", "features", "budget"];
+/// each, so each part fits one stage's wall clock (`assurance.gate.part-budget`,
+/// `assurance.build.profile-build`, `assurance.gate.budget-stage`).
+const SPLIT: [&str; 5] = ["test-first", "workspace", "evaluate", "features", "budget"];
 
-/// The parts of a split `stage`: the features stage's `packages`, every featured package but
-/// the binary, then `binary-<run>` and `formal-<run>` per binary feature run; the budget stage's
-/// `<profile>` per profile the binary declares, its name after `contextful-`.
+/// The shards the remaining CLI tests split into by a hash of each test's name
+/// (`assurance.gate.workspace-parts`).
+const CLI_SHARDS: usize = 4;
+
+/// A package's name with the workspace prefix `contextful-` removed.
+fn short(package: &str) -> &str {
+    package.strip_prefix("contextful-").unwrap_or(package)
+}
+
+/// The parts of a split `stage`: the workspace stage's `cli-<k>` per CLI shard beside its
+/// package groups; the evaluate stage's package groups; the features stage's `<package>` per
+/// featured package but the binary, then `binary-<run>` and `formal-<run>` per binary feature
+/// run; the budget stage's `<profile>` per profile the binary declares, its name after `contextful-`.
 fn parts(root: &Path, stage: &str, base: Option<&str>) -> Result<Vec<String>> {
     Ok(match stage {
         "test-first" => match base { Some(base) => test_first_parts(root, base)?, None => vec!["validate".into()] },
-        "workspace" => ["compile", "cli", "cli-formal", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string).collect(),
+        "workspace" => std::iter::once("compile".to_string())
+            .chain((1..=CLI_SHARDS).map(|k| format!("cli-{k}")))
+            .chain(["cli-formal", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string))
+            .collect(),
+        "evaluate" => measure::EVALUATE_PARTS.into_iter().map(str::to_string).collect(),
         "features" => {
             let featured = featured_packages(root)?;
+            let packages = featured.iter().filter(|p| p.name != topology::BINARY).map(|p| short(&p.name).to_string());
             let binary = featured.iter().filter(|p| p.name == topology::BINARY).flat_map(Featured::runs);
-            std::iter::once("packages".to_string()).chain(binary.flat_map(|(label, _)| [format!("binary-{label}"), format!("formal-{label}")])).collect()
+            packages.chain(binary.flat_map(|(label, _)| [format!("binary-{label}"), format!("formal-{label}")])).collect()
         }
-        "budget" => topology::declared_profiles(root)?.iter().map(|p| p.strip_prefix("contextful-").unwrap_or(p).to_string()).collect(),
+        "budget" => topology::declared_profiles(root)?.iter().map(|p| short(p).to_string()).collect(),
         _ => Vec::new(),
     })
 }
@@ -550,7 +565,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
             provision_lean(root)?;
             provision_wasm(root)?;
             shell::provision_on_path(root)?;
-            measure::evaluate(root)?
+            measure::evaluate(root, only)?
         }
         "features" => features(root, only)?,
         "crate-graph" => {
@@ -565,8 +580,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
             // The footprint builds run here, apart from the evaluate stage
             // (`assurance.gate.budget-stage`).
             let declared = topology::declared_profiles(root)?.into_iter();
-            let short = |p: &str| p.strip_prefix("contextful-").unwrap_or(p).to_string();
-            let profiles: Vec<String> = declared.filter(|p| only.is_none_or(|o| o.contains(&short(p)))).map(str::to_string).collect();
+            let profiles: Vec<String> = declared.filter(|p| only.is_none_or(|o| o.iter().any(|part| part == short(p)))).map(str::to_string).collect();
             if profiles.is_empty() {
                 println!("budget: no package declares a profile");
             } else {
@@ -671,7 +685,7 @@ fn workspace_part(package: &str) -> &'static str {
 
 fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
     if let Some(only) = only {
-        let ordinary = only.iter().any(|part| part == "cli");
+        let shards: Vec<usize> = (1..=CLI_SHARDS).filter(|k| only.iter().any(|part| *part == format!("cli-{k}"))).collect();
         let formal = only.iter().any(|part| part == "cli-formal");
         if only.iter().any(|part| part == "compile") {
             let mut args = vec!["test", "--workspace"];
@@ -683,7 +697,7 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
         }
         let packages: Vec<String> = workspace_packages(root)?
             .into_iter()
-            .filter(|package| only.iter().any(|part| part == workspace_part(package)) || (formal && package == topology::BINARY))
+            .filter(|package| package == topology::BINARY && (formal || !shards.is_empty()) || only.iter().any(|part| part == workspace_part(package)))
             .collect();
         let other: Vec<&String> = packages.iter().filter(|package| package.as_str() != topology::BINARY).collect();
         if !other.is_empty() {
@@ -694,9 +708,14 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
             run_staged(root, "workspace", &args)?;
         }
         if packages.iter().any(|package| package == topology::BINARY) {
-            let mut args = vec!["test", "--package", topology::BINARY];
-            cli_partition(&mut args, ordinary, formal);
-            run_staged(root, "workspace", &args)?;
+            if formal {
+                let mut args = vec!["test", "--package", topology::BINARY];
+                cli_partition(&mut args, false, true);
+                run_staged(root, "workspace", &args)?;
+            }
+            for k in shards {
+                cli_shard(root, k)?;
+            }
         }
         return Ok(());
     }
@@ -707,13 +726,83 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
     run_staged(root, "workspace", &args)
 }
 
+/// The libtest name filter selecting the differential CLI tests: a substring match, so it
+/// also reaches `protocol_differential::`.
+const DIFFERENTIAL_FILTER: &str = "differential::";
+
+/// Shard `k` of the remaining CLI tests (`assurance.gate.workspace-parts`): every
+/// integration test [`DIFFERENTIAL_FILTER`] does not reach whose name hashes to `k` of
+/// [`CLI_SHARDS`], run by exact name; the first shard also runs the library and binary unit
+/// tests and the doctests, which no hash partition reaches.
+fn cli_shard(root: &Path, k: usize) -> Result<()> {
+    let binary = topology::BINARY;
+    if k == 1 {
+        let kinds = target_kinds(root, binary)?;
+        let mut units = vec!["test", "--package", binary];
+        if kinds.iter().any(|kind| kind == "lib") {
+            units.push("--lib");
+        }
+        if kinds.iter().any(|kind| kind == "bin") {
+            units.push("--bins");
+        }
+        if units.len() > 3 {
+            run_staged(root, "workspace", &units)?;
+        }
+        if kinds.iter().any(|kind| kind == "lib") {
+            run_staged(root, "workspace", &["test", "--package", binary, "--doc"])?;
+        }
+    }
+    let listing = ["test", "--package", binary, "--test", "integration", "--", "--list", "--format", "terse"];
+    let out = Command::new("cargo").args(listing).env("CARGO_TARGET_DIR", stage_target(root, "workspace")).current_dir(root).output()?;
+    if !out.status.success() {
+        return Err(exited_output(&format!("cargo {}", listing.join(" ")), &out));
+    }
+    let names: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| line.strip_suffix(": test"))
+        .filter(|name| !name.contains(DIFFERENTIAL_FILTER) && shard_of(name) == k)
+        .map(str::to_string)
+        .collect();
+    eprintln!("workspace: CLI shard {k} of {CLI_SHARDS} runs {} integration test(s)", names.len());
+    if names.is_empty() {
+        return Ok(());
+    }
+    let mut args = vec!["test", "--package", binary, "--test", "integration", "--", "--exact"];
+    args.extend(names.iter().map(String::as_str));
+    run_staged(root, "workspace", &args)
+}
+
+/// The 1-based shard a test name hashes to: the first eight bytes of its SHA-256 digest, as
+/// a big-endian integer, modulo [`CLI_SHARDS`], so every machine agrees.
+fn shard_of(name: &str) -> usize {
+    use sha2::Digest;
+    let digest = sha2::Sha256::digest(name.as_bytes());
+    let head = u64::from_be_bytes(digest[..8].try_into().expect("a SHA-256 digest holds eight bytes"));
+    (head % CLI_SHARDS as u64) as usize + 1
+}
+
+/// The target kinds `package` declares, from `cargo metadata`.
+fn target_kinds(root: &Path, package: &str) -> Result<Vec<String>> {
+    let meta = metadata(root)?;
+    Ok(meta["packages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|p| p["name"] == package)
+        .flat_map(|p| p["targets"].as_array().into_iter().flatten())
+        .flat_map(|t| t["kind"].as_array().into_iter().flatten())
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_string)
+        .collect())
+}
+
 /// The differential module runs separately from the other CLI tests in remote parts;
 /// selecting both partitions retains Cargo's complete suite, including doctests.
 fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
     if !ordinary {
-        args.extend(["--test", "integration", "differential::"]);
+        args.extend(["--test", "integration", DIFFERENTIAL_FILTER]);
     } else if !formal {
-        args.extend(["--", "--skip", "differential::"]);
+        args.extend(["--", "--skip", DIFFERENTIAL_FILTER]);
     }
 }
 
@@ -722,7 +811,7 @@ fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
 /// than `default` runs its suite alone, once with no features, once with every feature, and
 /// once per feature set its manifest lists under `[package.metadata.contextful]
 /// feature-runs` (`assurance.build.profile-build`). `only` narrows the stage to its named
-/// parts: `packages`, every package but the binary, and `binary-<run>` plus `formal-<run>`
+/// parts: `<package>`, one featured package but the binary each, and `binary-<run>` plus `formal-<run>`
 /// for the binary's ordinary and differential tests under each feature set.
 /// `cargo test -p` resolves the selected package's features without its dependents', so the
 /// store adapter's write suites run with the read face off
@@ -748,7 +837,7 @@ fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
         let name = &package.name;
         let binary = name == topology::BINARY;
         for (label, combination) in package.runs() {
-            let ordinary = only.is_none_or(|o| o.iter().any(|p| if binary { p.strip_prefix("binary-") == Some(label.as_str()) } else { p == "packages" }));
+            let ordinary = only.is_none_or(|o| o.iter().any(|p| if binary { p.strip_prefix("binary-") == Some(label.as_str()) } else { p == short(name) }));
             let formal = binary && only.is_none_or(|o| o.iter().any(|p| p.strip_prefix("formal-") == Some(label.as_str())));
             if !ordinary && !formal { continue; }
             let shown = combination.join(" ");

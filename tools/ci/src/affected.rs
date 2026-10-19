@@ -40,15 +40,14 @@ fn formal() -> Vec<Match> {
 }
 
 /// Every part reading the Lean tree under `formal/` (`assurance.gate.affected-formal`): the
-/// formal stage, the CLI's `formal::` and differential suites, the foundation package that
-/// builds `formal/reference`, the evaluate stage's protocol differential entry, and every
-/// feature part re-running those suites.
+/// formal stage, every CLI shard and the differential suite, the foundation package that
+/// builds `formal/reference`, every evaluate part, and every feature part re-running those
+/// suites.
 fn lean_tree() -> Vec<Match> {
     vec![
         part("formal"),
-        part("evaluate"),
-        part("workspace.cli"),
-        part("workspace.cli-formal"),
+        Match::Prefix("evaluate."),
+        Match::Prefix("workspace.cli-"),
         part("workspace.foundation"),
         Match::Prefix("features."),
     ]
@@ -151,11 +150,15 @@ impl Packages {
         if !names.contains(package) {
             return Ok(None);
         }
-        let mut m = vec![part("workspace.compile"), Match::Part(format!("workspace.{}", crate::workspace_part(package)))];
+        let mut m = vec![part("workspace.compile")];
         if package == crate::topology::BINARY {
-            m.extend([part("workspace.cli-formal"), Match::Prefix("features.binary-"), Match::Prefix("features.formal-")]);
-        } else if featured.contains(package) {
-            m.push(part("features.packages"));
+            // Every CLI shard and `workspace.cli-formal`.
+            m.extend([Match::Prefix("workspace.cli-"), Match::Prefix("features.binary-"), Match::Prefix("features.formal-")]);
+        } else {
+            m.push(Match::Part(format!("workspace.{}", crate::workspace_part(package))));
+            if featured.contains(package) {
+                m.push(Match::Part(format!("features.{}", crate::short(package))));
+            }
         }
         if crate::stage::CONNECTOR_PACKAGES.contains(&package) {
             m.push(part("connectors"));
@@ -190,7 +193,7 @@ fn pinned(root: &Path, merge_base: &str, packages: &mut Packages) -> Result<Reac
     // The evaluate stage refuses a ledger entry naming a clause the lock lacks
     // (`assurance.gate.affected-removed`).
     if before.keys().any(|id| !after.contains_key(id)) {
-        out.push(part("evaluate"));
+        out.push(Match::Prefix("evaluate."));
     }
     if ids.is_empty() {
         return Ok(Some(out));

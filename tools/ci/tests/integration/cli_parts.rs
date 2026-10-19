@@ -9,11 +9,14 @@ fn remote_cli_parts_run_every_test_once_and_propagate_differential_failures() {
     r.lock();
     r.commit("CLI ordinary and differential suites");
     let package = r.root.join("crates/contextful-cli");
-    for (ordinary, differential) in [("workspace.cli", "workspace.cli-formal"), ("features.binary-all", "features.formal-all")] {
-        let out = r.gate(&["--stage", ordinary]);
-        assert!(out.status.success(), "{ordinary}: {}", stderr(&out));
-        assert!(package.join("ordinary.ran").exists(), "{ordinary} missed ordinary tests");
-        assert!(!package.join("reference.ran").exists(), "{ordinary} also ran the differential partition");
+    let shards = ["workspace.cli-1", "workspace.cli-2", "workspace.cli-3", "workspace.cli-4"];
+    for (ordinary, differential) in [(&shards[..], "workspace.cli-formal"), (&["features.binary-all"][..], "features.formal-all")] {
+        for part in ordinary {
+            let out = r.gate(&["--stage", part]);
+            assert!(out.status.success(), "{part}: {}", stderr(&out));
+        }
+        assert!(package.join("ordinary.ran").exists(), "{ordinary:?} missed ordinary tests");
+        assert!(!package.join("reference.ran").exists(), "{ordinary:?} also ran the differential partition");
         std::fs::remove_file(package.join("ordinary.ran")).unwrap();
         let out = r.gate(&["--stage", differential]);
         assert!(out.status.success(), "{differential}: {}", stderr(&out));
