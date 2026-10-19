@@ -276,7 +276,7 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
         for (dir, batch) in partition(&rows, decl.partition_by()).map_err(invalid)? {
             let name = if dir.is_empty() { part_name(0) } else { format!("{dir}/{}", part_name(0)) };
             let path = staging.join(&name);
-            store.write_parquet_blooming(&path, &batch, decl.bloom_filter())?;
+            store.write_parquet_blooming(&path, &batch, &crate::available::bloom_columns(decl))?;
             sizes.push(fs::metadata(&path).at(&path)?.len());
             parts.push(PartEntry { name, key_version: store.sealing().key_version() });
         }

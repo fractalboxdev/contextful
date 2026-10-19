@@ -127,6 +127,30 @@ fn every_part_a_run_or_fold_writes_carries_the_declared_bloom_filter() {
     assert!(folded[0].0.is_some_and(|bytes| bytes <= 1024), "the snapshot's key filter is sized for its rows: {:?}", folded[0].0);
 }
 
+/// A vintage table naming no `bloom_filter` carries a bloom filter on its key in every part
+/// a run or a fold writes; its other columns carry none.
+// spec: store.index.bloom-vintage-key@f87e1a83
+#[test]
+fn a_vintage_table_carries_a_key_bloom_filter_it_never_declared() {
+    use parquet::file::reader::{FileReader, SerializedFileReader};
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"\nprimary_key = [\"doc_id\"]\ncontent_hash_column = \"digest\"\n[pipeline.tables.available_time]\ncolumn = \"filed_at\"");
+    let filters = |f: &Fixture| -> Vec<(bool, bool)> {
+        f.scan(&d, Bounds::default()).unwrap().files.iter().flat_map(|file| {
+            let reader = SerializedFileReader::new(std::fs::File::open(f.store.root().join(file)).unwrap()).unwrap();
+            let meta = reader.metadata().clone();
+            let column = |name: &str| meta.file_metadata().schema_descr().columns().iter().position(|c| c.name() == name).unwrap();
+            let (key, digest) = (column("doc_id"), column("digest"));
+            meta.row_groups().iter().map(|g| (g.column(key).bloom_filter_offset().is_some(), g.column(digest).bloom_filter_offset().is_some())).collect::<Vec<_>>()
+        }).collect()
+    };
+    f.land(&d, "run-1", json!([{"doc_id": "a1", "digest": "x", "filed_at": "2030-01-01T00:00:00Z"}]), "2030-01-01T01:00:00Z").unwrap();
+    f.land(&d, "run-2", json!([{"doc_id": "b2", "digest": "y", "filed_at": "2030-01-02T00:00:00Z"}]), "2030-01-02T01:00:00Z").unwrap();
+    assert_eq!(filters(&f), [(true, false), (true, false)], "each run part filters its key alone");
+    fold(&f.store, &d, at("2030-01-03T00:00:00Z")).unwrap();
+    assert_eq!(filters(&f), [(true, false)], "the snapshot filters its key alone");
+}
+
 /// A multi-tenant table carries the tenant identifier as its outermost partition column.
 // spec: store.index.tenant-outermost@13d7e0b2
 #[test]

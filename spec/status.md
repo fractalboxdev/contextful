@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 325 | 66 | 24 | 5 | 283 | 0 | 283 |
-| `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 2 | 14 | 380 | 92 | 22 | 12 | 297 | 0 | 297 |
-| `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
+| `assurance` | 3 | 18 | 325 | 66 | 24 | 5 | 283 | 0 | 260 |
+| `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 263 |
+| `connector` | 2 | 14 | 380 | 92 | 22 | 12 | 297 | 0 | 296 |
+| `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 64 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 565 | 127 | 46 | 17 | 526 | 0 | 526 |
-| `store` | 3 | 19 | 311 | 64 | 17 | 10 | 300 | 0 | 299 |
+| `store` | 3 | 19 | 312 | 64 | 17 | 10 | 301 | 0 | 300 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2717 | 681 | 217 | 75 | 2424 | 0 | |
+| **total** | 22 | 169 | 2718 | 681 | 217 | 75 | 2425 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
-| 2 — The store | 9 | 187 | 177 | passing | closed |
+| 2 — The store | 9 | 188 | 178 | passing | closed |
 | 3 — The run path | 12 | 290 | 278 | passing | closed |
 | 4 — Ingest | 25 | 609 | 504 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
@@ -2048,6 +2048,7 @@ Unscheduled operations: 13.
 | `store.fold.valid-time-line` | `crates/contextful-context/tests/integration/fold.rs::a_valid_time_table_keeps_one_row_per_key_and_line` | performed |
 | `store.index.bloom-encrypted` | `crates/contextful-context/tests/integration/encrypt.rs::an_encrypted_project_writes_no_bloom_filter` | performed |
 | `store.index.bloom-parts` | `crates/contextful-context/tests/integration/index.rs::every_part_a_run_or_fold_writes_carries_the_declared_bloom_filter` | performed |
+| `store.index.bloom-vintage-key` | `crates/contextful-context/tests/integration/index.rs::a_vintage_table_carries_a_key_bloom_filter_it_never_declared` | performed |
 | `store.index.candidate-ids` | `crates/contextful-context/tests/integration/read/retrieve.rs::sidecar_candidates_are_identifier_values_rejoined_through_the_relation` | performed |
 | `store.index.clustering` | `crates/contextful-context/tests/integration/index.rs::cluster_by_sorts_rows_within_a_file_in_declared_order` | performed |
 | `store.index.column-absent` | `crates/contextful-core/tests/integration/store/index.rs::an_index_or_identifier_the_schema_lacks_is_refused` | performed |

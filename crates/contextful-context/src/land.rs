@@ -868,12 +868,13 @@ fn part_batch(arriving: &Schema, rows: &[Map<String, Value>], injection: &Inject
 }
 
 /// Write `rb` as the Parquet file `path`, replacing a file a lost landing left there.
-/// Write one run part with a bloom filter on each column `decl` names (`store.index.bloom-parts`).
+/// Write one run part with a bloom filter on each of `decl`'s bloom columns (`store.index.bloom-parts`,
+/// `store.index.bloom-vintage-key`).
 fn write_batch(store: &Store, decl: &TableDecl, path: &Path, rb: &RecordBatch) -> Result<()> {
     if path.exists() {
         std::fs::remove_file(path).at(path)?;
     }
-    store.write_parquet_blooming(path, rb, decl.bloom_filter())
+    store.write_parquet_blooming(path, rb, &crate::available::bloom_columns(decl))
 }
 
 /// An instant as the nanoseconds `_ingested_at` stores.
@@ -1237,11 +1238,12 @@ fn commit_parts_inner(
             parquet_io::Insert { field: parquet_io::field(&Column::new(COMMIT_SEQ, ColumnType::Int64, false)), at: parquet_io::At::After(ROW_SEQ), fill: parquet_io::Fill::Int64(commit_seq) },
         ];
         let mut entries = Vec::with_capacity(parts.len());
+        let bloom = crate::available::bloom_columns(decl);
         for (i, staged) in parts.iter().enumerate() {
             let name = part_name(part_ordinal(i)?);
             let to = landing.node_dir.join(&name);
             written.push(to.clone());
-            parquet_io::copy_inserting_with_key(&stage_dir.join(staged), &to, &inserts, store.parquet_key(), decl.bloom_filter())?;
+            parquet_io::copy_inserting_with_key(&stage_dir.join(staged), &to, &inserts, store.parquet_key(), &bloom)?;
             entries.push(PartEntry { name, key_version: store.sealing().key_version() });
         }
         create_manifest(store, &landing, decl, ctx, entries, position, commit_seq, precommit, commit_point, group_root, schema_diffs)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))

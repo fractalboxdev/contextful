@@ -287,6 +287,20 @@ impl VintageHistory {
     }
 }
 
+/// The columns each part of `decl` carries a bloom filter on: those it names in
+/// `bloom_filter`, then, on a vintage table, each primary-key column it leaves out, so a
+/// vintage comparison skips a part whose key range spans a landing's keys but holds none of
+/// them (`store.index.bloom-vintage-key`).
+pub(crate) fn bloom_columns(decl: &TableDecl) -> Vec<String> {
+    let mut columns = decl.bloom_filter().to_vec();
+    if decl.is_vintage() {
+        for key in decl.primary_key() {
+            if !columns.contains(key) { columns.push(key.clone()) }
+        }
+    }
+    columns
+}
+
 /// `batch` with each row's availability instant resolved and the availability flags set by
 /// the engine alone: a producer's own flags are dropped. A date-only value resolves to the
 /// start of the next day in the declared zone (`store.available-time.date-end`); a null

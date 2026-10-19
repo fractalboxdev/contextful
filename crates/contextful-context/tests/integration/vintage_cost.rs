@@ -193,9 +193,9 @@ fn fresh_filing_scan(toml: &str, runs: usize, per_run: usize, seed: u64) -> u64 
     read
 }
 
-/// A run of 100 fresh random filing ids after 100 such runs, with and without a bloom
-/// filter on the key: the rows its vintage comparison reads. The ledger records the
-/// bloom-filtered table (ledger `vintage-random-key-scan`).
+/// A run of 100 fresh random filing ids after 100 such runs, the key named in
+/// `bloom_filter` and left out: the rows its vintage comparison reads. The ledger records the
+/// table naming it (ledger `vintage-random-key-scan`).
 #[test]
 fn a_fresh_filing_id_reads_no_stored_vintage() {
     const SEED: u64 = 0x5eed_7106;
@@ -204,6 +204,7 @@ fn a_fresh_filing_id_reads_no_stored_vintage() {
     let bloom = fresh_filing_scan(FILINGS_KEYED_BLOOM, runs, per_run, SEED);
     eprintln!("fresh ids over {} stored filings read {plain} rows, {bloom} with a key bloom filter", runs * per_run);
     assert_eq!(bloom, 0, "a key bloom filter excludes every stored part holding none of the fresh ids");
+    assert_eq!(plain, 0, "a vintage key carries a bloom filter undeclared");
     emit("vintage-random-key-scan", bloom as f64, per_run as u64, SEED);
 }
 
@@ -225,14 +226,13 @@ fn an_append_after_a_fold_reads_no_stored_vintage() {
     emit("vintage-after-fold-scan", read as f64, symbols as u64, SEED);
 }
 
-/// 8 threads each landing 25 runs of 100 never-seen keys into one bars table: the rows
-/// every vintage comparison reads in total (ledger `vintage-concurrent-scan`).
-#[test]
-fn eight_writers_landing_new_keys_scan_no_history() {
-    const SEED: u64 = 0x5eed_7108;
-    let (writers, runs, per_run) = if measuring() { (8, 25, 100) } else { (4, 5, 20) };
+/// The rows every vintage comparison reads in total while `writers` threads each land `runs`
+/// runs of `per_run` never-seen bars, run `r` on day `r`, writer `w`'s `i`th key named
+/// `key(w, r, i)`.
+fn concurrent_scan(writers: usize, runs: usize, per_run: usize, key: impl Fn(usize, usize, usize) -> String + Sync) -> u64 {
     let f = Fixture::new();
     let d = decl(BARS);
+    let key = &key;
     let outcomes: Vec<contextful_context::Result<()>> = std::thread::scope(|scope| {
         let handles: Vec<_> = (0..writers)
             .map(|w| {
@@ -243,7 +243,7 @@ fn eight_writers_landing_new_keys_scan_no_history() {
                             let rows = (0..per_run)
                                 .map(|i| {
                                     let mut row = bar(i, r, &format!("w{w}-{r}-{i}"), 0);
-                                    row.insert("symbol".into(), json!(format!("W{w}-R{r}-{i}")));
+                                    row.insert("symbol".into(), json!(key(w, r, i)));
                                     row
                                 })
                                 .collect();
@@ -259,12 +259,40 @@ fn eight_writers_landing_new_keys_scan_no_history() {
     assert_eq!(timeouts, 0, "no landing outwaits a lock: {outcomes:?}");
     assert_eq!(outcomes.len(), writers * runs, "every landing reports an outcome");
     assert!(outcomes.iter().all(Result::is_ok), "{outcomes:?}");
-    let commits = writers * runs;
-    assert_eq!(stored(&f, &d, "symbol"), commits * per_run);
-    let read = f.store.vintage_rows_read();
+    assert_eq!(stored(&f, &d, "symbol"), writers * runs * per_run);
+    f.store.vintage_rows_read()
+}
+
+/// 8 writers, 25 runs and 100 keys a run under measure; 4, 5 and 20 elsewhere.
+fn concurrent_size() -> (usize, usize, usize) {
+    if measuring() { (8, 25, 100) } else { (4, 5, 20) }
+}
+
+/// 8 threads each landing 25 runs of 100 never-seen keys, each writer's keys under its own
+/// prefix, into one bars table: the rows every vintage comparison reads in total (ledger
+/// `vintage-concurrent-scan`).
+#[test]
+fn eight_writers_landing_new_keys_scan_no_history() {
+    const SEED: u64 = 0x5eed_7108;
+    let (writers, runs, per_run) = concurrent_size();
+    let read = concurrent_scan(writers, runs, per_run, |w, r, i| format!("W{w}-R{r}-{i}"));
     assert_eq!(read, 0, "no commit reads another writer's keys or another day's vintages");
     eprintln!("{writers} writers × {runs} runs × {per_run} new keys read {read} stored rows");
-    emit("vintage-concurrent-scan", read as f64, commits as u64, SEED);
+    emit("vintage-concurrent-scan", read as f64, (writers * runs) as u64, SEED);
+}
+
+/// 8 threads each landing 25 runs of 100 never-seen keys into one bars table, the keys of a
+/// run dealt round-robin across the writers, so every writer's part of a day spans the
+/// others' key range: the rows every vintage comparison reads in total (ledger
+/// `vintage-interleaved-scan`).
+#[test]
+fn eight_writers_landing_interleaved_keys_scan_no_history() {
+    const SEED: u64 = 0x5eed_7109;
+    let (writers, runs, per_run) = concurrent_size();
+    let read = concurrent_scan(writers, runs, per_run, |w, r, i| format!("S{r:03}-{:05}", i * writers + w));
+    eprintln!("{writers} writers × {runs} runs × {per_run} interleaved new keys read {read} stored rows");
+    assert_eq!(read, 0, "no commit reads another writer's keys, though their key ranges overlap");
+    emit("vintage-interleaved-scan", read as f64, (writers * runs) as u64, SEED);
 }
 
 /// One commit re-pulling 10 unchanged bars over a table of 2 × 10⁴ vintages, in

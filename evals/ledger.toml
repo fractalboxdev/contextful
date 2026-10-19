@@ -750,6 +750,15 @@ method = { test = "contextful_context::vintage_cost::eight_writers_landing_new_k
 target = { op = "==", value = 0 }
 seed   = 0x5eed_7108
 
+[entry.vintage-interleaved-scan]
+clause = "store.available-time.vintage-scope"
+metric = "vintage.rows_scanned.interleaved_w8"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::vintage_cost::eight_writers_landing_interleaved_keys_scan_no_history" }
+target = { op = "==", value = 0 }
+seed   = 0x5eed_7109
+
 [entry.vintage-commit-latency-p50]
 clause = "store.available-time.vintage-scope"
 metric = "vintage.commit_20k.latency_ms.p50"
