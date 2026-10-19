@@ -77,13 +77,11 @@ impl ServingEdge {
         manifest.control_heads.retain(|p, _| p == &self.project);
         serde_json::to_vec_pretty(&manifest).map_err(invalid)
     }
-}
 
-impl ObjectStore for ServingEdge {
-    fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+    fn get_with(&self, key: &str, get: impl Fn(&str) -> Result<Option<(Vec<u8>, String)>, ObjectError>) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
         let Some(rel) = self.relative(key) else { return Ok(None) };
         if rel == MANIFEST_KEY || generation_of(rel).is_some() {
-            return match self.inner.get(key)? {
+            return match get(key)? {
                 Some((bytes, etag)) => Ok(Some((self.filter(rel, &bytes)?, etag))),
                 None => Ok(None),
             };
@@ -91,7 +89,17 @@ impl ObjectStore for ServingEdge {
         if !self.reaches(rel) {
             return Ok(None);
         }
-        self.inner.get(key)
+        get(key)
+    }
+}
+
+impl ObjectStore for ServingEdge {
+    fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+        self.get_with(key, |key| self.inner.get(key))
+    }
+
+    fn get_within(&self, key: &str, deadline: std::time::Instant) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+        self.get_with(key, |key| self.inner.get_within(key, deadline))
     }
 
     fn put(&self, key: &str, _bytes: &[u8], _condition: Condition) -> Result<Put, ObjectError> {

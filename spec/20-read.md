@@ -432,7 +432,7 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
 - `cold-start` — A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.
 - `warming-read` — A request other than `GET /health` reaching a retrieval container whose snapshot-set hydration is incomplete answers as {{read.register.past-ceiling}}; `/health` names the hydration state.
   *because a container ready before hydration completes otherwise answers a read from a partial snapshot set*
-- `miss-wait` — Under {{store.pull.lazy-parts}}, a statement touching a part absent locally waits while the part downloads, and past 30 s fails with `ReadPartUnavailable`, naming the part.
+- `miss-wait` — Under {{store.pull.lazy-parts}}, each absent part has one 30 s deadline from acquisition start covering manifest lookup, GET attempts and backoff sleeps; expiry raises `ReadPartUnavailable`, naming the part.
   *A-store*
 - `result-key` — A cached result keys on the token's id, revocation epoch, grants and subject, the session zone and incognito state, each touched relation and the files it reads, the bounds, the statement, its parameter values and the applied row ceiling.
   *A-read*

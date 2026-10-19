@@ -10,11 +10,28 @@ use contextful_core::store::sync::{confine, BucketManifest, Entry, MANIFEST_KEY}
 use contextful_core::store::StoreError;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 use std::time::{Duration, Instant};
 
-/// Longest a read waits for a part the bucket answers unavailable: 30 s (`read.cache.miss-wait`).
+/// The acquisition budget for one lazy part (`read.cache.miss-wait`).
 pub const PART_WAIT: Duration = Duration::from_secs(30);
+
+/// Monotonic time and sleeping for a part acquisition.
+pub trait Clock: Send + Sync {
+    fn now(&self) -> Instant;
+    fn sleep(&self, duration: Duration);
+}
+
+struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+    fn sleep(&self, duration: Duration) {
+        std::thread::sleep(duration);
+    }
+}
 
 /// The file under the sync directory listing each fetched part and its size.
 const INDEX_FILE: &str = "part-cache.json";
@@ -64,6 +81,7 @@ struct Cache {
 
 struct Inner {
     bucket: Arc<dyn ObjectStore>,
+    clock: Arc<dyn Clock>,
     prefix: String,
     project: String,
     root: PathBuf,
@@ -117,6 +135,11 @@ impl LazyParts {
     /// `prefix`, `width` at once, and holding at most `bound` bytes of fetched parts once no read
     /// holds them.
     pub fn new(bucket: Arc<dyn ObjectStore>, prefix: &str, project: &str, root: &Path, bound: u64, width: usize) -> LazyParts {
+        Self::with_clock(bucket, prefix, project, root, bound, width, Arc::new(SystemClock))
+    }
+
+    /// [`LazyParts::new`] with the acquisition's monotonic clock and sleeper.
+    pub fn with_clock(bucket: Arc<dyn ObjectStore>, prefix: &str, project: &str, root: &Path, bound: u64, width: usize, clock: Arc<dyn Clock>) -> LazyParts {
         let index = sync_dir(root, project).join(INDEX_FILE);
         let mut cache = Cache::default();
         for rel in fetched_parts(root, project) {
@@ -128,6 +151,7 @@ impl LazyParts {
         }
         LazyParts(Arc::new(Inner {
             bucket,
+            clock,
             prefix: prefix.to_string(),
             project: project.to_string(),
             root: root.to_path_buf(),
@@ -147,12 +171,19 @@ impl Inner {
     }
 
     /// The bucket manifest's entry for `key`, re-reading the manifest once when the held copy lacks it.
-    fn entry(&self, key: &str) -> Result<Option<Entry>, StoreError> {
-        let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+    fn entry(&self, key: &str, deadline: Instant) -> Result<Option<Entry>, StoreError> {
+        let mut entries = loop {
+            self.remaining(deadline).map_err(|e| unavailable(key, &e))?;
+            match self.entries.try_lock() {
+                Ok(entries) => break entries,
+                Err(TryLockError::Poisoned(e)) => break e.into_inner(),
+                Err(TryLockError::WouldBlock) => self.clock.sleep(Duration::from_millis(10).min(self.remaining(deadline).map_err(|e| unavailable(key, &e))?)),
+            }
+        };
         if let Some(e) = entries.as_ref().and_then(|m| m.get(key)) {
             return Ok(Some(e.clone()));
         }
-        let manifest = match self.bucket.get(&confine(&self.prefix, MANIFEST_KEY)?).map_err(|e| unavailable(MANIFEST_KEY, &e))? {
+        let manifest = match self.get(&confine(&self.prefix, MANIFEST_KEY)?, deadline).map_err(|e| unavailable(key, &e))? {
             Some((bytes, _)) => serde_json::from_slice::<BucketManifest>(&bytes).map_err(|e| StoreError::SyncObjectDigestMismatch(format!("`{MANIFEST_KEY}`: {e}")))?,
             None => BucketManifest::default(),
         };
@@ -164,24 +195,12 @@ impl Inner {
     /// Fetch `rel` whole, verified against its manifest entry, waiting out an unavailable
     /// bucket within [`PART_WAIT`], and account for it in the cache.
     fn fetch(&self, rel: &str) -> Result<(), StoreError> {
+        let deadline = self.clock.now() + PART_WAIT;
         let key = format!("{}/{rel}", self.project);
         let snapshot = rel.split('/').skip_while(|s| *s != "snapshots").nth(1).unwrap_or("-");
         let collected = || StoreError::SyncPartCollected(format!("`{rel}` of snapshot `{snapshot}` is gone from the bucket; the next pull advances the pointer past it"));
-        let Some(entry) = self.entry(&key)? else { return Err(collected()) };
-        let started = Instant::now();
-        let bytes = loop {
-            match self.bucket.get(&confine(&self.prefix, &key)?) {
-                Ok(Some((bytes, _))) => break bytes,
-                Ok(None) => return Err(collected()),
-                Err(e @ (ObjectError::Unavailable(_) | ObjectError::Transport(_))) => {
-                    if started.elapsed() >= PART_WAIT {
-                        return Err(unavailable(rel, &e));
-                    }
-                    std::thread::sleep(Duration::from_secs(1).min(PART_WAIT.saturating_sub(started.elapsed())));
-                }
-                Err(e) => return Err(unavailable(rel, &e)),
-            }
-        };
+        let Some(entry) = self.entry(&key, deadline)? else { return Err(collected()) };
+        let Some((bytes, _)) = self.get(&confine(&self.prefix, &key)?, deadline).map_err(|e| unavailable(rel, &e))? else { return Err(collected()) };
         if sha256_hex(&bytes) != entry.sha256 {
             return Err(StoreError::SyncObjectDigestMismatch(format!("`{key}` arrived with a digest other than its entry's; the object is discarded")));
         }
@@ -197,6 +216,26 @@ impl Inner {
         }
         cache.parts.insert(rel.to_string(), Cached { size, tick });
         Ok(())
+    }
+
+    fn remaining(&self, deadline: Instant) -> Result<Duration, ObjectError> {
+        let remaining = deadline.saturating_duration_since(self.clock.now());
+        if remaining.is_zero() {
+            return Err(ObjectError::Unavailable("part acquisition deadline".into()));
+        }
+        Ok(remaining)
+    }
+
+    fn get(&self, key: &str, deadline: Instant) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+        loop {
+            self.remaining(deadline)?;
+            let answer = self.bucket.get_within(key, deadline);
+            let remaining = self.remaining(deadline)?;
+            match answer {
+                Err(ObjectError::Unavailable(_) | ObjectError::Transport(_)) => self.clock.sleep(Duration::from_secs(1).min(remaining)),
+                other => return other,
+            }
+        }
     }
 
     /// Remove the least recently held fetched parts no read holds until the cache fits its bound.
@@ -232,7 +271,7 @@ impl PartSource for LazyParts {
         for rel in files {
             total += match std::fs::metadata(self.0.root.join(rel)) {
                 Ok(m) => m.len(),
-                Err(_) => self.0.entry(&format!("{}/{rel}", self.0.project))?.map_or(0, |e| e.size),
+                Err(_) => self.0.entry(&format!("{}/{rel}", self.0.project), self.0.clock.now() + PART_WAIT)?.map_or(0, |e| e.size),
             };
         }
         if total > self.0.bound {
