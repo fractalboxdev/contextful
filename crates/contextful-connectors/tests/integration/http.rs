@@ -793,9 +793,9 @@ fn an_http_page_marks_only_the_terminal_snapshot_complete() {
     assert_eq!(empty["snapshot_complete"], json!(true));
 }
 
-/// Under next-URL or Link-header pagination, a pull reads one page and its position carries the pages read, never a
-/// page URL; a source holding no next URL for that count re-follows the walk from its first page.
-// spec: connector.source.http-url-walk@bb7457fd
+/// Under next-URL or Link-header pagination, one generic HTTP source pull walks every page, and no position carries
+/// a page URL.
+// spec: connector.source.http-url-walk@ef55a50e
 #[test]
 fn a_next_url_walk_keeps_the_next_urls_query_out_of_every_position() {
     for (key, value) in [("next_url_path", json!("/next")), ("link_header", json!(true))] {
@@ -814,49 +814,20 @@ fn a_next_url_walk_keeps_the_next_urls_query_out_of_every_position() {
         let mut config = json!({"endpoint": vendor.url("/v1"), "records": "/data"});
         config[key] = value.clone();
         let mut s = source(config.clone(), vec![]);
+        // A page failing mid-walk leaves no pulled bytes behind, and its message carries no query.
+        let f = s.pull(&request(None), &Never).unwrap_err();
+        assert!(!f.message.contains(secret), "{key}: {f}");
+
+        fail.store(false, std::sync::atomic::Ordering::SeqCst);
+        let mut s = source(config, vec![]);
         let bytes = s.pull(&request(None), &Never).unwrap();
         let text = String::from_utf8(bytes.clone()).unwrap();
         assert!(!text.contains(secret), "{key}: {text}");
         let v: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!((v["rows"].as_array().map(Vec::len), v["more"].as_bool(), v.get("cursor")), (Some(1), Some(true), Some(&json!({"page": 1}))), "{key}: {text}");
-        // A page failing mid-walk leaves no pulled bytes behind, and its message carries no query.
-        let f = s.pull(&request(Some(json!({"page": 1}))), &Never).unwrap_err();
-        assert!(!f.message.contains(secret), "{key}: {f}");
-
-        // A fresh source holds no next URL, so it re-follows the walk from the first page.
-        fail.store(false, std::sync::atomic::Ordering::SeqCst);
-        let mut s = source(config, vec![]);
-        let (rows, cursor, more) = pulled(&mut s, Some(json!({"page": 1}))).unwrap();
-        assert_eq!((rows, cursor, more), (vec!["b".to_string()], Some(json!({"page": null})), false), "{key}");
-        assert_eq!(vendor.received("/v1").len(), 2, "{key}: the fresh source re-follows the first page");
+        assert_eq!((v["more"].as_bool(), v.get("cursor")), (Some(false), None), "{key}: {text}");
+        assert_eq!(v["rows"].as_array().map(Vec::len), Some(2), "{key}: one pull walks every page");
+        assert_eq!(v["snapshot_complete"], json!(true), "{key}: the walk vouches for its whole listing");
     }
-}
-
-/// A next-URL walk re-following its pages to a position's count reports its snapshot incomplete, so a replacing
-/// table publishes nothing over a page the vendor's current listing moved behind the count.
-// spec: connector.source.http-url-refollow@ae2f8dba
-#[test]
-fn a_refollowed_url_walk_reports_its_snapshot_incomplete() {
-    let vendor = Server::start(|r| {
-        let page: usize = r.query("p").and_then(|p| p.parse().ok()).unwrap_or(1);
-        let next = if page < 3 { json!(format!("/v1?p={}", page + 1)) } else { Value::Null };
-        Response::json(200, &json!({"data": [{"id": format!("r{page}")}], "next": next}).to_string())
-    });
-    let config = json!({"endpoint": vendor.url("/v1"), "records": "/data", "next_url_path": "/next"});
-    let snapshot = |s: &mut HttpSource, position: Option<Value>| -> (Vec<Value>, bool) {
-        let out: Value = serde_json::from_slice(&s.pull(&request(position), &Never).unwrap()).unwrap();
-        (out["rows"].as_array().cloned().unwrap_or_default(), out["snapshot_complete"].as_bool().unwrap_or(true))
-    };
-
-    // An uninterrupted walk vouches for its whole listing on its last page.
-    let mut s = source(config.clone(), vec![]);
-    assert!(!snapshot(&mut s, None).1);
-    assert!(!snapshot(&mut s, Some(json!({"page": 1}))).1);
-    assert_eq!(snapshot(&mut s, Some(json!({"page": 2}))), (vec![json!({"id": "r3"})], true));
-
-    // A fresh source asked the third page re-follows two and vouches for nothing.
-    let mut s = source(config, vec![]);
-    assert_eq!(snapshot(&mut s, Some(json!({"page": 2}))), (vec![json!({"id": "r3"})], false));
 }
 
 #[test]
@@ -869,9 +840,10 @@ fn an_empty_url_walk_marks_the_whole_snapshot_complete() {
     assert_eq!(out["snapshot_complete"], json!(true));
 }
 
-/// Under an incremental field, one generic HTTP source pull reads one page from the stored watermark, its position
-/// carrying that watermark and the next page's token; the walk's last page carries no position.
-// spec: connector.source.http-watermark-walk@de5a96fd
+/// Under an incremental field without next-URL or Link-header pagination, one generic HTTP source pull reads one page
+/// from the stored watermark, its position carrying that watermark and the next page's token; the walk's last page
+/// carries no position.
+// spec: connector.source.http-watermark-walk@a2a96ce8
 #[test]
 fn a_watermarked_read_pulls_one_page_carrying_its_floor() {
     let vendor = Server::start(|r| match r.query("p").as_deref() {
@@ -942,9 +914,9 @@ fn a_watermarked_walk_hands_the_runner_one_page_per_pull() {
     contextful_eval::record::emit("backfill-http-rows-per-pull", most as f64, 1, 0);
 }
 
-/// A next-URL walk over 999 pages of 10 rows: the most rows one pull hands the runner.
+/// A next-URL walk over 999 pages of 10 rows: the most rows one pull hands the runner, the whole listing.
 #[test]
-fn a_next_url_walk_hands_the_runner_one_page_per_pull() {
+fn a_next_url_walk_hands_the_runner_its_listing_in_one_pull() {
     let vendor = Server::start(|r| {
         let page: usize = r.path().strip_prefix("/v1/").and_then(|p| p.parse().ok()).unwrap_or(1);
         let next = if page < BACKFILL_PAGES { json!(format!("/v1/{}", page + 1)) } else { Value::Null };
@@ -953,7 +925,7 @@ fn a_next_url_walk_hands_the_runner_one_page_per_pull() {
     let mut s = source(json!({"endpoint": vendor.url("/v1"), "records": "/data", "next_url_path": "/next"}), vec![]);
     let (most, landed) = rows_per_pull(&mut s, None);
     assert_every_backfill_row_once(landed);
-    assert!(most <= BACKFILL_PAGE_ROWS, "one pull handed the runner {most} rows");
+    assert_eq!(most, BACKFILL_PAGES * BACKFILL_PAGE_ROWS, "one pull walks every page");
     contextful_eval::record::emit("backfill-http-rows-per-pull-url", most as f64, 1, 0);
 }
 

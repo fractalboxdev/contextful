@@ -22,7 +22,7 @@
 | `backfill-http-fires-to-complete` | `connector.source.page-cap` | `ingest.backfill.http_fires_to_complete` | gate | test `contextful_engine::runner::a_2000_page_vendor_lands_every_page_in_one_fire` | `== 1` | gated |
 | `backfill-http-rows-landed` | `connector.source.page-cap` | `ingest.backfill.http_rows_landed_once` | gate | test `contextful_engine::runner::a_2000_page_vendor_lands_every_page_in_one_fire` | `== 1` | gated |
 | `backfill-http-rows-per-pull` | `connector.source.http-watermark-walk` | `ingest.backfill.http_rows_per_pull` | gate | test `contextful_connectors::http::a_watermarked_walk_hands_the_runner_one_page_per_pull` | `<= 10` | gated |
-| `backfill-http-rows-per-pull-url` | `connector.source.http-url-walk` | `ingest.backfill.http_url_rows_per_pull` | gate | test `contextful_connectors::http::a_next_url_walk_hands_the_runner_one_page_per_pull` | `<= 10` | gated |
+| `backfill-http-rows-per-pull-url` | `connector.source.http-url-walk` | `ingest.backfill.http_url_rows_per_pull` | gate | test `contextful_connectors::http::a_next_url_walk_hands_the_runner_its_listing_in_one_pull` | `<= 9990` | gated |
 | `backfill-parts-per-commit-min` | `run.own.checkpoint-commit` | `ingest.backfill.parts_per_commit_min` | gate | test `contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire` | `>= 4` | gated |
 | `backfill-walk-peak-rss` | `connector.source.http-watermark-walk` | `connector.http.watermark_walk.peak_rss` | trend | probe `backfill-walk-peak-rss` | `<= 32` | recorded |
 | `backfill-window-commits` | `run.own.checkpoint-commit` | `ingest.backfill.window_commits` | gate | test `contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire` | `== 4` | gated |

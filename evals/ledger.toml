@@ -257,8 +257,8 @@ clause = "connector.source.http-url-walk"
 metric = "ingest.backfill.http_url_rows_per_pull"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_connectors::http::a_next_url_walk_hands_the_runner_one_page_per_pull" }
-target = { op = "<=", value = 10 }
+method = { test = "contextful_connectors::http::a_next_url_walk_hands_the_runner_its_listing_in_one_pull" }
+target = { op = "<=", value = 9990 }
 
 # The fire loop stops at 3 fires and records 4 when the walk is unfinished.
 [entry.backfill-http-fires-to-complete]

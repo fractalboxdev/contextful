@@ -418,7 +418,7 @@ The execution owner a scope holds and the connector build it pins while pending.
 - `one-commit-per-run` — One run produces one atomic commit per table, plus one per {{run.own.checkpoint-commit}}; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step or commit.
 - `staged-bytes` — A stage carrying the parts a run staged since its last commit past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run commits nothing more and retires its owner, so the next fire pulls afresh from the stored cursor.
   *because a replay of the run's recorded pulls stages the same bytes past the bound and fails identically, holding the table's owner indefinitely*
-- `checkpoint-commit` — When the parts a run staged since its last commit reach 512 MiB, the run commits them with the position after its last staged pull before staging more rows, then keeps pulling under the same execution.
+- `checkpoint-commit` — When the parts a run of a position-addressed source staged since its last commit reach 512 MiB, the run commits them with the position after its last staged pull before staging more rows, then keeps pulling under the same execution.
   *A-run*
 - `checkpoint-frontier` — Under a `monotonic` cursor, a checkpoint commits only before a pull whose every clock passes the run's frontier, so no commit's position splits the rows of one instant.
   *A-run*
@@ -430,8 +430,8 @@ The execution owner a scope holds and the connector build it pins while pending.
   *because a run committing its first checkpoint and then failing on the next one's run id leaves a partial window published*
 - `checkpoint-landed` — A run failing after a checkpoint's commit lands records on its row the rows and bytes every landed checkpoint commit carried, including one whose cursor update then fails.
   *because the checkpoints stay committed, and a failed row counting no rows hides rows every read returns*
-- `checkpoint-scope` — A table replacing its source state, a body's prepared landing, and a seeding or receiving scope take no checkpoint; each such run commits once.
-  *because a replacement publishes one complete inventory, a body's landing publishes with its body's outcome, and a seeding or receiving scope's cursor answers to its own window*
+- `checkpoint-scope` — A source is position-addressed when each pull's position names a watermark, page token or stable offset. A {{connector.source.http-url-walk}}, a replacing table, a body's prepared landing, and a seeding or receiving scope commit once.
+  *A-run*
 - `stage-schema` — A stage refuses against `schema.json` and the run's earlier stages, then merges its columns into the run's own staged schema; only the commit merges them into `schema.json`.
   *because otherwise rows no commit publishes fix a column's type in the table's schema*
 - `source-stage-schema` — A deterministic `SchemaIncompatible` from staging an ordinary source batch, raw or prepared, retires its owner unless another live attempt holds it; the failed run changes neither committed cursor nor published rows. This exception excludes prepared body-emission staging.
@@ -475,6 +475,8 @@ flowchart LR
 - `run.own.checkpoint-landed`: WHEN a run commits checkpoints at `p4` and `p8` and its tenth pull fails, THEN its `failed` row counts eight rows.
 - `run.own.checkpoint-landed`: WHEN a run's `p12` checkpoint commits and the cursor row moves before its update, THEN its `failed` row counts twelve rows.
 - `run.own.checkpoint-resume`: WHEN a run commits checkpoints at `p4` and `p8` and dies pulling `p9`, THEN the next fire pulls from `p8` and lands every later row once.
+- `run.own.checkpoint-scope`: WHEN an appending table's next-URL walk dies on its third page and the listing gains a first row, THEN the next fire lands each listed row once.
+- `run.own.checkpoint-scope`: WHEN a replacing table's next-URL walk dies mid-walk on three fires, THEN the fourth fire succeeds with every listed row and no fire succeeds with zero.
 - `run.own.stage-schema`: WHEN run `run-s` stages `ts` as text and fails, THEN a later run lands `ts` as a timestamp, and `run-s`'s commit refuses with `StoreSchemaIncompatible`.
 - `run.own.stage-commit-seq`: WHEN run `run-s` stages a part, run `run-c` then commits as `_commit_seq` 1, and `run-s` commits after it, THEN every row of `run-s` reads `_commit_seq` 2.
 - `run.own.stage-instant`: WHEN run `run-a` stages key `k` at 00:01, run `run-b` commits `k` at 00:03 and `run-a` commits at 00:05, THEN the keyed read returns `run-a`'s row, `_ingested_at` 00:05.

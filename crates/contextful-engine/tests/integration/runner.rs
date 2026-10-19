@@ -436,7 +436,6 @@ fn each_batch_stages_before_the_next_pull() {
 /// deterministic; the run commits nothing more and retires its owner, so the next fire pulls afresh from the stored
 /// position. A replacing table takes no checkpoint, so its run reaches the bound.
 // spec: run.own.staged-bytes@0ba44514
-// spec: run.own.checkpoint-scope@c1944746
 #[test]
 fn a_run_staging_past_the_bound_commits_nothing() {
     let rig = Rig::new();
@@ -471,7 +470,7 @@ const NOT_DONE: u64 = 4;
 /// Sixteen one-row pages, each staging a 128 MiB part, make a 2 GiB window; the window is given three fires
 /// to land every row, and reports [`NOT_DONE`] when it has not. Each time the parts staged since the run's last
 /// commit reach 512 MiB, the run commits them with the position after its last staged pull and keeps pulling.
-// spec: run.own.checkpoint-commit@a772e124
+// spec: run.own.checkpoint-commit@18a72e19
 // spec: run.own.checkpoint-run-id@17b3a540
 #[test]
 fn a_window_staging_two_gib_completes_in_one_fire() {
@@ -782,6 +781,87 @@ fn a_2000_page_vendor_lands_every_page_in_one_fire() {
     assert_eq!(once, total, "every bar lands exactly once");
     let last = vendor.bar(total - 1)["date"].clone();
     assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, Some(json!({ "field": "date", "at": last })), "the watermark advances when the walk ends");
+}
+
+/// A vendor answering `GET /items?p=<n>` with the `n`th id of its listing, one to a page, and the next page's URL; it
+/// panics once serving the page named in `die_on`, as a process dying mid-walk leaves its state.
+struct ListingVendor {
+    listing: Mutex<Vec<String>>,
+    die_on: Mutex<Option<usize>>,
+}
+
+impl ListingVendor {
+    fn new(ids: &[&str]) -> Arc<ListingVendor> {
+        Arc::new(ListingVendor { listing: Mutex::new(ids.iter().map(|id| id.to_string()).collect()), die_on: Mutex::new(None) })
+    }
+}
+
+impl contextful_outbound::Transport for ListingVendor {
+    fn resolve(&self, _: &str, port: u16) -> Result<Vec<std::net::SocketAddr>, String> {
+        Ok(vec![std::net::SocketAddr::new("93.184.216.34".parse().unwrap(), port)])
+    }
+
+    fn send(&self, request: &contextful_outbound::egress::Outbound<'_>) -> Result<contextful_outbound::egress::Inbound, contextful_outbound::egress::TransportFault> {
+        let page: usize = request.url.query_pairs().find(|(k, _)| k == "p").and_then(|(_, v)| v.parse().ok()).unwrap_or(1);
+        if *self.die_on.lock().unwrap() == Some(page) {
+            *self.die_on.lock().unwrap() = None;
+            panic!("the process dies while the vendor serves page {page}");
+        }
+        let listing = self.listing.lock().unwrap().clone();
+        let rows: Vec<Value> = listing.get(page - 1).map(|id| json!({ "id": id })).into_iter().collect();
+        let next = if page < listing.len() { json!(format!("https://vendor.example/items?p={}", page + 1)) } else { Value::Null };
+        Ok(contextful_outbound::egress::Inbound { status: 200, headers: vec![], body: serde_json::to_vec(&json!({ "data": rows, "next": next })).unwrap() })
+    }
+}
+
+/// A generic HTTP source over `vendor` under next-URL pagination, fresh as the scheduler builds one each fire.
+fn url_walk(vendor: &Arc<ListingVendor>) -> contextful_connectors::http::HttpSource {
+    use contextful_connectors::http::{HttpConfig, HttpSource, Mediation};
+    let config = HttpConfig::parse(&json!({ "endpoint": "https://vendor.example/items", "records": "/data", "next_url_path": "/next" })).unwrap();
+    let clock = Arc::new(contextful_core::ports::FixedClock(crate::support::at(crate::support::T0)));
+    let resolver = Arc::new(contextful_outbound::Resolver::new(Vec::new(), false, clock));
+    let transport: Arc<dyn contextful_outbound::Transport> = vendor.clone();
+    HttpSource::mediated(config, "items", resolver, Mediation { transport: Some(transport), ..Mediation::default() }).unwrap()
+}
+
+/// A next-URL walk lands in one pull and commits once. An appending table's walk dies on its third page and the
+/// listing gains a first row; the next fire walks from the first page and lands each listed row once. A replacing
+/// table's walk dying on three fires publishes nothing, and the fourth fire succeeds with the whole listing.
+// spec: run.own.checkpoint-scope@b041c9d3
+#[test]
+fn an_interrupted_url_walk_resumes_from_its_first_page() {
+    let rig = Rig::new();
+    let vendor = ListingVendor::new(&["r1", "r2", "r3", "r4"]);
+    *vendor.die_on.lock().unwrap() = Some(3);
+    let mut sink = Sink::default();
+    rig.crash(&opaque(), "run-1", &mut url_walk(&vendor), &mut sink);
+    assert!(sink.commits.is_empty(), "the walk commits nothing before its end");
+    vendor.listing.lock().unwrap().insert(0, "r0".into());
+    rig.clock.advance(60);
+    let row = rig.run(&opaque(), "1.0.0", "run-2", &mut url_walk(&vendor), &mut sink).unwrap();
+    assert_eq!((row.status, row.rows), (RunStatus::Success, 5));
+    let mut landed: Vec<String> = sink.commits.iter().flat_map(ids).flatten().collect();
+    landed.sort();
+    assert_eq!(landed, ["r0", "r1", "r2", "r3", "r4"], "each listed row lands once");
+
+    // A replacing table's interrupted walks never succeed over zero rows.
+    let rig = Rig::new();
+    let vendor = ListingVendor::new(&["r1", "r2", "r3", "r4"]);
+    let mut sink = Sink { replace: true, ..Sink::default() };
+    for (fire, page) in [(1, 3), (2, 2), (3, 4)] {
+        *vendor.die_on.lock().unwrap() = Some(page);
+        rig.crash(&opaque(), &format!("run-{fire}"), &mut url_walk(&vendor), &mut sink);
+        rig.clock.advance(60);
+    }
+    assert!(sink.commits.is_empty(), "no interrupted walk publishes");
+    let row = rig.run(&opaque(), "1.0.0", "run-4", &mut url_walk(&vendor), &mut sink).unwrap();
+    assert_eq!((row.status, row.rows), (RunStatus::Success, 4), "the resumed fire lands the whole listing");
+    assert_eq!(sink.commits.len(), 1);
+    assert_eq!(ids(&sink.commits[0]).concat(), ["r1", "r2", "r3", "r4"]);
+    for fire in 1..=3 {
+        let crashed = rig.row(&format!("run-{fire}"));
+        assert!(!(crashed.status == RunStatus::Success && crashed.rows == 0), "run-{fire} reports {:?} over {} rows", crashed.status, crashed.rows);
+    }
 }
 
 /// A source whose every pull moves the clock 5 s on.

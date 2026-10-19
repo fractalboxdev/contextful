@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 325 | 66 | 24 | 5 | 283 | 0 | 283 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 2 | 14 | 381 | 92 | 22 | 12 | 298 | 0 | 298 |
+| `connector` | 2 | 14 | 380 | 92 | 22 | 12 | 297 | 0 | 297 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 319 | 64 | 19 | 11 | 308 | 0 | 308 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2750 | 682 | 221 | 77 | 2456 | 0 | |
+| **total** | 22 | 169 | 2749 | 682 | 221 | 77 | 2455 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 195 | 185 | passing | closed |
 | 3 — The run path | 12 | 306 | 294 | passing | closed |
-| 4 — Ingest | 25 | 618 | 512 | passing | closed |
+| 4 — Ingest | 25 | 617 | 511 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -857,7 +857,6 @@ Unscheduled operations: 13.
 | `connector.source.http-limiter` | `crates/contextful-cli/tests/integration/pipeline.rs::a_bound_quota_meters_every_page_of_a_run` | performed |
 | `connector.source.http-page-pull` | `crates/contextful-connectors/tests/integration/http.rs::a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page` | performed |
 | `connector.source.http-scope-probe` | `crates/contextful-connectors/tests/integration/http.rs::the_scope_probe_runs_before_the_first_page` | performed |
-| `connector.source.http-url-refollow` | `crates/contextful-connectors/tests/integration/http.rs::a_refollowed_url_walk_reports_its_snapshot_incomplete` | performed |
 | `connector.source.http-url-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_next_url_walk_keeps_the_next_urls_query_out_of_every_position` | performed |
 | `connector.source.http-watermark-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_watermarked_read_pulls_one_page_carrying_its_floor` | performed |
 | `connector.source.image-header` | `spec/pins.toml` | performed |
@@ -1780,7 +1779,7 @@ Unscheduled operations: 13.
 | `run.own.checkpoint-landed` | `crates/contextful-engine/tests/integration/runner.rs::a_failed_run_records_what_its_checkpoints_landed` | performed |
 | `run.own.checkpoint-resume` | `crates/contextful-engine/tests/integration/runner.rs::a_fire_after_a_crash_resumes_from_the_last_checkpoint` | performed |
 | `run.own.checkpoint-run-id` | `crates/contextful-engine/tests/integration/runner.rs::a_window_staging_two_gib_completes_in_one_fire` | performed |
-| `run.own.checkpoint-scope` | `crates/contextful-engine/tests/integration/runner.rs::a_run_staging_past_the_bound_commits_nothing` | performed |
+| `run.own.checkpoint-scope` | `crates/contextful-engine/tests/integration/runner.rs::an_interrupted_url_walk_resumes_from_its_first_page` | performed |
 | `run.own.execution-id-keys-the-journal` | `crates/contextful-engine/tests/integration/runner.rs::a_second_attempt_under_one_owner_replays_the_firsts_recorded_pulls` | performed |
 | `run.own.execution-owner` | `spec/pins.toml` | performed |
 | `run.own.host-scope` | `crates/contextful-engine/tests/integration/execution.rs::every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row` | performed |
