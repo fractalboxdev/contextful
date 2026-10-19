@@ -2,7 +2,7 @@
 
 # Target ledger
 
-153 entries: 93 gated, 46 recorded, 6 scheduled, 8 open.
+154 entries: 94 gated, 46 recorded, 6 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -154,6 +154,7 @@
 | `vintage-commit-latency-p95` | `store.available-time.vintage-scope` | `vintage.commit_20k.latency_ms.p95` | trend | test `contextful_context::vintage_cost::vintage_commit_latency_at_twenty_thousand_rows` | — | recorded |
 | `vintage-commit-memory` | `store.available-time.vintage-scope` | `vintage.one_day_commit_1m.peak_rss` | scheduled | test `contextful_context::vintage_cost::a_one_day_commit_on_a_million_vintages_holds_bounded_memory` | — | scheduled |
 | `vintage-concurrent-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.concurrent_w8` | gate | test `contextful_context::vintage_cost::eight_writers_landing_new_keys_scan_no_history` | `== 0` | gated |
+| `vintage-interleaved-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.interleaved_w8` | gate | test `contextful_context::vintage_cost::eight_writers_landing_interleaved_keys_scan_no_history` | `<= 1000` | gated |
 | `vintage-random-key-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.fresh_random_keys` | gate | test `contextful_context::vintage_cost::a_fresh_filing_id_reads_no_stored_vintage` | `== 0` | gated |
 | `vintage-restate-day-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.restate_day` | gate | test `contextful_context::vintage_cost::a_one_day_restatement_reads_only_that_days_vintages` | `<= 100` | gated |
 | `watermark-bytes-runs-record` | `run.model.watermark` | `run.model.watermark_bytes` | gate | test `contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs` | `<= 48301` | gated |
