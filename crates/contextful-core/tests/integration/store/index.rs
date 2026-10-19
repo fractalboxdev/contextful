@@ -344,3 +344,23 @@ fn an_entry_is_built_as_a_declaration_only_under_its_identifier_and_parameters()
     let unrecognized: IndexEntry = serde_json::from_value(serde_json::json!({"kind": "sparse", "path": "indexes/sparse-body"})).unwrap();
     assert!(unrecognized.built_as(&decl(fts_block), "digest"));
 }
+
+/// A sidecar extended by a segment declares `2.0` even when the segment it extended held no
+/// row, since a `1.x` build reads no `extensions` field (`store.lay-out.format-version`).
+#[test]
+fn an_extended_sidecar_without_segments_declares_the_current_format() {
+    use contextful_core::store::lay_out::{FormatVersion, PartEntry};
+    let entry = |extensions: u32| -> IndexEntry {
+        serde_json::from_value(serde_json::json!({
+            "kind": "fulltext", "path": "indexes/fts-body-cjk", "table": "passages",
+            "snapshot_id": "snapshot-01742054400000000000", "column": "body", "id_column": "passage_id", "tokenizer": "cjk",
+            "builder": FULLTEXT_BUILDER, "builder_version": FULLTEXT_BUILDER_VERSION, "extensions": extensions,
+            "row_count": 2, "term_count": 3, "key_version": 0
+        }))
+        .unwrap()
+    };
+    let parts = [PartEntry::new("part-00000.parquet", 0)];
+    assert!(entry(1).segments().is_empty());
+    assert_eq!(FormatVersion::of_manifest(&parts, &[entry(0)]).to_string(), "1.0");
+    assert_eq!(FormatVersion::of_manifest(&parts, &[entry(1)]).to_string(), "2.0");
+}

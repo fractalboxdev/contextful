@@ -79,3 +79,13 @@ fn the_trigger_decides_from_a_count_and_an_instant() {
     assert!(trigger_fired(5, Some(t0), t0.plus_secs(60), 5));
     assert!(trigger_fired(1, Some(t0), t0.plus_secs(COMPACTION_INTERVAL_SECS), 5));
 }
+
+/// A part's size tier is the floor of the base-4 logarithm of its rows, so four parts of one
+/// tier merge into a part of the next.
+#[test]
+fn a_size_tier_spans_a_fourfold_range_of_rows() {
+    use contextful_core::store::fold::{size_tier, FOLD_MERGE_FANOUT};
+    assert_eq!(FOLD_MERGE_FANOUT, 4);
+    let tiers: Vec<u32> = [0, 1, 3, 4, 15, 16, 63, 64, 1_000_000, u64::MAX].into_iter().map(size_tier).collect();
+    assert_eq!(tiers, [0, 0, 0, 1, 1, 2, 2, 3, 9, 31]);
+}

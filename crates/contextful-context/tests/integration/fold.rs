@@ -102,10 +102,12 @@ fn folded_runs_and_superseded_snapshots_are_collected_after_seven_days() {
     assert!(first_dir.is_dir(), "a snapshot superseded 6 d 23 h ago was collected");
     assert!(!run_dir.exists(), "run-1 was folded 8 days ago");
 
-    // 7 days after the second pass supersedes it, the first snapshot is collected.
+    // 7 days after the second pass supersedes it, the first snapshot is collected, save the
+    // part a retained snapshot still carries (`store.fold.reference-retention`).
     f.land(&d, "run-4", json!([{"e": 4}]), "2030-01-09T01:00:00Z").unwrap();
     fold(&f.store, &d, at("2030-01-09T01:00:00Z")).unwrap();
-    assert!(!first_dir.exists());
+    assert!(!first_dir.join("_manifest.json").exists());
+    assert_eq!(fs::read_dir(&first_dir).map(|d| d.count()).unwrap_or(0), first[0].parts.len());
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("4")]]);
     let bound = Bounds { as_of: Some(Bound::parse("2030-01-01T12:00:00Z").unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() };
     match f.scan(&d, bound).unwrap_err().store() {
@@ -353,9 +355,12 @@ fn an_idle_table_still_collects_what_retention_allows() {
     fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
     assert!(first_dir.is_dir() && run_dir.is_dir(), "inside the window, both stay");
 
-    // Nothing lands again. The pass folds nothing and still collects both.
+    // Nothing lands again. The pass folds nothing and still collects both, save the part the
+    // current snapshot carries (`store.fold.reference-retention`).
     assert_eq!(fold(&f.store, &d, at("2030-01-03T00:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
-    assert!(!first_dir.exists(), "a snapshot superseded 2 d ago survived an idle pass");
+    assert!(!first_dir.join("_manifest.json").exists(), "a snapshot superseded 2 d ago survived an idle pass");
+    assert_eq!(first[0].parts.len(), 1);
+    assert!(first[0].parts.iter().all(|p| first_dir.join(&p.name).is_file()));
     assert!(!run_dir.exists(), "a run folded 2 d ago survived an idle pass");
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("2")]]);
 }

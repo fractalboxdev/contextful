@@ -288,8 +288,9 @@ fn a_generation_pull_restores_exactly_that_generation() {
     assert!(!d.root().join("tables/filings/data/runs/run-2").exists(), "run-2 is outside generation 3");
 
     // An ordinary pull moves the restored store on to the bucket's current state.
+    // The second snapshot carries the first's part by reference beside its own delta.
     d.syncer.pull(&PullScope::default()).unwrap();
-    assert_eq!(files(&d), [format!("tables/filings/data/snapshots/{second}/part-00000.parquet")]);
+    assert_eq!(files(&d), [first, second].map(|id| format!("tables/filings/data/snapshots/{id}/part-00000.parquet")));
 }
 
 /// A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest

@@ -210,6 +210,81 @@ pub fn each_batch_with_key(path: &Path, key: Option<&[u8]>, each: &mut dyn FnMut
     Ok(())
 }
 
+/// Rows a [`StreamWriter`] buffers before it flushes them as one row group.
+pub const STREAM_ROW_GROUP: usize = 65_536;
+
+/// A store part written one record batch at a time: it buffers at most
+/// [`STREAM_ROW_GROUP`] rows before flushing a row group, so a merge holds no more than
+/// that of its output (`store.fold.bounded-memory`).
+pub struct StreamWriter {
+    path: std::path::PathBuf,
+    writer: ArrowWriter<File>,
+    rows: u64,
+}
+
+impl StreamWriter {
+    /// Create `path` for batches of `schema`, sealed under `key` when the project binds
+    /// one, and otherwise with a bloom filter on each of `bloom` sized for `rows`
+    /// (`store.index.bloom-parts`, `store.index.bloom-encrypted`).
+    pub fn create(path: &Path, schema: Arc<ArrowSchema>, key: Option<&[u8]>, bloom: &[String], rows: u64) -> Result<StreamWriter> {
+        let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).at(dir)?;
+        }
+        let bloom = if key.is_some() { &[] } else { bloom };
+        let rows = usize::try_from(rows).unwrap_or(usize::MAX);
+        let mut props = blooming(WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())), bloom, rows)
+            .set_max_row_group_row_count(Some(STREAM_ROW_GROUP));
+        if let Some(key) = key {
+            props = props.with_file_encryption_properties(FileEncryptionProperties::builder(key.to_vec()).build().map_err(pq)?);
+        }
+        let file = File::create(path).at(path)?;
+        let writer = ArrowWriter::try_new(file, schema, Some(props.build())).map_err(pq)?;
+        Ok(StreamWriter { path: path.to_path_buf(), writer, rows: 0 })
+    }
+
+    pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
+        if batch.num_rows() == 0 {
+            return Ok(());
+        }
+        self.rows += batch.num_rows() as u64;
+        self.writer.write(batch).map_err(|e| ContextError::Parquet { path: self.path.clone(), message: e.to_string() })
+    }
+
+    /// Flush the last row group and the footer, returning the rows written.
+    pub fn close(self) -> Result<u64> {
+        let path = self.path;
+        self.writer.close().map_err(|e| ContextError::Parquet { path, message: e.to_string() })?;
+        Ok(self.rows)
+    }
+}
+
+/// The record batches of a store part, decoded one at a time as the iterator advances;
+/// `columns`, when given, projects the top-level columns of those names the file carries.
+pub fn batches_with_key(
+    path: &Path,
+    key: Option<&[u8]>,
+    columns: Option<&[String]>,
+) -> Result<impl Iterator<Item = Result<RecordBatch>>> {
+    let owned = path.to_path_buf();
+    let pq = move |e: String| ContextError::Parquet { path: owned.clone(), message: e };
+    let mut builder = builder_with_key(path, key)?;
+    if let Some(columns) = columns {
+        let roots: Vec<usize> = builder
+            .schema()
+            .fields()
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| columns.iter().any(|c| c == f.name()))
+            .map(|(i, _)| i)
+            .collect();
+        let mask = parquet::arrow::ProjectionMask::roots(builder.parquet_schema(), roots);
+        builder = builder.with_projection(mask);
+    }
+    let reader = builder.build().map_err(|e| pq(e.to_string()))?;
+    Ok(reader.map(move |b| b.map_err(|e| pq(e.to_string()))))
+}
+
 /// Decode a complete Parquet file already held in anonymous process memory.
 pub fn read_bytes(bytes: Vec<u8>) -> Result<Vec<RecordBatch>> {
     let path = Path::new("<in-memory parquet>");

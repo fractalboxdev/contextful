@@ -590,7 +590,7 @@ fn commit_run(
     for (ordinal, rb) in run_parts(&site.arriving, batches, ctx, per_batch, commit_seq, ctx.committed_at)?.into_iter().enumerate() {
         let name = part_name(part_ordinal(ordinal)?);
         write_batch(store, decl, &site.node_dir.join(&name), &rb)?;
-        parts.push(PartEntry { name, key_version: store.sealing().key_version() });
+        parts.push(PartEntry::new(name, store.sealing().key_version()));
     }
     match create_manifest(store, &site, decl, ctx, parts, position, commit_seq, precommit, commit_point, None, &[])? {
         Some(manifest) => Ok(Landing { manifest, replay: false }),
@@ -1244,7 +1244,7 @@ fn commit_parts_inner(
             let to = landing.node_dir.join(&name);
             written.push(to.clone());
             parquet_io::copy_inserting_with_key(&stage_dir.join(staged), &to, &inserts, store.parquet_key(), &bloom)?;
-            entries.push(PartEntry { name, key_version: store.sealing().key_version() });
+            entries.push(PartEntry::new(name, store.sealing().key_version()));
         }
         create_manifest(store, &landing, decl, ctx, entries, position, commit_seq, precommit, commit_point, group_root, schema_diffs)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))
     })();

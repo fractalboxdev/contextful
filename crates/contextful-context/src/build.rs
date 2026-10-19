@@ -895,7 +895,7 @@ mod materialize {
                 order_by: None,
                 row_count: n as u64,
                 valid_time: None,
-                parts: vec![PartEntry { name: part, key_version: store.sealing().key_version() }],
+                parts: vec![PartEntry::new(part, store.sealing().key_version())],
                 indexes: Vec::new(),
                 fence: None,
                 commit_seq: Some(commit_seq),

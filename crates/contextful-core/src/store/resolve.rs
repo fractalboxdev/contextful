@@ -34,7 +34,9 @@ impl Resolution<'_> {
     pub fn files(&self) -> Vec<String> {
         let mut files: Vec<String> = Vec::new();
         if let Some(s) = self.snapshot {
-            files.extend(s.parts.iter().map(|p| format!("data/snapshots/{}/{}", s.snapshot_id, p.name)));
+            // A part carried by reference resolves to its origin's directory
+            // (`store.fold.carry-by-reference`).
+            files.extend(s.part_files());
         }
         for r in &self.runs {
             files.extend(r.parts.iter().map(|p| format!("data/runs/{}/{}/{}", r.run_id, r.node_id, p.name)));

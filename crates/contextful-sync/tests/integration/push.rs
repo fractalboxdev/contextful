@@ -595,7 +595,13 @@ fn fold_twice_past_retention(a: &crate::support::Node) -> String {
     let newest = folded(a, "2030-01-01T05:00:00Z");
     let decl = contextful_core::store::declare::TableDecl::named("filings");
     contextful_context::fold::collect(&a.syncer.store, &decl, at(LATER)).unwrap();
-    let snapshots: Vec<String> = std::fs::read_dir(a.root().join("tables/filings/data/snapshots")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    // A collected snapshot's directory keeps only the parts the newest carries by reference.
+    let snapshots: Vec<String> = std::fs::read_dir(a.root().join("tables/filings/data/snapshots"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.join("_manifest.json").exists())
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
     assert_eq!(snapshots, std::slice::from_ref(&newest), "retention leaves only the newest snapshot");
     newest
 }
@@ -616,10 +622,14 @@ fn a_pointer_carries_across_folds_whose_snapshots_retention_collected() {
     let report = a.syncer.push(at(LATER)).unwrap();
     assert_eq!(report.pointers, ["research/tables/filings/_pointer.json"], "{:?}", report.refused);
     assert_eq!(bucket_pointer(b.as_ref()).unwrap()["snapshot_id"], json!(newest));
-    // A cold node reads every folded row.
+    // A cold node reads every folded row, the parts the newest carries at their origins.
     let c = node("ingest-e", b.clone(), "");
     c.syncer.pull(&contextful_sync::PullScope::default()).unwrap();
-    assert_eq!(files(&c), [format!("tables/filings/data/snapshots/{newest}/part-00000.parquet")]);
+    let (chain, _) = c.syncer.store.chain("filings").unwrap();
+    assert_eq!(chain[0].snapshot_id.to_string(), newest);
+    let expected: Vec<String> = chain[0].part_files().into_iter().map(|p| format!("tables/filings/{p}")).collect();
+    assert_eq!(expected.len(), 3);
+    assert_eq!(files(&c), expected);
 }
 
 /// A local pointer whose snapshot's ancestry ends at a collected manifest before reaching the bucket pointer's snapshot

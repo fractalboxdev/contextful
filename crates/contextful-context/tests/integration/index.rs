@@ -379,7 +379,7 @@ fn a_pass_rebuilds_a_sidecar_another_builder_version_wrote() {
         restamp(&f, "passages", key, value);
         let (before, before_dir) = current(&f, "passages");
         // Until the pass publishes, readers resolve the snapshot the old builder wrote.
-        assert_eq!(f.scan(&d, Bounds::default()).unwrap().files[0], format!("tables/passages/data/snapshots/{}/part-00000.parquet", before.snapshot_id));
+        assert_eq!(f.scan(&d, Bounds::default()).unwrap().files, before.part_files().into_iter().map(|p| format!("tables/passages/{p}")).collect::<Vec<_>>());
         let outcome = fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
         assert!(matches!(outcome, FoldOutcome::Folded { runs: 0, rows: 2, .. }), "{outcome:?}");
         let (after, after_dir) = current(&f, "passages");
@@ -412,8 +412,8 @@ fn a_reader_opens_only_its_own_builder_version() {
     }
 }
 
-/// A vector entry records `extensions`, the passes since its last full build that extended its graph in place; a pass finding 16 extensions rebuilds the graph in full and records 0.
-// spec: store.index.graph-extensions@184f2494
+/// A vector or full-text entry records `extensions`, the passes since its last full build that extended it by a segment; a pass finding 16 extensions rebuilds it in full and records 0.
+// spec: store.index.graph-extensions@809df171
 #[test]
 fn a_pass_finding_sixteen_extensions_rebuilds_the_graph_in_full() {
     use contextful_core::store::fold::FoldOutcome;
@@ -429,10 +429,16 @@ fn a_pass_finding_sixteen_extensions_rebuilds_the_graph_in_full() {
     assert!(matches!(outcome, FoldOutcome::Folded { runs: 0, .. }), "{outcome:?}");
     let e = entry(&current(&f, "passages").0);
     assert_eq!((e.extensions, e.row_count), (0, 2));
-    // A pass folding new runs builds in full and records none either.
+    // A pass folding only new identifiers extends the graph by one segment.
     f.land_typed(&d, "run-2", json!([{"passage_id": "p3", "embedding": [0.0, 0.0, 1.0]}]), "2030-01-01T04:00:00Z", &f32x3()).unwrap();
     fold(&f.store, &d, at("2030-01-01T05:00:00Z")).unwrap();
-    assert_eq!(entry(&current(&f, "passages").0).extensions, 0);
+    let e = entry(&current(&f, "passages").0);
+    assert_eq!((e.extensions, e.row_count, e.segments.len()), (1, 3, 1));
+    // A pass replacing a stored row rebuilds in full and records none.
+    f.land_typed(&d, "run-3", json!([{"passage_id": "p3", "embedding": [1.0, 1.0, 0.0]}]), "2030-01-01T06:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T07:00:00Z")).unwrap();
+    let e = entry(&current(&f, "passages").0);
+    assert_eq!((e.extensions, e.row_count, e.segments.len()), (0, 3, 0));
 }
 
 /// A sidecar copies no row value besides its `id_column` and indexed column, save the tenant column and zone label a filtered traversal reads; every other filter applies at {{store.index.candidate-ids}}.
@@ -465,8 +471,8 @@ fn a_sidecar_copies_no_other_column_value() {
     assert!(!has(&all, b"canaryregionzq"));
 }
 
-/// Collecting a snapshot collects its sidecars in the same step.
-// spec: store.index.dies-with-snapshot@e3968987
+/// Collecting a snapshot collects its sidecars in the same step, save a segment {{store.fold.reference-retention}} keeps.
+// spec: store.index.dies-with-snapshot@53018981
 #[test]
 fn collecting_a_snapshot_collects_its_sidecars() {
     let f = Fixture::new();
@@ -480,12 +486,22 @@ fn collecting_a_snapshot_collects_its_sidecars() {
     f.land_typed(&d, "run-2", json!([{"passage_id": "p2", "embedding": [0.0, 1.0, 0.0]}]), "2030-01-02T00:00:00Z", &f32x3()).unwrap();
     fold(&f.store, &d, at("2030-01-02T01:00:00Z")).unwrap();
     assert!(first_dir.is_dir() && sidecar.join(GRAPH_FILE).is_file());
-    // Past the window, the pass that collects the snapshot collects its sidecar with it.
+    // Past the window, the pass that collects the snapshot keeps the graph segment the current
+    // snapshot still carries.
     f.land_typed(&d, "run-3", json!([{"passage_id": "p3", "embedding": [0.0, 0.0, 1.0]}]), "2030-01-09T01:00:00Z", &f32x3()).unwrap();
     fold(&f.store, &d, at("2030-01-09T01:00:00Z")).unwrap();
-    assert!(!first_dir.exists() && !sidecar.exists());
     let (now, now_dir) = current(&f, "passages");
     assert!(now_dir.join(now.indexes[0].path().unwrap()).join(GRAPH_FILE).is_file());
+    assert!(now.indexes[0].segments().iter().any(|s| s.snapshot_id == first.snapshot_id.to_string()));
+    assert!(!first_dir.join("_manifest.json").exists() && sidecar.join(GRAPH_FILE).is_file());
+    // A replaced row rebuilds the graph whole; once no retained snapshot names the segment,
+    // the pass collecting the directory collects the sidecar with it.
+    f.land_typed(&d, "run-4", json!([{"passage_id": "p1", "embedding": [0.0, 1.0, 1.0]}]), "2030-01-10T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-10T01:00:00Z")).unwrap();
+    assert!(current(&f, "passages").0.indexes[0].segments().is_empty());
+    f.land_typed(&d, "run-5", json!([{"passage_id": "p4", "embedding": [1.0, 0.0, 1.0]}]), "2030-01-20T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-20T01:00:00Z")).unwrap();
+    assert!(!first_dir.exists() && !sidecar.exists());
 }
 
 /// A vector sidecar is an HNSW graph over unit-length `Float32` vectors whose layers draw from a seed of the snapshot id and column, so one staged row set builds one byte-identical graph.
@@ -687,8 +703,8 @@ fn the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms() {
     assert!(matches!(err.store(), Some(StoreError::StoreIndexColumnType(_))), "{err}");
 }
 
-/// A full-text sidecar is one file holding a sorted term dictionary and, per term, the rows and positions it occurs at, which a reader binary-searches in mapped or decrypted bytes.
-// spec: store.index.postings@6a308b4d
+/// Each full-text segment is one file holding a sorted term dictionary and, per term, the rows and positions it occurs at, which a reader binary-searches in mapped or decrypted bytes.
+// spec: store.index.postings@4d8c6951
 #[test]
 fn one_row_set_lays_out_one_postings_file_a_probe_reads_by_term() {
     const N: usize = 2000;
@@ -734,6 +750,63 @@ fn one_row_set_lays_out_one_postings_file_a_probe_reads_by_term() {
     // Truncated or foreign bytes do not parse as a layout.
     assert!(contextful_context::fulltext::postings::Layout::parse(&a[..a.len() - 1]).is_none());
     assert!(contextful_context::fulltext::postings::Layout::parse(b"CFHNSW01").is_none());
+}
+
+/// A pass whose delta replaces and removes no stored row extends each current sidecar by a segment over the delta, carrying earlier segments by reference; a probe reads every segment, scoring full text over their summed statistics.
+// spec: store.index.sidecar-segments@06a64167
+#[test]
+fn a_pass_of_new_identifiers_extends_each_sidecar_by_a_segment() {
+    let row = |i: usize| {
+        let body = match i % 4 {
+            0 => "solar battery storage",
+            1 => "battery recycling plant",
+            2 => "wind farm permit",
+            _ => "grid battery battery tariff",
+        };
+        json!({"passage_id": format!("p{i:02}"), "body": format!("{body} {i}"), "embedding": [1.0 + i as f32, (i % 3) as f32, 1.0]})
+    };
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{INDEX}{FULLTEXT}"));
+    let segmented = Fixture::new();
+    for (k, range) in [(0..8), (8..12), (12..20)].into_iter().enumerate() {
+        let rows = Value::Array(range.map(row).collect());
+        segmented.land_typed(&d, &format!("run-{k}"), rows, &format!("2030-01-01T0{k}:00:00Z"), &f32x3()).unwrap();
+        fold(&segmented.store, &d, at(&format!("2030-01-01T0{k}:30:00Z"))).unwrap();
+    }
+    let (m, dir) = current(&segmented, "passages");
+    let text = fulltext_entry(&m);
+    assert_eq!((text.extensions, text.row_count, text.segments.iter().map(|s| s.row_count).collect::<Vec<_>>()), (2, 20, vec![8, 4]));
+    let graph = entry(&m);
+    assert_eq!((graph.extensions, graph.row_count, graph.segments.len()), (2, 20, 2));
+    // The new directory's files cover the last landing alone.
+    let own = contextful_context::fulltext::postings::Layout::parse(&std::fs::read(dir.join(&text.path).join(POSTINGS_FILE)).unwrap()).unwrap();
+    assert_eq!(own.doc_count, 8);
+
+    // Scores over the segments equal a whole build's over the same rows.
+    let whole = Fixture::new();
+    whole.land_typed(&d, "run-0", Value::Array((0..20).map(row).collect()), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&whole.store, &d, at("2030-01-01T00:30:00Z")).unwrap();
+    let scores = |f: &Fixture| {
+        let (m, dir) = current(f, "passages");
+        let e = m.indexes.iter().find(|x| x.kind() == Some(IndexKind::Fulltext)).unwrap();
+        let sidecar = FulltextSidecar::open(&dir, "passages", e, &Sealing::Plaintext).unwrap();
+        let mut found: Vec<(String, i64)> = sidecar
+            .probe(&["battery".to_string(), "permit".to_string()], 20)
+            .unwrap()
+            .candidates
+            .into_iter()
+            .map(|c| (c.id, (c.score * 1e9).round() as i64))
+            .collect();
+        found.sort();
+        found
+    };
+    let (a, b) = (scores(&segmented), scores(&whole));
+    assert_eq!(a.len(), 20);
+    assert_eq!(a, b);
+    // The vector probe reaches rows in every segment.
+    let e = m.indexes.iter().find(|x| x.kind() == Some(IndexKind::Vector)).unwrap();
+    let vectors = VectorSidecar::open(&dir, "passages", e, &Sealing::Plaintext).unwrap();
+    let near = |q: [f32; 3]| vectors.probe(&q, 1).unwrap()[0].id.clone();
+    assert_eq!((near([1.0, 0.0, 1.0]), near([20.0, 1.0, 1.0])), ("p00".to_string(), "p19".to_string()));
 }
 
 #[cfg(feature = "read")]

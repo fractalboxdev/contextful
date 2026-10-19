@@ -235,8 +235,8 @@ fn format_of(path: &std::path::Path) -> serde_json::Value {
     serde_json::from_slice::<serde_json::Value>(&fs::read(path).unwrap()).unwrap()["format_version"].clone()
 }
 
-/// A run or snapshot manifest carries `format_version` as `<major>.<minor>`, `1.0` for this layout; one without it reads as `1.0`, and a newer minor parses as this build's.
-// spec: store.lay-out.format-version@e5022749
+/// A run or snapshot manifest carries `format_version` as `<major>.<minor>`: `2.0` on a snapshot manifest carrying a part or segment by reference, `1.0` otherwise; one without it reads as `1.0`, and a newer minor parses as this build's.
+// spec: store.lay-out.format-version@8d7aab3a
 #[test]
 fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     let f = Fixture::new();
@@ -249,6 +249,15 @@ fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     let snap_manifest = f.store.snapshot_dir("filings", &chain[0].snapshot_id).unwrap().join("_manifest.json");
     assert_eq!(format_of(&snap_manifest), json!("1.0"));
 
+    // The next pass carries the first snapshot's part by reference, under 2.0.
+    f.land(&d, "run-2", json!([{"id": "b"}]), "2030-01-01T02:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
+    let (later, _) = f.store.chain("filings").unwrap();
+    assert!(later[0].parts.iter().any(|p| p.origin.is_some()));
+    let carrying = f.store.snapshot_dir("filings", &later[0].snapshot_id).unwrap().join("_manifest.json");
+    assert_eq!(format_of(&carrying), json!("2.0"));
+    assert_eq!(format_of(&f.table_dir("filings").join("data/runs/run-2/ingest-a/_manifest.json")), json!("1.0"));
+
     // An absent version reads as 1.0; a newer minor, with a field this build does not know, reads too.
     set_format(&run_manifest, None);
     let m: RunManifest = serde_json::from_slice(&fs::read(&run_manifest).unwrap()).unwrap();
@@ -257,7 +266,7 @@ fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     doc["format_version"] = json!("1.7");
     doc["a_later_field"] = json!({"kept": true});
     fs::write(&snap_manifest, serde_json::to_vec(&doc).unwrap()).unwrap();
-    assert_eq!(f.scan(&d, Bounds::default()).unwrap().files.len(), 1);
+    assert_eq!(f.scan(&d, Bounds::default()).unwrap().files.len(), 2);
 }
 
 /// A run or snapshot manifest whose `format_version` major exceeds this build's raises `StoreManifestFormatNewer`, naming the file and both versions, and the table answers no read until a newer build reads it.
@@ -271,13 +280,13 @@ fn a_newer_major_refuses_the_table_naming_the_file_and_both_versions() {
     let good = fs::read(&run_manifest).unwrap();
     // A newer major may change any field's meaning: the version refuses before the rest parses.
     let mut doc: serde_json::Value = serde_json::from_slice(&good).unwrap();
-    doc["format_version"] = json!("2.0");
+    doc["format_version"] = json!("3.0");
     doc["parts"] = json!({"reshaped": true});
     fs::write(&run_manifest, serde_json::to_vec(&doc).unwrap()).unwrap();
     for err in [f.scan(&d, Bounds::default()).unwrap_err(), fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap_err()] {
         match store_err(err) {
             StoreError::StoreManifestFormatNewer(m) => {
-                assert!(m.contains("run-1/ingest-a/_manifest.json") && m.contains("2.0") && m.contains("1.0"), "{m}")
+                assert!(m.contains("run-1/ingest-a/_manifest.json") && m.contains("3.0") && m.contains("2.0"), "{m}")
             }
             other => panic!("expected StoreManifestFormatNewer, got {other:?}"),
         }
@@ -292,6 +301,36 @@ fn a_newer_major_refuses_the_table_naming_the_file_and_both_versions() {
         StoreError::StoreManifestFormatNewer(m) => assert!(m.contains("_manifest.json") && m.contains("3.1"), "{m}"),
         other => panic!("expected StoreManifestFormatNewer, got {other:?}"),
     }
+}
+
+/// A build reading major `2` reads a `1.x` snapshot manifest as one holding each part in its own directory, counting rows from footers; its next pass carries those parts by reference under `2.0`, rewriting no manifest in place.
+// spec: store.lay-out.format-migrate@4697163e
+#[test]
+fn a_one_point_x_snapshot_reads_whole_and_its_next_pass_carries_it() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"\npartition_by = [\"day\"]");
+    f.land(&d, "run-1", json!([{"id": "a", "day": "d1"}, {"id": "b", "day": "d2"}, {"id": "c", "day": "d2"}]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (chain, _) = f.store.chain("filings").unwrap();
+    let old = f.store.snapshot_dir("filings", &chain[0].snapshot_id).unwrap().join("_manifest.json");
+    // The manifest as a 1.0 writer leaves it: no part records its rows.
+    let mut doc: serde_json::Value = serde_json::from_slice(&fs::read(&old).unwrap()).unwrap();
+    doc.as_object_mut().unwrap().remove("format_version");
+    for p in doc["parts"].as_array_mut().unwrap() {
+        p.as_object_mut().unwrap().remove("rows");
+    }
+    let legacy = serde_json::to_vec(&doc).unwrap();
+    fs::write(&old, &legacy).unwrap();
+    assert_eq!(f.scan(&d, Bounds::default()).unwrap().files.len(), 2);
+
+    f.land(&d, "run-2", json!([{"id": "d", "day": "d2"}]), "2030-01-01T02:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
+    let (chain, _) = f.store.chain("filings").unwrap();
+    assert_eq!(chain[0].format_version.to_string(), "2.0");
+    let carried: Vec<_> = chain[0].parts.iter().filter(|p| p.origin.as_ref() == Some(&chain[1].snapshot_id)).map(|p| (p.partition().to_string(), p.rows)).collect();
+    assert_eq!(carried, [("day=d1".to_string(), Some(1)), ("day=d2".to_string(), Some(2))]);
+    assert_eq!(chain[0].row_count, 4);
+    assert_eq!(fs::read(&old).unwrap(), legacy, "the 1.0 manifest is never rewritten");
 }
 
 /// A table's schema is `schema.json` in Arrow JSON form; each arriving batch's schema merges into it and the merged result replaces it.

@@ -18,7 +18,7 @@ A read resolves an explicit sorted file list from the pointer and the manifests,
 
 An empty replacement marks a fileless frontier ({{store.declare.empty-replacement}}).
 
-Runs accumulate until a fold compacts them. A pass writes Parquet and every sidecar into staging ({{store.fold.pass}}), then publishes by replacing `_pointer.json` conditioned on the ETag it read at the start ({{store.fold.pointer-commit}}). Readers see a snapshot and its sidecars together or not at all ({{store.fold.partial-snapshot}}), and a statement in flight keeps the snapshot it started on ({{store.fold.non-blocking}}).
+Runs accumulate until a fold compacts them. A pass writes Parquet and every sidecar into staging ({{store.fold.pass}}), carrying untouched parts by reference ({{store.fold.carry-by-reference}}), then replaces `_pointer.json` conditioned on its starting ETag ({{store.fold.pointer-commit}}). Readers see a snapshot and its sidecars together or neither ({{store.fold.partial-snapshot}}), and a statement in flight keeps the snapshot it started on ({{store.fold.non-blocking}}).
 
 A table's {{store.declare.retain-rows}} declaration gives rows an age limit. Reads enforce the cutoff at the statement ({{store.bound-time.row-age-cutoff}}), and a fold omits expired rows from the next snapshot ({{store.fold.row-retention}}). The pass reports its cutoff, expired rows, dropped partitions and collected directories ({{store.fold.row-retention-report}}).
 

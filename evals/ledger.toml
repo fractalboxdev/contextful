@@ -787,80 +787,80 @@ method = { test = "contextful_context::vintage_cost::a_one_day_commit_on_a_milli
 seed   = 0x5eed_7105
 
 [entry.fold-events-write-amp]
-clause = "store.fold.pass"
+clause = "store.fold.carry-by-reference"
 metric = "fold.events.bytes_written_per_byte_landed"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::fold_amplification::a_day_of_quarter_hour_landings_writes_bounded_bytes_per_byte_landed" }
-target = { op = "<=", value = 11.68 }
+target = { op = "<=", value = 2.0 }
 seed   = 0x5eed_00f1
 
 [entry.fold-events-write-amp-growth]
-clause = "store.fold.pass"
+clause = "store.fold.carry-by-reference"
 metric = "fold.events.write_amp_growth_4x"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::fold_amplification::a_day_of_quarter_hour_landings_writes_bounded_bytes_per_byte_landed" }
-target = { op = "<=", value = 2.10 }
+target = { op = "<=", value = 1.3 }
 seed   = 0x5eed_00f1
 
 [entry.fold-events-write-amp-by-count]
-clause = "store.fold.triggers"
+clause = "store.fold.tiered-merge"
 metric = "fold.events.bytes_written_per_byte_landed_by_count"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::fold_amplification::many_small_commits_fold_by_run_count_with_bounded_amplification" }
-target = { op = "<=", value = 13.86 }
+target = { op = "<=", value = 8 }
 seed   = 0x5eed_00f7
 
 [entry.fold-bars-write-amp]
-clause = "store.fold.pass"
+clause = "store.fold.carry-by-reference"
 metric = "fold.bars.bytes_written_per_byte_landed"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::fold_amplification::daily_keyed_bars_with_restatements_write_bounded_bytes_per_byte_landed" }
-target = { op = "<=", value = 44.11 }
+target = { op = "<=", value = 8 }
 seed   = 0x5eed_00f2
 
-# Each pass rebuilds the vector graph whole, so the figure counts full rebuilds.
+# A pass of new identifiers indexes its delta alone, as one segment.
 [entry.fold-vector-rows-indexed]
-clause = "store.index.graph-extensions"
+clause = "store.index.sidecar-segments"
 metric = "fold.vector.rows_indexed_per_row_landed"
 kind   = "test"
-tier   = "trend"
-direction = "lower_is_better"
+tier   = "gate"
 method = { test = "contextful_context::fold_amplification::sidecars_indexed_per_quarter_hour_landing_stay_bounded" }
+target = { op = "<=", value = 1.5 }
 seed   = 0x5eed_00f3
 
 [entry.fold-fulltext-rows-indexed]
-clause = "store.index.fulltext-by-fold"
+clause = "store.index.sidecar-segments"
 metric = "fold.fulltext.rows_indexed_per_row_landed"
 kind   = "test"
-tier   = "trend"
-direction = "lower_is_better"
+tier   = "gate"
 method = { test = "contextful_context::fold_amplification::sidecars_indexed_per_quarter_hour_landing_stay_bounded" }
+target = { op = "<=", value = 1.5 }
 seed   = 0x5eed_00f3
 
 [entry.fold-fulltext-docs-rebuilt]
-clause = "store.index.fulltext-by-fold"
+clause = "store.index.sidecar-segments"
 metric = "index.fold.fulltext_docs_rebuilt_per_increment"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::fulltext_rebuild::ten_folds_of_a_thousand_rows_reindex_only_the_increment" }
-target = { op = "<=", value = 10000 }
+target = { op = "<=", value = 1000 }
 seed   = 0x5eed_0605
 
 [entry.fold-peak-heap-growth]
-clause = "store.fold.pass"
+clause = "store.fold.bounded-memory"
 metric = "fold.peak_heap_growth_10x"
 kind   = "size"
 tier   = "gate"
 method = { probe = "fold-peak-heap" }
-target = { op = "<=", value = 8.48 }
+target = { op = "<=", value = 1.5 }
 seed   = 0x5eed_00f4
 
 [entry.fold-events-peak-rss]
-clause = "store.fold.pass"
+clause = "store.fold.bounded-memory"
 metric = "fold.events.peak_rss"
 kind   = "bench"
 tier   = "trend"
@@ -868,9 +868,9 @@ direction = "lower_is_better"
 method = { probe = "fold-events-peak-rss" }
 seed   = 0x5eed_00f5
 
-# 20,000 held passages: each debug-build fold rebuilds both sidecars over every held row.
+# 20,000 held passages: the measured pass extends both sidecars by a segment over its landing.
 [entry.fold-passages-peak-rss]
-clause = "store.fold.pass"
+clause = "store.fold.bounded-memory"
 metric = "fold.passages.peak_rss"
 kind   = "bench"
 tier   = "trend"

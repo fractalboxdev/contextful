@@ -44,7 +44,8 @@ pub fn advertise(store: &Store) -> Result<Option<Descriptor>> {
         let mut held = Vec::new();
         for snapshot in store.chain(&table)?.0 {
             let dir = store.snapshot_dir(&table, &snapshot.snapshot_id)?;
-            let parts = snapshot.parts.iter().filter(|p| dir.join(&p.name).is_file()).map(|p| p.name.clone()).collect();
+            // A part carried by reference sits under its origin, `../<origin>/<name>` from here.
+            let parts = snapshot.parts.iter().map(|p| p.locator()).filter(|l| dir.join(l).is_file()).collect();
             let sidecars = snapshot
                 .indexes
                 .iter()
@@ -88,8 +89,8 @@ pub fn require(store: &Store, table: &str, snapshot: &SnapshotManifest, sidecars
     let Some(held) = descriptor.as_ref().and_then(|d| d.tables.get(table)).and_then(|h| h.iter().find(|h| h.snapshot_id == id)) else {
         return missing("copy".into());
     };
-    if let Some(part) = snapshot.parts.iter().find(|p| !held.parts.contains(&p.name)) {
-        return missing(format!("part `{}`", part.name));
+    if let Some(part) = snapshot.parts.iter().map(|p| p.locator()).find(|l| !held.parts.contains(l)) {
+        return missing(format!("part `{part}`"));
     }
     if let Some(sidecar) = sidecars.iter().find(|s| !held.sidecars.iter().any(|h| h == *s)) {
         return missing(format!("sidecar `{sidecar}`"));

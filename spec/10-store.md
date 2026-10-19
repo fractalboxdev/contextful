@@ -103,9 +103,11 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
 - `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and the fence that published it. A snapshot is readable only when the pointer or a chain of `parent` links from it reaches it.
   *A-store*
 - `manifest-default` — A field added to a manifest carries a default value.
-- `format-version` — A run or snapshot manifest carries `format_version` as `<major>.<minor>`, `1.0` for this layout; one without it reads as `1.0`, and a newer minor parses as this build's.
+- `format-version` — A run or snapshot manifest carries `format_version` as `<major>.<minor>`: `2.0` on a snapshot manifest carrying a part or segment by reference, `1.0` otherwise; one without it reads as `1.0`, and a newer minor parses as this build's.
   *A-store*
 - `format-newer` — A run or snapshot manifest whose `format_version` major exceeds this build's raises `StoreManifestFormatNewer`, naming the file and both versions, and the table answers no read until a newer build reads it.
+  *A-store*
+- `format-migrate` — A build reading major `2` reads a `1.x` snapshot manifest as one holding each part in its own directory, counting rows from footers; its next pass carries those parts by reference under `2.0`, rewriting no manifest in place.
   *A-store*
 - `manifest-unreadable` — A run manifest or a reachable snapshot manifest that fails to parse raises `StoreManifestUnreadable`, naming the table and the file, and the table answers no read until it parses.
   *P4*
@@ -297,6 +299,12 @@ unsettled: Do the linked DuckDB and parquet releases read and write Parquet `VAR
 Compaction: pass order, triggers, retention, the compaction lease, and the pointer commit that makes a snapshot readable.
 
 - `pass` — A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet and every declared sidecar into staging, then commits by {{store.fold.pointer-commit}}.
+- `carry-by-reference` — An append table's pass writes its unfolded runs' rows as one delta part per partition they reach, rewrites only a part a delta row replaces or retention trims, and carries every other part by reference to its origin snapshot.
+  *A-store*
+- `tiered-merge` — Within each partition a pass writes into, 4 parts of one size tier, a tier holding row counts between consecutive powers of that number, merge into one part, repeating until no tier holds 4 parts.
+  *A-store*
+- `bounded-memory` — A carrying pass building no sidecar in full holds its delta and one record batch per part it reads or merges, so its peak memory follows the rows landed, not the rows held.
+  *because a pass inline with a landing that decodes the whole table grows with history until it exhausts the landing process's memory*
 - `valid-time-line` — A keyed table declaring `valid_time` partitions on the key together with the valid-time line and keeps one row per line.
 - `includes-runs` — A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.
 - `triggers` — A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.
@@ -304,6 +312,8 @@ Compaction: pass order, triggers, retention, the compaction lease, and the point
 - `session-trigger` — A landing session counts its table's unfolded runs at open and per commit, recounting when another writer commits or folds, and runs a pass before the land returns once the table's trigger fires.
   *because a trigger read only by a scheduled job lets a continuous writer accrue thousands of unfolded runs between passes*
 - `retention` — `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.
+- `reference-retention` — Collection keeps each part and sidecar segment a retained snapshot carries by reference, removing the rest of the collected snapshot's directory, manifest included, until no retained snapshot names them.
+  *A-store*
 - `row-retention` — A fold removes expired rows from its snapshot and sidecars after keyed winner selection and derived supersession; unkeyed partitions whose footer maximum precedes the cutoff skip row reads, and idle passes publish on expiry under {{store.declare.retain-rows}}.
   *because a time partition follows the sender's clock while the retention clock follows arrival*
 - `row-retention-report` — A pass reports the row-age cutoff, expired row count, dropped partition count and directories collected per table; `collect` returns the removed directory paths.
@@ -382,12 +392,14 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
   *because an index declared over rows already landed otherwise waits for a landing the store may never receive*
 - `graph-format` — The vector graph's byte layout is no committed format: a reader opens a sidecar only under its own builder and builder version, and any other meets {{read.retrieve.sidecar-falls-back}}.
   *A-store*
-- `graph-extensions` — A vector entry records `extensions`, the passes since its last full build that extended its graph in place; a pass finding 16 extensions rebuilds the graph in full and records 0.
+- `graph-extensions` — A vector or full-text entry records `extensions`, the passes since its last full build that extended it by a segment; a pass finding 16 extensions rebuilds it in full and records 0.
+  *A-store*
+- `sidecar-segments` — A pass whose delta replaces and removes no stored row extends each current sidecar by a segment over the delta, carrying earlier segments by reference; a probe reads every segment, scoring full text over their summed statistics.
   *A-store*
 - `filter-copies` — A sidecar copies no row value besides its `id_column` and indexed column, save the tenant column and zone label a filtered traversal reads; every other filter applies at {{store.index.candidate-ids}}.
   *A-store*
 - `not-in-file-set` — `indexes/` joins no table's file set; a snapshot reader lists only the parts its manifest names.
-- `dies-with-snapshot` — Collecting a snapshot collects its sidecars in the same step.
+- `dies-with-snapshot` — Collecting a snapshot collects its sidecars in the same step, save a segment {{store.fold.reference-retention}} keeps.
 - `candidate-ids` — A sidecar yields candidate `id_column` values, not rows; they re-join through the enforced relation on that column before a top-K is final.
   *P5*
 - `vector-by-fold` — The fold builds each declared vector sidecar over the staged rows holding a non-null identifier and a non-zero vector, from the declared model where the table carries `embedding_model`, and records its entry in the snapshot manifest.
@@ -396,7 +408,7 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
   *because a rebuilt sidecar then differs from its predecessor only where the rows do, and a recall figure replays from its snapshot*
 - `fulltext-by-fold` — The fold builds each declared full-text sidecar over the staged rows whose identifier is non-null and whose text yields a term, and records its entry in the snapshot manifest.
   *A-store*
-- `postings` — A full-text sidecar is one file holding a sorted term dictionary and, per term, the rows and positions it occurs at, which a reader binary-searches in mapped or decrypted bytes.
+- `postings` — Each full-text segment is one file holding a sorted term dictionary and, per term, the rows and positions it occurs at, which a reader binary-searches in mapped or decrypted bytes.
   *because one layout then serves a mapped plaintext file and a decrypted sealed one, and a probe reads only its own terms' postings*
 - `tokenizer` — A `tokenizer` is `unicode`, the default, indexing each lowercased alphanumeric run as one term, or `cjk`, which indexes each Han, Kana or Hangul stretch of a run as overlapping character bigrams.
   *because an unspaced script puts no boundary inside a sentence, so a word within one is never a whole term*
@@ -439,6 +451,8 @@ At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and
 - `rotation` — Rotation writes forward: new files take the new key version, published files keep theirs until collected, and a key version retires once no retained file names it.
 
 unsettled: How long does a sidecar decrypted into process memory stay resident across reads, and what evicts it? owner: store affects: store.encrypt
+
+unsettled: What reseals a part carried by reference under a retiring key version, given only a restatement, retention or merge rewrites it, so {{store.encrypt.rotation}} retires that version? owner: store affects: store.encrypt
 
 ## endpoint
 

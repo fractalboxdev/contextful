@@ -183,8 +183,24 @@ pub struct FormatVersion {
 }
 
 impl FormatVersion {
-    /// The layout this build writes and reads.
-    pub const CURRENT: FormatVersion = FormatVersion { major: 1, minor: 0 };
+    /// The newest layout this build reads: `2.0`, a snapshot manifest carrying a part by
+    /// reference (`store.lay-out.format-version`).
+    pub const CURRENT: FormatVersion = FormatVersion { major: 2, minor: 0 };
+
+    /// The layout of a run manifest, and of a snapshot manifest holding every part in its
+    /// own directory: `1.0`, which a build of either major reads.
+    pub const SELF_CONTAINED: FormatVersion = FormatVersion { major: 1, minor: 0 };
+
+    /// The version a snapshot manifest naming `parts` and `indexes` declares: `2.0` once a
+    /// part or a sidecar segment sits in another snapshot's directory, `1.0` otherwise
+    /// (`store.lay-out.format-version`).
+    pub fn of_manifest(parts: &[PartEntry], indexes: &[super::index::IndexEntry]) -> FormatVersion {
+        if parts.iter().any(|p| p.origin.is_some()) || indexes.iter().any(|i| !i.segments().is_empty() || i.extensions() > 0) {
+            Self::CURRENT
+        } else {
+            Self::SELF_CONTAINED
+        }
+    }
 
     /// The version a manifest's bytes declare, read before the rest of the manifest so a
     /// newer major refuses whatever else it reshaped. A manifest without the field reads as
@@ -212,9 +228,10 @@ impl FormatVersion {
     }
 }
 
+/// A manifest without the field reads as `1.0`.
 impl Default for FormatVersion {
     fn default() -> Self {
-        Self::CURRENT
+        Self::SELF_CONTAINED
     }
 }
 
@@ -240,12 +257,54 @@ impl From<FormatVersion> for String {
 }
 
 /// One data file a manifest names.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PartEntry {
-    /// Relative to the manifest's directory.
+    /// Relative to the directory holding the file: the manifest's own, or `origin`'s.
     pub name: String,
     #[serde(default)]
     pub key_version: u32,
+    /// The earlier snapshot whose directory holds the file, on a part a snapshot carries by
+    /// reference; absent when the file sits in the manifest's own directory
+    /// (`store.fold.carry-by-reference`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<SnapshotId>,
+    /// Rows the file holds, recorded by the pass that writes or carries it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rows: Option<u64>,
+}
+
+impl PartEntry {
+    /// A part in its manifest's own directory.
+    pub fn new(name: impl Into<String>, key_version: u32) -> PartEntry {
+        PartEntry { name: name.into(), key_version, ..PartEntry::default() }
+    }
+
+    /// The snapshot whose directory holds the file: `origin`, else `own`, the snapshot
+    /// whose manifest names it.
+    pub fn holder<'a>(&'a self, own: &'a SnapshotId) -> &'a SnapshotId {
+        self.origin.as_ref().unwrap_or(own)
+    }
+
+    /// The file's path relative to its table directory, named by the manifest of `own`:
+    /// `data/snapshots/<holder>/<name>`.
+    pub fn location(&self, own: &SnapshotId) -> String {
+        format!("{SNAPSHOTS_DIR}/{}/{}", self.holder(own), self.name)
+    }
+
+    /// The file's path relative to the directory of the snapshot naming it: `name`, or
+    /// `../<origin>/<name>` for a part carried by reference.
+    pub fn locator(&self) -> String {
+        match &self.origin {
+            Some(origin) => format!("../{origin}/{}", self.name),
+            None => self.name.clone(),
+        }
+    }
+
+    /// The partition directory the part sits in, its `col=value` segments joined by `/`;
+    /// empty on an unpartitioned table.
+    pub fn partition(&self) -> &str {
+        self.name.rsplit_once('/').map_or("", |(dir, _)| dir)
+    }
 }
 
 /// A run's commit marker (`store.lay-out.run-manifest`). Every field added after the
@@ -345,6 +404,12 @@ pub struct SnapshotManifest {
 }
 
 impl SnapshotManifest {
+    /// Every data file the snapshot names, relative to its table directory; a part carried
+    /// by reference sits under its origin's directory (`store.fold.carry-by-reference`).
+    pub fn part_files(&self) -> Vec<String> {
+        self.parts.iter().map(|p| p.location(&self.snapshot_id)).collect()
+    }
+
     /// The `ancestors` a snapshot whose parent is `parent` records (`store.lay-out.ancestors`):
     /// none for a root, absent under a parent recording none, else the parent first.
     pub fn ancestors_after(parent: Option<&SnapshotManifest>) -> Option<Vec<SnapshotId>> {
