@@ -683,6 +683,11 @@ pub(crate) fn mint_service(root: &Path, issuer_key: &Path, on_behalf_of: &str, g
     Ok(ServiceCredential { token, public_key: signer.public_key_text(), audience: root.policy()?.default_audience })
 }
 
+/// The default zone the root's `[project.zone]` declares (`authority.place.team-default`).
+pub(crate) fn default_zone(root: &Path) -> Result<Option<String>> {
+    Ok(Root { dir: root.to_path_buf() }.project_zone()?.default.map(|z| z.label()))
+}
+
 fn instant_or_now(text: Option<&str>) -> Result<Instant> {
     match text {
         Some(t) => Ok(Instant::parse(t)?),

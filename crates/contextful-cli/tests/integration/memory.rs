@@ -306,6 +306,67 @@ fn a_scheduled_synthesize_job_replaces_the_operator_triggered_pass() {
     assert_eq!(endpoint.bodies.lock().unwrap().len(), 1, "no run past the cursor, no model call");
 }
 
+/// A project scheduling `synth-facts` every minute, `zone` appended, imported under the minted token.
+fn scheduled_synthesis(p: &Path, public: &str, token: &str, endpoint: &Endpoint, zone: &str) {
+    let manifest = std::fs::read_to_string(p.join("contextful.toml")).unwrap();
+    let job = format!(
+        "site_id = \"site\"\n{manifest}\n[[job]]\nname = \"synth-facts\"\nkind = \"synthesize\"\ntarget = \"memory/facts\"\nsource = \"research/notes\"\nendpoint = \"{}\"\nmodel = \"fixture\"\nschedule = \"every 1m\"\n{zone}",
+        endpoint.url()
+    );
+    std::fs::write(p.join("contextful.toml"), job).unwrap();
+    stdout(&run(p, &["pipeline", "import", "--project", "research"], &[("CONTEXTFUL_TOKEN", token), ("CONTEXTFUL_ISSUER_PUBKEY", public), ("CONTEXTFUL_AUDIENCE", AUD)]));
+}
+
+const HQ: &str = "[project.zone]\ndefault = \"on-prem:hq\"\n";
+
+/// One serve cycle holding the issuer pin and audience and no credential.
+fn tokenless_cycle(p: &Path, public: &str, extra: &[&str]) -> Output {
+    let mut args = vec!["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:02:00Z"];
+    args.extend_from_slice(extra);
+    run(p, &args, &[("CONTEXTFUL_ISSUER_PUBKEY", public), ("CONTEXTFUL_AUDIENCE", AUD), ("CONTEXTFUL_INFERENCE_KEY", "")])
+}
+
+#[test]
+fn an_issuer_key_mints_each_scheduled_synthesize_fire_its_own_credential() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    let endpoint = Endpoint::start(vec![claim("Dana")]);
+    scheduled_synthesis(p, &public, &token, &endpoint, HQ);
+    let out = tokenless_cycle(p, &public, &["--issuer-key", ".contextful/issuer.seed"]);
+    let fired: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(fired["fired"], json!(["job:synth-facts"]), "{fired}");
+    assert_eq!(endpoint.bodies.lock().unwrap().len(), 1, "{}", String::from_utf8_lossy(&out.stderr));
+    let query = |sql: &str| -> Value { serde_json::from_str::<Value>(&stdout(&run(p, &["query", "--json", "--project", "research", sql], &[]))).unwrap()["rows"].clone() };
+    assert_eq!(query("SELECT object, _authored_by FROM \"memory/facts\""), json!([["Dana", "svc://job/synth-facts"]]), "the fire's own credential writes the claim");
+}
+
+#[test]
+fn a_serve_scheduling_a_synthesize_job_without_key_or_credential_refuses_at_start() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    let endpoint = Endpoint::start(vec![claim("Dana")]);
+    scheduled_synthesis(p, &public, &token, &endpoint, HQ);
+    let refused = tokenless_cycle(p, &public, &[]);
+    assert!(!refused.status.success());
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("FireCredentialMissing") && stderr.contains("synth-facts"), "{stderr}");
+    assert!(endpoint.bodies.lock().unwrap().is_empty(), "no fire runs");
+}
+
+// spec: surface.dispatch.fire-credential-zone@33b36162
+#[test]
+fn an_issuer_key_serve_in_a_project_declaring_no_default_zone_refuses_at_start() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    let endpoint = Endpoint::start(vec![claim("Dana")]);
+    scheduled_synthesis(p, &public, &token, &endpoint, "");
+    let refused = tokenless_cycle(p, &public, &["--issuer-key", ".contextful/issuer.seed"]);
+    assert!(!refused.status.success());
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("FireCredentialZoneUnset") && stderr.contains("[project.zone]"), "{stderr}");
+    assert!(endpoint.bodies.lock().unwrap().is_empty(), "no fire runs");
+}
+
 const SETTLEMENT: &str = "\n[[table]]\nname = \"memory/predictions\"\nshape = \"predictions\"\ncolumns = [\"prediction_id\", \"subject\", \"predicted_at\", \"horizon_secs\", \"deadline_at\", \"resolution_source\", \"comparator\", \"statement\", \"metric\"]\n\n[[table]]\nname = \"memory/outcomes\"\nshape = \"outcomes\"\ncolumns = [\"prediction_id\", \"observed_at\", \"verdict\", \"resolution_source\", \"signal\", \"settling_citation\", \"metric\"]\n";
 
 /// A project declaring a `predictions` and an `outcomes` table, admitting a minted token.
