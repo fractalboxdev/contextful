@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 334 | 67 | 24 | 5 | 292 | 0 | 292 |
+| `assurance` | 3 | 18 | 337 | 69 | 24 | 5 | 295 | 0 | 295 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 2 | 14 | 386 | 92 | 22 | 14 | 303 | 0 | 303 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 4 | 19 | 327 | 67 | 21 | 12 | 316 | 0 | 316 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2786 | 686 | 224 | 82 | 2494 | 0 | |
+| **total** | 23 | 169 | 2789 | 688 | 224 | 82 | 2497 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 61 | 49 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 180 | 145 | passing | closed |
+| 14 — Assurance | 7 | 183 | 148 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
@@ -306,9 +306,12 @@ Unscheduled operations: 13.
 | `assurance.recheck.wall-time` | `crates/contextful-cli/tests/integration/formal.rs::a_recheck_of_the_policy_package_completes_within_600_s` | performed |
 | `assurance.release.annotated` | `tools/ci/tests/integration/release.rs::the_tag_is_signed_annotated_on_head_and_leaves_earlier_tags_in_place` | performed |
 | `assurance.release.dirty-tree` | `tools/ci/tests/integration/release.rs::a_tree_differing_from_head_is_refused_before_the_gate` | performed |
+| `assurance.release.format-break-patch` | `tools/ci/tests/integration/release.rs::a_format_break_under_an_unchanged_minor_is_refused` | performed |
+| `assurance.release.format-notes` | `tools/ci/tests/integration/release.rs::a_tag_raising_the_store_format_major_names_the_upgrade_order` | performed |
 | `assurance.release.gate-failed` | `tools/ci/tests/integration/release.rs::a_failing_gate_stage_is_refused_and_creates_no_tag` | performed |
 | `assurance.release.off-branch` | `tools/ci/tests/integration/release.rs::a_head_the_default_branch_does_not_reach_is_refused` | performed |
 | `assurance.release.release-tag-version` | `tools/ci/tests/integration/release.rs::a_release_over_a_tag_other_than_the_workspace_version_is_refused` | performed |
+| `assurance.release.store-format` | `tools/ci/tests/integration/release.rs::a_store_format_major_past_one_raises_the_minor` | performed |
 | `assurance.release.version` | `tools/ci/tests/integration/release.rs::the_version_counts_closed_milestones_and_earlier_tags_of_that_count` | performed |
 | `assurance.release.version-regressed` | `tools/ci/tests/integration/release.rs::a_milestone_reopening_below_the_last_tag_is_refused` | performed |
 | `assurance.release.workspace-version` | `tools/ci/tests/integration/release.rs::a_workspace_version_other_than_the_computed_one_is_refused` | performed |

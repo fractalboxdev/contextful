@@ -30931,12 +30931,26 @@
       "operation": "release",
       "subject": "version",
       "kind": "behavior",
-      "statement": "A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.",
+      "statement": "A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 579,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
+      ]
+    },
+    {
+      "id": "assurance.release.store-format",
+      "contract": "assurance",
+      "operation": "release",
+      "subject": "store-format",
+      "kind": "refusal",
+      "statement": "A commit's store format is the `FormatVersion::CURRENT` constant in its `crates/contextful-core/src/store/lay_out.rs`, and `1.0` where that constant is absent; a constant that does not parse raises `TagStoreFormatUnread`.",
+      "why": "A-assurance",
+      "file": "spec/81-engineering.md",
+      "line": 581,
+      "scenarios": [
+        "WHEN 16 milestones compute `closed`, `v0.16.1` declares store format `1.0` and `HEAD` declares `2.0`, THEN the computed version is `v0.17.0` and its message carries `Store format 1.0 → 2.0`."
       ]
     },
     {
@@ -30948,7 +30962,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 581
+      "line": 583
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -30959,7 +30973,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/81-engineering.md",
-      "line": 583
+      "line": 585
     },
     {
       "id": "assurance.release.off-branch",
@@ -30970,7 +30984,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 585
+      "line": 587
     },
     {
       "id": "assurance.release.version-regressed",
@@ -30981,10 +30995,35 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 587,
+      "line": 589,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
+    },
+    {
+      "id": "assurance.release.format-break-patch",
+      "contract": "assurance",
+      "operation": "release",
+      "subject": "format-break-patch",
+      "kind": "refusal",
+      "statement": "A computed `<minor>` equal to the highest existing tag's, while `HEAD`'s store format major differs from that tag's, raises `TagFormatBreakPatch`, naming both formats.",
+      "why": "A-assurance",
+      "file": "spec/81-engineering.md",
+      "line": 591,
+      "scenarios": [
+        "WHEN milestone 11 reopens after `v0.9.0` while the store format moves from `1.0` to `2.0`, THEN the computed `v0.9.1` raises `TagFormatBreakPatch`."
+      ]
+    },
+    {
+      "id": "assurance.release.format-notes",
+      "contract": "assurance",
+      "operation": "release",
+      "subject": "format-notes",
+      "kind": "behavior",
+      "statement": "A tag whose store format major exceeds the highest existing tag's carries the message line `Store format <old> → <new>: upgrade every reader, then every writer together.`",
+      "why": "because an older reader refuses a manifest of the newer major, and an older writer refuses the table once a newer writer commits",
+      "file": "spec/81-engineering.md",
+      "line": 593
     },
     {
       "id": "assurance.release.workspace-version",
@@ -30995,7 +31034,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 589
+      "line": 595
     },
     {
       "id": "assurance.release.gate-failed",
@@ -31006,7 +31045,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 591
+      "line": 597
     },
     {
       "id": "assurance.release.release-tag-version",
@@ -31017,7 +31056,7 @@
       "statement": "`contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.",
       "why": "because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version",
       "file": "spec/81-engineering.md",
-      "line": 593
+      "line": 599
     },
     {
       "id": "assurance.release.release-run",
@@ -31028,7 +31067,7 @@
       "statement": "A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.",
       "why": "because distributed builds and formula generation share one tag identity",
       "file": "spec/81-engineering.md",
-      "line": 595
+      "line": 601
     },
     {
       "id": "assurance.release.release-dry-run",
@@ -31039,7 +31078,7 @@
       "statement": "A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.",
       "why": "because a packaging rehearsal must not claim a released version",
       "file": "spec/81-engineering.md",
-      "line": 597
+      "line": 603
     },
     {
       "id": "assurance.consumer.suite",
@@ -35042,6 +35081,10 @@
             "clause": "assurance.gate.surface-check-failed",
             "gloss": "A TypeScript surface whose typecheck, unit tests or framework build failed."
           },
+          "TagFormatBreakPatch": {
+            "clause": "assurance.release.format-break-patch",
+            "gloss": "A store format major change under the highest existing tag's minor version."
+          },
           "TagGateFailed": {
             "clause": "assurance.release.gate-failed",
             "gloss": "A gate stage failing on the commit a tag names."
@@ -35049,6 +35092,10 @@
           "TagOffDefaultBranch": {
             "clause": "assurance.release.off-branch",
             "gloss": "A tag requested on a commit the default branch does not reach."
+          },
+          "TagStoreFormatUnread": {
+            "clause": "assurance.release.store-format",
+            "gloss": "A store format constant whose major or minor does not parse as an integer."
           },
           "TagTreeDirty": {
             "clause": "assurance.release.dirty-tree",

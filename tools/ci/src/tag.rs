@@ -1,5 +1,5 @@
 //! `assurance.release`: the version a release tag carries, computed from the tagged commit's
-//! `spec/status.md`, and the refusals a signed annotated tag waits on. The cheap refusals
+//! `spec/status.md` and store format constant, and the refusals a signed annotated tag waits on. The cheap refusals
 //! run first, so a mismatch names the computed version before the gate spends its build.
 
 use crate::{gate, git, refuse, BASE_RUN_BOUND_SECS};
@@ -12,6 +12,8 @@ const STATUS_FILE: &str = "spec/status.md";
 const MILESTONES_HEADING: &str = "## Milestones";
 const CLOSED_COLUMN: &str = "Closed";
 const CLOSED: &str = "closed";
+const STORE_FORMAT_FILE: &str = "crates/contextful-core/src/store/lay_out.rs";
+const STORE_FORMAT_CONST: &str = "pub const CURRENT: FormatVersion = FormatVersion {";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Version {
@@ -40,6 +42,42 @@ impl fmt::Display for Version {
     }
 }
 
+/// A commit's store format, `<major>.<minor>` (`assurance.release.store-format`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StoreFormat {
+    major: u64,
+    minor: u64,
+}
+
+impl StoreFormat {
+    /// The `FormatVersion::CURRENT` constant in `rev`'s `STORE_FORMAT_FILE`; `1.0` where the
+    /// file or the constant is absent, since a manifest without `format_version` reads as `1.0`.
+    fn at(rev: &str) -> Result<StoreFormat> {
+        let path = format!("{rev}:{STORE_FORMAT_FILE}");
+        let Some(source) = git(&["cat-file", "-e", &path]).ok().map(|_| git(&["show", &path])).transpose()? else {
+            return Ok(StoreFormat { major: 1, minor: 0 });
+        };
+        let Some(line) = source.lines().map(str::trim_start).find(|l| l.starts_with(STORE_FORMAT_CONST)) else {
+            return Ok(StoreFormat { major: 1, minor: 0 });
+        };
+        let unread = || refuse("TagStoreFormatUnread", format!("{STORE_FORMAT_FILE} at {rev} declares `{line}`, whose major and minor do not parse"));
+        let fields = line[STORE_FORMAT_CONST.len()..].trim_end().strip_suffix("};").ok_or_else(unread)?;
+        let field = |name: &str| -> Option<u64> {
+            fields.split(',').filter_map(|f| f.split_once(':')).find(|(k, _)| k.trim() == name)?.1.trim().parse().ok()
+        };
+        match (field("major"), field("minor")) {
+            (Some(major), Some(minor)) => Ok(StoreFormat { major, minor }),
+            _ => Err(unread()),
+        }
+    }
+}
+
+impl fmt::Display for StoreFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
 /// Cut the release tag on `HEAD`: `branch` names the default branch, and `base` is the
 /// revision the gate's test-first stage measures `HEAD` against.
 pub fn tag(branch: &str, base: &str) -> Result<()> {
@@ -65,8 +103,9 @@ pub fn tag(branch: &str, base: &str) -> Result<()> {
     // `assurance.release.version`
     let status = git(&["show", &format!("HEAD:{STATUS_FILE}")]).with_context(|| format!("reading {STATUS_FILE} at HEAD"))?;
     let closed = closed_milestones(&status);
+    let format = StoreFormat::at(&head)?;
     let existing: Vec<Version> = git(&["tag", "--list"])?.lines().filter_map(Version::of_tag).collect();
-    let minor = closed.len() as u64;
+    let minor = closed.len() as u64 + format.major.saturating_sub(1);
     let patch = existing.iter().filter(|v| v.major == 0 && v.minor == minor).map(|v| v.patch + 1).max().unwrap_or(0);
     let version = Version { major: 0, minor, patch };
 
@@ -75,6 +114,15 @@ pub fn tag(branch: &str, base: &str) -> Result<()> {
         return Err(refuse(
             "TagVersionRegressed",
             format!("{} milestone(s) close at HEAD, giving v{version}, below the existing tag v{last}", closed.len()),
+        ));
+    }
+
+    // `assurance.release.format-break-patch`: the last tag's format, read at that tag.
+    let last = existing.iter().max().map(|last| StoreFormat::at(&format!("v{last}")).map(|f| (*last, f))).transpose()?;
+    if let Some((last, was)) = last.filter(|(last, was)| last.minor == version.minor && was.major != format.major) {
+        return Err(refuse(
+            "TagFormatBreakPatch",
+            format!("the store format moves from {was} at v{last} to {format} at HEAD, yet v{version} keeps the minor version"),
         ));
     }
 
@@ -102,6 +150,10 @@ pub fn tag(branch: &str, base: &str) -> Result<()> {
     let name = format!("v{version}");
     let mut message = format!("Contextful {name}\n\n{} milestone(s) close:\n", closed.len());
     closed.iter().for_each(|m| message.push_str(&format!("- {m}\n")));
+    // `assurance.release.format-notes`
+    if let Some((_, was)) = last.filter(|(_, was)| format.major > was.major) {
+        message.push_str(&format!("\nStore format {was} → {format}: upgrade every reader, then every writer together.\n"));
+    }
     git(&["tag", "--sign", "--message", &message, &name, &head]).context("creating the signed tag")?;
     println!("tag: created signed {name} on {short}; publish it with `git push origin {name}`");
     Ok(())
