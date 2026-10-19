@@ -81,6 +81,7 @@ SyncTombstoneForeign         = { clause = "store.merge.tombstone-owner", gloss =
 SyncTombstoneUnverified      = { clause = "store.merge.tombstone-unverified", gloss = "A tombstone is unsigned, fails its signature, or names a signer the key-set ledger does not verify." }
 SyncManifestRebaseExhausted  = { clause = "store.merge.exhausted", gloss = "The bucket manifest commit lost its race past the retry bound or the round ceiling." }
 SyncCursorConflict           = { clause = "store.merge.cursor-recency", gloss = "A cursor was resolved by recency instead of through its commit." }
+SyncHeldRecordUnreadable      = { clause = "store.merge.held-unreadable", gloss = "The local ownership record cannot be read or decoded." }
 LeaseHeld                    = { clause = "store.lease.held", gloss = "A run or pass found an unexpired lease another node holds." }
 LeaseFenced                  = { clause = "store.lease.stale-fence", gloss = "A conditional commit lost to a higher fence." }
 LeaseNotHeld                 = { clause = "store.lease.not-held", gloss = "A release was attempted against a lease another node holds." }

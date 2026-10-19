@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 315 | 54 | 29 | 16 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 600 | 128 | 49 | 19 | 562 | 0 | 562 |
-| `store` | 4 | 19 | 327 | 67 | 21 | 12 | 316 | 0 | 316 |
+| `store` | 4 | 19 | 328 | 68 | 21 | 12 | 317 | 0 | 316 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2793 | 689 | 224 | 82 | 2501 | 0 | |
+| **total** | 23 | 169 | 2794 | 690 | 224 | 82 | 2502 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
 | 4 — Ingest | 25 | 633 | 529 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 282 | passing | closed |
-| 6 — Sync and replicas | 8 | 102 | 101 | passing | closed |
+| 6 — Sync and replicas | 8 | 103 | 102 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -2208,6 +2208,7 @@ Unscheduled operations: 13.
 | `store.merge.exhausted` | `crates/contextful-sync/tests/integration/push.rs::exhausted_rounds_refuse_and_report_every_uploaded_object` | performed |
 | `store.merge.held-absent` | `crates/contextful-sync/tests/integration/push.rs::a_store_without_a_record_holds_every_owned_key_once_it_pushed_and_none_before` | performed |
 | `store.merge.held-record` | `crates/contextful-sync/tests/integration/push.rs::a_push_records_the_keys_it_holds_and_a_pull_adds_those_it_brings_home` | performed |
+| `store.merge.held-unreadable` | `crates/contextful-sync/tests/integration/push.rs::an_unreadable_held_record_preserves_a_sibling_disks_runs` | performed |
 | `store.merge.ownership` | `crates/contextful-core/tests/integration/store/sync.rs::a_keys_owner_is_read_off_the_key` | performed |
 | `store.merge.retries` | `crates/contextful-sync/tests/integration/push.rs::the_re_commit_loop_takes_five_rounds_by_default_and_the_declared_bound_otherwise` | performed |
 | `store.merge.round-ceiling` | `crates/contextful-sync/tests/integration/push.rs::a_push_overtaken_every_round_stops_at_sixty_four_rounds` | performed |

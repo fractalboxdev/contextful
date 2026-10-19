@@ -37,6 +37,7 @@ pub enum SyncError {
     Context(ContextError),
     Surface(SurfaceError),
     Enforce(EnforceError),
+    HeldRecordUnreadable(String),
 }
 
 impl std::fmt::Display for SyncError {
@@ -47,6 +48,7 @@ impl std::fmt::Display for SyncError {
             SyncError::Context(e) => e.fmt(f),
             SyncError::Surface(e) => e.fmt(f),
             SyncError::Enforce(e) => e.fmt(f),
+            SyncError::HeldRecordUnreadable(e) => write!(f, "SyncHeldRecordUnreadable: `{HELD_FILE}`: {e}; restore the ownership record before syncing"),
         }
     }
 }
@@ -851,13 +853,13 @@ impl Syncer {
         })
     }
 
-    /// The store's record; an absent or unreadable one reads empty.
+    /// The store's record; an absent one reads empty, and an unreadable one refuses.
     fn held_record(&self) -> Result<HeldRecord> {
         let path = self.store.root().join(HELD_FILE);
         match std::fs::read(&path) {
-            Ok(bytes) => Ok(serde_json::from_slice::<HeldRecord>(&bytes).unwrap_or_default()),
+            Ok(bytes) => serde_json::from_slice::<HeldRecord>(&bytes).map_err(|e| SyncError::HeldRecordUnreadable(e.to_string())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(HeldRecord::default()),
-            Err(e) => Err(io(&path, e)),
+            Err(e) => Err(SyncError::HeldRecordUnreadable(e.to_string())),
         }
     }
 
