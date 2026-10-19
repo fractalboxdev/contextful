@@ -19,6 +19,8 @@ pub const PUSH_ROUND_CEILING: u32 = 64;
 pub const PUSH_WAIT_SECS: u64 = 300;
 /// Manifest re-fetches a pull performs against keys moving beneath it: 3 attempts (`store.pull.convergence`).
 pub const PULL_CONVERGENCE: u32 = 3;
+/// Object requests a pull or a push keeps in flight at once by default: 16 requests (`store.pull.transfer-width`).
+pub const TRANSFER_WIDTH: usize = 16;
 /// Age at which a tombstone leaves the bucket manifest: 30 d (`store.merge.tombstone-ttl`).
 pub const TOMBSTONE_TTL_SECS: u64 = 30 * 24 * 60 * 60;
 
@@ -69,6 +71,9 @@ pub struct SyncConfig {
     pub coordination: Option<String>,
     #[serde(default)]
     pub push_retries: Option<u32>,
+    /// Object requests a pull or a push keeps in flight (`store.pull.transfer-width`).
+    #[serde(default)]
+    pub transfers: Option<usize>,
     /// Seconds a push waits for the push guard another push of the store holds (`store.push.in-flight`).
     #[serde(default)]
     pub push_wait_secs: Option<u64>,
@@ -152,6 +157,11 @@ impl SyncConfig {
             (None, None) => String::new(),
         };
         Ok(raw.trim_matches('/').to_string())
+    }
+
+    /// The transfer width: `transfers`, default 16, never below 1 (`store.pull.transfer-width`).
+    pub fn transfers(&self) -> usize {
+        self.transfers.unwrap_or(TRANSFER_WIDTH).max(1)
     }
 
     pub fn push_retries(&self) -> u32 {

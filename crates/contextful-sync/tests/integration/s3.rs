@@ -172,7 +172,7 @@ fn two_nodes_converge_through_one_s3_bucket() {
 /// An S3 endpoint's outbound path can drop a request or hold it open without an answer.
 mod transport {
     use contextful_core::connector::reference::Hydrated;
-    use contextful_core::store::object::{Condition, ObjectStore, Put};
+    use contextful_core::store::object::{Condition, ObjectError, ObjectStore, Put};
     use contextful_sync::{S3Bucket, S3Credentials};
     use std::io::{BufRead, BufReader, Read, Write};
     use std::net::{TcpListener, TcpStream};
@@ -269,8 +269,8 @@ mod transport {
         let started = Instant::now();
         let got = endpoint.bucket().get("a").unwrap();
         assert_eq!(got, Some((b"x".to_vec(), "\"e1\"".into())));
-        // 3 attempts at this bound, with their backoff, fit inside a 60 s process deadline.
-        assert!(started.elapsed() < Duration::from_secs(18), "{:?}", started.elapsed());
+        // The first attempt waits 2 s for its answer, so a stalled get resends well before the 10 s bound.
+        assert!(started.elapsed() < Duration::from_secs(4), "{:?}", started.elapsed());
         assert_eq!(endpoint.requests(), ["GET", "GET"]);
     }
 
@@ -289,12 +289,36 @@ mod transport {
 
     #[test]
     fn an_unanswered_or_server_failed_request_fails_as_unavailable() {
-        use contextful_core::store::object::ObjectError;
         let endpoint = Endpoint::start(vec![Answer::Drop; 3]);
         assert!(matches!(endpoint.bucket().list("corpus/"), Err(ObjectError::Unavailable(m)) if m.contains("LIST")));
-        let endpoint = Endpoint::start(vec![Answer::Status(503, "<Error><Code>SlowDown</Code></Error>")]);
+        let endpoint = Endpoint::start(vec![Answer::Status(503, SLOW_DOWN); 5]);
         assert!(matches!(endpoint.bucket().get("a"), Err(ObjectError::Unavailable(m)) if m.contains("503 SlowDown")));
-        assert_eq!(endpoint.requests(), ["GET"], "an answered status never resends");
+        assert_eq!(endpoint.requests().len(), 5, "a throttled get resends within its attempts");
+        let endpoint = Endpoint::start(vec![Answer::Status(429, TOO_MANY); 5]);
+        assert!(matches!(endpoint.bucket().put("a", b"x", Condition::IfNoneMatch), Err(ObjectError::Unavailable(m)) if m.contains("429")));
+        assert_eq!(endpoint.requests().len(), 5);
+    }
+
+    const SLOW_DOWN: &str = "<Error><Code>SlowDown</Code></Error>";
+    const TOO_MANY: &str = "<Error><Code>TooManyRequests</Code></Error>";
+    const INTERNAL: &str = "<Error><Code>InternalError</Code></Error>";
+
+    /// A `429` or `503` answers a request the backend never applied, so any request resends
+    /// after a backoff; a `500` resends every request but a conditional put.
+    // spec: store.endpoint.throttled@2640d68f
+    #[test]
+    fn a_throttled_answer_resends_after_backoff_and_a_failed_conditional_put_goes_once() {
+        let endpoint = Endpoint::start(vec![Answer::Status(503, SLOW_DOWN), Answer::Status(429, TOO_MANY), Answer::Status(500, INTERNAL), Answer::Status(200, "x")]);
+        assert_eq!(endpoint.bucket().get("a").unwrap(), Some((b"x".to_vec(), "\"e1\"".into())));
+        assert_eq!(endpoint.requests().len(), 4);
+        for condition in [Condition::IfNoneMatch, Condition::IfMatch("\"e0\"".into())] {
+            let endpoint = Endpoint::start(vec![Answer::Status(503, SLOW_DOWN), Answer::Status(429, TOO_MANY), Answer::Status(200, "")]);
+            assert_eq!(endpoint.bucket().put("a", b"x", condition.clone()).unwrap(), Put::Applied("\"e1\"".into()));
+            assert_eq!(endpoint.requests().len(), 3);
+            let endpoint = Endpoint::start(vec![Answer::Status(500, INTERNAL), Answer::Status(200, "")]);
+            assert!(matches!(endpoint.bucket().put("a", b"x", condition), Err(ObjectError::Unavailable(_))));
+            assert_eq!(endpoint.requests(), ["PUT"], "a conditional put answered 500 may have applied");
+        }
     }
 
     #[test]

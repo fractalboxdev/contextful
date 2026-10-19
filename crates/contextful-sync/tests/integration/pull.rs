@@ -1002,7 +1002,7 @@ const COLD_PULL_SEED: u64 = 0x5eed_0643;
 
 /// A cold pull over a bucket holding each request for 2 ms keeps 16 fetches in flight and
 /// lands every object; it reads each object once.
-// spec: store.pull.transfer-width@baaf5f7a
+// spec: store.pull.transfer-width@b7f9010a
 #[test]
 fn a_cold_pull_keeps_sixteen_fetches_in_flight_and_reads_each_object_once() {
     let dir = tempfile::tempdir().unwrap();
@@ -1072,4 +1072,17 @@ fn a_pull_takes_a_matching_files_digest_from_its_record() {
     let report = cold.syncer.pull(&PullScope::default()).unwrap();
     assert_eq!(report.downloaded, vec![keys[0].clone()], "the rewrite moved the change time");
     assert_eq!(std::fs::read(&path).unwrap(), original);
+}
+
+/// `[sync] transfers` sets how many requests a pull keeps in flight.
+#[test]
+fn sync_transfers_sets_the_pull_width() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    crate::support::seed_objects(inner.as_ref(), 64);
+    let slow = Arc::new(crate::support::Slow::new(inner, std::time::Duration::from_millis(2)));
+    let mut cold = node("ingest-b", slow.clone(), "");
+    cold.syncer.config.transfers = Some(4);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(slow.peak.load(Ordering::SeqCst), 4);
 }

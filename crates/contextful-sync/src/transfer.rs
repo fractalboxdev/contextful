@@ -1,4 +1,4 @@
-//! Object transfers held to a fixed width (`store.pull.transfer-width`), and the
+//! Object transfers held to the configured width (`store.pull.transfer-width`), and the
 //! machine-local digest record that spares an unchanged file its rehash
 //! (`store.pull.digest-record`).
 
@@ -9,13 +9,12 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
-/// Object requests a pull or a push keeps in flight at once: 16 requests (`store.pull.transfer-width`).
-pub const TRANSFER_WIDTH: usize = 16;
+pub use contextful_core::store::sync::TRANSFER_WIDTH;
 
-/// Run `f` over `items` with up to `TRANSFER_WIDTH` in flight, answering in item order. After
-/// the first refusal no item starts, each one in flight finishes, and the refusal of the
+/// Run `f` over `items` with up to `width` in flight, answering in item order. After the
+/// first refusal no item starts, each one in flight finishes, and the refusal of the
 /// earliest item returns.
-pub(crate) fn each<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> Result<R> + Sync) -> Result<Vec<R>> {
+pub(crate) fn each<T: Sync, R: Send>(width: usize, items: &[T], f: impl Fn(&T) -> Result<R> + Sync) -> Result<Vec<R>> {
     if items.len() <= 1 {
         return items.iter().map(f).collect();
     }
@@ -23,7 +22,7 @@ pub(crate) fn each<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> Result<R> + 
     let stop = AtomicBool::new(false);
     let done: Mutex<Vec<(usize, Result<R>)>> = Mutex::new(Vec::with_capacity(items.len()));
     std::thread::scope(|scope| {
-        for _ in 0..TRANSFER_WIDTH.min(items.len()) {
+        for _ in 0..width.max(1).min(items.len()) {
             scope.spawn(|| {
                 while !stop.load(Ordering::SeqCst) {
                     let i = next.fetch_add(1, Ordering::SeqCst);

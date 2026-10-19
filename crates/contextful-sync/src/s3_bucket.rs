@@ -17,14 +17,47 @@ const SIGNATURE_TTL: Duration = Duration::from_secs(300);
 /// Wall-clock budget of one request, transfer included.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
 
-/// Bounds on an attempt's connection and on the wait for its answer once sent: an attempt
-/// held open unanswered ends within 15 s, so 3 attempts and their backoff end within 46 s
+/// Bounds on an attempt's connection and on the wait for its answer once sent. A request
+/// whose repetition changes nothing waits 2 s, then 4 s, then 10 s for each attempt's answer,
+/// so 3 attempts held open unanswered end within 31 s; a conditional put waits 10 s once
 /// (`store.endpoint.transport`).
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
+const ANSWER_WINDOWS: [Duration; 3] = [Duration::from_secs(2), Duration::from_secs(4), ANSWER_TIMEOUT];
 
 /// Total attempts of a request whose repetition changes nothing (`store.endpoint.transport`).
 const TRANSPORT_ATTEMPTS: u32 = 3;
+
+/// Total attempts of a request the backend answers throttled, and the backoff before each
+/// resend: a uniform draw below a ceiling doubling from 100 ms to 5 s (`store.endpoint.throttled`).
+const THROTTLED_ATTEMPTS: u32 = 5;
+const BACKOFF_BASE: Duration = Duration::from_millis(100);
+const BACKOFF_CAP: Duration = Duration::from_secs(5);
+
+/// Which failures a request resends after (`store.endpoint.throttled`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Resend {
+    /// A request whose repetition changes nothing: a transport loss, a `429`, a `500` or a `503`.
+    Repeatable,
+    /// A conditional put, which may have applied unanswered: a `429` or a `503` alone, which
+    /// answer a request the backend never applied.
+    Conditional,
+}
+
+impl Resend {
+    fn throttled(self, status: u16) -> bool {
+        matches!(status, 429 | 503) || (status == 500 && self == Resend::Repeatable)
+    }
+}
+
+/// Sleep before throttled resend `n` (1-based): a uniform draw below `BACKOFF_BASE * 2^(n-1)`,
+/// capped at `BACKOFF_CAP`, so clients throttled together spread their resends.
+fn backoff(n: u32) {
+    let ceiling = BACKOFF_BASE.saturating_mul(1 << n.saturating_sub(1).min(16)).min(BACKOFF_CAP);
+    let mut draw = [0u8; 8];
+    let fraction = getrandom::fill(&mut draw).map_or(1.0, |()| u64::from_le_bytes(draw) as f64 / u64::MAX as f64);
+    std::thread::sleep(ceiling.mul_f64(fraction));
+}
 
 /// Keys one list page asks for; a backend may answer fewer.
 const LIST_PAGE: usize = 1000;
@@ -116,7 +149,7 @@ impl S3Bucket {
         match status {
             403 => ObjectError::Forbidden(message),
             501 => ObjectError::Unsupported(message),
-            500.. => ObjectError::Unavailable(message),
+            429 | 500.. => ObjectError::Unavailable(message),
             _ => ObjectError::Transport(message),
         }
     }
@@ -125,16 +158,26 @@ impl S3Bucket {
         ObjectError::Unavailable(format!("{what}: {e}"))
     }
 
-    /// Send a request whose repetition changes nothing, resending after a transport failure
-    /// that left no whole answer; an answered status never resends.
-    fn resend<T>(what: &str, send: impl Fn() -> Result<T, ureq::Error>) -> Result<T, ObjectError> {
-        let mut attempt = 1;
+    /// Send a request, each attempt waiting the answer window `send` is handed, and resend it
+    /// as `mode` allows: after a transport failure that left no whole answer, within 3 attempts,
+    /// and after a throttled answer, within 5. The last answer returns whatever its status.
+    fn resend<T>(what: &str, mode: Resend, send: impl Fn(Duration) -> Result<(u16, T), ureq::Error>) -> Result<(u16, T), ObjectError> {
+        let (mut lost, mut throttled) = (0u32, 0u32);
         loop {
-            match send() {
+            let window = match mode {
+                Resend::Repeatable => ANSWER_WINDOWS[(lost as usize).min(ANSWER_WINDOWS.len() - 1)],
+                Resend::Conditional => ANSWER_TIMEOUT,
+            };
+            match send(window) {
+                Ok((status, answer)) if mode.throttled(status) && throttled + 1 < THROTTLED_ATTEMPTS => {
+                    let _ = answer;
+                    throttled += 1;
+                    backoff(throttled);
+                }
                 Ok(answer) => return Ok(answer),
-                Err(_) if attempt < TRANSPORT_ATTEMPTS => {
-                    attempt += 1;
-                    std::thread::sleep(Duration::from_millis(50 * u64::from(attempt - 1)));
+                Err(_) if mode == Resend::Repeatable && lost + 1 < TRANSPORT_ATTEMPTS => {
+                    lost += 1;
+                    std::thread::sleep(Duration::from_millis(50 * u64::from(lost)));
                 }
                 Err(e) => return Err(S3Bucket::transport(what, e)),
             }
@@ -176,8 +219,11 @@ impl S3Bucket {
     pub fn head(&self, key: &str) -> Result<Option<String>, ObjectError> {
         let what = format!("HEAD `{key}`");
         let url = self.presign_head(key);
-        let mut response = S3Bucket::resend(&what, || self.agent.head(&url).call())?;
-        match response.status().as_u16() {
+        let (status, mut response) = S3Bucket::resend(&what, Resend::Repeatable, |window| {
+            let response = self.agent.head(&url).config().timeout_recv_response(Some(window)).build().call()?;
+            Ok((response.status().as_u16(), response))
+        })?;
+        match status {
             200 => etag(&response).map(Some).ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag"))),
             404 => Ok(self.get(key)?.map(|(_, tag)| tag)),
             status => Err(S3Bucket::failure(&what, status, &read_text(&mut response))),
@@ -192,8 +238,8 @@ impl S3Bucket {
         let mut token: Option<String> = None;
         loop {
             let url = self.presign_list(prefix, token.as_deref());
-            let (status, text) = S3Bucket::resend(&what, || {
-                let mut response = self.agent.get(&url).call()?;
+            let (status, text) = S3Bucket::resend(&what, Resend::Repeatable, |window| {
+                let mut response = self.agent.get(&url).config().timeout_recv_response(Some(window)).build().call()?;
                 Ok((response.status().as_u16(), response.body_mut().with_config().limit(u64::MAX).read_to_string()?))
             })?;
             if status != 200 {
@@ -225,10 +271,10 @@ impl ObjectStore for S3Bucket {
     fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
         let what = format!("GET `{key}`");
         let url = self.presign_get(key);
-        let (status, tag, bytes) = S3Bucket::resend(&what, || {
-            let mut response = self.agent.get(&url).call()?;
+        let (status, (tag, bytes)) = S3Bucket::resend(&what, Resend::Repeatable, |window| {
+            let mut response = self.agent.get(&url).config().timeout_recv_response(Some(window)).build().call()?;
             let tag = etag(&response);
-            Ok((response.status().as_u16(), tag, response.body_mut().with_config().limit(u64::MAX).read_to_vec()?))
+            Ok((response.status().as_u16(), (tag, response.body_mut().with_config().limit(u64::MAX).read_to_vec()?)))
         })?;
         match status {
             200 => {
@@ -257,20 +303,21 @@ impl ObjectStore for S3Bucket {
             action.headers_mut().insert(*name, value.clone());
         }
         let url = action.sign(SIGNATURE_TTL);
-        let send = || {
-            let mut request = self.agent.put(url.as_str());
+        let send = |window| {
+            let mut request = self.agent.put(url.as_str()).config().timeout_recv_response(Some(window)).build();
             if let Some((name, value)) = &header {
                 request = request.header(*name, value);
             }
-            request.send(bytes)
+            let response = request.send(bytes)?;
+            Ok((response.status().as_u16(), response))
         };
         // An unconditional put of the same bytes leaves the state its first landing left; a
-        // conditional put whose answer is lost may have applied, so it goes once.
-        let mut response = match condition {
-            Condition::None => S3Bucket::resend(&what, send)?,
-            _ => send().map_err(|e| S3Bucket::transport(&what, e))?,
+        // conditional put whose answer is lost may have applied, so it resends only a throttled answer.
+        let mode = match condition {
+            Condition::None => Resend::Repeatable,
+            _ => Resend::Conditional,
         };
-        let status = response.status().as_u16();
+        let (status, mut response) = S3Bucket::resend(&what, mode, send)?;
         if status == 200 {
             return etag(&response).map(Put::Applied).ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag")));
         }
@@ -286,8 +333,11 @@ impl ObjectStore for S3Bucket {
     fn delete(&self, key: &str) -> Result<(), ObjectError> {
         let what = format!("DELETE `{key}`");
         let url = self.bucket.delete_object(self.credentials.as_ref(), key).sign(SIGNATURE_TTL);
-        let mut response = self.agent.delete(url.as_str()).call().map_err(|e| S3Bucket::transport(&what, e))?;
-        match response.status().as_u16() {
+        let (status, mut response) = S3Bucket::resend(&what, Resend::Repeatable, |window| {
+            let response = self.agent.delete(url.as_str()).config().timeout_recv_response(Some(window)).build().call()?;
+            Ok((response.status().as_u16(), response))
+        })?;
+        match status {
             200 | 204 => Ok(()),
             status => {
                 let body = read_text(&mut response);

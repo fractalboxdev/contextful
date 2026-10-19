@@ -17,8 +17,8 @@ gloss = "The parties, the read path and run path as halves of one workspace, the
 
 [contract.store]
 title = "The store and its sync"
-files = ["spec/10-store.md", "spec/11-snapshot.md", "spec/12-time.md"]
-titles = ["The store and its sync", "Snapshot corpora", "Time bounds"]
+files = ["spec/10-store.md", "spec/11-snapshot.md", "spec/12-time.md", "spec/13-replica.md"]
+titles = ["The store and its sync", "Snapshot corpora", "Time bounds", "Replicas"]
 gloss = "Parquet parts, manifests and the catalog; snapshot commit, declaration, reserved columns, time bases, compaction; the bucket wire format, leases and replicas."
 
 [contract.read]
