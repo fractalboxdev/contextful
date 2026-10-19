@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 315 | 54 | 29 | 16 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 600 | 128 | 49 | 19 | 562 | 0 | 562 |
-| `store` | 4 | 19 | 327 | 67 | 21 | 12 | 314 | 0 | 314 |
+| `store` | 4 | 19 | 327 | 67 | 21 | 12 | 316 | 0 | 316 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2778 | 686 | 224 | 82 | 2484 | 0 | |
+| **total** | 23 | 169 | 2778 | 686 | 224 | 82 | 2486 | 0 | |
 
 Decision records: 18.
 
@@ -27,11 +27,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
-| 2 — The store | 9 | 199 | 188 | passing | closed |
+| 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
 | 4 — Ingest | 25 | 633 | 529 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 282 | passing | closed |
-| 6 — Sync and replicas | 8 | 102 | 100 | passing | closed |
+| 6 — Sync and replicas | 8 | 102 | 101 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -2072,6 +2072,7 @@ Unscheduled operations: 13.
 | `store.endpoint.transport` | `spec/pins.toml` | performed |
 | `store.endpoint.unsupported-scheme` | `crates/contextful-core/tests/integration/store/sync.rs::an_endpoint_no_adapter_answers_is_refused_by_name` | performed |
 | `store.fold.bounded-memory` | `tools/probe/tests/integration/main.rs::a_fold_peak_heap_probe_records_the_growth_across_held_sizes` | performed |
+| `store.fold.cached-inputs` | `crates/contextful-sync/tests/integration/lazy.rs::a_lazy_fold_reads_its_inputs_through_the_cache_and_refuses_past_its_bound` | performed |
 | `store.fold.carry-by-reference` | `crates/contextful-context/tests/integration/fold_carry.rs::a_pass_carries_every_part_its_runs_do_not_reach_by_reference` | performed |
 | `store.fold.collection-failed` | `crates/contextful-context/tests/integration/fold.rs::a_failed_collection_does_not_unpublish_the_snapshot` | performed |
 | `store.fold.compaction-lease` | `crates/contextful-cli/tests/integration/sync/catalogs.rs::a_compaction_stamps_its_lease_fence_into_the_snapshot_manifest_and_the_pointer` | performed |
@@ -2217,6 +2218,7 @@ Unscheduled operations: 13.
 | `store.pull.generation-run-state` | `crates/contextful-sync/tests/integration/run_state.rs::a_restore_keeps_a_run_state_its_generation_does_not_list` | performed |
 | `store.pull.generation-schema` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_takes_the_current_schema` | performed |
 | `store.pull.identity-conflict` | `spec/pins.toml` | performed |
+| `store.pull.lazy-parts` | `crates/contextful-sync/tests/integration/lazy.rs::a_lazy_pull_downloads_no_part_and_a_read_fetches_each_it_needs` | performed |
 | `store.pull.part-cache` | `crates/contextful-sync/tests/integration/lazy.rs::past_the_part_cache_bound_the_least_recently_read_part_leaves` | performed |
 | `store.pull.part-collected` | `crates/contextful-sync/tests/integration/lazy.rs::a_part_the_bucket_no_longer_holds_refuses_the_read` | performed |
 | `store.pull.pointer-advance` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies` | performed |

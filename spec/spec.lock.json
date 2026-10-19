@@ -4446,7 +4446,7 @@
       "operation": "pull",
       "subject": "lazy-parts",
       "kind": "behavior",
-      "statement": "Under `[sync] lazy_parts = true`, a pull downloads every listed key but Parquet parts and sidecar segments, and the store fetches each of those whole when a read or fold first needs it, verified per {{store.pull.digest-mismatch}}.",
+      "statement": "Under `[sync] lazy_parts = true`, a pull downloads every listed key but a table's Parquet data parts, and the store fetches each part whole when a read or fold first needs it, verified per {{store.pull.digest-mismatch}}.",
       "why": "A-store",
       "file": "spec/10-store.md",
       "line": 624
@@ -4457,7 +4457,7 @@
       "operation": "pull",
       "subject": "part-cache",
       "kind": "limit",
-      "statement": "`[sync] part_cache_bytes`, default 8 GiB, bounds the fetched parts and segments held locally; past it, the least recently read one that no statement or fold holds leaves the disk.",
+      "statement": "`[sync] part_cache_bytes`, default 8 GiB, bounds the fetched parts held locally; past it, the least recently read one that no statement or fold holds leaves the disk.",
       "why": "A-store",
       "file": "spec/10-store.md",
       "line": 626
@@ -39558,7 +39558,7 @@
             "value": 8,
             "unit": "GiB",
             "basis": "chosen",
-            "gloss": "Default bound on the fetched parts and segments a lazy store holds locally."
+            "gloss": "Default bound on the fetched parts a lazy store holds locally."
           },
           "store-partition-count": {
             "clause": "store.index.partition-warnings",

@@ -55,6 +55,7 @@ fn ids(rows: Vec<serde_json::Map<String, serde_json::Value>>) -> Vec<i64> {
 
 /// A lazy pull downloads no Parquet part, and a read fetches each part it needs, verified,
 /// answering the rows the writer landed.
+// spec: store.pull.lazy-parts@e8405d48
 #[test]
 fn a_lazy_pull_downloads_no_part_and_a_read_fetches_each_it_needs() {
     let dir = tempfile::tempdir().unwrap();
@@ -73,7 +74,7 @@ fn a_lazy_pull_downloads_no_part_and_a_read_fetches_each_it_needs() {
 
 /// Past `[sync] part_cache_bytes`, the least recently read fetched part that no read holds
 /// leaves the disk.
-// spec: store.pull.part-cache@41fb1665
+// spec: store.pull.part-cache@03d3e3f0
 #[test]
 fn past_the_part_cache_bound_the_least_recently_read_part_leaves() {
     let dir = tempfile::tempdir().unwrap();
@@ -130,4 +131,31 @@ fn a_lazy_store_push_tombstones_no_part_it_never_fetched() {
         let tombstoned: Vec<&String> = listed.tombstones.keys().filter(|k| k.ends_with(".parquet")).collect();
         assert_eq!(tombstoned.len(), 0, "{id}: {tombstoned:?}");
     }
+}
+
+/// A fold on a lazy store fetches its input parts through the part cache, and inputs larger
+/// than the cache refuse the pass, which publishes nothing.
+// spec: store.fold.cached-inputs@0f705ed9
+#[test]
+fn a_lazy_fold_reads_its_inputs_through_the_cache_and_refuses_past_its_bound() {
+    use contextful_context::fold::fold;
+    use contextful_core::store::fold::FoldOutcome;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    pushed(b.clone(), 3);
+    let decl = TableDecl::named("filings");
+
+    let tight = lazy(b.clone(), Some(1));
+    tight.syncer.pull(&PullScope::default()).unwrap();
+    let store = tight.syncer.store.clone().with_part_source(tight.syncer.part_source());
+    let before = store.pointer("filings").unwrap();
+    let err = fold(&store, &decl, at("2030-01-02T00:00:00Z")).unwrap_err().to_string();
+    assert!(err.starts_with("FoldInputsExceedCache"), "{err}");
+    assert_eq!(store.pointer("filings").unwrap(), before, "a refused pass publishes nothing");
+
+    let roomy = lazy(b, None);
+    roomy.syncer.pull(&PullScope::default()).unwrap();
+    let store = roomy.syncer.store.clone().with_part_source(roomy.syncer.part_source());
+    assert!(matches!(fold(&store, &decl, at("2030-01-02T00:00:00Z")).unwrap(), FoldOutcome::Folded { .. }));
+    assert_eq!(ids(table_rows(&store, &decl, &["id"]).unwrap()), [0, 1, 2]);
 }

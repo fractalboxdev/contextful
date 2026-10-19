@@ -401,6 +401,25 @@ fn lazy_parts_is_off_and_the_part_cache_reads_eight_gib_by_default() {
     assert_eq!(declared.part_cache_bytes(), 1 << 20);
 }
 
+/// A part source's fold hold defaults to its read hold, and an oversize fold refuses by name.
+#[test]
+fn a_part_sources_fold_hold_defaults_to_its_read_hold() {
+    use contextful_core::store::object::{PartHold, PartSource};
+    use contextful_core::store::StoreError;
+    #[derive(Debug, Default)]
+    struct Counting(std::sync::atomic::AtomicUsize);
+    impl PartSource for Counting {
+        fn hold(&self, files: &[String]) -> Result<PartHold, StoreError> {
+            self.0.fetch_add(files.len(), std::sync::atomic::Ordering::SeqCst);
+            Ok(PartHold(std::sync::Arc::new(())))
+        }
+    }
+    let source = Counting::default();
+    source.hold_inputs(&["tables/t/a.parquet".into(), "tables/t/b.parquet".into()]).unwrap();
+    assert_eq!(source.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert!(StoreError::FoldInputsExceedCache("x".into()).to_string().starts_with("FoldInputsExceedCache: "));
+}
+
 /// A manifest carries its commit stamp through a round trip, and one predecessing the stamp reads none.
 #[test]
 fn a_manifest_carries_its_commit_stamp_and_a_legacy_one_reads_none() {

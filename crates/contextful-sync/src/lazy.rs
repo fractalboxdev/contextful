@@ -198,6 +198,23 @@ fn unavailable(what: &str, e: &ObjectError) -> StoreError {
 }
 
 impl PartSource for LazyParts {
+    fn hold_inputs(&self, files: &[String]) -> Result<PartHold, StoreError> {
+        let mut total = 0u64;
+        for rel in files {
+            total += match std::fs::metadata(self.0.root.join(rel)) {
+                Ok(m) => m.len(),
+                Err(_) => self.0.entry(&format!("{}/{rel}", self.0.project))?.map_or(0, |e| e.size),
+            };
+        }
+        if total > self.0.bound {
+            return Err(StoreError::FoldInputsExceedCache(format!(
+                "the pass reads {total} B of parts and `[sync] part_cache_bytes` holds {} B; raise the bound or fold on a store holding its parts",
+                self.0.bound
+            )));
+        }
+        self.hold(files)
+    }
+
     fn hold(&self, files: &[String]) -> Result<PartHold, StoreError> {
         let missing: Vec<String> = {
             let mut cache = self.0.lock();

@@ -117,7 +117,7 @@ store-kdf-memory            = { clause = "store.encrypt.password-kdf", value = 6
 store-kdf-iterations        = { clause = "store.encrypt.password-kdf", value = 3, unit = "iterations", basis = "standard:rfc9106", gloss = "Argon2id time cost." }
 store-kdf-lanes             = { clause = "store.encrypt.password-kdf", value = 4, unit = "lanes", basis = "standard:rfc9106", gloss = "Argon2id parallelism." }
 store-clock-skew            = { clause = "store.lease.clock-skew", value = 30, unit = "s", basis = "chosen", gloss = "Largest clock difference between two machines coordination assumes." }
-store-part-cache            = { clause = "store.pull.part-cache", value = 8, unit = "GiB", basis = "chosen", gloss = "Default bound on the fetched parts and segments a lazy store holds locally." }
+store-part-cache            = { clause = "store.pull.part-cache", value = 8, unit = "GiB", basis = "chosen", gloss = "Default bound on the fetched parts a lazy store holds locally." }
 store-pull-convergence      = { clause = "store.pull.convergence", value = 3, unit = "attempts", basis = "chosen", gloss = "Manifest re-fetches a pull performs against keys moving beneath it." }
 store-transfer-width        = { clause = "store.pull.transfer-width", value = 16, unit = "requests", basis = "chosen", gloss = "Object requests a pull or a push keeps in flight at once." }
 store-tombstone-ttl         = { clause = "store.merge.tombstone-ttl", value = 30, unit = "d", basis = "chosen", gloss = "Age at which a tombstone leaves the bucket manifest." }

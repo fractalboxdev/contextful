@@ -75,6 +75,12 @@ pub trait PartSource: Send + Sync + std::fmt::Debug {
     /// Bring each of `files`, relative to the store root, home whole and verified, and keep
     /// them on disk until the returned hold drops (`store.pull.part-cache`).
     fn hold(&self, files: &[String]) -> Result<PartHold, super::StoreError>;
+
+    /// [`PartSource::hold`] for a fold's inputs, which must fit the cache whole
+    /// (`store.fold.cached-inputs`).
+    fn hold_inputs(&self, files: &[String]) -> Result<PartHold, super::StoreError> {
+        self.hold(files)
+    }
 }
 
 /// Parts a [`PartSource`] keeps on disk while it lives.

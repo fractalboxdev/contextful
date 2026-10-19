@@ -621,9 +621,9 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *because rows landed locally carry columns the bucket's copy may lack*
 - `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the bucket into the store before their first read, and a failed pull stops the command.
   *because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs*
-- `lazy-parts` — Under `[sync] lazy_parts = true`, a pull downloads every listed key but Parquet parts and sidecar segments, and the store fetches each of those whole when a read or fold first needs it, verified per {{store.pull.digest-mismatch}}.
+- `lazy-parts` — Under `[sync] lazy_parts = true`, a pull downloads every listed key but a table's Parquet data parts, and the store fetches each part whole when a read or fold first needs it, verified per {{store.pull.digest-mismatch}}.
   *A-store*
-- `part-cache` — `[sync] part_cache_bytes`, default 8 GiB, bounds the fetched parts and segments held locally; past it, the least recently read one that no statement or fold holds leaves the disk.
+- `part-cache` — `[sync] part_cache_bytes`, default 8 GiB, bounds the fetched parts held locally; past it, the least recently read one that no statement or fold holds leaves the disk.
   *A-store*
 - `part-collected` — A part {{store.pull.lazy-parts}} needs that the bucket no longer holds raises `SyncPartCollected`, naming the part and its snapshot, and the next pull advances the pointer past it.
   *because retention collects a superseded snapshot's parts while a container still holding its pointer reads them*

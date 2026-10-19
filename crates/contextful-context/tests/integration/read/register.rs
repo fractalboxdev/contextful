@@ -243,6 +243,7 @@ fn file_listing_holds_the_face_row_ceiling() {
         landed: false,
         ledger: Vec::new(),
         resolved: None,
+        hold: None,
     };
     let session = Session::open(&authority, &Request::default(), vec![source], &pepper()).unwrap();
     let listing = r.face.files(&session, Bounds::default()).unwrap();

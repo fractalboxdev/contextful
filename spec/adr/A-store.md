@@ -527,7 +527,7 @@ Revisit: deployments whose concurrent writers exceed 64.
 
 Context: a container booting on an empty disk downloads every bucket object before its first read; boot grows with object count, and every deploy, eviction or scale-out repays it. Criteria: boot cost per table, not per object; the read face stays network-free; no reader meets a torn snapshot; one byte budget per container.
 
-Decision: under `[sync] lazy_parts`, a pull brings home manifests, pointers, schemas and the run record, and the sync adapter fetches each Parquet part or sidecar segment whole, digest-verified, into a bounded local cache when a read or fold first needs it. A statement waits on a miss within a bound; a fold draws on the same cache.
+Decision: under `[sync] lazy_parts`, a pull brings home manifests, pointers, schemas and the run record, and the sync adapter fetches each Parquet data part whole, digest-verified, into a bounded local cache when a read or fold first needs it. A statement waits on a miss within a bound; a fold draws on the same cache.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

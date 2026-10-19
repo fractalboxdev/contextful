@@ -501,6 +501,7 @@ impl Face {
                 };
                 let files = s.files.iter().map(|f| self.absolute(f)).collect::<Result<Vec<_>, _>>()?;
                 let resolved = s.publish.as_ref().map(Resolved::of);
+                let hold = s.hold.clone();
                 let mut base = self.adjusted(&decl, s.relation, bounds)?;
                 let mut columns = s.columns;
                 if let Some(h) = horizon {
@@ -511,7 +512,7 @@ impl Face {
                     let withheld: Vec<String> = before.into_iter().filter(|name| !columns.iter().any(|c| &c.name == name)).collect();
                     policy.columns.retain(|name, _| !withheld.contains(name));
                 }
-                TableSource { decl, policy, base, files, columns, landed: true, ledger, resolved }
+                TableSource { decl, policy, base, files, columns, landed: true, ledger, resolved, hold }
             }
             None => {
                 // A pin on a table holding no build names no committed manifest.
@@ -529,7 +530,7 @@ impl Face {
                 known_policy.columns.retain(|name, _| columns.iter().any(|column| &column.name == name));
                 known_policy.check_schema(table, &columns)?;
                 let base = relation(&TableDecl::named(table), &[], &columns, &[], None)?;
-                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false, ledger, resolved: None }
+                TableSource { decl, policy, base, files: Vec::new(), columns, landed: false, ledger, resolved: None, hold: None }
             }
         })
     }

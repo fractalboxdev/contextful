@@ -192,6 +192,9 @@ pub enum StoreError {
     /// A part a lazy store needs is gone from the bucket. (`store.pull.part-collected`)
     #[error("SyncPartCollected: {0}")]
     SyncPartCollected(String),
+    /// A fold's input parts exceed the part cache bound. (`store.fold.cached-inputs`)
+    #[error("FoldInputsExceedCache: {0}")]
+    FoldInputsExceedCache(String),
     /// A part a statement touches did not download within its wait. (`read.cache.miss-wait`)
     #[error("ReadPartUnavailable: {0}")]
     ReadPartUnavailable(String),
