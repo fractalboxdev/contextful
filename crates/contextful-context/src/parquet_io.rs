@@ -261,7 +261,7 @@ impl StreamWriter {
 
 /// The record batches of a store part, decoded one at a time as the iterator advances;
 /// `columns`, when given, projects the top-level columns of those names the file carries.
-pub fn batches_with_key(
+pub(crate) fn batches_with_key(
     path: &Path,
     key: Option<&[u8]>,
     columns: Option<&[String]>,
