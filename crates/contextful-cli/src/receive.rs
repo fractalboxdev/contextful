@@ -403,9 +403,20 @@ impl Receiver {
                 if first[i] != i || failed[i].is_some() || !m.tables.contains_key(t.name()) {
                     continue;
                 }
-                match w.engine.receive_landed(&spec.id, &table, &m.key)? {
-                    Ok(row) => tables[i].push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows })),
-                    Err(next) => pending.push((i, next)),
+                let next = match w.engine.receive_landed(&spec.id, &table, &m.key)? {
+                    Ok(row) => {
+                        tables[i].push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows }));
+                        continue;
+                    }
+                    Err(next) => next,
+                };
+                // The key's own attempts and those of the group its scope names, which a dead
+                // leader may have committed (`run.land.receive-torn`).
+                let mut digests = vec![receive_digest(&spec.id, &m.key)];
+                digests.extend(w.engine.receive_group(&spec.id, &table, &m.key)?);
+                match self.torn(w, &dest.store, &table, &digests)? {
+                    Some(row) => tables[i].push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows })),
+                    None => pending.push((i, next)),
                 }
             }
             let (key, next, grouped) = match pending.as_slice() {
@@ -413,7 +424,11 @@ impl Receiver {
                 [(i, next)] => (members[*i].key.clone(), next.clone(), false),
                 _ => {
                     let group = group_key(pending.iter().map(|(i, _)| members[*i].key.as_str()));
-                    match w.engine.receive_attempt(&format!("{}.{table}", self.base(&group)))? {
+                    let landed = match w.engine.receive_attempt(&format!("{}.{table}", self.base(&group)))? {
+                        Ok(row) => Ok(row),
+                        Err(next) => self.torn(w, &dest.store, &table, &[receive_digest(&spec.id, &group)])?.ok_or(next),
+                    };
+                    match landed {
                         Ok(row) => {
                             for (i, _) in &pending {
                                 tables[*i].push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows }));
@@ -424,13 +439,6 @@ impl Receiver {
                     }
                 }
             };
-            let delivered = pending.iter().map(|(i, _)| members[*i].tables[t.name()].len() as u64).sum();
-            if let Some(row) = self.torn(w, &dest.store, &table, &key, &next, delivered)? {
-                for (i, _) in &pending {
-                    tables[*i].push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows }));
-                }
-                continue;
-            }
             let mut land = |run_id: String, key: &str, keys: Option<Vec<String>>, rows: Vec<contextful_core::run::ports::Row>| -> Landing {
                 let landing = self.land_table(w, &mut dest, t.name(), &table, &artifact, &run_id, key, keys, rows);
                 opened |= landing.opened;
@@ -488,20 +496,29 @@ impl Receiver {
             .collect()))
     }
 
-    /// Settle a torn attempt before attempt `next` of batch or group `key` lands `table`
-    /// (`run.land.receive-torn`): an earlier attempt whose commit the store holds although its
-    /// run row never closed closes as committed, carrying the `delivered` rows, and replays.
-    fn torn(&self, w: &Wired, store: &Store, table: &str, key: &str, next: &str, delivered: u64) -> Result<Option<RunRow>> {
-        let stem = format!("{}.{table}", self.base(key));
-        if next == stem || store.try_schema(table)?.is_none() {
+    /// The attempt, under any of the receive scopes `digests` name over `table`, that committed:
+    /// one already closed `Success`, or one whose commit the store holds although its run row
+    /// never closed, which closes committed with the rows its commit holds and retires its
+    /// owner (`run.land.receive-torn`). Only an attempt whose row did not close reads the store.
+    fn torn(&self, w: &Wired, store: &Store, table: &str, digests: &[String]) -> Result<Option<RunRow>> {
+        if store.try_schema(table)?.is_none() {
             return Ok(None);
         }
-        let attempt = |run_id: &str| run_id == stem || run_id.strip_prefix(stem.as_str()).and_then(|n| n.strip_prefix('.')).is_some_and(|n| n.parse::<u32>().is_ok());
-        let Some(committed) = store.committed_runs(table)?.into_iter().find(|m| attempt(&m.run_id)) else {
-            return Ok(None);
-        };
-        note(&format!("{}: attempt `{}` committed before its leader died; it replays", self.spec.id, committed.run_id));
-        Ok(Some(w.engine.receive_settle(&self.spec.id, table, key, &committed.run_id, delivered)?))
+        for digest in digests {
+            let stem = format!("receive-{digest}.{table}");
+            for n in 1u32.. {
+                let id = if n == 1 { stem.clone() } else { format!("{stem}.{n}") };
+                let Some(row) = w.engine.catalog.run(&id)? else { break };
+                if row.status == RunStatus::Success {
+                    return Ok(Some(row));
+                }
+                if let Some(rows) = store.committed_rows(table, &id)? {
+                    note(&format!("{}: attempt `{id}` committed before its leader closed it; it replays", self.spec.id));
+                    return Ok(Some(w.engine.receive_settle(&self.spec.id, table, digest, &id, rows)?));
+                }
+            }
+        }
+        Ok(None)
     }
 
     /// Land `rows` of table `name` as run `run_id` under batch `key`: alone, or for the

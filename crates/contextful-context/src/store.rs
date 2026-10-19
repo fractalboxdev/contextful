@@ -629,56 +629,85 @@ impl Store {
         let mut out = Vec::new();
         let mut held: Option<i64> = None;
         // One read of each (pipeline, node) commit log per call.
-        let mut logs: std::collections::HashMap<(String, String), Vec<commit_log::CommitEntry>> = std::collections::HashMap::new();
+        let mut logs = CommitLogs::new();
         for run_dir in sorted_dirs(&runs_dir)? {
             for node_dir in sorted_dirs(&run_dir)? {
-                let path = node_dir.join(MANIFEST_FILE);
-                let Some(bytes) = self.metadata().read_optional(&path)? else { continue };
-                let unreadable =
-                    |why: String| StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {why}", path.display()));
-                if let Some(v) = FormatVersion::declared(&bytes) {
-                    v.admit(&format!("table `{table}`: file `{}`", path.display()))?;
-                }
-                let m: RunManifest = serde_json::from_slice(&bytes).map_err(|e| unreadable(e.to_string()))?;
-                let (run_seg, node_seg) = (file_name(&run_dir), file_name(&node_dir));
-                if m.run_id != run_seg || m.node_id != node_seg || m.table != table {
-                    return Err(unreadable(format!(
-                        "names run `{}` on node `{}` of table `{}`, but sits at `{run_seg}/{node_seg}`",
-                        m.run_id, m.node_id, m.table
-                    ))
-                    .into());
-                }
-                if let Some(root) = &m.group_root {
-                    let marker = self.table_dir(root)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&m.run_id).join(&m.node_id).join("_group.json");
-                    let bytes = match fs::read(&marker) {
-                        Ok(bytes) => bytes,
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                            if let Some(seq) = m.commit_seq {
-                                held = Some(held.map_or(seq, |h| h.min(seq)));
-                            }
-                            continue;
-                        }
-                        Err(e) => return Err(ContextError::Io { path: marker, source: e }),
-                    };
-                    let tables: Vec<String> = serde_json::from_slice(&bytes).map_err(|e| unreadable(format!("group marker: {e}")))?;
-                    if !tables.iter().any(|name| name == table) { continue; }
-                }
-                // A run written under the commit-log protocol is readable once its node's log
-                // records it under its fence; a manifest without the mark reads as committed.
-                if let (true, Some(fence), Some(pipeline)) = (m.logged, m.fence, m.pipeline_id.as_deref()) {
-                    let key = (pipeline.to_string(), m.node_id.clone());
-                    if !logs.contains_key(&key) {
-                        let log = crate::commit_log::read(self, pipeline, &m.node_id)?;
-                        logs.insert(key.clone(), log);
-                    }
-                    if !commit_log::committed(&logs[&key], table, &m.run_id, fence) {
-                        continue;
-                    }
-                }
-                out.push(m);
+                out.extend(self.committed_at(table, &run_dir, &node_dir, &mut logs, &mut held)?);
             }
         }
         Ok((out, held))
+    }
+
+    /// The rows run `run_id` of `table` committed, read from its own `data/runs/<run_id>/`
+    /// directory and its parts' footers alone; `None` while no node's manifest there reads as
+    /// committed under the rules of [`Store::committed_runs`].
+    pub fn committed_rows(&self, table: &str, run_id: &str) -> Result<Option<u64>> {
+        if run_id.is_empty() || run_id.contains(['/', '\\']) || run_id == "." || run_id == ".." {
+            return Err(ContextError::Invalid(format!("run id `{run_id}` names no run directory")));
+        }
+        let run_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR).join(run_id);
+        let (mut logs, mut held) = (CommitLogs::new(), None);
+        let mut rows: Option<u64> = None;
+        for node_dir in sorted_dirs(&run_dir)? {
+            let Some(m) = self.committed_at(table, &run_dir, &node_dir, &mut logs, &mut held)? else { continue };
+            let mut total = rows.unwrap_or(0);
+            for part in &m.parts {
+                let path = self.logical_path(&format!("tables/{table}/{}/{}/{}/{}", contextful_core::store::lay_out::RUNS_DIR, m.run_id, m.node_id, part.name))?;
+                total = total.saturating_add(self.parquet_row_count(&path)?);
+            }
+            rows = Some(total);
+        }
+        Ok(rows)
+    }
+
+    /// The manifest of `<run_dir>/<node_dir>` when it reads as committed: grouped manifests
+    /// still awaiting their group marker lower `held` to their `commit_seq`.
+    fn committed_at(&self, table: &str, run_dir: &Path, node_dir: &Path, logs: &mut CommitLogs, held: &mut Option<i64>) -> Result<Option<RunManifest>> {
+        let path = node_dir.join(MANIFEST_FILE);
+        let Some(bytes) = self.metadata().read_optional(&path)? else { return Ok(None) };
+        let unreadable = |why: String| StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {why}", path.display()));
+        if let Some(v) = FormatVersion::declared(&bytes) {
+            v.admit(&format!("table `{table}`: file `{}`", path.display()))?;
+        }
+        let m: RunManifest = serde_json::from_slice(&bytes).map_err(|e| unreadable(e.to_string()))?;
+        let (run_seg, node_seg) = (file_name(run_dir), file_name(node_dir));
+        if m.run_id != run_seg || m.node_id != node_seg || m.table != table {
+            return Err(unreadable(format!(
+                "names run `{}` on node `{}` of table `{}`, but sits at `{run_seg}/{node_seg}`",
+                m.run_id, m.node_id, m.table
+            ))
+            .into());
+        }
+        if let Some(root) = &m.group_root {
+            let marker = self.table_dir(root)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&m.run_id).join(&m.node_id).join("_group.json");
+            let bytes = match fs::read(&marker) {
+                Ok(bytes) => bytes,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    if let Some(seq) = m.commit_seq {
+                        *held = Some(held.map_or(seq, |h| h.min(seq)));
+                    }
+                    return Ok(None);
+                }
+                Err(e) => return Err(ContextError::Io { path: marker, source: e }),
+            };
+            let tables: Vec<String> = serde_json::from_slice(&bytes).map_err(|e| unreadable(format!("group marker: {e}")))?;
+            if !tables.iter().any(|name| name == table) {
+                return Ok(None);
+            }
+        }
+        // A run written under the commit-log protocol is readable once its node's log
+        // records it under its fence; a manifest without the mark reads as committed.
+        if let (true, Some(fence), Some(pipeline)) = (m.logged, m.fence, m.pipeline_id.as_deref()) {
+            let key = (pipeline.to_string(), m.node_id.clone());
+            if !logs.contains_key(&key) {
+                let log = crate::commit_log::read(self, pipeline, &m.node_id)?;
+                logs.insert(key.clone(), log);
+            }
+            if !commit_log::committed(&logs[&key], table, &m.run_id, fence) {
+                return Ok(None);
+            }
+        }
+        Ok(Some(m))
     }
 
     /// The pointer and the ETag of its bytes, or `None` before the first fold.
@@ -942,6 +971,9 @@ pub(crate) fn etag(bytes: &[u8]) -> String {
 pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
+
+/// The commit logs one listing has read, per (pipeline, node).
+type CommitLogs = std::collections::HashMap<(String, String), Vec<commit_log::CommitEntry>>;
 
 fn file_name(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()

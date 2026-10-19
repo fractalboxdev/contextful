@@ -356,12 +356,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         }
     }
 
-    /// Close attempt `run_id` of batch or group `key`'s `table`, whose commit the store holds
-    /// while its run row never closed: the scope's pending owner that produced it retires with
-    /// its journal, and the row closes `Success` carrying `rows`, so the attempt replays and no
-    /// later attempt lands its rows again (`run.land.receive-torn`).
-    pub fn receive_settle(&self, pipeline_id: &str, table: &str, key: &str, run_id: &str, rows: u64) -> Result<RunRow, Failure> {
-        let scope = OwnerScope::receive(pipeline_id, table, key);
+    /// Close attempt `run_id` of the receive scope `digest` names over `table` — a batch key's or
+    /// a group's — whose commit the store holds with `rows` while its run row never closed:
+    /// the scope's pending owner that produced it retires with its journal, and the row closes
+    /// `Success` carrying `rows`, so the attempt replays and no later attempt lands its rows
+    /// again (`run.land.receive-torn`).
+    pub fn receive_settle(&self, pipeline_id: &str, table: &str, digest: &str, run_id: &str, rows: u64) -> Result<RunRow, Failure> {
+        let scope = OwnerScope::table(pipeline_id, &format!("{table}{}{digest}", contextful_core::run::own::RECEIVE_INFIX));
         if let Some(owner) = self.catalog.owner_at(&scope)?.filter(|o| o.produced(run_id)) {
             self.catalog.retire_at(&scope, &owner.execution_id, None, None)?;
             self.journal.collect(&owner.execution_id)?;

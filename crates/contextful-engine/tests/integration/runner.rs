@@ -1515,7 +1515,6 @@ fn a_receive_batch_key_resumes_its_own_owner_and_no_other_keys() {
 
 /// A receive attempt whose process dies after its commit lands leaves its run row open and its owner pending; settled,
 /// the row closes committed, the owner retires, and a lookup under the key replays the attempt instead of landing again.
-// spec: run.land.receive-torn@2763a514
 #[test]
 fn a_receive_attempt_torn_after_its_commit_settles_and_replays() {
     use contextful_core::run::own::OwnerScope;
@@ -1539,7 +1538,7 @@ fn a_receive_attempt_torn_after_its_commit_settles_and_replays() {
     assert_eq!(sink.commits.len(), 1, "the commit landed before the process died");
     assert!(rig.engine.receive_landed("feed", "filings", "k1").unwrap().is_err(), "the torn attempt's row never closed");
 
-    let row = rig.engine.receive_settle("feed", "filings", "k1", &attempt, 4).unwrap();
+    let row = rig.engine.receive_settle("feed", "filings", &contextful_core::run::own::receive_digest("feed", "k1"), &attempt, 4).unwrap();
     assert_eq!((row.status, row.rows), (RunStatus::Success, 4));
     assert!(rig.catalog().owner_at(&OwnerScope::receive("feed", "filings", "k1")).unwrap().is_none(), "the settled attempt's owner retires");
     assert_eq!(rig.engine.receive_landed("feed", "filings", "k1").unwrap().map(|r| r.run_id), Ok(attempt), "a lookup under the key replays the settled attempt");

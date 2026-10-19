@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 53 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 600 | 128 | 49 | 18 | 560 | 0 | 558 |
+| `run` | 3 | 29 | 600 | 128 | 49 | 19 | 560 | 0 | 560 |
 | `store` | 3 | 19 | 321 | 65 | 19 | 11 | 310 | 0 | 310 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2768 | 682 | 222 | 79 | 2474 | 0 | |
+| **total** | 22 | 169 | 2768 | 682 | 222 | 80 | 2474 | 0 | |
 
 Decision records: 18.
 
@@ -1722,7 +1722,7 @@ Unscheduled operations: 13.
 | `run.land.receive-resume` | `crates/contextful-cli/tests/integration/receive.rs::a_resend_after_the_receiver_dies_lands_what_the_uninterrupted_run_lands` | performed |
 | `run.land.receive-retry-after` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
 | `run.land.receive-spool` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_spooled_by_a_dead_receiver_lands_in_the_next_group` | performed |
-| `run.land.receive-torn` | `crates/contextful-engine/tests/integration/runner.rs::a_receive_attempt_torn_after_its_commit_settles_and_replays` | performed |
+| `run.land.receive-torn` | `crates/contextful-cli/tests/integration/receive.rs::a_member_resent_after_its_group_tore_replays_the_group` | performed |
 | `run.land.receive-wait` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_no_group_claims_within_the_wait_withdraws_and_answers_retryable` | performed |
 | `run.land.receive-write-not-granted` | `crates/contextful-cli/tests/integration/receive.rs::a_token_without_write_on_one_table_is_refused_before_the_body_is_read` | performed |
 | `run.land.session` | `crates/contextful-context/tests/integration/session.rs::a_session_commits_each_micro_batch_as_its_own_run` | performed |
