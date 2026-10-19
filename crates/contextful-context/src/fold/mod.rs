@@ -201,6 +201,16 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     if unfolded.is_empty() && decl.retain_rows.is_none() && !rebuild {
         return Ok(Prepared::NothingLanded);
     }
+    // A lazy store brings every part the pass may read home first, within its cache (`store.fold.cached-inputs`).
+    let _inputs = match store.fetches_parts() {
+        true => {
+            let mut files: BTreeSet<String> = state.resolve(None)?.files().into_iter().collect();
+            files.extend(state.chain.first().map(|s| s.part_files()).unwrap_or_default());
+            files.extend(unfolded_runs.iter().flat_map(|r| r.parts.iter().map(|p| format!("data/runs/{}/{}/{}", r.run_id, r.node_id, p.name))));
+            store.hold_inputs(&files.into_iter().map(|f| format!("tables/{table}/{f}")).collect::<Vec<_>>())?
+        }
+        false => None,
+    };
     let cutoff = decl.retain_rows_secs().map_err(|e| ContextError::Invalid(e.to_string()))?.map(|age| now.minus_secs(age));
     if carries_by_reference(decl) {
         let staged = carry::stage(carry::Input {

@@ -70,6 +70,9 @@ pub struct TableSource {
     /// The published build `base` reads, where it reads one build and nothing beside it
     /// (`read.resolve-pin.resolved-echo`).
     pub resolved: Option<Resolved>,
+    /// The fetched parts `files` names, kept on disk while the session holding this source
+    /// lives (`store.pull.part-cache`); none where the store holds every part.
+    pub hold: Option<contextful_core::store::object::PartHold>,
 }
 
 /// The relation one granted table registers as, bound to the table's bare name

@@ -94,6 +94,10 @@ impl Face {
             let resolved = state.resolve(None).map_err(ContextError::from)?;
             paths.extend(resolved.files().iter().map(|f| dir.join(f)));
         }
+        // A lazy store maps the parts on disk; each other one arrives when a read first needs it (`store.pull.lazy-parts`).
+        if self.store.fetches_parts() {
+            paths.retain(|p| p.exists());
+        }
         paths.sort();
         Ok(paths)
     }

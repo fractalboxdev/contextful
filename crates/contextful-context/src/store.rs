@@ -136,6 +136,20 @@ impl Store {
         self
     }
 
+    /// [`Store::hold_parts`] for a fold's inputs, refused when they exceed the part cache
+    /// (`store.fold.cached-inputs`).
+    pub fn hold_inputs(&self, files: &[String]) -> Result<Option<PartHold>> {
+        match &self.part_source {
+            Some(source) => Ok(Some(source.hold_inputs(files)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Whether reads fetch each absent part through a part source (`store.pull.lazy-parts`).
+    pub fn fetches_parts(&self) -> bool {
+        self.part_source.is_some()
+    }
+
     /// Bring each of `files`, relative to the root, home and hold it while the hold lives; no
     /// hold where the store fetches no part.
     pub fn hold_parts(&self, files: &[String]) -> Result<Option<PartHold>> {

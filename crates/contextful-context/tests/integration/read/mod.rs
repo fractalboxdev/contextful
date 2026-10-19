@@ -13,6 +13,7 @@ mod guard;
 mod horizon;
 mod hydrate;
 mod latency;
+mod lazy;
 mod nested;
 mod native_rows;
 mod pin;

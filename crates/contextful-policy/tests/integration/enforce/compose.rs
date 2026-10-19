@@ -22,6 +22,7 @@ fn source(name: &str) -> TableSource {
         landed: true,
         ledger: Vec::new(),
         resolved: None,
+        hold: None,
     }
 }
 
@@ -45,6 +46,20 @@ fn a_session_holds_at_most_1024_relations() {
 
     let over = Session::open(&authority, &Request::default(), tables(1025), &pepper);
     assert!(matches!(over, Err(PolicyError::Malformed(ref m)) if m.0.contains("1024")), "{over:?}");
+}
+
+/// A session keeps each granted source's part hold alive until it drops.
+#[test]
+fn a_session_keeps_its_sources_part_holds_until_it_drops() {
+    use contextful_core::store::object::PartHold;
+    let signer = issuer();
+    let authority = authority_holding(&signer, grant(&[Action::Read], &["research/*"]));
+    let marker = std::sync::Arc::new(());
+    let held = TableSource { hold: Some(PartHold(marker.clone())), ..source("research/notes") };
+    let session = Session::open(&authority, &Request::default(), vec![held], &Pepper::resolve(|_| None)).unwrap();
+    assert_eq!(std::sync::Arc::strong_count(&marker), 2, "the open session holds the parts");
+    drop(session);
+    assert_eq!(std::sync::Arc::strong_count(&marker), 1, "the hold drops with the session");
 }
 
 /// A template's session registers the tables its statement names when a grant authorizes
