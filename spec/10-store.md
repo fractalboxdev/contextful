@@ -16,7 +16,6 @@ owns:
   - probe
   - merge
   - lease
-  - replicate
 ---
 
 # The store and its sync
@@ -478,9 +477,11 @@ Opening a store's bucket: the endpoint schemes, the transport, request addressin
 - `conditional-answers` — A `412` or `409`, or a `404` naming `NoSuchKey` to an `If-Match` put, answers a failed condition; a `501` answers an unsupported method and a `403` a forbidden credential, both read by {{store.probe.inconclusive}}.
 - `missing-bucket` — A `404` naming any code but `NoSuchKey`, `NoSuchBucket` among them, answers no absent object and no failed condition: the get, put, delete or list fails as transport, naming the code.
   *because a mistyped or deleted bucket otherwise reads as an empty bucket, a free lease or a lost compare-and-set*
-- `transport` — An S3 get, head, list page or unconditional put left without a whole answer resends within 3 attempts, each connecting within 5 s and answered within 10 s; a conditional put goes once.
-  *because a resent conditional put whose lost answer applied reads its own write back as a failed condition*
-- `unavailable` — A request left unanswered within {{store.endpoint.transport}}, or answered with a `5xx` status, fails as unavailable, naming the request, and says nothing of what the bucket holds.
+- `transport` — An S3 get, head, list page, delete or unconditional put left without a whole answer resends within 3 attempts, each connecting within 5 s and answered within 2 s, then 4 s, then 10 s; a conditional put goes once.
+  *because a resent conditional put whose lost answer applied reads its own write back as a failed condition, and a stalled small request otherwise holds a pull for 10 s*
+- `throttled` — A `429` or `503` answer to any S3 request, or a `500` to any but a conditional put, resends within 5 attempts, each after a uniform draw below a ceiling doubling from 100 ms to 5 s.
+  *because a throttled request never applied, a conditional put answered `500` may have, and jitter spreads clients throttled together*
+- `unavailable` — A request left unanswered within {{store.endpoint.transport}}, or answered `429` or `5xx` past {{store.endpoint.throttled}}, fails as unavailable, naming the request, and says nothing of what the bucket holds.
 - `list-pages` — A list follows each continuation token until the backend reports the listing complete, and returns every key under the prefix sorted.
 
 unsettled: Does an S3 bucket whose `[sync]` binds no key sign with the instance or container role's credentials? owner: store affects: store.endpoint
@@ -602,7 +603,7 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *P4*
 - `unconverged-resume` — A pull refused by {{store.pull.unconverged}} keeps each object it verified, so the next `sync pull` downloads only the keys still differing; no pull retries past its attempts.
   *A-store*
-- `transfer-width` — A pull keeps up to 16 requests in flight while it downloads objects, and writes each object it verified before any refusal returns.
+- `transfer-width` — A pull keeps up to `[sync] transfers` requests in flight while it downloads objects, default 16 requests and never below 1, and writes each object it verified before any refusal returns.
   *because one request per round trip makes a cold store's boot grow with its object count rather than its bytes*
 - `digest-record` — A pull and a push take a local file's sha256 from the machine-local digest record when the file's size, modification time, change time and inode match the record's, and hash the file otherwise.
   *because rehashing every held file on each pull and push grows with the store, and setting a modification time moves the change time*
@@ -742,21 +743,6 @@ stateDiagram-v2
     Held --> Expired: no renewal within the grant
 ```
 
-## replicate
-
-A consuming replica of the bucket: the refresh diff, what it holds whole, what it declines, and what it rebuilds.
-
-- `write-refused` — A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store.
-  *A-store*
-- `partial-parquet` — A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished.
-  *A-store*
-- `descriptor` — A replica's pull writes `replica.json` beside `derived.sqlite`, naming per table each snapshot it holds with that snapshot's parts and sidecar paths present on disk; no push carries it.
-  *A-store*
-- `missing-index` — A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.
-  *A-store*
-- `sensitive-refused` — A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face.
-  *A-store*
-
 ## Shapes
 
 Each example names the `contextful_core::store` type it serializes, and reads into that
@@ -883,6 +869,7 @@ secret_access_key = "secret://sync-secret-access-key"
 prefix_from       = "env:CONTEXTFUL_SYNC_PREFIX"
 coordination      = "cas"
 push_retries      = 5
+transfers         = 16
 push_wait_secs    = 300
 pull_before_run   = true
 push_after_run    = true

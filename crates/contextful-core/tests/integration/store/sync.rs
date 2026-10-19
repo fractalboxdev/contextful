@@ -381,6 +381,15 @@ fn push_after_run_is_an_optional_sync_key() {
     assert_eq!(undeclared.push_after_run, None);
 }
 
+/// `transfers` sets a sync's transfer width: 16 when absent, and never below 1.
+#[test]
+fn transfers_sets_the_transfer_width_from_one() {
+    let parse = |extra: &str| toml::from_str::<SyncConfig>(&format!("endpoint = \"file:///tmp/b\"\nbucket = \"b\"\n{extra}")).unwrap();
+    assert_eq!(parse("").transfers(), 16);
+    assert_eq!(parse("transfers = 4\n").transfers(), 4);
+    assert_eq!(parse("transfers = 0\n").transfers(), 1);
+}
+
 /// A manifest carries its commit stamp through a round trip, and one predecessing the stamp reads none.
 #[test]
 fn a_manifest_carries_its_commit_stamp_and_a_legacy_one_reads_none() {

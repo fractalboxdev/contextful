@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 53 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 600 | 128 | 49 | 19 | 562 | 0 | 562 |
-| `store` | 3 | 19 | 322 | 65 | 19 | 11 | 311 | 0 | 311 |
+| `store` | 4 | 19 | 323 | 65 | 20 | 11 | 312 | 0 | 312 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 22 | 169 | 2772 | 683 | 222 | 80 | 2481 | 0 | |
+| **total** | 23 | 169 | 2773 | 683 | 223 | 80 | 2482 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
 | 4 — Ingest | 25 | 633 | 529 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
-| 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
+| 6 — Sync and replicas | 8 | 99 | 98 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -2068,6 +2068,7 @@ Unscheduled operations: 13.
 | `store.endpoint.missing-bucket` | `crates/contextful-sync/tests/integration/s3.rs::a_missing_bucket_answers_no_absent_object` | performed |
 | `store.endpoint.plaintext` | `crates/contextful-core/tests/integration/store/sync.rs::plaintext_http_opens_on_loopback_alone` | performed |
 | `store.endpoint.schemes` | `crates/contextful-core/tests/integration/store/sync.rs::each_endpoint_scheme_resolves_its_adapter_address` | performed |
+| `store.endpoint.throttled` | `crates/contextful-sync/tests/integration/s3.rs::a_throttled_answer_resends_after_backoff_and_a_failed_conditional_put_goes_once` | performed |
 | `store.endpoint.transport` | `spec/pins.toml` | performed |
 | `store.endpoint.unsupported-scheme` | `crates/contextful-core/tests/integration/store/sync.rs::an_endpoint_no_adapter_answers_is_refused_by_name` | performed |
 | `store.fold.bounded-memory` | `tools/probe/tests/integration/main.rs::a_fold_peak_heap_probe_records_the_growth_across_held_sizes` | performed |

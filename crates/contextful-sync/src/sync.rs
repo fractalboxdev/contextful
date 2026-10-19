@@ -909,7 +909,7 @@ impl Syncer {
     /// Every table pointer of this project the bucket holds, keyed under the project.
     fn project_pointers(&self) -> Result<BTreeMap<String, BucketPointer>> {
         let keys: Vec<String> = self.bucket.list(&self.key(&format!("{}/tables/", self.project))?)?.into_iter().filter(|k| is_pointer(k)).collect();
-        let read = each(&keys, |bucket_key| {
+        let read = each(self.config.transfers(), &keys, |bucket_key| {
             let rel_key = bucket_key.strip_prefix(&format!("{}/", self.prefix)).unwrap_or(bucket_key).to_string();
             let Some((bytes, _)) = self.bucket.get(bucket_key)? else { return Ok(None) };
             let clear = self.store.open_metadata_bytes(Path::new(bucket_key), &bytes)?;
@@ -990,7 +990,7 @@ impl Syncer {
             })
             .collect();
         // Uploads run up to the transfer width at once, every one returned before the commit (`store.push.transfer-width`).
-        let uploaded = each(&differing, |(key, entry)| {
+        let uploaded = each(self.config.transfers(), &differing, |(key, entry)| {
             let bytes = plan.read(key)?;
             // The manifest lists the digest of the bytes sent, whatever the plan read (`store.push.upload-digest`).
             let sent = sha256_hex(&bytes);
@@ -1019,7 +1019,7 @@ impl Syncer {
             record.save();
         }
         let shared: Vec<&String> = plan.shared.keys().collect();
-        let merged = each(&shared, |key| self.put_merged(key, &plan.read(key)?))?;
+        let merged = each(self.config.transfers(), &shared, |key| self.put_merged(key, &plan.read(key)?))?;
         report.uploaded.extend(shared.iter().zip(merged).filter(|(_, up)| *up).map(|(key, _)| (*key).clone()));
         // An object a concurrent writer uploaded for a withheld table refuses before the commit (`authority.bound-redistribution.two-checks`).
         self.check_left_behind()?;
@@ -1447,7 +1447,7 @@ impl Syncer {
             let wanted: Vec<(&String, &Entry)> = manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k))).collect();
             // Each differing object downloads on its own request, up to the transfer width at once (`store.pull.transfer-width`).
             let (read, hashed) = (AtomicU64::new(0), AtomicU64::new(0));
-            let fetched = each(&wanted, |(key, entry)| {
+            let fetched = each(self.config.transfers(), &wanted, |(key, entry)| {
                 let Some(path) = self.local_path(key) else { return Ok(Fetched::Kept) };
                 let rel = &key[self.project.len() + 1..];
                 let local = record.digest(rel, &path).ok().flatten().map(|d| {
