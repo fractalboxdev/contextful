@@ -103,6 +103,10 @@ enum Cmd {
         /// Print only the parts the change against `--base` reaches (`assurance.gate.affected-parts`).
         #[arg(long, requires = "base")]
         affected: bool,
+        /// The tier whose parts to print: `pr`, the required pull-request checks, or
+        /// `nightly`, the features, formal and budget parts.
+        #[arg(long, requires = "parts", default_value = "pr", value_parser = ["pr", "nightly"])]
+        tier: String,
         /// Print the selected stage names as a JSON array for a workflow matrix.
         #[arg(long)]
         json: bool,
@@ -302,10 +306,10 @@ fn refuse(code: &'static str, message: String) -> anyhow::Error {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.cmd {
-        Cmd::Stages { parts, base, affected, json } => {
+        Cmd::Stages { parts, base, affected, tier, json } => {
             let listed = if parts {
                 repo_root().and_then(|root| {
-                    let required = dispatched(&root, base.as_deref())?;
+                    let required: Vec<String> = dispatched(&root, base.as_deref())?.into_iter().filter(|p| stage::in_tier(p, &tier)).collect();
                     match base.as_deref() {
                         Some(base) if affected => affected::select(&root, base, required),
                         _ => Ok(required),

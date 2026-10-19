@@ -53,41 +53,53 @@ fn native_transport_refuses_broad_triggers_credentials_and_unbound_runners() {
 
 
 
+fn listed(args: &[&str]) -> Vec<String> {
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(args).current_dir(repo_root()).output().unwrap();
+    assert!(out.status.success(), "{args:?}: {}", crate::stderr(&out));
+    String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect()
+}
+
+fn nightly(part: &str) -> bool {
+    ["features", "formal", "budget"].iter().any(|stage| part == *stage || part.strip_prefix(stage).is_some_and(|rest| rest.starts_with('.')))
+}
+
 #[test]
 fn every_gate_stage_has_a_dispatchable_part() {
-    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
-        .args(["stages", "--parts"])
-        .current_dir(repo_root())
-        .output()
-        .unwrap();
-    assert!(out.status.success());
-    let parts: Vec<String> = String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(str::to_string)
-        .collect();
-    assert_eq!(
-        parts.len(),
-        46,
-        "the remote gate expects one check per part: {parts:?}"
-    );
-    assert!(parts.iter().any(|part| part == "workspace.cli-1"), "the CLI suite has no separate remote check: {parts:?}");
-    let whole = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
-        .arg("stages")
-        .output()
-        .unwrap();
-    assert!(whole.status.success());
-    for stage in String::from_utf8_lossy(&whole.stdout).lines() {
-        let covered = parts.iter().any(|part| {
-            part == stage
-                || part
-                    .strip_prefix(stage)
-                    .is_some_and(|suffix| suffix.starts_with('.'))
-        });
-        assert!(
-            covered,
-            "stage `{stage}` has no dispatchable part: {parts:?}"
-        );
+    let required = listed(&["stages", "--parts"]);
+    assert_eq!(required.len(), 24, "the remote gate expects one required check per part: {required:?}");
+    assert!(required.iter().any(|part| part == "workspace.cli-1"), "the CLI suite has no separate remote check: {required:?}");
+    let mut parts = required.clone();
+    parts.extend(listed(&["stages", "--parts", "--tier", "nightly"]));
+    for stage in listed(&["stages"]) {
+        let covered = parts.iter().any(|part| part == &stage || part.strip_prefix(stage.as_str()).is_some_and(|suffix| suffix.starts_with('.')));
+        assert!(covered, "stage `{stage}` has no dispatchable part: {parts:?}");
     }
+}
+
+/// `contextful-ci stages --parts --tier nightly` prints the features, formal and budget parts in run order; `stages --parts` prints the remaining parts, the required pull-request checks, and `gate --stage` runs a part of either tier.
+// spec: assurance.gate.nightly-tier@be8be372
+#[test]
+fn the_nightly_tier_holds_the_features_formal_and_budget_parts() {
+    let required = listed(&["stages", "--parts"]);
+    assert_eq!(required, listed(&["stages", "--parts", "--tier", "pr"]));
+    assert!(!required.is_empty() && !required.iter().any(|p| nightly(p)), "a nightly part is a required check: {required:?}");
+    let tier = listed(&["stages", "--parts", "--tier", "nightly"]);
+    assert_eq!(tier.len(), 22, "{tier:?}");
+    assert!(tier.iter().all(|p| nightly(p)), "a required part runs nightly: {tier:?}");
+    assert!(tier.first().is_some_and(|p| p.starts_with("features.")), "{tier:?}");
+    let formal = tier.iter().position(|p| p == "formal").unwrap_or_else(|| panic!("no formal part: {tier:?}"));
+    assert!(tier[..formal].iter().all(|p| p.starts_with("features.")) && tier[formal + 1..].iter().all(|p| p.starts_with("budget.")), "{tier:?}");
+
+    let bogus = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(["stages", "--parts", "--tier", "weekly"]).current_dir(repo_root()).output().unwrap();
+    assert!(!bogus.status.success(), "an unknown tier lists parts");
+
+    // A nightly part stays runnable by name: the fixture declares no profile, so the
+    // budget stage reports so and passes.
+    let r = crate::Repo::init();
+    r.lock();
+    r.commit("lock");
+    let o = r.gate(&["--stage", "budget"]);
+    assert!(o.status.success(), "{}", crate::stderr(&o));
 }
 
 /// The remote gate's required checks are exactly the parts `contextful-ci stages --parts`

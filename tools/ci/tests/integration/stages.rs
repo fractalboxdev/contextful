@@ -77,8 +77,8 @@ fn ran(o: &Output) -> Vec<String> {
     stderr(o).lines().filter_map(|l| l.strip_prefix("--- stage ")).map(str::to_string).collect()
 }
 
-/// The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
-// spec: assurance.gate.stage-sequence@cb4bfe5a
+/// The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name; a run naming none runs both tiers.
+// spec: assurance.gate.stage-sequence@3b5b2815
 #[test]
 fn the_gate_defines_the_thirteen_stages_in_run_order_and_runs_a_named_subset() {
     let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
@@ -403,8 +403,8 @@ fn formal_repo(bin: &Bin) -> Repo {
     r
 }
 
-/// The formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.
-// spec: assurance.gate.formal-stage@d308b6b6
+/// The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.
+// spec: assurance.gate.formal-stage@c12572d1
 #[test]
 fn the_formal_stage_runs_the_audit_the_differential_and_the_protocol_check() {
     let bin = Bin::new();

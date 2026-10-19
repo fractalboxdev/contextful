@@ -11,7 +11,7 @@ A gate that skips what it cannot evaluate disables itself silently: a renamed ba
 A check the gate cannot evaluate fails the run, and a gated number is asserted, never logged. A guard proves itself by firing: the state it stands against reds the suite.
 
 - `assurance.test` requires an absence assertion to construct and verify the condition it names first, and refuses an exclusion over an empty collection.
-- `assurance.gate` starts a stage only with 2 GiB free disk, holds build size to 12 GiB, and asserts each profile's compressed size and dynamic dependencies per change; the multi-day residency soak runs on its own cadence.
+- `assurance.gate` starts a stage only with 2 GiB free disk, holds build size to 12 GiB, and asserts each profile's compressed size and dynamic dependencies nightly against the default-branch head; the multi-day residency soak runs on its own cadence.
 - `assurance.baseline` refuses an unresolvable path, an empty sample, a malformed entry and a drifted run stamp, ahead of the suite wherever the check needs no report.
 - `assurance.automate` puts control flow in typed subcommands the gate and a contributor invoke identically; surviving shell passes `shellcheck`.
 - `assurance.gate` checks every TypeScript surface in one stage; a surface declaring no script for a check skips that check, a declared absence rather than an unevaluable input.
@@ -29,4 +29,4 @@ A check the gate cannot evaluate fails the run, and a gated number is asserted, 
 ## Consequences
 
 - Every gate outcome is reproducible locally with the same command.
-- Cheap assertions run per change; expensive ones run on a cadence and name the change range they cover.
+- Cheap assertions run per change; the expensive nightly tier — feature runs, formal checks and profile budgets — runs against the default-branch head, names the change range since its last passing run, and opens an issue on failure.

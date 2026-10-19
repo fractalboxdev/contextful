@@ -89,9 +89,9 @@ Windows ships no release ({{assurance.build.windows-target}},
 ({{assurance.build.checkout-artifacts}}, {{assurance.build.runtime-checkout}}),
 test-first to one comparison ({{assurance.test.comparison-base}},
 {{assurance.test.merge-source}}, {{assurance.test.base-evidence}}), parts to
-timings and owned processes ({{assurance.gate.stage-timings}},
+timings, owned processes and tiers ({{assurance.gate.stage-timings}},
 {{assurance.gate.part-budget}}, {{assurance.gate.build-admission}},
-{{assurance.gate.timeout-cleanup}}).
+{{assurance.gate.timeout-cleanup}}, {{assurance.gate.nightly-tier}}).
 
 One ledger keys each tracked target to its clause ({{assurance.measure.ledger}}): a
 gate-tier count reds the evaluate stage ({{assurance.measure.count-first}}), and timings
@@ -119,10 +119,10 @@ flowchart LR
 
 ## Worked example
 
-A contributor reorders the engine's layers so masking runs before filtering.
+A contributor reorders the engine's layers, masking before filtering.
 
-Its test fails at base, or the test-first stage stops it; the gate
-then reaches the formal stage
+Its test fails at base, or the test-first stage stops it; the nightly
+run reaches the formal stage
 ({{assurance.gate.formal-stage}}).
 
 If the contributor also edits the composition theorem's Lean statement to match, the

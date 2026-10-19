@@ -228,6 +228,25 @@ Decision: `assurance.gate.container` gives each part 45 min. The slowest passing
 
 Consequences: a part non-terminal 60 min after dispatch is stalled. A part nearing 45 min splits under `assurance.gate.part-budget`.
 
+## Feature runs, formal checks and profile budgets run in a nightly tier
+
+**Status:** accepted
+
+Context: the pull-request gate runs about 6 h of wall clock at two parts at a time; the features, formal and budget parts sum to over 2 h of it, each a cold build of its own feature set or release profile. Criteria: a pull-request verdict within 30 min; every check still runs against every merged change; P7 holds.
+
+Decision: `assurance.gate.nightly-tier` moves the features, formal and budget parts out of the required pull-request checks. `assurance.measure.scheduled` runs them against the default-branch head, names the change range since the last passing run, and opens an issue on failure. `contextful-ci gate` with no stage runs both tiers.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A nightly tier for features, formal and budget *(chosen)* | — | A feature-only, proof or footprint regression lands and reds the next nightly run, attributed to a change range rather than one change. |
+| Every part per change | Gate wall clock | Thirteen extra cold builds on every pull request. |
+| Per-change parts selected by changed paths alone | Detectability | A spec or dependency change reaches proofs and footprints no path filter names. |
+| One shared build cache across parts | Operability | A cache bucket and credential become part of the gate, and feature runs still resolve separately. |
+
+Consequences: a contributor runs `contextful-ci gate --stage <part>` for a nightly part before merging a change that touches features, proofs or profiles.
+
+Revisit: pull-request parts share builds, so the nightly parts fit the 30 min verdict.
+
 ## One decision module compiles native and to WebAssembly
 
 **Status:** accepted

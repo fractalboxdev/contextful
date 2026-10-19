@@ -36,31 +36,9 @@
           { "context": "flare-dispatch/check:evaluate.cli" },
           { "context": "flare-dispatch/check:evaluate.ci" },
           { "context": "flare-dispatch/check:evaluate.probe" },
-          { "context": "flare-dispatch/check:features.agent" },
-          { "context": "flare-dispatch/check:features.connectors" },
-          { "context": "flare-dispatch/check:features.context" },
-          { "context": "flare-dispatch/check:features.core" },
-          { "context": "flare-dispatch/check:features.decode" },
-          { "context": "flare-dispatch/check:features.outbound" },
-          { "context": "flare-dispatch/check:features.policy" },
-          { "context": "flare-dispatch/check:features.sqlite" },
-          { "context": "flare-dispatch/check:features.sync" },
-          { "context": "flare-dispatch/check:features.wasm" },
-          { "context": "flare-dispatch/check:features.binary-none" },
-          { "context": "flare-dispatch/check:features.formal-none" },
-          { "context": "flare-dispatch/check:features.binary-all" },
-          { "context": "flare-dispatch/check:features.formal-all" },
-          { "context": "flare-dispatch/check:features.binary-data-plane" },
-          { "context": "flare-dispatch/check:features.formal-data-plane" },
-          { "context": "flare-dispatch/check:features.binary-contextful-edge" },
-          { "context": "flare-dispatch/check:features.formal-contextful-edge" },
           { "context": "flare-dispatch/check:crate-graph" },
           { "context": "flare-dispatch/check:connectors" },
-          { "context": "flare-dispatch/check:surfaces" },
-          { "context": "flare-dispatch/check:formal" },
-          { "context": "flare-dispatch/check:budget.control" },
-          { "context": "flare-dispatch/check:budget.edge" },
-          { "context": "flare-dispatch/check:budget.full" }
+          { "context": "flare-dispatch/check:surfaces" }
         ]
       }
     }
