@@ -310,19 +310,33 @@ impl Receiver {
         self.queue().join("spool")
     }
 
-    /// Lead one group under the held land lock: claim `own` and every batch spooled beside it
-    /// under the same credential, up to `max_queue_depth` members and [`GROUP_BYTES`], an
-    /// orphan's included; land them; answer each other member; answer `own`.
+    /// Lead under the held land lock (`run.land.receive-adopt`): first land the batches a dead
+    /// leader claimed, as its group, then claim `own` and every batch spooled beside it under
+    /// the same credential, up to `max_queue_depth` members and [`GROUP_BYTES`]; land them;
+    /// answer each other member; answer `own`.
     fn lead(&self, w: &Wired, own: &Spooled, author: Option<Author>) -> Result<std::result::Result<Landed, Refusal>> {
         let spool = self.spool();
         collect_stale(&spool);
+        let (orphans, waiting): (Vec<_>, Vec<_>) = Spooled::waiting(&spool, &credential_tag(own.credential.as_deref()))?.into_iter().filter(|(s, _)| s.credential == own.credential).partition(|(_, claimed)| *claimed);
+        let mut orphans: Vec<Spooled> = orphans.into_iter().map(|(s, _)| s).collect();
+        if !orphans.is_empty() {
+            note(&format!("{}: landing {} batches a dead leader claimed", self.spec.id, orphans.len()));
+            // A resend of a claimed key takes the answer its claimed batch lands.
+            if orphans.iter().any(|o| o.key == own.key && o.id != own.id) {
+                own.claim(&spool)?;
+                orphans.push(own.clone());
+            }
+            if let Some(landed) = self.answer(w, &orphans, Some(&own.id), author.clone())? {
+                return Ok(landed);
+            }
+        }
         let mut members = vec![own.clone()];
         let mut bytes = own.bytes;
-        for other in Spooled::waiting(&spool, &credential_tag(own.credential.as_deref()))? {
+        for (other, _) in waiting {
             if members.len() as u64 >= u64::from(self.config.max_queue_depth) {
                 break;
             }
-            if other.id == own.id || other.credential != own.credential || bytes.saturating_add(other.bytes) > GROUP_BYTES {
+            if other.id == own.id || bytes.saturating_add(other.bytes) > GROUP_BYTES {
                 continue;
             }
             bytes += other.bytes;
@@ -330,22 +344,36 @@ impl Receiver {
         }
         members.retain(|m| m.id == own.id || m.claim(&spool).unwrap_or(false));
         own.claim(&spool)?;
-        let landed = self.land_group(w, &members, author);
+        let landed = self.answer(w, &members, Some(&own.id), author)?;
+        landed.context("the leading batch answers in its own group")
+    }
+
+    /// Land claimed `members` as one group, answer each member but `own` through the spool and
+    /// release them all; the answer of `own`, when it is a member.
+    fn answer(&self, w: &Wired, members: &[Spooled], own: Option<&str>, author: Option<Author>) -> Result<Option<std::result::Result<Landed, Refusal>>> {
+        let spool = self.spool();
+        let landed = self.land_group(w, members, author);
         let answers: Vec<Answered> = match &landed {
             Ok(Ok(each)) => each.iter().map(|l| Answered { answer: l.answer.clone(), failed: l.failed.clone(), error: None, held: None }).collect(),
             Ok(Err(refusal)) => members.iter().map(|_| Answered { answer: Value::Null, failed: None, error: None, held: Some(refusal.held()) }).collect(),
             Err(e) => members.iter().map(|_| Answered { answer: Value::Null, failed: None, error: Some(format!("{e:#}")), held: None }).collect(),
         };
         // A member whose answer cannot be written still releases; it lands again as a replay.
-        for (m, answer) in members.iter().zip(&answers).skip(1) {
+        for (m, answer) in members.iter().zip(&answers) {
+            if Some(m.id.as_str()) == own {
+                continue;
+            }
             if let Err(e) = answer.write(&spool, &m.id) {
                 note(&format!("{}: answering batch `{}`: {e:#}", self.spec.id, m.key));
             }
         }
-        for m in &members {
+        for m in members {
             m.release(&spool);
         }
-        Ok(landed?.map(|mut each| each.swap_remove(0)))
+        Ok(match landed? {
+            Ok(mut each) => members.iter().position(|m| Some(m.id.as_str()) == own).map(|at| Ok(each.swap_remove(at))),
+            Err(refusal) => members.iter().any(|m| Some(m.id.as_str()) == own).then_some(Err(refusal)),
+        })
     }
 
     /// Land `members`, one run per touched table in declaration order. A member key whose
@@ -380,29 +408,41 @@ impl Receiver {
                     Err(next) => pending.push((i, next)),
                 }
             }
+            let (key, next, grouped) = match pending.as_slice() {
+                [] => continue,
+                [(i, next)] => (members[*i].key.clone(), next.clone(), false),
+                _ => {
+                    let group = group_key(pending.iter().map(|(i, _)| members[*i].key.as_str()));
+                    match w.engine.receive_attempt(&format!("{}.{table}", self.base(&group)))? {
+                        Ok(row) => {
+                            for (i, _) in &pending {
+                                tables[*i].push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows }));
+                            }
+                            continue;
+                        }
+                        Err(next) => (group, next, true),
+                    }
+                }
+            };
+            let delivered = pending.iter().map(|(i, _)| members[*i].tables[t.name()].len() as u64).sum();
+            if let Some(row) = self.torn(w, &dest.store, &table, &key, &next, delivered)? {
+                for (i, _) in &pending {
+                    tables[*i].push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows }));
+                }
+                continue;
+            }
             let mut land = |run_id: String, key: &str, keys: Option<Vec<String>>, rows: Vec<contextful_core::run::ports::Row>| -> Landing {
                 let landing = self.land_table(w, &mut dest, t.name(), &table, &artifact, &run_id, key, keys, rows);
                 opened |= landing.opened;
                 landing
             };
-            let group = match pending.as_slice() {
-                [] => continue,
-                [(i, next)] => {
-                    let landing = land(next.clone(), &members[*i].key, None, members[*i].tables[t.name()].clone());
-                    landing.answer(&table, &mut tables[*i], &mut failed[*i], None);
-                    continue;
-                }
-                _ => group_key(pending.iter().map(|(i, _)| members[*i].key.as_str())),
-            };
-            let next = match w.engine.receive_attempt(&format!("{}.{table}", self.base(&group)))? {
-                Ok(row) => {
-                    for (i, _) in &pending {
-                        tables[*i].push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows }));
-                    }
-                    continue;
-                }
-                Err(next) => next,
-            };
+            if !grouped {
+                let i = pending[0].0;
+                let landing = land(next, &key, None, members[i].tables[t.name()].clone());
+                landing.answer(&table, &mut tables[i], &mut failed[i], None);
+                continue;
+            }
+            let group = key;
             let keys: Vec<String> = pending.iter().map(|(i, _)| members[*i].key.clone()).collect();
             let rows: Vec<_> = pending.iter().flat_map(|(i, _)| members[*i].tables[t.name()].iter().cloned()).collect();
             let landing = land(next, &group, Some(keys), rows);
@@ -446,6 +486,22 @@ impl Receiver {
                 Landed { answer, failed: failed[at].clone() }
             })
             .collect()))
+    }
+
+    /// Settle a torn attempt before attempt `next` of batch or group `key` lands `table`
+    /// (`run.land.receive-torn`): an earlier attempt whose commit the store holds although its
+    /// run row never closed closes as committed, carrying the `delivered` rows, and replays.
+    fn torn(&self, w: &Wired, store: &Store, table: &str, key: &str, next: &str, delivered: u64) -> Result<Option<RunRow>> {
+        let stem = format!("{}.{table}", self.base(key));
+        if next == stem || store.try_schema(table)?.is_none() {
+            return Ok(None);
+        }
+        let attempt = |run_id: &str| run_id == stem || run_id.strip_prefix(stem.as_str()).and_then(|n| n.strip_prefix('.')).is_some_and(|n| n.parse::<u32>().is_ok());
+        let Some(committed) = store.committed_runs(table)?.into_iter().find(|m| attempt(&m.run_id)) else {
+            return Ok(None);
+        };
+        note(&format!("{}: attempt `{}` committed before its leader died; it replays", self.spec.id, committed.run_id));
+        Ok(Some(w.engine.receive_settle(&self.spec.id, table, key, &committed.run_id, delivered)?))
     }
 
     /// Land `rows` of table `name` as run `run_id` under batch `key`: alone, or for the
@@ -514,8 +570,11 @@ const GROUP_BYTES: u64 = 64 << 20;
 /// in the spool.
 const SPOOL_TTL: std::time::Duration = std::time::Duration::from_secs(3600);
 
-/// The key a group of member `keys` lands under: no sender's key, so no resend resumes it.
+/// The key a group of member `keys` lands under: no sender's key, so no resend resumes it, and
+/// independent of the members' order, so a dead leader's members land again under it
+/// (`run.land.receive-adopt`).
 fn group_key<'a>(keys: impl Iterator<Item = &'a str>) -> String {
+    let keys: std::collections::BTreeSet<&str> = keys.collect();
     let mut joined = String::from("group");
     for key in keys {
         joined.push('\0');
@@ -591,9 +650,9 @@ impl Spooled {
         write_synced(&Spooled::path(spool, &self.id, "batch"), &serde_json::to_vec(self)?)
     }
 
-    /// Every batch in the spool under the credential `tag`, waiting or claimed by a leader
-    /// that died, oldest first.
-    fn waiting(spool: &Path, tag: &str) -> Result<Vec<Spooled>> {
+    /// Every batch in the spool under the credential `tag`, oldest first, and whether a leader
+    /// claimed it: under the held land lock, a claiming leader died.
+    fn waiting(spool: &Path, tag: &str) -> Result<Vec<(Spooled, bool)>> {
         let mut found = Vec::new();
         for entry in std::fs::read_dir(spool).with_context(|| format!("listing {}", spool.display()))? {
             let path = entry?.path();
@@ -602,13 +661,15 @@ impl Spooled {
             }
             // A batch withdrawn or claimed since the listing is gone; it is not this group's.
             let Ok(bytes) = std::fs::read(&path) else { continue };
+            let claimed = path.extension().is_some_and(|e| e == "claimed");
             match serde_json::from_slice::<Spooled>(&bytes) {
-                Ok(spooled) => found.push(spooled),
+                Ok(spooled) => found.push((spooled, claimed)),
                 Err(e) => note(&format!("skipping spooled batch {}: {e}", path.display())),
             }
         }
-        found.sort_by(|a, b| a.id.cmp(&b.id));
-        found.dedup_by(|a, b| a.id == b.id);
+        // A batch claimed between the two looks lists twice; its claim wins.
+        found.sort_by(|(a, x), (b, y)| a.id.cmp(&b.id).then(y.cmp(x)));
+        found.dedup_by(|(a, _), (b, _)| a.id == b.id);
         Ok(found)
     }
 

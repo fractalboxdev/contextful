@@ -219,6 +219,10 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a batch whose receiver died must land without its sender, and one malformed body must fail no other batch*
 - `receive-group` — The land lock's holder lands the batches spooled under its credential, up to `max_queue_depth` members and 64 MiB, as one run per touched table, keyed by the group or a lone member, then pushes once and answers each.
   *A-run*
+- `receive-adopt` — A leader first lands the batches a dead leader claimed as that leader's group, resuming its pending owner, before any new group forms, so each member key lands once.
+  *because each member's scope names the dead group, so a new group leaves that group's owner pending and its members' scopes renamed*
+- `receive-torn` — An earlier attempt of a batch or group key whose commit the store holds while its run row stayed open closes committed, retires its owner and replays, and no later attempt lands its rows.
+  *because a leader dying between its commit and its run's close otherwise lands the committed rows again*
 - `receive-group-isolation` — A group run failing with a class outside {{run.retry.retryable-classes}} lands each member's rows alone under its own key, so a batch the land path refuses answers alone and the group's other members commit.
   *because one malformed body must fail no other batch, and a sender honoring a non-retryable answer drops its rows*
 - `receive-wait` — A spooled batch that neither holds the land lock nor joins a group within the wait of {{store.reserve.commit-wait}} withdraws its spool and answers as {{run.land.receive-backpressure}}.
@@ -316,6 +320,8 @@ flowchart LR
 - `run.land.receive-group`: WHEN 16 one-row batches spool behind a held land lock that then releases, THEN one run commits all 16 rows, one push follows, and every batch answers committed.
 - `run.land.receive-group-isolation`: WHEN a well-formed batch and one whose row sets a reserved column spool into one group, THEN the well-formed batch commits and only the other answers non-retryable.
 - `run.land.receive-spool`: WHEN a receiver dies after spooling its batch, THEN the next leader lands that batch in its group and a resend under its key replays.
+- `run.land.receive-adopt`: WHEN a group's leader dies after opening its run, after staging its parts, or after its commit, THEN a later batch lands apart and each member's resend replays the group's run, every row landed once.
+- `run.land.receive-torn`: WHEN a receive attempt dies after its commit lands and before its run closes, THEN settling it closes the run committed and a lookup under its key replays it.
 - `run.land.receive-wait`: WHEN a spooled batch waits 30 s behind a held land lock, THEN it leaves the spool and answers `ReceiveBackpressure`, retryable.
 - `run.land.receive-resume`: WHEN the receiver dies after recording a delivered batch and the batch is resent under its key, THEN every landed cell but the run id is identical to the uninterrupted run's.
 - `run.land.receive-write-not-granted`: WHEN a credential holds `write` over one of two declared tables, THEN the receiver refuses before reading the body and no table lands.

@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 53 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 598 | 128 | 49 | 18 | 558 | 0 | 554 |
-| `store` | 3 | 19 | 321 | 65 | 19 | 11 | 310 | 0 | 308 |
+| `run` | 3 | 29 | 600 | 128 | 49 | 18 | 560 | 0 | 558 |
+| `store` | 3 | 19 | 321 | 65 | 19 | 11 | 310 | 0 | 310 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2766 | 682 | 222 | 79 | 2472 | 0 | |
+| **total** | 22 | 169 | 2768 | 682 | 222 | 79 | 2474 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 197 | 187 | passing | closed |
 | 3 — The run path | 12 | 306 | 294 | passing | closed |
-| 4 — Ingest | 25 | 632 | 526 | passing | closed |
+| 4 — Ingest | 25 | 634 | 528 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -1705,6 +1705,7 @@ Unscheduled operations: 13.
 | `run.land.parse-crashed` | `crates/contextful-connectors/tests/integration/boundary.rs::a_crashed_decode_is_named_and_a_refusal_crosses_intact` | performed |
 | `run.land.partial-parse` | `crates/contextful-decode/tests/integration/pdf.rs::a_page_that_fails_to_render_refuses_the_whole_document` | performed |
 | `run.land.receive-ack` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_over_two_tables_answers_after_both_commit_naming_its_run_id` | performed |
+| `run.land.receive-adopt` | `crates/contextful-cli/tests/integration/receive.rs::a_group_whose_leader_dies_lands_each_member_once` | performed |
 | `run.land.receive-backpressure` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
 | `run.land.receive-batch-key` | `crates/contextful-cli/tests/integration/receive.rs::a_resent_key_replays_committed_tables_and_lands_the_rest` | performed |
 | `run.land.receive-batch-too-large` | `crates/contextful-cli/tests/integration/receive.rs::a_body_one_byte_past_the_bound_lands_nothing` | performed |
@@ -1721,6 +1722,7 @@ Unscheduled operations: 13.
 | `run.land.receive-resume` | `crates/contextful-cli/tests/integration/receive.rs::a_resend_after_the_receiver_dies_lands_what_the_uninterrupted_run_lands` | performed |
 | `run.land.receive-retry-after` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
 | `run.land.receive-spool` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_spooled_by_a_dead_receiver_lands_in_the_next_group` | performed |
+| `run.land.receive-torn` | `crates/contextful-engine/tests/integration/runner.rs::a_receive_attempt_torn_after_its_commit_settles_and_replays` | performed |
 | `run.land.receive-wait` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_no_group_claims_within_the_wait_withdraws_and_answers_retryable` | performed |
 | `run.land.receive-write-not-granted` | `crates/contextful-cli/tests/integration/receive.rs::a_token_without_write_on_one_table_is_refused_before_the_body_is_read` | performed |
 | `run.land.session` | `crates/contextful-context/tests/integration/session.rs::a_session_commits_each_micro_batch_as_its_own_run` | performed |

@@ -356,6 +356,32 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         }
     }
 
+    /// Close attempt `run_id` of batch or group `key`'s `table`, whose commit the store holds
+    /// while its run row never closed: the scope's pending owner that produced it retires with
+    /// its journal, and the row closes `Success` carrying `rows`, so the attempt replays and no
+    /// later attempt lands its rows again (`run.land.receive-torn`).
+    pub fn receive_settle(&self, pipeline_id: &str, table: &str, key: &str, run_id: &str, rows: u64) -> Result<RunRow, Failure> {
+        let scope = OwnerScope::receive(pipeline_id, table, key);
+        if let Some(owner) = self.catalog.owner_at(&scope)?.filter(|o| o.produced(run_id)) {
+            self.catalog.retire_at(&scope, &owner.execution_id, None, None)?;
+            self.journal.collect(&owner.execution_id)?;
+        }
+        let now = self.catalog.now()?;
+        let closed = self.catalog.update_run(run_id, &mut |r| {
+            r.status = RunStatus::Success;
+            r.phase = contextful_core::run::record::Phase::Commit;
+            r.ended_at = Some(now);
+            r.owner = None;
+            r.rows = rows;
+            Ok(())
+        })?;
+        match closed {
+            Some(Ok(row)) => Ok(row),
+            Some(Err(e)) => Err(Failure::deterministic(FailureTag::Permanent, e.to_string())),
+            None => Err(Failure::new(FailureTag::Storage, format!("no run `{run_id}` is recorded to settle"))),
+        }
+    }
+
     /// Record `digest` as the group of a member's receive `scope`: one conditional write
     /// against a fresh scope; once its version moved, a read and a retry that keeps every
     /// other field of the recorded position.

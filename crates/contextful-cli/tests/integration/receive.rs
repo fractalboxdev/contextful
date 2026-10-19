@@ -633,3 +633,117 @@ fn batches_queued_behind_the_land_lock_commit_per_group() {
     contextful_eval::record::emit("receive-group-commits", per_1000(commits), updates, QUEUED_SEED);
     contextful_eval::record::emit("receive-group-parts", per_1000(parts), updates, QUEUED_SEED);
 }
+
+/// The point a group's leader dies at.
+#[derive(Debug, Clone, Copy)]
+enum Crash {
+    /// The group run opened: the members' scopes name the group and its run row is being recorded.
+    Opened,
+    /// The group run staged its parts and waits to reserve its commit.
+    Staged,
+    /// The group run's manifest committed and its run closes before any member is answered.
+    Committed,
+}
+
+/// Whether a run record waits on `_runs`' commit lock: a run directory holding no manifest.
+fn recording(tables: &Path) -> bool {
+    let runs = tables.join("_runs/data/runs");
+    let Ok(entries) = std::fs::read_dir(runs) else { return false };
+    entries.flatten().flat_map(|run| std::fs::read_dir(run.path()).into_iter().flatten().flatten()).any(|node| !node.path().join("_manifest.json").exists())
+}
+
+/// Whether a parquet file under `dir` sits inside a run's staging directory.
+fn staging(dir: &Path) -> bool {
+    files_under(dir).iter().any(|p| p.extension().is_some_and(|e| e == "parquet") && p.components().any(|c| c.as_os_str() == "stage.staging"))
+}
+
+fn held(path: &Path) -> std::fs::File {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let file = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(path).unwrap();
+    file.lock().unwrap();
+    file
+}
+
+/// Spool `flush-1` and `flush-2` behind the land lock, release it, and kill both receivers once the group's leader
+/// reaches `crash`.
+fn crash_a_group(dir: &Path, crash: Crash) {
+    let tables = dir.join(".contextful/context/research/tables");
+    let land = held(&dir.join(".contextful/run/research/receive/otel/land.lock"));
+    let mut children: Vec<_> = [("flush-1", "s1"), ("flush-2", "s2")]
+        .into_iter()
+        .map(|(key, id)| {
+            let mut child = receiver(dir, key).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+            child.stdin.take().unwrap().write_all(line("spans", serde_json::json!({ "id": id })).as_bytes()).unwrap();
+            child
+        })
+        .collect();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
+    let wait = |what: &str, done: &dyn Fn() -> bool, children: &mut Vec<std::process::Child>| {
+        while !done() {
+            assert!(std::time::Instant::now() < deadline, "the group never reached {what} before {crash:?}");
+            for child in children.iter_mut() {
+                assert!(child.try_wait().unwrap().is_none(), "a receiver ended before {crash:?}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    };
+    wait("the spool", &|| spooled(dir) == 2, &mut children);
+    let data = held(&tables.join("otel_spans/commit.lock"));
+    let record = matches!(crash, Crash::Opened).then(|| held(&tables.join("_runs/commit.lock")));
+    land.unlock().unwrap();
+    drop(land);
+    match crash {
+        Crash::Opened => wait("its run record", &|| recording(&tables), &mut children),
+        Crash::Staged => wait("its staged parts", &|| staging(&tables.join("otel_spans")), &mut children),
+        Crash::Committed => {
+            wait("its staged parts", &|| staging(&tables.join("otel_spans")), &mut children);
+            let record = held(&tables.join("_runs/commit.lock"));
+            data.unlock().unwrap();
+            let manifest = || files_under(&tables.join("otel_spans")).iter().any(|p| p.file_name().is_some_and(|n| n == "_manifest.json"));
+            wait("its manifest", &|| manifest() && recording(&tables), &mut children);
+            for mut child in children.drain(..) {
+                child.kill().unwrap();
+                child.wait().unwrap();
+            }
+            drop(record);
+        }
+    }
+    for mut child in children {
+        child.kill().unwrap();
+        child.wait().unwrap();
+    }
+    drop(record);
+    drop(data);
+}
+
+/// A leader killed with its group's run open, with its parts staged, or with its commit landed and no member answered
+/// leaves the group to the next leader: a later batch lands apart from it, each member's resend replays the group's
+/// run, and every row lands once.
+// spec: run.land.receive-adopt@56163e99
+#[test]
+fn a_group_whose_leader_dies_lands_each_member_once() {
+    // The resends arrive once the dead leader's 30 s cursor lease has lapsed.
+    const LATER: &str = "2030-01-01T00:01:00Z";
+    for crash in [Crash::Opened, Crash::Staged, Crash::Committed] {
+        let dir = receiving(4096, 4);
+        crash_a_group(dir.path(), crash);
+        let later = send(receiver_at(dir.path(), "flush-3", LATER), &line("spans", serde_json::json!({ "id": "s3" })));
+        assert!(later.status.success(), "{crash:?}: {}", stderr(&later));
+        assert_eq!(answer(&later)["tables"][0]["outcome"], "committed", "{crash:?}");
+        let mut replayed = Vec::new();
+        for (key, id) in [("flush-1", "s1"), ("flush-2", "s2")] {
+            let out = send(receiver_at(dir.path(), key, LATER), &line("spans", serde_json::json!({ "id": id })));
+            assert!(out.status.success(), "{crash:?}: {}", stderr(&out));
+            let ack = answer(&out);
+            assert_eq!(ack["tables"][0]["outcome"], "replayed", "{crash:?}: {ack}");
+            replayed.push(ack["tables"][0]["run_id"].as_str().unwrap().to_string());
+        }
+        assert_eq!(replayed[0], replayed[1], "{crash:?}: both members replay one group run");
+        let landed = rows(dir.path(), "SELECT id, _run_id FROM otel_spans ORDER BY id");
+        let run_of = |id: &str| landed.as_array().unwrap().iter().filter(|r| r[0] == id).map(|r| r[1].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!((run_of("s1"), run_of("s2")), (vec![replayed[0].clone()], vec![replayed[0].clone()]), "{crash:?}: each member lands once, in its group's run: {landed}");
+        assert_eq!(run_of("s3").len(), 1, "{crash:?}: {landed}");
+        assert_ne!(run_of("s3")[0], replayed[0], "{crash:?}: the later batch lands apart from the dead leader's group: {landed}");
+        assert_eq!(spooled(dir.path()), 0, "{crash:?}: the group leaves no batch spooled");
+    }
+}

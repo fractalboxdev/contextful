@@ -1513,6 +1513,39 @@ fn a_receive_batch_key_resumes_its_own_owner_and_no_other_keys() {
     assert_eq!(ids(sink.commits.last().unwrap()), [vec!["d1", "d2"], vec!["d3"], vec!["d4"]]);
 }
 
+/// A receive attempt whose process dies after its commit lands leaves its run row open and its owner pending; settled,
+/// the row closes committed, the owner retires, and a lookup under the key replays the attempt instead of landing again.
+// spec: run.land.receive-torn@2763a514
+#[test]
+fn a_receive_attempt_torn_after_its_commit_settles_and_replays() {
+    use contextful_core::run::own::OwnerScope;
+    use contextful_core::run::ports::Unshaped;
+    let rig = Rig::new();
+    let attempt = contextful_engine::receive_stem("feed", "filings", "k1");
+    let spec = contextful_engine::RunSpec {
+        connector: opaque().connector_pin("artifact-1"),
+        plan: opaque(),
+        run_id: attempt.clone(),
+        site_id: "site-a".into(),
+        pid: 4242,
+        boot_id: "boot-a".into(),
+        trace_id: None,
+    };
+    let mut pages = Pages::new(three_pages());
+    let mut sink = Sink { die_after_land: true, ..Sink::default() };
+    let died = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rig.engine.run_receive(&spec, "k1", &mut pages, &Unshaped, &mut sink)));
+    assert!(died.is_err(), "the run was expected to die after its commit");
+    rig.clock.advance(60);
+    assert_eq!(sink.commits.len(), 1, "the commit landed before the process died");
+    assert!(rig.engine.receive_landed("feed", "filings", "k1").unwrap().is_err(), "the torn attempt's row never closed");
+
+    let row = rig.engine.receive_settle("feed", "filings", "k1", &attempt, 4).unwrap();
+    assert_eq!((row.status, row.rows), (RunStatus::Success, 4));
+    assert!(rig.catalog().owner_at(&OwnerScope::receive("feed", "filings", "k1")).unwrap().is_none(), "the settled attempt's owner retires");
+    assert_eq!(rig.engine.receive_landed("feed", "filings", "k1").unwrap().map(|r| r.run_id), Ok(attempt), "a lookup under the key replays the settled attempt");
+    assert_eq!(sink.commits.len(), 1, "no attempt lands the rows again");
+}
+
 /// The run record lists every bound hit with its step label, attempt and bound, a hit a later attempt recovered
 /// from included.
 // spec: run.retry.bound-hit-recorded@a6e7216b
