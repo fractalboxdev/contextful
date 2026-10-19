@@ -386,7 +386,7 @@ impl FileSource {
         let stem = stem.rsplit_once('.').filter(|(s, _)| !s.is_empty()).map_or(stem, |(s, _)| s).to_string();
         let utf8 = || {
             std::str::from_utf8(bytes).map_err(|e| {
-                Failure::deterministic(FailureTag::Permanent, RunError::PipelineUnreadableInput(format!("`{}` at byte {}: not UTF-8 text", f.path, e.valid_up_to())).to_string())
+                Failure::unreadable_input(RunError::PipelineUnreadableInput(format!("`{}` at byte {}: not UTF-8 text", f.path, e.valid_up_to())).to_string())
             })
         };
         match kind {
@@ -408,7 +408,7 @@ impl FileSource {
             Kind::Text => Ok(Doc { kind, title: stem, frontmatter: Vec::new(), parts: vec![Part { heading: None, anchor: None, text: utf8()?.trim().to_string() }] }),
             Kind::Pdf => {
                 let decoder = self.decoder.as_ref().ok_or_else(|| {
-                    Failure::deterministic(FailureTag::Config, format!("`{}` is a PDF, and the PDF decoder is compiled out of this build; rebuild with `--features pdf`", f.path))
+                    Failure::misconfigured(format!("`{}` is a PDF, and the PDF decoder is compiled out of this build; rebuild with `--features pdf`", f.path))
                 })?;
                 let pages = decoder.pages(bytes, &f.path)?;
                 let parts = pages.into_iter().enumerate().map(|(i, text)| Part { heading: None, anchor: Some(format!("page={}", i + 1)), text }).collect();
@@ -519,8 +519,9 @@ impl FileSource {
             let doc = match self.decode(&f, kind, &bytes) {
                 Ok(doc) => doc,
                 // The file lands a dead letter in place of rows and keeps its earlier rows; the
-                // position holds it at this digest, so the next read skips it.
-                Err(e) if e.message.starts_with("PipelineUnreadableInput") => {
+                // position holds it at this digest, so the next read skips it. A configuration
+                // fault refuses the read whole (`connector.source.configuration-fault`).
+                Err(e) if e.dead_letters() => {
                     dead_letters.push(DeadLetter { key: f.path.clone(), reason: e.message.clone(), sha256: digest.clone() });
                     refusals.push(e);
                     let (slug, rows) = prior.map_or((s.clone(), 0), |h| (h.slug.clone(), h.rows));

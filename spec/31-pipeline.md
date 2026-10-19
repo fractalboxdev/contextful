@@ -247,6 +247,8 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
 - `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull unless its source dead-letters it.
   *A-connector*
+- `input-fault` — A failure over one input carries its fault: `input` when the input's own bytes defeat the decoder, `configuration` when the declaration or the build does. A source dead-letters an `input` fault alone, never by message.
+  *because a message names an error for people, and branching on its text dead-letters any refusal that repeats the name*
 - `dead-letter` — A pull's dead letters land in the table `<table>_dead_letter`, one row per input carrying its `key`, `reason` and `sha256`, committed in the same run as the table's rows.
   *A-connector*
 - `dead-letter-replace` — A replacing table whose read dead-letters any input fails the pull under {{run.land.unreadable-input}}, naming each input, and commits neither its rows nor its dead letters.

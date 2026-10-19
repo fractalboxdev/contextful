@@ -75,6 +75,21 @@ pub struct Failure {
     /// [`CALL_DEADLINE`] (`run.retry.bound-hit-is-transient`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bound: Option<String>,
+    /// What defeated a read of one input, which decides whether a source dead-letters it
+    /// (`run.land.input-fault`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fault: Option<Fault>,
+}
+
+/// What defeated a read of one input (`run.land.input-fault`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Fault {
+    /// The input's own bytes: corrupt, truncated, or past a size ceiling. A source dead-letters it.
+    Input,
+    /// The declaration or the build: a decoder compiled out, or a declared key no input can
+    /// satisfy. The read refuses whole.
+    Configuration,
 }
 
 /// The bound a guest strikes on its linear-memory cap (`connector.package.linear-memory`).
@@ -84,12 +99,28 @@ pub const CALL_DEADLINE: &str = "call-deadline";
 
 impl Failure {
     pub fn new(tag: FailureTag, message: impl Into<String>) -> Failure {
-        Failure { tag, message: message.into(), retry_after_secs: None, deterministic: false, bound: None }
+        Failure { tag, message: message.into(), retry_after_secs: None, deterministic: false, bound: None, fault: None }
     }
 
     /// A refusal decided by a pure check over static input.
     pub fn deterministic(tag: FailureTag, message: impl Into<String>) -> Failure {
         Failure { deterministic: true, ..Failure::new(tag, message) }
+    }
+
+    /// A permanent refusal over one input's own bytes (`run.land.input-fault`).
+    pub fn unreadable_input(message: impl Into<String>) -> Failure {
+        Failure { fault: Some(Fault::Input), ..Failure::deterministic(FailureTag::Permanent, message) }
+    }
+
+    /// A refusal the declaration or the build causes, failing the whole read
+    /// (`run.land.input-fault`).
+    pub fn misconfigured(message: impl Into<String>) -> Failure {
+        Failure { fault: Some(Fault::Configuration), ..Failure::deterministic(FailureTag::Config, message) }
+    }
+
+    /// Whether a source dead-letters this failure in place of the input's rows.
+    pub fn dead_letters(&self) -> bool {
+        self.fault == Some(Fault::Input)
     }
 
     pub fn canceled(message: impl Into<String>) -> Failure {

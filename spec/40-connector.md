@@ -455,7 +455,7 @@ The declared behavior of each source compiled into the engine.
   *P1*
 - `delimiter` — `delimiter` on `format = "csv"` names the one field delimiter character, `,` by default; a tab is admitted, and a quote, a line break or a longer value is refused at build.
   *because a field delimiter that also opens a quote or ends a record leaves every line two readings*
-- `declared-columns` — `columns` on `format = "csv"` names the body's columns in order, and the body carries no header row. A record whose field count differs is unreadable input under {{run.land.unreadable-input}}, naming its line.
+- `declared-columns` — `columns` on `format = "csv"` names a headerless body's columns in order. A first record whose field count differs refuses under {{connector.source.configuration-fault}}; a later one is unreadable input under {{run.land.unreadable-input}}, naming its line.
   *because a headerless body under a short list otherwise lands a shifted cell under the wrong name*
 - `clock-column-spelling` — A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises `ConnectorClockColumnRejected`.
   *because the watermark compares text*
@@ -513,13 +513,15 @@ The declared behavior of each source compiled into the engine.
 - `prefix-listing` — A prefix read lists every key under the prefix in key order, narrowed by an optional `suffix`, and lands each object through one decoder. `pick = "latest"` lands the greatest listed key alone.
 - `object-gzip` — `compression = "gzip"`, or a key ending `.gz` with `compression` undeclared, decompresses an object before decode; `compression = "none"` reads it as stored.
 - `object-zip` — `compression = "zip"`, or an object key ending `.zip` with `compression` undeclared, decodes one archive member.
-- `zip-member` — An archive decodes its single member, or the member `member` names. Several members without `member`, or a named member the archive lacks, is unreadable input under {{run.land.unreadable-input}}.
+- `zip-member` — An archive decodes its single member, or the member `member` names. Several members without `member`, or a named member the archive lacks, refuses the read under {{connector.source.configuration-fault}}.
   *because landing one member of several by archive order picks rows the declaration never named*
 - `object-expansion` — One object or HTTP body decompresses to at most 256 MiB, counted as the bytes arrive. Past it the body lands nothing, named as the object or the scrubbed URL, and an HTTP read refuses whole.
 - `object-unreadable` — An object a decoder cannot read, or one past {{connector.source.object-expansion}}'s ceiling, lands no rows and one {{run.land.dead-letter}} row naming it as `s3://<bucket>/<key>`; the rest of the read lands.
   *A-connector*
 - `unreadable-all` — An object or file read in which every input it reaches is unreadable, none landing or held unchanged, refuses whole under {{run.land.unreadable-input}}, naming each input.
   *because every input failing names a declaration fault, such as a wrong `format`, rather than damaged inputs*
+- `configuration-fault` — A configuration fault — a compiled-out decoder, an unknown `encoding`, a `member` an archive lacks or several members without one, a first record off `columns` — refuses an object or file read whole, naming its error, and dead-letters nothing.
+  *because dead-lettering each changed input under a declaration none satisfies records one fault as many damaged inputs*
 - `unreadable-position` — With `skip_unchanged = true` a position holds a dead-lettered object at its ETag, and the `file` position holds a dead-lettered file at its digest, so a later read skips it until it changes.
   *because a dead letter re-landing on every fire fills the dead-letter table with one fault*
 - `dead-letter-replay` — `replay_dead_letters = true` on the `s3` or `file` source re-reads every input its position holds dead-lettered, whatever its ETag or digest, landing it or dead-lettering it again.
@@ -698,8 +700,6 @@ unsettled: Does the default build link the PDF decoder, so a document folder hol
 unsettled: Does a prefix read under `skip_unchanged` take each ETag from the listing, so an unchanged object skips without a download? owner: connector affects: connector.source
 
 unsettled: Does an object read without `skip_unchanged` hold its dead letters at their SHA-256, so an unchanged unreadable object stops landing a dead letter every fire? owner: connector affects: connector.source
-
-unsettled: Does a failure the declaration causes, such as `columns` off every object's field count or a missing `member`, refuse the read rather than dead-letter each changed object? owner: connector affects: connector.source
 
 ## Shapes
 

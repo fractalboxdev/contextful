@@ -1,6 +1,6 @@
 //! `run.retry`: the failure taxonomy, the schedule and the pure retry decision.
 
-use contextful_core::run::failure::{Failure, FailureTag};
+use contextful_core::run::failure::{Failure, FailureTag, Fault};
 use contextful_core::run::retry::{
     decide, delay_ms, Backoff, Decision, Schedule, ScheduleSpec, DEFAULT_ATTEMPTS, DEFAULT_BASE_MS, DEFAULT_JITTER_CEILING_MS,
     DEFAULT_MAX_DELAY_MS, RETRY_AFTER_CEILING_SECS, SINGLE_ATTEMPT,
@@ -212,4 +212,23 @@ fn the_decision_is_a_function_of_attempt_failure_and_seed() {
         })
         .collect();
     assert_eq!(delays, [100, 200, 400, 800], "the one-based attempt that closed picks the delay");
+}
+
+/// A failure over one input carries its fault: `input` when the input's own bytes defeat the decoder, `configuration`
+/// when the declaration or the build does. A source dead-letters an `input` fault alone, and the fault survives the
+/// wire a decode crosses.
+// spec: run.land.input-fault@9d05d066
+#[test]
+fn a_failure_names_its_fault_and_only_an_input_fault_dead_letters() {
+    let input = Failure::unreadable_input("PipelineUnreadableInput: `a.txt` at byte 3: not UTF-8 text");
+    assert_eq!((input.tag, input.fault, input.deterministic, input.dead_letters()), (FailureTag::Permanent, Some(Fault::Input), true, true));
+    let config = Failure::misconfigured("PipelineUnreadableInput: `a.zip` at member \"b.csv\": the archive holds no such member");
+    assert_eq!((config.tag, config.fault, config.deterministic, config.dead_letters()), (FailureTag::Config, Some(Fault::Configuration), true, false));
+    // A message naming the error decides nothing: an unclassified failure carrying the same text is no input fault.
+    let unclassified = Failure::deterministic(FailureTag::Permanent, input.message.clone());
+    assert_eq!((unclassified.fault, unclassified.dead_letters()), (None, false));
+    let wire = serde_json::to_value(&config).unwrap();
+    assert_eq!(wire["fault"], serde_json::json!("configuration"));
+    assert_eq!(serde_json::from_value::<Failure>(wire).unwrap(), config);
+    assert_eq!(serde_json::to_value(&unclassified).unwrap().get("fault"), None, "an unclassified failure keeps its wire shape");
 }

@@ -3,7 +3,7 @@
 //! `connector.source.decompression-budget`). Nothing is extracted to disk.
 
 use crate::unreadable;
-use contextful_core::run::{Failure, FailureTag, RunError};
+use contextful_core::run::{Failure, RunError};
 use quick_xml::events::{BytesCData, BytesText};
 use quick_xml::name::ResolveResult;
 use std::io::{Cursor, Read};
@@ -65,8 +65,7 @@ impl<'a> Archive<'a> {
 }
 
 fn over_budget(input: &str, name: &str, why: String) -> Failure {
-    Failure::deterministic(
-        FailureTag::Permanent,
+    Failure::unreadable_input(
         RunError::PipelineUnreadableInput(format!("`{input}` at part `{name}`: the part {why}, past the {INFLATE_BUDGET}-byte budget one office read decompresses")).to_string(),
     )
 }

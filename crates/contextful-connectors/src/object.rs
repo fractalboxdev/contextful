@@ -490,9 +490,9 @@ impl ObjectSource {
                     readable += 1;
                     rows.extend(decoded);
                 }
-                // A deterministic refusal over the object's own bytes is the object's fault, never
-                // the read's: it lands a dead letter and the read continues.
-                Err(f) if f.deterministic && f.tag == FailureTag::Permanent => {
+                // A refusal over the object's own bytes lands a dead letter and the read continues;
+                // a configuration fault refuses the read whole (`connector.source.configuration-fault`).
+                Err(f) if f.dead_letters() => {
                     letters.push(DeadLetter { key: key.clone(), reason: f.message.clone(), sha256: hex(&Sha256::digest(&bytes)) });
                     refusals.push(f);
                     dead.insert(key);

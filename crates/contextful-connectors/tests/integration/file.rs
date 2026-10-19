@@ -18,7 +18,7 @@ struct Pages;
 impl PageDecoder for Pages {
     fn pages(&self, body: &[u8], input: &str) -> Result<Vec<String>, Failure> {
         let text = String::from_utf8_lossy(body);
-        let rest = text.strip_prefix("%PDF-stub\n").ok_or_else(|| Failure::deterministic(FailureTag::Permanent, RunError::PipelineUnreadableInput(format!("`{input}` at byte 0: no stub header")).to_string()))?;
+        let rest = text.strip_prefix("%PDF-stub\n").ok_or_else(|| Failure::unreadable_input(RunError::PipelineUnreadableInput(format!("`{input}` at byte 0: no stub header")).to_string()))?;
         Ok(rest.split('\u{c}').map(|p| p.trim().to_string()).collect())
     }
 }
@@ -539,6 +539,37 @@ fn a_folder_of_1000_files_with_one_unreadable_lands_the_rest() {
     }
     contextful_eval::record::emit("ingest-folder-one-corrupt", fewest as f64, cases.len() as u64, 0);
     assert_eq!(fewest, FILES - 1, "every readable file lands in each shape");
+}
+
+/// A PDF stand-in whose refusals carry their fault and no error name: a body reading `config` is the declaration's
+/// fault, though its message reads as unreadable input; any other body is the input's.
+struct Classified;
+
+impl PageDecoder for Classified {
+    fn pages(&self, body: &[u8], input: &str) -> Result<Vec<String>, Failure> {
+        Err(match body {
+            b"config" => Failure::misconfigured(RunError::PipelineUnreadableInput(format!("`{input}` at byte 0: the build cannot read it")).to_string()),
+            _ => Failure::unreadable_input(format!("`{input}` holds no text layer")),
+        })
+    }
+}
+
+/// A folder read dead-letters a file by the fault its refusal carries, never by its message: an input fault lands a
+/// dead letter beside the readable files, and a configuration fault refuses the read whole, naming the error.
+#[test]
+fn a_folder_read_dead_letters_an_input_fault_and_refuses_whole_on_a_configuration_fault() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.md", "note");
+    write(dir.path(), "scan.pdf", "image only");
+    let s = FileSource::new(FileConfig::parse(&json!({"root": "."})).unwrap(), dir.path(), Some(Arc::new(Classified)));
+    let r = s.read(None, &Never).unwrap();
+    assert_eq!(r.rows.iter().map(|r| r["path"].as_str().unwrap()).collect::<Vec<_>>(), ["a.md"]);
+    assert_eq!(r.dead_letters.iter().map(|l| l.key.as_str()).collect::<Vec<_>>(), ["scan.pdf"]);
+
+    write(dir.path(), "b.pdf", "config");
+    let f = s.read(None, &Never).unwrap_err();
+    assert_eq!(f.tag, FailureTag::Config, "{f}");
+    assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("b.pdf") && f.message.contains("the build cannot read it"), "{f}");
 }
 
 /// A file a decoder cannot read lands no rows and one {{run.land.dead-letter}} row, keeps its earlier rows, and the

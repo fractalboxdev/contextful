@@ -21,7 +21,7 @@ use crate::ooxml::{cdata, in_ns, text, Archive};
 use crate::unreadable;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Row;
-use contextful_core::run::{Failure, FailureTag};
+use contextful_core::run::Failure;
 use quick_xml::events::attributes::Attribute;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::{NsReader, Reader};
@@ -49,7 +49,7 @@ const REL_EXTERNAL_LINK: &str = "/externalLink";
 const REL_SHARED_STRINGS: &str = "/sharedStrings";
 
 fn external(input: &str, why: impl std::fmt::Display) -> Failure {
-    Failure::deterministic(FailureTag::Permanent, ConnectorError::ConnectorExternalReference(format!("`{input}`: {why}; a workbook lands only what its own archive holds")).to_string())
+    Failure::unreadable_input(ConnectorError::ConnectorExternalReference(format!("`{input}`: {why}; a workbook lands only what its own archive holds")).to_string())
 }
 
 /// The rows of worksheet `sheet`, or of the first sheet in workbook order. `skip_rows`
@@ -387,8 +387,7 @@ impl Walk<'_> {
                 if value.is_none() {
                     continue;
                 }
-                return Err(Failure::deterministic(
-                    FailureTag::Permanent,
+                return Err(Failure::unreadable_input(
                     ConnectorError::ConnectorCellOutOfRange(format!("`{}` at {}: cell `{reference}` lies past the header's {} column(s)", self.input, self.at(row_ref), header.len())).to_string(),
                 ));
             };

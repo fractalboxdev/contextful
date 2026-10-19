@@ -1,5 +1,6 @@
 //! The decoders the sources share.
 
+use contextful_core::run::Fault;
 use contextful_decode::{decode, decode_delimited, decode_with_encoding, Delimited, Format};
 use serde_json::{json, Value};
 
@@ -42,6 +43,9 @@ fn a_declared_csv_encoding_preserves_text_and_refuses_invalid_input() {
     assert_eq!(rows[0]["name"], "café");
     let failure = decode_with_encoding(Format::Csv, b"name\n\x81\n", None, "names.csv", Some("shift_jis")).unwrap_err();
     assert!(failure.message.contains("ConnectorEncodingInvalid"), "{failure}");
+    assert_eq!(failure.fault, Some(Fault::Input), "bytes invalid under the declared encoding are the input's fault");
+    let unknown = decode_with_encoding(Format::Csv, b"name\n", None, "names.csv", Some("no-such-encoding")).unwrap_err();
+    assert_eq!(unknown.fault, Some(Fault::Configuration), "an unknown declared encoding is the declaration's fault: {unknown}");
 }
 
 
@@ -88,9 +92,9 @@ fn a_declared_tab_delimiter_splits_fields_and_a_quoted_field_holds_one() {
     assert_eq!(Delimited::default().delimiter, ',');
 }
 
-/// `columns` names a headerless body's columns in order; a record whose field count differs
-/// from the list refuses the read, naming its line.
-// spec: connector.source.declared-columns@83ec75e4
+/// `columns` names a headerless body's columns in order. A first record whose field count differs from the list is a
+/// configuration fault, and a later one unreadable input, each naming its line.
+// spec: connector.source.declared-columns@1b6aaa73
 #[test]
 fn declared_columns_name_a_headerless_body_and_a_count_mismatch_refuses_naming_the_line() {
     let declared = Delimited { delimiter: '\t', columns: Some(vec!["id".into(), "day".into(), "actor".into()]) };
@@ -98,8 +102,9 @@ fn declared_columns_name_a_headerless_body_and_a_count_mismatch_refuses_naming_t
     assert_eq!(rows.len(), 2, "the first line is a record, not a header");
     assert_eq!(Value::Object(rows[0].clone()), json!({"id": "1", "day": "20250101", "actor": "USA"}));
     assert_eq!(Value::Object(rows[1].clone()), json!({"id": "2", "day": "20250102", "actor": null}));
-    for (body, line) in [(&b"1\t2\t3\n4\t5\n"[..], "line 2"), (&b"1\t2\t3\t4\n"[..], "line 1")] {
+    for (body, line, fault) in [(&b"1\t2\t3\n4\t5\n"[..], "line 2", Fault::Input), (&b"1\t2\t3\t4\n"[..], "line 1", Fault::Configuration)] {
         let f = decode_delimited(Format::Csv, body, None, "events.CSV", None, &declared).unwrap_err();
         assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("events.CSV") && f.message.contains(line), "{f}");
+        assert_eq!(f.fault, Some(fault), "{f}");
     }
 }

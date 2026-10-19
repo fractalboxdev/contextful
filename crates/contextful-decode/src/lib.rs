@@ -15,7 +15,7 @@ pub mod workbook;
 
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Row;
-use contextful_core::run::{Failure, FailureTag, RunError};
+use contextful_core::run::{Failure, RunError};
 use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +57,13 @@ impl Format {
 }
 
 pub(crate) fn unreadable(input: &str, position: String, why: impl std::fmt::Display) -> Failure {
-    Failure::deterministic(FailureTag::Permanent, RunError::PipelineUnreadableInput(format!("`{input}` at {position}: {why}")).to_string())
+    Failure::unreadable_input(RunError::PipelineUnreadableInput(format!("`{input}` at {position}: {why}")).to_string())
+}
+
+/// A refusal a declared key causes, which no input under the same declaration escapes
+/// (`connector.source.configuration-fault`).
+pub(crate) fn misdeclared(input: &str, position: String, why: impl std::fmt::Display) -> Failure {
+    Failure::misconfigured(RunError::PipelineUnreadableInput(format!("`{input}` at {position}: {why}")).to_string())
 }
 
 fn object(v: Value, input: &str, position: String) -> Result<Row, Failure> {
@@ -76,7 +82,7 @@ pub fn gunzip(body: &[u8], ceiling: u64, input: &str) -> Result<Vec<u8>, Failure
     let mut reader = flate2::read::MultiGzDecoder::new(body).take(ceiling.saturating_add(1));
     reader.read_to_end(&mut out).map_err(|e| unreadable(input, format!("decompressed byte {}", out.len()), format!("the body is not whole gzip: {e}")))?;
     if out.len() as u64 > ceiling {
-        return Err(Failure::deterministic(FailureTag::Permanent, format!("`{input}` decompresses past {ceiling} B; the read refuses rather than landing a truncated object")));
+        return Err(Failure::unreadable_input(format!("`{input}` decompresses past {ceiling} B; the read refuses rather than landing a truncated object")));
     }
     Ok(out)
 }
@@ -98,16 +104,16 @@ pub fn unzip(body: &[u8], member: Option<&str>, ceiling: u64, input: &str) -> Re
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(body)).map_err(|e| unreadable(input, "the archive directory".into(), format!("the body is not a zip archive: {e}")))?;
     let members: Vec<String> = archive.file_names().filter(|n| !n.ends_with('/')).map(String::from).collect();
     let name = match (member, members.as_slice()) {
-        (Some(m), _) => members.iter().find(|n| *n == m).cloned().ok_or_else(|| unreadable(input, format!("member {}", member_name(m)), "the archive holds no such member"))?,
+        (Some(m), _) => members.iter().find(|n| *n == m).cloned().ok_or_else(|| misdeclared(input, format!("member {}", member_name(m)), "the archive holds no such member"))?,
         (None, [one]) => one.clone(),
-        (None, held) => return Err(unreadable(input, "the archive directory".into(), format!("the archive holds {} members and the source declares no `member`", held.len()))),
+        (None, held) => return Err(misdeclared(input, "the archive directory".into(), format!("the archive holds {} members and the source declares no `member`", held.len()))),
     };
     let shown = member_name(&name);
     let file = archive.by_name(&name).map_err(|e| unreadable(input, format!("member {shown}"), e))?;
     let mut out = Vec::new();
     file.take(ceiling.saturating_add(1)).read_to_end(&mut out).map_err(|e| unreadable(input, format!("member {shown} byte {}", out.len()), format!("the member does not inflate whole: {e}")))?;
     if out.len() as u64 > ceiling {
-        return Err(Failure::deterministic(FailureTag::Permanent, format!("`{input}` member {shown} decompresses past {ceiling} B; the read refuses rather than landing a truncated object")));
+        return Err(Failure::unreadable_input(format!("`{input}` member {shown} decompresses past {ceiling} B; the read refuses rather than landing a truncated object")));
     }
     Ok(out)
 }
@@ -169,12 +175,11 @@ pub fn decode_delimited(format: Format, body: &[u8], records: Option<&str>, inpu
         }
         Format::Csv => {
             let label = encoding.unwrap_or("utf-8");
-            let decoder = encoding_rs::Encoding::for_label(label.as_bytes()).ok_or_else(|| Failure::deterministic(
-                FailureTag::Config, ConnectorError::ConnectorEncodingInvalid(format!("`{input}` declares unknown encoding `{label}`")).to_string(),
-            ))?;
+            let decoder = encoding_rs::Encoding::for_label(label.as_bytes())
+                .ok_or_else(|| Failure::misconfigured(ConnectorError::ConnectorEncodingInvalid(format!("`{input}` declares unknown encoding `{label}`")).to_string()))?;
             let (text, _, invalid) = decoder.decode(body);
             if invalid {
-                return Err(Failure::deterministic(FailureTag::Permanent, ConnectorError::ConnectorEncodingInvalid(format!("`{input}` contains bytes invalid under `{label}`")).to_string()));
+                return Err(Failure::unreadable_input(ConnectorError::ConnectorEncodingInvalid(format!("`{input}` contains bytes invalid under `{label}`")).to_string()));
             }
             Ok((csv(&text, input, delimited)?, None))
         }
@@ -257,7 +262,10 @@ fn csv(text: &str, input: &str, delimited: &Delimited) -> Result<Vec<Row>, Failu
     let mut rows = Vec::new();
     for (line, cells) in recs {
         if delimited.columns.is_some() && cells.len() != names.len() {
-            return Err(unreadable(input, format!("line {line}"), format!("{} fields under {} declared columns", cells.len(), names.len())));
+            // The first record off the declared columns says the declaration misreads the body
+            // (`connector.source.declared-columns`).
+            let fault = if rows.is_empty() { misdeclared } else { unreadable };
+            return Err(fault(input, format!("line {line}"), format!("{} fields under {} declared columns", cells.len(), names.len())));
         }
         if cells.len() > names.len() {
             return Err(unreadable(input, format!("line {line}"), format!("{} cells under a {}-column header", cells.len(), names.len())));

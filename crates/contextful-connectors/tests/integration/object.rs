@@ -462,7 +462,7 @@ fn objects_landed(rows: &[Value], bad: usize) -> usize {
 }
 
 /// A prefix of 1000 objects with one unreadable among them, in three shapes: a JSON Lines line that is no object, a
-/// truncated gzip stream, and a two-member archive read without `member`. The figure is the fewest readable objects
+/// truncated gzip stream, and a truncated zip archive. The figure is the fewest readable objects
 /// any shape lands.
 #[test]
 fn a_prefix_of_1000_objects_with_one_unreadable_lands_the_rest() {
@@ -474,7 +474,8 @@ fn a_prefix_of_1000_objects_with_one_unreadable_lands_the_rest() {
             jsonl.put(&format!("d/{i:04}.jsonl"), b"{\"n\":\"unreadable\"}\n[3]\n", Condition::None).unwrap();
             let whole = gz(b"n\nunreadable\n");
             csv_gz.put(&format!("g/{i:04}.csv.gz"), &whole[..whole.len() / 2], Condition::None).unwrap();
-            zips.put(&format!("z/{i:04}.csv.zip"), &zipped(&[("a.csv", b"n\nunreadable\n"), ("b.csv", b"n\nunreadable\n")]), Condition::None).unwrap();
+            let whole = zipped(&[("a.csv", b"n\nunreadable\n")]);
+            zips.put(&format!("z/{i:04}.csv.zip"), &whole[..whole.len() / 2], Condition::None).unwrap();
         } else {
             jsonl.put(&format!("d/{i:04}.jsonl"), format!("{{\"n\":{i}}}\n").as_bytes(), Condition::None).unwrap();
             csv_gz.put(&format!("g/{i:04}.csv.gz"), &gz(csv.as_bytes()), Condition::None).unwrap();
@@ -572,6 +573,33 @@ fn each_unreadable_object_in_a_prefix_lands_one_dead_letter_naming_it() {
     let named = prefix(&[50]) + prefix(&[25, 75]);
     contextful_eval::record::emit("ingest-prefix-dead-letter-rows", named as f64, 2, 0);
     assert_eq!(named, 3, "one dead letter per unreadable object, naming it");
+}
+
+/// A prefix read whose declaration no object can satisfy refuses whole, naming the error, and lands neither rows nor
+/// dead letters: an archive lacking the declared `member`, archives of several members and no `member`, and a first
+/// record off `columns`. A corrupt object beside them still dead-letters.
+// spec: connector.source.configuration-fault@3ee6ceee
+#[test]
+fn a_prefix_read_refuses_whole_on_a_configuration_fault_and_dead_letters_a_corrupt_object() {
+    let one = zipped(&[("a.csv", b"1\t2\t3\n")]);
+    let two = zipped(&[("a.csv", b"1\t2\t3\n"), ("b.csv", b"4\t5\t6\n")]);
+    type Objects<'a> = &'a [(&'a str, &'a [u8])];
+    let cases: [(Objects, Value, &str); 3] = [
+        (&[("e/1.zip", &two), ("e/2.zip", &one)], json!({"member": "b.csv", "columns": ["a", "b", "c"]}), "no such member"),
+        (&[("e/1.zip", &one), ("e/2.zip", &two)], json!({"columns": ["a", "b", "c"]}), "declares no `member`"),
+        (&[("e/1.zip", &one), ("e/2.zip", &zipped(&[("a.csv", b"1\t2\n")]))], json!({"columns": ["a", "b", "c"]}), "line 1"),
+    ];
+    for (objects, keys, why) in cases {
+        let mut config = json!({"bucket": "lake", "prefix": "e/", "format": "csv", "delimiter": "\t"});
+        config.as_object_mut().unwrap().extend(keys.as_object().unwrap().clone());
+        let f = pull_json(&mut source(config, MemBucket::with(objects)), None).unwrap_err();
+        assert_eq!(f.tag, contextful_core::run::FailureTag::Config, "{f}");
+        assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("s3://lake/e/") && f.message.contains(why), "{why}: {f}");
+    }
+    let corrupt = MemBucket::with(&[("e/1.zip", &one), ("e/2.zip", b"not a zip")]);
+    let pulled = pull_json(&mut source(json!({"bucket": "lake", "prefix": "e/", "format": "csv", "delimiter": "\t", "columns": ["a", "b", "c"]}), corrupt), None).unwrap();
+    assert_eq!(pulled["rows"], json!([{"a": "1", "b": "2", "c": "3"}]));
+    assert_eq!(pulled["dead_letters"][0]["key"], json!("e/2.zip"), "{pulled}");
 }
 
 /// A prefix read in full twice, one object turned unreadable before the second read: the rows of that object the
