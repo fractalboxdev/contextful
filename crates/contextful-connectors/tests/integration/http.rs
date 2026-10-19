@@ -824,6 +824,69 @@ fn a_watermarked_read_walks_every_page_in_one_pull() {
     assert_eq!(pulled["snapshot_complete"], json!(false), "a watermark is a window, not a complete snapshot");
 }
 
+/// Pages and rows per page of the backfill walks below: 999 full pages fit under [`PAGE_CAP`] with the empty page that
+/// ends a page-number walk.
+const BACKFILL_PAGES: usize = 999;
+const BACKFILL_PAGE_ROWS: usize = 10;
+
+/// Ten rows of backfill page `page`, each id naming its page and place.
+fn backfill_rows(page: usize) -> Vec<Value> {
+    (0..BACKFILL_PAGE_ROWS).map(|i| json!({"id": format!("p{page:04}-{i}"), "at": "2030-01-02"})).collect()
+}
+
+/// Pull from `position` until a pull reports no more: the largest row count one pull handed back, and every id landed.
+fn rows_per_pull(s: &mut HttpSource, mut position: Option<Value>) -> (usize, Vec<String>) {
+    let (mut most, mut landed) = (0, Vec::new());
+    for _ in 0..=PAGE_CAP {
+        let v: Value = serde_json::from_slice(&s.pull(&request(position.clone()), &Never).unwrap()).unwrap();
+        let rows: Vec<serde_json::Map<String, Value>> = serde_json::from_value(v["rows"].clone()).unwrap();
+        most = most.max(rows.len());
+        landed.extend(ids(&rows));
+        if v["more"].as_bool() != Some(true) {
+            return (most, landed);
+        }
+        position = v.get("cursor").cloned();
+    }
+    panic!("the walk reported more past {PAGE_CAP} pulls");
+}
+
+fn assert_every_backfill_row_once(mut landed: Vec<String>) {
+    assert_eq!(landed.len(), BACKFILL_PAGES * BACKFILL_PAGE_ROWS);
+    landed.sort();
+    landed.dedup();
+    assert_eq!(landed.len(), BACKFILL_PAGES * BACKFILL_PAGE_ROWS, "each row lands once");
+}
+
+/// A watermarked walk over 999 pages of 10 rows: the most rows one pull hands the runner.
+#[test]
+fn a_watermarked_walk_hands_the_runner_one_page_per_pull() {
+    let vendor = Server::start(|r| {
+        let page: usize = r.query("p").and_then(|p| p.parse().ok()).unwrap_or(0);
+        let rows = if (1..=BACKFILL_PAGES).contains(&page) { backfill_rows(page) } else { vec![] };
+        Response::json(200, &serde_json::to_string(&rows).unwrap())
+    });
+    let mut s = source(json!({"endpoint": vendor.url("/v1"), "page_param": "p", "since_param": "since"}), vec![]).watermarked();
+    let (most, landed) = rows_per_pull(&mut s, Some(json!({"field": "at", "at": "2030-01-01"})));
+    assert!(!vendor.received("/v1").is_empty(), "the walk reaches the vendor");
+    assert!(vendor.received("/v1").iter().all(|r| r.query("since").as_deref() == Some("2030-01-01")));
+    assert_every_backfill_row_once(landed);
+    contextful_eval::record::emit("backfill-http-rows-per-pull", most as f64, 1, 0);
+}
+
+/// A next-URL walk over 999 pages of 10 rows: the most rows one pull hands the runner.
+#[test]
+fn a_next_url_walk_hands_the_runner_one_page_per_pull() {
+    let vendor = Server::start(|r| {
+        let page: usize = r.path().strip_prefix("/v1/").and_then(|p| p.parse().ok()).unwrap_or(1);
+        let next = if page < BACKFILL_PAGES { json!(format!("/v1/{}", page + 1)) } else { Value::Null };
+        Response::json(200, &json!({"data": backfill_rows(page), "next": next}).to_string())
+    });
+    let mut s = source(json!({"endpoint": vendor.url("/v1"), "records": "/data", "next_url_path": "/next"}), vec![]);
+    let (most, landed) = rows_per_pull(&mut s, None);
+    assert_every_backfill_row_once(landed);
+    contextful_eval::record::emit("backfill-http-rows-per-pull-url", most as f64, 1, 0);
+}
+
 const LIMITER_TOKEN: &str = "lim-7f2a";
 
 /// A limiter granting `permits` per acquire, recording every call.

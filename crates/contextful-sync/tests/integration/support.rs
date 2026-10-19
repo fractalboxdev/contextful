@@ -4,7 +4,7 @@ use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::Store;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::NodeId;
-use contextful_core::store::object::{Condition, ObjectError, ObjectStore, Put};
+use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::reserve::Injection;
 use contextful_core::store::sync::SyncConfig;
 use contextful_core::time::Instant;
@@ -106,6 +106,29 @@ pub struct Script {
     pub on_put: Option<OnPut>,
     pub ignore_conditions: bool,
     pub gets: Mutex<Vec<String>>,
+    /// Each get the bucket answered with an object: its key and byte count.
+    pub fetched: Mutex<Vec<(String, usize)>>,
+    /// Each list: its prefix and the number of keys it returned.
+    pub lists: Mutex<Vec<(String, usize)>>,
+}
+
+impl Script {
+    /// Keys returned by every list under `prefix`.
+    pub fn listed_under(&self, prefix: &str) -> usize {
+        self.lists.lock().unwrap().iter().filter(|(p, _)| p.starts_with(prefix)).map(|(_, n)| n).sum()
+    }
+
+    /// Bytes returned by every get of `key`.
+    pub fn fetched_bytes(&self, key: &str) -> usize {
+        self.fetched.lock().unwrap().iter().filter(|(k, _)| k == key).map(|(_, n)| n).sum()
+    }
+
+    /// Forget every get and list recorded so far.
+    pub fn reset(&self) {
+        self.gets.lock().unwrap().clear();
+        self.fetched.lock().unwrap().clear();
+        self.lists.lock().unwrap().clear();
+    }
 }
 
 pub struct Scripted {
@@ -119,7 +142,11 @@ impl ObjectStore for Scripted {
         if let Some(answer) = self.script.on_get.as_ref().and_then(|f| f(key)) {
             return answer;
         }
-        self.inner.get(key)
+        let got = self.inner.get(key)?;
+        if let Some((bytes, _)) = &got {
+            self.script.fetched.lock().unwrap().push((key.to_string(), bytes.len()));
+        }
+        Ok(got)
     }
 
     fn put(&self, key: &str, bytes: &[u8], condition: Condition) -> Result<Put, ObjectError> {
@@ -134,6 +161,12 @@ impl ObjectStore for Scripted {
     }
 
     fn list(&self, prefix: &str) -> Result<Vec<String>, ObjectError> {
-        self.inner.list(prefix)
+        let keys = self.inner.list(prefix)?;
+        self.script.lists.lock().unwrap().push((prefix.to_string(), keys.len()));
+        Ok(keys)
+    }
+
+    fn cas_scope(&self) -> CasScope {
+        self.inner.cas_scope()
     }
 }

@@ -37,6 +37,7 @@ libc = "0.2"
 
 # The suite drives loopback servers over the ureq adapter, with or without the feature.
 [dev-dependencies]
+contextful-eval = { path = "../../tools/eval" }
 contextful-outbound = { path = "../contextful-outbound", features = ["transport-ureq"] }
 flate2 = "1"
 zip = { version = "6", default-features = false, features = ["deflate"] }

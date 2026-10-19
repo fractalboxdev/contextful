@@ -507,3 +507,34 @@ fn a_text_file_that_is_not_utf8_is_unreadable_input() {
     let f = read(&source(dir.path(), json!({"root": "."})), None).unwrap_err();
     assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("latin.txt") && f.message.contains("byte 3"), "{f}");
 }
+
+/// A folder of 1000 files, each its own slug, with one unreadable among them in two shapes: a PDF without its header
+/// and a text file that is not UTF-8. The figure is the fewest readable files either shape lands.
+#[test]
+fn a_folder_of_1000_files_with_one_unreadable_lands_the_rest() {
+    const FILES: usize = 1000;
+    let bad = FILES / 2;
+    let cases: [(&str, &[u8]); 2] = [("pdf", b"not a pdf"), ("txt", b"caf\xe9")];
+    let mut fewest = FILES;
+    for (extension, body) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        for i in (0..FILES).filter(|i| *i != bad) {
+            write(dir.path(), &format!("n{i:04}.md"), format!("note {i}"));
+        }
+        let unreadable = format!("n{bad:04}.{extension}");
+        write(dir.path(), &unreadable, body);
+        let rows = match read(&source(dir.path(), json!({"root": "."})), None) {
+            Ok((rows, _, _)) => rows,
+            Err(f) => {
+                assert!(f.message.contains(&unreadable), "{extension}: a refusal names the unreadable file: {f}");
+                Vec::new()
+            }
+        };
+        let mut landed: Vec<&str> = rows.iter().filter_map(|r| r["path"].as_str()).collect();
+        assert!(!landed.contains(&unreadable.as_str()), "{extension}: no row of the unreadable file lands");
+        landed.sort_unstable();
+        landed.dedup();
+        fewest = fewest.min(landed.len());
+    }
+    contextful_eval::record::emit("ingest-folder-one-corrupt", fewest as f64, cases.len() as u64, 0);
+}

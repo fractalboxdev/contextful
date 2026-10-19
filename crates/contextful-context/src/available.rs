@@ -32,7 +32,9 @@ impl VintageHistory {
         let mut owned = history.columns.clone();
         owned.extend([history.available.clone(), history.hash.clone(), "_commit_seq".into()]);
         let names: Vec<&str> = owned.iter().map(String::as_str).collect();
-        for row in crate::rows::table_rows(store, decl, &names)? {
+        let rows = crate::rows::table_rows(store, decl, &names)?;
+        store.count_vintage_rows(rows.len());
+        for row in rows {
             if before_commit_seq.is_some_and(|seq| row.get("_commit_seq").and_then(Value::as_i64).is_none_or(|held| held >= seq)) { continue }
             history.observe(&row);
         }
@@ -64,6 +66,7 @@ impl VintageHistory {
         owned.extend([self.available.clone(), self.hash.clone()]);
         let names: Vec<&str> = owned.iter().map(String::as_str).collect();
         for batch in store.read_parquet(path)? {
+            store.count_vintage_rows(batch.num_rows());
             for row in crate::rows::batch_rows(&batch, &names)? { self.observe(&row) }
         }
         Ok(())

@@ -20,7 +20,7 @@ use contextful_policy::verify::AdmittedAuthority;
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub(crate) type Digest32 = [u8; 32];
@@ -52,11 +52,21 @@ pub struct SessionPool {
     hits: AtomicU64,
     misses: AtomicU64,
     opens: AtomicU64,
+    /// Rows the table and Parquet scans of the pool's connections emitted.
+    scanned: Arc<AtomicU64>,
+    tally_enabled: AtomicBool,
 }
 
 impl Default for SessionPool {
     fn default() -> SessionPool {
-        SessionPool { entries: Mutex::new(VecDeque::new()), hits: AtomicU64::new(0), misses: AtomicU64::new(0), opens: AtomicU64::new(0) }
+        SessionPool {
+            entries: Mutex::new(VecDeque::new()),
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+            opens: AtomicU64::new(0),
+            scanned: Arc::default(),
+            tally_enabled: AtomicBool::new(false),
+        }
     }
 }
 
@@ -189,11 +199,12 @@ impl SessionPool {
     pub(crate) fn engine(&self, session: &Session, parquet_key: Option<&[u8]>) -> Result<Lease, ReadFault> {
         let home = self.lock().iter().rev().find(|e| same_setup(&e.session, session)).cloned();
         let idle = home.as_ref().and_then(|e| e.idle.lock().expect("the idle lock").pop());
-        let engine = match idle {
+        let tally = self.tally_enabled.load(Ordering::Relaxed);
+        let engine = match idle.filter(|engine| !tally || engine.tallies_scans()) {
             Some(engine) => engine,
             None => {
                 self.opens.fetch_add(1, Ordering::Relaxed);
-                SqlEngine::open(session, parquet_key)?
+                SqlEngine::open_with_tally(session, parquet_key, tally.then(|| self.scanned.clone()))?
             }
         };
         Ok(Lease { engine: Some(engine), home })
@@ -205,6 +216,17 @@ impl SessionPool {
             session_misses: self.misses.load(Ordering::Relaxed),
             engine_opens: self.opens.load(Ordering::Relaxed),
         }
+    }
+
+    /// Rows the table and Parquet scans of the pool's connections emitted since the face
+    /// opened.
+    pub fn rows_scanned(&self) -> u64 {
+        self.scanned.load(Ordering::Relaxed)
+    }
+
+    /// Profiling begins when an instrumented read next borrows a connection.
+    pub fn enable_scan_tally(&self) {
+        self.tally_enabled.store(true, Ordering::Relaxed);
     }
 
     /// Pooled entries.

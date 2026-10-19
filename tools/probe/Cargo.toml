@@ -6,12 +6,22 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+contextful-connectors = { path = "../../crates/contextful-connectors" }
+# The store without the read face: a fold probe links no SQL engine.
+contextful-context = { path = "../../crates/contextful-context", default-features = false }
+contextful-core = { path = "../../crates/contextful-core" }
+contextful-decode = { path = "../../crates/contextful-decode" }
 contextful-eval = { path = "../eval" }
+contextful-outbound = { path = "../../crates/contextful-outbound" }
 contextful-policy = { path = "../../crates/contextful-policy" }
 serde_json = "1"
 sha2 = "0.10"
 hex = "0.4"
 tempfile = "3"
+
+# A resident-set probe reads its own peak through getrusage.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [[bin]]
 name = "audit-open-bounded-heap"
@@ -20,6 +30,26 @@ path = "src/bin/audit_open_bounded_heap.rs"
 [[bin]]
 name = "audit-query-digest-keyed"
 path = "src/bin/audit_query_digest_keyed.rs"
+
+[[bin]]
+name = "fold-peak-heap"
+path = "src/bin/fold_peak_heap.rs"
+
+[[bin]]
+name = "fold-events-peak-rss"
+path = "src/bin/fold_events_peak_rss.rs"
+
+[[bin]]
+name = "fold-passages-peak-rss"
+path = "src/bin/fold_passages_peak_rss.rs"
+
+[[bin]]
+name = "backfill-decode-peak-heap"
+path = "src/bin/backfill_decode_peak_heap.rs"
+
+[[bin]]
+name = "backfill-walk-peak-rss"
+path = "src/bin/backfill_walk_peak_rss.rs"
 
 [[test]]
 name = "integration"

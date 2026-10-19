@@ -604,3 +604,275 @@ fn each_commit_stamps_its_instant_and_node_and_the_listing_counts_tombstones() {
     assert_eq!(listed[0].tombstones, 0);
     assert!(listed[1].tombstones >= 2 && listed[1].entries < listed[0].entries, "{listed:?}");
 }
+
+/// The bucket key of unit `i`'s run part when a node lands table `t<i>` under run `run-<i>`.
+fn unit_part(node: &str, i: usize) -> String {
+    format!("research/tables/t{i}/data/runs/run-{i}/{node}/part-00000.parquet")
+}
+
+/// Units sharing one store root push through its one push guard: while one push holds it, each overlapping push of
+/// the root raises `SyncPushInFlight`. For N = 2, 4 and 8 units landing disjoint tables, the first push holds at its
+/// manifest read while the other N-1 push; the record is the refusals summed over the three sets.
+#[test]
+fn parallel_units_on_one_store_root_count_push_in_flight_refusals() {
+    let (mut refusals, mut pushes) = (0usize, 0u64);
+    for units in [2usize, 4, 8] {
+        let dir = tempfile::tempdir().unwrap();
+        let inner = bucket(dir.path());
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel::<()>();
+        let (gate_tx, gate_rx) = std::sync::mpsc::channel::<()>();
+        let entered = std::sync::Mutex::new(Some(entered_tx));
+        let gate = std::sync::Mutex::new(Some(gate_rx));
+        let held: Arc<dyn ObjectStore> = Arc::new(Scripted {
+            inner: inner.clone(),
+            script: Script {
+                on_get: Some(Box::new(move |key: &str| {
+                    if key == "team/manifest.json" {
+                        if let Some(tx) = entered.lock().unwrap().take() {
+                            tx.send(()).unwrap();
+                            let rx = gate.lock().unwrap().take().unwrap();
+                            rx.recv_timeout(std::time::Duration::from_secs(30)).expect("the holding push is released");
+                        }
+                    }
+                    None
+                })),
+                ..Script::default()
+            },
+        });
+        let a = node("ingest-a", held, "");
+        for i in 0..units {
+            a.land_into(&format!("t{i}"), &format!("run-{i}"), json!([{"id": i}]), "2030-01-01T00:00:00Z");
+        }
+        let (holder, others) = std::thread::scope(|s| {
+            let holder = s.spawn(|| a.syncer.push(at(NOW)));
+            entered_rx.recv_timeout(std::time::Duration::from_secs(30)).expect("the first push reads the manifest");
+            let (done_tx, done_rx) = std::sync::mpsc::channel();
+            for _ in 1..units {
+                let done = done_tx.clone();
+                let a = &a;
+                s.spawn(move || done.send(a.syncer.push(at(NOW))).unwrap());
+            }
+            drop(done_tx);
+            // Every overlapping push answers before the holder moves on, or the holder is released after 2 s.
+            let mut others = Vec::new();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            while others.len() < units - 1 {
+                match done_rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())) {
+                    Ok(outcome) => others.push(outcome),
+                    Err(_) => break,
+                }
+            }
+            gate_tx.send(()).unwrap();
+            others.extend(done_rx.iter());
+            (holder.join().unwrap(), others)
+        });
+        holder.expect("the holding push commits");
+        assert_eq!(others.len(), units - 1);
+        let refused = others.iter().filter(|o| matches!(o, Err(SyncError::Store(StoreError::SyncPushInFlight(_))))).count();
+        assert!(others.iter().all(|o| o.is_ok() || matches!(o, Err(SyncError::Store(StoreError::SyncPushInFlight(_))))), "{others:?}");
+        let m = manifest(inner.as_ref());
+        for i in 0..units {
+            assert!(m.entries.contains_key(&unit_part("ingest-a", i)), "unit {i} of {units} is unpublished");
+        }
+        eprintln!("{units} overlapping pushes of one root: {refused} refused");
+        refusals += refused;
+        pushes += units as u64;
+    }
+    contextful_eval::record::emit("push-parallel-same-root-refusals", refusals as f64, pushes, 0x5eed_0090);
+}
+
+/// A round barrier for manifest commits: each writer's manifest put waits until every live writer has reached its
+/// own, so the bucket's compare-and-set picks one winner per round.
+#[derive(Default)]
+struct Lockstep {
+    /// Writers arrived this round, writers still pushing, and the round number.
+    state: std::sync::Mutex<(usize, usize, u64)>,
+    turn: std::sync::Condvar,
+}
+
+impl Lockstep {
+    fn arrive(&self) {
+        let mut s = self.state.lock().unwrap();
+        s.0 += 1;
+        if s.0 >= s.1 {
+            *s = (0, s.1, s.2 + 1);
+            self.turn.notify_all();
+            return;
+        }
+        let round = s.2;
+        let (_s, wait) = self.turn.wait_timeout_while(s, std::time::Duration::from_secs(30), |s| s.2 == round).unwrap();
+        assert!(!wait.timed_out(), "a manifest commit round never filled");
+    }
+
+    fn leave(&self) {
+        let mut s = self.state.lock().unwrap();
+        s.1 -= 1;
+        if s.0 > 0 && s.0 >= s.1 {
+            *s = (0, s.1, s.2 + 1);
+            self.turn.notify_all();
+        }
+    }
+}
+
+/// Leaves the barrier when its writer's push returns, however it returns.
+struct Leaving<'a>(&'a Lockstep);
+
+impl Drop for Leaving<'_> {
+    fn drop(&mut self) {
+        self.0.leave();
+    }
+}
+
+/// Writers on distinct nodes and disks merge disjoint tables through the manifest's compare-and-set, re-reading and
+/// re-merging after each lost round within `push_retries` rounds. In lockstep each round has one winner, so for
+/// N = 2, 4 and 8 writers the record is the writers summed over the three sets that exhaust their rounds with
+/// `SyncManifestRebaseExhausted`.
+#[test]
+fn lockstep_writers_on_distinct_nodes_count_exhausted_rebases() {
+    let (mut exhausted, mut pushes) = (0usize, 0u64);
+    for writers in [2usize, 4, 8] {
+        let dir = tempfile::tempdir().unwrap();
+        let inner = bucket(dir.path());
+        let lockstep = Arc::new(Lockstep::default());
+        lockstep.state.lock().unwrap().1 = writers;
+        let barrier = lockstep.clone();
+        let stepped: Arc<dyn ObjectStore> = Arc::new(Scripted {
+            inner: inner.clone(),
+            script: Script {
+                on_put: Some(Box::new(move |key, _| {
+                    if key.ends_with("/manifest.json") {
+                        barrier.arrive();
+                    }
+                    None
+                })),
+                ..Script::default()
+            },
+        });
+        let nodes: Vec<_> = (0..writers).map(|i| node(&format!("ingest-{i}"), stepped.clone(), "")).collect();
+        for (i, n) in nodes.iter().enumerate() {
+            // A plain landing writes no local pointer, so each push commits once.
+            n.land_into(&format!("t{i}"), &format!("run-{i}"), json!([{"id": i}]), "2030-01-01T00:00:00Z");
+        }
+        let outcomes: Vec<_> = std::thread::scope(|s| {
+            let handles: Vec<_> = nodes
+                .iter()
+                .map(|n| {
+                    let lockstep = &lockstep;
+                    s.spawn(move || {
+                        let _leaving = Leaving(lockstep);
+                        n.syncer.push(at(NOW))
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let m = manifest(inner.as_ref());
+        let mut lost = 0;
+        for (i, outcome) in outcomes.iter().enumerate() {
+            match outcome {
+                Ok(report) => {
+                    assert!(report.pointers.is_empty(), "one commit per push: {report:?}");
+                    assert!(m.entries.contains_key(&unit_part(&format!("ingest-{i}"), i)), "writer {i} committed and is unlisted");
+                }
+                Err(SyncError::Store(StoreError::SyncManifestRebaseExhausted(_))) => lost += 1,
+                Err(e) => panic!("writer {i}: {e:?}"),
+            }
+        }
+        eprintln!("{writers} lockstep writers: {lost} exhausted their rounds");
+        exhausted += lost;
+        pushes += writers as u64;
+    }
+    contextful_eval::record::emit("push-lockstep-rebase-exhausted", exhausted as f64, pushes, 0x5eed_0091);
+}
+
+/// Two disks pushing under one node id each treat the bucket's entries owned by that id as their own, and a push
+/// tombstones every such entry its disk lacks. Disk A pushes three runs, then disk B, which pulled before A pushed,
+/// pushes one run of another table; the record is the number of A's runs B's commit tombstones.
+#[test]
+fn sibling_disks_sharing_a_node_id_count_tombstoned_runs() {
+    const RUNS: usize = 3;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let first = node("ingest-s", b.clone(), "");
+    let (a, sibling) = (node("conformance", b.clone(), ""), node("conformance", b.clone(), ""));
+    crate::support::trust(&[&first, &a, &sibling], "2030-01-01T00:00:00Z");
+    first.land("run-s", json!([{"id": 0}]), "2030-01-01T00:00:00Z");
+    first.syncer.push(at(NOW)).unwrap();
+    for n in [&a, &sibling] {
+        n.syncer.pull(&contextful_sync::PullScope::default()).unwrap();
+    }
+    for r in 0..RUNS {
+        a.land_into("t0", &format!("run-a{r}"), json!([{"id": r}]), "2030-01-01T00:00:00Z");
+    }
+    a.syncer.push(at(NOW)).unwrap();
+    let pushed = manifest(b.as_ref());
+    let runs: Vec<Vec<String>> = (0..RUNS)
+        .map(|r| pushed.entries.keys().filter(|k| k.starts_with(&format!("research/tables/t0/data/runs/run-a{r}/conformance/"))).cloned().collect())
+        .collect();
+    assert_eq!(runs.len(), RUNS);
+    assert!(runs.iter().all(|keys| !keys.is_empty()), "A's push lists each of its runs: {runs:?}");
+    sibling.land_into("t1", "run-b", json!([{"id": 9}]), "2030-01-01T00:00:00Z");
+    let outcome = sibling.syncer.push(at(NOW));
+    let after = manifest(b.as_ref());
+    let tombstoned = runs.iter().filter(|keys| keys.iter().any(|k| after.tombstones.contains_key(k) && !after.entries.contains_key(k))).count();
+    eprintln!("the sibling push answered {:?}; {tombstoned} of A's {RUNS} runs tombstoned", outcome.map(|r| r.generation));
+    contextful_eval::record::emit("push-shared-node-sibling-tombstones", tombstoned as f64, RUNS as u64, 0x5eed_0092);
+}
+
+/// A run row for unit `unit` at tick `tick`, its id derived from the fixture seed.
+fn tick_row(seed: u64, tick: usize, unit: usize, phase: &str, started_at: contextful_core::time::Instant) -> contextful_core::run::record::RunRow {
+    serde_json::from_value(json!({
+        "run_id": format!("u{unit}-{:016x}", seed ^ ((tick as u64) << 8 | unit as u64)), "pipeline_id": format!("unit-{unit}"),
+        "table": "filings", "site_id": "site", "status": if phase == "plan" { "running" } else { "success" },
+        "started_at": started_at.to_rfc3339_nanos(), "rows": 0, "bytes": 0, "batches": 0,
+        "connector_id": "vendor", "connector_version": "1", "connector_hash": "h",
+        "phase": phase, "execution_id": format!("x-{unit}-{tick}"),
+    }))
+    .unwrap()
+}
+
+/// Each unit run appends a plan row and a commit row to the run record, each one store run of a part and a run
+/// manifest, and nothing folds the run record in a push cycle. Five units a tick, one push a tick, hourly from
+/// 2030-01-01: the records are the `_runs` entries the bucket manifest gains per tick over the last 50 ticks, its
+/// live `_runs` entries and its `_runs` entries plus tombstones per tick, and the bucket keys gained per tick. Under
+/// `contextful-ci measure` the schedule is 240 ticks; elsewhere 8 ticks with a window of 3 exercise the path.
+#[test]
+fn the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick() {
+    const SEED: u64 = 0x5eed_0615;
+    const UNITS: usize = 5;
+    let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
+    let (ticks, window) = if measuring { (240, 50) } else { (8, 3) };
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    let id = contextful_core::store::lay_out::NodeId::parse("ingest-a").unwrap();
+    let start = at("2030-01-01T00:00:00Z");
+    let runs = |m: &BucketManifest| -> (usize, usize) {
+        let under = |k: &&String| k.starts_with("research/tables/_runs/");
+        (m.entries.keys().filter(under).count(), m.tombstones.keys().filter(under).count())
+    };
+    let mut marks = Vec::new();
+    for tick in 0..ticks {
+        let t = start.plus_secs(tick as u64 * 3600);
+        for unit in 0..UNITS {
+            let plan = t.plus_secs(unit as u64);
+            contextful_context::run_record::append(&a.syncer.store, &id, &tick_row(SEED, tick, unit, "plan", plan), plan).unwrap();
+            let commit = plan.plus_secs(1);
+            contextful_context::run_record::append(&a.syncer.store, &id, &tick_row(SEED, tick, unit, "commit", plan), commit).unwrap();
+        }
+        a.syncer.push(t.plus_secs(UNITS as u64 + 1)).unwrap();
+        if tick + 1 == ticks - window || tick + 1 == ticks {
+            let m = manifest(b.as_ref());
+            marks.push((runs(&m), b.list("team/").unwrap().len()));
+        }
+    }
+    let [((live_from, dead_from), keys_from), ((live, dead), keys)] = marks[..] else { panic!("{marks:?}") };
+    assert!(live > 0, "the run record reaches the bucket");
+    let per_tick = |to: usize, from: usize| (to as f64 - from as f64) / window as f64;
+    let (objects, listed, bucket_keys) = (per_tick(live, live_from), per_tick(live + dead, live_from + dead_from), per_tick(keys, keys_from));
+    eprintln!("after {ticks} ticks: {live} live `_runs` entries, {dead} tombstoned; per tick {objects} live, {listed} listed, {bucket_keys} bucket keys");
+    contextful_eval::record::emit("runs-record-objects-per-tick", objects, window as u64, SEED);
+    contextful_eval::record::emit("runs-record-live-objects", live as f64, ticks as u64, SEED);
+    contextful_eval::record::emit("runs-record-manifest-keys-per-tick", listed, window as u64, SEED);
+    contextful_eval::record::emit("bucket-keys-per-tick", bucket_keys, window as u64, SEED);
+}

@@ -1,13 +1,14 @@
 //! A scratch engine over a temporary directory, a settable clock, a scripted source and
 //! an in-memory destination.
 
-use contextful_core::coordinate::Catalog;
+use contextful_core::coordinate::{Cas, Catalog, CursorRow, ExecutionAdmission, ExecutionGuard, Lease, LeaseKey, LeaseRow};
 use contextful_core::ports::Clock;
-use contextful_core::run::own::ConnectorPin;
+use contextful_core::run::backfill::ChunkRow;
+use contextful_core::run::own::{ConnectorPin, ExecutionOwner, OwnerScope};
 use contextful_core::run::plan::Plan;
 use contextful_core::run::ports::{Cancellation, Commit, Destination, Landed, Marker, Part, PullRequest, Row, Source, Stage};
-use contextful_core::run::record::RunRow;
-use contextful_core::run::Failure;
+use contextful_core::run::record::{HistoryPage, RunRow, Window};
+use contextful_core::run::{Failure, RunError};
 use contextful_core::time::Instant;
 use contextful_engine::cancel::{Cadence, Keeper};
 use contextful_engine::{Engine, EngineError, Journal, LocalCatalog, RunSpec};
@@ -239,4 +240,99 @@ pub fn ids(commit: &Committed) -> Vec<Vec<String>> {
 /// Three pages: two rows, one row, one row.
 pub fn three_pages() -> Vec<Vec<Value>> {
     vec![vec![json!({"id": "d1"}), json!({"id": "d2"})], vec![json!({"id": "d3"})], vec![json!({"id": "d4"})]]
+}
+
+/// A catalog forwarding every one of the 29 `Catalog` methods, defaults included, to
+/// `inner`, recording each call in order with the arguments a replay against another
+/// catalog needs.
+pub struct Counted<C> {
+    pub inner: C,
+    trace: Mutex<Vec<Value>>,
+}
+
+/// The calls that change a row; every other call reads.
+pub const CATALOG_WRITES: &[&str] =
+    &["acquire", "release", "renew", "cursor_cas_at", "cursor_cas", "put_owner", "retire_at", "retire", "put_chunk", "delete_chunks", "update_chunk", "put_run", "update_run"];
+
+/// A lease key as the trace spells it.
+pub fn lease_key_json(key: &LeaseKey) -> Value {
+    match key {
+        LeaseKey::Pipeline(p) => json!({ "pipeline": p }),
+        LeaseKey::Partition { pipeline, partition } => json!({ "partition": [pipeline, partition] }),
+        LeaseKey::Compaction(t) => json!({ "compaction": t }),
+        LeaseKey::Cadence(d) => json!({ "cadence": d }),
+    }
+}
+
+impl<C: Catalog> Counted<C> {
+    pub fn new(inner: C) -> Counted<C> {
+        Counted { inner, trace: Mutex::default() }
+    }
+
+    /// Every call recorded since the last take, oldest first.
+    pub fn take(&self) -> Vec<Value> {
+        std::mem::take(&mut *self.trace.lock().unwrap())
+    }
+
+    fn note(&self, op: &str, args: Value) {
+        self.trace.lock().unwrap().push(json!({ "op": op, "args": args }));
+    }
+}
+
+macro_rules! counted {
+    ($($name:ident($($arg:ident: $ty:ty),*) -> $ret:ty => $args:expr;)*) => {
+        $(fn $name(&self, $($arg: $ty),*) -> $ret {
+            self.note(stringify!($name), $args);
+            self.inner.$name($($arg),*)
+        })*
+    };
+}
+
+impl<C: Catalog> Catalog for Counted<C> {
+    fn update_run(&self, run_id: &str, f: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure> {
+        let out = self.inner.update_run(run_id, f);
+        // The row the closure left, which a replay writes back in place of the closure.
+        let after = match &out {
+            Ok(Some(Ok(row))) => serde_json::to_value(row).unwrap(),
+            _ => Value::Null,
+        };
+        self.note("update_run", json!({ "run_id": run_id, "after": after }));
+        out
+    }
+
+    fn execution_guard(&self, admission: &ExecutionAdmission) -> Result<Box<dyn ExecutionGuard>, Failure> {
+        let owners: Vec<Value> = admission.owners().iter().map(|o| json!({ "scope": o.scope, "execution_id": o.execution_id, "pins": o.pins, "run_id": o.run_id })).collect();
+        self.note("execution_guard", json!({ "owners": owners, "leases": admission.leases(), "publication": admission.publication }));
+        self.inner.execution_guard(admission)
+    }
+
+    counted! {
+        supports_strict_execution_guards() -> bool => json!({});
+        now() -> Result<Instant, Failure> => json!({});
+        acquire(key: &LeaseKey, holder: &str, ttl_secs: u64) -> Result<Option<Lease>, Failure> => json!({ "key": lease_key_json(key), "holder": holder, "ttl_secs": ttl_secs });
+        release(lease: &Lease) -> Result<(), Failure> => json!({ "lease": lease });
+        renew(lease: &Lease, ttl_secs: u64) -> Result<Option<Lease>, Failure> => json!({ "lease": lease, "ttl_secs": ttl_secs });
+        lease_holds(lease: &Lease) -> Result<bool, Failure> => json!({ "lease": lease });
+        lease_row(key: &LeaseKey) -> Result<LeaseRow, Failure> => json!({ "key": lease_key_json(key) });
+        cursor_at(scope: &OwnerScope) -> Result<CursorRow, Failure> => json!({ "scope": scope });
+        cursor_cas_at(scope: &OwnerScope, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure> => json!({ "scope": scope, "expected_version": expected_version, "next": next, "fence": fence });
+        owner_at(scope: &OwnerScope) -> Result<Option<ExecutionOwner>, Failure> => json!({ "scope": scope });
+        put_owner(owner: &ExecutionOwner) -> Result<(), Failure> => json!({ "owner": owner });
+        retire_at(scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> => json!({ "scope": scope, "execution_id": execution_id, "cursor": cursor, "fence": fence });
+        retired_at(scope: &OwnerScope) -> Result<Option<String>, Failure> => json!({ "scope": scope });
+        chunk_at(scope: &OwnerScope) -> Result<Option<ChunkRow>, Failure> => json!({ "scope": scope });
+        chunks(pipeline_id: &str, table: &str) -> Result<Vec<ChunkRow>, Failure> => json!({ "pipeline_id": pipeline_id, "table": table });
+        put_chunk(row: &ChunkRow) -> Result<(), Failure> => json!({ "row": row });
+        delete_chunks(pipeline_id: &str, table: &str) -> Result<Vec<ChunkRow>, Failure> => json!({ "pipeline_id": pipeline_id, "table": table });
+        update_chunk(scope: &OwnerScope, retire: Option<&str>, f: &mut dyn FnMut(&mut ChunkRow)) -> Result<Option<ChunkRow>, Failure> => json!({ "scope": scope, "retire": retire });
+        cursor(pipeline_id: &str, table: &str) -> Result<CursorRow, Failure> => json!({ "pipeline_id": pipeline_id, "table": table });
+        cursor_cas(pipeline_id: &str, table: &str, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure> => json!({ "pipeline_id": pipeline_id, "table": table, "expected_version": expected_version, "next": next, "fence": fence });
+        owner(pipeline_id: &str, table: &str) -> Result<Option<ExecutionOwner>, Failure> => json!({ "pipeline_id": pipeline_id, "table": table });
+        retire(pipeline_id: &str, table: &str, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> => json!({ "pipeline_id": pipeline_id, "table": table, "execution_id": execution_id, "cursor": cursor, "fence": fence });
+        put_run(row: &RunRow) -> Result<(), Failure> => json!({ "row": row });
+        run(run_id: &str) -> Result<Option<RunRow>, Failure> => json!({ "run_id": run_id });
+        runs(pipeline_id: Option<&str>) -> Result<Vec<RunRow>, Failure> => json!({ "pipeline_id": pipeline_id });
+        history(pipeline_id: Option<&str>, window: &Window) -> Result<HistoryPage, Failure> => json!({ "pipeline_id": pipeline_id, "window": window });
+        last_run_start(pipeline_id: &str) -> Result<Option<Instant>, Failure> => json!({ "pipeline_id": pipeline_id });
+    }
 }

@@ -146,6 +146,27 @@ fn every_change_to_the_whole_key_misses_and_reads_the_new_state() {
     assert_eq!(counts(&r), (0, 6, 6), "no entry is reused across a change");
 }
 
+/// An instrumented pool tallies the rows its connections' table and Parquet scans emit;
+/// ordinary reads leave profiling disabled.
+#[test]
+fn the_pool_tallies_the_rows_each_statement_scans() {
+    let r = Reads::new();
+    for i in 0..3 {
+        land_run(&r.store, i);
+    }
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&[EVENTS], None)]);
+    assert_eq!(r.face.engine_rows_scanned(), 0);
+    assert_eq!(events(&r, &authority).len(), 12);
+    assert_eq!(r.face.engine_rows_scanned(), 0, "ordinary reads do not profile scans");
+    r.face.enable_engine_scan_tally();
+    assert_eq!(events(&r, &authority).len(), 12);
+    let once = r.face.engine_rows_scanned();
+    assert!(once >= 12, "a read of 12 rows scanned {once}");
+    // A pooled connection keeps tallying: the same read adds its scan again.
+    events(&r, &authority);
+    assert_eq!(r.face.engine_rows_scanned(), 2 * once);
+}
+
 /// The pool holds at most 16 entries, oldest evicted first; a miss evicts the same principal's entries under an older store state.
 // spec: read.cache.pool-entries@4654ccda
 #[test]

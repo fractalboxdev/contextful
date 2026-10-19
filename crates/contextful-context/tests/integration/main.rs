@@ -10,6 +10,8 @@ mod declare;
 mod encrypt;
 mod erase;
 mod fold;
+mod fold_amplification;
+mod fulltext_rebuild;
 mod index;
 mod init;
 #[cfg(feature = "read")]
@@ -31,4 +33,5 @@ mod run_record;
 mod session;
 mod subscribe;
 mod support;
+mod vintage_cost;
 mod visibility;

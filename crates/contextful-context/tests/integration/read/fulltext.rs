@@ -242,21 +242,6 @@ fn an_opened_sidecar_serves_repeated_reads_until_a_new_snapshot() {
     assert_eq!((cache.len(), cache.counts()), (64, (1, 67)));
 }
 
-/// A news table keyed per story, each row public from `published_at`, its body indexed.
-const DATED_TEXT: &str = r#"
-[[pipeline.tables]]
-name = "lab/news"
-primary_key = ["story_id"]
-content_hash_column = "digest"
-
-[pipeline.tables.available_time]
-column = "published_at"
-
-[[pipeline.tables.indexes]]
-kind = "fulltext"
-column = "body"
-"#;
-
 /// Under a horizon, lexical term statistics and vector neighbours come from the horizon-bounded relation; a ranking reaching a sidecar that indexes a row available after the horizon raises `ReadIndexBeyondHorizon`, naming the table.
 // spec: read.horizon.rank-statistics@9b6ac62f
 #[test]
