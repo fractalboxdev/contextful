@@ -207,7 +207,7 @@ impl S3Bucket {
     fn get_until(&self, key: &str, deadline: Option<Instant>) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
         let what = format!("GET `{key}`");
         let url = self.presign_get(key);
-        let (status, (tag, bytes)) = resend_until(&what, Resend::Repeatable, deadline, |window| {
+        let (status, (tag, bytes)) = resend_until(&what, Resend::Repeatable, deadline, |window| -> Result<_, ureq::Error> {
             let timeout = request_budget(&what, deadline).map_err(|_| ureq::Error::Timeout(ureq::Timeout::Global))?;
             let mut response = self.agent.get(&url).config().timeout_global(Some(timeout)).timeout_recv_response(Some(window)).build().call()?;
             let tag = etag(&response);

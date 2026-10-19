@@ -20,7 +20,7 @@ fn a_whole_answer_at_the_deadline_is_kept() {
             attempts.fetch_add(1, Ordering::SeqCst);
             std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
             assert!(Instant::now() >= deadline);
-            Ok((status, b"whole answer"))
+            Ok::<_, std::io::Error>((status, b"whole answer"))
         });
         assert_eq!(result.unwrap(), (status, b"whole answer"));
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
