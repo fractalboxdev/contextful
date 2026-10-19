@@ -573,8 +573,9 @@ impl Source for FailingAt {
     }
 }
 
-/// A run failing after a checkpoint commits records on its row the rows and bytes its checkpoints landed.
-// spec: run.own.checkpoint-landed@ef9f66c5
+/// A run failing after a checkpoint's commit lands records on its row the rows and bytes every landed checkpoint
+/// commit carried, including one whose cursor update then fails.
+// spec: run.own.checkpoint-landed@855bd346
 #[test]
 fn a_failed_run_records_what_its_checkpoints_landed() {
     let rig = Rig::new();
@@ -586,7 +587,54 @@ fn a_failed_run_records_what_its_checkpoints_landed() {
     assert_eq!(sink.commits.len(), 2, "two checkpoints committed before the failure");
     assert_eq!((row.rows, row.bytes), (8, 8 * 128 * 1024 * 1024), "the row counts what the checkpoints landed");
     assert_eq!(rig.row("run-1").rows, 8);
+
+    // The third checkpoint's commit lands, then the cursor row moves before the run updates it.
+    let rig = Rig::new();
+    let pages: Vec<Vec<Value>> = (0..16).map(|n| vec![json!({ "id": format!("d{n:02}") })]).collect();
+    let mut source = Pages::new(pages);
+    let sink = Sink { part_bytes: 128 * 1024 * 1024, ..Sink::default() };
+    let mut dest = MovingCursor { inner: sink, catalog: rig.engine.catalog.clone(), at: 3 };
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut dest).unwrap();
+    assert_eq!(row.status, RunStatus::Failed);
+    assert_eq!(dest.inner.commits.len(), 3, "the third checkpoint's commit landed before its cursor update failed");
+    assert_eq!((row.rows, row.bytes), (12, 12 * 128 * 1024 * 1024), "the row counts every commit that landed");
 }
+
+/// A [`Sink`] whose `at`-th commit lands, then moves the cursor row's version before the run updates it.
+struct MovingCursor {
+    inner: Sink,
+    catalog: Arc<dyn Catalog + Send + Sync>,
+    at: usize,
+}
+
+impl Destination for MovingCursor {
+    fn replaces(&self, table: &str) -> bool {
+        self.inner.replaces(table)
+    }
+
+    fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> {
+        self.inner.stage_batch(stage)
+    }
+
+    fn commit(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
+        let landed = self.inner.commit(commit, precommit)?;
+        if self.inner.commits.len() == self.at {
+            let current = self.catalog.cursor("feed", "filings")?;
+            let moved = contextful_core::coordinate::CursorRow { position: Some(json!({ "page": 0 })), ..current.clone() };
+            self.catalog.cursor_cas("feed", "filings", current.version, moved, None)?;
+        }
+        Ok(landed)
+    }
+
+    fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure> {
+        self.inner.discard(table, run_id)
+    }
+
+    fn newest_marker(&self, pipeline_id: &str, table: &str) -> Result<Option<Marker>, Failure> {
+        self.inner.newest_marker(pipeline_id, table)
+    }
+}
+
 
 /// A source serving `pages` of dated rows one page a pull, carrying the next page's index as its position.
 struct DatedWalk {

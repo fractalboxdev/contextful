@@ -590,8 +590,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 // (`run.own.checkpoint-id-length`).
                 let after = segment_run_id(&spec.run_id, commits + 1).inspect_err(|_| execution.discard())?;
                 committed_batches += parts.len() as u64;
-                let landed = self.checkpoint(execution, spec, dest, staging, std::mem::take(&mut parts), before, &mut cached)?;
-                *checkpointed = Landed { rows: checkpointed.rows + landed.rows, bytes: checkpointed.bytes + landed.bytes };
+                self.checkpoint(execution, spec, dest, staging, std::mem::take(&mut parts), before, &mut cached, checkpointed)?;
                 commits += 1;
                 *staging = after;
                 (staged_rows, staged_bytes) = (0, 0);
@@ -724,9 +723,10 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     /// Commit the parts a run staged since its last commit, carrying `position`, the position
     /// after its last staged pull, and cache that position in the catalog while the owner
     /// stays pending. The journal's recorded pulls behind the commit are collected, so a
-    /// resumption pulls afresh from the checkpoint (`run.own.checkpoint-commit`).
+    /// resumption pulls afresh from the checkpoint (`run.own.checkpoint-commit`). What the
+    /// commit lands adds to `checkpointed` before the cursor update.
     #[allow(clippy::too_many_arguments)]
-    fn checkpoint(&self, execution: &mut Execution<'_, J, B>, spec: &RunSpec, dest: &mut dyn Destination, staging: &str, parts: Vec<Part>, position: Option<Value>, cached: &mut CursorRow) -> Result<Landed, Close> {
+    fn checkpoint(&self, execution: &mut Execution<'_, J, B>, spec: &RunSpec, dest: &mut dyn Destination, staging: &str, parts: Vec<Part>, position: Option<Value>, cached: &mut CursorRow, checkpointed: &mut Landed) -> Result<(), Close> {
         let plan = &spec.plan;
         let lease = execution.lease();
         let precommit = || -> Result<(), Failure> {
@@ -761,6 +761,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 &precommit,
             )?
         };
+        // The commit has landed: its rows count on the run's row even when the cursor update
+        // after it fails (`run.own.checkpoint-landed`).
+        *checkpointed = Landed { rows: checkpointed.rows + landed.rows, bytes: checkpointed.bytes + landed.bytes };
         let scope = execution.scope().clone();
         let next = CursorRow { position: position.clone(), version: 0, marker_run_id: Some(staging.to_string()), marker_committed_at: Some(committed_at) };
         let mut expected = cached.version;
@@ -782,7 +785,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         }
         *cached = self.catalog.cursor_at(&scope)?;
         self.journal.collect(execution.execution_id())?;
-        Ok(landed)
+        Ok(())
     }
 
     /// Resolve one pull through the execution's journal under the plan's retry schedule.

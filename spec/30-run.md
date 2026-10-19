@@ -428,7 +428,7 @@ The execution owner a scope holds and the connector build it pins while pending.
   *because the store holds one manifest per run id, and a later commit naming an earlier one's directory finds it committed*
 - `checkpoint-id-length` — A checkpoint whose next `<run id>.<n>` passes {{store.lay-out.run-id-shape}} raises `RunCheckpointIdTooLong` before it commits; the run commits nothing and retires its owner.
   *because a run committing its first checkpoint and then failing on the next one's run id leaves a partial window published*
-- `checkpoint-landed` — A run failing after a checkpoint commits records on its row the rows and bytes its checkpoints landed.
+- `checkpoint-landed` — A run failing after a checkpoint's commit lands records on its row the rows and bytes every landed checkpoint commit carried, including one whose cursor update then fails.
   *because the checkpoints stay committed, and a failed row counting no rows hides rows every read returns*
 - `checkpoint-scope` — A table replacing its source state, a body's prepared landing, and a seeding or receiving scope take no checkpoint; each such run commits once.
   *because a replacement publishes one complete inventory, a body's landing publishes with its body's outcome, and a seeding or receiving scope's cursor answers to its own window*
@@ -473,6 +473,7 @@ flowchart LR
 - `run.own.checkpoint-frontier`: WHEN five pages of clocks `1 1`, `1`, `2`, `2` and `3` each stage a 512 MiB part, THEN the run commits at positions 1, 2 and 3, and no instant's rows span two commits.
 - `run.own.checkpoint-id-length`: WHEN a run id of 122 chars stages sixteen 128 MiB parts, THEN the run fails with `RunCheckpointIdTooLong` and commits nothing.
 - `run.own.checkpoint-landed`: WHEN a run commits checkpoints at `p4` and `p8` and its tenth pull fails, THEN its `failed` row counts eight rows.
+- `run.own.checkpoint-landed`: WHEN a run's `p12` checkpoint commits and the cursor row moves before its update, THEN its `failed` row counts twelve rows.
 - `run.own.checkpoint-resume`: WHEN a run commits checkpoints at `p4` and `p8` and dies pulling `p9`, THEN the next fire pulls from `p8` and lands every later row once.
 - `run.own.stage-schema`: WHEN run `run-s` stages `ts` as text and fails, THEN a later run lands `ts` as a timestamp, and `run-s`'s commit refuses with `StoreSchemaIncompatible`.
 - `run.own.stage-commit-seq`: WHEN run `run-s` stages a part, run `run-c` then commits as `_commit_seq` 1, and `run-s` commits after it, THEN every row of `run-s` reads `_commit_seq` 2.
