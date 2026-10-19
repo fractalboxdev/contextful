@@ -66,6 +66,18 @@ pub enum Address {
     Prefix { prefix: String, suffix: Option<String>, latest: bool },
 }
 
+impl Address {
+    /// Whether a read under this address lists `key`: the fixed key itself, or a key under
+    /// the prefix ending in the suffix. An object-arrival key wakes only the reads it covers
+    /// (`run.land.object-arrival-wake`).
+    pub fn covers(&self, key: &str) -> bool {
+        match self {
+            Address::Key(k) => k == key,
+            Address::Prefix { prefix, suffix, .. } => key.starts_with(prefix.as_str()) && suffix.as_deref().is_none_or(|s| key.ends_with(s)),
+        }
+    }
+}
+
 /// A parsed object source configuration.
 #[derive(Debug, Clone)]
 pub struct ObjectConfig {
@@ -404,9 +416,9 @@ impl ObjectSource {
     fn keys(&self, objects: &dyn Objects) -> Result<Vec<(String, Option<String>)>, Failure> {
         match &self.config.address {
             Address::Key(k) => Ok(vec![(k.clone(), None)]),
-            Address::Prefix { prefix, suffix, latest } => {
+            Address::Prefix { prefix, latest, .. } => {
                 let mut keys = objects.list(prefix)?;
-                keys.retain(|(k, _)| k.starts_with(prefix.as_str()) && suffix.as_deref().is_none_or(|s| k.ends_with(s)));
+                keys.retain(|(k, _)| self.config.address.covers(k));
                 keys.sort();
                 keys.dedup_by(|a, b| a.0 == b.0);
                 if *latest {

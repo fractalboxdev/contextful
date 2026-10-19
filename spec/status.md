@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 53 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 600 | 128 | 49 | 19 | 560 | 0 | 560 |
+| `run` | 3 | 29 | 600 | 128 | 49 | 19 | 562 | 0 | 562 |
 | `store` | 3 | 19 | 322 | 65 | 19 | 11 | 311 | 0 | 311 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
-| `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2772 | 683 | 222 | 80 | 2478 | 0 | |
+| `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
+| **total** | 22 | 169 | 2772 | 683 | 222 | 80 | 2481 | 0 | |
 
 Decision records: 18.
 
@@ -28,8 +28,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 198 | 188 | passing | closed |
-| 3 — The run path | 12 | 307 | 295 | passing | closed |
-| 4 — Ingest | 25 | 633 | 527 | passing | closed |
+| 3 — The run path | 12 | 307 | 296 | passing | closed |
+| 4 — Ingest | 25 | 633 | 529 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -1593,6 +1593,7 @@ Unscheduled operations: 13.
 | `run.export.group-stranded` | `spec/pins.toml` | performed |
 | `run.export.log-record` | `crates/contextful-core/tests/integration/pipeline/export.rs::each_row_becomes_one_log_record_carrying_its_commit_position` | performed |
 | `run.export.post-commit-read` | `crates/contextful-cli/tests/integration/export.rs::export_reads_through_the_face_under_the_admitted_credential` | performed |
+| `run.export.queue-wake` | `crates/contextful-cli/tests/integration/export.rs::a_wake_up_runs_the_export_from_its_cursor_and_a_lost_one_skips_no_row` | performed |
 | `run.export.secret-preflight` | `crates/contextful-cli/tests/integration/export.rs::an_unresolved_header_reference_refuses_before_any_request` | performed |
 | `run.export.signal-unknown` | `crates/contextful-core/tests/integration/pipeline/export.rs::a_signal_other_than_logs_is_refused` | performed |
 | `run.export.typed-ack` | `spec/pins.toml` | performed |
@@ -1702,6 +1703,7 @@ Unscheduled operations: 13.
 | `run.land.irreconcilable-schema` | `crates/contextful-cli/tests/integration/run.rs::an_irreconcilable_pulled_schema_fails_the_batch` | performed |
 | `run.land.late-type` | `crates/contextful-engine/tests/integration/runner.rs::a_type_declared_after_its_column_staged_refuses` | performed |
 | `run.land.no-host-arm` | `crates/contextful-wasm/tests/integration/export.rs::the_host_binds_the_source_world_and_no_world_it_hosts_reaches_the_destination` | performed |
+| `run.land.object-arrival-wake` | `crates/contextful-cli/tests/integration/object.rs::an_arrival_key_wakes_the_prefix_read_covering_it_and_lands_nothing_twice` | performed |
 | `run.land.parse-boundary` | `crates/contextful-connectors/tests/integration/boundary.rs::a_decode_runs_in_a_child_the_parent_kills_at_its_deadline` | performed |
 | `run.land.parse-crashed` | `crates/contextful-connectors/tests/integration/boundary.rs::a_crashed_decode_is_named_and_a_refusal_crosses_intact` | performed |
 | `run.land.partial-parse` | `crates/contextful-decode/tests/integration/pdf.rs::a_page_that_fails_to_render_refuses_the_whole_document` | performed |
@@ -2464,6 +2466,7 @@ Unscheduled operations: 13.
 | `topology.compose.memory-substrate` | `spec/pins.toml` | performed |
 | `topology.compose.one-tree` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.compose.open-store` | `spec/pins.toml` | performed |
+| `topology.compose.queue-extension` | `tools/ci/tests/integration/topology.rs::a_queue_role_reaches_the_queue_port_and_a_profile_declaring_none_uses_the_local_spool` | performed |
 | `topology.compose.read-path` | `tools/ci/tests/integration/topology.rs::the_read_replica_links_the_store_catalog_query_ranking_and_sync` | performed |
 | `topology.compose.run-path` | `tools/ci/tests/integration/topology.rs::the_execution_core_holds_the_journal_scheduler_and_awakeables_and_no_store` | performed |
 | `topology.compose.run-path-droppable` | `spec/pins.toml` | performed |

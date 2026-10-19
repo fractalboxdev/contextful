@@ -1177,6 +1177,65 @@ fn no_profile_links_a_queue_cache_consensus_or_coordination_client() {
     }
 }
 
+/// A target profile declaring a `queue` role carries `receive` batches, object-arrival keys and post-commit wake-ups on
+/// that managed queue behind the `Queue` port; a profile declaring none uses the local spool. Only the engine writes
+/// the store.
+///
+/// The port names the three message kinds; the local spool implements it in the engine, which links no store
+/// package; every shape declaring a `queue` role uses the `queue` primitive and names its object-arrival feed; the
+/// local target declares none; and the binary wires the spool alone.
+// spec: topology.compose.queue-extension@614ae27d
+#[test]
+fn a_queue_role_reaches_the_queue_port_and_a_profile_declaring_none_uses_the_local_spool() {
+    let read = |path: &str| std::fs::read_to_string(repo_root().join(path)).unwrap_or_default();
+    let port = read("crates/contextful-core/src/run/queue.rs");
+    assert!(port.contains("pub trait Queue"), "no `Queue` port");
+    for kind in ["Receive {", "ObjectArrival {", "Committed {"] {
+        assert!(port.contains(kind), "the port names no `{kind}` message");
+    }
+    let spool = read("crates/contextful-engine/src/queue.rs");
+    assert!(spool.contains("impl Queue for LocalSpool"), "no local spool behind the port");
+    for module in [&port, &spool] {
+        assert!(!module.contains("contextful_context") && !module.contains("Destination"), "a queue module reaches a store writer");
+    }
+    let engine = package_graph("contextful-engine");
+    assert!(!engine.is_empty() && !engine.iter().any(|n| n == "contextful-context"), "the queue's engine side links the store package");
+
+    let mut declaring = 0;
+    for entry in std::fs::read_dir(repo_root().join("spec/targets")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+            continue;
+        }
+        let target: toml::Value = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let provider = target["provider"].as_str().unwrap().to_string();
+        for shape in target["shape"].as_array().unwrap() {
+            let name = shape["name"].as_str().unwrap();
+            let uses: Vec<&str> = shape["uses"].as_array().unwrap().iter().filter_map(|u| u.as_str()).collect();
+            match shape["roles"].get("queue").and_then(|q| q.as_str()) {
+                Some(role) => {
+                    declaring += 1;
+                    assert_ne!(provider, "local", "the local target declares a `queue` role on `{name}`");
+                    assert!(uses.contains(&"queue"), "`{provider}` `{name}` declares a `queue` role without the `queue` primitive");
+                    assert!(role.contains("object arrival"), "`{provider}` `{name}`'s queue names no object-arrival feed: `{role}`");
+                }
+                None => assert!(!uses.contains(&"queue"), "`{provider}` `{name}` uses a queue it declares no role for"),
+            }
+        }
+    }
+    assert!(declaring > 0, "the check above ranges over no `queue` role");
+
+    let mut wired = Vec::new();
+    for entry in std::fs::read_dir(repo_root().join("crates/contextful-cli/src")).unwrap().flatten() {
+        let text = std::fs::read_to_string(entry.path()).unwrap_or_default();
+        if text.contains("impl Queue for") || text.contains("dyn Queue") {
+            wired.push(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    assert!(wired.is_empty(), "the binary implements a queue beside the spool: {wired:?}");
+    assert!(read("crates/contextful-cli/src/queue.rs").contains("LocalSpool::open"), "the binary wires no local spool");
+}
+
 /// Every catalog backend is reached through the `Catalog` port, and code above the port names no backend. Swapping a
 /// backend is a wiring change in `contextful-cli`.
 // spec: topology.coordinate.catalog-port@4b1eafe6

@@ -140,7 +140,7 @@ fn wall_clock() -> Result<contextful_core::time::Instant> {
     Ok(contextful_core::time::Instant::from_unix_nanos(i128::try_from(nanos)?)?)
 }
 
-fn run_once(name: &str, project: &ProjectArgs, declaration: Option<PathBuf>, admit: &AdmitArgs) -> Result<()> {
+pub(crate) fn run_once(name: &str, project: &ProjectArgs, declaration: Option<PathBuf>, admit: &AdmitArgs) -> Result<()> {
             let l = project.locate(declaration)?;
             crate::storage::preflight(&l.project)?;
             crate::sync::pull_before_run(&l)?;
