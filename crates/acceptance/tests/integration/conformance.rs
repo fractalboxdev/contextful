@@ -10,6 +10,32 @@ fn executable(path: &Path, body: &str) {
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
 }
 
+/// The suite runs inside the caller's process group, as a release build runs it under a
+/// supervisor; stopping each finished artifact process signals only that process's own group.
+/// procps `kill` reads `-KILL -<pid>` without `--` as a kill of the caller's group.
+#[test]
+#[cfg(unix)]
+fn stopping_a_finished_artifact_leaves_the_callers_process_group_running() {
+    use std::os::unix::process::CommandExt;
+    let dir = tempfile::tempdir().unwrap();
+    let binary = dir.path().join("contextful");
+    executable(&binary, "#!/bin/sh\ncase \"$1\" in\n--version) printf 'contextful 0.5.0 contextful-edge\\n';;\n*) printf 'ProfileCapabilityAbsent: run requires data-plane\\n' >&2; exit 1;;\nesac\n");
+    let output = dir.path().join("report.json");
+    let script = format!(
+        "{suite} --binary {binary} --output {output} --storage-profile local; echo caller-survived",
+        suite = env!("CARGO_BIN_EXE_contextful-conformance"),
+        binary = binary.display(),
+        output = output.display(),
+    );
+    let caller = std::process::Command::new("/bin/sh").args(["-c", &script]).process_group(0).output().unwrap();
+    assert!(output.exists(), "the suite wrote no report: {}", String::from_utf8_lossy(&caller.stderr));
+    assert!(
+        String::from_utf8_lossy(&caller.stdout).contains("caller-survived"),
+        "the caller's group was signalled: {:?}",
+        caller.status
+    );
+}
+
 #[test]
 #[cfg(unix)]
 fn missing_capability_reports_unsupported_without_admitting_work() {

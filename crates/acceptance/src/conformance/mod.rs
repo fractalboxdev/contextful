@@ -513,7 +513,7 @@ impl Drop for Running {
             // A live process stops first, so a daemon ends the children its group kill misses.
             if matches!(self.child.try_wait(), Ok(None)) {
                 let _ = Command::new("/bin/kill")
-                    .args(["-TERM", &format!("-{}", self.child.id())])
+                    .args(["-TERM", "--", &format!("-{}", self.child.id())])
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .status();
@@ -523,7 +523,7 @@ impl Drop for Running {
                 }
             }
             let _ = Command::new("/bin/kill")
-                .args(["-KILL", &format!("-{}", self.child.id())])
+                .args(["-KILL", "--", &format!("-{}", self.child.id())])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status();
