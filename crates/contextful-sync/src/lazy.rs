@@ -19,6 +19,9 @@ pub const PART_WAIT: Duration = Duration::from_secs(30);
 /// The file under the sync directory listing each fetched part and its size.
 const INDEX_FILE: &str = "part-cache.json";
 
+/// Download receipts name fetched parts independently of the cache index.
+const RECEIPTS_DIR: &str = "fetched-parts";
+
 /// Whether `key` is an object a lazy pull leaves in the bucket: a table's Parquet data part.
 pub fn is_lazy_part(key: &str) -> bool {
     key.ends_with(".parquet") && key.split('/').any(|s| s == "data")
@@ -27,7 +30,17 @@ pub fn is_lazy_part(key: &str) -> bool {
 /// The parts a store fetched lazily, relative to its root, which no push or pull records as
 /// held (`store.merge.held-record`): the cache may remove any of them.
 pub(crate) fn fetched_parts(root: &Path, project: &str) -> BTreeSet<String> {
-    read_index(&sync_dir(root, project).join(INDEX_FILE)).into_keys().collect()
+    let sync = sync_dir(root, project);
+    let mut parts: BTreeSet<String> = read_index(&sync.join(INDEX_FILE)).into_keys().collect();
+    let receipts = sync.join(RECEIPTS_DIR);
+    for entry in std::fs::read_dir(receipts).into_iter().flatten().flatten() {
+        if let Ok(rel) = std::fs::read_to_string(entry.path()) {
+            if is_lazy_part(&rel) && root.join(&rel).is_file() {
+                parts.insert(rel);
+            }
+        }
+    }
+    parts
 }
 
 fn read_index(path: &Path) -> BTreeMap<String, u64> {
@@ -58,6 +71,7 @@ struct Inner {
     /// Fetches in flight at once (`store.pull.transfer-width`).
     width: usize,
     index: PathBuf,
+    receipts: PathBuf,
     /// The bucket manifest's entries, read on the first fetch and re-read when it lacks a key.
     entries: Mutex<Option<BTreeMap<String, Entry>>>,
     cache: Mutex<Cache>,
@@ -77,6 +91,8 @@ impl std::fmt::Debug for LazyParts {
 struct Holding {
     inner: Arc<Inner>,
     files: Vec<String>,
+    /// A refused batch persists its completed downloads after releasing its holds.
+    save_on_drop: bool,
 }
 
 impl Drop for Holding {
@@ -90,7 +106,9 @@ impl Drop for Holding {
                 }
             }
         }
-        self.inner.shrink(&mut cache);
+        if self.inner.shrink(&mut cache) || self.save_on_drop {
+            self.inner.save(&cache);
+        }
     }
 }
 
@@ -101,8 +119,9 @@ impl LazyParts {
     pub fn new(bucket: Arc<dyn ObjectStore>, prefix: &str, project: &str, root: &Path, bound: u64, width: usize) -> LazyParts {
         let index = sync_dir(root, project).join(INDEX_FILE);
         let mut cache = Cache::default();
-        for (rel, size) in read_index(&index) {
-            if root.join(&rel).exists() {
+        for rel in fetched_parts(root, project) {
+            if let Ok(meta) = std::fs::metadata(root.join(&rel)) {
+                let size = meta.len();
                 cache.bytes += size;
                 cache.parts.insert(rel, Cached { size, tick: 0 });
             }
@@ -115,6 +134,7 @@ impl LazyParts {
             bound,
             width,
             index,
+            receipts: sync_dir(root, project).join(RECEIPTS_DIR),
             entries: Mutex::new(None),
             cache: Mutex::new(cache),
         }))
@@ -142,8 +162,8 @@ impl Inner {
     }
 
     /// Fetch `rel` whole, verified against its manifest entry, waiting out an unavailable
-    /// bucket within [`PART_WAIT`]; returns its size.
-    fn fetch(&self, rel: &str) -> Result<u64, StoreError> {
+    /// bucket within [`PART_WAIT`], and account for it in the cache.
+    fn fetch(&self, rel: &str) -> Result<(), StoreError> {
         let key = format!("{}/{rel}", self.project);
         let snapshot = rel.split('/').skip_while(|s| *s != "snapshots").nth(1).unwrap_or("-");
         let collected = || StoreError::SyncPartCollected(format!("`{rel}` of snapshot `{snapshot}` is gone from the bucket; the next pull advances the pointer past it"));
@@ -165,26 +185,35 @@ impl Inner {
         if sha256_hex(&bytes) != entry.sha256 {
             return Err(StoreError::SyncObjectDigestMismatch(format!("`{key}` arrived with a digest other than its entry's; the object is discarded")));
         }
+        // A receipt precedes its part so a missing index loses no download's provenance.
+        write(&self.receipts.join(sha256_hex(rel.as_bytes())), rel.as_bytes()).map_err(|e| StoreError::ReadPartUnavailable(format!("`{rel}`: {e}")))?;
         write(&self.root.join(rel), &bytes).map_err(|e| StoreError::ReadPartUnavailable(format!("`{rel}`: {e}")))?;
-        Ok(bytes.len() as u64)
+        let mut cache = self.lock();
+        let size = bytes.len() as u64;
+        let tick = cache.tick;
+        // Two reads fetching one part at once count it once.
+        if !cache.parts.contains_key(rel) {
+            cache.bytes += size;
+        }
+        cache.parts.insert(rel.to_string(), Cached { size, tick });
+        Ok(())
     }
 
     /// Remove the least recently held fetched parts no read holds until the cache fits its bound.
-    fn shrink(&self, cache: &mut Cache) {
+    fn shrink(&self, cache: &mut Cache) -> bool {
         let before = cache.parts.len();
         while cache.bytes > self.bound {
             let Some(rel) = cache.parts.iter().filter(|(rel, _)| !cache.held.contains_key(*rel)).min_by_key(|(_, c)| c.tick).map(|(rel, _)| rel.clone()) else { break };
             let _ = std::fs::remove_file(self.root.join(&rel));
+            let _ = std::fs::remove_file(self.receipts.join(sha256_hex(rel.as_bytes())));
             if let Some(c) = cache.parts.remove(&rel) {
                 cache.bytes -= c.size;
             }
         }
-        if cache.parts.len() != before {
-            self.save(cache);
-        }
+        cache.parts.len() != before
     }
 
-    /// Write the index; a failed write costs the next process an untracked part, never a read.
+    /// Write the index; download receipts retain each part when the index write fails.
     fn save(&self, cache: &Cache) {
         let index: BTreeMap<&String, u64> = cache.parts.iter().map(|(rel, c)| (rel, c.size)).collect();
         if let Ok(bytes) = serde_json::to_vec(&index) {
@@ -229,22 +258,15 @@ impl PartSource for LazyParts {
             files.iter().filter(|f| !self.0.root.join(f.as_str()).exists()).cloned().collect()
         };
         // The holding releases every file on any return, a refused fetch included.
-        let holding = Holding { inner: self.0.clone(), files: files.to_vec() };
-        let sizes = each(self.0.width, &missing, |rel| self.0.fetch(rel).map_err(crate::sync::SyncError::Store)).map_err(|e| match e {
+        let mut holding = Holding { inner: self.0.clone(), files: files.to_vec(), save_on_drop: !missing.is_empty() };
+        each(self.0.width, &missing, |rel| self.0.fetch(rel).map_err(crate::sync::SyncError::Store)).map_err(|e| match e {
             crate::sync::SyncError::Store(s) => s,
             other => StoreError::ReadPartUnavailable(other.to_string()),
         })?;
-        let mut cache = self.0.lock();
-        let tick = cache.tick;
-        for (rel, size) in missing.into_iter().zip(sizes) {
-            // Two reads fetching one part at once count it once.
-            if !cache.parts.contains_key(&rel) {
-                cache.bytes += size;
-            }
-            cache.parts.insert(rel, Cached { size, tick });
+        if holding.save_on_drop {
+            self.0.save(&self.0.lock());
+            holding.save_on_drop = false;
         }
-        self.0.save(&cache);
-        drop(cache);
         Ok(PartHold(Arc::new(holding)))
     }
 }

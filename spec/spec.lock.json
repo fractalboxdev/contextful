@@ -4463,6 +4463,17 @@
       "line": 626
     },
     {
+      "id": "store.pull.part-accounting",
+      "contract": "store",
+      "operation": "pull",
+      "subject": "part-accounting",
+      "kind": "behavior",
+      "statement": "Each verified lazy download counts once toward {{store.pull.part-cache}} as it reaches disk, through sibling fetch failures; reopening adopts receipt-listed parts when the cache index is missing, without bucket reads or receipt-free tree scans.",
+      "why": "because a partial acquisition and a lost index leave completed downloads subject to eviction",
+      "file": "spec/10-store.md",
+      "line": 628
+    },
+    {
       "id": "store.pull.part-collected",
       "contract": "store",
       "operation": "pull",
@@ -4471,7 +4482,7 @@
       "statement": "A part {{store.pull.lazy-parts}} needs that the bucket no longer holds raises `SyncPartCollected`, naming the part and its snapshot, and the next pull advances the pointer past it.",
       "why": "because retention collects a superseded snapshot's parts while a container still holding its pointer reads them",
       "file": "spec/10-store.md",
-      "line": 628
+      "line": 630
     },
     {
       "id": "store.pull.generation",
@@ -4482,7 +4493,7 @@
       "statement": "`contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads each listed key in scope at its listed digest, and writes exactly that generation's pointers, whatever their fence.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 630
+      "line": 632
     },
     {
       "id": "store.pull.generation-list",
@@ -4493,7 +4504,7 @@
       "statement": "`contextful sync generations` lists each `gen-<N>.json` the bucket holds, ascending, with its `committed_at`, `committed_by` and the project's entry and tombstone counts, printing `-` for a stamp the manifest lacks.",
       "why": "because choosing a generation to restore needs the last commit before an unwanted tombstone, and generation numbers alone carry no time",
       "file": "spec/10-store.md",
-      "line": 631
+      "line": 633
     },
     {
       "id": "store.pull.generation-absent",
@@ -4504,7 +4515,7 @@
       "statement": "A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.",
       "why": "because a restore falling back to another generation reads a state nobody named",
       "file": "spec/10-store.md",
-      "line": 633
+      "line": 635
     },
     {
       "id": "store.pull.generation-diverged",
@@ -4515,7 +4526,7 @@
       "statement": "A generation pull into a store holding a syncable file in scope that the generation does not list raises `SyncGenerationDiverged`, naming the file, and writes nothing.",
       "why": "because a kept unlisted run adds rows the generation never held, and deleting it loses unpushed work",
       "file": "spec/10-store.md",
-      "line": 635
+      "line": 637
     },
     {
       "id": "store.pull.generation-schema",
@@ -4526,7 +4537,7 @@
       "statement": "A generation pull takes each `schema.json` as the bucket holds it, merged per {{store.pull.schema-merge}}, never refusing on its generation digest.",
       "why": "because the lattice keeps every column an earlier generation carried, and the merged copy replaces the old one in the bucket",
       "file": "spec/10-store.md",
-      "line": 637
+      "line": 639
     },
     {
       "id": "store.pull.generation-run-state",
@@ -4537,7 +4548,7 @@
       "statement": "A generation pull holds no `nodes/<node-id>/run-state.json` to {{store.pull.generation-diverged}}: one the generation does not list stays as it is, and any other unlisted file under `nodes/` meets that refusal.",
       "why": "because a run state summarizes history outside the store root, and a restore predating it otherwise refuses every node that pushed since",
       "file": "spec/10-store.md",
-      "line": 639
+      "line": 641
     },
     {
       "id": "store.pull.run-state-cursor",
@@ -4548,7 +4559,7 @@
       "statement": "A run opening where a pulled run state records a commit marker for its pipeline and table newer than every local one resumes from that marker's cursor.",
       "why": "because a collected run takes its manifest's cursor out of the bucket, and a cold node otherwise re-reads the source from its start",
       "file": "spec/10-store.md",
-      "line": 641
+      "line": 643
     },
     {
       "id": "store.pull.control-head",
@@ -4559,7 +4570,7 @@
       "statement": "A pull downloads the bucket manifest's project-scoped control head, its snapshot and receipt ancestry under their listed digests, leaving the local applied pointer untouched for {{surface.reconcile.pulled-control}}.",
       "why": "A-surface",
       "file": "spec/10-store.md",
-      "line": 643,
+      "line": 645,
       "scenarios": [
         "WHEN a cold node pulls a signed control head, THEN its local applied pointer stays absent until reconciliation verifies the head."
       ]
@@ -4573,7 +4584,7 @@
       "statement": "An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 682
+      "line": 684
     },
     {
       "id": "store.probe.unproven",
@@ -4584,7 +4595,7 @@
       "statement": "Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 684
+      "line": 686
     },
     {
       "id": "store.probe.sentinel",
@@ -4595,7 +4606,7 @@
       "statement": "The probe creates a sentinel under `_contextful/cas-probe/` and demonstrates `cas` when a second create and a stale `If-Match` both fail and a current `If-Match` replaces it, deleting the sentinel after.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 686
+      "line": 688
     },
     {
       "id": "store.probe.network-volume",
@@ -4606,7 +4617,7 @@
       "statement": "A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves `single-writer` without the sentinel, naming the mount type, and a declared `cas` there meets {{store.probe.unproven}}.",
       "why": "because the bucket's advisory lock is not a guarantee across the clients of a network share, and a sentinel run from one client cannot observe another",
       "file": "spec/10-store.md",
-      "line": 687
+      "line": 689
     },
     {
       "id": "store.merge.tombstone-owner",
@@ -4617,7 +4628,7 @@
       "statement": "A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 694
+      "line": 696
     },
     {
       "id": "store.merge.tombstone-signed",
@@ -4628,7 +4639,7 @@
       "statement": "A push signs each tombstone it writes with its node's issuer key, recording `signer` and `signature` over the key, owner and `deleted_at`; a node holding no issuer key writes it unsigned.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 696
+      "line": 698
     },
     {
       "id": "store.merge.tombstone-unverified",
@@ -4639,7 +4650,7 @@
       "statement": "A tombstone unsigned, failing its signature, or signed by a key the key-set ledger does not record as verifying at its `deleted_at` raises `SyncTombstoneUnverified`; a merge keeps the entry it names and a pull deletes nothing.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 698
+      "line": 700
     },
     {
       "id": "store.merge.tombstone-ttl",
@@ -4650,7 +4661,7 @@
       "statement": "A tombstone leaves the manifest 30 d after its `deleted_at`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 700
+      "line": 702
     },
     {
       "id": "store.merge.retries",
@@ -4661,7 +4672,7 @@
       "statement": "`[sync] push_retries` bounds consecutive re-commit rounds whose re-read manifest carries no newer generation than the round before, defaulting to 5 attempts.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 701
+      "line": 703
     },
     {
       "id": "store.merge.round-ceiling",
@@ -4672,7 +4683,7 @@
       "statement": "A push stops its manifest commit loop after 64 rounds, whatever generations those rounds meet.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 703
+      "line": 705
     },
     {
       "id": "store.merge.exhausted",
@@ -4683,7 +4694,7 @@
       "statement": "Exhausting {{store.merge.retries}} or {{store.merge.round-ceiling}} raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 705
+      "line": 707
     },
     {
       "id": "store.merge.cursor-recency",
@@ -4694,7 +4705,7 @@
       "statement": "Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 707
+      "line": 709
     },
     {
       "id": "store.merge.scoped-union",
@@ -4705,7 +4716,7 @@
       "statement": "A merge takes each local entry this writer owns or no node owns, and every other remote entry; a remote entry it owns leaves with a tombstone only where {{store.merge.held-record}} lists it and the store no longer holds it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 709
+      "line": 711
     },
     {
       "id": "store.merge.held-record",
@@ -4716,7 +4727,7 @@
       "statement": "A push records in `.sync-held.json`, under its node id, each owned key the store holds, adding them before its commit and replacing the node's keys after; a pull holding the push guard adds each such key the bucket manifest lists.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 711
+      "line": 713
     },
     {
       "id": "store.merge.held-absent",
@@ -4727,7 +4738,7 @@
       "statement": "A store whose `.sync-held.json` names no keys for its node reads as holding every remote key that node owns when an earlier push left its `.push.lock`, and none otherwise.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 713
+      "line": 715
     },
     {
       "id": "store.merge.held-unreadable",
@@ -4738,7 +4749,7 @@
       "statement": "An unreadable `.sync-held.json` raises `SyncHeldRecordUnreadable` without granting deletion authority or replacing the record.",
       "why": "because corruption establishes no ownership and a replacement discards other nodes' entries",
       "file": "spec/10-store.md",
-      "line": 715
+      "line": 717
     },
     {
       "id": "store.merge.ownership",
@@ -4749,7 +4760,7 @@
       "statement": "A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 717
+      "line": 719
     },
     {
       "id": "store.lease.ttl",
@@ -4760,7 +4771,7 @@
       "statement": "A lease is granted for 10 min.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 724
+      "line": 726
     },
     {
       "id": "store.lease.renewal",
@@ -4771,7 +4782,7 @@
       "statement": "A holder renews every 200 s by `If-Match` replace on the ETag it holds.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 725
+      "line": 727
     },
     {
       "id": "store.lease.clock-skew",
@@ -4782,7 +4793,7 @@
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
       "why": "because correctness rests on the fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
-      "line": 726
+      "line": 728
     },
     {
       "id": "store.lease.held",
@@ -4793,7 +4804,7 @@
       "statement": "A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 728
+      "line": 730
     },
     {
       "id": "store.lease.stale-fence",
@@ -4804,7 +4815,7 @@
       "statement": "A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises `LeaseFenced`, and the run or snapshot it carried stays unreadable.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 730
+      "line": 732
     },
     {
       "id": "store.lease.not-held",
@@ -4815,7 +4826,7 @@
       "statement": "Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 732
+      "line": 734
     },
     {
       "id": "store.lease.cursor-kind",
@@ -4826,7 +4837,7 @@
       "statement": "A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 734
+      "line": 736
     },
     {
       "id": "store.lease.local-node",
@@ -4837,7 +4848,7 @@
       "statement": "A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 736
+      "line": 738
     },
     {
       "id": "store.lease.acquire",
@@ -4848,7 +4859,7 @@
       "statement": "Acquisition creates the lease object under `If-None-Match`, or replaces an expired or released one under `If-Match` on its ETag, the fence one past the object's.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 738
+      "line": 740
     },
     {
       "id": "store.lease.pointer-fence",
@@ -4859,7 +4870,7 @@
       "statement": "Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 740
+      "line": 742
     },
     {
       "id": "store.lease.network-volume",
@@ -4870,7 +4881,7 @@
       "statement": "Taking a compaction lease on a bucket {{store.probe.network-volume}} resolves to `single-writer` meets {{store.probe.unproven}} naming the mount type, and writes no lease object and no pointer fence.",
       "why": "because a conditional put holding on one machine only lets two machines each take the lease",
       "file": "spec/10-store.md",
-      "line": 742
+      "line": 744
     },
     {
       "id": "store.lease.commit-log",
@@ -4881,7 +4892,7 @@
       "statement": "Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`, and an acquisition creates one carrying its fence; a manifest marked `logged` is readable once that log records it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 744
+      "line": 746
     },
     {
       "id": "store.snapshot.capture",
@@ -32039,6 +32050,10 @@
     [
       "store.pull.lazy-parts",
       "store.pull.digest-mismatch"
+    ],
+    [
+      "store.pull.part-accounting",
+      "store.pull.part-cache"
     ],
     [
       "store.pull.part-collected",

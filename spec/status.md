@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 315 | 54 | 29 | 16 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 601 | 128 | 49 | 19 | 563 | 0 | 563 |
-| `store` | 4 | 19 | 328 | 68 | 21 | 12 | 317 | 0 | 317 |
+| `store` | 4 | 19 | 329 | 68 | 21 | 12 | 318 | 0 | 318 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2795 | 690 | 224 | 82 | 2503 | 0 | |
+| **total** | 23 | 169 | 2796 | 690 | 224 | 82 | 2504 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
 | 4 — Ingest | 25 | 634 | 530 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 282 | passing | closed |
-| 6 — Sync and replicas | 8 | 103 | 102 | passing | closed |
+| 6 — Sync and replicas | 8 | 104 | 103 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -2236,6 +2236,7 @@ Unscheduled operations: 13.
 | `store.pull.generation-schema` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_takes_the_current_schema` | performed |
 | `store.pull.identity-conflict` | `spec/pins.toml` | performed |
 | `store.pull.lazy-parts` | `crates/contextful-sync/tests/integration/lazy.rs::a_lazy_pull_downloads_no_part_and_a_read_fetches_each_it_needs` | performed |
+| `store.pull.part-accounting` | `crates/contextful-sync/tests/integration/lazy.rs::a_refused_lazy_fetch_keeps_successful_parts_accounted` | performed |
 | `store.pull.part-cache` | `crates/contextful-sync/tests/integration/lazy.rs::past_the_part_cache_bound_the_least_recently_read_part_leaves` | performed |
 | `store.pull.part-collected` | `crates/contextful-sync/tests/integration/lazy.rs::a_part_the_bucket_no_longer_holds_refuses_the_read` | performed |
 | `store.pull.pointer-advance` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies` | performed |
