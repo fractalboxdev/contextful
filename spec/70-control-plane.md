@@ -73,6 +73,8 @@ The schedule grammar and cron dialect, the trigger adapter and its durability, t
 - `grammar` — A schedule is `every <n><unit>` with unit `s`, `m`, `h` or `d`, or a UTC cron expression of five fields, minute, hour, day of month, month and day of week, each `*`, a value, range, list or `/` step.
 - `next-fire-from-history` — An armed entry's next fire is the first instant its schedule admits after the later of its pipeline's last journaled run start and its last dispatch; an entry with neither is due when armed.
   *because a restarted daemon then keeps the cadence its run history shows instead of restarting every interval from boot*
+- `dispatch-journaled` — A dispatched unit ending failed while no run start of its entry at or after its dispatch is journaled journals a `failed` run row under the entry's id, started at the dispatch instant, carrying `dispatch: ` and the failure line.
+  *because a restarted serve otherwise finds the entry due when armed and refires it ahead of every other unit*
 - `catch-up` — A daemon arming an entry whose next fire has passed fires it once, whatever count of intervals elapsed, and arms the following fire from that run.
   *because replaying each missed interval against an incremental source pulls the same delta once per interval*
 - `pulled-history` — A pipeline's last journaled run start is the latest start across this node's catalog and every run state {{store.push.run-state}} carries that records the pipeline.

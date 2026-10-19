@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 557 | 127 | 45 | 17 | 525 | 0 | 525 |
 | `store` | 3 | 19 | 299 | 64 | 15 | 10 | 288 | 0 | 288 |
-| `surface` | 2 | 21 | 172 | 66 | 24 | 0 | 146 | 0 | 146 |
+| `surface` | 2 | 21 | 173 | 66 | 24 | 0 | 147 | 0 | 147 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2694 | 680 | 214 | 75 | 2409 | 0 | |
+| **total** | 22 | 169 | 2695 | 680 | 214 | 75 | 2410 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 107 | 95 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 108 | 96 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 61 | 49 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
@@ -2258,6 +2258,7 @@ Unscheduled operations: 13.
 | `surface.apply.version-race` | `crates/contextful-snapshot/tests/integration/snapshot.rs::a_lost_claim_conflicts_and_overwrites_nothing` | performed |
 | `surface.apply.weak-conditional-backend` | `crates/contextful-core/tests/integration/surface/control.rs::a_conditional_write_owner_refuses_a_network_filesystem` | performed |
 | `surface.arm.catch-up` | `crates/contextful-engine/tests/integration/scheduler.rs::a_daemon_booting_past_missed_intervals_fires_once` | performed |
+| `surface.arm.dispatch-journaled` | `crates/contextful-engine/tests/integration/scheduler.rs::a_unit_failing_before_its_run_opens_is_not_due_again_after_a_restart` | performed |
 | `surface.arm.grammar` | `crates/contextful-core/tests/integration/surface/arm.rs::a_schedule_is_an_interval_or_a_five_field_cron` | performed |
 | `surface.arm.next-fire-from-history` | `crates/contextful-core/tests/integration/surface/arm.rs::the_next_fire_counts_from_the_run_history` | performed |
 | `surface.arm.pulled-future` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_future_dated_run_state_leaves_a_cold_nodes_cadence_alone` | performed |

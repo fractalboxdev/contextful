@@ -270,3 +270,54 @@ fn a_head_fires_its_steps_as_one_unit_and_a_due_step_starts_nothing() {
     assert!(s.beat().unwrap().refused.is_empty());
     s.drain();
 }
+
+/// A dispatch that fails before its unit journals a run row, as a unit whose upstream
+/// refuses before the run opens does.
+struct FailsEarly(Mutex<Vec<String>>);
+
+impl Dispatch for FailsEarly {
+    fn fire(&self, id: &str, _steps: &[String], _derived_parents: &BTreeMap<String, String>, _version: u64) -> Result<String, String> {
+        self.0.lock().unwrap().push(id.to_string());
+        Err(format!("Transient: {id} upstream answered 503"))
+    }
+}
+
+/// A unit that ends failed without journaling a run start journals a `failed` row at its
+/// dispatch instant, so a restarted scheduler keeps its cadence and the single slot goes to
+/// the next due unit.
+// spec: surface.arm.dispatch-journaled@93189b79
+#[test]
+fn a_unit_failing_before_its_run_opens_is_not_due_again_after_a_restart() {
+    let rig = Rig::new();
+    journal_run(&rig, "feed-0", "feed", T0);
+    rig.clock.advance(600);
+    let failing = Arc::new(FailsEarly(Mutex::default()));
+    let mut first = Scheduler::new(rig.engine.catalog.clone(), failing.clone() as Arc<dyn Dispatch>, "prod", "daemon-a", 1);
+    first.arm(1, vec![hourly("broken"), hourly("feed")]).unwrap();
+    assert_eq!(first.beat().unwrap().started, ["broken"]);
+    let done = first.drain();
+    assert_eq!(done[0].result, Err("Transient: broken upstream answered 503".to_string()));
+    first.release().unwrap();
+    drop(first);
+    let rows = rig.catalog().runs(Some("broken")).unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].status, RunStatus::Failed);
+    assert_eq!(rows[0].started_at, at(T0).plus_secs(600));
+    assert!(rows[0].owner.is_none());
+    assert_eq!(rows[0].error_message.as_deref(), Some("dispatch: Transient: broken upstream answered 503"));
+
+    // The restarted scheduler finds `broken` already dispatched this interval.
+    rig.clock.advance(5);
+    let rec = Arc::new(Recording { catalog: rig.engine.catalog.clone(), fired: Mutex::default(), steps: Mutex::default(), gate: None });
+    let mut restarted = Scheduler::new(rig.engine.catalog.clone(), rec.clone() as Arc<dyn Dispatch>, "prod", "daemon-b", 1);
+    restarted.arm(1, vec![hourly("broken"), hourly("feed")]).unwrap();
+    assert!(restarted.beat().unwrap().started.is_empty());
+    assert_eq!(restarted.next_due().unwrap(), Some(at(T0).plus_secs(3600)));
+    rig.clock.advance(3600 - 605);
+    assert_eq!(restarted.beat().unwrap().started, ["feed"]);
+    restarted.drain();
+    rig.clock.advance(600);
+    assert_eq!(restarted.beat().unwrap().started, ["broken"]);
+    restarted.drain();
+    assert_eq!(*failing.0.lock().unwrap(), ["broken"]);
+}

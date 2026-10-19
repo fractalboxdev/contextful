@@ -92,7 +92,7 @@ impl Close {
 }
 
 /// A fresh opaque execution id.
-fn fresh_id() -> Result<String, Failure> {
+pub(crate) fn fresh_id() -> Result<String, Failure> {
     let mut bytes = [0u8; 12];
     getrandom::fill(&mut bytes).map_err(|e| Failure::new(FailureTag::Storage, format!("minting an execution id: {e}")))?;
     Ok(format!("x-{}", bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()))

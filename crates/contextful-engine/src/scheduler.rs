@@ -8,9 +8,11 @@
 //! intervals fires once (`surface.arm.catch-up`); admission holds a key in flight and caps
 //! the pool (`surface.dispatch.exclusion-key`, `surface.dispatch.pool-bound`). A head entry
 //! dispatches its dependent run's landing steps with it, and a due step starts nothing
-//! (`surface.dispatch.not-a-head`).
+//! (`surface.dispatch.not-a-head`). A unit that fails before it journals a run start
+//! journals its dispatch instead (`surface.arm.dispatch-journaled`).
 
 use contextful_core::coordinate::{Catalog, Lease, LeaseKey, CADENCE_LEASE_RENEWAL_SECS, CADENCE_LEASE_TTL_SECS};
+use contextful_core::run::record::{Phase, RunRow, RunStatus};
 use contextful_core::run::Failure;
 use contextful_core::surface::arm::{next_fire, Schedule};
 use contextful_core::surface::dispatch::{admit, Due};
@@ -288,8 +290,14 @@ impl Scheduler {
         let steps = self.steps.get(&id).cloned().unwrap_or_default();
         let derived_parents = self.derived_parents.clone();
         let (dispatch, in_flight, ended, version) = (self.dispatch.clone(), self.in_flight.clone(), self.ended.clone(), self.version);
+        let catalog = self.catalog.clone();
         self.handles.push(std::thread::spawn(move || {
             let result = dispatch.fire(&id, &steps, &derived_parents, version);
+            if let Err(line) = &result {
+                if let Err(e) = journal_dispatch(&*catalog, &id, now, line) {
+                    eprintln!("fire {id}: journaling the failed dispatch: {e}");
+                }
+            }
             if let Ok(mut e) = ended.lock() {
                 e.push(Fired { id: id.clone(), result });
             }
@@ -358,4 +366,48 @@ impl Scheduler {
         }
         Ok(())
     }
+}
+
+/// Journal a failed dispatch of `id` at `dispatched_at` when no run start of `id` since
+/// then records it, so a restarted scheduler reads it as history
+/// (`surface.arm.dispatch-journaled`).
+fn journal_dispatch(catalog: &(dyn Catalog + Send + Sync), id: &str, dispatched_at: Instant, line: &str) -> Result<(), Failure> {
+    if catalog.last_run_start(id)?.is_some_and(|at| at >= dispatched_at) {
+        return Ok(());
+    }
+    let run_id = crate::execution::fresh_id()?;
+    catalog.put_run(&RunRow {
+        run_id: run_id.clone(),
+        pipeline_id: id.to_string(),
+        table: String::new(),
+        site_id: String::new(),
+        status: RunStatus::Failed,
+        owner: None,
+        started_at: dispatched_at,
+        ended_at: Some(catalog.now()?),
+        rows: 0,
+        bytes: 0,
+        batches: 0,
+        skipped: 0,
+        fetched: 0,
+        kept: 0,
+        declined: Default::default(),
+        audit: Vec::new(),
+        error_kind: None,
+        error_message: Some(format!("dispatch: {line}")),
+        connector_id: String::new(),
+        connector_version: String::new(),
+        connector_hash: String::new(),
+        trace_id: None,
+        phase: Phase::Plan,
+        pipeline_phase: None,
+        execution_id: run_id,
+        plan_ref: None,
+        stop: None,
+        host_scope: None,
+        input: None,
+        failed_branches: Vec::new(),
+        credential_providers: Default::default(),
+        bound_hits: Vec::new(),
+    })
 }
