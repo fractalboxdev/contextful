@@ -32,6 +32,7 @@ TableFunctionRefused          = { clause = "read.guard.table-function", gloss = 
 TemplateNamesForeignRelation  = { clause = "read.guard.template-relation-shape", gloss = "A template named a non-store relation or collided with a built-in tool prefix." }
 TemplateArgumentRejected      = { clause = "read.guard.template-binding", gloss = "A template argument was missing, unknown or mistyped." }
 QueryParameterRejected        = { clause = "read.guard.query-binding", gloss = "A query parameter was missing, unused, untyped or mistyped." }
+ReadPartUnavailable           = { clause = "read.cache.miss-wait", gloss = "A part a statement touches did not download within its wait." }
 ReadDurationExceeded          = { clause = "read.respond.duration-ceiling", gloss = "A statement reached its selected duration ceiling." }
 ReadResponseTooLarge          = { clause = "read.respond.byte-ceiling", gloss = "A response envelope or first row exceeds its selected byte ceiling." }
 FilterBudgetExceeded          = { clause = "read.retrieve.filter-budget-refusal", gloss = "A ranked read's filter exceeded its value, condition or byte budget." }
@@ -78,6 +79,7 @@ SubscriptionUnderHorizon      = { clause = "read.subscribe.horizon-refusal", glo
 ReadEmbeddingModelMismatch    = { clause = "read.embed.query-model", gloss = "A query embedding's declared model differs from the stored vectors' model." }
 
 [limit]
+read-part-wait               = { clause = "read.cache.miss-wait", value = 30, unit = "s", basis = "chosen", gloss = "Longest a statement waits for a part absent locally to download." }
 read-row-ceiling-overfetch   = { clause = "read.respond.row-ceiling", value = 1, unit = "rows", basis = "chosen", gloss = "Rows fetched past the row ceiling, whose presence sets `truncated`." }
 read-face-row-ceiling        = { clause = "read.respond.face-ceiling", value = 10000, unit = "rows", basis = "chosen", gloss = "Most rows one read delivers on any face, whatever its other ceilings declare." }
 read-relevance-floor-wide    = { clause = "read.retrieve.relevance-floor", value = 2, unit = "tokens", basis = "chosen", gloss = "Lexical-score floor for a query of at least the threshold's content tokens." }
