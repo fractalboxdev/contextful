@@ -30,7 +30,7 @@ pub const VECTOR_BUILDER: &str = "contextful-hnsw";
 
 /// The on-disk graph format version the builder writes and the reader accepts; the layout
 /// is no committed format (`store.index.graph-format`).
-pub const VECTOR_BUILDER_VERSION: u32 = 1;
+pub const VECTOR_BUILDER_VERSION: u32 = 2;
 
 /// Segment extensions after which a pass rebuilds a vector graph or full-text postings in
 /// full: 16, the `store-graph-extensions` bound of `store.index.graph-extensions`.
@@ -41,7 +41,7 @@ pub const GRAPH_EXTENSIONS_MAX: u32 = 16;
 pub const FULLTEXT_BUILDER: &str = "contextful-postings";
 
 /// The on-disk postings format version the builder writes and the reader accepts.
-pub const FULLTEXT_BUILDER_VERSION: u32 = 1;
+pub const FULLTEXT_BUILDER_VERSION: u32 = 2;
 
 /// Partitions past which a partition plan warns: 1000, the `store-partition-count` bound of
 /// `store.index.partition-warnings`. Every check and message reads it here.
@@ -314,7 +314,7 @@ pub struct FulltextEntry {
     /// The key version sealing the sidecar's files; 0 for plaintext.
     pub key_version: u32,
     /// The latest availability instant among the rows the postings hold, on a table
-    /// declaring `available_time` (`read.horizon.rank-statistics`).
+    /// declaring `available_time`; each document carries its own (`store.index.filter-copies`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available_through: Option<crate::time::Instant>,
     /// Earlier segments the sidecar carries by reference, oldest first
@@ -368,7 +368,7 @@ pub struct VectorEntry {
     /// The key version sealing the sidecar's files; 0 for plaintext.
     pub key_version: u32,
     /// The latest availability instant among the rows the graph holds, on a table
-    /// declaring `available_time` (`read.horizon.rank-statistics`).
+    /// declaring `available_time`; each node carries its own (`store.index.filter-copies`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available_through: Option<crate::time::Instant>,
     /// Earlier segments the graph carries by reference, oldest first

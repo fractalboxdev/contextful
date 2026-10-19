@@ -526,8 +526,8 @@ Reading under a credential's {{authority.grant.horizon}}: the bound every read i
   *because one attachment point already sees every egress, so a per-tool list restates it*
 - `local-rank` — Under a horizon, `corpus.retrieve` ranks only stored rows through local indexes, and a search source reads its pinned {{store.snapshot.capture}} corpus; a live search reaches no host past {{read.horizon.egress-hook}}.
   *because a live result order postdates the snapshot, and filtering it afterwards keeps the order*
-- `rank-statistics` — Under a horizon, lexical term statistics and vector neighbours come from the horizon-bounded relation; a ranking reaching a sidecar that indexes a row available after the horizon raises `ReadIndexBeyondHorizon`, naming the table.
-  *because corpus-wide term frequency and neighbourhoods encode later events*
+- `rank-statistics` — Under a horizon, a sidecar probe yields only entries available at or before it, and full-text scoring takes document count, average length and document frequency from those entries alone.
+  *A-read*
 - `embedder-route` — Under a horizon, an embedder declaring a checkpoint family embeds with its newest checkpoint whose post-training cutoff, as {{connector.infer.cutoffs}} records it, precedes the horizon, and the response names that checkpoint.
   *because an embedder trained after the horizon places documents by later events*
 - `build-resolution` — Under a horizon, a model table resolves to the newest build whose horizon, recorded under {{run.model.build-horizon}}, is at or before the credential's; a table holding none raises `ReadNoBuildWithinHorizon`, naming the table.
@@ -536,10 +536,11 @@ Reading under a credential's {{authority.grant.horizon}}: the bound every read i
 #### Scenarios
 
 - `read.horizon.exceeds-horizon`: WHEN a credential carries horizon `2014-05-01` and `corpus.retrieve` supplies `since: "2015-01-01"`, THEN the call raises `ReadBoundExceedsHorizon` naming `since`, and a call supplying `valid_as_of: "2015-01-01"` answers.
-
-unsettled: Does a sidecar indexing rows past the horizon fall back to the exact scan rather than refuse the ranking? owner: read-path affects: read.horizon
+- `read.horizon.rank-statistics`: WHEN a full-text sidecar indexes stories published `2014-11-01` and `2015-06-01` and `corpus.retrieve` runs under horizon `2015-01-01`, THEN the 2014 story ranks with the score a sidecar over it alone gives, and the 2015 story is absent.
 
 unsettled: Where does the engine record the instant a column first landed in a table, for a schema that predates the record? owner: read-path affects: read.horizon
+
+unsettled: Does a vintage table's sidecar count only each key's newest vintage available by the horizon, so its statistics and candidates match the bounded relation's one vintage per key? owner: read-path affects: read.horizon
 
 ## subscribe
 

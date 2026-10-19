@@ -242,47 +242,80 @@ fn an_opened_sidecar_serves_repeated_reads_until_a_new_snapshot() {
     assert_eq!((cache.len(), cache.counts()), (64, (1, 67)));
 }
 
-/// Under a horizon, lexical term statistics and vector neighbours come from the horizon-bounded relation; a ranking reaching a sidecar that indexes a row available after the horizon raises `ReadIndexBeyondHorizon`, naming the table.
-// spec: read.horizon.rank-statistics@9b6ac62f
+/// Under a horizon, a sidecar probe yields only entries available at or before it, and full-text scoring takes document count, average length and document frequency from those entries alone.
+// spec: read.horizon.rank-statistics@127bf860
 #[test]
-fn a_ranking_under_a_horizon_refuses_a_sidecar_indexing_later_rows() {
+fn a_ranking_under_a_horizon_scores_only_rows_available_by_it() {
+    use contextful_context::fulltext::FulltextSidecar;
     use contextful_core::grant::Grant;
     use contextful_core::store::bound_time::Bound;
     use contextful_core::store::reconcile::ColumnType;
     let manifest = format!("{MANIFEST}{DATED_TEXT}");
-    let mut r = Reads::with_manifest(&manifest);
     let decl = TableDecl::parse_pipeline(&manifest).unwrap().into_iter().find(|d| d.name == "lab/news").unwrap();
-    let ctx = RunContext {
-        node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
-        committed_at: at("2030-01-10T00:00:00Z"),
-    };
-    let rows = json!([
-        { "story_id": "s-2014", "digest": "a", "body": "acme widens margin", "published_at": "2014-11-01T00:00:00Z" },
-        { "story_id": "s-2015", "digest": "b", "body": "acme widens margin again", "published_at": "2015-06-01T00:00:00Z" },
+    let stories = json!([
+        { "story_id": "s-2013", "digest": "a", "body": "acme margin report", "published_at": "2013-03-01T00:00:00Z" },
+        { "story_id": "s-2014", "digest": "b", "body": "acme widens margin", "published_at": "2014-11-01T00:00:00Z" },
+        { "story_id": "s-2015", "digest": "c", "body": "margin margin margin widens again", "published_at": "2015-06-01T00:00:00Z" },
+        { "story_id": "s-2016", "digest": "d", "body": "margin call", "published_at": "2016-02-01T00:00:00Z" },
     ]);
-    let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
-    land(&r.store, &decl, &Batch { rows, types: [("published_at".to_string(), ColumnType::Timestamp)].into_iter().collect() }, &ctx).unwrap();
-    fold(&r.store, &decl, at("2030-01-11T00:00:00Z")).unwrap();
-    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
-
-    let bounds = |horizon: &str| Bounds { available_as_of: Some(Bound::parse(horizon).unwrap()), ..Bounds::default() };
-    // The read tools open the session under the bound the horizon imposes.
-    let under = |horizon: &str| {
-        let grant = Grant { horizon: Some(at(horizon)), ..read(&["lab/*"], None) };
-        r.face.session(&r.authority(loop_subject("agent://research-loop"), vec![grant]), &Request::default(), bounds(horizon)).unwrap()
+    // A store holding the first `upto` stories, landed as one run and folded.
+    let store_of = |upto: usize| {
+        let mut r = Reads::with_manifest(&manifest);
+        let ctx = RunContext {
+            node: NodeId::parse("ingest-a").unwrap(),
+            injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
+            committed_at: at("2030-01-10T00:00:00Z"),
+        };
+        let rows = stories.as_array().unwrap()[..upto].iter().map(|r| r.as_object().unwrap().clone()).collect();
+        land(&r.store, &decl, &Batch { rows, types: [("published_at".to_string(), ColumnType::Timestamp)].into_iter().collect() }, &ctx).unwrap();
+        fold(&r.store, &decl, at("2030-01-11T00:00:00Z")).unwrap();
+        r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+        r
     };
-    let request = ask("lab/news", "acme margin");
+    let (whole, bounded) = (store_of(4), store_of(2));
+    let horizon = "2015-01-01T00:00:00Z";
 
-    // The sidecar holds the June 2015 story, so a 2015-01 horizon refuses the ranking.
-    let refused = refused_with(r.face.retrieve(&under("2015-01-01T00:00:00Z"), &request, bounds("2015-01-01T00:00:00Z")), "ReadIndexBeyondHorizon");
-    assert!(refused.contains("lab/news"), "{refused}");
-    // A horizon past every indexed row ranks through the sidecar, over the bounded relation.
-    let later = r.face.retrieve(&under("2016-01-01T00:00:00Z"), &request, bounds("2016-01-01T00:00:00Z")).unwrap();
-    assert_eq!(ids_of(&later, "story_id"), ["s-2014", "s-2015"]);
-    // Without a horizon the sidecar ranks as before.
-    let session = r.face.session(&r.authority(loop_subject("agent://research-loop"), vec![read(&["lab/*"], None)]), &Request::default(), Bounds::default()).unwrap();
-    assert_eq!(ids_of(&r.face.retrieve(&session, &request, Bounds::default()).unwrap(), "story_id").len(), 2);
+    // The sidecar's probe under the horizon scores the two stories published by then as a
+    // sidecar built over those two alone scores them.
+    let probe = |r: &Reads, bound: Option<Bound>| -> Vec<(String, f64)> {
+        let snapshot = r.store.chain("lab/news").unwrap().0.remove(0);
+        let dir = r.store.snapshot_dir("lab/news", &snapshot.snapshot_id).unwrap();
+        let entry = snapshot.indexes.iter().find(|e| e.kind_name() == Some("fulltext")).unwrap();
+        let sidecar = FulltextSidecar::open(&dir, "lab/news", entry, &r.store.sealing()).unwrap();
+        let tokens = ["widens".to_string(), "margin".to_string()];
+        sidecar.probe_within(&tokens, 10, bound).unwrap().candidates.into_iter().map(|c| (c.id, c.score)).collect()
+    };
+    let within = probe(&whole, Some(Bound::parse(horizon).unwrap()));
+    assert_eq!(within.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["s-2014", "s-2013"]);
+    assert_eq!(within, probe(&bounded, None));
+    // Unbounded, the later stories' frequencies and lengths move every score.
+    let unbounded = probe(&whole, None);
+    assert_eq!(unbounded.len(), 4);
+    assert!(unbounded.iter().all(|(id, score)| within.iter().all(|(w, s)| w != id || s != score)), "{unbounded:?}");
+
+    // A ranked read under the horizon answers through the sidecar and returns the bounded
+    // store's ranking, identifiers and scores alike.
+    let ranked = |r: &Reads, horizon: &str| -> Vec<(String, Value)> {
+        let bounds = Bounds { available_as_of: Some(Bound::parse(horizon).unwrap()), ..Bounds::default() };
+        let grant = Grant { horizon: Some(at(horizon)), ..read(&["lab/*"], None) };
+        let session = r.face.session(&r.authority(loop_subject("agent://research-loop"), vec![grant]), &Request::default(), bounds).unwrap();
+        let response = r.face.retrieve(&session, &ask("lab/news", "widens margin"), bounds).unwrap();
+        column(&response, "_row").iter().map(|row| row["story_id"].as_str().unwrap().to_string()).zip(column(&response, "_score")).collect()
+    };
+    let reference = ranked(&bounded, horizon);
+    assert_eq!(reference.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["s-2014", "s-2013"]);
+    assert_eq!(ranked(&whole, horizon), reference);
+    // A later horizon admits the stories published by it.
+    assert_eq!(ids_of_ranked(&ranked(&whole, "2015-12-31T00:00:00Z")), ["s-2013", "s-2014", "s-2015"]);
+    // Without a horizon every story ranks.
+    let session = whole.face.session(&whole.authority(loop_subject("agent://research-loop"), vec![read(&["lab/*"], None)]), &Request::default(), Bounds::default()).unwrap();
+    assert_eq!(ids_of(&whole.face.retrieve(&session, &ask("lab/news", "widens margin"), Bounds::default()).unwrap(), "story_id").len(), 4);
+}
+
+fn ids_of_ranked(ranking: &[(String, Value)]) -> Vec<String> {
+    let mut ids: Vec<String> = ranking.iter().map(|(id, _)| id.clone()).collect();
+    ids.sort();
+    ids
 }
 
 fn ids_of(r: &Response, key: &str) -> Vec<String> {

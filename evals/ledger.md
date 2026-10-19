@@ -2,7 +2,7 @@
 
 # Target ledger
 
-155 entries: 106 gated, 35 recorded, 6 scheduled, 8 open.
+155 entries: 109 gated, 32 recorded, 6 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -66,9 +66,9 @@
 | `guard-short-assignment` | `run.guard-secrets.mask-span` | `guard.short_assignment.masked_rate` | gate | test `contextful_core::pipeline::guard::a_keyword_assignment_is_masked_from_8_chars_keeping_its_key` | `== 1` | gated |
 | `guest-pulley-throughput` | `connector.package.native-verification` | `wasm.pulley_throughput_ratio` | trend | issue 52 | — | open (issue 52) |
 | `guest-without-jit` | `connector.package.native-verification` | `wasm.warm_compiles` | gate | issue 52 | `== 0` | open (issue 52) |
-| `horizon-answered` | `read.horizon.rank-statistics` | `retrieve.horizon.answered_share` | trend | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | — | recorded |
-| `horizon-deep-recall` | `read.horizon.rank-statistics` | `retrieve.horizon.deep_recall` | trend | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | — | recorded |
-| `horizon-rank-equivalence` | `read.horizon.rank-statistics` | `retrieve.horizon.rank_equivalence` | trend | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | — | recorded |
+| `horizon-answered` | `read.horizon.rank-statistics` | `retrieve.horizon.answered_share` | gate | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | `== 1` | gated |
+| `horizon-deep-recall` | `read.horizon.rank-statistics` | `retrieve.horizon.deep_recall` | gate | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | `== 1` | gated |
+| `horizon-rank-equivalence` | `read.horizon.rank-statistics` | `retrieve.horizon.rank_equivalence` | gate | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | `== 1` | gated |
 | `hydrated-secret-wiped` | `connector.resolve.hydration-is-just-in-time` | `resolve.hydrations_per_request` | gate | issue 51 | `== 1` | open (issue 51) |
 | `ingest-folder-one-corrupt` | `connector.source.file-unreadable` | `ingest.folder.one_corrupt.files_landed` | gate | test `contextful_connectors::file::a_folder_of_1000_files_with_one_unreadable_lands_the_rest` | `== 999` | gated |
 | `ingest-prefix-all-corrupt-refused` | `connector.source.unreadable-all` | `ingest.prefix.all_corrupt.refused` | gate | test `contextful_connectors::object::a_prefix_where_every_object_is_unreadable_still_refuses` | `== 1` | gated |

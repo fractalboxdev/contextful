@@ -70,7 +70,6 @@ OutcomeStatementTooLong       = { clause = "read.settle.statement-bound", gloss 
 OutcomeMetricReferenceInvalid = { clause = "read.settle.metric-reference", gloss = "A registration's metric reference is malformed or names a series under a non-metric source." }
 OutcomeAlreadySettled         = { clause = "read.settle.outcome-settled", gloss = "An observation differs from a stored outcome that already carries a verdict." }
 ReadBoundExceedsHorizon       = { clause = "read.horizon.exceeds-horizon", gloss = "A call's `available_as_of` or `since` falls later than its credential's horizon." }
-ReadIndexBeyondHorizon        = { clause = "read.horizon.rank-statistics", gloss = "A ranking under a horizon reached a sidecar indexing rows available after it." }
 ReadNoBuildWithinHorizon      = { clause = "read.horizon.build-resolution", gloss = "A model table holds no build whose recorded horizon is at or before the credential's." }
 ReadRerankerAbsent            = { clause = "read.rank.rerank-absent", gloss = "A `rerank_with` named no reranker the admission gate admits." }
 ReadRerankerBeyondHorizon     = { clause = "read.rank.rerank-cutoff", gloss = "Under a horizon, the named reranker holds no checkpoint whose cutoff precedes it." }

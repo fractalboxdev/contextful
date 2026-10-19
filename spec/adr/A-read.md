@@ -369,3 +369,14 @@ Under a horizon `read.horizon.engine-stamps` drops `_ingested_at` and `_commit_s
 | Drop load stamps, keep citation stamps *(chosen)* | — | A run identifier can still name its date when an operator spells it so. |
 | Drop every engine stamp | Citation | A horizon read returns rows no reference can name. |
 | Drop every stamp and add an opaque citation token | Simplicity | A second identity scheme beside the one the store already records. |
+
+## A sidecar serves a past horizon by filtered traversal
+
+`read.horizon.rank-statistics` lets one sidecar answer every horizon at or before its snapshot. Each full-text document and vector node carries its row's availability instant under `store.index.filter-copies`. A probe under a horizon keeps only entries available by it and walks the graph through later nodes; the postings' availability timeline gives the document count and summed length by the horizon in one binary search, so BM25 scores as a sidecar built over those rows alone. A sweep over many past decision dates reads one sidecar rather than refusing or scanning the table once per date. Both layouts change, so both builder versions rise and the next pass rebuilds each sidecar under `store.index.rebuild`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Filter by per-entry availability *(chosen)* | — | Eight bytes per entry; a horizon admitting few entries walks most of the graph. |
+| Refuse a sidecar indexing later rows | Recall | Every past horizon over a growing table refuses its ranking. |
+| Fall back to the exact scan | Latency | A sweep of N dates scans the table N times, and the recency window misses deep rows. |
+| Build a sidecar per horizon | Storage | Sidecars multiply with the dates read, and an unbuilt date still refuses. |

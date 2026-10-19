@@ -113,11 +113,11 @@ fn ranking(r: &Response) -> Vec<(String, Value)> {
     story_ids(r).into_iter().zip(column(r, "_score")).collect()
 }
 
-/// Whether `result` answered, refusing only as `ReadIndexBeyondHorizon` otherwise.
-fn answered(result: Result<Response, ReadFault>, horizon: &str) -> Option<Response> {
+/// The response `result` carries; any refusal fails the read, naming its identifier.
+fn answered(result: Result<Response, ReadFault>, horizon: &str) -> Response {
     match result {
-        Ok(response) => Some(response),
-        Err(ReadFault::Refused(refusal)) if refusal.identifier() == "ReadIndexBeyondHorizon" => None,
+        Ok(response) => response,
+        Err(ReadFault::Refused(refusal)) => panic!("horizon {horizon}: refused as {}", refusal.identifier()),
         Err(other) => panic!("horizon {horizon}: {other:?}"),
     }
 }
@@ -148,7 +148,7 @@ fn a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index() {
     let (mut answers, mut recalled) = (0, 0);
     for (k, &h) in horizon_rows.iter().enumerate() {
         let horizon = day(h);
-        let Some(response) = answered(ranked(&r, &needle(k), Some(&horizon)), &horizon) else { continue };
+        let response = answered(ranked(&r, &needle(k), Some(&horizon)), &horizon);
         answers += 1;
         if story_ids(&response).contains(&format!("s{:05}", h - NEEDLE_DEPTH)) {
             recalled += 1;
@@ -163,7 +163,7 @@ fn a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index() {
         let bounded = dated.land(h + 1);
         let reference = ranking(&ranked(&bounded, "widens margin", Some(&horizon)).unwrap());
         assert!(!reference.is_empty(), "horizon {horizon}");
-        if answered(ranked(&r, "widens margin", Some(&horizon)), &horizon).is_some_and(|whole| ranking(&whole) == reference) {
+        if ranking(&answered(ranked(&r, "widens margin", Some(&horizon)), &horizon)) == reference {
             equal += 1;
         }
     }
@@ -173,6 +173,9 @@ fn a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index() {
     emit("horizon-answered", share(answers, horizons), horizons as u64, SEED);
     emit("horizon-deep-recall", share(recalled, horizons), horizons as u64, SEED);
     emit("horizon-rank-equivalence", share(equal, compared), compared as u64, SEED);
+    // Every past horizon answers through the index, recalls its needle, and ranks as the
+    // store holding only the rows available by then ranks.
+    assert_eq!((answers, recalled, equal), (horizons, horizons, compared));
 }
 
 /// Warm p95 of an unbounded ranked read over 10,000 dated rows, the median of 5 batches of

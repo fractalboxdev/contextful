@@ -300,7 +300,7 @@ Decision: a sidecar's entry and `derived.sqlite` record its builder and builder 
 | Builder and version in the sidecar path | One path per declaration | Two graphs over one column coexist, and a read needs a selector. |
 | A committed, versioned graph format | Builder freedom | Every layout change carries a reader for each older layout. |
 
-Consequences: an upgraded build reads by exact scan until the next pass rebuilds.
+Consequences: an upgraded build reads by exact scan until the next pass rebuilds. Writers of two builder versions over one store rebuild each other's sidecars on every pass, so an upgrade replaces every writer before its next pass.
 Revisit: a second builder declared over one column.
 
 ## A tenant value is its bytes
@@ -320,17 +320,17 @@ Decision: land checks a tenant value against no canonical form and keeps its exa
 Consequences: tenant hygiene belongs to the producer and the grant issuer.
 Revisit: a source whose tenant spelling varies between batches.
 
-## A sidecar copies only the tenant and zone
+## A sidecar copies only the tenant, zone and availability instant
 
 **Status:** accepted
 
-Context: a filtered traversal reads a filter value per graph node, and any column copied into a sidecar sits outside the enforced relation. Criteria: no row value escapes enforcement; restricted reads keep recall.
+Context: a filtered traversal reads a filter value per graph node, and any column copied into a sidecar sits outside the enforced relation. Criteria: no row value escapes enforcement, save the availability instant a horizon filters on inside the graph; restricted reads keep recall.
 
-Decision: a sidecar holds its `id_column` and indexed column alone, save the tenant column and zone label, which already name its partition and path. Every other predicate applies when candidates re-join through the enforced relation.
+Decision: a sidecar holds its `id_column` and indexed column alone, save the tenant column and zone label, which already name its partition and path, and each entry's availability instant, which a horizon filters on. Every other predicate applies when candidates re-join through the enforced relation.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Tenant and zone only *(chosen)* | — | A restricted read oversamples instead of filtering inside the graph. |
+| Tenant, zone and availability instant *(chosen)* | — | A restricted read oversamples instead of filtering inside the graph; a mask on the availability column leaves its sidecar copy. |
 | Any declared filter column | Enforcement | A copied column bypasses masks and row policy on disk and in the bucket. |
 | No copies at all | Recall | A tenant-scoped probe walks other tenants' nodes. |
 

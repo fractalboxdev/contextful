@@ -18,7 +18,7 @@ use contextful_core::read::rank::{
 };
 use contextful_core::read::respond::{Cell, Response};
 use contextful_core::read::tokens::{content_tokens, lexical_score, passes_floor, relevance_floor};
-use contextful_core::store::bound_time::Bounds;
+use contextful_core::store::bound_time::{Bound as Availability, Bounds};
 use contextful_core::store::index::{IndexEntry, IndexKind};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::relation::ident;
@@ -287,11 +287,10 @@ impl Face {
         // content token, skips it (`read.retrieve.dedup-is-gated`).
         let deduplicating = floor.is_some();
         self.bind_bounds(session, &touched, bounds)?;
-        if let Some(h) = contextful_core::read::horizon::horizon(session.grants()) {
-            for table in &arms {
-                self.index_within_horizon(table, request, !tokens.is_empty(), h)?;
-            }
-        }
+        // Under a horizon, a sidecar probe admits only entries the bounded relation holds
+        // (`read.horizon.rank-statistics`); without one, the probe reads every entry.
+        let horizon = contextful_core::read::horizon::horizon(session.grants());
+        let available = contextful_core::read::horizon::inherit(horizon, bounds)?.available_as_of.filter(|_| horizon.is_some());
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let anchor = request.anchor;
         let memory_tables: Vec<String> = self.memory().tables.iter().map(|t| t.name.clone()).collect();
@@ -433,13 +432,14 @@ impl Face {
             // reader can see under-fill the limit behind a full probe, doubles and probes
             // again (`read.retrieve.adaptive-over-fetch`).
             if !claims {
+                let bound = available.filter(|_| decl.available_time.is_some());
                 let mut arms: Vec<Box<dyn Fn(u32) -> Result<(String, Vec<String>, u64), Fallback> + '_>> = Vec::new();
                 if let Some(query) = request.query_embedding.as_deref() {
-                    arms.push(Box::new(move |round| self.sidecar_probe(session, table, query, limit, round)));
+                    arms.push(Box::new(move |round| self.sidecar_probe(session, table, query, limit, round, bound)));
                 }
                 if super::LEXICAL_BACKEND && fulltext && !tokens.is_empty() {
                     let tokens = &tokens;
-                    arms.push(Box::new(move |round| self.fulltext_probe(session, table, tokens, limit, round)));
+                    arms.push(Box::new(move |round| self.fulltext_probe(session, table, tokens, limit, round, bound)));
                 }
                 for probe in arms {
                     let mut rejoined = std::collections::HashSet::new();
@@ -622,42 +622,13 @@ impl Face {
     /// (`read.retrieve.sidecar-falls-back`). The probe widens where the session restricts
     /// the table, since it sees none of the restriction (`read.retrieve.sidecar-oversampling`).
     pub fn sidecar_candidates(&self, session: &Session, table: &str, query: &[f32], limit: u64) -> Result<(String, Vec<String>), Fallback> {
-        self.sidecar_probe(session, table, query, limit, 0).map(|(column, ids, _)| (column, ids))
-    }
-
-    /// Refuse a ranking under `horizon` that would probe a sidecar of `table` indexing a
-    /// row available after it: its term statistics and neighbourhoods encode later rows
-    /// (`read.horizon.rank-statistics`). A lexical query reaches the full-text sidecars, a
-    /// query vector the vector sidecar.
-    fn index_within_horizon(&self, table: &str, request: &RetrieveRequest, lexical: bool, horizon: contextful_core::time::Instant) -> Result<(), ReadFault> {
-        let mut through = Vec::new();
-        if lexical {
-            if let Ok((_, _, entries)) = fulltext::current_entries(&self.store, table) {
-                through.extend(entries.iter().filter_map(|e| match e {
-                    IndexEntry::Fulltext(f) => f.available_through,
-                    _ => None,
-                }));
-            }
-        }
-        if let Some(query) = &request.query_embedding {
-            if let Ok((_, IndexEntry::Vector(v))) = vector::current_entry(&self.store, table, EMBEDDING_COLUMN, query.len()) {
-                through.extend(v.available_through);
-            }
-        }
-        match through.into_iter().max().filter(|at| *at > horizon) {
-            Some(at) => Err(contextful_core::read::ReadError::ReadIndexBeyondHorizon(format!(
-                "table `{table}`: a sidecar indexes a row available at {}, after the horizon {}",
-                at.to_rfc3339_nanos(),
-                horizon.to_rfc3339_nanos()
-            ))
-            .into()),
-            None => Ok(()),
-        }
+        self.sidecar_probe(session, table, query, limit, 0, None).map(|(column, ids, _)| (column, ids))
     }
 
     /// One round of the vector arm's probe: the identifiers and the probe size, which
-    /// doubles each round (`read.retrieve.adaptive-over-fetch`).
-    fn sidecar_probe(&self, session: &Session, table: &str, query: &[f32], limit: u64, round: u32) -> Result<(String, Vec<String>, u64), Fallback> {
+    /// doubles each round (`read.retrieve.adaptive-over-fetch`). Under an availability
+    /// `bound` the graph yields only nodes it admits (`read.horizon.rank-statistics`).
+    fn sidecar_probe(&self, session: &Session, table: &str, query: &[f32], limit: u64, round: u32, bound: Option<Availability>) -> Result<(String, Vec<String>, u64), Fallback> {
         let (dir, entry) = vector::current_entry(&self.store, table, EMBEDDING_COLUMN, query.len())?;
         let IndexEntry::Vector(vector) = &entry else { return Err(Fallback::ManifestMismatch) };
         let id_column = vector.id_column.clone();
@@ -673,7 +644,7 @@ impl Face {
             session.tenant_scoped() || policy.is_some_and(|p| p.rows.is_some() || p.columns.values().any(|c| c.mask.is_some()));
         let size = over_fetch_size(limit, restricted, round);
         let k = usize::try_from(size).unwrap_or(usize::MAX);
-        let ids = sidecar.probe(query, k)?.into_iter().map(|c| c.id).collect();
+        let ids = sidecar.probe_within(query, k, bound)?.into_iter().map(|c| c.id).collect();
         Ok((id_column, ids, size))
     }
 
@@ -684,12 +655,21 @@ impl Face {
     /// masks or withholds, is never probed, since its matches would rank rows by text the
     /// reader cannot see.
     pub fn fulltext_candidates(&self, session: &Session, table: &str, tokens: &[String], limit: u64) -> Result<(String, Vec<String>), Fallback> {
-        self.fulltext_probe(session, table, tokens, limit, 0).map(|(column, ids, _)| (column, ids))
+        self.fulltext_probe(session, table, tokens, limit, 0, None).map(|(column, ids, _)| (column, ids))
     }
 
     /// One round of the full-text arm's probe: the identifiers and the probe size, which
-    /// doubles each round (`read.retrieve.adaptive-over-fetch`).
-    fn fulltext_probe(&self, session: &Session, table: &str, tokens: &[String], limit: u64, round: u32) -> Result<(String, Vec<String>, u64), Fallback> {
+    /// doubles each round (`read.retrieve.adaptive-over-fetch`). Under an availability
+    /// `bound` the postings score only documents it admits (`read.horizon.rank-statistics`).
+    fn fulltext_probe(
+        &self,
+        session: &Session,
+        table: &str,
+        tokens: &[String],
+        limit: u64,
+        round: u32,
+        bound: Option<Availability>,
+    ) -> Result<(String, Vec<String>, u64), Fallback> {
         let (dir, snapshot_id, entries) = fulltext::current_entries(&self.store, table)?;
         let policy = session.policy(table);
         let restricted =
@@ -711,7 +691,7 @@ impl Face {
                 }
                 let key = fulltext::fingerprint(table, &snapshot_id, path, key_version);
                 let sidecar = self.fulltext.get_or_open(&key, || FulltextSidecar::open(&dir, table, entry, &self.store.sealing()))?;
-                Ok((id.to_string(), sidecar.probe(tokens, k)?.candidates.into_iter().map(|c| c.id).collect()))
+                Ok((id.to_string(), sidecar.probe_within(tokens, k, bound)?.candidates.into_iter().map(|c| c.id).collect()))
             })();
             match probed {
                 Ok((id, found)) => {

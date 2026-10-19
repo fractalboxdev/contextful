@@ -398,7 +398,7 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
   *A-store*
 - `sidecar-segments` — A pass whose delta replaces and removes no stored row extends each current sidecar by a segment over the delta, carrying earlier segments by reference; a probe reads every segment, scoring full text over their summed statistics.
   *A-store*
-- `filter-copies` — A sidecar copies no row value besides its `id_column` and indexed column, save the tenant column and zone label a filtered traversal reads; every other filter applies at {{store.index.candidate-ids}}.
+- `filter-copies` — A sidecar copies no row value besides its `id_column` and indexed column, save the tenant column, zone label and availability instant a filtered traversal reads; every other filter applies at {{store.index.candidate-ids}}.
   *A-store*
 - `not-in-file-set` — `indexes/` joins no table's file set; a snapshot reader lists only the parts its manifest names.
 - `dies-with-snapshot` — Collecting a snapshot collects its sidecars in the same step, save a segment {{store.fold.reference-retention}} keeps.
@@ -839,12 +839,12 @@ A run manifest, a snapshot manifest and a table pointer, `lay_out::RunManifest`,
                 "table": "filings", "snapshot_id": "snapshot-01742054400000000000",
                 "column": "embedding", "id_column": "passage_id", "model": "e5-small", "dim": 384,
                 "metric": "cosine", "m": 16, "ef_construction": 200,
-                "builder": "contextful-hnsw", "builder_version": 1, "row_count": 128400,
+                "builder": "contextful-hnsw", "builder_version": 2, "row_count": 128400,
                 "key_version": 3 },
               { "kind": "fulltext", "path": "indexes/fts-body-cjk",
                 "table": "filings", "snapshot_id": "snapshot-01742054400000000000", "column": "body",
                 "id_column": "passage_id", "tokenizer": "cjk",
-                "builder": "contextful-postings", "builder_version": 1, "row_count": 128400,
+                "builder": "contextful-postings", "builder_version": 2, "row_count": 128400,
                 "term_count": 902113, "key_version": 3 }] }
 
 { "snapshot_id": "snapshot-01742054400000000000", "fence": 12 }
