@@ -17,6 +17,7 @@ use contextful_core::export::parse_exports;
 use contextful_core::pipeline::declare::collect;
 use contextful_core::run::queue::{Queue, QueueMessage};
 use contextful_core::run::{Failure, FailureTag};
+use contextful_core::store::StoreError;
 use contextful_engine::queue::{drain, LocalSpool, Wake};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -67,7 +68,10 @@ pub fn run(cmd: QueueCmd) -> Result<()> {
             let dir = spool_dir(&l.project.store_root()).context("the project's store root names no queue spool")?;
             let spool = LocalSpool::open(&dir)?;
             let mut wake = Woken { project: &project, declaration, located: l.declaration.clone(), admit: &admit };
-            let drained = drain(&spool, max, &mut wake)?;
+            let drained = drain(&spool, max, &mut wake).map_err(|f| match f.tag {
+                FailureTag::Transient => anyhow::anyhow!("{}; retryable, its deliveries stay queued for the next drain", f.message),
+                _ => anyhow::anyhow!("{}; its deliveries stay queued", f.message),
+            })?;
             println!("drained {} wake-ups and {} arrivals · {} left queued", drained.wakes, drained.arrivals, drained.left);
             Ok(())
         }
@@ -82,8 +86,15 @@ struct Woken<'a> {
     admit: &'a AdmitArgs,
 }
 
+/// A wake's failure. A push guard held past its wait (`SyncPushInFlight`) is retryable, and
+/// no failure acknowledges the deliveries it woke from.
 fn failed(e: anyhow::Error) -> Failure {
-    Failure::new(FailureTag::Transient, format!("{e:#}"))
+    let held = e.chain().any(|c| {
+        matches!(c.downcast_ref::<StoreError>(), Some(StoreError::SyncPushInFlight(_)))
+            || matches!(c.downcast_ref::<contextful_context::ContextError>(), Some(contextful_context::ContextError::Store(StoreError::SyncPushInFlight(_))))
+            || matches!(c.downcast_ref::<contextful_sync::SyncError>(), Some(contextful_sync::SyncError::Store(StoreError::SyncPushInFlight(_))))
+    });
+    Failure::new(if held { FailureTag::Transient } else { FailureTag::Permanent }, format!("{e:#}"))
 }
 
 impl Woken<'_> {
@@ -107,9 +118,17 @@ impl Woken<'_> {
         if let Some(d) = &self.declaration {
             child.arg("--declaration").arg(d);
         }
-        let status = child.status().with_context(|| format!("firing pipeline `{id}`"))?;
-        anyhow::ensure!(status.success(), "the fire of pipeline `{id}` exited {status}");
-        Ok(())
+        let out = child.stdout(std::process::Stdio::inherit()).stderr(std::process::Stdio::piped()).output().with_context(|| format!("firing pipeline `{id}`"))?;
+        let said = String::from_utf8_lossy(&out.stderr);
+        eprint!("{said}");
+        if out.status.success() {
+            return Ok(());
+        }
+        // The fire's own pull met a held push guard: the arrival stays queued, retryable.
+        match said.lines().find_map(|l| l.split_once("SyncPushInFlight: ").map(|(_, m)| m.to_string())) {
+            Some(held) => Err(anyhow::Error::new(StoreError::SyncPushInFlight(held)).context(format!("the fire of pipeline `{id}` exited {}", out.status))),
+            None => anyhow::bail!("the fire of pipeline `{id}` exited {}", out.status),
+        }
     }
 }
 

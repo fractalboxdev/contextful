@@ -885,3 +885,61 @@ fn a_wake_up_runs_the_export_from_its_cursor_and_a_lost_one_skips_no_row() {
     assert!(ok(&drain(p, &public, &token)).contains("delivered 1 rows"));
     assert!(spooled(p).is_empty());
 }
+
+/// A commit's wake-up spools only once its manifest publishes, after every lower commit ticket, so a woken export
+/// never reads past a lower `_commit_seq` still unpublished.
+#[test]
+fn a_wake_up_spools_only_after_its_manifest_publishes_behind_a_lower_ticket() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&block(&collector.endpoint(), ""), "spans");
+    let p = dir.path().to_path_buf();
+    land(&p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&drain(&p, &public, &token));
+
+    let store = contextful_context::Store::open(&p, "research").unwrap();
+    let held = store.reserve_commit_seq("spans").unwrap();
+    let landing = {
+        let p = p.clone();
+        std::thread::spawn(move || land(&p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 2)))
+    };
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(!landing.is_finished(), "the landing published past a lower held ticket");
+    assert!(spooled(&p).is_empty(), "a wake-up spooled before its manifest published");
+
+    drop(held);
+    landing.join().unwrap();
+    assert_eq!(spooled(&p).len(), 1, "the published manifest spools its wake-up");
+    assert!(ok(&drain(&p, &public, &token)).contains("delivered 2 rows"));
+    assert_eq!(span_ids(collector.received().last().unwrap()), ids("b", 2));
+}
+
+/// A drain whose export meets a held push guard answers retryable `SyncPushInFlight` and acknowledges nothing; the
+/// next drain once the guard frees delivers.
+#[test]
+fn a_held_push_guard_leaves_the_wake_up_queued_and_retryable() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&block(&collector.endpoint(), ""), "spans");
+    let p = dir.path();
+    let bucket = tempfile::tempdir().unwrap();
+    std::fs::write(
+        p.join(".contextful/context/research/config.toml"),
+        format!(
+            "[node]\nid = \"ingest-a\"\n\n[sync]\nendpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"single-writer\"\npull_before_run = true\npush_wait_secs = 1\n",
+            bucket.path().display()
+        ),
+    )
+    .unwrap();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
+    assert_eq!(spooled(p).len(), 1);
+
+    let guard = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(p.join(".contextful/context/research/.push.lock")).unwrap();
+    guard.lock().unwrap();
+    let refused = err(&drain(p, &public, &token));
+    assert!(refused.contains("SyncPushInFlight") && refused.contains("retryable"), "{refused}");
+    assert_eq!(spooled(p).len(), 1, "the wake-up stays queued");
+    assert!(collector.received().is_empty());
+
+    guard.unlock().unwrap();
+    assert!(ok(&drain(p, &public, &token)).contains("delivered 2 rows"));
+    assert!(spooled(p).is_empty());
+}
