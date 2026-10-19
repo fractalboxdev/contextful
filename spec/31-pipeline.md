@@ -68,7 +68,7 @@ The pipeline specification, its serializations, manifest discovery, the content 
 - `content-hash` — `content_hash` is the sha256 of the specification's RFC 8785 canonical JSON with every optional field at its default elided, so an explicit default hashes as its absence.
   *because a replay pin that moves on a no-op edit strands pending work*
 - `table-name` — A destination table is named `<pipeline id>_<table name>`, each non-alphanumeric character folded to `_` and each ASCII uppercase letter lowered.
-- `table-name-collision` — Two tables whose destination names fold to one spelling, within one pipeline or across pipelines, raise `PipelineTableNameCollision` at validation, naming both declarations.
+- `table-name-collision` — Two tables whose destination names fold to one spelling, or one whose name is another's `<name>_dead_letter`, within one pipeline or across pipelines, raise `PipelineTableNameCollision` at validation, naming both declarations.
   *because two tables folding to one name land in one store table and interleave their rows*
 - `unbound-table-name` — A job target or model reference naming a destination table in a spelling the fold does not produce raises `PipelineUnboundTableName`, printing the expected spelling.
   *P1*
@@ -158,7 +158,7 @@ Canonical nested form, late relational shredding, injected identity columns and 
 
 ## guard-secrets
 
-The write-time mask over credential-shaped spans in pulled batches and registered body results.
+The write-time mask over credential-shaped spans in pulled batches, their dead letters and registered body results.
 
 - `placement` — The secret guard runs at the one pull path streaming and backfill share, ahead of the recorded pull and the land path, so a replay reintroduces no credential.
 - `matchers` — Matchers are linear-time, regex-free forward scans, each anchored on a literal prefix; the credential catalogue lives in code under a precision and recall fixture test.
@@ -173,6 +173,7 @@ The write-time mask over credential-shaped spans in pulled batches and registere
 - `mask-only` — The guard is on by default and blocks no run; each pull logs the count of masked cells per column.
   *A-run*
 - `coverage` — The guard reads pre-normalize string cells for plaintext shapes; encoded material and a credential split across two cells pass through.
+- `dead-letter-reason` — A dead letter's `key`, `reason` and `sha256` pass the guard as a pulled row's cells do, so a reason quoting a credential lands masked.
 - `recorded-body` — Registered body results pass through the same guard before shaping and canonical preparation; the engine reports per-column counts once per fresh paid preparation, excluding counts from the recorded wire and replay.
   *A-authority*
 
@@ -244,8 +245,16 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a notification is a hint a provider may repeat, reorder or drop, and the held position already decides what lands*
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
-- `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull.
+- `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull unless its source dead-letters it.
   *A-connector*
+- `input-fault` — A failure over one input carries its fault: `input` when the input's own bytes defeat the decoder, `configuration` when the declaration or the build does. A source dead-letters an `input` fault alone, never by message.
+  *because a message names an error for people, and branching on its text dead-letters any refusal that repeats the name*
+- `dead-letter` — A pull's dead letters land in the table `<table>_dead_letter`, one row per input carrying its `key`, `reason` and `sha256`, committed in the same run as the table's rows.
+  *A-connector*
+- `dead-letter-replace` — A replacing table whose read dead-letters any input fails the pull under {{run.land.unreadable-input}}, naming each input, and commits neither its rows nor its dead letters.
+  *because dead letters committing alone record a success while the table stays stale, and repeat each dead letter every fire*
+- `dead-letter-occupied` — Dead letters whose `<table>_dead_letter` already holds a relational child table, or a store table lacking `key`, `reason` or `sha256`, refuse the pull under {{run.declare.table-name-collision}} and land nothing.
+  *because two shapes committing into one table mix their schemas*
 - `partial-parse` — A reader stopping partway through a multi-part input raises `PipelinePartialParse` over the whole input and lands none of its parts.
   *A-connector*
 - `parse-boundary` — A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it killable.

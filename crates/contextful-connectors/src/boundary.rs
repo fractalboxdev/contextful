@@ -92,7 +92,9 @@ impl Boundary {
         }
         let said = String::from_utf8_lossy(&stderr).trim().to_string();
         if status.code() == Some(REFUSED) && refusal(&said) {
-            return Err(Failure::deterministic(FailureTag::Permanent, said));
+            // The worker's stderr is the wire: its error name restores the fault the worker's
+            // own `Failure` carried (`run.land.input-fault`).
+            return Err(if said.starts_with(UNREADABLE) { Failure::unreadable_input(said) } else { Failure::deterministic(FailureTag::Permanent, said) });
         }
         Err(crashed(match status.code() {
             Some(code) => format!("the decode process exited {code}"),
@@ -103,8 +105,11 @@ impl Boundary {
 
 /// Whether a worker's message is one of the refusals a decode raises.
 fn refusal(message: &str) -> bool {
-    ["PipelineUnreadableInput: ", "PipelinePartialParse: "].iter().any(|p| message.starts_with(p))
+    [UNREADABLE, "PipelinePartialParse: "].iter().any(|p| message.starts_with(p))
 }
+
+/// The error name a worker's refusal over its input's own bytes opens with.
+const UNREADABLE: &str = "PipelineUnreadableInput: ";
 
 fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
     std::thread::spawn(move || {

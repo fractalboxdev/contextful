@@ -14,6 +14,7 @@ mod command_windows;
 mod command_admission;
 mod coordinate;
 mod credentials;
+mod dead_letter;
 mod drive;
 mod items;
 mod execution;

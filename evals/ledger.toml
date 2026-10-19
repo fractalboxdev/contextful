@@ -304,52 +304,60 @@ seed   = 0x5eed_0b04
 clause = "connector.source.object-unreadable"
 metric = "ingest.prefix.one_corrupt.objects_landed"
 kind   = "test"
-tier   = "trend"
-direction = "higher_is_better"
+tier   = "gate"
 method = { test = "contextful_connectors::object::a_prefix_of_1000_objects_with_one_unreadable_lands_the_rest" }
+target = { op = "==", value = 999 }
 
 [entry.ingest-prefix-position-advances]
-clause = "connector.source.object-unreadable"
+clause = "connector.source.unreadable-position"
 metric = "ingest.prefix.one_corrupt.position_advances"
-kind   = "test"
-tier   = "trend"
-direction = "higher_is_better"
-method = { test = "contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest" }
-
-[entry.ingest-prefix-redecodes]
-clause = "connector.source.object-unreadable"
-metric = "ingest.prefix.one_corrupt.objects_redownloaded"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest" }
-target = { op = "<=", value = 999 }
+target = { op = "==", value = 1 }
 
-[entry.ingest-folder-one-corrupt]
-clause = "run.land.unreadable-input"
-metric = "ingest.folder.one_corrupt.files_landed"
+[entry.ingest-prefix-redecodes]
+clause = "connector.source.unreadable-position"
+metric = "ingest.prefix.one_corrupt.objects_redecoded"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest" }
+target = { op = "==", value = 0 }
+
+[entry.ingest-prefix-redownloads]
+clause = "connector.source.object-transport"
+metric = "ingest.prefix.one_corrupt.objects_redownloaded"
 kind   = "test"
 tier   = "trend"
-direction = "higher_is_better"
+direction = "lower_is_better"
+method = { test = "contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest" }
+
+[entry.ingest-folder-one-corrupt]
+clause = "connector.source.file-unreadable"
+metric = "ingest.folder.one_corrupt.files_landed"
+kind   = "test"
+tier   = "gate"
 method = { test = "contextful_connectors::file::a_folder_of_1000_files_with_one_unreadable_lands_the_rest" }
+target = { op = "==", value = 999 }
 
 [entry.ingest-prefix-all-corrupt-refused]
-clause = "connector.source.object-unreadable"
+clause = "connector.source.unreadable-all"
 metric = "ingest.prefix.all_corrupt.refused"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_connectors::object::a_prefix_where_every_object_is_unreadable_still_refuses" }
 target = { op = "==", value = 1 }
 
-[entry.ingest-prefix-ceiling-boundary]
+[entry.ingest-prefix-dead-letter-rows]
 clause = "connector.source.object-unreadable"
-metric = "ingest.prefix.ceiling_boundary.cases_held"
+metric = "ingest.prefix.dead_letters.objects_named"
 kind   = "test"
-tier   = "trend"
-direction = "higher_is_better"
-method = { test = "contextful_connectors::object::one_unreadable_in_a_hundred_lands_and_two_refuse" }
+tier   = "gate"
+method = { test = "contextful_connectors::object::each_unreadable_object_in_a_prefix_lands_one_dead_letter_naming_it" }
+target = { op = "==", value = 3 }
 
 [entry.ingest-skip-prior-rows-tombstoned]
-clause = "connector.source.object-unreadable"
+clause = "connector.source.unreadable-incomplete"
 metric = "ingest.prefix.skip.prior_rows_retired"
 kind   = "test"
 tier   = "gate"
@@ -357,12 +365,12 @@ method = { test = "contextful_connectors::object::a_skipped_object_tombstones_no
 target = { op = "==", value = 0 }
 
 [entry.ingest-prefix-one-oversize]
-clause = "connector.source.object-expansion"
+clause = "connector.source.object-unreadable"
 metric = "ingest.prefix.one_oversize.objects_landed"
 kind   = "test"
-tier   = "trend"
-direction = "higher_is_better"
+tier   = "gate"
 method = { test = "contextful_connectors::object::a_prefix_with_one_object_expanding_past_the_ceiling_lands_the_rest" }
+target = { op = "==", value = 999 }
 
 # ---------------------------------------------------------------- run.journal
 

@@ -2,7 +2,7 @@
 
 # Target ledger
 
-154 entries: 101 gated, 39 recorded, 6 scheduled, 8 open.
+155 entries: 106 gated, 35 recorded, 6 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -70,14 +70,15 @@
 | `horizon-deep-recall` | `read.horizon.rank-statistics` | `retrieve.horizon.deep_recall` | trend | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | — | recorded |
 | `horizon-rank-equivalence` | `read.horizon.rank-statistics` | `retrieve.horizon.rank_equivalence` | trend | test `contextful_context::read::horizon::a_hundred_past_horizons_over_4000_dated_rows_rank_through_the_index` | — | recorded |
 | `hydrated-secret-wiped` | `connector.resolve.hydration-is-just-in-time` | `resolve.hydrations_per_request` | gate | issue 51 | `== 1` | open (issue 51) |
-| `ingest-folder-one-corrupt` | `run.land.unreadable-input` | `ingest.folder.one_corrupt.files_landed` | trend | test `contextful_connectors::file::a_folder_of_1000_files_with_one_unreadable_lands_the_rest` | — | recorded |
-| `ingest-prefix-all-corrupt-refused` | `connector.source.object-unreadable` | `ingest.prefix.all_corrupt.refused` | gate | test `contextful_connectors::object::a_prefix_where_every_object_is_unreadable_still_refuses` | `== 1` | gated |
-| `ingest-prefix-ceiling-boundary` | `connector.source.object-unreadable` | `ingest.prefix.ceiling_boundary.cases_held` | trend | test `contextful_connectors::object::one_unreadable_in_a_hundred_lands_and_two_refuse` | — | recorded |
-| `ingest-prefix-one-corrupt` | `connector.source.object-unreadable` | `ingest.prefix.one_corrupt.objects_landed` | trend | test `contextful_connectors::object::a_prefix_of_1000_objects_with_one_unreadable_lands_the_rest` | — | recorded |
-| `ingest-prefix-one-oversize` | `connector.source.object-expansion` | `ingest.prefix.one_oversize.objects_landed` | trend | test `contextful_connectors::object::a_prefix_with_one_object_expanding_past_the_ceiling_lands_the_rest` | — | recorded |
-| `ingest-prefix-position-advances` | `connector.source.object-unreadable` | `ingest.prefix.one_corrupt.position_advances` | trend | test `contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest` | — | recorded |
-| `ingest-prefix-redecodes` | `connector.source.object-unreadable` | `ingest.prefix.one_corrupt.objects_redownloaded` | gate | test `contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest` | `<= 999` | gated |
-| `ingest-skip-prior-rows-tombstoned` | `connector.source.object-unreadable` | `ingest.prefix.skip.prior_rows_retired` | gate | test `contextful_connectors::object::a_skipped_object_tombstones_none_of_its_earlier_rows` | `== 0` | gated |
+| `ingest-folder-one-corrupt` | `connector.source.file-unreadable` | `ingest.folder.one_corrupt.files_landed` | gate | test `contextful_connectors::file::a_folder_of_1000_files_with_one_unreadable_lands_the_rest` | `== 999` | gated |
+| `ingest-prefix-all-corrupt-refused` | `connector.source.unreadable-all` | `ingest.prefix.all_corrupt.refused` | gate | test `contextful_connectors::object::a_prefix_where_every_object_is_unreadable_still_refuses` | `== 1` | gated |
+| `ingest-prefix-dead-letter-rows` | `connector.source.object-unreadable` | `ingest.prefix.dead_letters.objects_named` | gate | test `contextful_connectors::object::each_unreadable_object_in_a_prefix_lands_one_dead_letter_naming_it` | `== 3` | gated |
+| `ingest-prefix-one-corrupt` | `connector.source.object-unreadable` | `ingest.prefix.one_corrupt.objects_landed` | gate | test `contextful_connectors::object::a_prefix_of_1000_objects_with_one_unreadable_lands_the_rest` | `== 999` | gated |
+| `ingest-prefix-one-oversize` | `connector.source.object-unreadable` | `ingest.prefix.one_oversize.objects_landed` | gate | test `contextful_connectors::object::a_prefix_with_one_object_expanding_past_the_ceiling_lands_the_rest` | `== 999` | gated |
+| `ingest-prefix-position-advances` | `connector.source.unreadable-position` | `ingest.prefix.one_corrupt.position_advances` | gate | test `contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest` | `== 1` | gated |
+| `ingest-prefix-redecodes` | `connector.source.unreadable-position` | `ingest.prefix.one_corrupt.objects_redecoded` | gate | test `contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest` | `== 0` | gated |
+| `ingest-prefix-redownloads` | `connector.source.object-transport` | `ingest.prefix.one_corrupt.objects_redownloaded` | trend | test `contextful_connectors::object::a_read_with_one_unreadable_object_commits_the_position_of_the_rest` | — | recorded |
+| `ingest-skip-prior-rows-tombstoned` | `connector.source.unreadable-incomplete` | `ingest.prefix.skip.prior_rows_retired` | gate | test `contextful_connectors::object::a_skipped_object_tombstones_none_of_its_earlier_rows` | `== 0` | gated |
 | `journal-conformance` | `run.journal.storage-ports` | `journal.conformance.failed_cases` | gate | test `contextful_engine::stores::the_file_and_memory_adapters_pass_every_store_conformance_suite` | `== 0` | gated |
 | `journal-effect-once` | `run.journal.entry-key` | `journal.effects_per_key.max` | gate | test `contextful_engine::journal::racers_on_one_key_run_the_effect_once_and_read_equal_bytes` | `== 1` | gated |
 | `journal-holder-liveness` | `run.journal.claim-takeover` | `journal.takeover.effects` | gate | test `contextful_engine::journal::a_claim_whose_holder_lapsed_is_taken_over` | `== 1` | gated |

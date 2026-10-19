@@ -6,13 +6,15 @@
 //! row per heading section past [`CHUNK_BYTES`]; a PDF lands one row per page, decoded
 //! behind the process boundary (`connector.source.document-grain`). The position maps each
 //! landed path to its content digest and row count, so a read re-lands a changed file alone
-//! and tombstones what left (`connector.source.file-position`).
+//! and tombstones what left (`connector.source.file-position`). A file a decoder cannot read
+//! lands a dead letter, keeps its earlier rows, and the read continues
+//! (`connector.source.file-unreadable`).
 
 use crate::boundary::PageDecoder;
 use crate::decode::document::{self, is_compound};
 use crate::http::ConfigError;
 use contextful_core::connector::ConnectorError;
-use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source};
+use contextful_core::run::ports::{Cancellation, DeadLetter, PullRequest, Row, Source};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -27,7 +29,7 @@ pub const NAME: &str = "file";
 /// The one table the source serves.
 pub const TABLE: &str = "documents";
 /// The configuration keys the source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 4] = ["root", "include", "exclude", "base_url"];
+pub const KEYS: [&str; 5] = ["root", "include", "exclude", "base_url", "replay_dead_letters"];
 /// Bytes one file may carry before the walk declines it (`connector.source.file-cap`).
 pub const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 /// Body bytes past which a note lands one row per heading section
@@ -121,6 +123,9 @@ pub struct FileConfig {
     pub include: Vec<Glob>,
     pub exclude: Vec<Glob>,
     pub base_url: Option<Url>,
+    /// Re-read every file the position holds dead-lettered, whatever its digest
+    /// (`connector.source.dead-letter-replay`).
+    pub replay_dead_letters: bool,
 }
 
 impl FileConfig {
@@ -160,7 +165,12 @@ impl FileConfig {
             },
             Some(other) => return Err(invalid(format!("`base_url` is a URL, found {other}"))),
         };
-        Ok(FileConfig { root, include, exclude, base_url })
+        let replay_dead_letters = match cfg.get("replay_dead_letters") {
+            None => false,
+            Some(Value::Bool(b)) => *b,
+            Some(other) => return Err(invalid(format!("`replay_dead_letters` is a boolean, found {other}"))),
+        };
+        Ok(FileConfig { root, include, exclude, base_url, replay_dead_letters })
     }
 
     /// Refuse a table the source does not serve, ahead of the walk
@@ -263,6 +273,8 @@ struct Held {
     sha256: String,
     slug: String,
     rows: u64,
+    /// The file at this digest was dead-lettered.
+    dead_letter: bool,
 }
 
 fn held(position: Option<&Value>) -> BTreeMap<String, Held> {
@@ -271,7 +283,7 @@ fn held(position: Option<&Value>) -> BTreeMap<String, Held> {
         .iter()
         .map(|(path, v)| {
             let text = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
-            (path.clone(), Held { sha256: text("sha256"), slug: text("slug"), rows: v.get("rows").and_then(Value::as_u64).unwrap_or(0) })
+            (path.clone(), Held { sha256: text("sha256"), slug: text("slug"), rows: v.get("rows").and_then(Value::as_u64).unwrap_or(0), dead_letter: v.get("dead_letter") == Some(&Value::Bool(true)) })
         })
         .collect()
 }
@@ -283,6 +295,8 @@ pub struct Read {
     pub position: Value,
     /// The files the walk declined, tallied by extension (`connector.source.declined-tally`).
     pub declined: BTreeMap<String, u64>,
+    /// The files no decoder could read (`connector.source.file-unreadable`).
+    pub dead_letters: Vec<DeadLetter>,
 }
 
 /// The `file` source over one root.
@@ -372,7 +386,7 @@ impl FileSource {
         let stem = stem.rsplit_once('.').filter(|(s, _)| !s.is_empty()).map_or(stem, |(s, _)| s).to_string();
         let utf8 = || {
             std::str::from_utf8(bytes).map_err(|e| {
-                Failure::deterministic(FailureTag::Permanent, RunError::PipelineUnreadableInput(format!("`{}` at byte {}: not UTF-8 text", f.path, e.valid_up_to())).to_string())
+                Failure::unreadable_input(RunError::PipelineUnreadableInput(format!("`{}` at byte {}: not UTF-8 text", f.path, e.valid_up_to())).to_string())
             })
         };
         match kind {
@@ -394,7 +408,7 @@ impl FileSource {
             Kind::Text => Ok(Doc { kind, title: stem, frontmatter: Vec::new(), parts: vec![Part { heading: None, anchor: None, text: utf8()?.trim().to_string() }] }),
             Kind::Pdf => {
                 let decoder = self.decoder.as_ref().ok_or_else(|| {
-                    Failure::deterministic(FailureTag::Config, format!("`{}` is a PDF, and the PDF decoder is compiled out of this build; rebuild with `--features pdf`", f.path))
+                    Failure::misconfigured(format!("`{}` is a PDF, and the PDF decoder is compiled out of this build; rebuild with `--features pdf`", f.path))
                 })?;
                 let pages = decoder.pages(bytes, &f.path)?;
                 let parts = pages.into_iter().enumerate().map(|(i, text)| Part { heading: None, anchor: Some(format!("page={}", i + 1)), text }).collect();
@@ -473,6 +487,11 @@ impl FileSource {
         let mut rows: Vec<Row> = Vec::new();
         let mut after = Map::new();
         let mut columns: BTreeSet<String> = BTreeSet::new();
+        let mut dead_letters = Vec::new();
+        let mut refusals = Vec::new();
+        // Files landed or held unchanged; a read whose every file is unreadable refuses
+        // (`connector.source.unreadable-all`).
+        let mut readable = 0usize;
         for (f, kind) in landing {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped between files"));
@@ -486,11 +505,32 @@ impl FileSource {
             let digest = hex(&Sha256::digest(&bytes));
             let s = slug(&f.path);
             let prior = before.get(&f.path);
-            if let Some(h) = prior.filter(|h| h.sha256 == digest) {
-                after.insert(f.path.clone(), json!({"sha256": digest, "slug": h.slug, "rows": h.rows}));
+            let replay = self.config.replay_dead_letters && prior.is_some_and(|h| h.dead_letter);
+            if let Some(h) = prior.filter(|h| h.sha256 == digest && !replay) {
+                let mut held = json!({"sha256": digest, "slug": h.slug, "rows": h.rows});
+                if h.dead_letter {
+                    held["dead_letter"] = json!(true);
+                } else {
+                    readable += 1;
+                }
+                after.insert(f.path.clone(), held);
                 continue;
             }
-            let doc = self.decode(&f, kind, &bytes)?;
+            let doc = match self.decode(&f, kind, &bytes) {
+                Ok(doc) => doc,
+                // The file lands a dead letter in place of rows and keeps its earlier rows; the
+                // position holds it at this digest, so the next read skips it. A configuration
+                // fault refuses the read whole (`connector.source.configuration-fault`).
+                Err(e) if e.dead_letters() => {
+                    dead_letters.push(DeadLetter { key: f.path.clone(), reason: e.message.clone(), sha256: digest.clone() });
+                    refusals.push(e);
+                    let (slug, rows) = prior.map_or((s.clone(), 0), |h| (h.slug.clone(), h.rows));
+                    after.insert(f.path.clone(), json!({"sha256": digest, "slug": slug, "rows": rows, "dead_letter": true}));
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
+            readable += 1;
             let count = doc.parts.len() as u64;
             for (i, part) in doc.parts.into_iter().enumerate() {
                 let mut r = Map::new();
@@ -540,7 +580,10 @@ impl FileSource {
                 r.entry(c.clone()).or_insert(Value::Null);
             }
         }
-        Ok(Read { rows, position: json!({ "files": after }), declined })
+        if readable == 0 && !refusals.is_empty() {
+            return Err(unreadable_all(refusals));
+        }
+        Ok(Read { rows, position: json!({ "files": after }), declined, dead_letters })
     }
 
     fn types(rows: &[Row]) -> BTreeMap<String, String> {
@@ -554,14 +597,29 @@ impl FileSource {
     }
 }
 
+/// The refusal of a read whose every file is unreadable: the one file's own refusal, or one
+/// naming every file and its reason.
+fn unreadable_all(mut refusals: Vec<Failure>) -> Failure {
+    if refusals.len() == 1 {
+        return refusals.remove(0);
+    }
+    let reasons: Vec<String> = refusals.iter().map(|f| f.message.clone()).collect();
+    Failure::deterministic(FailureTag::Permanent, RunError::PipelineUnreadableInput(format!("every one of the {} files the read reaches is unreadable: {}", refusals.len(), reasons.join("; "))).to_string())
+}
+
 impl Source for FileSource {
     /// One pull is one whole walk; the position rides the pull as an opaque token.
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
         let read = self.read(request.position.as_ref(), cancel)?;
-        let skipped: u64 = read.declined.values().sum();
+        // A dead-lettered file counts on the run record beside a declined one (`run.record.skipped-count`).
+        let skipped: u64 = read.declined.values().sum::<u64>() + read.dead_letters.len() as u64;
         let types = Self::types(&read.rows);
         let snapshot_complete = skipped == 0 && read.position["files"].as_object().is_some_and(serde_json::Map::is_empty);
-        serde_json::to_vec(&json!({ "rows": read.rows, "cursor": read.position, "more": false, "snapshot_complete": snapshot_complete, "types": types, "skipped": skipped, "declined": read.declined }))
+        let mut pull = json!({ "rows": read.rows, "cursor": read.position, "more": false, "snapshot_complete": snapshot_complete, "types": types, "skipped": skipped, "declined": read.declined });
+        if !read.dead_letters.is_empty() {
+            pull["dead_letters"] = json!(read.dead_letters);
+        }
+        serde_json::to_vec(&pull)
             .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }

@@ -3,6 +3,7 @@
 
 use crate::pipeline::{cf, ok, project, stderr};
 use serde_json::{json, Value};
+use sha2::Digest;
 use std::path::Path;
 
 fn fire(dir: &Path, run: &str, now: &str) -> std::process::Output {
@@ -54,6 +55,27 @@ fn a_document_folder_lands_by_slug_and_a_second_fire_lands_what_changed() {
     assert!(out.contains("run-2 success · 1 rows"), "{out}");
     let text = query(dir.path(), "SELECT text FROM handbook_documents WHERE slug = 'policies/expenses'");
     assert_eq!(text["rows"], json!([["Keep every receipt."]]));
+}
+
+/// A file no decoder can read lands its dead letter in the queryable table beside `documents`, committed in the run
+/// that lands the readable files; the position holds it, so the next fire lands nothing again.
+#[test]
+fn an_unreadable_file_lands_a_queryable_dead_letter_beside_the_documents() {
+    let dir = handbook("");
+    write(dir.path(), "guide.md", "# Guide\n\nRead me.\n");
+    write(dir.path(), "latin.txt", b"caf\xe9");
+    let out = ok(&fire(dir.path(), "run-1", "2031-03-01T00:00:00Z"));
+    assert!(out.contains("run-1 success · 1 rows") && out.contains("1 skipped"), "{out}");
+    assert_eq!(query(dir.path(), "SELECT slug FROM handbook_documents")["rows"], json!([["guide"]]));
+    let letters = query(dir.path(), "SELECT key, sha256, _run_id FROM handbook_documents_dead_letter");
+    let digest: String = sha2::Sha256::digest(b"caf\xe9").iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(letters["rows"], json!([["latin.txt", digest, "run-1"]]));
+    let reason = query(dir.path(), "SELECT reason FROM handbook_documents_dead_letter");
+    assert!(reason["rows"][0][0].as_str().is_some_and(|r| r.starts_with("PipelineUnreadableInput") && r.contains("byte 3")), "{reason}");
+
+    let out = ok(&fire(dir.path(), "run-2", "2031-03-01T00:01:00Z"));
+    assert!(out.contains("run-2 success · 0 rows"), "{out}");
+    assert_eq!(query(dir.path(), "SELECT count(*) FROM handbook_documents_dead_letter")["rows"], json!([["1"]]), "the position holds the dead letter");
 }
 
 #[test]

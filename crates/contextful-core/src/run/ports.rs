@@ -61,6 +61,41 @@ pub struct Pull {
     /// (`run.exec.audit-entries`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audit: Vec<String>,
+    /// Inputs the source could not read, which land in the table's dead-letter table
+    /// while the rest of the read lands (`run.land.dead-letter`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dead_letters: Vec<DeadLetter>,
+}
+
+/// One input a source could not read: its object key or root-relative path, the
+/// decoder's reason and the SHA-256 of its bytes (`run.land.dead-letter`).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeadLetter {
+    pub key: String,
+    pub reason: String,
+    pub sha256: String,
+}
+
+impl DeadLetter {
+    /// The dead letter as the row its table lands.
+    pub fn row(&self) -> Row {
+        let mut r = Row::new();
+        r.insert("key".into(), Value::String(self.key.clone()));
+        r.insert("reason".into(), Value::String(self.reason.clone()));
+        r.insert("sha256".into(), Value::String(self.sha256.clone()));
+        r
+    }
+
+    /// The column types of a dead-letter row.
+    pub fn types() -> Types {
+        ["key", "reason", "sha256"].into_iter().map(|c| (c.to_string(), ColumnType::Utf8)).collect()
+    }
+}
+
+/// The dead-letter table beside `table` (`run.land.dead-letter`).
+pub fn dead_letter_table(table: &str) -> String {
+    format!("{table}_dead_letter")
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -70,7 +105,7 @@ fn is_zero(n: &u64) -> bool {
 impl Pull {
     /// Decode a pull. Bytes outside the shape are a deterministic `SchemaIncompatible`.
     pub fn decode(bytes: &[u8]) -> Result<Pull, Failure> {
-        serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("a pull is `{{\"rows\", \"cursor\", \"more\", \"snapshot_complete\", \"types\", \"skipped\", \"declined\", \"audit\"}}`: {e}")))
+        serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("a pull is `{{\"rows\", \"cursor\", \"more\", \"snapshot_complete\", \"types\", \"skipped\", \"declined\", \"audit\", \"dead_letters\"}}`: {e}")))
     }
 }
 
@@ -225,6 +260,12 @@ pub trait Destination {
     /// Commit `commit.parts` as one atomic commit carrying `commit.cursor`. `precommit` runs
     /// immediately before the commit point; a refusal there lands nothing.
     fn commit(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure>;
+    /// Stage `letters` as one part of run `run_id` in `table`'s dead-letter table, which
+    /// commits with the run's own commit (`run.land.dead-letter`). A destination keeping no
+    /// dead-letter table refuses, so no dead letter is dropped.
+    fn stage_dead_letters(&mut self, table: &str, _run_id: &str, _site_id: &str, _letters: &[DeadLetter]) -> Result<(), Failure> {
+        Err(Failure::deterministic(FailureTag::Permanent, format!("the destination keeps no dead-letter table beside `{table}`")))
+    }
     /// Remove every part run `run_id` staged for `table`, which no commit names once the
     /// run fails (`run.own.stage-discard`). A run with nothing staged discards nothing.
     fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure>;

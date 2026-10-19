@@ -19,9 +19,9 @@ use contextful_core::ports::{Clock, FixedClock};
 use contextful_core::run::cancel::Scope;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::plan::Plan;
-use contextful_core::run::ports::{AwakeableStore, BlobStore, Commit, Destination, JournalStore, Landed, Marker, Part, Stage};
+use contextful_core::run::ports::{dead_letter_table, AwakeableStore, BlobStore, Commit, DeadLetter, Destination, JournalStore, Landed, Marker, Part, Stage};
 use contextful_core::run::record::{describe_ceiling, export_ceiling, parse_bound, select_history, RunStatus, Window};
-use contextful_core::run::{Failure, FailureTag};
+use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::pipeline::normalize::{NormalizedGroup, Mode, Normalize};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::reconcile::ColumnType;
@@ -446,6 +446,28 @@ impl Destination for StoreDestination {
         let batch = self.batch(&stage.table, stage.rows, stage.types)?;
         let part = stage_part(&self.store, &decl, &batch, &self.node, &injection, stage.ordinal, stage.row_offset).map_err(store_failure)?;
         Ok(Part { name: part.name, rows: part.rows, bytes: part.bytes })
+    }
+
+    /// The dead letters stage as a part of the dead-letter table, which commits in the run's
+    /// group beside its table (`run.land.dead-letter`).
+    fn stage_dead_letters(&mut self, table: &str, run_id: &str, site_id: &str, letters: &[DeadLetter]) -> Result<(), Failure> {
+        let held = dead_letter_table(table);
+        // A relational child or another table already in `<table>_dead_letter` refuses, so two
+        // shapes never commit into one table (`run.land.dead-letter-occupied`).
+        let shaped = |columns: &[String]| ["key", "reason", "sha256"].iter().all(|c| columns.iter().any(|held| held == c)) && !columns.iter().any(|c| c == "list_index");
+        let child = self.relational_parts.contains_key(&held);
+        let stored = self.store.try_schema(&held).map_err(store_failure)?.map(|schema| schema.columns.iter().map(|c| c.name.clone()).collect::<Vec<_>>());
+        if child || stored.as_deref().is_some_and(|columns| !shaped(columns)) {
+            let by = if child { "a relational child table" } else { "a store table of another shape" };
+            return Err(Failure::deterministic(FailureTag::Permanent, RunError::PipelineTableNameCollision(format!("the dead letters of `{table}` and {by} both land in `{held}`")).to_string()));
+        }
+        let staged = self.relational_parts.get(&held);
+        let (ordinal, offset) = (staged.map_or(0, Vec::len), staged.map_or(0, |parts| parts.iter().map(|p| p.rows).sum()));
+        let ordinal = u32::try_from(ordinal).map_err(|_| Failure::deterministic(FailureTag::Permanent, format!("run `{run_id}` stages more dead-letter parts than an ordinal numbers")))?;
+        let batch = Batch { rows: letters.iter().map(DeadLetter::row).collect(), types: DeadLetter::types().into_iter().collect() };
+        let part = stage_part(&self.store, &self.decl(&held), &batch, &self.node, &self.injection(run_id, site_id), ordinal, offset).map_err(store_failure)?;
+        self.relational_parts.entry(held).or_default().push(Part { name: part.name, rows: part.rows, bytes: part.bytes });
+        Ok(())
     }
 
     fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure> {

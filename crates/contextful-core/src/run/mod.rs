@@ -23,4 +23,4 @@ pub mod suspend;
 pub mod sweep;
 
 pub use error::RunError;
-pub use failure::{Failure, FailureTag};
+pub use failure::{Failure, FailureTag, Fault};

@@ -8,6 +8,7 @@ use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::{PullRequest, Row, Source};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use serde_json::{json, Value};
+use sha2::Digest;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -17,7 +18,7 @@ struct Pages;
 impl PageDecoder for Pages {
     fn pages(&self, body: &[u8], input: &str) -> Result<Vec<String>, Failure> {
         let text = String::from_utf8_lossy(body);
-        let rest = text.strip_prefix("%PDF-stub\n").ok_or_else(|| Failure::deterministic(FailureTag::Permanent, RunError::PipelineUnreadableInput(format!("`{input}` at byte 0: no stub header")).to_string()))?;
+        let rest = text.strip_prefix("%PDF-stub\n").ok_or_else(|| Failure::unreadable_input(RunError::PipelineUnreadableInput(format!("`{input}` at byte 0: no stub header")).to_string()))?;
         Ok(rest.split('\u{c}').map(|p| p.trim().to_string()).collect())
     }
 }
@@ -537,4 +538,75 @@ fn a_folder_of_1000_files_with_one_unreadable_lands_the_rest() {
         fewest = fewest.min(landed.len());
     }
     contextful_eval::record::emit("ingest-folder-one-corrupt", fewest as f64, cases.len() as u64, 0);
+    assert_eq!(fewest, FILES - 1, "every readable file lands in each shape");
+}
+
+/// A PDF stand-in whose refusals carry their fault and no error name: a body reading `config` is the declaration's
+/// fault, though its message reads as unreadable input; any other body is the input's.
+struct Classified;
+
+impl PageDecoder for Classified {
+    fn pages(&self, body: &[u8], input: &str) -> Result<Vec<String>, Failure> {
+        Err(match body {
+            b"config" => Failure::misconfigured(RunError::PipelineUnreadableInput(format!("`{input}` at byte 0: the build cannot read it")).to_string()),
+            _ => Failure::unreadable_input(format!("`{input}` holds no text layer")),
+        })
+    }
+}
+
+/// A folder read dead-letters a file by the fault its refusal carries, never by its message: an input fault lands a
+/// dead letter beside the readable files, and a configuration fault refuses the read whole, naming the error.
+#[test]
+fn a_folder_read_dead_letters_an_input_fault_and_refuses_whole_on_a_configuration_fault() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.md", "note");
+    write(dir.path(), "scan.pdf", "image only");
+    let s = FileSource::new(FileConfig::parse(&json!({"root": "."})).unwrap(), dir.path(), Some(Arc::new(Classified)));
+    let r = s.read(None, &Never).unwrap();
+    assert_eq!(r.rows.iter().map(|r| r["path"].as_str().unwrap()).collect::<Vec<_>>(), ["a.md"]);
+    assert_eq!(r.dead_letters.iter().map(|l| l.key.as_str()).collect::<Vec<_>>(), ["scan.pdf"]);
+
+    write(dir.path(), "b.pdf", "config");
+    let f = s.read(None, &Never).unwrap_err();
+    assert_eq!(f.tag, FailureTag::Config, "{f}");
+    assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("b.pdf") && f.message.contains("the build cannot read it"), "{f}");
+}
+
+/// A file a decoder cannot read lands no rows and one {{run.land.dead-letter}} row, keeps its earlier rows, and the
+/// read continues. The position holds it at its digest until it changes or `replay_dead_letters` reads it, and a
+/// folder with nothing readable refuses whole.
+// spec: connector.source.file-unreadable@8882711d
+#[test]
+fn an_unreadable_file_lands_a_dead_letter_keeps_its_earlier_rows_and_the_read_continues() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "a.md", "first");
+    write(dir.path(), "b.txt", "readable");
+    let s = source(dir.path(), json!({"root": "."}));
+    let first = s.read(None, &Never).unwrap();
+    write(dir.path(), "b.txt", b"caf\xe9");
+    write(dir.path(), "c.md", "third");
+    let second = s.read(Some(&first.position), &Never).unwrap();
+    assert_eq!(keys(&second.rows), [("c".to_string(), 1, false)], "the readable file lands and the unreadable one retires nothing");
+    let digest: String = sha2::Sha256::digest(b"caf\xe9").iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(second.dead_letters.len(), 1);
+    let letter = &second.dead_letters[0];
+    assert_eq!((letter.key.as_str(), letter.sha256.as_str()), ("b.txt", digest.as_str()));
+    assert!(letter.reason.starts_with("PipelineUnreadableInput") && letter.reason.contains("byte 3"), "{}", letter.reason);
+    assert_eq!(second.position["files"]["b.txt"], json!({"sha256": digest, "slug": "b", "rows": 1, "dead_letter": true}), "the earlier row stays live");
+
+    let third = s.read(Some(&second.position), &Never).unwrap();
+    assert!(third.rows.is_empty() && third.dead_letters.is_empty(), "the position holds the dead-lettered file at its digest");
+    let replay = source(dir.path(), json!({"root": ".", "replay_dead_letters": true}));
+    assert_eq!(replay.read(Some(&second.position), &Never).unwrap().dead_letters.len(), 1, "a replay decodes the held file again");
+    write(dir.path(), "b.txt", "fixed");
+    let fixed = s.read(Some(&second.position), &Never).unwrap();
+    assert_eq!(keys(&fixed.rows), [("b".to_string(), 1, false)], "a changed digest reads the file again");
+    assert_eq!(fixed.position["files"]["b.txt"].get("dead_letter"), None);
+
+    // A folder with nothing readable refuses whole, naming each file.
+    let unreadable = tempfile::tempdir().unwrap();
+    write(unreadable.path(), "x.txt", b"caf\xe9");
+    write(unreadable.path(), "y.txt", b"na\xefve");
+    let f = source(unreadable.path(), json!({"root": "."})).read(None, &Never).unwrap_err();
+    assert!(f.message.starts_with("PipelineUnreadableInput") && f.message.contains("x.txt") && f.message.contains("y.txt"), "{f}");
 }

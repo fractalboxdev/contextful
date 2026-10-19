@@ -17,7 +17,7 @@ use contextful_core::run::backfill::{ChunkRow, ChunkStatus, Window};
 use contextful_core::run::effect::{EffectScope, EmissionSummary};
 use contextful_core::run::own::{OwnerScope, SEED_SUFFIX};
 use contextful_core::run::plan::Plan;
-use contextful_core::run::ports::{BlobStore, Commit, Destination, JournalStore, Landed, Marker, Part, Pull, Row, Shape, Source, Stage, Types};
+use contextful_core::run::ports::{BlobStore, Commit, DeadLetter, Destination, JournalStore, Landed, Marker, Part, Pull, Row, Shape, Source, Stage, Types};
 use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use serde_json::{json, Value};
@@ -316,6 +316,9 @@ impl Destination for LiveBound<'_> {
     fn commit(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
         let cursor = self.live_position()?;
         self.inner.commit(Commit { cursor, cursor_kind: self.load.live_kind, replace_frontier: false, ..commit }, precommit)
+    }
+    fn stage_dead_letters(&mut self, table: &str, run_id: &str, site_id: &str, letters: &[DeadLetter]) -> Result<(), Failure> {
+        self.inner.stage_dead_letters(table, run_id, site_id, letters)
     }
     fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure> {
         self.inner.discard(table, run_id)

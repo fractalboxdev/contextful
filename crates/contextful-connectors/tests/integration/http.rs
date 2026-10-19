@@ -650,8 +650,8 @@ fn an_unknown_config_key_is_refused_naming_the_accepted_keys() {
 }
 
 /// Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it,
-/// permanent against the retry schedule and failing one table's pull.
-// spec: run.land.unreadable-input@e97b3caa
+/// permanent against the retry schedule and failing one table's pull unless its source dead-letters it.
+// spec: run.land.unreadable-input@63dedae8
 #[test]
 fn an_unreadable_body_refuses_naming_path_and_position() {
     let vendor = Server::start(|_| Response::json(200, "{\"data\": [\n  {\"id\": \"a\"},\n  {\"id\": oops}\n]}"));

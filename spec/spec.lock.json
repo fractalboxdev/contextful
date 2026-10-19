@@ -11787,7 +11787,7 @@
       "operation": "declare",
       "subject": "table-name-collision",
       "kind": "refusal",
-      "statement": "Two tables whose destination names fold to one spelling, within one pipeline or across pipelines, raise `PipelineTableNameCollision` at validation, naming both declarations.",
+      "statement": "Two tables whose destination names fold to one spelling, or one whose name is another's `<name>_dead_letter`, within one pipeline or across pipelines, raise `PipelineTableNameCollision` at validation, naming both declarations.",
       "why": "because two tables folding to one name land in one store table and interleave their rows",
       "file": "spec/31-pipeline.md",
       "line": 71
@@ -12395,6 +12395,17 @@
       "line": 175
     },
     {
+      "id": "run.guard-secrets.dead-letter-reason",
+      "contract": "run",
+      "operation": "guard-secrets",
+      "subject": "dead-letter-reason",
+      "kind": "behavior",
+      "statement": "A dead letter's `key`, `reason` and `sha256` pass the guard as a pulled row's cells do, so a reason quoting a credential lands masked.",
+      "why": "",
+      "file": "spec/31-pipeline.md",
+      "line": 176
+    },
+    {
       "id": "run.guard-secrets.recorded-body",
       "contract": "run",
       "operation": "guard-secrets",
@@ -12403,7 +12414,7 @@
       "statement": "Registered body results pass through the same guard before shaping and canonical preparation; the engine reports per-column counts once per fresh paid preparation, excluding counts from the recorded wire and replay.",
       "why": "A-authority",
       "file": "spec/31-pipeline.md",
-      "line": 176
+      "line": 177
     },
     {
       "id": "run.land.stage-order",
@@ -12414,7 +12425,7 @@
       "statement": "A batch passes pull, the secret guard, the recorded pull, normalize, the transform chain, write-path redaction, shredding and batch write; the run then commits rows and position together through {{run.advance.commit-with-rows}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 188
+      "line": 189
     },
     {
       "id": "run.land.unknown-destination",
@@ -12425,7 +12436,7 @@
       "statement": "The local context store is the only destination, and synthesized artifacts write back through it; any other `destination` raises `PipelineUnknownDestination` at assembly, before any row moves.",
       "why": "A-topology",
       "file": "spec/31-pipeline.md",
-      "line": 189
+      "line": 190
     },
     {
       "id": "run.land.no-host-arm",
@@ -12436,7 +12447,7 @@
       "statement": "The destination world declares no host arm, so a guest supplies no destination.",
       "why": "A-topology",
       "file": "spec/31-pipeline.md",
-      "line": 191
+      "line": 192
     },
     {
       "id": "run.land.batch-write",
@@ -12447,7 +12458,7 @@
       "statement": "A landing table is created on first sight of its schema, {{store.reconcile.first-sight}}; each batch is written durably in its own call, optionally carrying its ordinal as the join key onto the run's request ledger.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 193
+      "line": 194
     },
     {
       "id": "run.land.typed-pull",
@@ -12458,7 +12469,7 @@
       "statement": "A pull's `types` object maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it, and the run commit lands that column in it; an unreadable spelling fails the pull as {{store.reconcile.incompatible}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 194
+      "line": 195
     },
     {
       "id": "run.land.late-type",
@@ -12469,7 +12480,7 @@
       "statement": "A pull declaring a type for a column an earlier staged batch of its run carried undeclared raises `PipelineTypeDeclaredLate`, deterministic, naming the column; the run commits nothing and retires its owner.",
       "why": "because that batch's part already holds the column in its inferred type, and a staged part is immutable",
       "file": "spec/31-pipeline.md",
-      "line": 195
+      "line": 196
     },
     {
       "id": "run.land.irreconcilable-schema",
@@ -12480,7 +12491,7 @@
       "statement": "An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 197
+      "line": 198
     },
     {
       "id": "run.land.commit-visibility",
@@ -12491,7 +12502,7 @@
       "statement": "A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 198
+      "line": 199
     },
     {
       "id": "run.land.session",
@@ -12502,7 +12513,7 @@
       "statement": "A landing session holds one store, node and table declaration across runs and commits each micro-batch as its own run; a later run rewrites no earlier run's parts or manifest.",
       "why": "because a writer flushing every second otherwise pays a process start, a store open and a node resolution per batch",
       "file": "spec/31-pipeline.md",
-      "line": 199
+      "line": 200
     },
     {
       "id": "run.land.session-input",
@@ -12513,7 +12524,7 @@
       "statement": "`contextful context land --session` reads one JSON object per stdin line — `run_id`, `rows`, optional `now` — lands each as its own run through one landing session, and prints that run's outcome before reading the next line.",
       "why": "because a host running no serving process still needs one session across its batches",
       "file": "spec/31-pipeline.md",
-      "line": 201,
+      "line": 202,
       "scenarios": [
         "WHEN stdin carries `run-1`, `run-2` and `run-1` again, THEN the session prints two commits and one replay, one line each."
       ]
@@ -12527,7 +12538,7 @@
       "statement": "A landing session parses `schema.json` again only when its version — length, modification instant, file identity — moves; a land adding no column or type replaces no `schema.json` and takes no schema lock.",
       "why": "because a land per second otherwise rereads and rewrites the schema under the lock every writer of the table waits on",
       "file": "spec/31-pipeline.md",
-      "line": 203,
+      "line": 204,
       "scenarios": [
         "WHEN a session lands 300 single-row runs under one schema, THEN it parses `schema.json` once and leaves the file's bytes and identity unchanged."
       ]
@@ -12541,7 +12552,7 @@
       "statement": "A delivered batch enters at the pull position of {{run.land.stage-order}}: each declared table it touches lands as one run whose single pull yields that table's rows.",
       "why": "because a pushed row needs the guard, the recorded pull and redaction a pulled row passes",
       "file": "spec/31-pipeline.md",
-      "line": 205,
+      "line": 206,
       "scenarios": [
         "WHEN a delivered row carries a credential-shaped cell, THEN the table lands it masked."
       ]
@@ -12555,7 +12566,7 @@
       "statement": "`contextful pipeline receive <id> --key <key>` reads one batch on stdin and answers after every touched table commits, in declaration order, naming the batch id and each table's run id; a failed table answers retryable only under {{run.retry.retryable-classes}}.",
       "why": "because no commit spans two tables, so a sender learns success only once the last table commits",
       "file": "spec/31-pipeline.md",
-      "line": 207,
+      "line": 208,
       "scenarios": [
         "WHEN one `jsonl` batch carries rows for two declared tables, THEN the answer follows both commits and names the batch id and each table's run id."
       ]
@@ -12569,7 +12580,7 @@
       "statement": "A batch key fixes each touched table's run id stem `receive-<digest>.<table>`, a later attempt taking `.2`, `.3`, and its owner scope; a table whose run under the key committed replays it and lands nothing.",
       "why": "because a sender retrying after a lost answer must not duplicate committed tables",
       "file": "spec/31-pipeline.md",
-      "line": 209,
+      "line": 210,
       "scenarios": [
         "WHEN a batch whose tables all committed arrives again under its key, THEN the answer names the original run id and no row lands."
       ]
@@ -12583,7 +12594,7 @@
       "statement": "A table under a batch key whose run did not commit resumes the key's pending owner, recorded pull included, and no other key's.",
       "why": "because a sender retrying after a lost answer must not lose uncommitted tables",
       "file": "spec/31-pipeline.md",
-      "line": 211,
+      "line": 212,
       "scenarios": [
         "WHEN the receiver dies after recording a delivered batch and the batch is resent under its key, THEN every landed cell but the run id is identical to the uninterrupted run's."
       ]
@@ -12597,7 +12608,7 @@
       "statement": "A body past the source's `max_batch_bytes` raises `ReceiveBatchTooLarge`, non-retryable; the reader stops one byte past the bound and no table lands.",
       "why": "because an unbounded body is an unbounded allocation the sender controls",
       "file": "spec/31-pipeline.md",
-      "line": 213,
+      "line": 214,
       "scenarios": [
         "WHEN a body passes `max_batch_bytes` by one byte, THEN the receiver raises `ReceiveBatchTooLarge` and no table lands."
       ]
@@ -12611,7 +12622,7 @@
       "statement": "Batches of one pipeline land one at a time; up to `max_queue_depth` batches hold a queue slot, waiting or landing, from before the body is read until the answer.",
       "why": "because concurrent senders share each table's single-writer cursor lease",
       "file": "spec/31-pipeline.md",
-      "line": 215
+      "line": 216
     },
     {
       "id": "run.land.receive-backpressure",
@@ -12622,7 +12633,7 @@
       "statement": "A batch arriving while every queue slot of its pipeline is held raises `ReceiveBackpressure`, retryable, before reading its body.",
       "why": "because a sender told to wait sheds load the receiver cannot absorb",
       "file": "spec/31-pipeline.md",
-      "line": 217,
+      "line": 218,
       "scenarios": [
         "WHEN two batches hold both slots of a depth-2 pipeline, THEN a third raises `ReceiveBackpressure` with a 1 s retry interval."
       ]
@@ -12636,7 +12647,7 @@
       "statement": "A {{run.land.receive-backpressure}} answer carries a retry interval of 1 s.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 219
+      "line": 220
     },
     {
       "id": "run.land.receive-push-wait",
@@ -12647,7 +12658,7 @@
       "statement": "A delivered batch's `pull_before_run` and `push_after_run` wait at most 30 s for {{store.push.in-flight}}'s push guard, then answer retryable; a resend under the key pushes its committed tables.",
       "why": "because a sender's request outlives no 300 s wait, and a freed queue slot serves the next batch sooner",
       "file": "spec/31-pipeline.md",
-      "line": 220
+      "line": 221
     },
     {
       "id": "run.land.receive-write-not-granted",
@@ -12658,7 +12669,7 @@
       "statement": "A credential lacking `write` over any declared table of a `receive` pipeline raises `ReceiveWriteNotGranted` before the body is read, and no table lands.",
       "why": "because a sender whose grant falls short learns it before spending the transfer",
       "file": "spec/31-pipeline.md",
-      "line": 222,
+      "line": 223,
       "scenarios": [
         "WHEN a credential holds `write` over one of two declared tables, THEN the receiver refuses before reading the body and no table lands."
       ]
@@ -12672,7 +12683,7 @@
       "statement": "A batch key replays or resumes only within the source's `key_retention_secs` of its first attempt; a later batch under it raises `ReceiveBatchKeyExpired`, non-retryable, before the body is read, and no table lands.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 224,
+      "line": 225,
       "scenarios": [
         "WHEN a key's first attempt is 3601 s old under a 3600 s window, THEN the resend raises `ReceiveBatchKeyExpired` and no row lands."
       ]
@@ -12686,7 +12697,7 @@
       "statement": "`POST /receive/:pipeline` on the served face takes the batch key in the `Contextful-Batch-Key` header, admits the credential before reading the body, and answers `200` with the {{run.land.receive-ack}} answer.",
       "why": "because a sender refused for its credential or grant must not have spent the transfer",
       "file": "spec/31-pipeline.md",
-      "line": 226,
+      "line": 227,
       "scenarios": [
         "WHEN a request carries no credential and a body past `max_batch_bytes`, THEN the route answers `401` without reading the body."
       ]
@@ -12700,7 +12711,7 @@
       "statement": "A delivery naming no batch key raises `ReceiveBatchKeyMissing`, non-retryable, before the body is read, and no table lands.",
       "why": "because a batch without a key can neither replay nor resume under {{run.land.receive-batch-key}}",
       "file": "spec/31-pipeline.md",
-      "line": 228
+      "line": 229
     },
     {
       "id": "run.land.receive-pipeline-unknown",
@@ -12711,7 +12722,7 @@
       "statement": "A delivery to a pipeline id that no declaration names, or whose source is not `receive`, raises `ReceivePipelineUnknown` before the body is read, and no table lands.",
       "why": "because a sender's misaddressed batch must not land in another pipeline's tables",
       "file": "spec/31-pipeline.md",
-      "line": 230
+      "line": 231
     },
     {
       "id": "run.land.receive-endpoint-status",
@@ -12722,7 +12733,7 @@
       "statement": "The receive route answers `400` for {{run.land.receive-key-missing}}, `404` for {{run.land.receive-pipeline-unknown}}, `403` for {{run.land.receive-write-not-granted}}, `413` for {{run.land.receive-batch-too-large}}, `410` for {{run.land.receive-key-expired}}, `503` with `Retry-After` for {{run.land.receive-backpressure}}, {{run.land.receive-push-wait}} or a retryable failed table, and `422` otherwise.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 232
+      "line": 233
     },
     {
       "id": "run.land.receive-queued",
@@ -12733,7 +12744,7 @@
       "statement": "Under {{topology.compose.queue-extension}}, a request asking for a queued answer gets `202` with its batch key once admitted and queued; a `202` is custody, never {{run.land.receive-ack}}'s success.",
       "why": "because a sender must not read a queued batch as committed when a later landing can still refuse it",
       "file": "spec/31-pipeline.md",
-      "line": 233
+      "line": 234
     },
     {
       "id": "run.land.receive-queued-admission",
@@ -12744,7 +12755,7 @@
       "statement": "A queued delivery passes every check {{run.land.receive-endpoint}} runs before reading a body, and a refused delivery queues nothing.",
       "why": "because a revoked or under-granted sender must learn its refusal before handing over custody",
       "file": "spec/31-pipeline.md",
-      "line": 235
+      "line": 236
     },
     {
       "id": "run.land.receive-queued-outcome",
@@ -12755,7 +12766,7 @@
       "statement": "`GET /receive/:pipeline/:key` answers a queued batch's outcome: `pending`, each table's committed run, or the typed refusal its landing raised.",
       "why": "because a sender holding only a queued receipt reads success or refusal from one place",
       "file": "spec/31-pipeline.md",
-      "line": 237
+      "line": 238
     },
     {
       "id": "run.land.receive-queued-window",
@@ -12766,7 +12777,7 @@
       "statement": "A queued batch's key window opens when it queues; a consumer reaching it past {{run.land.receive-key-expired}}'s window records that refusal as its outcome and lands nothing.",
       "why": "because a batch delayed in the queue must end typed rather than land after its replay guarantee lapsed",
       "file": "spec/31-pipeline.md",
-      "line": 239
+      "line": 240
     },
     {
       "id": "run.land.receive-queued-spill",
@@ -12777,7 +12788,7 @@
       "statement": "A body past the queue's message cap is written to the bucket under its batch key before its message queues, and deleted once its outcome records.",
       "why": "because a queue message carries a reference when a body under `max_batch_bytes` still exceeds the provider's cap",
       "file": "spec/31-pipeline.md",
-      "line": 241
+      "line": 242
     },
     {
       "id": "run.land.object-arrival-wake",
@@ -12788,7 +12799,7 @@
       "statement": "An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.",
       "why": "because a notification is a hint a provider may repeat, reorder or drop, and the held position already decides what lands",
       "file": "spec/31-pipeline.md",
-      "line": 243
+      "line": 244
     },
     {
       "id": "run.land.ingest-tally",
@@ -12799,7 +12810,7 @@
       "statement": "A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.",
       "why": "because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row",
       "file": "spec/31-pipeline.md",
-      "line": 245
+      "line": 246
     },
     {
       "id": "run.land.unreadable-input",
@@ -12807,10 +12818,54 @@
       "operation": "land",
       "subject": "unreadable-input",
       "kind": "refusal",
-      "statement": "Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull.",
+      "statement": "Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull unless its source dead-letters it.",
       "why": "A-connector",
       "file": "spec/31-pipeline.md",
-      "line": 247
+      "line": 248
+    },
+    {
+      "id": "run.land.input-fault",
+      "contract": "run",
+      "operation": "land",
+      "subject": "input-fault",
+      "kind": "behavior",
+      "statement": "A failure over one input carries its fault: `input` when the input's own bytes defeat the decoder, `configuration` when the declaration or the build does. A source dead-letters an `input` fault alone, never by message.",
+      "why": "because a message names an error for people, and branching on its text dead-letters any refusal that repeats the name",
+      "file": "spec/31-pipeline.md",
+      "line": 250
+    },
+    {
+      "id": "run.land.dead-letter",
+      "contract": "run",
+      "operation": "land",
+      "subject": "dead-letter",
+      "kind": "behavior",
+      "statement": "A pull's dead letters land in the table `<table>_dead_letter`, one row per input carrying its `key`, `reason` and `sha256`, committed in the same run as the table's rows.",
+      "why": "A-connector",
+      "file": "spec/31-pipeline.md",
+      "line": 252
+    },
+    {
+      "id": "run.land.dead-letter-replace",
+      "contract": "run",
+      "operation": "land",
+      "subject": "dead-letter-replace",
+      "kind": "behavior",
+      "statement": "A replacing table whose read dead-letters any input fails the pull under {{run.land.unreadable-input}}, naming each input, and commits neither its rows nor its dead letters.",
+      "why": "because dead letters committing alone record a success while the table stays stale, and repeat each dead letter every fire",
+      "file": "spec/31-pipeline.md",
+      "line": 254
+    },
+    {
+      "id": "run.land.dead-letter-occupied",
+      "contract": "run",
+      "operation": "land",
+      "subject": "dead-letter-occupied",
+      "kind": "behavior",
+      "statement": "Dead letters whose `<table>_dead_letter` already holds a relational child table, or a store table lacking `key`, `reason` or `sha256`, refuse the pull under {{run.declare.table-name-collision}} and land nothing.",
+      "why": "because two shapes committing into one table mix their schemas",
+      "file": "spec/31-pipeline.md",
+      "line": 256
     },
     {
       "id": "run.land.partial-parse",
@@ -12821,7 +12876,7 @@
       "statement": "A reader stopping partway through a multi-part input raises `PipelinePartialParse` over the whole input and lands none of its parts.",
       "why": "A-connector",
       "file": "spec/31-pipeline.md",
-      "line": 249
+      "line": 258
     },
     {
       "id": "run.land.parse-boundary",
@@ -12832,7 +12887,7 @@
       "statement": "A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it killable.",
       "why": "A-connector",
       "file": "spec/31-pipeline.md",
-      "line": 251
+      "line": 260
     },
     {
       "id": "run.land.parse-child",
@@ -12843,7 +12898,7 @@
       "statement": "Each input whose decoder can die runs in its own child process; that process decodes no second input.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 253,
+      "line": 262,
       "scenarios": [
         "WHEN two PDF inputs decode in one fire, THEN each input starts a separate child process."
       ]
@@ -12857,7 +12912,7 @@
       "statement": "A decode runs for at most 60 s from child spawn; expiry kills its process group and raises {{run.land.parse-crashed}}.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 255,
+      "line": 264,
       "scenarios": [
         "WHEN a decoder holds its output pipe past 60 s, THEN its process group dies and that input fails by name."
       ]
@@ -12871,7 +12926,7 @@
       "statement": "A decoder child receives at most 512 MiB of memory; exceeding the bound fails that input under {{run.land.parse-crashed}}.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 257,
+      "line": 266,
       "scenarios": [
         "WHEN a decoder exceeds 512 MiB, THEN that input fails and the serving process continues."
       ]
@@ -12885,7 +12940,7 @@
       "statement": "A non-zero exit or fatal signal from the decode process raises `PipelineParseCrashed` naming the input; no input ends the serving process.",
       "why": "A-connector",
       "file": "spec/31-pipeline.md",
-      "line": 259
+      "line": 268
     },
     {
       "id": "run.land.table-failed",
@@ -12896,7 +12951,7 @@
       "statement": "A table whose pull fails raises `PipelineTableFailed` carrying the table, the error kind and the run id; the fire then follows `on_table_error`.",
       "why": "because a failure is answerable by name only when it carries its table and run",
       "file": "spec/31-pipeline.md",
-      "line": 261
+      "line": 270
     },
     {
       "id": "run.land.observed-schema",
@@ -12907,7 +12962,7 @@
       "statement": "Planning fetches no source schema; each observed batch is typed when staged under {{run.own.stage-schema}}, including validation against declared columns.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 263,
+      "line": 272,
       "scenarios": [
         "WHEN a source exposes no schema before its first batch, THEN planning succeeds and staging checks that batch against the declared table columns."
       ]
@@ -12921,7 +12976,7 @@
       "statement": "An OTLP `[[export]]` block declares `name`, one landed `table`, an HTTP `endpoint`, `signal = \"logs\"` and optional `headers`; `contextful export run <name>` delivers every row its cursor has not passed.",
       "why": "A-topology",
       "file": "spec/31-pipeline.md",
-      "line": 308
+      "line": 317
     },
     {
       "id": "run.export.signal-unknown",
@@ -12932,7 +12987,7 @@
       "statement": "A `signal` other than `logs` raises `ExportSignalUnknown` before any row is read.",
       "why": "because the one built-in arm maps a row onto a log record, and a span or metric needs a column mapping no block declares",
       "file": "spec/31-pipeline.md",
-      "line": 310
+      "line": 319
     },
     {
       "id": "run.export.post-commit-read",
@@ -12943,7 +12998,7 @@
       "statement": "Export reads committed runs only, through the read face under the admitted credential, so its grants, row policy and masks hold; no landing waits on an export.",
       "why": "A-topology",
       "file": "spec/31-pipeline.md",
-      "line": 312
+      "line": 321
     },
     {
       "id": "run.export.commit-order",
@@ -12954,7 +13009,7 @@
       "statement": "Export reads the rows past its cursor in `_commit_seq`, then `_row_seq`, order and never by `_ingested_at`, so {{store.reserve.commit-seq}} keeps a run committing late from being skipped.",
       "why": "A-topology",
       "file": "spec/31-pipeline.md",
-      "line": 314
+      "line": 323
     },
     {
       "id": "run.export.commit-seq-missing",
@@ -12965,7 +13020,7 @@
       "statement": "A table holding rows whose `_commit_seq` is null, from parts landed without the column, raises `ExportCommitSeqMissing` naming the export and the row count, before any batch leaves.",
       "why": "because a null never passes a cursor, and a row an export skips in silence is a row its mirror loses",
       "file": "spec/31-pipeline.md",
-      "line": 316
+      "line": 325
     },
     {
       "id": "run.export.batch-rows",
@@ -12976,7 +13031,7 @@
       "statement": "One delivery batch holds at most 500 rows.",
       "why": "because a batch that size sits below the face row ceiling and the request limits common collectors apply",
       "file": "spec/31-pipeline.md",
-      "line": 318
+      "line": 327
     },
     {
       "id": "run.export.log-record",
@@ -12987,7 +13042,7 @@
       "statement": "Each row becomes one OTLP log record: `timeUnixNano` from `_ingested_at`, each non-null column outside the `_` namespace an attribute, beside `contextful.table`, `contextful.run_id`, `contextful.commit_seq` and `contextful.row_seq`.",
       "why": "because the attributes a target deduplicates on travel with the record, and the engine's own columns stay its own",
       "file": "spec/31-pipeline.md",
-      "line": 320
+      "line": 329
     },
     {
       "id": "run.export.delivery",
@@ -12998,7 +13053,7 @@
       "statement": "A batch leaves as one OTLP/HTTP JSON `POST` through the mediated client, its allowlist the endpoint's host alone, each header hydrated as {{connector.resolve.hydration-is-just-in-time}} states.",
       "why": "A-topology",
       "file": "spec/31-pipeline.md",
-      "line": 322
+      "line": 331
     },
     {
       "id": "run.export.secret-preflight",
@@ -13009,7 +13064,7 @@
       "statement": "A header reference no adapter answers refuses at preflight as {{connector.resolve.unresolved-name}}, before any row is read.",
       "why": "because a target the export cannot authenticate to is known before a batch is built",
       "file": "spec/31-pipeline.md",
-      "line": 324
+      "line": 333
     },
     {
       "id": "run.export.cursor-after-ack",
@@ -13020,7 +13075,7 @@
       "statement": "The cursor, the last delivered `_commit_seq` and `_row_seq`, commits only after the target answers 2xx for the batch.",
       "why": "because an unacknowledged batch remains eligible for delivery after a restart",
       "file": "spec/31-pipeline.md",
-      "line": 326
+      "line": 335
     },
     {
       "id": "run.export.queue-wake",
@@ -13031,7 +13086,7 @@
       "statement": "A post-commit queue message only wakes an exporter, which reads through {{run.export.commit-order}} and advances under {{run.export.cursor-after-ack}}; a lost message delays delivery to the next wake and skips no row.",
       "why": "because a message lost between commit and enqueue must not lose the rows it announced",
       "file": "spec/31-pipeline.md",
-      "line": 328
+      "line": 337
     },
     {
       "id": "run.export.local-state",
@@ -13042,7 +13097,7 @@
       "statement": "The local storage profile keeps log cursors in `.contextful/exports/<project>/<name>.json`, outside corpus sync, and typed delivery state in `machine.sqlite`.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 330
+      "line": 339
     },
     {
       "id": "run.export.remote-state",
@@ -13053,7 +13108,7 @@
       "statement": "Under {{run.journal.container-profile}}, PostgreSQL holds typed outboxes, acknowledged keyed state and log checkpoints in the execution database; a replacement reoffers identical pending event ids before advancing its acknowledged frontier.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 331
+      "line": 340
     },
     {
       "id": "run.export.d1-state",
@@ -13064,7 +13119,7 @@
       "statement": "Under {{run.journal.d1-profile}}, D1 commits export outboxes, acknowledged keyed state and log checkpoints; a sink commit without its D1 acknowledgement reoffers the same delivery identity.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 333
+      "line": 342
     },
     {
       "id": "run.export.writer-fenced",
@@ -13075,7 +13130,7 @@
       "statement": "A PostgreSQL exporter whose durable writer lease has transferred raises `ExecutionWriterFenced` before dispatch or state publication; its lease row stays locked throughout an admitted outbound call, and takeover waits for that call.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 335
+      "line": 344
     },
     {
       "id": "run.export.at-least-once",
@@ -13086,7 +13141,7 @@
       "statement": "A run ending between a target's acknowledgement and the cursor commit resends that batch on the next run; a target deduplicates on `contextful.commit_seq` and `contextful.row_seq`.",
       "why": "A-topology",
       "file": "spec/31-pipeline.md",
-      "line": 337
+      "line": 346
     },
     {
       "id": "run.export.delivery-refused",
@@ -13097,7 +13152,7 @@
       "statement": "A target answering other than 2xx, or unreachable, raises `ExportDeliveryRefused` naming the export and the answer, and the cursor stays where it stood.",
       "why": "because an unacknowledged batch is resent from the cursor, never skipped",
       "file": "spec/31-pipeline.md",
-      "line": 339
+      "line": 348
     },
     {
       "id": "run.export.typed-block",
@@ -13108,7 +13163,7 @@
       "statement": "A typed `[[export]]` block declares `format = \"changes-v1\"`, nonempty `key` columns and `schedule`, beside `name`, `table`, `endpoint` and optional `headers`.",
       "why": "because a consumer needs stable row identity and a delivery cadence",
       "file": "spec/31-pipeline.md",
-      "line": 341
+      "line": 350
     },
     {
       "id": "run.export.typed-state",
@@ -13119,7 +13174,7 @@
       "statement": "A typed export compares the latest stable committed table read through {{run.export.post-commit-read}} with its last acknowledged state; commits between reads coalesce into one publication.",
       "why": "because a scheduled state export promises the observed frontier rather than every intermediate write",
       "file": "spec/31-pipeline.md",
-      "line": 343
+      "line": 352
     },
     {
       "id": "run.export.typed-view-recheck",
@@ -13130,7 +13185,7 @@
       "statement": "A typed export re-reads its admitted table even when the source commit frontier is unchanged, and stages a publication when its key, schema, policy or visible state changes.",
       "why": "because a commit hash alone cannot identify the view delivered to a consumer",
       "file": "spec/31-pipeline.md",
-      "line": 345
+      "line": 354
     },
     {
       "id": "run.export.typed-publication-id",
@@ -13141,7 +13196,7 @@
       "statement": "A typed publication identifier covers the source frontier, read identity and visible keyed state, so distinct delivered views carry distinct identifiers without requiring another source commit.",
       "why": "because a receiver must not mistake a changed view for a retry of the prior publication",
       "file": "spec/31-pipeline.md",
-      "line": 347
+      "line": 356
     },
     {
       "id": "run.export.typed-events",
@@ -13152,7 +13207,7 @@
       "statement": "Each changed key yields a versioned upsert with its visible row or a deletion with its key; unchanged keys yield no event.",
       "why": "because a generic consumer applies the same keyed operations regardless of table shape",
       "file": "spec/31-pipeline.md",
-      "line": 349
+      "line": 358
     },
     {
       "id": "run.export.typed-order",
@@ -13163,7 +13218,7 @@
       "statement": "Typed events order by encoded key and carry consecutive sequences and stable ids; a repeat delivery carries the same bytes and ids.",
       "why": "because acknowledgement can fail after the target applies a batch",
       "file": "spec/31-pipeline.md",
-      "line": 351
+      "line": 360
     },
     {
       "id": "run.export.typed-complete",
@@ -13174,7 +13229,7 @@
       "statement": "A publication-complete event follows every change, including an empty set, and states that publication's change count.",
       "why": "because a consumer needs a boundary after which its keyed state represents one observed frontier",
       "file": "spec/31-pipeline.md",
-      "line": 353
+      "line": 362
     },
     {
       "id": "run.export.typed-outbox",
@@ -13185,7 +13240,7 @@
       "statement": "Events and their next keyed state stage together in the configured execution store; a pending publication blocks staging a later frontier.",
       "why": "because a failed send must retain its exact payload and order across restarts",
       "file": "spec/31-pipeline.md",
-      "line": 355
+      "line": 364
     },
     {
       "id": "run.export.typed-identity-changed",
@@ -13196,7 +13251,7 @@
       "statement": "Pending events under a changed read identity, or an export redirected to another target under the same name, raise `ExportIdentityChanged` without delivery; watch exits.",
       "why": "because an old outbox cannot prove authorization under a changed view or establish a new target's baseline",
       "file": "spec/31-pipeline.md",
-      "line": 357
+      "line": 366
     },
     {
       "id": "run.export.typed-ack",
@@ -13207,7 +13262,7 @@
       "statement": "A typed export advances its durable acknowledgement sequence only after HTTP 2xx; acknowledging the completion event promotes its staged state in the same transaction.",
       "why": "because a receiver acknowledgement and local state promotion have one durable order",
       "file": "spec/31-pipeline.md",
-      "line": 359
+      "line": 368
     },
     {
       "id": "run.export.typed-watch",
@@ -13218,7 +13273,7 @@
       "statement": "`contextful export watch <name>` fires the typed export on its schedule and retries a refused send with capped exponential delay from the pending outbox.",
       "why": "because delivery resumes without another operator invocation",
       "file": "spec/31-pipeline.md",
-      "line": 361
+      "line": 370
     },
     {
       "id": "run.export.typed-byte-limit",
@@ -13229,7 +13284,7 @@
       "statement": "One typed JSON request holds at most 65536 B.",
       "why": "because a row-count bound alone admits an unbounded request body",
       "file": "spec/31-pipeline.md",
-      "line": 363
+      "line": 372
     },
     {
       "id": "run.export.typed-event-too-large",
@@ -13240,7 +13295,7 @@
       "statement": "A typed event unable to fit one request raises `ExportEventTooLarge`; watch stops rather than retrying that event.",
       "why": "because an unchanged oversized event cannot make progress on retry",
       "file": "spec/31-pipeline.md",
-      "line": 365
+      "line": 374
     },
     {
       "id": "run.export.group-block",
@@ -13251,7 +13306,7 @@
       "statement": "A local `[[publication]]` declares `name`, producer `job` and typed export `members`; members cover every producer output exactly once and share one destination and header binding.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 367
+      "line": 376
     },
     {
       "id": "run.export.group-source",
@@ -13262,7 +13317,7 @@
       "statement": "A successful store-driven job or materialized model build records one immutable completion binding its run identifier, pinned input frontier and all output table frontiers, including empty outputs.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 369
+      "line": 378
     },
     {
       "id": "run.export.group-source-latest",
@@ -13273,7 +13328,7 @@
       "statement": "The sqlite and D1 publication ledgers keep 1 completion per publication, the latest: the latest run recorded again with different bytes refuses, and a completion naming another run replaces it.",
       "why": "because a run is re-recorded only by its own retry, and history kept past it grows with every build",
       "file": "spec/31-pipeline.md",
-      "line": 371
+      "line": 380
     },
     {
       "id": "run.export.group-delivery",
@@ -13284,7 +13339,7 @@
       "statement": "`contextful export group <name>` reads every completed producer member through {{run.export.post-commit-read}}, rechecks every frontier, and stages one ordered outbox with explicit member-complete events followed by one group-complete event.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 373
+      "line": 382
     },
     {
       "id": "run.export.group-identity",
@@ -13295,7 +13350,7 @@
       "statement": "A group's identity binds its store incarnation, destination, namespace, read identity, predecessor, publication order, input frontier, membership, delivered base and next state; each event identifier binds that group and its sequence.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 375
+      "line": 384
     },
     {
       "id": "run.export.group-activation",
@@ -13306,7 +13361,7 @@
       "statement": "A receiver stages member events transactionally and activates every member together only after validating the complete group; interrupted delivery preserves the active group, and acknowledged retries preserve its bytes and visibility.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 377
+      "line": 386
     },
     {
       "id": "run.export.group-checkpoint",
@@ -13317,7 +13372,7 @@
       "statement": "`contextful export checkpoint` saves delivery state; `contextful export restore` replays compatible immutable events while the receiver retains its accepted groups and active frontier, so an older checkpoint reverses no deletion or later publication.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 379
+      "line": 388
     },
     {
       "id": "run.export.group-rebuild",
@@ -13328,7 +13383,7 @@
       "statement": "`contextful export rebuild <name> --namespace <epoch>` exports the completed producer's full admitted state into a fresh namespace without executing its effects; the receiver keeps its active namespace until the replacement group completes.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 381
+      "line": 390
     },
     {
       "id": "run.export.group-input-digest",
@@ -13339,7 +13394,7 @@
       "statement": "A group plan's `input` carries the lowercase hex SHA-256 of its producer completion's JSON rather than the completion, so every request repeats a header of bounded size whatever the producer's input frontier holds.",
       "why": "because a producer's input frontier is caller-shaped JSON of any size, and each request repeats the group header",
       "file": "spec/31-pipeline.md",
-      "line": 383
+      "line": 392
     },
     {
       "id": "run.export.group-request-bound",
@@ -13350,7 +13405,7 @@
       "statement": "Staging refuses a group whose header beside its smallest event exceeds {{run.export.typed-byte-limit}} with `PublicationHeaderTooLarge`, and one holding an event unable to fit beside its header with {{run.export.typed-event-too-large}}; the outbox stays unchanged.",
       "why": "because a staged group blocks every later frontier until acknowledged, so an unsendable one strands its outbox",
       "file": "spec/31-pipeline.md",
-      "line": 385
+      "line": 394
     },
     {
       "id": "run.export.group-stranded",
@@ -13361,7 +13416,7 @@
       "statement": "Staging replaces a pending group unable to form its first request, which therefore no receiver holds, with the current frontier's group; a group with an acknowledged prefix stays immutable.",
       "why": "because a group never offered carries no delivery obligation, while a receiver may already stage an acknowledged prefix",
       "file": "spec/31-pipeline.md",
-      "line": 387,
+      "line": 396,
       "scenarios": [
         "WHEN an earlier sender staged a group whose header alone exceeds the request ceiling, THEN the next `contextful export group` replaces it with a digest-headed group and delivers it."
       ]
@@ -13375,7 +13430,7 @@
       "statement": "Membership drift, incarnation mismatch, a changed pending read identity, an incompatible checkpoint, an incomplete producer frontier, or a predecessor/order mismatch raises `PublicationIncompatible` before delivery or activation.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 389
+      "line": 398
     },
     {
       "id": "run.export.group-storage",
@@ -13386,7 +13441,7 @@
       "statement": "A coordinated publication under `postgres` raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery; a `cloudflare-d1` sender state over 8 MiB raises it before staging.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 391
+      "line": 400
     },
     {
       "id": "run.export.group-sender-profile",
@@ -13397,7 +13452,7 @@
       "statement": "{{run.export.group-storage}} reads the sender's storage profile alone; under the local profile a group keeps its sender state in `machine.sqlite` and delivers to any `changes-v1` receiver, a D1-backed one included.",
       "why": "because the outbox is the sender's durable state, and a receiver's storage is behind its endpoint",
       "file": "spec/31-pipeline.md",
-      "line": 393
+      "line": 402
     },
     {
       "id": "run.export.group-d1-state",
@@ -13408,7 +13463,7 @@
       "statement": "Under {{run.journal.d1-profile}}, D1 holds each group's producer frontier, sender outbox and active namespace; one D1 batch commits a completing acknowledgement with its promoted state and active namespace.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 395,
+      "line": 404,
       "scenarios": [
         "WHEN a replacement loses the acknowledgement of the group-complete batch, THEN it reoffers that batch, and the receiver's accepted group absorbs the retry without a second activation."
       ]
@@ -13422,7 +13477,7 @@
       "statement": "A `cloudflare-d1` group writer holds one durable D1 lease per publication, and every sender write predicates on that lease and the row's prior version.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 397
+      "line": 406
     },
     {
       "id": "run.export.group-d1-spill",
@@ -13433,7 +13488,7 @@
       "statement": "A `cloudflare-d1` sender row over 1 MiB holds the SHA-256 of an R2 object written before the row commits; the blob sweep keeps every object a publication row references.",
       "why": "because D1 bounds each row's size, and an R2 object reached only through a committed row is never half visible",
       "file": "spec/31-pipeline.md",
-      "line": 399
+      "line": 408
     },
     {
       "id": "run.export.group-d1-recovery",
@@ -13444,7 +13499,7 @@
       "statement": "After an empty-disk replacement, `contextful export group` resumes a staged or partially acknowledged `cloudflare-d1` group from D1, reoffering identical group and event identifiers before staging a later frontier.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 401,
+      "line": 410,
       "scenarios": [
         "WHEN the container stops after D1 commits a staged group and before any delivery, THEN its replacement delivers that group's exact bytes and the receiver activates every member together."
       ]
@@ -13458,7 +13513,7 @@
       "statement": "The catalog records one phase per pipeline: `planning` computes the chunk plan with nothing fetched, `seeding` loads consumer-held history, `backfilling` runs chunks across ticks, `streaming` pulls the incremental delta.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 418
+      "line": 427
     },
     {
       "id": "run.backfill.chunk-plan",
@@ -13469,7 +13524,7 @@
       "statement": "Plan shape follows cursor kind: `monotonic` plans independent time-window or id-range chunks, `opaque-token` one sequential chunk walked in order, `snapshot-id` version ranges sequential per stream and parallel across streams.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 419
+      "line": 428
     },
     {
       "id": "run.backfill.chunk-parallelism",
@@ -13480,7 +13535,7 @@
       "statement": "A sequential chunk plan declared beside a parallelism above one raises `PipelineChunkParallelism`, naming the plan and the value.",
       "why": "because two workers walking one continuation token skip or duplicate pages silently",
       "file": "spec/31-pipeline.md",
-      "line": 420
+      "line": 429
     },
     {
       "id": "run.backfill.chunk",
@@ -13491,7 +13546,7 @@
       "statement": "A chunk row carries pipeline id, chunk id, predicate, status, attempt count, start and completion instants and a cursor-committed flag; an interrupted plan resumes at the first chunk not done.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 422
+      "line": 431
     },
     {
       "id": "run.backfill.chunk-lease",
@@ -13502,7 +13557,7 @@
       "statement": "A worker leases a chunk row, recording node id and attempt, for a 300 s time-to-live renewed every 60 s, and writes under a path segmented by run, node, chunk and attempt.",
       "why": "because an unquantified lease cannot be tested against a paused worker",
       "file": "spec/31-pipeline.md",
-      "line": 423
+      "line": 432
     },
     {
       "id": "run.backfill.fenced-commit",
@@ -13513,7 +13568,7 @@
       "statement": "A chunk commits in one catalog update conditioned on `attempt = :mine AND status != 'done'`; an update matching no row leaves that worker's files uncommitted.",
       "why": "because an expired holder otherwise commits over its successor",
       "file": "spec/31-pipeline.md",
-      "line": 425
+      "line": 434
     },
     {
       "id": "run.backfill.commit-signal",
@@ -13524,7 +13579,7 @@
       "statement": "The catalog row, not directory presence, is the commit signal; files under a path with no done row are collected by a retention window.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 427
+      "line": 436
     },
     {
       "id": "run.backfill.attempt-isolation",
@@ -13535,7 +13590,7 @@
       "statement": "An expired lease lets a second worker claim the chunk, increment the attempt and write under its own path.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 428
+      "line": 437
     },
     {
       "id": "run.backfill.tick",
@@ -13546,7 +13601,7 @@
       "statement": "While a pipeline backfills, a tick dispatches up to the per-tick chunk cap or no-ops when the queue is full; the declared cadence resumes once the position catches up.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 429
+      "line": 438
     },
     {
       "id": "run.backfill.block",
@@ -13557,7 +13612,7 @@
       "statement": "`[pipeline.backfill]` declares `max_chunks`, the bound on a plan's chunk count; `chunk_size`, one clock-ranged chunk's width in cursor units; and `start_from`, the floor, default zero.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 430
+      "line": 439
     },
     {
       "id": "run.backfill.rewind",
@@ -13568,7 +13623,7 @@
       "statement": "A rewind returns every chunk overlapping the half-open range to pending and appends one reason row per rewound chunk to an audit log a catalog rebuild leaves untouched.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 431
+      "line": 440
     },
     {
       "id": "run.backfill.rewind-invalid",
@@ -13579,7 +13634,7 @@
       "statement": "An inverted, empty or scale-incomparable rewind window raises `PipelineRewindWindowInvalid`; a window overlapping no chunk is a no-op.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 432
+      "line": 441
     },
     {
       "id": "run.backfill.available-instant",
@@ -13590,7 +13645,7 @@
       "statement": "A backfill lands each row's availability column as {{store.available-time.declaration}} resolves it from the source, while `_ingested_at` stays the commit instant {{run.own.stage-instant}} writes.",
       "why": "because a 2026 backfill of 2014 history stamped with its commit instant answers no availability bound before 2026",
       "file": "spec/31-pipeline.md",
-      "line": 434
+      "line": 443
     },
     {
       "id": "run.seed.block",
@@ -13601,7 +13656,7 @@
       "statement": "`[pipeline.seed]` attaches a bulk-load source with a ceiling `below` expressed on the seeded table's `order_by` scale.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 453
+      "line": 462
     },
     {
       "id": "run.seed.one-land-path",
@@ -13612,7 +13667,7 @@
       "statement": "Seeded rows travel {{run.land.stage-order}} unchanged; attribution survives only in the load id and a run recorded under the `seeding` phase.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 454
+      "line": 463
     },
     {
       "id": "run.seed.available-instant",
@@ -13623,7 +13678,7 @@
       "statement": "A seeded row lands its availability instant and `_ingested_at` as {{run.backfill.available-instant}} lands a backfilled row's.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 455
+      "line": 464
     },
     {
       "id": "run.seed.declaration-missing",
@@ -13634,7 +13689,7 @@
       "statement": "A seeded table without `primary_key`, or with `order_by` left at the ingest stamp, raises `PipelineSeedDeclarationMissing` at plan and validate.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 456
+      "line": 465
     },
     {
       "id": "run.seed.ceiling-breached",
@@ -13645,7 +13700,7 @@
       "statement": "A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 458
+      "line": 467
     },
     {
       "id": "run.seed.ceiling-point",
@@ -13656,7 +13711,7 @@
       "statement": "The ceiling is evaluated on the root batch after normalize and the chain, before the write.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 460
+      "line": 469
     },
     {
       "id": "run.seed.ceiling-unevaluable",
@@ -13667,7 +13722,7 @@
       "statement": "A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`; a text stamp orders only when `Z`-suffixed at the ceiling's fractional width.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 461
+      "line": 470
     },
     {
       "id": "run.seed.scope",
@@ -13678,7 +13733,7 @@
       "statement": "Seed chunk and cursor state live under a `<table>#seed` scope apart from the live pipeline's.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 463
+      "line": 472
     },
     {
       "id": "run.seed.connector-pin",
@@ -13689,7 +13744,7 @@
       "statement": "A seeding run is exempt from {{run.own.pinned-plan-changed}} and records its connector identity as provenance.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 464
+      "line": 473
     },
     {
       "id": "run.seed.ceiling-binding",
@@ -13700,7 +13755,7 @@
       "statement": "On seed commit, an unset `monotonic` live position takes the ceiling when `below` parses as an integer; under the other cursor kinds the live position stays unset and starts from the source's beginning.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 465
+      "line": 474
     },
     {
       "id": "run.seed.fingerprint",
@@ -13711,7 +13766,7 @@
       "statement": "Each run probes the seed source for a cheap fingerprint, a stat or a HEAD and never a download, and compares it with the one stamped at commit.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 466
+      "line": 475
     },
     {
       "id": "run.seed.source-changed",
@@ -13722,7 +13777,7 @@
       "statement": "A differing fingerprint raises `PipelineSeedSourceChanged` naming both values; an equal one skips the load, and an unavailable one skips with a warning.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 467
+      "line": 476
     },
     {
       "id": "run.seed.commands",
@@ -13733,7 +13788,7 @@
       "statement": "`seed status` prints each seeded table's ceiling, commit state and fingerprint match; `seed reset <pipeline> [--table T]` clears the seed's chunk plan and commit stamp, so the next run loads it again.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 469
+      "line": 478
     },
     {
       "id": "run.seed.parity",
@@ -13744,7 +13799,7 @@
       "statement": "Over keys the vendor still returns, seeding then running live across an overlapping window yields a pure live backfill's row count and per-key winners; a key the vendor stopped returning keeps its seeded value.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 470
+      "line": 479
     },
     {
       "id": "run.seed.parity-audit",
@@ -13755,7 +13810,7 @@
       "statement": "`validate` audits the seed ordering over every landed row, not over the deduped view.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 471
+      "line": 480
     },
     {
       "id": "run.seed.compaction-cadence",
@@ -13766,7 +13821,7 @@
       "statement": "A seeded table that no job meeting {{store.declare.fold-job}} covers raises `PipelineSeedCompactionMissing` at validate and before a fire, naming the table.",
       "why": "A-store",
       "file": "spec/31-pipeline.md",
-      "line": 472
+      "line": 481
     },
     {
       "id": "run.model.model-block",
@@ -13777,7 +13832,7 @@
       "statement": "A `[[model]]` block carries `id`, {{run.model.statement-source}}, optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]`, `[[model.test]]`, {{disclosure.release.model-policy}} and {{disclosure.set-mode.opt-out-record}}; an unknown key refuses as {{run.declare.spec-invalid}}.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 479
+      "line": 488
     },
     {
       "id": "run.model.statement-source",
@@ -13788,7 +13843,7 @@
       "statement": "A model declares exactly one of inline `sql` and `sql_file`; the latter reads UTF-8 text relative to the manifest containing the model.",
       "why": "because a manifest-relative statement file keeps a model portable across project roots",
       "file": "spec/31-pipeline.md",
-      "line": 481
+      "line": 490
     },
     {
       "id": "run.model.top-level-block",
@@ -13799,7 +13854,7 @@
       "statement": "A manifest's top-level key outside the set the engine enumerates raises `PipelineUnknownBlock`, naming the key, the file and the accepted set.",
       "why": "because a misspelled block parses as nothing, and its declaration silently never runs",
       "file": "spec/31-pipeline.md",
-      "line": 483
+      "line": 492
     },
     {
       "id": "run.model.model-id",
@@ -13810,7 +13865,7 @@
       "statement": "A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 485
+      "line": 494
     },
     {
       "id": "run.model.sql",
@@ -13821,7 +13876,7 @@
       "statement": "The selected model statement is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through its last published table.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 486
+      "line": 495
     },
     {
       "id": "run.model.validate-statements",
@@ -13832,7 +13887,7 @@
       "statement": "`pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to {{run.model.restricted-input}}, and raises the error the build raises.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 487
+      "line": 496
     },
     {
       "id": "run.model.validate-undeclared",
@@ -13843,7 +13898,7 @@
       "statement": "`pipeline validate` names on stderr each relation a model's `sql` or test reads that no manifest table, pipeline destination or model declares, and still validates the model; `build` resolves that relation against the store.",
       "why": "because a table landed without a manifest declaration is a legal input, while a misspelled name otherwise surfaces only at `build`",
       "file": "spec/31-pipeline.md",
-      "line": 488
+      "line": 497
     },
     {
       "id": "run.model.restricted-input",
@@ -13854,7 +13909,7 @@
       "statement": "A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.",
       "why": "because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader",
       "file": "spec/31-pipeline.md",
-      "line": 490
+      "line": 499
     },
     {
       "id": "run.model.materialized",
@@ -13865,7 +13920,7 @@
       "statement": "`materialized` is `table`, the default: each build replaces the model's rows whole.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 492
+      "line": 501
     },
     {
       "id": "run.model.unique-key",
@@ -13876,7 +13931,7 @@
       "statement": "`unique_key` is the model's grain; a build whose rows repeat one grain value, or hold a null in a grain column, refuses as {{run.publish.contract-mismatch}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 493
+      "line": 502
     },
     {
       "id": "run.model.contract-block",
@@ -13887,7 +13942,7 @@
       "statement": "`[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a `name`, a `type` spelled as {{store.reconcile.typed-landing}} reads it, and `nullable`, default true.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 494
+      "line": 503
     },
     {
       "id": "run.model.contract-required",
@@ -13898,7 +13953,7 @@
       "statement": "A model whose `publish` is true, the default, and which declares no `[model.contract]` raises `ModelContractUndeclared` at validation.",
       "why": "because a published table without a declared contract has no identity a reader can pin against",
       "file": "spec/31-pipeline.md",
-      "line": 495
+      "line": 504
     },
     {
       "id": "run.model.unpublished",
@@ -13909,7 +13964,7 @@
       "statement": "A model declaring `publish = false` commits its rows with no manifest section, so no build entry, hold or contract history names it.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 497
+      "line": 506
     },
     {
       "id": "run.model.contract-major",
@@ -13920,7 +13975,7 @@
       "statement": "Under the published build's major, a contract that drops or retypes a published column, makes a non-null one nullable, adds a non-null column or changes the grain refuses as {{run.publish.contract-mismatch}}, naming the column and the major to bump.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 498
+      "line": 507
     },
     {
       "id": "run.model.contract-minor",
@@ -13931,7 +13986,7 @@
       "statement": "Under the published build's major, a contract that only adds nullable columns or makes nullable ones non-null publishes once its minor exceeds the published one, else refuses as {{run.publish.contract-mismatch}}, naming the added or tightened column and the bumped minor.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 500,
+      "line": 509,
       "scenarios": [
         "WHEN contract `1.0.0` gains nullable column `tag` as `1.1.0`, THEN the build publishes and the manifest section carries `1.1.0` and the new fingerprint; as `1.0.0` it refuses naming `tag` and `1.1.0`."
       ]
@@ -13945,7 +14000,7 @@
       "statement": "A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 502
+      "line": 511
     },
     {
       "id": "run.model.freshness-block",
@@ -13956,7 +14011,7 @@
       "statement": "`[model.freshness]` declares `max_lag` as an integer followed by `s`, `m`, `h` or `d`; a model declaring none publishes a null `max_lag` and never computes stale.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 503
+      "line": 512
     },
     {
       "id": "run.model.test-block",
@@ -13967,7 +14022,7 @@
       "statement": "A `[[model.test]]` carries a `name` and one `SELECT` over the staged rows, registered under the model's id, and the store's tables; a test returning any row fails.",
       "why": "because a test must inspect the candidate build before its rows become visible to readers",
       "file": "spec/31-pipeline.md",
-      "line": 504
+      "line": 513
     },
     {
       "id": "run.model.test-failed",
@@ -13978,7 +14033,7 @@
       "statement": "A failing test raises `ModelTestFailed`, naming the test and its row count; the build publishes nothing.",
       "why": "because a test exists to stop a build before readers trust it",
       "file": "spec/31-pipeline.md",
-      "line": 506,
+      "line": 515,
       "scenarios": [
         "WHEN a test `SELECT * FROM daily WHERE n < 0` returns 2 rows, THEN the build raises `ModelTestFailed` naming the test and 2, and `daily` reads its prior build."
       ]
@@ -13992,7 +14047,7 @@
       "statement": "`contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 508
+      "line": 517
     },
     {
       "id": "run.model.build-boundary",
@@ -14003,7 +14058,7 @@
       "statement": "A guarded model build admits its caller's execution boundary after staging and before changing the persistent schema or published pointer; a refusal discards staging and preserves prior schema, membership and watermark.",
       "why": "because a stopped execution must not publish its staged model",
       "file": "spec/31-pipeline.md",
-      "line": 509
+      "line": 518
     },
     {
       "id": "run.model.unknown-model",
@@ -14014,7 +14069,7 @@
       "statement": "`build` naming no declared model raises `ModelUndeclared`, naming the declared models.",
       "why": "because a build of a misspelled id otherwise reports nothing to do",
       "file": "spec/31-pipeline.md",
-      "line": 511
+      "line": 520
     },
     {
       "id": "run.model.build-frontier",
@@ -14025,7 +14080,7 @@
       "statement": "`build` reads each input at its committed frontier and fires no pipeline; a build ordered after a landing is a `build` job naming that pipeline in `after`, under {{surface.fire.build-dependency}}.",
       "why": "because `after` already orders builds behind pipelines, and a verb firing sources needs their credentials and quota, and repeats paid calls on every retry",
       "file": "spec/31-pipeline.md",
-      "line": 513,
+      "line": 522,
       "scenarios": [
         "WHEN the `http` pipeline feeding a model's input points at an unreachable endpoint, THEN `build` succeeds, records no new run, and its watermark names only runs already committed.",
         "WHEN a `build` job naming `orders` in `after` fires in the cycle that lands `orders` run `r`, THEN the published build's watermark `through` under `orders_items` reaches the `commit_seq` of `r`."
@@ -14040,7 +14095,7 @@
       "statement": "A model whose `sql` reaches its own id through one or more other models raises `ModelCycle` at `pipeline validate`, import, apply and `build`, before any store is read, naming every model on the cycle.",
       "why": "because no member of a cycle has a first build, and once one exists each build folds in the other's previous output",
       "file": "spec/31-pipeline.md",
-      "line": 515,
+      "line": 524,
       "scenarios": [
         "WHEN model `a` reads `b` and `b` reads `a`, THEN `pipeline validate` raises `ModelCycle` naming `a`, `b`, and `build a` reads no row."
       ]
@@ -14054,7 +14109,7 @@
       "statement": "A build's id is the snapshot id it publishes.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 517
+      "line": 526
     },
     {
       "id": "run.model.build-prefix",
@@ -14065,7 +14120,7 @@
       "statement": "A build reads each input's runs only below the lowest `commit_seq` among grouped runs awaiting their group marker, the prefix {{read.subscribe.commit-order}} delivers.",
       "why": "because one readable prefix serves every ordered read, and a run read past an unpublished group leaves a lower `commit_seq` unread",
       "file": "spec/31-pipeline.md",
-      "line": 519
+      "line": 528
     },
     {
       "id": "run.model.watermark",
@@ -14076,7 +14131,7 @@
       "statement": "A build's watermark is `{at, inputs}`: per input table the snapshot id, `through`, the greatest `commit_seq` read, and `omitted`, the count and digest of runs read outside the snapshot chain; `at` is the newest commit instant.",
       "why": "because a list of omitted runs grows by one key per run on an input no fold covers",
       "file": "spec/31-pipeline.md",
-      "line": 521
+      "line": 530
     },
     {
       "id": "run.model.watermark-digest",
@@ -14087,7 +14142,7 @@
       "statement": "`omitted.digest` is the lowercase hex SHA-256 over the sorted keys `<run-id>/<node-id>` of the omitted runs, each followed by a newline.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 523
+      "line": 532
     },
     {
       "id": "run.model.watermark-listed-runs",
@@ -14098,7 +14153,7 @@
       "statement": "A watermark input carrying a `runs` list and no `omitted` reads with those runs included under {{run.publish.staleness}}; no build writes `runs`.",
       "why": "because a manifest committed with listed runs stays readable",
       "file": "spec/31-pipeline.md",
-      "line": 524
+      "line": 533
     },
     {
       "id": "run.model.build-horizon",
@@ -14109,7 +14164,7 @@
       "statement": "`contextful build <model> --available-as-of <t>` reads every input at `available_as_of` equal to `t` and records `t` as the watermark's `horizon`; a build without the flag records a null horizon.",
       "why": "because a build is reused across horizons only when its own bound is recorded beside it",
       "file": "spec/31-pipeline.md",
-      "line": 526
+      "line": 535
     },
     {
       "id": "run.model.hold-verb",
@@ -14120,7 +14175,7 @@
       "statement": "`build hold --for <n>[smhd] <model> <build>` commits a hold until now plus the duration and prints `Held`, or `Renewed` over an unexpired hold; `--json` prints the receipt as an object.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 528,
+      "line": 537,
       "scenarios": [
         "WHEN `build hold --for 7d daily <build>` runs twice, THEN the first prints `Held` and the second `Renewed`, each with the new expiry."
       ]
@@ -14134,7 +14189,7 @@
       "statement": "`build status <model>` reports the last attempt separately from the published build; `--json` carries their ids, status, freshness and staleness computed at the requested instant.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 529
+      "line": 538
     },
     {
       "id": "run.model.hold-unknown-build",
@@ -14145,7 +14200,7 @@
       "statement": "A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.",
       "why": "because a hold on a build that does not exist protects nothing and reads as protection",
       "file": "spec/31-pipeline.md",
-      "line": 530
+      "line": 539
     },
     {
       "id": "run.model.hold-manifest",
@@ -14156,7 +14211,7 @@
       "statement": "A hold commits as the hold manifest `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 532
+      "line": 541
     },
     {
       "id": "run.model.log-regeneration",
@@ -14167,7 +14222,7 @@
       "statement": "The history logs sit in the model's table directory; each build and hold rewrites them, replacing an entry a manifest disagrees with and keeping entries of collected builds.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 534
+      "line": 543
     },
     {
       "id": "run.publish.manifest-commit",
@@ -14178,7 +14233,7 @@
       "statement": "A published table's contract identity, freshness and current build ride the snapshot manifest commit that publishes its data; no separate file is authoritative for any of them.",
       "why": "because separately written artifacts make a torn publication representable",
       "file": "spec/31-pipeline.md",
-      "line": 553
+      "line": 562
     },
     {
       "id": "run.publish.contract-identity",
@@ -14189,7 +14244,7 @@
       "statement": "A published table's identity is `contract_version` beside `schema_fingerprint`, taken over the declared columns, their types and the grain.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 555
+      "line": 564
     },
     {
       "id": "run.publish.contract-mismatch",
@@ -14200,7 +14255,7 @@
       "statement": "A materialization whose columns, types or grain miss the declared contract raises `PipelineContractMismatch`, naming the column and the expectation.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 556
+      "line": 565
     },
     {
       "id": "run.publish.staging",
@@ -14211,7 +14266,7 @@
       "statement": "A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 558
+      "line": 567
     },
     {
       "id": "run.publish.history-logs",
@@ -14222,7 +14277,7 @@
       "statement": "`contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests and build-attempt records; a log disagreeing with a source record is regenerated from it.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 560
+      "line": 569
     },
     {
       "id": "run.publish.build-entry",
@@ -14233,7 +14288,7 @@
       "statement": "A build entry carries build id, start and completion instants, a status of published, refused, partial or failed, the contract identity, and the partition values it left unfilled.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 561
+      "line": 570
     },
     {
       "id": "run.publish.failed-attempt",
@@ -14244,7 +14299,7 @@
       "statement": "A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.",
       "why": "because a process killed before publication cannot write its own failure, while its attempt record and released lock survive",
       "file": "spec/31-pipeline.md",
-      "line": 562
+      "line": 571
     },
     {
       "id": "run.publish.freshness",
@@ -14255,7 +14310,7 @@
       "statement": "Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness follows {{run.publish.staleness}} and is never stored.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 564
+      "line": 573
     },
     {
       "id": "run.publish.staleness",
@@ -14266,7 +14321,7 @@
       "statement": "A published model is stale at `t` when an input holds a committed run outside its watermark snapshot chain, its `commit_seq` above `through`, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 565,
+      "line": 574,
       "scenarios": [
         "WHEN no input lands after a build and `max_lag` is `1h`, THEN `build status` at 100 days later reports `stale` false.",
         "WHEN `events` lands a run 1 second past the build and `max_lag` is `1h`, THEN status reports fresh at 1 hour after the landing and stale, `stale_inputs` `[\"events\"]`, 1 second later.",
@@ -14282,7 +14337,7 @@
       "statement": "An input whose runs outside the watermark snapshot chain, at or below `through`, differ in count or digest from `omitted` holds a waiting run counted as committed before `t` minus `max_lag`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 567,
+      "line": 576,
       "scenarios": [
         "WHEN a run merged from another node carries a `commit_seq` below `through` and the build never read it, THEN status reports the input stale at once."
       ]
@@ -14296,7 +14351,7 @@
       "statement": "A run carrying no `commit_seq` counts as at or below `through` when committed at or before the watermark's `at`.",
       "why": "because a run manifest may carry no sequence, and {{run.publish.staleness-omitted-check}} catches one the build never read",
       "file": "spec/31-pipeline.md",
-      "line": 569
+      "line": 578
     },
     {
       "id": "run.publish.staleness-collected-covered",
@@ -14307,7 +14362,7 @@
       "statement": "A run whose manifest retention collected counts as at or below `through` when the current snapshot folding it records a `commit_seq` at or below `through`.",
       "why": "because a snapshot's `commit_seq` bounds every run it folds",
       "file": "spec/31-pipeline.md",
-      "line": 571
+      "line": 580
     },
     {
       "id": "run.publish.staleness-model-input",
@@ -14318,7 +14373,7 @@
       "statement": "An input that is a model also waits on each of its published builds newer than the watermark snapshot, aged by that build's `created_at`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 573,
+      "line": 582,
       "scenarios": [
         "WHEN `daily` rebuilds after `weekly` read it and `max_lag` is `1d`, THEN `weekly` reports stale, `stale_inputs` `[\"daily\"]`, 1 day after the rebuild."
       ]
@@ -14332,7 +14387,7 @@
       "statement": "A waiting run whose manifest retention collected counts as committed before `t` minus `max_lag`.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 575
+      "line": 584
     },
     {
       "id": "run.publish.hold",
@@ -14343,7 +14398,7 @@
       "statement": "A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 577
+      "line": 586
     },
     {
       "id": "run.publish.manifest-section",
@@ -14354,7 +14409,7 @@
       "statement": "The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` follows {{run.model.watermark}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 578
+      "line": 587
     },
     {
       "id": "run.publish.semantics-version",
@@ -14365,7 +14420,7 @@
       "statement": "`semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 579
+      "line": 588
     },
     {
       "id": "run.publish.disclosure-digest",
@@ -14376,7 +14431,7 @@
       "statement": "A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 580
+      "line": 589
     },
     {
       "id": "run.select.required-key",
@@ -17190,7 +17245,7 @@
       "operation": "source",
       "subject": "declared-columns",
       "kind": "behavior",
-      "statement": "`columns` on `format = \"csv\"` names the body's columns in order, and the body carries no header row. A record whose field count differs is unreadable input under {{run.land.unreadable-input}}, naming its line.",
+      "statement": "`columns` on `format = \"csv\"` names a headerless body's columns in order. A first record whose field count differs refuses under {{connector.source.configuration-fault}}; a later one is unreadable input under {{run.land.unreadable-input}}, naming its line.",
       "why": "because a headerless body under a short list otherwise lands a shifted cell under the wrong name",
       "file": "spec/40-connector.md",
       "line": 458
@@ -17575,7 +17630,7 @@
       "operation": "source",
       "subject": "zip-member",
       "kind": "behavior",
-      "statement": "An archive decodes its single member, or the member `member` names. Several members without `member`, or a named member the archive lacks, is unreadable input under {{run.land.unreadable-input}}.",
+      "statement": "An archive decodes its single member, or the member `member` names. Several members without `member`, or a named member the archive lacks, refuses the read under {{connector.source.configuration-fault}}.",
       "why": "because landing one member of several by archive order picks rows the declaration never named",
       "file": "spec/40-connector.md",
       "line": 516
@@ -17586,7 +17641,7 @@
       "operation": "source",
       "subject": "object-expansion",
       "kind": "limit",
-      "statement": "One object or HTTP body decompresses to at most 256 MiB, counted as the bytes arrive. Past it the read refuses whole, naming the object or the scrubbed URL, and lands nothing.",
+      "statement": "One object or HTTP body decompresses to at most 256 MiB, counted as the bytes arrive. Past it the body lands nothing, named as the object or the scrubbed URL, and an HTTP read refuses whole.",
       "why": "",
       "file": "spec/40-connector.md",
       "line": 518
@@ -17597,10 +17652,65 @@
       "operation": "source",
       "subject": "object-unreadable",
       "kind": "behavior",
-      "statement": "An object a decoder cannot read refuses the whole read under {{run.land.unreadable-input}}, naming it as `s3://<bucket>/<key>`, and no other object of the read lands.",
-      "why": "",
+      "statement": "An object a decoder cannot read, or one past {{connector.source.object-expansion}}'s ceiling, lands no rows and one {{run.land.dead-letter}} row naming it as `s3://<bucket>/<key>`; the rest of the read lands.",
+      "why": "A-connector",
       "file": "spec/40-connector.md",
       "line": 519
+    },
+    {
+      "id": "connector.source.unreadable-all",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "unreadable-all",
+      "kind": "behavior",
+      "statement": "An object or file read in which every input it reaches is unreadable, none landing or held unchanged, refuses whole under {{run.land.unreadable-input}}, naming each input.",
+      "why": "because every input failing names a declaration fault, such as a wrong `format`, rather than damaged inputs",
+      "file": "spec/40-connector.md",
+      "line": 521
+    },
+    {
+      "id": "connector.source.configuration-fault",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "configuration-fault",
+      "kind": "behavior",
+      "statement": "A configuration fault — a compiled-out decoder, an unknown `encoding`, a `member` an archive lacks or several members without one, a first record off `columns` — refuses an object or file read whole, naming its error, and dead-letters nothing.",
+      "why": "because dead-lettering each changed input under a declaration none satisfies records one fault as many damaged inputs",
+      "file": "spec/40-connector.md",
+      "line": 523
+    },
+    {
+      "id": "connector.source.unreadable-position",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "unreadable-position",
+      "kind": "behavior",
+      "statement": "With `skip_unchanged = true` a position holds a dead-lettered object at its ETag, and the `file` position holds a dead-lettered file at its digest, so a later read skips it until it changes.",
+      "why": "because a dead letter re-landing on every fire fills the dead-letter table with one fault",
+      "file": "spec/40-connector.md",
+      "line": 525
+    },
+    {
+      "id": "connector.source.dead-letter-replay",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "dead-letter-replay",
+      "kind": "behavior",
+      "statement": "`replay_dead_letters = true` on the `s3` or `file` source re-reads every input its position holds dead-lettered, whatever its ETag or digest, landing it or dead-lettering it again.",
+      "why": "because a fixed decoder reads unchanged bytes, which no ETag or digest change announces",
+      "file": "spec/40-connector.md",
+      "line": 527
+    },
+    {
+      "id": "connector.source.unreadable-incomplete",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "unreadable-incomplete",
+      "kind": "behavior",
+      "statement": "A read that dead-letters an input reports no complete snapshot, so a replacing table retires none of that input's earlier rows.",
+      "why": "because a complete snapshot claim tombstones every row the read omits",
+      "file": "spec/40-connector.md",
+      "line": 529
     },
     {
       "id": "connector.source.etag-skip",
@@ -17611,7 +17721,7 @@
       "statement": "With `skip_unchanged = true`, the object source's position maps each object key to its ETag in place of {{run.advance.skip-unchanged}}'s digest; an object whose ETag matches lands nothing, and a read matching every object closes a zero-row success.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 520
+      "line": 531
     },
     {
       "id": "connector.source.object-credentials",
@@ -17622,7 +17732,7 @@
       "statement": "The `s3` source's `access_key_id` and `secret_access_key` each hold one `secret://<name>` reference, declared together and hydrated per read; undeclared, requests go unsigned. A literal in either is refused under {{connector.reference.material-in-a-declaration}}.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 521
+      "line": 532
     },
     {
       "id": "connector.source.object-transport",
@@ -17633,7 +17743,7 @@
       "statement": "The `s3` source presigns each request through the S3 bucket adapter of {{store.endpoint.addressing}} and sends it through the mediated client, allowlisting the endpoint host alone; a skip compares listed or head-request ETags and downloads no object.",
       "why": "because one S3 client then signs every bucket request while the mediated client stays the one attachment point for source egress",
       "file": "spec/40-connector.md",
-      "line": 522
+      "line": 533
     },
     {
       "id": "connector.source.object-cleartext",
@@ -17644,7 +17754,7 @@
       "statement": "An `s3` source binding a key pair to a cleartext endpoint off loopback is refused at build under {{connector.attach.cleartext-endpoint}}.",
       "why": "because a presigned URL is a bearer capability for its lifetime",
       "file": "spec/40-connector.md",
-      "line": 524
+      "line": 535
     },
     {
       "id": "connector.source.object-position-owned",
@@ -17655,7 +17765,7 @@
       "statement": "`incremental` beside `skip_unchanged = true` on the `s3` source refuses as {{connector.package.component-position}} at validation.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 526
+      "line": 537
     },
     {
       "id": "connector.source.document-grain",
@@ -17666,7 +17776,7 @@
       "statement": "A document source lands one row per page, or one row per heading past a length threshold. With a base URL, each row links to its own page anchor.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 527
+      "line": 538
     },
     {
       "id": "connector.source.document-identity",
@@ -17677,7 +17787,7 @@
       "statement": "A document row's identity is a slug plus an ordinal, chunked or not.",
       "why": "because an identity then survives a document crossing the threshold",
       "file": "spec/40-connector.md",
-      "line": 528
+      "line": 539
     },
     {
       "id": "connector.source.document-unreadable",
@@ -17688,7 +17798,7 @@
       "statement": "An encrypted document, and one with no extractable text on any page, is unreadable input under {{run.land.unreadable-input}} and never lands as empty pages.",
       "why": "P2",
       "file": "spec/40-connector.md",
-      "line": 530
+      "line": 541
     },
     {
       "id": "connector.source.frontmatter-shape",
@@ -17699,7 +17809,7 @@
       "statement": "A nested map, a block scalar, a key carrying the reserved producer prefix, or, compared without case, a repeated key or a key other than `title` naming a column the source lands, in a note's frontmatter raises `ConnectorFrontmatterRejected`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 532
+      "line": 543
     },
     {
       "id": "connector.source.conversion-required",
@@ -17710,7 +17820,7 @@
       "statement": "A compound-binary office container, detected by an office extension or by magic bytes under an extension the source reads, raises `ConnectorConversionRequired` naming the conversion command.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 534
+      "line": 545
     },
     {
       "id": "connector.source.file-source",
@@ -17721,7 +17831,7 @@
       "statement": "The `file` source walks `root`, resolved against the project directory, into one `documents` table: `.md` and `.markdown` as notes, `.txt` as plain text and `.pdf` as PDF pages. Any other extension is declined unopened.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 536
+      "line": 547
     },
     {
       "id": "connector.source.file-globs",
@@ -17732,7 +17842,7 @@
       "statement": "A root-relative path is read when it matches an `include` glob, or none is declared, and matches no `exclude` glob. `*` and `?` match within one segment; a `**` segment matches any number.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 537
+      "line": 548
     },
     {
       "id": "connector.source.file-no-follow",
@@ -17743,7 +17853,7 @@
       "statement": "The `file` walk follows no symbolic link, to a file or a directory.",
       "why": "because a link is the one path out of the root that a sorted walk of names cannot see",
       "file": "spec/40-connector.md",
-      "line": 538
+      "line": 549
     },
     {
       "id": "connector.source.file-table-unmatched",
@@ -17754,7 +17864,7 @@
       "statement": "A `file` table other than `documents` refuses as {{connector.source.table-unmatched}}, ahead of the walk.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 540
+      "line": 551
     },
     {
       "id": "connector.source.document-slug",
@@ -17765,7 +17875,7 @@
       "statement": "A document's slug is its root-relative path without extension, lowercased, each run of characters other than ASCII letters and digits in a segment folded to `-`. Two files folding to one slug fail the read naming both.",
       "why": "because a slug is the identity a link and a citation carry, and two files under one identity overwrite each other's rows",
       "file": "spec/40-connector.md",
-      "line": 541
+      "line": 552
     },
     {
       "id": "connector.source.heading-threshold",
@@ -17776,7 +17886,7 @@
       "statement": "A note whose body past its frontmatter exceeds 8192 B lands one row per heading section, the text before its first heading as its own row; a shorter note and a text file land one row.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 543
+      "line": 554
     },
     {
       "id": "connector.source.document-columns",
@@ -17787,7 +17897,7 @@
       "statement": "A document row carries slug, ordinal, root-relative path, kind, title, heading, text, url, the file's SHA-256 and a `removed` flag. The title is the frontmatter `title`, else the first level-one heading, else the file stem.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 544
+      "line": 555
     },
     {
       "id": "connector.source.frontmatter-columns",
@@ -17798,7 +17908,7 @@
       "statement": "Each other frontmatter key lands lowercased as a string column on every row of its note: a scalar as its text, a list as a JSON array.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 545
+      "line": 556
     },
     {
       "id": "connector.source.document-url",
@@ -17809,7 +17919,7 @@
       "statement": "With `base_url`, a row's url is the base joined with its slug, then `#page=<n>` on a PDF page or the heading's anchor on a heading section; without `base_url` the url is null.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 546
+      "line": 557
     },
     {
       "id": "connector.source.file-position",
@@ -17820,7 +17930,18 @@
       "statement": "The `file` position maps each landed path to its digest and row count. A matching digest lands nothing, a changed file re-lands whole and tombstones ordinals past its new count, and a vanished file tombstones every row.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 547
+      "line": 558
+    },
+    {
+      "id": "connector.source.file-unreadable",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "file-unreadable",
+      "kind": "behavior",
+      "statement": "A file a decoder cannot read lands no rows and one {{run.land.dead-letter}} row, keeps its earlier rows, and the read continues.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 559
     },
     {
       "id": "connector.source.file-rename",
@@ -17831,7 +17952,7 @@
       "statement": "A file renamed onto its old slug re-lands under its new path, and the old path tombstones only ordinals past the renamed file's row count.",
       "why": "because a tombstone on an identity the read lands live removes the renamed document",
       "file": "spec/40-connector.md",
-      "line": 548
+      "line": 561
     },
     {
       "id": "connector.source.file-cap",
@@ -17842,7 +17963,7 @@
       "statement": "A file over 64 MiB is declined, and none of it past the leading bytes announcing its format is read.",
       "why": "because a row-per-page document past that size is an export, not a note, and one file must not exhaust the read's memory",
       "file": "spec/40-connector.md",
-      "line": 550
+      "line": 563
     },
     {
       "id": "connector.source.file-pdf-absent",
@@ -17853,7 +17974,7 @@
       "statement": "A PDF the walk reaches in a build without the PDF decoder fails the read as a configuration fault naming the feature to rebuild with.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 552
+      "line": 565
     },
     {
       "id": "connector.source.file-position-owned",
@@ -17864,7 +17985,7 @@
       "statement": "`incremental` beside the `file` source refuses as {{connector.package.component-position}} at validation.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 553
+      "line": 566
     },
     {
       "id": "connector.source.parse-containment",
@@ -17875,7 +17996,7 @@
       "statement": "A compiled-in source decodes behind {{run.land.parse-boundary}}.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 554
+      "line": 567
     },
     {
       "id": "connector.source.office-part-selection",
@@ -17886,7 +18007,7 @@
       "statement": "An office container is read by exact part name. No other part is opened and no external entity is resolved.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 556
+      "line": 569
     },
     {
       "id": "connector.source.decompression-budget",
@@ -17897,7 +18018,7 @@
       "statement": "A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory's claim and against the bytes that arrive.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 558
+      "line": 571
     },
     {
       "id": "connector.source.worksheet-landing",
@@ -17908,7 +18029,7 @@
       "statement": "One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each shared string and each stored cell, counted as they land — and lands at most 1048576 rows.",
       "why": "because shared-string fan-out turns a small input into an unbounded output",
       "file": "spec/40-connector.md",
-      "line": 560
+      "line": 573
     },
     {
       "id": "connector.source.cell-out-of-range",
@@ -17919,7 +18040,7 @@
       "statement": "A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell holding none widens nothing.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 562
+      "line": 575
     },
     {
       "id": "connector.source.external-reference",
@@ -17930,7 +18051,7 @@
       "statement": "An external-reference declaration, an external-links part, or a relationship marked external raises `ConnectorExternalReference`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 564
+      "line": 577
     },
     {
       "id": "connector.source.workbook-cell-typing",
@@ -17941,7 +18062,7 @@
       "statement": "A workbook cell lands as a string and a date cell as its serial number. No formula is evaluated; a formula cell lands its cached value.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 566
+      "line": 579
     },
     {
       "id": "connector.source.workbook-incremental",
@@ -17952,7 +18073,7 @@
       "statement": "An incremental position against a workbook raises `ConnectorIncrementalUnsupported`.",
       "why": "because a variable-width serial number advances a lexicographic watermark past unlanded rows",
       "file": "spec/40-connector.md",
-      "line": 568
+      "line": 581
     },
     {
       "id": "connector.source.report-id-commit",
@@ -17963,7 +18084,7 @@
       "statement": "An async-report source commits the vendor's run id the instant creation returns it. An exhausted polling budget ends the read successfully, and an expired vendor run is recreated for the same window.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 570
+      "line": 583
     },
     {
       "id": "connector.source.page-drain",
@@ -17974,7 +18095,7 @@
       "statement": "Report paging drains a fixed number of pages per read, one batch per page, each carrying the position after it.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 572
+      "line": 585
     },
     {
       "id": "connector.source.page-cursor-missing",
@@ -17985,7 +18106,7 @@
       "statement": "A response announcing another page while naming its cursor in neither the cursor field nor the next link raises `ConnectorPageCursorMissing`.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 573
+      "line": 586
     },
     {
       "id": "connector.source.report-watermark",
@@ -17996,7 +18117,7 @@
       "statement": "Report watermarks are held per partition — account, grain, breakdown and any split dimension — as a versioned map inside one position.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 575
+      "line": 588
     },
     {
       "id": "connector.source.partition-isolation",
@@ -18007,7 +18128,7 @@
       "statement": "A retryable failure on one partition holds it at its committed position and keeps the pages other partitions drained.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 576
+      "line": 589
     },
     {
       "id": "connector.source.metric-grain",
@@ -18018,7 +18139,7 @@
       "statement": "A metric read at a grain where the vendor estimates rather than computes it raises `ConnectorMetricGrainRejected`.",
       "why": "P4",
       "file": "spec/40-connector.md",
-      "line": 578
+      "line": 591
     },
     {
       "id": "connector.source.restated-window",
@@ -18029,7 +18150,7 @@
       "statement": "A caught-up partition re-opens its lookback window every run, the pull window is at least that wide, and each row carries a deterministic key over partition, entity, date and breakdown.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 580
+      "line": 593
     },
     {
       "id": "connector.source.report-event-time",
@@ -18040,7 +18161,7 @@
       "statement": "A report row's event time is an RFC 3339 instant at midnight UTC of the window-start day, null where the vendor gave no usable date.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 581
+      "line": 594
     },
     {
       "id": "connector.source.ordering-column",
@@ -18051,7 +18172,7 @@
       "statement": "Ordering a report stream by the engine-injected ingest stamp raises `ConnectorOrderingColumnRejected`.",
       "why": "because a late seed then outranks a live restatement",
       "file": "spec/40-connector.md",
-      "line": 582
+      "line": 595
     },
     {
       "id": "connector.source.field-drift",
@@ -18062,7 +18183,7 @@
       "statement": "Report rows stay untyped JSON into the batch, and throttling is recognized from a throttle status or from an error body carrying a throttle code.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 584
+      "line": 597
     },
     {
       "id": "connector.source.report-auth",
@@ -18073,7 +18194,7 @@
       "statement": "An authentication failure on a report read raises `ConnectorAuthTerminal`, terminal against the retry schedule.",
       "why": "P6",
       "file": "spec/40-connector.md",
-      "line": 585
+      "line": 598
     },
     {
       "id": "connector.source.image-row",
@@ -18084,7 +18205,7 @@
       "statement": "An image source lands path, content hash, header width and height, embedded capture instant, file modification time, a modality marker and a null body. No pixel decode runs on ingest.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 587
+      "line": 600
     },
     {
       "id": "connector.source.image-header",
@@ -18095,7 +18216,7 @@
       "statement": "An image header that does not parse raises `ConnectorImageHeaderUnreadable` naming the path.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 588
+      "line": 601
     },
     {
       "id": "connector.source.quotability-marker",
@@ -18106,7 +18227,7 @@
       "statement": "Whatever fills an image body records in a companion column whether the text is verbatim extraction or a model's reading.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 590
+      "line": 603
     },
     {
       "id": "connector.source.marker-body-pairing",
@@ -18117,7 +18238,7 @@
       "statement": "An image body and its quotability marker that are not null together raise `ConnectorQuotabilityMismatch`.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 591
+      "line": 604
     },
     {
       "id": "connector.source.search-config",
@@ -18128,7 +18249,7 @@
       "statement": "The search source takes a driver, a query, a freshness window and a result ceiling, landing one row per result. Its cursor kind is snapshot-id, keyed on the result URL.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 593
+      "line": 606
     },
     {
       "id": "connector.source.provider-origin",
@@ -18139,7 +18260,7 @@
       "statement": "Each search provider's host is pinned at the call site; a non-TLS transport or another host raises `ConnectorProviderOriginRejected`, loopback excepted.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 594
+      "line": 607
     },
     {
       "id": "connector.source.search-degradation",
@@ -18150,7 +18271,7 @@
       "statement": "An absent provider key and a provider `5xx` are transient failures yielding a zero-row outcome, and a replay returns the journaled result set.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 596
+      "line": 609
     },
     {
       "id": "connector.source.poll-only-increments",
@@ -18161,7 +18282,7 @@
       "statement": "Incremental loading is a scheduled poll. A replication socket held open is not a source read.",
       "why": "because its output is unbounded and has no recorded exchange to replay",
       "file": "spec/40-connector.md",
-      "line": 597
+      "line": 610
     },
     {
       "id": "connector.source.receive-form",
@@ -18172,7 +18293,7 @@
       "statement": "A `receive` source declares `format = \"jsonl\"`, a positive `max_batch_bytes`, a positive `max_queue_depth` and a positive `key_retention_secs`, none defaulted; it serves every declared table and requests nothing from outside.",
       "why": "because a ceiling the sender fills must be the operator's choice, not a guess the binary carries",
       "file": "spec/40-connector.md",
-      "line": 599,
+      "line": 612,
       "scenarios": [
         "WHEN a `receive` source omits `max_queue_depth`, THEN validation refuses naming the key."
       ]
@@ -18186,7 +18307,7 @@
       "statement": "A delivered batch is bounded and recorded before it lands, so {{connector.source.poll-only-increments}} reaches no `receive` source.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 601
+      "line": 614
     },
     {
       "id": "connector.source.receive-unscheduled",
@@ -18197,7 +18318,7 @@
       "statement": "A `receive` pipeline declaring a `schedule` fails validation.",
       "why": "because a sender, not the cadence, starts its runs, so a scheduled fire fails on every beat",
       "file": "spec/40-connector.md",
-      "line": 602
+      "line": 615
     },
     {
       "id": "connector.source.receive-body",
@@ -18208,7 +18329,7 @@
       "statement": "A `receive` body holds one JSON object per line, `table` naming a declared table and `row` its row object; another shape fails the whole batch as {{run.land.unreadable-input}}, naming the line.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 604,
+      "line": 617,
       "scenarios": [
         "WHEN line 2 of a body names an undeclared table, THEN the batch fails naming line 2 and no table lands."
       ]
@@ -18222,7 +18343,7 @@
       "statement": "A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. A sanctioned, disclosed organization-wide export path is admitted.",
       "why": "A-read",
       "file": "spec/40-connector.md",
-      "line": 605
+      "line": 618
     },
     {
       "id": "connector.source.drive-walk",
@@ -18233,7 +18354,7 @@
       "statement": "The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder, within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is followed.",
       "why": "because the source keeps a per-file position and mints its token host-side, which a guest holding no credential bytes cannot",
       "file": "spec/40-connector.md",
-      "line": 607
+      "line": 620
     },
     {
       "id": "connector.source.drive-root-set",
@@ -18244,7 +18365,7 @@
       "statement": "Exactly one of `folder_id` or `folder_ids` selects roots; `folder_ids` holds 1 to 16 entries, all distinct, under one required `drive_id`. An empty, oversized, repeated or ambiguous selection raises `ConnectorDriveRootsInvalid` before listing.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 609,
+      "line": 622,
       "scenarios": [
         "WHEN `folder_ids` is empty or accompanies `folder_id`, THEN validation raises `ConnectorDriveRootsInvalid` before listing."
       ]
@@ -18258,7 +18379,7 @@
       "statement": "With `folder_ids`, every selected root names a folder in the declared `drive_id`; any missing or outside-drive root raises `ConnectorDriveRootRejected` before any selected folder is listed.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 611,
+      "line": 624,
       "scenarios": [
         "WHEN one selected root belongs to another Shared Drive, THEN `ConnectorDriveRootRejected` names it before any selected folder is listed."
       ]
@@ -18272,7 +18393,7 @@
       "statement": "With `folder_ids`, the drive source applies {{connector.source.drive-walk}} to each root while confining descendants to the declared drive, listing each folder once across overlaps.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 613
+      "line": 626
     },
     {
       "id": "connector.source.drive-root",
@@ -18283,7 +18404,7 @@
       "statement": "A `folder_id` naming no folder, or one outside a declared `drive_id`, fails the read as a configuration fault before any listing.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 615
+      "line": 628
     },
     {
       "id": "connector.source.drive-overlap",
@@ -18294,7 +18415,7 @@
       "statement": "A file reachable through several selected roots lands once by `file_id`; its `resolved_root` is the lexicographically least selected root id reaching it.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 616,
+      "line": 629,
       "scenarios": [
         "WHEN two selected roots reach one file, THEN one `files` row carries the least root id as `resolved_root`."
       ]
@@ -18308,7 +18429,7 @@
       "statement": "The drive source serves `files`, one row per file keyed by `file_id` with its version, name, path from the root, MIME type, `modifiedTime`, Drive's `md5Checksum` and the SHA-256 of the bytes read, and `pages`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 618
+      "line": 631
     },
     {
       "id": "connector.source.drive-table-unmatched",
@@ -18319,7 +18440,7 @@
       "statement": "A drive table other than `files` or `pages` refuses as {{connector.source.table-unmatched}}, ahead of any request.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 619
+      "line": 632
     },
     {
       "id": "connector.source.drive-mode",
@@ -18330,7 +18451,7 @@
       "statement": "`mode` selects `bytes-and-pages` by default or `metadata-only`; another spelling raises `ConnectorDriveModeUnknown` before any request.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 620
+      "line": 633
     },
     {
       "id": "connector.source.drive-capture-record",
@@ -18341,7 +18462,7 @@
       "statement": "Every file row carries `resolved_root`, `export_mime_type`, captured `bytes` and `capture_status`: `captured`, `skipped` or `removed`. A removed row or skipped row without captured bytes has null `sha256`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 622
+      "line": 635
     },
     {
       "id": "connector.source.drive-metadata-only",
@@ -18352,7 +18473,7 @@
       "statement": "In `metadata-only` mode, the source hashes exact downloaded or exported bytes, then discards the bytes after recording the digest.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 623,
+      "line": 636,
       "scenarios": [
         "WHEN a downloaded version has known bytes, THEN its SHA-256 matches those bytes, which the source discards after capture.",
         "WHEN the separately retained named version is downloaded, THEN its byte SHA-256 reproduces the `files` row's digest."
@@ -18367,7 +18488,7 @@
       "statement": "After a metadata-only download or export, the source re-reads the file version; a change from the listed version raises `ConnectorDriveVersionMoved` before any row or cursor commits.",
       "why": "because a digest of newer bytes cannot witness the version named by the file row",
       "file": "spec/40-connector.md",
-      "line": 625,
+      "line": 638,
       "scenarios": [
         "WHEN a file changes between listing and download, THEN `ConnectorDriveVersionMoved` refuses the capture without a file row or cursor."
       ]
@@ -18381,7 +18502,7 @@
       "statement": "A skipped file row names the file and reason; the per-file bound of {{connector.source.drive-file-cap}} applies in both modes.",
       "why": "because a skipped row cannot attest to bytes the source did not read",
       "file": "spec/40-connector.md",
-      "line": 627,
+      "line": 640,
       "scenarios": [
         "WHEN a selected file exceeds the byte cap, THEN its skipped row names the file and cap."
       ]
@@ -18395,7 +18516,7 @@
       "statement": "A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 629
+      "line": 642
     },
     {
       "id": "connector.source.drive-page-grain",
@@ -18406,7 +18527,7 @@
       "statement": "In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page content row lands.",
       "why": "because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table",
       "file": "spec/40-connector.md",
-      "line": 630,
+      "line": 643,
       "scenarios": [
         "WHEN mode is `metadata-only`, THEN no page content row lands."
       ]
@@ -18420,7 +18541,7 @@
       "statement": "In `bytes-and-pages` mode, every whole exported or downloaded body lands as {{store.lay-out.landed-blob}}, named by its file row's `sha256`; in `metadata-only` mode, no blob lands.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 632,
+      "line": 645,
       "scenarios": [
         "WHEN mode is `metadata-only`, THEN no landed blob holds the downloaded bytes."
       ]
@@ -18434,7 +18555,7 @@
       "statement": "A file over `max_file_bytes`, 64 MiB by default, lands its file row with a `skipped` reason naming the cap and no pages. No byte past the cap is read, and the read continues.",
       "why": "because a row naming the skipped file answers for it, where truncated bytes read as the whole document",
       "file": "spec/40-connector.md",
-      "line": 633
+      "line": 646
     },
     {
       "id": "connector.source.drive-unreadable",
@@ -18445,7 +18566,7 @@
       "statement": "A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming the failure and no pages, and the read continues.",
       "why": "because one unreadable file failing the fire holds back every other file's row and the position behind them",
       "file": "spec/40-connector.md",
-      "line": 635
+      "line": 648
     },
     {
       "id": "connector.source.drive-export-limit",
@@ -18456,7 +18577,7 @@
       "statement": "A Doc, Sheet or Slides deck whose export Drive answers `403 exportSizeLimitExceeded` lands its file row with a `skipped` reason naming Drive's export limit and no pages, and the read continues.",
       "why": "because Drive refuses that export on every fire, so failing the read stalls the whole tree behind one file",
       "file": "spec/40-connector.md",
-      "line": 637
+      "line": 650
     },
     {
       "id": "connector.source.drive-skip-count",
@@ -18467,7 +18588,7 @@
       "statement": "Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 639
+      "line": 652
     },
     {
       "id": "connector.source.drive-selection-position",
@@ -18478,7 +18599,7 @@
       "statement": "The position binds the declared drive, sorted root set and mode; changing any of them revalidates every root and rewalks the selected trees, rereading files without reusing an earlier frontier.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 640,
+      "line": 653,
       "scenarios": [
         "WHEN a configured pipeline changes from `bytes-and-pages` to `metadata-only`, THEN the next read rewalks its roots and rereads retained files."
       ]
@@ -18492,7 +18613,7 @@
       "statement": "A complete selected-root walk lands tombstones for files removed, moved outside the roots or deselected, and for excess prior pages; an incomplete walk commits no removals.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 642,
+      "line": 655,
       "scenarios": [
         "WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone.",
         "WHEN mode changes from `bytes-and-pages` to `metadata-only`, THEN old pages receive tombstones and no page content row remains."
@@ -18507,7 +18628,7 @@
       "statement": "For selected roots, the position also holds each file's `version` and `resolved_root`. A complete walk re-reads the file when either changes, even with matching `modifiedTime` and path.",
       "why": "because a changed version needs a fresh byte witness even when the file id stays stable",
       "file": "spec/40-connector.md",
-      "line": 644,
+      "line": 657,
       "scenarios": [
         "WHEN a retained file's version changes with identical `modifiedTime` and path, THEN the read captures its new bytes and digest."
       ]
@@ -18521,7 +18642,7 @@
       "statement": "The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 646
+      "line": 659
     },
     {
       "id": "connector.source.drive-list-bound",
@@ -18532,7 +18653,7 @@
       "statement": "A selected-root walk shares {{connector.source.page-cap}} across roots; reaching it with a pending folder or page token raises `ConnectorDriveListingExceeded`, naming the folder and committing no selection removals.",
       "why": "because an incomplete listing cannot prove a file left the selected trees",
       "file": "spec/40-connector.md",
-      "line": 647,
+      "line": 660,
       "scenarios": [
         "WHEN listing reaches the request cap with a next-page token but no queued folders, THEN the read refuses and lands no removal tombstone."
       ]
@@ -18546,7 +18667,7 @@
       "statement": "One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 649
+      "line": 662
     },
     {
       "id": "connector.source.drive-oauth",
@@ -18557,7 +18678,7 @@
       "statement": "The drive source mints its access token from a refresh token and client credentials bound as `secret://` references, once per fire and again on a `401`, holding it in memory and writing it to no store, journal or record.",
       "why": "because Google's refresh token does not turn over, so the minted token is the one rotating material, and it lapses within the hour",
       "file": "spec/40-connector.md",
-      "line": 650
+      "line": 663
     },
     {
       "id": "connector.source.drive-oauth-shape",
@@ -18568,7 +18689,7 @@
       "statement": "`oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 652
+      "line": 665
     },
     {
       "id": "connector.source.drive-origin",
@@ -18579,7 +18700,7 @@
       "statement": "The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 653
+      "line": 666
     },
     {
       "id": "connector.source.drive-position-owned",
@@ -18590,7 +18711,7 @@
       "statement": "`incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 654
+      "line": 667
     },
     {
       "id": "connector.reference.credential-plane",
@@ -31135,7 +31256,7 @@
     "run.exec": "Operator-declared argv chains against local binaries: resolution, pinning, environment, bounds and identity.",
     "run.export": "The outbound copy of a landed table to an operator-declared target: the export block, the post-commit read, the delivery batch, the cursor and at-least-once delivery.",
     "run.fetch": "Following a link a third party wrote: host and address guards, redirects, the head scanner and the picture probe.",
-    "run.guard-secrets": "The write-time mask over credential-shaped spans in pulled batches and registered body results.",
+    "run.guard-secrets": "The write-time mask over credential-shaped spans in pulled batches, their dead letters and registered body results.",
     "run.items": "Independent store-driven items, their durable receipts, bounded retries and entity admission.",
     "run.journal": "Recording a step's value once, resolving it on replay, and collecting what a replay can no longer reach.",
     "run.land": "The stage order from pull to commit, the one destination, the ingest tally and containment of unreadable input.",
@@ -32555,6 +32676,14 @@
       "run.land.receive-key-expired"
     ],
     [
+      "run.land.dead-letter-replace",
+      "run.land.unreadable-input"
+    ],
+    [
+      "run.land.dead-letter-occupied",
+      "run.declare.table-name-collision"
+    ],
+    [
       "run.land.parse-deadline",
       "run.land.parse-crashed"
     ],
@@ -32876,6 +33005,10 @@
     ],
     [
       "connector.source.declared-columns",
+      "connector.source.configuration-fault"
+    ],
+    [
+      "connector.source.declared-columns",
       "run.land.unreadable-input"
     ],
     [
@@ -32892,10 +33025,18 @@
     ],
     [
       "connector.source.zip-member",
-      "run.land.unreadable-input"
+      "connector.source.configuration-fault"
     ],
     [
       "connector.source.object-unreadable",
+      "connector.source.object-expansion"
+    ],
+    [
+      "connector.source.object-unreadable",
+      "run.land.dead-letter"
+    ],
+    [
+      "connector.source.unreadable-all",
       "run.land.unreadable-input"
     ],
     [
@@ -32925,6 +33066,10 @@
     [
       "connector.source.file-table-unmatched",
       "connector.source.table-unmatched"
+    ],
+    [
+      "connector.source.file-unreadable",
+      "run.land.dead-letter"
     ],
     [
       "connector.source.file-position-owned",
