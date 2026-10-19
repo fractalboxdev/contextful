@@ -2,7 +2,7 @@
 
 # Target ledger
 
-157 entries: 112 gated, 31 recorded, 6 scheduled, 8 open.
+157 entries: 113 gated, 30 recorded, 6 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -37,9 +37,9 @@
 | `commit-lock-hold-w8` | `store.reserve.commit-order` | `land.commit_lock.hold_ms.w8.p95` | scheduled | test `contextful_context::run_commit::eight_pipelines_share_one_table_commit_lock` | — | scheduled |
 | `commit-lock-refusals-w8` | `store.reserve.commit-order` | `land.commit_lock.refusals.w8` | scheduled | test `contextful_context::run_commit::eight_pipelines_share_one_table_commit_lock` | `<= 0` | scheduled |
 | `derivation-freshness` | `run.emit.stale-supersedes` | `derive.empty_reads` | gate | test `contextful_core::run::derive::a_changed_engine_rederives_every_unit_and_no_read_between_ticks_is_empty` | `== 0` | gated |
-| `dispatch-backlog-ticks` | `surface.arm.trigger-select` | `dispatch.max_ticks_waited_by_due_unit` | gate | test `contextful_engine::scheduler::a_backlog_of_twenty_units_clears_within_the_recovery_tick` | `<= 3` | gated |
-| `dispatch-failing-head` | `surface.arm.next-fire-from-history` | `dispatch.units_started_behind_failing_head` | trend | test `contextful_engine::scheduler::a_unit_failing_before_its_run_row_yields_the_pool_to_a_fresh_scheduler` | — | recorded |
-| `dispatch-overload-misses` | `surface.dispatch.pool-bound` | `dispatch.max_missed_ticks_per_unit` | gate | test `contextful_engine::scheduler::overload_misses_spread_evenly_across_tied_units` | `<= 6` | gated |
+| `dispatch-backlog-ticks` | `surface.dispatch.refill` | `dispatch.max_ticks_waited_by_due_unit` | gate | test `contextful_engine::scheduler::a_backlog_of_twenty_units_clears_one_tick_after_recovery` | `<= 1` | gated |
+| `dispatch-failing-head` | `surface.arm.next-fire-from-history` | `dispatch.units_started_behind_failing_head` | gate | test `contextful_engine::scheduler::a_unit_failing_before_its_run_row_yields_the_pool_to_a_fresh_scheduler` | `>= 9` | gated |
+| `dispatch-overload-misses` | `surface.dispatch.admission-order` | `dispatch.max_missed_ticks_per_unit` | gate | test `contextful_engine::scheduler::overload_misses_spread_evenly_across_tied_units` | `<= 2` | gated |
 | `edge-wasip2-footprint` | `assurance.build.wasi-probe` | `footprint.edge_wasip2_compressed_mib` | scheduled | test `contextful_ci::artifact::the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget` | `<= 50` | scheduled |
 | `egress-internal-address` | `connector.attach.private-address` | `egress.internal.admitted` | gate | test `contextful_core::connector::attach::a_permitted_name_resolving_inward_is_refused` | `== 0` | gated |
 | `egress-internal-address-resolved` | `connector.attach.private-address` | `egress.resolved_internal.admitted` | gate | test `contextful_outbound::egress::a_name_resolving_inward_never_reaches_the_send_half` | `== 0` | gated |
