@@ -4,6 +4,7 @@ mod clean_room;
 mod converge;
 mod edge;
 mod generation;
+mod lazy;
 mod pull;
 mod push;
 mod redistribute;

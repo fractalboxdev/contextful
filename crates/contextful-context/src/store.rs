@@ -21,6 +21,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use contextful_core::store::object::{PartHold, PartSource};
 pub use contextful_core::store::config::{ConnectorPolicy, EncryptionConfig, NodeConfig, ReplicaConfig, StoreConfig};
 
 /// An opened store root.
@@ -39,6 +40,23 @@ pub struct Store {
     vintage_rows: Arc<std::sync::atomic::AtomicU64>,
     #[cfg(feature = "read")]
     pub(crate) erasure_verifier: Option<Arc<crate::erasure_frontier::Verifier>>,
+    /// Where a read fetches a part the store does not hold (`store.pull.lazy-parts`).
+    part_source: Option<Arc<dyn PartSource>>,
+}
+
+/// The part source a process registered for each store root, read by [`Store::open`] so every
+/// store a command opens after its pull fetches through it (`store.pull.lazy-parts`).
+static PART_SOURCES: std::sync::Mutex<Vec<(PathBuf, Arc<dyn PartSource>)>> = std::sync::Mutex::new(Vec::new());
+
+/// Register `source` for the store at `root`, replacing any earlier one.
+pub fn register_part_source(root: &Path, source: Arc<dyn PartSource>) {
+    let mut sources = PART_SOURCES.lock().unwrap_or_else(|e| e.into_inner());
+    sources.retain(|(r, _)| r != root);
+    sources.push((root.to_path_buf(), source));
+}
+
+fn registered_part_source(root: &Path) -> Option<Arc<dyn PartSource>> {
+    PART_SOURCES.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(r, _)| r == root).map(|(_, s)| s.clone())
 }
 
 /// The `schema.json` versions a long-lived writer holds parsed, keyed by table: a read
@@ -97,7 +115,6 @@ impl Store {
         let encryption = config.encryption.as_ref().map(|enc| bind_key_source(&enc.key_source).map(Arc::new)).transpose()?;
         Ok(Store {
             writer: crate::redaction::Writer::open(project_dir)?,
-            root,
             project: crate::project::Project { dir:project_dir.to_path_buf(), name:project.into() },
             config_node_id: config.node.and_then(|n| n.id),
             replica_of: config.replica.map(|r| r.of),
@@ -108,7 +125,24 @@ impl Store {
             vintage_rows: Arc::default(),
             #[cfg(feature = "read")]
             erasure_verifier: None,
+            part_source: registered_part_source(&root),
+            root,
         })
+    }
+
+    /// This store, its reads fetching each absent part through `source` (`store.pull.lazy-parts`).
+    pub fn with_part_source(mut self, source: Arc<dyn PartSource>) -> Store {
+        self.part_source = Some(source);
+        self
+    }
+
+    /// Bring each of `files`, relative to the root, home and hold it while the hold lives; no
+    /// hold where the store fetches no part.
+    pub fn hold_parts(&self, files: &[String]) -> Result<Option<PartHold>> {
+        match &self.part_source {
+            Some(source) => Ok(Some(source.hold(files)?)),
+            None => Ok(None),
+        }
     }
 
     pub fn root(&self) -> &Path {

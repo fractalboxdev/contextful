@@ -17,6 +17,7 @@ mod index;
 mod init;
 #[cfg(feature = "read")]
 mod issue88_bench;
+mod part_source;
 mod lay_out;
 mod ledger;
 mod read;

@@ -245,6 +245,24 @@ fn a_cold_node_pulls_the_bucket_before_its_run_reads() {
     a_cold_http_server_pulls_before_it_answers(bucket.path());
 }
 
+/// A store declaring `lazy_parts` pulls no part, and its tool server fetches the part its
+/// first query reads.
+#[test]
+fn a_lazy_store_pulls_no_part_and_its_tool_server_fetches_the_one_it_reads() {
+    let bucket = tempfile::tempdir().unwrap();
+    let _a = seed(&file_sync(bucket.path(), ""), &[]);
+    let cold = project("ingest-l", &file_sync(bucket.path(), "pull_before_run = true\nlazy_parts = true\n"));
+    ok(&cf(cold.path(), &["sync", "pull", "--project", "research"], &[]));
+    let part = cold.path().join(STORE).join(LANDED);
+    assert!(!part.exists(), "a lazy pull leaves the part in the bucket");
+
+    let out = mcp_query(cold.path());
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let lines: Vec<Value> = String::from_utf8_lossy(&out.stdout).lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(lines[1]["result"]["structuredContent"]["rows"], json!([["1"]]), "{:?}", lines[1]);
+    assert!(part.exists(), "the query fetched the part it read");
+}
+
 /// Start `contextful serve --http` on `dir`; its address once it listens, or its exit
 /// output when it stops before binding.
 fn serve(dir: &Path, public: &str) -> Result<(std::process::Child, String), Output> {

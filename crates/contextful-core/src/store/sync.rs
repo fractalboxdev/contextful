@@ -21,6 +21,8 @@ pub const PUSH_WAIT_SECS: u64 = 300;
 pub const PULL_CONVERGENCE: u32 = 3;
 /// Object requests a pull or a push keeps in flight at once by default: 16 requests (`store.pull.transfer-width`).
 pub const TRANSFER_WIDTH: usize = 16;
+/// Default bound on the fetched parts a lazy store holds locally: 8 GiB (`store.pull.part-cache`).
+pub const PART_CACHE_BYTES: u64 = 8 << 30;
 /// Age at which a tombstone leaves the bucket manifest: 30 d (`store.merge.tombstone-ttl`).
 pub const TOMBSTONE_TTL_SECS: u64 = 30 * 24 * 60 * 60;
 
@@ -74,6 +76,12 @@ pub struct SyncConfig {
     /// Object requests a pull or a push keeps in flight (`store.pull.transfer-width`).
     #[serde(default)]
     pub transfers: Option<usize>,
+    /// Pull metadata alone and fetch each part on first read (`store.pull.lazy-parts`).
+    #[serde(default)]
+    pub lazy_parts: Option<bool>,
+    /// Bytes of fetched parts a lazy store holds locally (`store.pull.part-cache`).
+    #[serde(default)]
+    pub part_cache_bytes: Option<u64>,
     /// Seconds a push waits for the push guard another push of the store holds (`store.push.in-flight`).
     #[serde(default)]
     pub push_wait_secs: Option<u64>,
@@ -162,6 +170,16 @@ impl SyncConfig {
     /// The transfer width: `transfers`, default 16, never below 1 (`store.pull.transfer-width`).
     pub fn transfers(&self) -> usize {
         self.transfers.unwrap_or(TRANSFER_WIDTH).max(1)
+    }
+
+    /// Whether a pull leaves parts in the bucket until a read needs them (`store.pull.lazy-parts`).
+    pub fn lazy_parts(&self) -> bool {
+        self.lazy_parts == Some(true)
+    }
+
+    /// The part cache bound: `part_cache_bytes`, default 8 GiB (`store.pull.part-cache`).
+    pub fn part_cache_bytes(&self) -> u64 {
+        self.part_cache_bytes.unwrap_or(PART_CACHE_BYTES)
     }
 
     pub fn push_retries(&self) -> u32 {
