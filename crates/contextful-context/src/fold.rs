@@ -245,8 +245,14 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     }
     // A keyed table declaring no clustering sorts by its key, so each part's footer bounds
     // on the key form a sparse map a point lookup probes (`store.index.kinds`).
+    // A vintage table with valid time sorts by valid-time `from` first instead, so footer
+    // bounds keep pruning a landing's history read and its key bounds form no sparse map
+    // (`store.available-time.vintage-fold-order`).
     if !decl.cluster_by().is_empty() {
         rows = sort(&rows, decl.cluster_by()).map_err(invalid)?;
+    } else if let (true, Some(valid)) = (decl.is_vintage(), &decl.valid_time) {
+        let order: Vec<String> = std::iter::once(valid.from.clone()).chain(decl.primary_key().iter().cloned()).collect();
+        rows = sort(&rows, &order).map_err(invalid)?;
     } else if decl.is_keyed() {
         rows = sort(&rows, decl.primary_key()).map_err(invalid)?;
     }
@@ -270,7 +276,7 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
         for (dir, batch) in partition(&rows, decl.partition_by()).map_err(invalid)? {
             let name = if dir.is_empty() { part_name(0) } else { format!("{dir}/{}", part_name(0)) };
             let path = staging.join(&name);
-            store.write_parquet_blooming(&path, &batch, decl.bloom_filter())?;
+            store.write_parquet_blooming(&path, &batch, &crate::available::bloom_columns(decl))?;
             sizes.push(fs::metadata(&path).at(&path)?.len());
             parts.push(PartEntry { name, key_version: store.sealing().key_version() });
         }

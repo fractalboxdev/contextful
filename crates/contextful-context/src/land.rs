@@ -567,7 +567,7 @@ fn commit_run(
             .map_err(|e| StoreError::StoreManifestUnreadable(format!("{}: {e}", manifest_path.display())))?;
         held.commit_seq
     } else { None };
-    if let Some(mut history) = crate::available::VintageHistory::load(store, decl, before_commit_seq)? {
+    if let Some(mut history) = crate::available::VintageHistory::load(store, decl, before_commit_seq, rewritten.iter().flat_map(|batch| &batch.rows))? {
         for batch in &mut rewritten { history.retain(&mut batch.rows) }
     }
     let batches = rewritten.as_slice();
@@ -589,7 +589,7 @@ fn commit_run(
     let mut parts = Vec::new();
     for (ordinal, rb) in run_parts(&site.arriving, batches, ctx, per_batch, commit_seq, ctx.committed_at)?.into_iter().enumerate() {
         let name = part_name(part_ordinal(ordinal)?);
-        write_batch(store, &site.node_dir.join(&name), &rb)?;
+        write_batch(store, decl, &site.node_dir.join(&name), &rb)?;
         parts.push(PartEntry { name, key_version: store.sealing().key_version() });
     }
     match create_manifest(store, &site, decl, ctx, parts, position, commit_seq, precommit, commit_point, None, &[])? {
@@ -868,11 +868,13 @@ fn part_batch(arriving: &Schema, rows: &[Map<String, Value>], injection: &Inject
 }
 
 /// Write `rb` as the Parquet file `path`, replacing a file a lost landing left there.
-fn write_batch(store: &Store, path: &Path, rb: &RecordBatch) -> Result<()> {
+/// Write one run part with a bloom filter on each of `decl`'s bloom columns (`store.index.bloom-parts`,
+/// `store.index.bloom-vintage-key`).
+fn write_batch(store: &Store, decl: &TableDecl, path: &Path, rb: &RecordBatch) -> Result<()> {
     if path.exists() {
         std::fs::remove_file(path).at(path)?;
     }
-    store.write_parquet(path, rb)
+    store.write_parquet_blooming(path, rb, &crate::available::bloom_columns(decl))
 }
 
 /// An instant as the nanoseconds `_ingested_at` stores.
@@ -1072,7 +1074,7 @@ fn stage_prepared_part(store: &Store, decl: &TableDecl, batch: &Batch, node: &No
     let _run_lock = lock_run(&node_dir, &manifest_path, node, &injection.run_id)?;
     let earlier = read_staged_schema(store, &stage_dir)?;
     let mut resolved = crate::available::resolve(decl, batch.clone())?;
-    if let Some(mut history) = crate::available::VintageHistory::load(store, decl, None)? {
+    if let Some(mut history) = crate::available::VintageHistory::load(store, decl, None, &resolved.rows)? {
         for prior in 0..ordinal { history.observe_part(store, &stage_dir.join(stage_name(prior)))? }
         history.retain(&mut resolved.rows);
     }
@@ -1088,7 +1090,7 @@ fn stage_prepared_part(store: &Store, decl: &TableDecl, batch: &Batch, node: &No
     let offset = i64::try_from(row_offset).map_err(|_| ContextError::Invalid(format!("row offset {row_offset} exceeds the `_row_seq` range")))?;
     let name = stage_name(ordinal);
     let path = stage_dir.join(&name);
-    write_batch(store, &path, &part_batch(&landing.arriving, &batch.rows, &injection, offset, None)?)?;
+    write_batch(store, decl, &path, &part_batch(&landing.arriving, &batch.rows, &injection, offset, None)?)?;
     let bytes = std::fs::metadata(&path).at(&path)?.len();
     Ok(StagedPart { name, rows: batch.rows.len() as u64, bytes })
 }
@@ -1190,20 +1192,38 @@ fn commit_parts_inner(
                 return Err(ContextError::Invalid(format!("run `{}` commits part `{name}`, which no stage wrote on node `{}`", ctx.injection.run_id, ctx.node)));
             }
         }
-        if let Some(mut history) = crate::available::VintageHistory::load(store, decl, None)? {
+        if decl.is_vintage() {
+            // The staged rows' key and valid-time values, read first so the stored history
+            // loads for the run's keys alone (`store.available-time.vintage-scope`).
+            let keys = crate::available::VintageHistory::scoped_columns(decl);
+            let key_names: Vec<&str> = keys.iter().map(String::as_str).collect();
+            let mut scope = Vec::new();
             for name in parts {
+                store.each_parquet_batch(&stage_dir.join(name), &mut |batch| {
+                    scope.extend(crate::rows::batch_rows(&batch, &key_names)?);
+                    Ok(())
+                })?;
+            }
+            let mut history = crate::available::VintageHistory::load(store, decl, None, &scope)?.expect("a vintage table loads its history");
+            drop(scope);
+            let columns = crate::available::VintageHistory::compared_columns(decl);
+            let names: Vec<&str> = columns.iter().map(String::as_str).collect();
+            for name in parts {
+                let mut rows = Vec::new();
+                store.each_parquet_batch(&stage_dir.join(name), &mut |batch| {
+                    rows.extend(crate::rows::batch_rows(&batch, &names)?);
+                    Ok(())
+                })?;
+                let keep = history.mask(&rows);
+                if keep.iter().all(|accepted| *accepted) { continue }
                 let path = stage_dir.join(name);
                 let batches = store.read_parquet(&path)?;
                 let Some(first) = batches.first() else { continue };
                 let combined = arrow_select::concat::concat_batches(&first.schema(), &batches)
                     .map_err(|e| ContextError::Invalid(format!("staged vintage `{name}`: {e}")))?;
-                let rows = crate::rows::batch_rows(&combined, &history.projected_columns())?;
-                let keep = history.mask(&rows);
-                if keep.iter().any(|accepted| !accepted) {
-                    let kept = arrow_select::filter::filter_record_batch(&combined, &arrow_array::BooleanArray::from(keep))
-                        .map_err(|e| ContextError::Invalid(format!("staged vintage `{name}`: {e}")))?;
-                    write_batch(store, &path, &kept)?;
-                }
+                let kept = arrow_select::filter::filter_record_batch(&combined, &arrow_array::BooleanArray::from(keep))
+                    .map_err(|e| ContextError::Invalid(format!("staged vintage `{name}`: {e}")))?;
+                write_batch(store, decl, &path, &kept)?;
             }
         }
         let earlier = read_staged_schema(store, &stage_dir)?;
@@ -1218,11 +1238,12 @@ fn commit_parts_inner(
             parquet_io::Insert { field: parquet_io::field(&Column::new(COMMIT_SEQ, ColumnType::Int64, false)), at: parquet_io::At::After(ROW_SEQ), fill: parquet_io::Fill::Int64(commit_seq) },
         ];
         let mut entries = Vec::with_capacity(parts.len());
+        let bloom = crate::available::bloom_columns(decl);
         for (i, staged) in parts.iter().enumerate() {
             let name = part_name(part_ordinal(i)?);
             let to = landing.node_dir.join(&name);
             written.push(to.clone());
-            parquet_io::copy_inserting_with_key(&stage_dir.join(staged), &to, &inserts, store.parquet_key())?;
+            parquet_io::copy_inserting_with_key(&stage_dir.join(staged), &to, &inserts, store.parquet_key(), &bloom)?;
             entries.push(PartEntry { name, key_version: store.sealing().key_version() });
         }
         create_manifest(store, &landing, decl, ctx, entries, position, commit_seq, precommit, commit_point, group_root, schema_diffs)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))

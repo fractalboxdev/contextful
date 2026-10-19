@@ -110,26 +110,23 @@ pub fn write_blooming(path: &Path, batch: &RecordBatch, bloom: &[String]) -> Res
         std::fs::create_dir_all(dir).at(dir)?;
     }
     let file = File::create(path).at(path)?;
-    let props = blooming(WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())), bloom).build();
+    let props = blooming(WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())), bloom, batch.num_rows()).build();
     let mut w = ArrowWriter::try_new(file, batch.schema(), Some(props)).map_err(pq)?;
     w.write(batch).map_err(pq)?;
     w.close().map_err(pq)?;
     Ok(())
 }
 
-/// Write one batch with Parquet modular encryption of every column and the footer.
+/// Write one batch with Parquet modular encryption of every column and the footer, and no
+/// bloom filter: Parquet stores a filter outside the encryption (`store.index.bloom-encrypted`).
 pub fn write_encrypted(path: &Path, batch: &RecordBatch, key: &[u8]) -> Result<()> {
-    write_encrypted_blooming(path, batch, key, &[])
-}
-
-/// [`write_encrypted`] with a bloom filter on each of `bloom`.
-pub fn write_encrypted_blooming(path: &Path, batch: &RecordBatch, key: &[u8], bloom: &[String]) -> Result<()> {
     let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).at(dir)?;
     }
     let encryption = FileEncryptionProperties::builder(key.to_vec()).build().map_err(pq)?;
-    let props = blooming(WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())), bloom)
+    let props = WriterProperties::builder()
+        .set_compression(Compression::ZSTD(ZstdLevel::default()))
         .with_file_encryption_properties(encryption)
         .build();
     let file = File::create(path).at(path)?;
@@ -144,18 +141,29 @@ pub fn write_with_key(path: &Path, batch: &RecordBatch, key: Option<&[u8]>) -> R
     write_with_key_blooming(path, batch, key, &[])
 }
 
-/// [`write_with_key`] with a bloom filter on each of `bloom` (`store.index.kinds`).
+/// [`write_with_key`] with a bloom filter on each of `bloom` where no key encrypts the part
+/// (`store.index.bloom-parts`, `store.index.bloom-encrypted`).
 pub fn write_with_key_blooming(path: &Path, batch: &RecordBatch, key: Option<&[u8]>, bloom: &[String]) -> Result<()> {
     match key {
-        Some(key) => write_encrypted_blooming(path, batch, key, bloom),
+        Some(key) => write_encrypted(path, batch, key),
         None => write_blooming(path, batch, bloom),
     }
 }
 
-/// Enable a bloom filter on each top-level column of `bloom`.
-fn blooming(mut props: parquet::file::properties::WriterPropertiesBuilder, bloom: &[String]) -> parquet::file::properties::WriterPropertiesBuilder {
+/// The false-positive rate a part's bloom filter is sized for: 100 fresh keys probing one
+/// part admit it by chance with a probability near 1e-3, so a landing probing 100 parts
+/// admits one by chance about once in 10 landings (`store.index.bloom-parts`).
+pub const BLOOM_FPP: f64 = 1e-5;
+
+/// Enable a bloom filter on each top-level column of `bloom`, sized for the `rows` the part
+/// holds at [`BLOOM_FPP`] (`store.index.bloom-parts`).
+fn blooming(mut props: parquet::file::properties::WriterPropertiesBuilder, bloom: &[String], rows: usize) -> parquet::file::properties::WriterPropertiesBuilder {
     for column in bloom {
-        props = props.set_column_bloom_filter_enabled(parquet::schema::types::ColumnPath::from(column.as_str()), true);
+        let path = parquet::schema::types::ColumnPath::from(column.as_str());
+        props = props
+            .set_column_bloom_filter_enabled(path.clone(), true)
+            .set_column_bloom_filter_fpp(path.clone(), BLOOM_FPP)
+            .set_column_bloom_filter_ndv(path, rows.max(1) as u64);
     }
     props
 }
@@ -213,7 +221,7 @@ pub fn read_bytes(bytes: Vec<u8>) -> Result<Vec<RecordBatch>> {
     reader.map(|batch| batch.map_err(|e| pq(e.to_string()))).collect()
 }
 
-fn builder_with_key(path: &Path, key: Option<&[u8]>) -> Result<ParquetRecordBatchReaderBuilder<File>> {
+pub(crate) fn builder_with_key(path: &Path, key: Option<&[u8]>) -> Result<ParquetRecordBatchReaderBuilder<File>> {
     let file = File::open(path).at(path)?;
     let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
     match key {
@@ -254,11 +262,13 @@ pub struct Insert<'a> {
 /// fill on every row. One record batch of `from` is in memory at a time; an existing `to`
 /// is replaced.
 pub fn copy_inserting(from: &Path, to: &Path, inserts: &[Insert<'_>]) -> Result<()> {
-    copy_inserting_with_key(from, to, inserts, None)
+    copy_inserting_with_key(from, to, inserts, None, &[])
 }
 
-/// Copy one store part while retaining its project's modular encryption.
-pub fn copy_inserting_with_key(from: &Path, to: &Path, inserts: &[Insert<'_>], key: Option<&[u8]>) -> Result<()> {
+/// Copy one store part while retaining its project's modular encryption, with a bloom
+/// filter on each of `bloom` where no key encrypts the part (`store.index.bloom-parts`,
+/// `store.index.bloom-encrypted`).
+pub fn copy_inserting_with_key(from: &Path, to: &Path, inserts: &[Insert<'_>], key: Option<&[u8]>, bloom: &[String]) -> Result<()> {
     let pq = |path: &Path, m: String| ContextError::Parquet { path: path.to_path_buf(), message: m };
     let builder = builder_with_key(from, key)?;
     let source = builder.schema().clone();
@@ -280,12 +290,14 @@ pub fn copy_inserting_with_key(from: &Path, to: &Path, inserts: &[Insert<'_>], k
         layout.insert(at + offset, (insert.field.clone(), Src::Inserted(k)));
     }
     let target = Arc::new(ArrowSchema::new_with_metadata(layout.iter().map(|(f, _)| f.clone()).collect::<Vec<_>>(), source.metadata().clone()));
+    let rows = usize::try_from(builder.metadata().file_metadata().num_rows()).unwrap_or(0);
     let reader = builder.build().map_err(|e| pq(from, e.to_string()))?;
     if to.exists() {
         std::fs::remove_file(to).at(to)?;
     }
     let out = File::create(to).at(to)?;
-    let mut props = WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default()));
+    let bloom = if key.is_some() { &[] } else { bloom };
+    let mut props = blooming(WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())), bloom, rows);
     if let Some(key) = key {
         let encryption = FileEncryptionProperties::builder(key.to_vec()).build().map_err(|e| pq(to, e.to_string()))?;
         props = props.with_file_encryption_properties(encryption);

@@ -697,61 +697,70 @@ method = { test = "contextful_fs::create::racing_creates_land_exactly_one" }
 target = { op = "==", value = 1 }
 
 [entry.vintage-append-day-scan]
-clause = "store.available-time.vintage-hash"
+clause = "store.available-time.vintage-scope"
 metric = "vintage.rows_scanned.append_day"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::vintage_cost::a_one_day_append_reads_no_stored_vintage" }
-target = { op = "<=", value = 10000 }
+target = { op = "==", value = 0 }
 seed   = 0x5eed_7101
 
 [entry.vintage-restate-day-scan]
-clause = "store.available-time.vintage-hash"
+clause = "store.available-time.vintage-scope"
 metric = "vintage.rows_scanned.restate_day"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::vintage_cost::a_one_day_restatement_reads_only_that_days_vintages" }
-target = { op = "<=", value = 10000 }
+target = { op = "<=", value = 100 }
 seed   = 0x5eed_7101
 
 [entry.vintage-backfill-scan]
-clause = "store.available-time.vintage-hash"
+clause = "store.available-time.vintage-scope"
 metric = "vintage.rows_scanned.backfill_100_days"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_context::vintage_cost::a_daily_backfill_scans_linearly_in_its_rows" }
-target = { op = "<=", value = 495000 }
+method = { test = "contextful_context::vintage_cost::a_daily_backfill_reads_no_stored_vintage" }
+target = { op = "==", value = 0 }
 seed   = 0x5eed_7101
 
 [entry.vintage-random-key-scan]
-clause = "store.available-time.vintage-hash"
+clause = "store.available-time.vintage-scope"
 metric = "vintage.rows_scanned.fresh_random_keys"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::vintage_cost::a_fresh_filing_id_reads_no_stored_vintage" }
-target = { op = "<=", value = 10000 }
+target = { op = "==", value = 0 }
 seed   = 0x5eed_7106
 
 [entry.vintage-after-fold-scan]
-clause = "store.available-time.vintage-hash"
+clause = "store.available-time.vintage-scope"
 metric = "vintage.rows_scanned.append_after_fold"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::vintage_cost::an_append_after_a_fold_reads_no_stored_vintage" }
-target = { op = "<=", value = 10000 }
+target = { op = "==", value = 0 }
 seed   = 0x5eed_7107
 
 [entry.vintage-concurrent-scan]
-clause = "store.available-time.vintage-hash"
+clause = "store.available-time.vintage-scope"
 metric = "vintage.rows_scanned.concurrent_w8"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_context::vintage_cost::eight_writers_landing_new_keys_scan_no_history" }
-target = { op = "<=", value = 1990000 }
+target = { op = "==", value = 0 }
 seed   = 0x5eed_7108
 
+[entry.vintage-interleaved-scan]
+clause = "store.available-time.vintage-scope"
+metric = "vintage.rows_scanned.interleaved_w8"
+kind   = "test"
+tier   = "gate"
+method = { test = "contextful_context::vintage_cost::eight_writers_landing_interleaved_keys_scan_no_history" }
+target = { op = "<=", value = 1000 }
+seed   = 0x5eed_7109
+
 [entry.vintage-commit-latency-p50]
-clause = "store.available-time.vintage-hash"
+clause = "store.available-time.vintage-scope"
 metric = "vintage.commit_20k.latency_ms.p50"
 kind   = "test"
 tier   = "trend"
@@ -760,7 +769,7 @@ method = { test = "contextful_context::vintage_cost::vintage_commit_latency_at_t
 seed   = 0x5eed_7104
 
 [entry.vintage-commit-latency-p95]
-clause = "store.available-time.vintage-hash"
+clause = "store.available-time.vintage-scope"
 metric = "vintage.commit_20k.latency_ms.p95"
 kind   = "test"
 tier   = "trend"
@@ -769,7 +778,7 @@ method = { test = "contextful_context::vintage_cost::vintage_commit_latency_at_t
 seed   = 0x5eed_7104
 
 [entry.vintage-commit-memory]
-clause = "store.available-time.vintage-hash"
+clause = "store.available-time.vintage-scope"
 metric = "vintage.one_day_commit_1m.peak_rss"
 kind   = "test"
 tier   = "scheduled"

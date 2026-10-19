@@ -96,6 +96,61 @@ fn a_snapshot_carries_each_of_the_five_index_kinds() {
     assert!(dir.join(m.indexes[1].path().unwrap()).join(POSTINGS_FILE).is_file());
 }
 
+/// A column a table names in `bloom_filter` carries a bloom filter in every part a run or a
+/// fold writes, sized for that part's rows; an unnamed column carries none.
+// spec: store.index.bloom-parts@7d914097
+#[test]
+fn every_part_a_run_or_fold_writes_carries_the_declared_bloom_filter() {
+    use parquet::file::reader::{FileReader, SerializedFileReader};
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"\nprimary_key = [\"doc_id\"]\nbloom_filter = [\"doc_id\"]");
+    let filters = |f: &Fixture| -> Vec<(Option<i32>, Option<i32>)> {
+        f.scan(&d, Bounds::default()).unwrap().files.iter().flat_map(|file| {
+            let reader = SerializedFileReader::new(std::fs::File::open(f.store.root().join(file)).unwrap()).unwrap();
+            let meta = reader.metadata().clone();
+            let column = |name: &str| meta.file_metadata().schema_descr().columns().iter().position(|c| c.name() == name).unwrap();
+            let (key, title) = (column("doc_id"), column("title"));
+            meta.row_groups().iter().map(|g| (g.column(key).bloom_filter_length(), g.column(title).bloom_filter_offset().map(|_| 0))).collect::<Vec<_>>()
+        }).collect()
+    };
+    f.land(&d, "run-1", json!([{"doc_id": "a1", "title": "x"}, {"doc_id": "b2", "title": "y"}]), "2030-01-01T00:00:00Z").unwrap();
+    f.land(&d, "run-2", json!([{"doc_id": "c3", "title": "z"}]), "2030-01-02T00:00:00Z").unwrap();
+    let landed = filters(&f);
+    assert_eq!(landed.len(), 2, "one row group per run part");
+    for (key, title) in &landed {
+        assert!(key.is_some_and(|bytes| bytes <= 1024), "a run part's key filter is sized for its rows: {key:?}");
+        assert_eq!(*title, None, "an unnamed column carries no filter");
+    }
+    fold(&f.store, &d, at("2030-01-03T00:00:00Z")).unwrap();
+    let folded = filters(&f);
+    assert_eq!(folded.len(), 1, "one snapshot row group");
+    assert!(folded[0].0.is_some_and(|bytes| bytes <= 1024), "the snapshot's key filter is sized for its rows: {:?}", folded[0].0);
+}
+
+/// A vintage table naming no `bloom_filter` carries a bloom filter on its key in every part
+/// a run or a fold writes; its other columns carry none.
+// spec: store.index.bloom-vintage-key@f87e1a83
+#[test]
+fn a_vintage_table_carries_a_key_bloom_filter_it_never_declared() {
+    use parquet::file::reader::{FileReader, SerializedFileReader};
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"\nprimary_key = [\"doc_id\"]\ncontent_hash_column = \"digest\"\n[pipeline.tables.available_time]\ncolumn = \"filed_at\"");
+    let filters = |f: &Fixture| -> Vec<(bool, bool)> {
+        f.scan(&d, Bounds::default()).unwrap().files.iter().flat_map(|file| {
+            let reader = SerializedFileReader::new(std::fs::File::open(f.store.root().join(file)).unwrap()).unwrap();
+            let meta = reader.metadata().clone();
+            let column = |name: &str| meta.file_metadata().schema_descr().columns().iter().position(|c| c.name() == name).unwrap();
+            let (key, digest) = (column("doc_id"), column("digest"));
+            meta.row_groups().iter().map(|g| (g.column(key).bloom_filter_offset().is_some(), g.column(digest).bloom_filter_offset().is_some())).collect::<Vec<_>>()
+        }).collect()
+    };
+    f.land(&d, "run-1", json!([{"doc_id": "a1", "digest": "x", "filed_at": "2030-01-01T00:00:00Z"}]), "2030-01-01T01:00:00Z").unwrap();
+    f.land(&d, "run-2", json!([{"doc_id": "b2", "digest": "y", "filed_at": "2030-01-02T00:00:00Z"}]), "2030-01-02T01:00:00Z").unwrap();
+    assert_eq!(filters(&f), [(true, false), (true, false)], "each run part filters its key alone");
+    fold(&f.store, &d, at("2030-01-03T00:00:00Z")).unwrap();
+    assert_eq!(filters(&f), [(true, false)], "the snapshot filters its key alone");
+}
+
 /// A multi-tenant table carries the tenant identifier as its outermost partition column.
 // spec: store.index.tenant-outermost@13d7e0b2
 #[test]
