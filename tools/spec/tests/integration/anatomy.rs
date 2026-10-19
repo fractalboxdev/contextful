@@ -49,7 +49,10 @@ fn prose_tables_and_diagrams_after_the_list_state_no_obligation() {
         "fold",
         "A pass reads every run since the last one.\n\n| Trigger | Fires |\n| --- | --- |\n| runs | a pass |\n\n```mermaid\nflowchart LR\n  R[\"run\"] -->|\"folds into\"| S[(\"snapshot store\")]\n```\n",
     );
-    assert!(codes(&s.lint("anatomy"), "SpecAnatomy").is_empty(), "{:?}", s.lint("anatomy"));
+    // The inserted block counts toward the file bound, which `corpus.anatomy` owns separately.
+    let lines = s.read(STORE).lines().count();
+    let bound: Vec<String> = if lines > 900 { vec![format!("{lines} lines exceed 900")] } else { vec![] };
+    assert_eq!(codes(&s.lint("anatomy"), "SpecAnatomy"), bound, "{:?}", s.lint("anatomy"));
     assert!(s.cmd(&["extract"]).status.success());
     assert_eq!(s.clauses_of("store.fold"), before);
 }
