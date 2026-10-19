@@ -12,6 +12,9 @@ const LINUX_X86: &str = "x86_64-unknown-linux-musl";
 fn ci(args: &[&str], bin: Option<&Path>) -> Output {
     let mut c = Command::new(env!("CARGO_BIN_EXE_contextful-ci"));
     c.args(args).current_dir(repo_root());
+    for key in crate::verdict::D1_KEYS {
+        c.env_remove(key);
+    }
     if let Some(bin) = bin {
         c.env("PATH", format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default()));
     }
@@ -162,7 +165,7 @@ fn release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evid
     assert_eq!(d1_report["source_commit"], report["source_commit"]);
     assert_eq!(d1_report["suite_revision"], report["suite_revision"]);
     assert_eq!(d1_report["storage_profile"], "cloudflare-d1");
-    assert_eq!(d1_report["binding_origin"], "unverified");
+    assert_eq!(d1_report["binding_origin"], "absent");
     assert_eq!(d1_report["compatible"], false);
     let d1_cases = d1_report["scenarios"].as_array().unwrap();
     assert!(!d1_cases.is_empty());
@@ -246,7 +249,7 @@ fn formula_uses_metadata_without_local_release_archives() {
         let (profile, target) = line.split_once(' ').unwrap();
         let short = profile.strip_prefix("contextful-").unwrap();
         let stem = format!("contextful-{short}-{}-{target}", version());
-        serde_json::json!({"profile": profile, "target": target, "archive": format!("{stem}.tar.gz"), "sha256": "a".repeat(64), "sbom": format!("{stem}.cdx.json")})
+        serde_json::json!({"profile": profile, "target": target, "archive": format!("{stem}.tar.gz"), "sha256": "a".repeat(64), "sbom": format!("{stem}.cdx.json"), "compatibility": {"compatible": false, "scenarios": []}})
     }).collect();
     std::fs::write(&manifest, serde_json::to_vec(&cells).unwrap()).unwrap();
     let run = ci(&["formula", "--manifest", manifest.to_str().unwrap(), "--dist", dist.path().to_str().unwrap(), "--base-url", "https://example.com/v"], None);

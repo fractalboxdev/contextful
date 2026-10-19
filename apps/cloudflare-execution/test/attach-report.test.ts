@@ -43,7 +43,9 @@ test("a provider pass enters the archive and companion release evidence", () => 
         source_commit: baseline.source_commit,
         suite_revision: baseline.suite_revision,
         storage_profile: "cloudflare-d1",
+        binding_origin: "absent",
         compatible: false,
+        scenarios: baseline.scenarios,
       },
     }));
     const provider = { ...baseline, binding_origin: "cloudflare-worker", compatible: true,
@@ -52,7 +54,10 @@ test("a provider pass enters the archive and companion release evidence", () => 
     writeFileSync(providerPath, JSON.stringify(provider));
     const output = join(root, "attached");
     attachConformanceReport(metadataPath, providerPath, output);
-    assert.equal(JSON.parse(readFileSync(join(output, `${stem}.release.json`), "utf8")).d1_compatibility.compatible, true);
+    const attached = JSON.parse(readFileSync(join(output, `${stem}.release.json`), "utf8")).d1_compatibility;
+    assert.equal(attached.compatible, true);
+    assert.equal(attached.binding_origin, "cloudflare-worker");
+    assert.deepEqual(attached.scenarios, provider.scenarios);
     assert.equal(JSON.parse(readFileSync(join(output, `${stem}.cloudflare-d1.compatibility.json`), "utf8")).binding_origin, "cloudflare-worker");
     const embedded = execFileSync("tar", ["-xOzf", join(output, archive), `${stem}/cloudflare-d1.compatibility.json`]);
     assert.equal(JSON.parse(embedded.toString()).compatible, true);

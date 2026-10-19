@@ -212,7 +212,9 @@ fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Pat
             "source_commit":evidence["source_commit"],
             "suite_revision":evidence["suite_revision"],
             "storage_profile":evidence["storage_profile"],
+            "binding_origin":evidence["binding_origin"],
             "compatible":evidence["compatible"],
+            "scenarios":evidence["scenarios"],
         }))
     } else { None };
     let archive = format!("{stem}.tar.gz");
@@ -235,7 +237,7 @@ fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Pat
         "archive": archive,
         "sha256": digest,
         "sbom": format!("{stem}.cdx.json"),
-        "compatibility": {"report":format!("{stem}.compatibility.json"), "artifact_digest":report["artifact_digest"], "scenarios":report["scenarios"], "suite_sbom":suite_sbom_name},
+        "compatibility": {"report":format!("{stem}.compatibility.json"), "artifact_digest":report["artifact_digest"], "compatible":report["compatible"], "scenarios":report["scenarios"], "suite_sbom":suite_sbom_name},
     });
     if let Some(d1_report) = d1_report { metadata["d1_compatibility"] = d1_report; }
     std::fs::write(out.join(format!("{stem}.release.json")), serde_json::to_string_pretty(&metadata)? + "\n")?;
@@ -243,7 +245,13 @@ fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Pat
     Ok(())
 }
 
-/// Every archive carries evidence; a foreign target has explicit skips and no execution pass.
+/// The exit `contextful-conformance` takes after writing a report whose verdict fails
+/// (`assurance.consumer.verdict-exit`).
+const VERDICT_EXIT: i32 = 1;
+
+/// Every archive carries evidence; a foreign target has explicit skips and no execution pass,
+/// and a `cloudflare-d1` pass without a D1 binding declares the binding absent
+/// (`assurance.consumer.d1-absent`).
 fn compatibility(root: &Path, profile: &str, target: &str, binary: &Path, suite: &Path, output: &Path, storage_profile: &str) -> Result<serde_json::Value> {
     let artifact_digest = hex(&Sha256::digest(std::fs::read(binary)?));
     let worker_binding = storage_profile == "cloudflare-d1" &&
@@ -252,7 +260,8 @@ fn compatibility(root: &Path, profile: &str, target: &str, binary: &Path, suite:
             endpoint.strip_prefix("https://").and_then(|rest| rest.split('/').next())
                 .is_some_and(|host| host.len() > ".r2.cloudflarestorage.com".len() && host.ends_with(".r2.cloudflarestorage.com"))
         });
-    let binding_origin = if worker_binding { "cloudflare-worker" } else { "unverified" };
+    let unbound = storage_profile == "cloudflare-d1" && std::env::var_os("CONTEXTFUL_CONFORMANCE_D1_ENDPOINT").is_none();
+    let binding_origin = if worker_binding { "cloudflare-worker" } else if unbound { "absent" } else { "unverified" };
     let source = Command::new("git").args(["rev-parse", "HEAD"]).current_dir(root).output().context("reading release source revision")?;
     if !source.status.success() { bail!("ConformanceSourceRevisionUnavailable") }
     let source_commit = String::from_utf8(source.stdout).context("decoding source revision")?.trim().to_owned();
@@ -262,8 +271,11 @@ fn compatibility(root: &Path, profile: &str, target: &str, binary: &Path, suite:
     let source_dirty = !dirty.stdout.is_empty();
     let registry: serde_json::Value = serde_json::from_str(include_str!("../../../crates/acceptance/src/conformance/manifest.json"))?;
     let native = host_target().is_ok_and(|host| host == target);
-    let mut failure = if native { "ConformanceSuiteUnavailable" } else { "ConformanceTargetNotExecutable" };
-    if native {
+    let d1_absent = native && unbound;
+    let executes = native && !d1_absent;
+    let mut exit_code = None;
+    let mut failure = if !native { "ConformanceTargetNotExecutable" } else if d1_absent { "ConformanceBindingAbsent" } else { "ConformanceSuiteUnavailable" };
+    if executes {
         if output.exists() { std::fs::remove_file(output).context("removing prior compatibility evidence")?; }
         let mut command = Command::new(suite);
         command.arg("--binary").arg(binary).arg("--output").arg(output)
@@ -279,9 +291,15 @@ fn compatibility(root: &Path, profile: &str, target: &str, binary: &Path, suite:
         }
         let executed = command.status();
         if let Ok(status) = executed {
+            exit_code = Some(status.code());
             if output.exists() {
                 let mut report: serde_json::Value = serde_json::from_slice(&std::fs::read(output)?)?;
                 if report["artifact_digest"] != artifact_digest || report["suite_revision"] != registry["suite_revision"] { bail!("ConformanceReleaseEvidenceMismatch"); }
+                let reported = report["scenarios"].as_array().context("suite report scenarios")?;
+                // mirrors: assurance.consumer.verdict
+                let verdict_fails = !reported.iter().any(|s| s["required"] == true) ||
+                    reported.iter().any(|s| s["required"] == true && s["outcome"] != "passed") ||
+                    reported.iter().any(|s| s["outcome"] == "failed");
                 report["source_commit"] = serde_json::json!(source_commit);
                 report["source_dirty"] = serde_json::json!(source_dirty);
                 report["storage_profile"] = serde_json::json!(storage_profile);
@@ -293,7 +311,7 @@ fn compatibility(root: &Path, profile: &str, target: &str, binary: &Path, suite:
                         "diagnostic":"ConformanceSourceTreeDirty",
                     }));
                 }
-                if !status.success() {
+                if !status.success() && !(status.code() == Some(VERDICT_EXIT) && verdict_fails) {
                     report["scenarios"].as_array_mut().context("suite report scenarios")?.push(serde_json::json!({
                         "id":"suite-exit", "required":true, "outcome":"failed", "requirement":"consumer-suite",
                         "diagnostic":"ConformanceSuiteProcessFailed", "exit_code":status.code(),
@@ -310,10 +328,16 @@ fn compatibility(root: &Path, profile: &str, target: &str, binary: &Path, suite:
         }
         failure = "ConformanceSuiteUnavailable";
     }
-    let scenarios: Vec<_> = registry["scenarios"].as_array().context("suite registry scenarios")?.iter().map(|scenario| serde_json::json!({
-        "id":scenario["id"], "required":true, "outcome":if native { "failed" } else { "skipped" },
+    let mut scenarios: Vec<_> = registry["scenarios"].as_array().context("suite registry scenarios")?.iter().map(|scenario| serde_json::json!({
+        "id":scenario["id"], "required":true, "outcome":if executes { "failed" } else { "skipped" },
         "requirement":scenario["requirement"], "diagnostic":failure,
     })).collect();
+    if let Some(code) = exit_code {
+        scenarios.push(serde_json::json!({
+            "id":"suite-exit", "required":true, "outcome":"failed", "requirement":"consumer-suite",
+            "diagnostic":"ConformanceSuiteProcessFailed", "exit_code":code,
+        }));
+    }
     Ok(serde_json::json!({
         "schema_version":1, "suite_revision":registry["suite_revision"], "suite_version":env!("CARGO_PKG_VERSION"),
         "artifact_digest":artifact_digest, "reported_version":null, "feature_profile":null,
@@ -515,11 +539,13 @@ fn digests(dist: &Path, manifest: Option<&Path>, version: &str) -> Result<BTreeM
     Ok(found)
 }
 
-/// Write `Formula/<profile>.rb`, the bare full-profile formula, and `SHA256SUMS`.
+/// Write `Formula/<profile>.rb`, the bare full-profile formula, `SHA256SUMS` and the release
+/// notes; a cell carrying no verdict refuses the step before any file is written.
 /// A manifest supplies the ten cell digests without downloading release archives.
 pub fn formulae(root: &Path, dist: &Path, manifest: Option<&Path>, base_url: &str) -> Result<Vec<PathBuf>> {
     let version = version(root)?;
     let digests = digests(dist, manifest, &version)?;
+    let notes = notes(&cell_metadata(dist, manifest, &version)?)?;
     let dir = dist.join("Formula");
     std::fs::create_dir_all(&dir)?;
     let mut written = Vec::new();
@@ -541,7 +567,81 @@ pub fn formulae(root: &Path, dist: &Path, manifest: Option<&Path>, base_url: &st
         sums.push_str(&format!("{digest}  {archive}\n"));
     }
     std::fs::write(dist.join("SHA256SUMS"), sums)?;
+    std::fs::write(dist.join(NOTES), notes)?;
     Ok(written)
+}
+
+/// The release notes `contextful-ci formula` writes beside `SHA256SUMS`
+/// (`assurance.consumer.release-notes`).
+const NOTES: &str = "release-notes.md";
+
+/// Every matrix cell's release metadata, in matrix order: from the manifest when one is
+/// supplied, otherwise from each `<stem>.release.json` in `dist`.
+fn cell_metadata(dist: &Path, manifest: Option<&Path>, version: &str) -> Result<Vec<serde_json::Value>> {
+    let listed: Vec<serde_json::Value> = match manifest {
+        Some(path) => serde_json::from_str(&std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?)
+            .context("parsing release manifest")?,
+        None => Vec::new(),
+    };
+    let mut out = Vec::new();
+    for (profile, targets) in matrix() {
+        for target in targets {
+            let cell = match manifest {
+                Some(_) => listed.iter().find(|c| c["profile"] == profile && c["target"] == target).cloned()
+                    .with_context(|| format!("release manifest omits {profile} {target}"))?,
+                None => {
+                    let path = dist.join(format!("{}.release.json", stem(profile, version, target)));
+                    serde_json::from_str(&std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?)
+                        .with_context(|| format!("parsing {}", path.display()))?
+                }
+            };
+            out.push(cell);
+        }
+    }
+    Ok(out)
+}
+
+/// One report's verdict as the notes state it: `compatible`, or the outcomes that withheld it.
+fn verdict(report: &serde_json::Value, cell: &str) -> Result<String> {
+    let compatible = report["compatible"].as_bool().with_context(|| format!("release metadata for {cell} carries no compatibility verdict"))?;
+    if compatible {
+        return Ok("compatible".into());
+    }
+    let scenarios = report["scenarios"].as_array().map(Vec::as_slice).unwrap_or_default();
+    if !scenarios.is_empty() && scenarios.iter().all(|s| s["outcome"] == "skipped") {
+        let diagnostic = scenarios[0]["diagnostic"].as_str().unwrap_or("no diagnostic");
+        return Ok(format!("not executed: `{diagnostic}`"));
+    }
+    let counts: Vec<String> = ["failed", "unsupported", "skipped"].iter().filter_map(|outcome| {
+        let n = scenarios.iter().filter(|s| s["outcome"] == *outcome).count();
+        (n > 0).then(|| format!("{n} {outcome}"))
+    }).collect();
+    Ok(if counts.is_empty() { "incompatible".into() } else { format!("incompatible: {}", counts.join(", ")) })
+}
+
+/// A table of every cell's local and `cloudflare-d1` verdict. A failing verdict ships with its
+/// outcomes; the notes state it rather than withhold the cell.
+fn notes(cells: &[serde_json::Value]) -> Result<String> {
+    let mut out = String::from(
+        "## Consumer compatibility\n\nEach archive carries `contextful-conformance` and its `compatibility.json`. A cell is compatible only when every required scenario executed and passed; any other verdict ships with every outcome preserved. A `cloudflare-d1` verdict without a D1 binding at release comes from the deployment run.\n\n| Profile | Target | Local | `cloudflare-d1` |\n| --- | --- | --- | --- |\n",
+    );
+    for cell in cells {
+        let profile = cell["profile"].as_str().context("release cell has no profile")?;
+        let target = cell["target"].as_str().context("release cell has no target")?;
+        let name = format!("{profile} {target}");
+        let local = verdict(&cell["compatibility"], &name)?;
+        let d1 = match cell.get("d1_compatibility") {
+            None => "—".to_string(),
+            Some(d1) if d1["compatible"] != true && d1["binding_origin"] == "absent" &&
+                d1["scenarios"].as_array().is_some_and(|s| s.iter().all(|s| s["diagnostic"] == "ConformanceBindingAbsent")) => {
+                d1["compatible"].as_bool().with_context(|| format!("release metadata for {name} carries no cloudflare-d1 verdict"))?;
+                "absent: no D1 binding at release".to_string()
+            }
+            Some(d1) => verdict(d1, &name)?,
+        };
+        out.push_str(&format!("| `{profile}` | `{target}` | {local} | {d1} |\n"));
+    }
+    Ok(out)
 }
 
 /// The target no profile ships for, which the scheduled probe builds the edge profile for

@@ -31142,6 +31142,20 @@
       ]
     },
     {
+      "id": "assurance.consumer.verdict-exit",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "verdict-exit",
+      "kind": "behavior",
+      "statement": "`contextful-conformance` exits 1 after writing a failing verdict and 2 without a report; release packaging records a failed `suite-exit` scenario for any other exit, or for exit 1 over a passing report.",
+      "why": "because the suite's own failing verdict is evidence, not a crashed process",
+      "file": "spec/82-consumer.md",
+      "line": 21,
+      "scenarios": [
+        "WHEN the suite exits 1 over a report whose required scenarios are `unsupported`, THEN the release report holds those scenarios and no `suite-exit` failure."
+      ]
+    },
+    {
       "id": "assurance.consumer.scenarios",
       "contract": "assurance",
       "operation": "consumer",
@@ -31150,7 +31164,7 @@
       "statement": "The suite exercises pagination and checkpoints, applied scheduling and dependencies, graceful restart, hard-crash replay, empty and replacement captures, public identifiers, credential masking, typed export acknowledgement and receiver visibility.",
       "why": "",
       "file": "spec/82-consumer.md",
-      "line": 21
+      "line": 23
     },
     {
       "id": "assurance.consumer.mutation-controls",
@@ -31161,7 +31175,7 @@
       "statement": "Planted cursor skips, duplicate public identities, repeated in-window scheduling and acknowledgement before receiver commit each fail their owning scenario.",
       "why": "because a scenario that accepts its motivating defect proves no compatibility",
       "file": "spec/82-consumer.md",
-      "line": 22,
+      "line": 24,
       "scenarios": [
         "WHEN a native source advances past an unserved page, THEN the pagination scenario fails."
       ]
@@ -31175,7 +31189,7 @@
       "statement": "Evidence records the suite revision and version, supplied binary SHA-256 digest, reported version, feature profile, storage profile and every scenario outcome, requirement and diagnostic.",
       "why": "",
       "file": "spec/82-consumer.md",
-      "line": 24
+      "line": 26
     },
     {
       "id": "assurance.consumer.command-diagnostic",
@@ -31186,7 +31200,7 @@
       "statement": "A failed or timed-out artifact command's diagnostic, a scenario step's included, names its verb and the first error identifier its stderr carries; no other stderr text enters the report.",
       "why": "because a provider failure must name its cause while stderr may carry binding credentials",
       "file": "spec/82-consumer.md",
-      "line": 25,
+      "line": 27,
       "scenarios": [
         "WHEN a command fails with a credential in its stderr, THEN the diagnostic names the verb and error identifier, and the report omits the credential."
       ]
@@ -31200,7 +31214,7 @@
       "statement": "Unknown source correspondence remains null; a reported version or successful scenario never supplies a source commit.",
       "why": "because source correspondence requires evidence beyond behavior and a version string",
       "file": "spec/82-consumer.md",
-      "line": 27,
+      "line": 29,
       "scenarios": [
         "WHEN a binary reports a version without source evidence, THEN source correspondence remains null."
       ]
@@ -31214,7 +31228,7 @@
       "statement": "The suite verifies the supplied artifact's digest before and after execution; changed bytes refuse a compatibility verdict.",
       "why": "",
       "file": "spec/82-consumer.md",
-      "line": 29
+      "line": 31
     },
     {
       "id": "assurance.consumer.release-distribution",
@@ -31222,10 +31236,21 @@
       "operation": "consumer",
       "subject": "release-distribution",
       "kind": "behavior",
-      "statement": "Each release archive carries the matching-target suite and compatibility report; release metadata names the report and binary digest, preserving failed and skipped outcomes.",
-      "why": "A-assurance",
+      "statement": "Each release archive carries the matching-target suite and compatibility report whatever its verdict; release metadata names the report, binary digest and verdict, preserving failed and skipped outcomes.",
+      "why": "because a profile lacking a scenario's capability never passes, and refusing its cell withholds the evidence stating so",
       "file": "spec/82-consumer.md",
-      "line": 30
+      "line": 32
+    },
+    {
+      "id": "assurance.consumer.release-notes",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "release-notes",
+      "kind": "behavior",
+      "statement": "`contextful-ci formula` writes `release-notes.md` stating every cell's local and `cloudflare-d1` verdict, and fails on a cell carrying none; FlareDispatch publishes it as the release body.",
+      "why": "because a failing verdict ships, so the release page states it beside the archives",
+      "file": "spec/82-consumer.md",
+      "line": 34
     },
     {
       "id": "assurance.consumer.foreign-target",
@@ -31236,7 +31261,7 @@
       "statement": "A release target unavailable to its packaging host records explicit skipped scenarios with a target diagnostic; its report supplies no execution pass.",
       "why": "because a cross compilation cannot demonstrate the produced artifact's behavior",
       "file": "spec/82-consumer.md",
-      "line": 32
+      "line": 36
     },
     {
       "id": "assurance.consumer.storage-profile",
@@ -31247,7 +31272,7 @@
       "statement": "The local profile uses isolated filesystem state; `postgres` uses synthetic PostgreSQL and signed S3 services. An unavailable fixture records its named requirement through {{assurance.consumer.requirements}}.",
       "why": "",
       "file": "spec/82-consumer.md",
-      "line": 34
+      "line": 38
     },
     {
       "id": "assurance.consumer.d1-profile",
@@ -31258,7 +31283,7 @@
       "statement": "A `cloudflare-d1` verdict runs the supplied `contextful-full` artifact against D1 and R2 bindings, replaces its local disk, and records every required outcome independently of the local and PostgreSQL profiles.",
       "why": "A-assurance",
       "file": "spec/82-consumer.md",
-      "line": 35
+      "line": 39
     },
     {
       "id": "assurance.consumer.d1-admission",
@@ -31269,7 +31294,7 @@
       "statement": "A `cloudflare-d1` suite holds a lease row in the bound D1 from before its first reset until it ends, lapsing 120 s after its last renewal; a suite meeting a live lease refuses each required scenario with `ConformanceAlreadyRunning`.",
       "why": "because a process check inside one container misses a suite another container runs against the same database",
       "file": "spec/82-consumer.md",
-      "line": 37
+      "line": 41
     },
     {
       "id": "assurance.consumer.d1-release",
@@ -31280,7 +31305,21 @@
       "statement": "Release evidence binds a `cloudflare-d1` report to the artifact digest, source revision, suite revision and storage profile; a required failure, unsupported case, skip or unverified binding supplies no compatibility verdict.",
       "why": "A-assurance",
       "file": "spec/82-consumer.md",
-      "line": 39
+      "line": 43
+    },
+    {
+      "id": "assurance.consumer.d1-absent",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "d1-absent",
+      "kind": "refusal",
+      "statement": "A native `contextful-full` release cell without `CONTEXTFUL_CONFORMANCE_D1_ENDPOINT` runs no `cloudflare-d1` pass; its report records binding origin `absent` and every required scenario skipped with `ConformanceBindingAbsent`.",
+      "why": "because a release container holds no D1 binding, and the deployment run against D1 and R2 supplies that verdict",
+      "file": "spec/82-consumer.md",
+      "line": 45,
+      "scenarios": [
+        "WHEN a native full cell packages without a D1 endpoint, THEN the suite runs once, for `local`."
+      ]
     },
     {
       "id": "assurance.consumer.d1-deployment",
@@ -31291,7 +31330,7 @@
       "statement": "Deployment readiness requires a replacement run against Cloudflare D1 and R2, with the same artifact digest and source revision as its release report.",
       "why": "A-assurance",
       "file": "spec/82-consumer.md",
-      "line": 41
+      "line": 47
     }
   ],
   "owns": {
@@ -34939,6 +34978,10 @@
           "ConformanceAlreadyRunning": {
             "clause": "assurance.consumer.d1-admission",
             "gloss": "Another suite holds a live admission lease on the bound D1 database."
+          },
+          "ConformanceBindingAbsent": {
+            "clause": "assurance.consumer.d1-absent",
+            "gloss": "A native full release cell holds no D1 binding, so its cloudflare-d1 pass does not run."
           },
           "CounterexampleDiscarded": {
             "clause": "assurance.differential-test.discarded-counterexample",
