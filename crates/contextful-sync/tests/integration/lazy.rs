@@ -95,6 +95,123 @@ fn past_the_part_cache_bound_the_least_recently_read_part_leaves() {
     assert_eq!(local_parts(&cold).len(), 1, "once the read returns, the bound holds one part");
 }
 
+/// A failed acquisition keeps every completed download subject to cache eviction.
+// spec: store.pull.part-accounting@6f2d3781
+#[test]
+fn a_refused_lazy_fetch_keeps_successful_parts_accounted() {
+    use contextful_core::store::object::PartSource;
+    use contextful_sync::lazy::LazyParts;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let writer = pushed(b.clone(), 2);
+    let cold = lazy(b.clone(), Some(1));
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let files: Vec<String> = local_parts(&writer).iter().map(|p| p.strip_prefix(writer.root()).unwrap().to_string_lossy().into_owned()).collect();
+    assert_eq!(files.len(), 2);
+    b.delete(&format!("team/research/{}", files[1])).unwrap();
+    let source = LazyParts::new(b, "team", "research", &cold.root(), 1, 1);
+    let error = source.hold(&files).unwrap_err().to_string();
+    assert!(error.starts_with("SyncPartCollected"), "{error}");
+    assert_eq!(local_parts(&cold).len(), 0);
+}
+
+/// An unindexed fetched part counts toward the cache bound after a reopen.
+#[test]
+fn a_reopened_lazy_cache_accounts_for_an_unindexed_part() {
+    use contextful_core::store::object::PartSource;
+    use contextful_sync::lazy::LazyParts;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let writer = pushed(b.clone(), 1);
+    let own = LazyParts::new(b.clone(), "team", "research", &writer.root(), 1, 1);
+    drop(own.hold(&[]).unwrap());
+    assert_eq!(local_parts(&writer).len(), 1);
+    let cold = lazy(b.clone(), None);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let file = local_parts(&writer)[0].strip_prefix(writer.root()).unwrap().to_string_lossy().into_owned();
+    let source = LazyParts::new(b.clone(), "team", "research", &cold.root(), u64::MAX, 1);
+    drop(source.hold(&[file]).unwrap());
+    assert_eq!(local_parts(&cold).len(), 1);
+    drop(source);
+    let index = cold._dir.path().join(".contextful/sync/research/part-cache.json");
+    std::fs::remove_file(index).unwrap();
+    let receipts = cold._dir.path().join(".contextful/sync/research/fetched-parts");
+    if receipts.exists() {
+        std::fs::remove_dir_all(receipts).unwrap();
+    }
+    cold.land("local-run", json!([{ "id": 2, "title": "local" }]), NOW);
+    assert_eq!(local_parts(&cold).len(), 2);
+
+    let reopened = LazyParts::new(b, "team", "research", &cold.root(), 1, 1);
+    drop(reopened.hold(&[]).unwrap());
+    let remaining = local_parts(&cold);
+    assert_eq!(remaining.len(), 1);
+    assert!(remaining[0].to_string_lossy().contains("local-run"));
+}
+
+/// A download receipt recovers an unindexed part without the bucket manifest.
+#[test]
+fn a_reopened_lazy_cache_uses_download_receipts_without_the_bucket_manifest() {
+    use contextful_core::store::object::PartSource;
+    use contextful_sync::lazy::LazyParts;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let writer = pushed(b.clone(), 1);
+    let cold = lazy(b.clone(), None);
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let file = local_parts(&writer)[0].strip_prefix(writer.root()).unwrap().to_string_lossy().into_owned();
+    let source = LazyParts::new(b.clone(), "team", "research", &cold.root(), u64::MAX, 1);
+    drop(source.hold(&[file]).unwrap());
+    assert_eq!(local_parts(&cold).len(), 1);
+    drop(source);
+    std::fs::remove_file(cold._dir.path().join(".contextful/sync/research/part-cache.json")).unwrap();
+    b.delete("team/manifest.json").unwrap();
+
+    let reopened = LazyParts::new(b, "team", "research", &cold.root(), 1, 1);
+    drop(reopened.hold(&[]).unwrap());
+    assert_eq!(local_parts(&cold).len(), 0);
+}
+
+/// Concurrent downloads of one part occupy its bytes once.
+#[test]
+fn two_lazy_reads_fetching_one_part_count_it_once() {
+    use crate::support::{Script, Scripted};
+    use contextful_core::store::object::PartSource;
+    use contextful_sync::lazy::LazyParts;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let writer = pushed(b.clone(), 2);
+    let parts = local_parts(&writer);
+    assert_eq!(parts.len(), 2);
+    let bound = parts.iter().map(|p| std::fs::metadata(p).unwrap().len()).sum();
+    let files: Vec<String> = parts.iter().map(|p| p.strip_prefix(writer.root()).unwrap().to_string_lossy().into_owned()).collect();
+    let cold = lazy(b.clone(), Some(bound));
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let together = std::sync::Barrier::new(2);
+    let key = format!("team/research/{}", files[0]);
+    let scripted = Arc::new(Scripted {
+        inner: b,
+        script: Script {
+            on_get: Some(Box::new(move |k| {
+                if k == key {
+                    together.wait();
+                }
+                None
+            })),
+            ..Script::default()
+        },
+    });
+    let source = LazyParts::new(scripted, "team", "research", &cold.root(), bound, 1);
+    drop(source.hold(&files[1..]).unwrap());
+    let holds = std::thread::scope(|scope| {
+        let first = scope.spawn(|| source.hold(&files[..1]).unwrap());
+        let second = scope.spawn(|| source.hold(&files[..1]).unwrap());
+        (first.join().unwrap(), second.join().unwrap())
+    });
+    drop(holds);
+    assert_eq!(local_parts(&cold).len(), 2);
+}
+
 /// A part the bucket no longer holds refuses the read, naming the part.
 // spec: store.pull.part-collected@0de4a1ac
 #[test]
