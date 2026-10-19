@@ -991,6 +991,37 @@ fn a_truncated_held_record_preserves_a_sibling_disks_runs() {
     unreadable_held_record_preserves_sibling_runs(br#"{"nodes":{"conformance":[],"other":["key"]"#);
 }
 
+#[test]
+fn the_documented_held_record_recovery_preserves_a_sibling_disks_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("conformance", b.clone(), "");
+    let sibling = node("conformance", b.clone(), "");
+    crate::support::trust(&[&a, &sibling], "2030-01-01T00:00:00Z");
+    a.land_into("t0", "run-a", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    sibling.land_into("t1", "run-b", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    sibling.syncer.push(at(NOW)).unwrap();
+    let before = manifest(b.as_ref());
+    let sibling_keys: Vec<String> = before.entries.keys().filter(|k| k.starts_with("research/tables/t1/data/runs/run-b/conformance/")).cloned().collect();
+    assert!(!sibling_keys.is_empty());
+    assert!(a.root().join(".push.lock").exists());
+    let path = a.root().join(contextful_sync::HELD_FILE);
+    std::fs::write(&path, b"invalid-json").unwrap();
+    let error = a.syncer.push(at(NOW)).unwrap_err().to_string();
+    assert!(error.contains("replace it with a valid ownership record mapping this node's id to an empty key list"), "{error}");
+    assert!(error.contains("this grants no deletion authority"), "{error}");
+    let example = error.split("e.g. `").nth(1).and_then(|s| s.split('`').next()).expect("the recovery names a valid record");
+    let recovery = example.replace("<node-id>", &a.syncer.node);
+    std::fs::write(&path, recovery).unwrap();
+    assert!(held_record(&a).is_empty());
+    a.syncer.push(at(NOW)).unwrap();
+    let after = manifest(b.as_ref());
+    for key in sibling_keys {
+        assert!(after.entries.contains_key(&key) && !after.tombstones.contains_key(&key), "{key}");
+    }
+}
+
 /// A record corrupted at commit keeps its bytes when the post-commit write reads it.
 #[test]
 fn a_held_record_corrupted_at_commit_keeps_other_nodes_entries() {

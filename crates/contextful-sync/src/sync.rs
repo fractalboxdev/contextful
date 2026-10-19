@@ -48,7 +48,7 @@ impl std::fmt::Display for SyncError {
             SyncError::Context(e) => e.fmt(f),
             SyncError::Surface(e) => e.fmt(f),
             SyncError::Enforce(e) => e.fmt(f),
-            SyncError::HeldRecordUnreadable(e) => write!(f, "SyncHeldRecordUnreadable: `{HELD_FILE}`: {e}; restore the ownership record before syncing"),
+            SyncError::HeldRecordUnreadable(e) => write!(f, "SyncHeldRecordUnreadable: `{HELD_FILE}`: {e}; replace it with a valid ownership record mapping this node's id to an empty key list, e.g. `{{\"nodes\":{{\"<node-id>\":[]}}}}`; this grants no deletion authority"),
         }
     }
 }
