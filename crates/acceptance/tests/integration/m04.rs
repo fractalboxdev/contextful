@@ -134,7 +134,7 @@ fn m04_ingest() {
     .unwrap();
     assert_eq!(built["rows"], 4);
     let build_id = built["build_id"].as_str().unwrap();
-    assert!(built["watermark"]["inputs"]["filings_records"]["runs"].as_array().unwrap().len() == 2, "{built}");
+    assert!(built["watermark"]["inputs"]["filings_records"]["omitted"]["count"] == 2, "{built}");
     let held = ok(&p.run(&cf, &["build", "hold", "--for", "7d", "filing_notes", build_id, "--project", "research", "--by", "ops", "--now", "2030-01-01T03:00:00Z"]));
     assert_eq!(held, format!("Held filing_notes build {build_id} until 2030-01-08T03:00:00Z by ops"));
 

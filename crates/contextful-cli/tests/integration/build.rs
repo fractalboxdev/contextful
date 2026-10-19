@@ -141,7 +141,7 @@ fn a_killed_build_reports_failed_and_keeps_the_published_build() {
 }
 
 // spec: run.model.status-verb@dd4c16d2
-// spec: run.publish.staleness@3b5b8197
+// spec: run.publish.staleness@bb1ce925
 #[test]
 fn model_status_derives_freshness_on_both_sides_of_max_lag() {
     let dir = project();
@@ -222,9 +222,10 @@ fn build_fires_no_pipeline_and_reads_the_committed_frontier() {
     );
     std::fs::write(p.join("contextful.toml"), fed).unwrap();
     let built = build(p, "2030-01-01T01:00:00Z");
-    let runs = built["watermark"]["inputs"]["events"]["runs"].as_array().unwrap().clone();
-    assert_eq!(runs.len(), 1, "{built}");
-    assert!(runs[0].as_str().unwrap().starts_with("r1/"), "{built}");
+    let events = &built["watermark"]["inputs"]["events"];
+    let r1 = contextful_context::Store::open(p, "research").unwrap().committed_runs("events").unwrap();
+    assert_eq!(r1.len(), 1, "{built}");
+    assert_eq!(events["omitted"], serde_json::to_value(contextful_core::pipeline::model::Omitted::of([r1[0].key()])).unwrap(), "{built}");
     let landed = std::fs::read_dir(p.join(".contextful/context/research/tables/events/data/runs")).unwrap().count();
     assert_eq!(landed, 1, "a build records no run of its feeder");
 }
@@ -265,7 +266,8 @@ fn build_publishes_a_model_and_prints_its_receipt() {
     assert_eq!(built["rows"], 2);
     assert_eq!(built["published"], true);
     assert_eq!(built["watermark"]["at"], "2030-01-01T00:00:00Z");
-    assert!(built["watermark"]["inputs"]["events"]["runs"][0].as_str().unwrap().starts_with("r1/"));
+    assert_eq!(built["watermark"]["inputs"]["events"]["omitted"]["count"], 1);
+    assert_eq!(built["watermark"]["inputs"]["events"]["through"], 1);
     let read: Value = serde_json::from_str(&stdout(&run(p, &["query", "--json", "--project", "research", "SELECT day, n FROM daily ORDER BY day"]))).unwrap();
     assert_eq!(read["rows"], serde_json::json!([["d1", "2"], ["d2", "1"]]));
     let text = stdout(&run(p, &["build", "daily", "--site-id", "site-a", "--now", "2030-01-01T02:00:00Z"]));

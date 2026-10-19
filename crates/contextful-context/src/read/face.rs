@@ -6,7 +6,7 @@ use super::engine::{SqlEngine, ENGINE};
 use super::fault::ReadFault;
 use super::pool::{self, SessionPool};
 use super::results::{self, ResultCache};
-use crate::scan::{scan, scan_at};
+use crate::scan::{scan, scan_at, scan_state};
 use crate::store::Store;
 use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers, template_read_covers, Grant};
 use contextful_core::read::face::{estimated_tokens, TOOLS};
@@ -468,6 +468,18 @@ impl Face {
     /// table no batch has landed in registers as a zero-row relation over its declared
     /// and injected columns (`read.register.quiet-table`).
     fn source(&self, table: &str, bounds: Bounds, pin: Option<&str>, horizon: Option<contextful_core::time::Instant>) -> Result<TableSource, ReadFault> {
+        self.source_over(table, bounds, pin, horizon, None)
+    }
+
+    /// [`Face::source`] over `state` where given, the table state a build read once.
+    fn source_over(
+        &self,
+        table: &str,
+        bounds: Bounds,
+        pin: Option<&str>,
+        horizon: Option<contextful_core::time::Instant>,
+        state: Option<&contextful_core::store::resolve::TableState>,
+    ) -> Result<TableSource, ReadFault> {
         let decl = self.decl(table);
         let mut policy = match self.policies.get(table) {
             Some(p) => p.clone(),
@@ -483,7 +495,10 @@ impl Face {
                     Some(build) => super::pin::pinned(&self.store, table, build, bounds.as_of)?,
                     None => None,
                 };
-                let s = scan_at(&self.store, &decl, bounds, pinned.as_ref())?;
+                let s = match (pinned.as_ref(), state) {
+                    (None, Some(state)) => scan_state(&self.store, &decl, bounds, state)?,
+                    (pinned, _) => scan_at(&self.store, &decl, bounds, pinned)?,
+                };
                 let files = s.files.iter().map(|f| self.absolute(f)).collect::<Result<Vec<_>, _>>()?;
                 let resolved = s.publish.as_ref().map(Resolved::of);
                 let mut base = self.adjusted(&decl, s.relation, bounds)?;
@@ -1021,14 +1036,29 @@ impl Face {
     }
 
     /// Register every table on `engine` under its bare name as its unrestricted base
-    /// relation at the latest committed state, as [`Face::operator_query`] does, and return
-    /// the registered names; a table declaring a clock `bounds` bounds compiles under it.
-    pub(crate) fn register_operator(&self, engine: &SqlEngine, bounds: Bounds) -> Result<Vec<String>, ReadFault> {
+    /// relation over the readable prefix of its runs (`run.model.build-prefix`), and return
+    /// the registered names beside the state each landed table registered over; a table
+    /// declaring a clock `bounds` bounds compiles under it.
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn register_build(
+        &self,
+        engine: &SqlEngine,
+        bounds: Bounds,
+    ) -> Result<(Vec<String>, BTreeMap<String, contextful_core::store::resolve::TableState>), ReadFault> {
         let tables = self.tables()?;
-        for t in &tables {
-            engine.register(t, &self.source(t, bounds.for_table(&self.decl(t)), None, None)?.base)?;
+        let mut states = BTreeMap::new();
+        for t in tables.iter().cloned() {
+            let decl = self.decl(&t);
+            let state = match self.store.try_schema(&t)? {
+                Some(_) => Some(self.store.prefix_state(&decl)?),
+                None => None,
+            };
+            engine.register(&t, &self.source_over(&t, bounds.for_table(&decl), None, None, state.as_ref())?.base)?;
+            if let Some(state) = state {
+                states.insert(t, state);
+            }
         }
-        Ok(tables)
+        Ok((tables, states))
     }
 
     /// Admit and run caller-written SQL carrying no parameter.

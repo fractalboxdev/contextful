@@ -93,14 +93,19 @@ impl PublicationLedger {
             Ok(candidate.into())
         })
     }
-    /// A job completion pins the entire input frontier and every declared output.
+    /// A job completion pins the entire input frontier and every declared output. The
+    /// ledger keeps the latest completion alone (`run.export.group-source-latest`).
     pub fn record_source(&self, name: &str, source: &SourcePublication) -> Result<(), Failure> {
         self.db.with_connection(true, |tx| {
-            let prior =
-                read::<SourcePublication>(tx, &self.path, "source-history", name, &source.run)?;
+            let prior = read::<SourcePublication>(tx, &self.path, "source", name, "")?;
             source
                 .check_history(prior.as_ref())
                 .map_err(|e| storage(&self.path, e))?;
+            tx.execute(
+                "DELETE FROM coordinated_publication WHERE role='source-history' AND name=?1 AND namespace<>?2",
+                params![name, source.run],
+            )
+            .map_err(|e| storage(&self.path, e))?;
             write(tx, &self.path, "source-history", name, &source.run, source)?;
             write(tx, &self.path, "source", name, "", source)
         })

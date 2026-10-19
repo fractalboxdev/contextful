@@ -291,3 +291,26 @@ fn a_version_two_execution_schema_gains_the_publication_table_on_initialize() {
     db.verify_recovery("sample", "generation").unwrap();
     D1PublicationLedger::connect(&fixture.endpoint).unwrap();
 }
+
+#[test]
+fn the_d1_ledger_keeps_only_the_latest_completion() {
+    let fixture = start();
+    let sender = ledger(&fixture, "container-1");
+    let completion = |run: &str, frontier: &str| SourcePublication {
+        run: run.into(),
+        input: json!({"build": run}),
+        frontiers: BTreeMap::from([("items".into(), frontier.into())]),
+    };
+    for i in 0..20 {
+        sender.record_source("projection", &completion(&format!("run-{i}"), &format!("f{i}"))).unwrap();
+    }
+    let history = D1::connect(&fixture.endpoint)
+        .unwrap()
+        .query("SELECT namespace FROM contextful_publication WHERE role = 'source-history' AND name = 'projection'", vec![])
+        .unwrap();
+    assert_eq!(history.rows.len(), 1, "{:?}", history.rows);
+    assert_eq!(sender.source("projection").unwrap(), Some(completion("run-19", "f19")));
+    sender.record_source("projection", &completion("run-19", "f19")).unwrap();
+    assert!(sender.record_source("projection", &completion("run-19", "other")).is_err());
+    assert_eq!(sender.source("projection").unwrap(), Some(completion("run-19", "f19")));
+}

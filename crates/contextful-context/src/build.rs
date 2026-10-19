@@ -5,7 +5,7 @@
 use crate::error::{ContextError, IoPath, Result};
 use crate::store::{sorted_dirs, FileLock, Store, LOCK_WAIT_SECS};
 use contextful_core::pipeline::model::{
-    build_entries, contract_history, regenerate, waiting_runs, BuildEntry, ContractHistoryEntry, HoldRecord, PublishSection, Receipt,
+    build_entries, contract_history, input_waiting, regenerate, BuildEntry, ContractHistoryEntry, HoldRecord, PublishSection, Receipt,
     Watermark, BUILDS_LOG, CONTRACT_HISTORY_LOG, HOLDS_DIR, HOLDS_LOG,
 };
 use contextful_core::run::RunError;
@@ -156,8 +156,9 @@ pub fn status(store: &Store, model: &str, now: Instant) -> Result<serde_json::Va
 }
 
 /// Per watermark input, the commit instants of the runs the build did not include
-/// (`run.publish.staleness`): included runs are the watermark snapshot chain's
-/// `includes_runs` and the watermark's listed runs.
+/// (`run.publish.staleness`), under [`input_waiting`] over the watermark snapshot chain's
+/// `includes_runs`, and each published build above the watermark snapshot of an input that
+/// is a model.
 fn waiting(store: &Store, watermark: &Watermark) -> Result<BTreeMap<String, Vec<Option<Instant>>>> {
     let mut out = BTreeMap::new();
     for (table, frontier) in &watermark.inputs {
@@ -165,7 +166,7 @@ fn waiting(store: &Store, watermark: &Watermark) -> Result<BTreeMap<String, Vec<
             out.insert(table.clone(), Vec::new());
             continue;
         }
-        let mut included: BTreeSet<String> = frontier.runs.iter().cloned().collect();
+        let mut included: BTreeSet<String> = BTreeSet::new();
         if let Some(id) = &frontier.snapshot_id {
             let id = SnapshotId::try_from(id.clone()).map_err(ContextError::Invalid)?;
             if store.snapshot_dir(table, &id)?.join(MANIFEST_FILE).exists() {
@@ -183,8 +184,7 @@ fn waiting(store: &Store, watermark: &Watermark) -> Result<BTreeMap<String, Vec<
             .filter(|m| m.publish.is_some())
             .map(|m| Some(m.created_at))
             .collect();
-        let folded: BTreeSet<String> = chain.into_iter().flat_map(|m| m.includes_runs).collect();
-        let mut waits = waiting_runs(&included, &runs, &folded);
+        let mut waits = input_waiting(frontier, watermark.at, &included, &runs, &chain);
         waits.extend(rebuilds);
         out.insert(table.clone(), waits);
     }
@@ -350,6 +350,7 @@ mod materialize {
     use contextful_core::read::template::Bindings;
     use contextful_core::store::declare::TableDecl;
     use contextful_core::store::bound_time::Bounds;
+    use contextful_core::store::resolve::TableState;
     use contextful_core::store::StoreError;
     use contextful_core::store::lay_out::{part_name, PartEntry, SnapshotId};
     use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema};
@@ -437,17 +438,15 @@ mod materialize {
         ]
     }
 
-    /// One input's frontier: its current snapshot and the committed runs it omits, with
-    /// the newest commit instant among them (`run.model.watermark`).
-    fn frontier(store: &Store, decl: &TableDecl) -> Result<(InputFrontier, Option<Instant>)> {
-        if store.try_schema(&decl.name)?.is_none() {
-            return Ok((InputFrontier::default(), None));
-        }
-        let state = store.state(decl)?;
+    /// One input's frontier, read off the state its relation registered over: its current
+    /// snapshot, the greatest `commit_seq` read and the count and digest of the runs read
+    /// beside the snapshot, with the newest commit instant among them (`run.model.watermark`).
+    fn frontier(state: Option<&TableState>) -> (InputFrontier, Option<Instant>) {
+        let Some(state) = state else { return (InputFrontier::read(None, &[]), None) };
         let snapshot = state.chain.first();
         let runs = state.unfolded_runs();
         let at = snapshot.map(|s| s.created_at).into_iter().chain(runs.iter().map(|r| r.committed_at)).max();
-        Ok((InputFrontier { snapshot_id: snapshot.map(|s| s.snapshot_id.to_string()), runs: runs.iter().map(|r| r.key()).collect() }, at))
+        (InputFrontier::read(snapshot, &runs), at)
     }
 
     /// The model's columns: its contract's, checked against the engine's description of
@@ -750,7 +749,7 @@ mod materialize {
 
         let engine = SqlEngine::raw_with_key(store.parquet_key())?;
         let bounds = Bounds { available_as_of: req.available_as_of, ..Bounds::default() };
-        let tables = face.register_operator(&engine, bounds)?;
+        let (tables, states) = face.register_build(&engine, bounds)?;
         let sql = spec.sql.trim().trim_end_matches(';');
         let admitted = admit_sql(&engine, spec, |n| tables.iter().any(|t| t == n))?;
         for t in &admitted.relations {
@@ -762,7 +761,7 @@ mod materialize {
         }
         let mut watermark = Watermark { horizon: req.available_as_of.map(|b| b.at), ..Watermark::default() };
         for t in &admitted.relations {
-            let (f, at) = frontier(store, &face.decl(t))?;
+            let (f, at) = frontier(states.get(t));
             watermark.at = watermark.at.max(at);
             watermark.inputs.insert(t.clone(), f);
         }

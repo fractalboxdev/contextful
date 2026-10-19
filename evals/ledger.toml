@@ -607,7 +607,7 @@ direction = "lower_is_better"
 method = { test = "contextful_context::build::status_over_an_unfolded_run_record_at_two_thousand_runs" }
 seed   = 0x5eed_0615
 
-# One source-history row per run, never pruned: 200 rows after 200 builds.
+# The ledger keeps the latest completion per publication (run.export.group-source-latest): 1 row after 200 builds.
 [entry.source-history-rows]
 clause = "run.export.group-source"
 metric = "run.export.source_history_rows"
