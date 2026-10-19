@@ -7,13 +7,13 @@ use anyhow::{Context, Result};
 use std::fmt;
 use std::process::Command;
 use std::time::Duration;
+use syn::visit::Visit;
 
 const STATUS_FILE: &str = "spec/status.md";
 const MILESTONES_HEADING: &str = "## Milestones";
 const CLOSED_COLUMN: &str = "Closed";
 const CLOSED: &str = "closed";
 const STORE_FORMAT_FILE: &str = "crates/contextful-core/src/store/lay_out.rs";
-const STORE_FORMAT_CONST: &str = "pub const CURRENT: FormatVersion = FormatVersion {";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Version {
@@ -57,19 +57,65 @@ impl StoreFormat {
         let Some(source) = git(&["cat-file", "-e", &path]).ok().map(|_| git(&["show", &path])).transpose()? else {
             return Ok(StoreFormat { major: 1, minor: 0 });
         };
-        let Some(line) = source.lines().map(str::trim_start).find(|l| l.starts_with(STORE_FORMAT_CONST)) else {
-            return Ok(StoreFormat { major: 1, minor: 0 });
-        };
-        let unread = || refuse("TagStoreFormatUnread", format!("{STORE_FORMAT_FILE} at {rev} declares `{line}`, whose major and minor do not parse"));
-        let fields = line[STORE_FORMAT_CONST.len()..].trim_end().strip_suffix("};").ok_or_else(unread)?;
-        let field = |name: &str| -> Option<u64> {
-            fields.split(',').filter_map(|f| f.split_once(':')).find(|(k, _)| k.trim() == name)?.1.trim().parse().ok()
-        };
-        match (field("major"), field("minor")) {
-            (Some(major), Some(minor)) => Ok(StoreFormat { major, minor }),
+        let unread = || refuse("TagStoreFormatUnread", format!("{STORE_FORMAT_FILE} at {rev} has an unreadable FormatVersion::CURRENT"));
+        let syntax = syn::parse_file(&source).map_err(|_| unread())?;
+        let mut current = Current::default();
+        current.visit_file(&syntax);
+        match current.constants.as_slice() {
+            [] => Ok(StoreFormat { major: 1, minor: 0 }),
+            [constant] => Self::from_constant(constant).ok_or_else(unread),
             _ => Err(unread()),
         }
     }
+
+    fn from_constant(constant: &syn::ImplItemConst) -> Option<StoreFormat> {
+        let syn::Type::Path(ty) = &constant.ty else { return None };
+        if !(ty.path.is_ident("Self") || names_format_version(&ty.path)) {
+            return None;
+        }
+        let syn::Expr::Struct(value) = &constant.expr else { return None };
+        if !(value.path.is_ident("Self") || names_format_version(&value.path)) || value.rest.is_some() || value.fields.len() != 2 {
+            return None;
+        }
+        let mut major = None;
+        let mut minor = None;
+        for field in &value.fields {
+            let syn::Member::Named(name) = &field.member else { return None };
+            let target = match name.to_string().as_str() {
+                "major" => &mut major,
+                "minor" => &mut minor,
+                _ => return None,
+            };
+            if target.is_some() {
+                return None;
+            }
+            let syn::Expr::Lit(literal) = &field.expr else { return None };
+            let syn::Lit::Int(number) = &literal.lit else { return None };
+            *target = Some(number.base10_parse().ok()?);
+        }
+        Some(StoreFormat { major: major?, minor: minor? })
+    }
+}
+
+#[derive(Default)]
+struct Current<'ast> {
+    constants: Vec<&'ast syn::ImplItemConst>,
+}
+
+impl<'ast> Visit<'ast> for Current<'ast> {
+    fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+        if item.trait_.is_none() && matches!(&*item.self_ty, syn::Type::Path(ty) if names_format_version(&ty.path)) {
+            self.constants.extend(item.items.iter().filter_map(|item| match item {
+                syn::ImplItem::Const(constant) if constant.ident == "CURRENT" => Some(constant),
+                _ => None,
+            }));
+        }
+        syn::visit::visit_item_impl(self, item);
+    }
+}
+
+fn names_format_version(path: &syn::Path) -> bool {
+    path.segments.last().is_some_and(|segment| segment.ident == "FormatVersion")
 }
 
 impl fmt::Display for StoreFormat {
