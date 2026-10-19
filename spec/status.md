@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 53 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 594 | 128 | 48 | 18 | 554 | 0 | 554 |
-| `store` | 3 | 19 | 319 | 64 | 19 | 11 | 308 | 0 | 308 |
+| `run` | 3 | 29 | 598 | 128 | 49 | 18 | 558 | 0 | 554 |
+| `store` | 3 | 19 | 321 | 65 | 19 | 11 | 310 | 0 | 308 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2760 | 681 | 221 | 79 | 2466 | 0 | |
+| **total** | 22 | 169 | 2766 | 682 | 222 | 79 | 2472 | 0 | |
 
 Decision records: 18.
 
@@ -27,9 +27,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
-| 2 — The store | 9 | 195 | 185 | passing | closed |
+| 2 — The store | 9 | 197 | 187 | passing | closed |
 | 3 — The run path | 12 | 306 | 294 | passing | closed |
-| 4 — Ingest | 25 | 628 | 522 | passing | closed |
+| 4 — Ingest | 25 | 632 | 526 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -1711,6 +1711,8 @@ Unscheduled operations: 13.
 | `run.land.receive-endpoint` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_admits_before_the_body_and_answers_after_both_tables_commit` | performed |
 | `run.land.receive-endpoint-status` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_maps_each_refusal_to_its_status` | performed |
 | `run.land.receive-entry` | `crates/contextful-cli/tests/integration/receive.rs::a_delivered_credential_lands_masked_and_no_stored_byte_holds_it` | performed |
+| `run.land.receive-group` | `crates/contextful-cli/tests/integration/receive.rs::batches_queued_behind_the_land_lock_commit_per_group` | performed |
+| `run.land.receive-group-isolation` | `crates/contextful-cli/tests/integration/receive.rs::a_bad_row_in_a_group_fails_only_its_own_batch` | performed |
 | `run.land.receive-key-expired` | `crates/contextful-cli/tests/integration/receive.rs::a_resend_past_the_key_retention_window_is_refused_and_lands_nothing` | performed |
 | `run.land.receive-key-missing` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_refuses_a_delivery_without_a_batch_key` | performed |
 | `run.land.receive-pipeline-unknown` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_answers_404_for_a_pipeline_that_receives_nothing` | performed |
@@ -1718,6 +1720,8 @@ Unscheduled operations: 13.
 | `run.land.receive-queue` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_waits_for_the_land_lock_another_batch_holds` | performed |
 | `run.land.receive-resume` | `crates/contextful-cli/tests/integration/receive.rs::a_resend_after_the_receiver_dies_lands_what_the_uninterrupted_run_lands` | performed |
 | `run.land.receive-retry-after` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
+| `run.land.receive-spool` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_spooled_by_a_dead_receiver_lands_in_the_next_group` | performed |
+| `run.land.receive-wait` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_no_group_claims_within_the_wait_withdraws_and_answers_retryable` | performed |
 | `run.land.receive-write-not-granted` | `crates/contextful-cli/tests/integration/receive.rs::a_token_without_write_on_one_table_is_refused_before_the_body_is_read` | performed |
 | `run.land.session` | `crates/contextful-context/tests/integration/session.rs::a_session_commits_each_micro_batch_as_its_own_run` | performed |
 | `run.land.session-input` | `crates/contextful-cli/tests/integration/context.rs::a_session_land_commits_each_stdin_batch_as_its_own_run` | performed |
@@ -2272,9 +2276,11 @@ Unscheduled operations: 13.
 | `store.replicate.write-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_refuses_a_write_verb_naming_the_canonical_store` | performed |
 | `store.reserve.authored-agent` | `crates/contextful-context/tests/integration/reserve.rs::an_authored_write_carries_its_agent_beside_its_principal` | performed |
 | `store.reserve.column-name` | `crates/contextful-core/tests/integration/store/reserve.rs::a_producer_column_in_the_namespace_is_refused` | performed |
+| `store.reserve.commit-lock-span` | `crates/contextful-context/tests/integration/reserve.rs::a_landing_writes_its_parts_outside_the_commit_lock_and_publishes_in_sequence_order` | performed |
 | `store.reserve.commit-order` | `crates/contextful-context/tests/integration/reserve.rs::concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read` | performed |
 | `store.reserve.commit-seq` | `crates/contextful-context/tests/integration/reserve.rs::a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp` | performed |
 | `store.reserve.commit-seq-seed` | `crates/contextful-context/tests/integration/reserve.rs::a_store_holding_no_counter_continues_above_the_values_its_manifests_record` | performed |
+| `store.reserve.commit-wait` | `crates/contextful-cli/tests/integration/receive.rs::a_commit_outwaiting_the_commit_lock_answers_retryable` | performed |
 | `store.reserve.injected` | `crates/contextful-context/tests/integration/reserve.rs::the_engine_injects_provenance_and_replaces_producer_values` | performed |
 | `store.reserve.lang-and-provenance` | `crates/contextful-context/tests/integration/reserve.rs::a_producer_sets_the_optional_columns_and_modality_is_checked` | performed |
 | `store.reserve.ledger-append` | `crates/contextful-context/tests/integration/read/register.rs::concurrent_flushes_of_one_run_keep_every_row` | performed |

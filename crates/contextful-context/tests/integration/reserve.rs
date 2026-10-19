@@ -216,9 +216,9 @@ fn a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp(
 }
 
 #[cfg(feature = "read")]
-/// Commits of one table serialize from assigning `_commit_seq`, through the part write, to the step that makes the
-/// run readable, so the readable runs of a table always hold a prefix of its commit sequence.
-// spec: store.reserve.commit-order@22d731cc
+/// A commit's manifest waits until every lower `_commit_seq` value of its table published or its landing ended, so
+/// the readable runs of a table always hold a prefix of its commit sequence.
+// spec: store.reserve.commit-order@43e8dcb2
 #[test]
 fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
     let f = Fixture::new();
@@ -254,6 +254,38 @@ fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
     });
     assert!(prefixes >= 1);
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(DISTINCT _commit_seq), count(*) FROM t"), [[s("7"), s("301")]]);
+}
+
+#[cfg(feature = "read")]
+/// A commit holds its table's commit lock to assign `_commit_seq` and to write its manifest, and writes its parts
+/// outside it: a landing behind a reserved, unpublished lower value writes its parts with the lock free, publishes
+/// once that value's holder ends, and the abandoned value stays a gap.
+// spec: store.reserve.commit-lock-span@731c4c40
+#[test]
+fn a_landing_writes_its_parts_outside_the_commit_lock_and_publishes_in_sequence_order() {
+    let f = Fixture::new();
+    let d = decl("name = \"spans\"");
+    f.land(&d, "run-1", json!([{"id": "a"}]), "2030-01-01T00:00:00Z").unwrap();
+    let held = f.store.reserve_commit_seq("spans").unwrap();
+    assert_eq!(held.seq(), 2);
+    let run = f.table_dir("spans").join("data/runs/run-3/ingest-a");
+    std::thread::scope(|scope| {
+        let later = scope.spawn(|| f.land(&d, "run-3", json!([{"id": "c"}]), "2030-01-01T00:02:00Z"));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !run.join("part-00000.parquet").exists() {
+            assert!(std::time::Instant::now() < deadline, "the later landing never wrote its part behind the unpublished value");
+            assert!(!later.is_finished(), "the later landing ended before writing its part");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        drop(f.store.lock_commit("spans").expect("the commit lock is free while a landing writes its parts"));
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(!run.join("_manifest.json").exists(), "the later run publishes only after every lower value");
+        drop(held);
+        let m = later.join().unwrap().unwrap();
+        assert_eq!(m.commit_seq, Some(3));
+    });
+    let seqs = f.query(&d, Bounds::default(), "SELECT DISTINCT _commit_seq FROM t ORDER BY 1");
+    assert_eq!(seqs, [[s("1")], [s("3")]], "the abandoned value 2 reads as a gap");
 }
 
 #[cfg(feature = "read")]

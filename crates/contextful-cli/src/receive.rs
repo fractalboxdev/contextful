@@ -1,7 +1,8 @@
-//! `contextful pipeline receive` and the served `POST /receive/:pipeline` route: one
-//! delivered batch of a `receive` pipeline lands through the pull land path, one run per
-//! touched table in declaration order, and the answer follows the last commit
-//! (`run.land.receive-entry`, `run.land.receive-ack`, `run.land.receive-endpoint`).
+//! `contextful pipeline receive` and the served `POST /receive/:pipeline` route: delivered
+//! batches of a `receive` pipeline spool behind its land lock and land through the pull land
+//! path as one group, one run per touched table in declaration order, and each answer
+//! follows the group's commits (`run.land.receive-entry`, `run.land.receive-group`,
+//! `run.land.receive-ack`, `run.land.receive-endpoint`).
 
 use crate::admit::{AdmitArgs, Author};
 use crate::pipeline::{built_in, check, manifests, plan, Checked};
@@ -64,6 +65,15 @@ impl Refusal {
             _ => None,
         })?;
         Some(Refusal { error: RunError::Store(StoreError::SyncPushInFlight(format!("{held}; resend the batch under its key"))), retryable: true })
+    }
+
+    /// The push guard's message of a [`Refusal::guard_held`] refusal, which a led member
+    /// rebuilds from its answer.
+    fn held(&self) -> String {
+        match &self.error {
+            RunError::Store(StoreError::SyncPushInFlight(m)) => m.clone(),
+            other => other.to_string(),
+        }
     }
 
     /// The served status of the refusal (`run.land.receive-endpoint-status`).
@@ -146,20 +156,6 @@ fn class(e: &anyhow::Error) -> Option<FailureTag> {
     }
 }
 
-/// The run of `stem` that committed, or the id the next attempt takes: attempts are
-/// `stem`, `stem.2`, `stem.3`, … since a run id names one attempt.
-fn attempt(catalog: &dyn contextful_core::coordinate::Catalog, stem: &str) -> Result<std::result::Result<RunRow, String>> {
-    for n in 1u32.. {
-        let id = if n == 1 { stem.to_string() } else { format!("{stem}.{n}") };
-        match catalog.run(&id)? {
-            Some(row) if row.status == RunStatus::Success => return Ok(Ok(row)),
-            Some(_) => continue,
-            None => return Ok(Err(id)),
-        }
-    }
-    unreachable!("the attempt numbers are unbounded")
-}
-
 impl Receiver {
     /// Resolve the `receive` pipeline `id` of the project's declaration.
     pub(crate) fn open(project: &ProjectArgs, declaration: Option<PathBuf>, id: &str, site_id: Option<String>, site_id_env: Option<String>, tasks: &Tasks) -> Result<Receiver> {
@@ -228,10 +224,9 @@ impl Receiver {
             }));
         };
         let wired = wire_at(&self.l.project, &self.now)?;
-        let base = self.base(key);
         let mut first: Option<i64> = None;
         for table in self.destinations() {
-            if let Some(row) = wired.engine.catalog.run(&format!("{base}.{table}"))? {
+            if let Some(row) = wired.engine.receive_first(&self.spec.id, &table, key)? {
                 let started = row.started_at.unix_secs();
                 first = Some(first.map_or(started, |f| f.min(started)));
             }
@@ -258,19 +253,109 @@ impl Receiver {
         Refusal::final_(RunError::ReceiveBatchTooLarge(format!("batch `{key}` of pipeline `{}` passes `max_batch_bytes = {}`", self.spec.id, self.config.max_batch_bytes)))
     }
 
-    /// Land one delivered `body` under `key`, one run per touched table in declaration order,
-    /// waiting for the pipeline's land lock (`run.land.receive-queue`).
+    /// Land one delivered `body` under `key` (`run.land.receive-spool`, `run.land.receive-group`):
+    /// the batch decodes alone, so a refused body fails no other batch, then spools to the
+    /// pipeline's queue and waits. The holder of the land lock lands every batch spooled by
+    /// then as one group, one run per touched table, and answers each member after the
+    /// group's commits; a batch neither led nor claimed within the commit wait withdraws.
     pub(crate) fn land(&self, admitted: Admitted, key: &str, body: &[u8], author: Option<Author>) -> Result<std::result::Result<Landed, Refusal>> {
-        let spec = &self.spec;
-        let names: Vec<&str> = spec.tables.iter().map(|t| t.name()).collect();
-        let mut split = match decode(body, &names) {
+        let names: Vec<&str> = self.spec.tables.iter().map(|t| t.name()).collect();
+        let tables = match decode(body, &names) {
             Ok(split) => split,
             Err(e) => return Ok(Err(Refusal::final_(e))),
         };
+        let credential = author.as_ref().map(|a| a.authority().credential_id().to_string());
+        let member = Spooled { id: spool_id(credential.as_deref()), key: key.to_string(), credential, bytes: body.len() as u64, tables };
+        let spool = self.spool();
+        member.write(&spool)?;
+        note(&format!("{}: batch `{key}` spooled; waiting for the land lock", self.spec.id));
         let w = admitted.wired;
+        // The wait of `store.reserve.commit-wait` bounds a batch no group takes (`run.land.receive-wait`).
+        let wait = std::time::Duration::from_secs(contextful_core::store::reserve::COMMIT_LOCK_WAIT_SECS);
+        let started = std::time::Instant::now();
         let land = File::options().read(true).write(true).create(true).truncate(false).open(self.queue().join("land.lock"))?;
-        land.lock()?;
+        loop {
+            if let Some(answered) = Answered::take(&spool, &member.id)? {
+                return answered.landed();
+            }
+            match land.try_lock() {
+                Ok(()) => {
+                    // A leader may answer between the look above and the lock.
+                    if let Some(answered) = Answered::take(&spool, &member.id)? {
+                        return answered.landed();
+                    }
+                    let landed = self.lead(&w, &member, author);
+                    let _ = land.unlock();
+                    return landed;
+                }
+                Err(std::fs::TryLockError::WouldBlock) => {}
+                Err(std::fs::TryLockError::Error(e)) => return Err(e).context("locking the land lock"),
+            }
+            if started.elapsed() >= wait && member.withdraw(&spool)? {
+                return Ok(Err(Refusal {
+                    error: RunError::ReceiveBackpressure(format!(
+                        "pipeline `{}` landed no group holding batch `{key}` within {} s; resend it after {RETRY_AFTER_MS} ms",
+                        self.spec.id,
+                        wait.as_secs()
+                    )),
+                    retryable: true,
+                }));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
 
+    /// The directory holding the pipeline's spooled batches and their answers.
+    fn spool(&self) -> PathBuf {
+        self.queue().join("spool")
+    }
+
+    /// Lead one group under the held land lock: claim `own` and every batch spooled beside it
+    /// under the same credential, up to `max_queue_depth` members and [`GROUP_BYTES`], an
+    /// orphan's included; land them; answer each other member; answer `own`.
+    fn lead(&self, w: &Wired, own: &Spooled, author: Option<Author>) -> Result<std::result::Result<Landed, Refusal>> {
+        let spool = self.spool();
+        collect_stale(&spool);
+        let mut members = vec![own.clone()];
+        let mut bytes = own.bytes;
+        for other in Spooled::waiting(&spool, &credential_tag(own.credential.as_deref()))? {
+            if members.len() as u64 >= u64::from(self.config.max_queue_depth) {
+                break;
+            }
+            if other.id == own.id || other.credential != own.credential || bytes.saturating_add(other.bytes) > GROUP_BYTES {
+                continue;
+            }
+            bytes += other.bytes;
+            members.push(other);
+        }
+        members.retain(|m| m.id == own.id || m.claim(&spool).unwrap_or(false));
+        own.claim(&spool)?;
+        let landed = self.land_group(w, &members, author);
+        let answers: Vec<Answered> = match &landed {
+            Ok(Ok(each)) => each.iter().map(|l| Answered { answer: l.answer.clone(), failed: l.failed.clone(), error: None, held: None }).collect(),
+            Ok(Err(refusal)) => members.iter().map(|_| Answered { answer: Value::Null, failed: None, error: None, held: Some(refusal.held()) }).collect(),
+            Err(e) => members.iter().map(|_| Answered { answer: Value::Null, failed: None, error: Some(format!("{e:#}")), held: None }).collect(),
+        };
+        // A member whose answer cannot be written still releases; it lands again as a replay.
+        for (m, answer) in members.iter().zip(&answers).skip(1) {
+            if let Err(e) = answer.write(&spool, &m.id) {
+                note(&format!("{}: answering batch `{}`: {e:#}", self.spec.id, m.key));
+            }
+        }
+        for m in &members {
+            m.release(&spool);
+        }
+        Ok(landed?.map(|mut each| each.swap_remove(0)))
+    }
+
+    /// Land `members`, one run per touched table in declaration order. A member key whose
+    /// table committed replays it; the rest of the table's members land as one run, under
+    /// the member's own key when it lands alone and under the group's key otherwise
+    /// (`run.land.receive-group`). A group run that fails with a class that does not retry
+    /// lands each of its members alone, so one bad batch fails no other. A member stops at
+    /// its first failed table.
+    fn land_group(&self, w: &Wired, members: &[Spooled], author: Option<Author>) -> Result<std::result::Result<Vec<Landed>, Refusal>> {
+        let spec = &self.spec;
         let declaration = &self.l.declaration;
         let store = Store::open_declared(&self.l.project.dir, &self.l.project.name, declaration)?;
         let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
@@ -278,54 +363,61 @@ impl Receiver {
         let normalize = Some(contextful_core::pipeline::normalize::Normalize::parse(spec.normalize.as_ref())?);
         let mut dest = StoreDestination { store, decls, node, author, normalize, relational_parts: Default::default(), schema_diffs: Vec::new() };
         let artifact = sha256_hex(serde_json::to_string(&spec.source).unwrap_or_default().as_bytes());
-        let base = self.base(key);
-        let mut tables = Vec::new();
-        let mut failed: Option<(String, bool)> = None;
+        // A key spooled twice lands once; its later members take the first one's answer.
+        let first: Vec<usize> = members.iter().map(|m| members.iter().position(|o| o.key == m.key).unwrap_or(0)).collect();
+        let mut tables: Vec<Vec<Value>> = vec![Vec::new(); members.len()];
+        let mut failed: Vec<Option<(String, bool)>> = vec![None; members.len()];
         let mut opened = false;
         for t in &spec.tables {
-            let Some(rows) = split.remove(t.name()) else { continue };
             let table = spec.table_name(t.name());
-            let next = match attempt(w.engine.catalog.as_ref(), &format!("{base}.{table}"))? {
+            let mut pending: Vec<(usize, String)> = Vec::new();
+            for (i, m) in members.iter().enumerate() {
+                if first[i] != i || failed[i].is_some() || !m.tables.contains_key(t.name()) {
+                    continue;
+                }
+                match w.engine.receive_landed(&spec.id, &table, &m.key)? {
+                    Ok(row) => tables[i].push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows })),
+                    Err(next) => pending.push((i, next)),
+                }
+            }
+            let mut land = |run_id: String, key: &str, keys: Option<Vec<String>>, rows: Vec<contextful_core::run::ports::Row>| -> Landing {
+                let landing = self.land_table(w, &mut dest, t.name(), &table, &artifact, &run_id, key, keys, rows);
+                opened |= landing.opened;
+                landing
+            };
+            let group = match pending.as_slice() {
+                [] => continue,
+                [(i, next)] => {
+                    let landing = land(next.clone(), &members[*i].key, None, members[*i].tables[t.name()].clone());
+                    landing.answer(&table, &mut tables[*i], &mut failed[*i], None);
+                    continue;
+                }
+                _ => group_key(pending.iter().map(|(i, _)| members[*i].key.as_str())),
+            };
+            let next = match w.engine.receive_attempt(&format!("{}.{table}", self.base(&group)))? {
                 Ok(row) => {
-                    tables.push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows }));
+                    for (i, _) in &pending {
+                        tables[*i].push(json!({ "table": table, "run_id": row.run_id, "outcome": "replayed", "rows": row.rows }));
+                    }
                     continue;
                 }
                 Err(next) => next,
             };
-            let trace = crate::telemetry::RunTrace::open();
-            let outcome = (|| -> Result<RunRow> {
-                let plan = plan(spec, t.name(), built_in(spec))?;
-                dest.store.validate_source_plan(&plan, dest.normalize)?;
-                let connector = plan.connector_pin(&artifact);
-                let run = RunSpec { plan, connector, run_id: next.clone(), site_id: self.site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
-                let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
-                Ok(w.engine.run_receive(&run, key, &mut Delivered(rows), &shape, &mut dest)?)
-            })();
-            opened |= w.engine.catalog.run(&next).ok().flatten().is_some();
-            if let Ok(row) = &outcome {
-                trace.close(row);
+            let keys: Vec<String> = pending.iter().map(|(i, _)| members[*i].key.clone()).collect();
+            let rows: Vec<_> = pending.iter().flat_map(|(i, _)| members[*i].tables[t.name()].iter().cloned()).collect();
+            let landing = land(next, &group, Some(keys), rows);
+            if matches!(landing.result, Err(false)) {
+                // A failure that does not retry lands each member alone (`run.land.receive-group`).
+                for (i, next) in &pending {
+                    let alone = land(next.clone(), &members[*i].key, None, members[*i].tables[t.name()].clone());
+                    alone.answer(&table, &mut tables[*i], &mut failed[*i], None);
+                }
+                continue;
             }
-            match outcome {
-                Ok(row) if row.status == RunStatus::Success => {
-                    tables.push(json!({ "table": table, "run_id": row.run_id, "outcome": "committed", "rows": row.rows }));
-                }
-                Ok(row) => {
-                    let why = format!("{}: {}", row.error_kind.map(|k| k.name()).unwrap_or("unknown"), row.error_message.unwrap_or_default());
-                    note(&RunError::PipelineTableFailed(format!("table `{table}` failed in run `{}`: {why}", row.run_id)));
-                    tables.push(json!({ "table": table, "run_id": row.run_id, "outcome": "failed" }));
-                    failed = Some((table, retries(row.error_kind)));
-                    break;
-                }
-                Err(e) => {
-                    note(&RunError::PipelineTableFailed(format!("table `{table}` failed as refused in run `{next}`: {e:#}")));
-                    tables.push(json!({ "table": table, "run_id": next, "outcome": "failed" }));
-                    failed = Some((table, retries(class(&e))));
-                    break;
-                }
+            for (i, _) in &pending {
+                landing.answer(&table, &mut tables[*i], &mut failed[*i], Some(members[*i].tables[t.name()].len() as u64));
             }
         }
-        let retryable = failed.as_ref().is_some_and(|(_, r)| *r);
-        let answer = json!({ "pipeline": spec.id, "key": key, "run_id": base, "committed": failed.is_none(), "retryable": retryable, "tables": tables });
         // A batch whose push met a held guard left the marker; the next batch pushes what it committed.
         let pending = self.queue().join(PUSH_PENDING);
         if opened || pending.exists() {
@@ -339,12 +431,249 @@ impl Receiver {
                         std::fs::write(&pending, b"").with_context(|| format!("writing {}", pending.display()))?;
                         return Ok(Err(refusal));
                     }
-                    None if failed.is_none() => return Err(e),
+                    None if failed.iter().all(Option::is_none) => return Err(e),
                     None => note(&format!("{e:#}")),
                 },
             }
         }
-        Ok(Ok(Landed { answer, failed }))
+        Ok(Ok(members
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                let at = first[i];
+                let retryable = failed[at].as_ref().is_some_and(|(_, r)| *r);
+                let answer = json!({ "pipeline": spec.id, "key": m.key, "run_id": self.base(&m.key), "committed": failed[at].is_none(), "retryable": retryable, "tables": tables[at] });
+                Landed { answer, failed: failed[at].clone() }
+            })
+            .collect()))
+    }
+
+    /// Land `rows` of table `name` as run `run_id` under batch `key`: alone, or for the
+    /// member `keys` of a group.
+    #[allow(clippy::too_many_arguments)]
+    fn land_table(&self, w: &Wired, dest: &mut StoreDestination, name: &str, table: &str, artifact: &str, run_id: &str, key: &str, keys: Option<Vec<String>>, rows: Vec<contextful_core::run::ports::Row>) -> Landing {
+        let spec = &self.spec;
+        let trace = crate::telemetry::RunTrace::open();
+        let outcome = (|| -> Result<RunRow> {
+            let plan = plan(spec, name, built_in(spec))?;
+            dest.store.validate_source_plan(&plan, dest.normalize)?;
+            let connector = plan.connector_pin(artifact);
+            let run = RunSpec { plan, connector, run_id: run_id.to_string(), site_id: self.site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
+            let shape = Chain { ops: spec.transforms.clone(), table: table.to_string() };
+            let mut delivered = Delivered(rows);
+            Ok(match &keys {
+                None => w.engine.run_receive(&run, key, &mut delivered, &shape, dest)?,
+                Some(keys) => w.engine.run_receive_group(&run, key, keys, &mut delivered, &shape, dest)?,
+            })
+        })();
+        match outcome {
+            Ok(row) => {
+                trace.close(&row);
+                if row.status == RunStatus::Success {
+                    return Landing { run_id: row.run_id.clone(), opened: true, result: Ok(row.rows) };
+                }
+                let why = format!("{}: {}", row.error_kind.map(|k| k.name()).unwrap_or("unknown"), row.error_message.clone().unwrap_or_default());
+                note(&RunError::PipelineTableFailed(format!("table `{table}` failed in run `{}`: {why}", row.run_id)));
+                Landing { run_id: row.run_id, opened: true, result: Err(retries(row.error_kind)) }
+            }
+            Err(e) => {
+                note(&RunError::PipelineTableFailed(format!("table `{table}` failed as refused in run `{run_id}`: {e:#}")));
+                let opened = w.engine.catalog.run(run_id).ok().flatten().is_some();
+                Landing { run_id: run_id.to_string(), opened, result: Err(retries(class(&e))) }
+            }
+        }
+    }
+}
+
+/// One table's run for a batch or a group: its id, whether it opened, and the rows it
+/// landed or whether its failure class retries.
+struct Landing {
+    run_id: String,
+    opened: bool,
+    result: std::result::Result<u64, bool>,
+}
+
+impl Landing {
+    /// Record the run in a member's `tables` answer and `failed` slot; a group member
+    /// answers its own `delivered` rows.
+    fn answer(&self, table: &str, tables: &mut Vec<Value>, failed: &mut Option<(String, bool)>, delivered: Option<u64>) {
+        match self.result {
+            Ok(rows) => tables.push(json!({ "table": table, "run_id": self.run_id, "outcome": "committed", "rows": delivered.unwrap_or(rows) })),
+            Err(retryable) => {
+                tables.push(json!({ "table": table, "run_id": self.run_id, "outcome": "failed" }));
+                *failed = Some((table.to_string(), retryable));
+            }
+        }
+    }
+}
+
+/// The most bytes of spooled bodies one group lands (`run.land.receive-group`).
+const GROUP_BYTES: u64 = 64 << 20;
+
+/// How long an answer no member took, a batch no group took, or a partial spool write stays
+/// in the spool.
+const SPOOL_TTL: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// The key a group of member `keys` lands under: no sender's key, so no resend resumes it.
+fn group_key<'a>(keys: impl Iterator<Item = &'a str>) -> String {
+    let mut joined = String::from("group");
+    for key in keys {
+        joined.push('\0');
+        joined.push_str(key);
+    }
+    joined
+}
+
+/// A fresh spool id, ordered by the instant it was taken and ending in the admitting
+/// credential's tag, so a leader lists its credential's batches without reading others.
+fn spool_id(credential: Option<&str>) -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+    format!("{nanos:024}-{:010}-{:08}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed), credential_tag(credential))
+}
+
+/// The spool-id suffix of a credential; `anonymous` for an unauthored batch.
+fn credential_tag(credential: Option<&str>) -> String {
+    match credential {
+        Some(id) => sha256_hex(id.as_bytes())[..16].to_string(),
+        None => "anonymous".to_string(),
+    }
+}
+
+/// Remove spool entries older than [`SPOOL_TTL`]: answers no member took, batches no group
+/// took, and partial writes a crash left.
+fn collect_stale(spool: &Path) {
+    let Ok(entries) = std::fs::read_dir(spool) else { return };
+    for path in entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "answer" || e == "tmp" || e == "batch" || e == "claimed")) {
+        let stale = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age > SPOOL_TTL);
+        if stale {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
+/// Write `bytes` to `path` through a synced sibling and a rename, then sync the directory.
+fn write_synced(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("tmp");
+    let mut file = File::create(&tmp).with_context(|| format!("creating {}", tmp.display()))?;
+    file.write_all(bytes).with_context(|| format!("writing {}", tmp.display()))?;
+    file.sync_all().with_context(|| format!("syncing {}", tmp.display()))?;
+    std::fs::rename(&tmp, path).with_context(|| format!("renaming {}", path.display()))?;
+    #[cfg(unix)]
+    if let Some(dir) = path.parent() {
+        File::open(dir).and_then(|d| d.sync_all()).with_context(|| format!("syncing {}", dir.display()))?;
+    }
+    Ok(())
+}
+
+/// One decoded batch in the spool: `<id>.batch` while it waits, `<id>.claimed` once a
+/// leader lands it (`run.land.receive-spool`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct Spooled {
+    id: String,
+    key: String,
+    /// The id of the admitting credential; `None` lands unauthored. A group holds one
+    /// credential, so the leader's commit boundary is every member's.
+    credential: Option<String>,
+    bytes: u64,
+    tables: std::collections::BTreeMap<String, Vec<contextful_core::run::ports::Row>>,
+}
+
+impl Spooled {
+    fn path(spool: &Path, id: &str, state: &str) -> PathBuf {
+        spool.join(format!("{id}.{state}"))
+    }
+
+    /// Spool the batch, synced, before it waits for the land lock.
+    fn write(&self, spool: &Path) -> Result<()> {
+        std::fs::create_dir_all(spool).with_context(|| format!("creating {}", spool.display()))?;
+        write_synced(&Spooled::path(spool, &self.id, "batch"), &serde_json::to_vec(self)?)
+    }
+
+    /// Every batch in the spool under the credential `tag`, waiting or claimed by a leader
+    /// that died, oldest first.
+    fn waiting(spool: &Path, tag: &str) -> Result<Vec<Spooled>> {
+        let mut found = Vec::new();
+        for entry in std::fs::read_dir(spool).with_context(|| format!("listing {}", spool.display()))? {
+            let path = entry?.path();
+            if !path.extension().is_some_and(|e| e == "batch" || e == "claimed") || !path.file_stem().and_then(|s| s.to_str()).is_some_and(|s| s.ends_with(tag)) {
+                continue;
+            }
+            // A batch withdrawn or claimed since the listing is gone; it is not this group's.
+            let Ok(bytes) = std::fs::read(&path) else { continue };
+            match serde_json::from_slice::<Spooled>(&bytes) {
+                Ok(spooled) => found.push(spooled),
+                Err(e) => note(&format!("skipping spooled batch {}: {e}", path.display())),
+            }
+        }
+        found.sort_by(|a, b| a.id.cmp(&b.id));
+        found.dedup_by(|a, b| a.id == b.id);
+        Ok(found)
+    }
+
+    /// Claim the batch for the leading group; `false` once its member withdrew it.
+    fn claim(&self, spool: &Path) -> Result<bool> {
+        let claimed = Spooled::path(spool, &self.id, "claimed");
+        match std::fs::rename(Spooled::path(spool, &self.id, "batch"), &claimed) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(claimed.exists()),
+            Err(e) => Err(e).with_context(|| format!("claiming {}", claimed.display())),
+        }
+    }
+
+    /// Withdraw the batch while no leader has claimed it; `false` once one has.
+    fn withdraw(&self, spool: &Path) -> Result<bool> {
+        match std::fs::remove_file(Spooled::path(spool, &self.id, "batch")) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e).context("withdrawing a spooled batch"),
+        }
+    }
+
+    /// Drop the batch from the spool once its group answered.
+    fn release(&self, spool: &Path) {
+        let _ = std::fs::remove_file(Spooled::path(spool, &self.id, "claimed"));
+    }
+}
+
+/// A leader's answer to one member, `<id>.answer` in the spool.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct Answered {
+    answer: Value,
+    failed: Option<(String, bool)>,
+    error: Option<String>,
+    /// The push guard's message when the group's push met it held (`run.land.receive-push-wait`).
+    #[serde(default)]
+    held: Option<String>,
+}
+
+impl Answered {
+    fn write(&self, spool: &Path, id: &str) -> Result<()> {
+        write_synced(&Spooled::path(spool, id, "answer"), &serde_json::to_vec(self)?)
+    }
+
+    /// Take member `id`'s answer, when its group answered it.
+    fn take(spool: &Path, id: &str) -> Result<Option<Answered>> {
+        let path = Spooled::path(spool, id, "answer");
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
+        };
+        let answered = serde_json::from_slice(&bytes).with_context(|| format!("reading {}", path.display()))?;
+        let _ = std::fs::remove_file(&path);
+        Ok(Some(answered))
+    }
+
+    fn landed(self) -> Result<std::result::Result<Landed, Refusal>> {
+        if let Some(error) = self.error {
+            bail!("{error}");
+        }
+        Ok(match self.held {
+            Some(held) => Err(Refusal { error: RunError::Store(StoreError::SyncPushInFlight(held)), retryable: true }),
+            None => Ok(Landed { answer: self.answer, failed: self.failed }),
+        })
     }
 }
 

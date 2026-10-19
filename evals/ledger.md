@@ -2,7 +2,7 @@
 
 # Target ledger
 
-155 entries: 109 gated, 32 recorded, 6 scheduled, 8 open.
+157 entries: 111 gated, 32 recorded, 6 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -28,7 +28,9 @@
 | `backfill-window-commits` | `run.own.checkpoint-commit` | `ingest.backfill.window_commits` | gate | test `contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire` | `== 4` | gated |
 | `bearer-transport-bound` | `authority.issue.one-credential` | `authority.off_transport_admissions` | gate | test `contextful_policy::verify::a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_seeded_loop` | `== 0` | gated |
 | `bucket-keys-per-tick` | `store.push.generation` | `sync.bucket_keys_per_tick_steady_state` | trend | test `contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick` | — | recorded |
-| `catalog-calls-per-landing` | `run.land.receive-entry` | `catalog.calls_per_landing` | gate | test `contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing` | `<= 30` | gated |
+| `catalog-calls-per-group-batch` | `run.land.receive-group` | `catalog.calls_per_group_batch` | gate | test `contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing` | `<= 12` | gated |
+| `catalog-calls-per-group-batch-writes` | `run.land.receive-group` | `catalog.writes_per_group_batch` | gate | test `contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing` | `<= 1.375` | gated |
+| `catalog-calls-per-landing` | `run.land.receive-entry` | `catalog.calls_per_landing` | gate | test `contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing` | `<= 34` | gated |
 | `catalog-calls-per-landing-writes` | `run.land.receive-entry` | `catalog.writes_per_landing` | gate | test `contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing` | `<= 6` | gated |
 | `catalog-d1-requests-per-landing` | `run.journal.d1-profile` | `catalog.d1.requests_per_landing` | scheduled | test `contextful_d1::catalog_cost::a_received_landing_issues_its_d1_requests` | `<= 45` | scheduled |
 | `cjk-subrun` | `read.retrieve.script-split-matching` | `retrieve.cjk.reciprocal_rank` | gate | test `contextful_core::read::retrieve::a_cjk_token_matches_inside_its_run_in_the_score_and_the_bm25_leg` | `== 1` | gated |
@@ -113,9 +115,9 @@
 | `read-session-one-engine` | `read.cache.session-pool` | `session.engine_opens` | gate | test `contextful_context::read::pool::statements_under_one_key_share_one_resolved_session_and_one_engine` | `== 1` | gated |
 | `recall-evidence-latency` | `read.recall.evidence-gate-bound` | `recall.keyed.evidence_gate_p99_us` | trend | test `contextful_memory::recall::keyed_recall_latency_over_a_full_window_at_the_evidence_gate_bound` | — | recorded |
 | `receive-backpressure-w256` | `run.land.receive-backpressure` | `land.receive.backpressure_refusals.w256` | trend | test `contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers` | — | recorded |
-| `receive-group-bucket-puts` | `store.push.after-run` | `land.receive.bucket_puts_per_1000_updates` | gate | test `contextful_cli::storage::queued_receive_batches_push_once_per_group` | `<= 15062.5` | gated |
-| `receive-group-commits` | `run.land.receive-queue` | `land.receive.commits_per_1000_updates` | gate | test `contextful_cli::receive::batches_queued_behind_the_land_lock_commit_per_group` | `<= 1000` | gated |
-| `receive-group-parts` | `run.land.receive-queue` | `land.receive.parts_per_1000_updates` | gate | test `contextful_cli::receive::batches_queued_behind_the_land_lock_commit_per_group` | `<= 2000` | gated |
+| `receive-group-bucket-puts` | `run.land.receive-group` | `land.receive.bucket_puts_per_1000_updates` | gate | test `contextful_cli::storage::queued_receive_batches_push_once_per_group` | `<= 1000` | gated |
+| `receive-group-commits` | `run.land.receive-group` | `land.receive.commits_per_1000_updates` | gate | test `contextful_cli::receive::batches_queued_behind_the_land_lock_commit_per_group` | `<= 63` | gated |
+| `receive-group-parts` | `run.land.receive-group` | `land.receive.parts_per_1000_updates` | gate | test `contextful_cli::receive::batches_queued_behind_the_land_lock_commit_per_group` | `<= 125` | gated |
 | `receive-rows-per-s-ratio` | `run.land.receive-queue` | `land.receive.rows_per_s.w256_over_w1` | trend | test `contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers` | — | recorded |
 | `receive-rows-per-s-w1` | `run.land.receive-queue` | `land.receive.rows_per_s.w1` | trend | test `contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers` | — | recorded |
 | `receive-rows-per-s-w16` | `run.land.receive-queue` | `land.receive.rows_per_s.w16` | trend | test `contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers` | — | recorded |

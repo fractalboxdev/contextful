@@ -87,6 +87,9 @@ pub enum StoreError {
     /// A declared table collides with a reserved table namespace. (`store.reserve.table-name`)
     #[error("StoreReservedTableName: {0}")]
     StoreReservedTableName(String),
+    /// A commit outwaited its table's commit lock past the commit wait. (`store.reserve.commit-wait`)
+    #[error("StoreCommitLockTimeout: {0}")]
+    StoreCommitLockTimeout(String),
     /// A run id already committed on its node lands again, as other than its replay. (`store.lay-out.run-conflict`)
     #[error("StoreRunConflict: {0}")]
     StoreRunConflict(String),

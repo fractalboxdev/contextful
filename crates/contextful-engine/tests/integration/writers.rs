@@ -238,8 +238,15 @@ fn a_run_lands_the_same_whether_its_projection_drops_every_event_or_none() {
 /// Where the catalog calls of one received landing are written, for the D1 replay.
 const RECEIVE_LANDING_TRACE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/catalog/receive-landing.json");
 
-/// A delivered one-row batch lands through `run_receive` over a counting catalog: one
-/// warm-up landing under key `k0`, then the measured landing under key `k1`.
+/// The batches one measured group carries.
+const GROUP_MEMBERS: usize = 16;
+
+/// Delivered batches land over a counting catalog through the calls a receiver makes per
+/// batch: the admission lookup (`receive_first`), the leader's replay lookup
+/// (`receive_landed`), then the run. One warm-up landing under `k0`; the measured lone
+/// landing under `k1`, the figure every batch that finds no other spooled batch pays; then a
+/// measured group of 16 one-row batches under `k2`..`k17` through `run_receive_group`,
+/// whose figures are per received batch.
 #[test]
 fn a_received_batch_counts_its_catalog_calls_per_landing() {
     use crate::support::{Counted, CATALOG_WRITES};
@@ -257,35 +264,60 @@ fn a_received_batch_counts_its_catalog_calls_per_landing() {
         worlds: Vec::new(),
     };
     let p = plan("kind = \"opaque-token\"", "");
-    let land = |key: &str| {
-        let spec = contextful_engine::RunSpec {
-            connector: p.connector_pin("artifact-1"),
-            plan: p.clone(),
-            run_id: format!("receive-{key}.filings"),
-            site_id: "site-a".into(),
-            pid: 4242,
-            boot_id: "boot-a".into(),
-            trace_id: None,
-        };
-        let mut delivered = Pages::new(vec![vec![json!({ "id": format!("{key}-row") })]]);
-        let row = engine.run_receive(&spec, key, &mut delivered, &Unshaped, &mut Sink::default()).unwrap();
+    let spec = |run_id: String| contextful_engine::RunSpec {
+        connector: p.connector_pin("artifact-1"),
+        plan: p.clone(),
+        run_id,
+        site_id: "site-a".into(),
+        pid: 4242,
+        boot_id: "boot-a".into(),
+        trace_id: None,
+    };
+    // A batch's lookups before its run: its first run for the retention check, then the
+    // run that committed it, or the id its next attempt takes.
+    let looked_up = |key: &str| -> String {
+        assert!(engine.receive_first("feed", "filings", key).unwrap().is_none(), "`{key}` is a fresh key");
+        engine.receive_landed("feed", "filings", key).unwrap().expect_err("a fresh key has no committed run")
+    };
+    let lone = |key: &str| {
+        let next = looked_up(key);
+        let row = engine.run_receive(&spec(next), key, &mut Pages::new(vec![vec![json!({ "id": format!("{key}-row") })]]), &Unshaped, &mut Sink::default()).unwrap();
         assert_eq!(row.status, RunStatus::Success, "{:?}", row.error_message);
         row
     };
-    let first = land("k0");
+    let first = lone("k0");
     let warmup = counted.take();
     clock.advance(1);
-    let measured = land("k1");
+    let alone = lone("k1");
     let landing = counted.take();
+    clock.advance(1);
+    let members: Vec<String> = (2..2 + GROUP_MEMBERS).map(|i| format!("k{i}")).collect();
+    for key in &members {
+        looked_up(key);
+    }
+    let next = engine.receive_attempt(&contextful_engine::receive_stem("feed", "filings", "group-1")).unwrap().expect_err("a fresh group");
+    let rows: Vec<serde_json::Value> = members.iter().map(|k| json!({ "id": format!("{k}-row") })).collect();
+    let grouped = engine.run_receive_group(&spec(next), "group-1", &members, &mut Pages::new(vec![rows]), &Unshaped, &mut Sink::default()).unwrap();
+    assert_eq!(grouped.status, RunStatus::Success, "{:?}", grouped.error_message);
+    let group = counted.take();
+    for key in &members {
+        assert!(engine.receive_group("feed", "filings", key).unwrap().is_some(), "member `{key}` names its group");
+        assert_eq!(engine.receive_landed("feed", "filings", key).unwrap().map(|r| r.run_id).ok(), Some(grouped.run_id.clone()), "member `{key}` replays the group run");
+    }
 
-    let writes = landing.iter().filter(|c| CATALOG_WRITES.contains(&c["op"].as_str().unwrap())).count();
-    assert!(!landing.is_empty() && writes > 0, "a landing reads and writes the catalog");
+    let writes = |calls: &[serde_json::Value]| calls.iter().filter(|c| CATALOG_WRITES.contains(&c["op"].as_str().unwrap())).count();
+    assert!(!landing.is_empty() && writes(&landing) > 0, "a landing reads and writes the catalog");
+    let per_batch = |n: usize| n as f64 / GROUP_MEMBERS as f64;
+    let group_calls = per_batch(group.len());
+    assert!(group_calls <= 12.0, "a received batch costs at most 12 catalog calls inside a group: {group_calls}");
     contextful_eval::record::emit("catalog-calls-per-landing", landing.len() as f64, 1, 0);
-    contextful_eval::record::emit("catalog-calls-per-landing-writes", writes as f64, 1, 0);
+    contextful_eval::record::emit("catalog-calls-per-landing-writes", writes(&landing) as f64, 1, 0);
+    contextful_eval::record::emit("catalog-calls-per-group-batch", group_calls, GROUP_MEMBERS as u64, 0);
+    contextful_eval::record::emit("catalog-calls-per-group-batch-writes", per_batch(writes(&group)), GROUP_MEMBERS as u64, 0);
 
     // Execution ids are random; the trace names them by landing so its bytes stay fixed.
-    let mut text = serde_json::to_string_pretty(&json!({ "warmup": warmup, "landing": landing })).unwrap();
-    for (row, name) in [(&first, "execution-k0"), (&measured, "execution-k1")] {
+    let mut text = serde_json::to_string_pretty(&json!({ "warmup": warmup, "landing": landing, "group": group, "group_members": GROUP_MEMBERS })).unwrap();
+    for (row, name) in [(&first, "execution-k0"), (&alone, "execution-k1"), (&grouped, "execution-group-1")] {
         text = text.replace(&row.execution_id, name);
     }
     // The D1 replay reads this trace; `CONTEXTFUL_BLESS=1` rewrites it, any other run compares.

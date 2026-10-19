@@ -11,6 +11,7 @@ use contextful_core::store::lay_out::{
 use contextful_core::store::reconcile::Schema;
 use contextful_core::store::resolve::TableState;
 use contextful_core::store::commit_log;
+use contextful_core::store::reserve::COMMIT_LOCK_WAIT_SECS;
 use contextful_core::store::StoreError;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -481,12 +482,28 @@ impl Store {
         FileLock::acquire(&dir.join(format!("{SCHEMA_FILE}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))
     }
 
-    /// Take the table's commit lock, which a landing holds from assigning `_commit_seq`
-    /// to the step that makes its run readable (`store.reserve.commit-order`).
+    /// Take the table's commit lock, waiting up to the commit wait and then refusing with
+    /// `StoreCommitLockTimeout` (`store.reserve.commit-wait`). A landing holds it to assign
+    /// `_commit_seq` and again to write its manifest (`store.reserve.commit-order`).
     pub fn lock_commit(&self, table: &str) -> Result<FileLock> {
         let dir = self.table_dir(table)?;
         fs::create_dir_all(&dir).at(&dir)?;
-        FileLock::acquire(&dir.join(COMMIT_LOCK_FILE), std::time::Duration::from_secs(LOCK_WAIT_SECS))
+        let path = dir.join(COMMIT_LOCK_FILE);
+        FileLock::acquire_within(&path, std::time::Duration::from_secs(COMMIT_LOCK_WAIT_SECS))?.ok_or_else(|| {
+            StoreError::StoreCommitLockTimeout(format!("table `{table}`: {} stayed held past the {COMMIT_LOCK_WAIT_SECS} s commit wait", path.display())).into()
+        })
+    }
+
+    /// Reserve the table's next commit sequence value under the commit lock, which releases
+    /// on return: the landing writes its parts holding only the returned ticket, and
+    /// [`CommitTicket::publish`] orders its manifest after every lower value
+    /// (`store.reserve.commit-order`).
+    pub fn reserve_commit_seq(&self, table: &str) -> Result<CommitTicket> {
+        let _commit = self.lock_commit(table)?;
+        let seq = self.assign_commit_seq(table)?;
+        let path = self.table_dir(table)?.join(format!("{COMMIT_TICKET_PREFIX}{seq:020}.lock"));
+        let lock = FileLock::try_acquire(&path)?.ok_or_else(|| ContextError::Invalid(format!("table `{table}`: commit ticket {seq} is already held")))?;
+        Ok(CommitTicket { table: table.to_string(), seq, _lock: lock })
     }
 
     /// Assign the table's next commit sequence value, one above the greatest of the node's
@@ -839,6 +856,72 @@ impl Drop for FileLock {
     fn drop(&mut self) {
         if names_file(&self.path, &self.file).unwrap_or(false) {
             let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+/// The prefix of a reserved commit sequence value's lock file beside `commit.lock`. Its
+/// `.lock` suffix keeps it off every push.
+const COMMIT_TICKET_PREFIX: &str = "commit-ticket-";
+
+/// A commit sequence value a landing reserved and has not yet published: a locked file the
+/// kernel releases when its holder exits, so a crashed landing's value reads as a gap.
+#[derive(Debug)]
+pub struct CommitTicket {
+    table: String,
+    seq: i64,
+    _lock: FileLock,
+}
+
+impl CommitTicket {
+    /// The reserved `_commit_seq` value.
+    pub fn seq(&self) -> i64 {
+        self.seq
+    }
+
+    /// Wait until every lower ticket of the table published or its holder died, then take the
+    /// commit lock the manifest is written under, so readable runs hold a prefix of the
+    /// sequence (`store.reserve.commit-order`). Past the commit wait it raises
+    /// `StoreCommitLockTimeout` (`store.reserve.commit-wait`). The ticket releases when it
+    /// drops, after the manifest.
+    pub fn publish(&self, store: &Store) -> Result<FileLock> {
+        let dir = store.table_dir(&self.table)?;
+        let wait = std::time::Duration::from_secs(COMMIT_LOCK_WAIT_SECS);
+        let started = std::time::Instant::now();
+        loop {
+            let mut held = None;
+            for entry in fs::read_dir(&dir).at(&dir)? {
+                let path = entry.at(&dir)?.path();
+                let Some(seq) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_prefix(COMMIT_TICKET_PREFIX)).and_then(|n| n.strip_suffix(".lock")).and_then(|n| n.parse::<i64>().ok()) else {
+                    continue;
+                };
+                if seq >= self.seq {
+                    continue;
+                }
+                // A lower ticket no live holder locks belongs to a landing that ended: taking it
+                // removes the file, and its value stays a gap.
+                if FileLock::try_acquire(&path)?.is_none() {
+                    held = Some(path);
+                    break;
+                }
+            }
+            let Some(path) = held else {
+                let remaining = wait.saturating_sub(started.elapsed());
+                let lock_path = dir.join(COMMIT_LOCK_FILE);
+                return FileLock::acquire_within(&lock_path, remaining)?.ok_or_else(|| {
+                    StoreError::StoreCommitLockTimeout(format!("table `{}`: {} stayed held past the {COMMIT_LOCK_WAIT_SECS} s commit wait", self.table, lock_path.display())).into()
+                });
+            };
+            if started.elapsed() >= wait {
+                return Err(StoreError::StoreCommitLockTimeout(format!(
+                    "table `{}`: commit sequence value {} waited past the {COMMIT_LOCK_WAIT_SECS} s commit wait for {} to publish",
+                    self.table,
+                    self.seq,
+                    path.display()
+                ))
+                .into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
         }
     }
 }

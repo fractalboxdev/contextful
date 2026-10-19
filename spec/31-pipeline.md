@@ -207,14 +207,22 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a pushed row needs the guard, the recorded pull and redaction a pulled row passes*
 - `receive-ack` — `contextful pipeline receive <id> --key <key>` reads one batch on stdin and answers after every touched table commits, in declaration order, naming the batch id and each table's run id; a failed table answers retryable only under {{run.retry.retryable-classes}}.
   *because no commit spans two tables, so a sender learns success only once the last table commits*
-- `receive-batch-key` — A batch key fixes each touched table's run id stem `receive-<digest>.<table>`, a later attempt taking `.2`, `.3`, and its owner scope; a table whose run under the key committed replays it and lands nothing.
+- `receive-batch-key` — A batch key fixes each touched table's run id stem `receive-<digest>.<table>` and owner scope, a later attempt taking `.2`, `.3`; a table whose run under the key, or under the group its scope names, committed replays it and lands nothing.
   *because a sender retrying after a lost answer must not duplicate committed tables*
 - `receive-resume` — A table under a batch key whose run did not commit resumes the key's pending owner, recorded pull included, and no other key's.
   *because a sender retrying after a lost answer must not lose uncommitted tables*
 - `receive-batch-too-large` — A body past the source's `max_batch_bytes` raises `ReceiveBatchTooLarge`, non-retryable; the reader stops one byte past the bound and no table lands.
   *because an unbounded body is an unbounded allocation the sender controls*
-- `receive-queue` — Batches of one pipeline land one at a time; up to `max_queue_depth` batches hold a queue slot, waiting or landing, from before the body is read until the answer.
+- `receive-queue` — Up to `max_queue_depth` batches of one pipeline hold a queue slot, waiting or landing, from before the body is read until the answer, and one group of them lands at a time.
   *because concurrent senders share each table's single-writer cursor lease*
+- `receive-spool` — A batch decodes and validates alone, so a malformed body answers alone, then spools, synced, to its pipeline's queue before waiting for the land lock; a leader lands every spooled batch, a dead receiver's included.
+  *because a batch whose receiver died must land without its sender, and one malformed body must fail no other batch*
+- `receive-group` — The land lock's holder lands the batches spooled under its credential, up to `max_queue_depth` members and 64 MiB, as one run per touched table, keyed by the group or a lone member, then pushes once and answers each.
+  *A-run*
+- `receive-group-isolation` — A group run failing with a class outside {{run.retry.retryable-classes}} lands each member's rows alone under its own key, so a batch the land path refuses answers alone and the group's other members commit.
+  *because one malformed body must fail no other batch, and a sender honoring a non-retryable answer drops its rows*
+- `receive-wait` — A spooled batch that neither holds the land lock nor joins a group within the wait of {{store.reserve.commit-wait}} withdraws its spool and answers as {{run.land.receive-backpressure}}.
+  *because a batch no group takes must free its queue slot and tell its sender to resend*
 - `receive-backpressure` — A batch arriving while every queue slot of its pipeline is held raises `ReceiveBackpressure`, retryable, before reading its body.
   *because a sender told to wait sheds load the receiver cannot absorb*
 - `receive-retry-after` — A {{run.land.receive-backpressure}} answer carries a retry interval of 1 s.
@@ -305,6 +313,10 @@ flowchart LR
 - `run.land.receive-batch-key`: WHEN a batch whose tables all committed arrives again under its key, THEN the answer names the original run id and no row lands.
 - `run.land.receive-batch-too-large`: WHEN a body passes `max_batch_bytes` by one byte, THEN the receiver raises `ReceiveBatchTooLarge` and no table lands.
 - `run.land.receive-backpressure`: WHEN two batches hold both slots of a depth-2 pipeline, THEN a third raises `ReceiveBackpressure` with a 1 s retry interval.
+- `run.land.receive-group`: WHEN 16 one-row batches spool behind a held land lock that then releases, THEN one run commits all 16 rows, one push follows, and every batch answers committed.
+- `run.land.receive-group-isolation`: WHEN a well-formed batch and one whose row sets a reserved column spool into one group, THEN the well-formed batch commits and only the other answers non-retryable.
+- `run.land.receive-spool`: WHEN a receiver dies after spooling its batch, THEN the next leader lands that batch in its group and a resend under its key replays.
+- `run.land.receive-wait`: WHEN a spooled batch waits 30 s behind a held land lock, THEN it leaves the spool and answers `ReceiveBackpressure`, retryable.
 - `run.land.receive-resume`: WHEN the receiver dies after recording a delivered batch and the batch is resent under its key, THEN every landed cell but the run id is identical to the uninterrupted run's.
 - `run.land.receive-write-not-granted`: WHEN a credential holds `write` over one of two declared tables, THEN the receiver refuses before reading the body and no table lands.
 - `run.land.receive-key-expired`: WHEN a key's first attempt is 3601 s old under a 3600 s window, THEN the resend raises `ReceiveBatchKeyExpired` and no row lands.

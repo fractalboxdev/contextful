@@ -329,6 +329,9 @@ pub(crate) struct StoreDestination {
 fn store_failure(e: ContextError) -> Failure {
     match e {
         ContextError::Store(StoreError::StoreSchemaIncompatible(m)) => Failure::deterministic(FailureTag::SchemaIncompatible, format!("StoreSchemaIncompatible: {m}")),
+        // Another landing outlasted the commit wait; the same commit lands once it publishes
+        // (`store.reserve.commit-wait`).
+        ContextError::Store(e @ StoreError::StoreCommitLockTimeout(_)) => Failure::new(FailureTag::Transient, e.to_string()),
         ContextError::Store(s) => Failure::deterministic(FailureTag::Permanent, s.to_string()),
         other => Failure::new(FailureTag::Storage, other.to_string()),
     }

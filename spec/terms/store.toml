@@ -28,6 +28,7 @@ StoreManifestUnreadable      = { clause = "store.lay-out.manifest-unreadable", g
 StoreManifestFormatNewer     = { clause = "store.lay-out.format-newer", gloss = "A run or snapshot manifest carries a `format_version` major newer than the build reads." }
 StoreUnknownTable            = { clause = "store.lay-out.unknown-table", gloss = "A table name resolves to no `schema.json` in the tree." }
 StoreNodeIdInvalid           = { clause = "store.lay-out.node-id-shape", gloss = "A resolved node id is too long or outside the path-safe pattern." }
+StoreCommitLockTimeout       = { clause = "store.reserve.commit-wait", gloss = "A commit outwaited its table's commit lock or a lower value's publication." }
 StoreProjectNameInvalid      = { clause = "store.init.name-shape", gloss = "A project name is not path-safe `/`-separated segments." }
 StoreIdentityInvalid         = { clause = "store.init.identity-invalid", gloss = "A store UUID is malformed or owner mint names no initialized root." }
 StoreIdentityConflict        = { clause = "store.pull.identity-conflict", gloss = "A pull would replace one store UUID with another." }
@@ -96,6 +97,7 @@ store-snapshot-id-width     = { clause = "store.lay-out.snapshot-id", value = 20
 store-snapshot-ancestors    = { clause = "store.lay-out.ancestors", value = 256, unit = "entries", basis = "chosen", gloss = "Most ancestors a snapshot manifest records." }
 store-run-id-length         = { clause = "store.lay-out.run-id-shape", value = 128, unit = "chars", basis = "chosen", gloss = "Longest run id, which is interpolated into run directories and ledger filenames." }
 store-node-id-length        = { clause = "store.lay-out.node-id-shape", value = 64, unit = "chars", basis = "chosen", gloss = "Longest node id, which is interpolated into paths and keys." }
+store-commit-lock-wait      = { clause = "store.reserve.commit-wait", value = 30, unit = "s", basis = "chosen", gloss = "Longest a commit waits for its table's commit lock or a lower value's publication." }
 store-ledger-retention      = { clause = "store.reserve.ledger-retention", value = 365, unit = "d", basis = "chosen", gloss = "Age at which a request-ledger row is collected." }
 store-compaction-interval   = { clause = "store.fold.triggers", value = 6, unit = "h", basis = "chosen", gloss = "Elapsed time after a table's previous pass that fires the next." }
 store-compaction-run-count  = { clause = "store.fold.triggers", value = 50, unit = "runs", basis = "chosen", gloss = "Runs committed on a table since its previous pass that fire the next." }
