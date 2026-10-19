@@ -87,8 +87,9 @@ fn the_nightly_tier_holds_the_features_formal_and_budget_parts() {
     assert_eq!(tier.len(), 22, "{tier:?}");
     assert!(tier.iter().all(|p| nightly(p)), "a required part runs nightly: {tier:?}");
     assert!(tier.first().is_some_and(|p| p.starts_with("features.")), "{tier:?}");
-    let formal = tier.iter().position(|p| p == "formal").unwrap_or_else(|| panic!("no formal part: {tier:?}"));
-    assert!(tier[..formal].iter().all(|p| p.starts_with("features.")) && tier[formal + 1..].iter().all(|p| p.starts_with("budget.")), "{tier:?}");
+    assert!(tier.iter().any(|p| p == "formal") && tier.iter().any(|p| p.starts_with("budget.")), "{tier:?}");
+    let rank = |p: &String| ["features", "formal", "budget"].iter().position(|stage| p.split('.').next() == Some(*stage));
+    assert!(tier.is_sorted_by_key(rank), "the nightly parts leave run order: {tier:?}");
 
     let bogus = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(["stages", "--parts", "--tier", "weekly"]).current_dir(repo_root()).output().unwrap();
     assert!(!bogus.status.success(), "an unknown tier lists parts");
