@@ -18,6 +18,7 @@ VPC-bound and regulated deployments, and teams already operating on AWS.
 | heavy compute | Fargate task started by Step Functions (ECS RunTask, .sync) | Lambda | in-process component host |
 | secrets | Secrets Manager through the task role | Secrets Manager through the function role | Secrets Manager through the task role |
 | realtime run projection | Fargate-hosted run projection | — | — |
+| queue | SQS standard queue; S3 event notifications to SQS for object arrival | — | SQS standard queue; S3 event notifications to SQS for object arrival |
 | kind · profiles | orchestrated · full | function · edge | daemon · full |
 | wall-clock cap · excluded | none · nothing | 15 min · first-time-backfill, component-connector | none · nothing |
 
@@ -65,6 +66,7 @@ Edge-first deployments on native object storage with near-zero idle cost.
 | heavy compute | Container | Container with cloudflare-d1 storage profile |
 | secrets | Workers Secrets | Workers Secrets |
 | realtime run projection | Durable Object with a hibernating WebSocket | Durable Object with a hibernating WebSocket |
+| queue | Cloudflare Queues with a pull consumer; R2 event notifications for object arrival | Cloudflare Queues with a pull consumer; R2 event notifications for object arrival |
 | kind · profiles | orchestrated · full | orchestrated · full |
 | wall-clock cap · excluded | none · nothing | none · nothing |
 
@@ -112,6 +114,7 @@ The reference output, development, and air-gapped single-node deployments.
 | heavy compute | in-process component host |
 | secrets | environment and configured secret providers |
 | realtime run projection | in-process WebSocket |
+| queue | — |
 | kind · profiles | daemon · full |
 | wall-clock cap · excluded | none · nothing |
 

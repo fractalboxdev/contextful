@@ -219,7 +219,6 @@ flowchart LR
   REF -. "ParityDivergence" .-> REFUSED
 ```
 
-unsettled: Which primitive fills an optional `queue` role in each target file, and how `corpus.targets` checks a shape declaring it? owner: topology affects: topology.deploy
 unsettled: Which role hosts heavy compute on a provider exposing neither a container primitive nor a long-running function? owner: topology affects: topology.deploy
 
 ## publish-hostname

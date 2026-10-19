@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 565 | 127 | 46 | 18 | 526 | 0 | 526 |
+| `run` | 3 | 29 | 566 | 127 | 46 | 17 | 526 | 0 | 526 |
 | `store` | 3 | 19 | 303 | 64 | 16 | 10 | 292 | 0 | 292 |
 | `surface` | 2 | 21 | 172 | 66 | 24 | 0 | 146 | 0 | 146 |
-| `topology` | 1 | 6 | 80 | 25 | 5 | 4 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2707 | 680 | 216 | 77 | 2414 | 0 | |
+| `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
+| **total** | 22 | 169 | 2708 | 680 | 216 | 75 | 2414 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 185 | 175 | passing | closed |
 | 3 — The run path | 12 | 290 | 278 | passing | closed |
-| 4 — Ingest | 25 | 609 | 505 | passing | closed |
+| 4 — Ingest | 25 | 610 | 505 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 94 | 93 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -987,7 +987,7 @@ Unscheduled operations: 13.
 | `corpus.targets.incomplete` | `spec/pins.toml` | performed |
 | `corpus.targets.page` | `spec/pins.toml` | performed |
 | `corpus.targets.primitives` | `tools/spec/tests/integration/targets.rs::a_target_file_lists_its_primitives_and_each_shape_the_ones_it_uses` | performed |
-| `corpus.targets.roles` | `tools/spec/tests/integration/targets.rs::a_shape_fills_eight_roles_and_may_fill_a_realtime_projection` | performed |
+| `corpus.targets.roles` | `tools/spec/tests/integration/targets.rs::a_shape_fills_eight_roles_and_may_fill_a_realtime_projection_and_a_queue` | performed |
 | `disclosure.attest.anchor-verb` | `crates/contextful-cli/tests/integration/audit.rs::anchor_signs_an_unanchored_chain_so_it_verifies_under_the_issuer_pin` | performed |
 | `disclosure.attest.broken-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken` | performed |
 | `disclosure.attest.inclusion-proof` | `crates/contextful-policy/tests/integration/audit.rs::an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment` | performed |

@@ -6,7 +6,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-/// Roles every shape fills; `realtime` is optional.
+/// Roles every shape fills; `realtime` and `queue` are optional.
 pub const ROLES: [(&str, &str); 8] = [
     ("cron_tick", "cron tick"),
     ("reconciler", "reconciler"),
@@ -134,6 +134,7 @@ pub fn page(c: &Corpus) -> String {
         s.push('\n');
         let mut rows: Vec<(&str, &str)> = ROLES.to_vec();
         rows.push(("realtime", "realtime run projection"));
+        rows.push(("queue", "queue"));
         for (key, label) in rows {
             let _ = write!(s, "| {label} |");
             for sh in &t.shape {

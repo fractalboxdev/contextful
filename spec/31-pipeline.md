@@ -89,7 +89,6 @@ The pipeline specification, its serializations, manifest discovery, the content 
 
 unsettled: What retires a key a source stops serving under `append`: a run declaring itself complete state, or a per-connector delete signal? owner: pipeline affects: run.declare
 
-unsettled: How does a read driven by object-arrival keys tolerate duplicate, reordered or missed notifications without exposing an incomplete prefix? owner: pipeline affects: run.land
 unsettled: Does `on_table_error` take a per-table override, and a cap on failed tables before a fire halts anyway? owner: pipeline affects: run.declare
 
 ## compile
@@ -244,7 +243,12 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a batch delayed in the queue must end typed rather than land after its replay guarantee lapsed*
 - `receive-queued-spill` — A body past the queue's message cap is written to the bucket under its batch key before its message queues, and deleted once its outcome records.
   *because a queue message carries a reference when a body under `max_batch_bytes` still exceeds the provider's cap*
+<<<<<<< HEAD
 >>>>>>> c0f5f047 (spec(run): a queued receive answers custody, admits before queueing and ends typed past its key window)
+=======
+- `object-arrival-wake` — An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.
+  *because a notification is a hint a provider may repeat, reorder or drop, and the held position already decides what lands*
+>>>>>>> df2919f4 (spec(topology): fill an optional queue role on the Cloudflare and AWS container shapes; object-arrival keys only wake a read)
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
 - `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull.
