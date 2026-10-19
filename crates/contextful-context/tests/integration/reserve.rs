@@ -353,8 +353,9 @@ fn a_reserving_commit_marks_its_counter_so_a_writer_of_the_bare_integer_refuses_
         }
         other => panic!("expected StoreManifestFormatNewer, got {other:?}: {err}"),
     }
-    let parts = walkdir(&f.table_dir("spans").join("data/runs/run-3"));
-    assert!(parts.iter().all(|p| p.extension().is_none_or(|e| e != "parquet")), "the refused commit wrote a part: {parts:?}");
+    let parquet = |run: &str| walkdir(&f.table_dir("spans").join("data/runs").join(run)).into_iter().filter(|p| p.extension().is_some_and(|e| e == "parquet")).count();
+    assert!(parquet("run-2") > 0, "a committed run holds its part");
+    assert_eq!(parquet("run-3"), 0, "the refused commit wrote a part");
     assert_eq!(std::fs::read_to_string(&counter).unwrap(), marked, "the refused commit rewrote the counter");
 }
 
