@@ -1,6 +1,7 @@
 //! `contextful-ci` — the gate's stages as typed subcommands. A contributor and the
 //! FlareDispatch gate invoke the identical command.
 
+mod affected;
 mod capability;
 mod deny;
 mod egress;
@@ -99,6 +100,9 @@ enum Cmd {
         /// Include one test-first part per changed test package against this revision.
         #[arg(long, requires = "parts")]
         base: Option<String>,
+        /// Print only the parts the change against `--base` reaches (`assurance.gate.affected-parts`).
+        #[arg(long, requires = "base")]
+        affected: bool,
         /// Print the selected stage names as a JSON array for a workflow matrix.
         #[arg(long)]
         json: bool,
@@ -298,8 +302,18 @@ fn refuse(code: &'static str, message: String) -> anyhow::Error {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.cmd {
-        Cmd::Stages { parts, base, json } => {
-            let listed = if parts { repo_root().and_then(|root| dispatched(&root, base.as_deref())) } else { Ok(STAGES.iter().map(|s| s.to_string()).collect()) };
+        Cmd::Stages { parts, base, affected, json } => {
+            let listed = if parts {
+                repo_root().and_then(|root| {
+                    let required = dispatched(&root, base.as_deref())?;
+                    match base.as_deref() {
+                        Some(base) if affected => affected::select(&root, base, required),
+                        _ => Ok(required),
+                    }
+                })
+            } else {
+                Ok(STAGES.iter().map(|s| s.to_string()).collect())
+            };
             listed.and_then(|stages| {
                 if json { println!("{}", serde_json::to_string(&stages)?); } else { stages.iter().for_each(|s| println!("{s}")); }
                 Ok(())

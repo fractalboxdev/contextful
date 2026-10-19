@@ -426,7 +426,7 @@ pub fn regenerate(root: &Path) -> Result<()> {
 // ---------------------------------------------------------------- connectors
 
 /// The packages carrying the connectors and the guest-connector host.
-const CONNECTOR_PACKAGES: [&str; 2] = ["contextful-connectors", "contextful-wasm"];
+pub(crate) const CONNECTOR_PACKAGES: [&str; 2] = ["contextful-connectors", "contextful-wasm"];
 
 /// The connectors stage: each connector package's suite with every feature on, so the
 /// object and drive sources and the interpreted host target compile and run.

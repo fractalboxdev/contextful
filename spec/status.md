@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 326 | 67 | 24 | 5 | 284 | 0 | 284 |
+| `assurance` | 3 | 18 | 334 | 67 | 24 | 5 | 292 | 0 | 292 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 2 | 14 | 386 | 92 | 22 | 14 | 303 | 0 | 303 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 4 | 19 | 327 | 67 | 21 | 12 | 316 | 0 | 316 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2778 | 686 | 224 | 82 | 2486 | 0 | |
+| **total** | 23 | 169 | 2786 | 686 | 224 | 82 | 2494 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 61 | 49 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 172 | 137 | passing | closed |
+| 14 — Assurance | 7 | 180 | 145 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
@@ -209,6 +209,14 @@ Unscheduled operations: 13.
 | `assurance.forecast.resolved-before-freeze` | `tools/eval/tests/integration/forecast.rs::a_case_resolved_before_its_freeze_is_refused` | performed |
 | `assurance.forecast.settlement` | `crates/contextful-cli/tests/integration/eval.rs::a_forecast_case_settles_through_the_label_join` | performed |
 | `assurance.forecast.tracks-separate` | `tools/eval/tests/integration/forecast.rs::a_round_report_keeps_each_track_apart` | performed |
+| `assurance.gate.affected-every` | `tools/ci/tests/integration/affected.rs::a_build_input_or_an_unmapped_path_reaches_every_required_part` | performed |
+| `assurance.gate.affected-formal` | `tools/ci/tests/integration/affected.rs::a_formal_change_reaches_every_part_reading_the_lean_tree` | performed |
+| `assurance.gate.affected-parts` | `tools/ci/tests/integration/affected.rs::affected_measures_from_the_merge_base` | performed |
+| `assurance.gate.affected-removed` | `tools/ci/tests/integration/affected.rs::a_removed_clause_reaches_the_evaluate_stage` | performed |
+| `assurance.gate.affected-spec` | `tools/ci/tests/integration/affected.rs::a_spec_change_reaches_validation_and_the_parts_running_each_changed_clause_pin` | performed |
+| `assurance.gate.affected-spec-inputs` | `tools/ci/tests/integration/affected.rs::a_spec_file_a_stage_reads_reaches_that_stage` | performed |
+| `assurance.gate.affected-surfaces` | `tools/ci/tests/integration/affected.rs::a_typescript_change_reaches_the_surfaces_acceptance_and_crate_graph_parts` | performed |
+| `assurance.gate.affected-unplaced` | `tools/ci/tests/integration/affected.rs::a_pin_the_listing_cannot_place_reaches_every_required_part` | performed |
 | `assurance.gate.budget-stage` | `tools/ci/tests/integration/image.rs::the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_none` | performed |
 | `assurance.gate.crate-graph` | `tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing` | performed |
 | `assurance.gate.deny-list` | `tools/ci/tests/integration/deny.rs::a_deny_list_drifting_from_the_refusals_is_refused` | performed |
