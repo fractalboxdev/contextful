@@ -88,12 +88,15 @@ struct Calls<'x, 'e, J: JournalStore, B: BlobStore> {
 
 impl<J: JournalStore + Clone, B: BlobStore + Clone> Calls<'_, '_, J, B> {
     fn stop(&self, close: Close) -> RowStop {
-        let failure = match &close {
-            Close::Failed(f) => f.clone(),
-            Close::Refused(e) => Failure::deterministic(FailureTag::Permanent, e.to_string()),
+        let stop = match &close {
+            Close::Failed(f) => RowStop::Failed(f.clone()),
+            Close::Refused(e) => RowStop::Failed(Failure::deterministic(FailureTag::Permanent, e.to_string())),
+            // A step waiting on its next-attempt instant stops its row as an unresolved
+            // awakeable does (`run.items.waiting-item`).
+            Close::Waiting { .. } => RowStop::Parked,
         };
         *self.close.lock().unwrap_or_else(|e| e.into_inner()) = Some(close);
-        RowStop::Failed(failure)
+        stop
     }
 
     fn record(&self, label: &str, input: &[u8], effect: &mut dyn FnMut(&str) -> Result<Vec<u8>, Failure>) -> Result<Vec<u8>, RowStop> {
@@ -191,11 +194,13 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> RowCalls for Calls<'_, '_, J
 struct Pass<T> {
     emitted: BTreeMap<usize, Output<T>>,
     parked: BTreeSet<usize>,
+    /// Rows whose step waits on a next-attempt instant past the retry ceiling.
+    waiting: BTreeMap<usize, Close>,
     failed: Option<Close>,
 }
 
 impl<T> Default for Pass<T> {
-    fn default() -> Self { Self { emitted:BTreeMap::new(), parked:BTreeSet::new(), failed:None } }
+    fn default() -> Self { Self { emitted:BTreeMap::new(), parked:BTreeSet::new(), waiting:BTreeMap::new(), failed:None } }
 }
 
 impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> Engine<J, B> {
@@ -298,6 +303,11 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
             }
             emitted.extend(pass.emitted);
             if pass.parked.is_empty() {
+                // With no awakeable to poll, the run closes waiting on its earliest row
+                // (`run.retry.waiting-state`).
+                if let Some(close) = pass.waiting.into_values().min_by_key(|c| c.waiting()) {
+                    return Err(close);
+                }
                 break;
             }
             if !waiting {
@@ -307,7 +317,8 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
             if !x.token().wait_timeout(drive.poll) {
                 return Err(Close::Failed(Failure::canceled(format!("stopped while {} rows awaited an awakeable", pass.parked.len()))));
             }
-            pending = pass.parked.into_iter().collect();
+            pending = pass.parked.into_iter().chain(pass.waiting.into_keys()).collect();
+            pending.sort_unstable();
         }
         if waiting {
             x.mark(RunStatus::Running).map_err(close_of)?;
@@ -347,9 +358,14 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                         Ok(out) => {
                             st.emitted.insert(i, out);
                         }
-                        Err(RowStop::Parked) => {
-                            st.parked.insert(i);
-                        }
+                        Err(RowStop::Parked) => match calls.close.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                            Some(waiting @ Close::Waiting { .. }) => {
+                                st.waiting.insert(i, waiting);
+                            }
+                            _ => {
+                                st.parked.insert(i);
+                            }
+                        },
                         Err(RowStop::Failed(f)) => {
                             let close = calls.close.lock().unwrap_or_else(|e| e.into_inner()).take().unwrap_or(Close::Failed(f));
                             st.failed.get_or_insert(close);

@@ -175,9 +175,9 @@ fn a_deterministic_refusal_is_terminal_and_spends_no_attempt() {
     assert!(matches!(decide(&s, "pull-0", 1, &Failure::new(FailureTag::Permanent, "x"), 0), Decision::Fail { consumed_attempt: true, .. }));
 }
 
-/// A server-supplied `Retry-After` supersedes the computed delay up to 300 s; a longer one closes the step as
-/// `RateLimited` and the run is rescheduled instead of sleeping.
-// spec: run.retry.retry-after@b7ad72c0
+/// A server-supplied `Retry-After` supersedes the computed delay; a wait up to 300 s sleeps, and a longer one
+/// closes the attempt `RateLimited` and waiting.
+// spec: run.retry.retry-after@13f0a7fd
 #[test]
 fn retry_after_supersedes_the_delay_up_to_300_s() {
     assert_eq!(RETRY_AFTER_CEILING_SECS, 300);

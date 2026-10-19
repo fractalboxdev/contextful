@@ -192,7 +192,7 @@ Independent store-driven items, their durable receipts, bounded retries and enti
 - `identity` — An isolated item's logical identity derives from its declared key and namespace; its execution identity binds that identity, job, input row, policy and pinned plan, independently of input order.
 - `completion` — Each successful item lands independently and stores a durable completion receipt; a later fire under the same execution identity skips its body and landing.
 - `terminal-input` — An aggregate whose items all hold terminal receipts releases its pinned input owner, so later fires read fresh input while retaining each item's completion or terminal failure.
-- `outcomes` — Individual outcomes distinguish success, failure, parked and deferred; the aggregate succeeds only when every required item succeeds.
+- `outcomes` — Individual outcomes distinguish success, failure, parked, deferred and waiting; the aggregate succeeds only when every required item succeeds.
 - `retry-budget` — Failed attempts consume the declared item budget across fires; permanent failures terminate immediately, parked entries consume no failed attempt, and terminal failure receipts prevent further body entry.
   *P6*
 - `replay` — A nonterminal failed or parked item retains its execution owner and recorded paid calls; its next admitted attempt reuses that journal.
@@ -206,6 +206,8 @@ Independent store-driven items, their durable receipts, bounded retries and enti
   *A-run*
 - `terminal-outcome` — An item row's outcome is `succeeded`, `failed` for a failure no retry changes, or `exhausted` for a retryable failure on the attempt spending {{run.items.retry-budget}}; its reason carries the failure tag and {{run.record.error-cap}} message.
   *A-run*
+- `waiting-item` — Under `isolated_items`, every retry wait closes its item {{run.retry.waiting-state}} and frees its slot; once the pass ends, an item whose instant falls within {{run.retry.retry-after}}'s ceiling re-enters in the same fire.
+  *because one throttled item sleeping in a slot delays every sibling queued behind it*
 - `served-key` — An item row carries its logical and entity keys as the job's input relation served them, so a key its source masks or classes lands under that rule, never in the clear.
   *A-run*
 
@@ -330,8 +332,22 @@ Classifying a failure, the single retry layer, and the delay before the next att
   *P6*
 - `deterministic-verdict` — A refusal whose check is pure over static input is terminal and consumes no attempt budget.
   *P6*
-- `retry-after` — A server-supplied `Retry-After` supersedes the computed delay up to 300 s; a longer one closes the step as `RateLimited` and the run is rescheduled instead of sleeping.
+- `retry-after` — A server-supplied `Retry-After` supersedes the computed delay; a remaining wait up to 300 s sleeps in process, and a longer one closes the attempt `RateLimited` under {{run.retry.waiting-state}} instead of sleeping.
   *because an unclamped upstream delay holds a run slot for as long as the vendor asks*
+- `not-before` — Before any wait, a retrying step records its next-attempt instant beside its attempt count in the execution's journal, so a restart, a container replacement included, reads both back.
+  *because a wait held only in memory restarts on every replacement and calls the vendor early*
+- `waiting-state` — An attempt closed on its next-attempt instant reports `waiting` with that instant on its run row, counts as neither refused nor failed, and keeps its owner; only exhausting the schedule's attempts fails the step.
+  *because a vendor's requested pause is not evidence the work is wrong*
+- `resume-at` — An attempt reaching a step whose stored instant has not passed waits again without invoking the effect; the first attempt at or after it re-enters under the same work key, pins and attempt count.
+  *because resuming under another key or a fresh budget repeats paid work or retries without bound*
+- `crash-resumes-wait` — An attempt resuming a step whose process died mid-sleep sleeps out only the remaining wait to the stored instant.
+  *because restarting the wait over-delays and skipping it calls the vendor early*
+- `wake` — A waiting attempt records its instant on its owner; the scheduler fires that owner's unit at the first beat at or after it, ahead of the unit's regular `schedule` fire, and the next attempt's claim clears it.
+  *because a resume gated on the regular cadence adds up to a full interval to every rate-limited wait*
+- `shared-path` — An HTTP `Retry-After`, a throttled lease mint and a limiter denial each reach the step as a `RateLimited` failure carrying its wait, and each takes {{run.retry.not-before}}.
+  *because two retry owners for one throttle disagree on when to call again*
+- `no-double-spend` — A resumed attempt replays every recorded step, so it reserves no meter permit and issues no call an earlier attempt already recorded.
+  *because each resume reserving afresh spends a budget once per wait*
 - `one-layer` — The step's schedule is the only retry layer: an adapter, a credential mint and a meter acquire inside a step return their failure to it.
   *because nested retry layers multiply attempts and amplify a vendor outage*
 - `decision-is-pure` — The retry decision is a pure function of the one-based attempt that just closed and the classified failure, jitter derived from an injected seed. The runner owns the sleep and the attempt counter.

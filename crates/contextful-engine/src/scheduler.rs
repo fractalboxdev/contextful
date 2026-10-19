@@ -11,6 +11,7 @@
 //! (`surface.dispatch.not-a-head`).
 
 use contextful_core::coordinate::{Catalog, Lease, LeaseKey, CADENCE_LEASE_RENEWAL_SECS, CADENCE_LEASE_TTL_SECS};
+use contextful_core::run::own::OwnerScope;
 use contextful_core::run::Failure;
 use contextful_core::surface::arm::{next_fire, Schedule};
 use contextful_core::surface::dispatch::{admit, Due};
@@ -242,7 +243,12 @@ impl Scheduler {
 
     fn next_of(&self, e: &Entry, now: Instant) -> Result<Instant, Failure> {
         let armed_at = self.armed_at.get(&e.id).copied().unwrap_or(now);
-        Ok(next_fire(&e.schedule, self.last_run(&e.id, now)?, self.last_dispatch.get(&e.id).copied(), armed_at))
+        let last_dispatch = self.last_dispatch.get(&e.id).copied();
+        let regular = next_fire(&e.schedule, self.last_run(&e.id, now)?, last_dispatch, armed_at);
+        // A waiting attempt's owner wakes its unit at its next-attempt instant, once
+        // (`run.retry.wake`).
+        let wake = self.catalog.owner_at(&OwnerScope::host(&e.id))?.and_then(|o| o.next_attempt_at).filter(|at| last_dispatch.is_none_or(|d| d < *at));
+        Ok(wake.map_or(regular, |at| at.min(regular)))
     }
 
     /// One evaluation of the armed set.

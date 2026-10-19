@@ -126,6 +126,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             failed_branches: Vec::new(),
             credential_providers: Default::default(),
             bound_hits: Vec::new(),
+            next_attempt_at: None,
         };
         self.catalog.put_run(&row)?;
         Ok(row)

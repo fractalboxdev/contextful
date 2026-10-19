@@ -6,6 +6,7 @@ use crate::fsutil::sleep_unless;
 use crate::stores::{FileBlobStore, FileJournalStore};
 use contextful_core::run::journal::{sweep_due, EntryKey, Row, Stored};
 use contextful_core::run::ports::{BlobStore, Cancellation, JournalStore};
+use contextful_core::run::retry::NOT_BEFORE_PREFIX;
 use contextful_core::run::{Failure, RunError};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -209,7 +210,8 @@ impl<J: JournalStore, B: BlobStore> Journal<J, B> {
 
     /// Recorded entries under an execution.
     pub fn recorded(&self, execution_id: &str) -> Result<usize, Failure> {
-        Ok(self.rows.rows(execution_id)?.iter().filter(|r| matches!(r, Row::Recorded { .. })).count())
+        // A next-attempt entry records a wait, not work (`run.retry.not-before`).
+        Ok(self.rows.rows(execution_id)?.iter().filter(|r| matches!(r, Row::Recorded { key, .. } if !key.step_label.starts_with(NOT_BEFORE_PREFIX))).count())
     }
 
     /// Delete every row of a retired execution (`run.journal.collection`).

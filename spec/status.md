@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 565 | 127 | 46 | 17 | 526 | 0 | 526 |
+| `run` | 3 | 29 | 574 | 127 | 46 | 18 | 534 | 0 | 534 |
 | `store` | 3 | 19 | 312 | 64 | 17 | 10 | 301 | 0 | 301 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2718 | 681 | 217 | 75 | 2425 | 0 | |
+| **total** | 22 | 169 | 2727 | 681 | 217 | 76 | 2433 | 0 | |
 
 Decision records: 18.
 
@@ -28,8 +28,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 188 | 178 | passing | closed |
-| 3 — The run path | 12 | 290 | 278 | passing | closed |
-| 4 — Ingest | 25 | 609 | 504 | passing | closed |
+| 3 — The run path | 12 | 298 | 286 | passing | closed |
+| 4 — Ingest | 25 | 610 | 504 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -1630,6 +1630,7 @@ Unscheduled operations: 13.
 | `run.items.served-key` | `crates/contextful-cli/tests/integration/job.rs::a_masked_entity_key_lands_in_the_item_record_masked` | performed |
 | `run.items.terminal-input` | `spec/pins.toml` | performed |
 | `run.items.terminal-outcome` | `crates/contextful-cli/tests/integration/job.rs::terminal_items_read_back_from_the_item_record_by_job_and_entity` | performed |
+| `run.items.waiting-item` | `crates/contextful-engine/tests/integration/not_before.rs::an_item_waiting_under_isolated_items_leaves_its_siblings_completing` | performed |
 | `run.journal.blob-sweep` | `crates/contextful-engine/tests/integration/journal.rs::the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day` | performed |
 | `run.journal.blob-write` | `crates/contextful-engine/tests/integration/journal.rs::concurrent_blob_writers_converge_on_one_file` | performed |
 | `run.journal.body-projection` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |
@@ -1862,20 +1863,27 @@ Unscheduled operations: 13.
 | `run.retry.attempt-counter` | `crates/contextful-engine/tests/integration/attempts.rs::a_crash_mid_schedule_resumes_the_remaining_attempts` | performed |
 | `run.retry.bound-hit-is-transient` | `crates/contextful-wasm/tests/integration/package.rs::a_struck_bound_is_named_on_its_transient_failure` | performed |
 | `run.retry.bound-hit-recorded` | `crates/contextful-engine/tests/integration/runner.rs::every_bound_hit_lands_on_the_run_record_even_when_a_retry_recovers` | performed |
+| `run.retry.crash-resumes-wait` | `crates/contextful-engine/tests/integration/not_before.rs::a_crash_during_an_in_ceiling_sleep_resumes_the_remaining_wait` | performed |
 | `run.retry.decision-is-pure` | `crates/contextful-core/tests/integration/run/retry.rs::the_decision_is_a_function_of_attempt_failure_and_seed` | performed |
 | `run.retry.default-policy` | `crates/contextful-core/tests/integration/run/retry.rs::the_default_schedule_doubles_from_100_ms_over_5_attempts` | performed |
 | `run.retry.deterministic-verdict` | `crates/contextful-core/tests/integration/run/retry.rs::a_deterministic_refusal_is_terminal_and_spends_no_attempt` | performed |
 | `run.retry.failure-taxonomy` | `crates/contextful-core/tests/integration/run/retry.rs::ten_tags_cross_every_port_and_the_decision_reads_the_tag_alone` | performed |
 | `run.retry.no-compensation` | `tools/ci/tests/integration/topology.rs::no_public_api_offers_a_compensation_combinator_beside_the_recorded_step` | performed |
+| `run.retry.no-double-spend` | `crates/contextful-engine/tests/integration/not_before.rs::a_resume_does_not_double_reserve_spend` | performed |
+| `run.retry.not-before` | `crates/contextful-engine/tests/integration/not_before.rs::a_restart_between_reschedule_and_resume_keeps_the_time_and_the_attempt_count` | performed |
 | `run.retry.one-layer` | `crates/contextful-wasm/tests/integration/meter.rs::the_adapter_the_mint_and_the_meter_each_return_their_failure_once` | performed |
 | `run.retry.partial-failure` | `crates/contextful-engine/tests/integration/runner.rs::a_run_failing_after_a_stage_commits_nothing_and_closes_failed` | performed |
 | `run.retry.pressure-is-local` | `crates/contextful-engine/tests/integration/runner.rs::a_rate_limited_source_paces_its_own_run_and_no_other` | performed |
+| `run.retry.resume-at` | `crates/contextful-engine/tests/integration/not_before.rs::a_reschedule_above_the_ceiling_resumes_at_the_stored_time` | performed |
 | `run.retry.retry-after` | `crates/contextful-core/tests/integration/run/retry.rs::retry_after_supersedes_the_delay_up_to_300_s` | performed |
 | `run.retry.retryable-classes` | `crates/contextful-core/tests/integration/run/retry.rs::only_transient_and_rate_limited_retry` | performed |
 | `run.retry.schedule` | `crates/contextful-core/tests/integration/run/retry.rs::a_schedule_carries_backoff_attempts_clamp_jitter_and_retry_on` | performed |
+| `run.retry.shared-path` | `crates/contextful-engine/tests/integration/not_before.rs::a_restart_between_reschedule_and_resume_keeps_the_time_and_the_attempt_count` | performed |
 | `run.retry.single-attempt` | `crates/contextful-core/tests/integration/run/retry.rs::a_one_attempt_schedule_never_retries` | performed |
 | `run.retry.step-failed` | `crates/contextful-core/tests/integration/run/retry.rs::a_terminal_or_exhausted_step_fails_with_its_label_and_tag` | performed |
 | `run.retry.unretryable-tag` | `crates/contextful-core/tests/integration/run/retry.rs::retry_on_naming_an_unretryable_tag_is_refused_at_compile` | performed |
+| `run.retry.waiting-state` | `crates/contextful-engine/tests/integration/not_before.rs::a_reschedule_above_the_ceiling_resumes_at_the_stored_time` | performed |
+| `run.retry.wake` | `crates/contextful-engine/tests/integration/not_before.rs::the_first_beat_at_the_stored_time_fires_the_waiting_job` | performed |
 | `run.seed.available-instant` | `crates/contextful-context/tests/integration/available_time.rs::a_seeded_row_lands_its_sources_instant_beside_the_commit_instant` | performed |
 | `run.seed.block` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_seed_block_names_a_source_and_a_ceiling_on_the_ordering_scale` | performed |
 | `run.seed.ceiling-binding` | `crates/contextful-engine/tests/integration/seed.rs::an_integer_ceiling_becomes_the_unset_live_position` | performed |

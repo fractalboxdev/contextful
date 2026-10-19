@@ -2,7 +2,9 @@
 //! consults after each closed attempt.
 
 use super::failure::{Failure, FailureTag};
+use super::journal::EntryKey;
 use super::RunError;
+use crate::time::Instant;
 use serde::{Deserialize, Serialize};
 
 /// First delay of the default schedule: 100 ms (`run.retry.default-policy`).
@@ -136,9 +138,69 @@ pub enum Decision {
     /// The failure stands as the step's answer: `StepFailed`. `consumed_attempt` is
     /// false for a deterministic refusal, which spends no budget.
     Fail { error: RunError, consumed_attempt: bool },
-    /// The server asked for a delay past the ceiling: the step closes `RateLimited` and
-    /// the run is rescheduled rather than sleeping.
+    /// The server asked for a delay past the ceiling: the attempt closes waiting until its
+    /// next-attempt instant rather than sleeping (`run.retry.not-before`).
     Reschedule { error: RunError, retry_after_secs: u64 },
+}
+
+/// The label prefix of a step's next-attempt journal entry.
+pub const NOT_BEFORE_PREFIX: &str = "not-before:";
+
+/// A step's next attempt: the instant before which no attempt runs and the attempts its
+/// schedule closed, recorded in the execution's journal before any wait
+/// (`run.retry.not-before`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotBefore {
+    pub at: Instant,
+    pub attempts: u32,
+}
+
+impl NotBefore {
+    pub fn encode(&self) -> Vec<u8> {
+        serde_json::to_vec(self).expect("a next-attempt entry serializes")
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<NotBefore, Failure> {
+        serde_json::from_slice(bytes).map_err(|e| Failure::new(FailureTag::Storage, format!("a next-attempt entry does not decode: {e}")))
+    }
+
+    /// The entry `delay_ms` after `now`, closing `attempts` attempts.
+    pub fn after(now: Instant, delay_ms: u64, attempts: u32) -> NotBefore {
+        let nanos = now.unix_nanos().saturating_add(i128::from(delay_ms) * 1_000_000);
+        let at = Instant::from_unix_nanos(nanos).unwrap_or_else(|_| now.plus_secs(delay_ms / 1000));
+        NotBefore { at, attempts }
+    }
+}
+
+/// The journal key of the next-attempt entry that closed attempt `attempt` of `step`.
+pub fn not_before_key(step: &EntryKey, attempt: u32) -> EntryKey {
+    let mut input = step.input_hash.as_bytes().to_vec();
+    input.extend_from_slice(&attempt.to_be_bytes());
+    EntryKey::new(&step.execution_id, &format!("{NOT_BEFORE_PREFIX}{}", step.step_label), &input)
+}
+
+/// What a step does before attempting at `now` under a next-attempt instant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hold {
+    /// The instant has passed: attempt now.
+    Due,
+    /// Sleep this long in process, then attempt.
+    Sleep { nanos: u64 },
+    /// Close the attempt waiting until the instant.
+    Wait,
+}
+
+/// The hold before an attempt: a remaining wait up to [`RETRY_AFTER_CEILING_SECS`] sleeps
+/// unless the caller parks every wait, and a longer one waits (`run.retry.retry-after`).
+pub fn hold(at: Instant, now: Instant, park_every_wait: bool) -> Hold {
+    let remaining = at.unix_nanos() - now.unix_nanos();
+    if remaining <= 0 {
+        return Hold::Due;
+    }
+    if park_every_wait || remaining > i128::from(RETRY_AFTER_CEILING_SECS) * 1_000_000_000 {
+        return Hold::Wait;
+    }
+    Hold::Sleep { nanos: u64::try_from(remaining).unwrap_or(u64::MAX) }
 }
 
 fn step_failed(label: &str, failure: &Failure) -> RunError {
