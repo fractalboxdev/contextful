@@ -1161,6 +1161,49 @@ fn plan_diffs_apply_converges_and_serve_fires() {
     assert_eq!(targets, ["/v1/filings", "/v1/orders"], "orders fires as applied, not as the unapplied edit declares");
 }
 
+// spec: run.declare.plan-externals@b62b1762
+#[test]
+fn plan_reports_external_additions_input_changes_and_removals() {
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://vendor.example/orders", "every 1h")));
+    let declaration = dir.path().join("contextful.toml");
+    let base = std::fs::read_to_string(&declaration).unwrap();
+    let external = |input: &str| format!("{base}\n[[external]]\nname = \"handoff\"\ninputs = [\"{input}\"]\n");
+    std::fs::write(&declaration, external("table:orders_items")).unwrap();
+    let plan = || json(&cf(dir.path(), &["pipeline", "plan", "--json", "--project", "research"]));
+    let text = || ok(&cf(dir.path(), &["pipeline", "plan", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    std::fs::write(&declaration, external("pipeline:orders")).unwrap();
+    let changed = plan();
+    assert_eq!(changed["pipelines"][0]["action"], "unchanged");
+    assert_eq!(changed["externals"][0]["id"], "external:handoff");
+    assert_eq!(changed["externals"][0]["action"], "change");
+    assert_ne!(changed["externals"][0]["content_hash"], changed["externals"][0]["applied_hash"]);
+    assert!(text().contains("~ external:handoff"));
+
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    let unchanged = plan();
+    assert_eq!(unchanged["externals"][0]["action"], "unchanged");
+    assert_eq!(unchanged["externals"][0]["content_hash"], unchanged["externals"][0]["applied_hash"]);
+    assert!(text().contains("= external:handoff"));
+
+    std::fs::write(&declaration, &base).unwrap();
+    let removed = plan();
+    assert_eq!(removed["externals"][0]["action"], "remove");
+    assert_eq!(removed["externals"][0]["content_hash"], serde_json::Value::Null);
+    assert!(removed["externals"][0]["applied_hash"].is_string());
+    assert!(text().contains("- external:handoff"));
+
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    assert_eq!(plan()["externals"], serde_json::json!([]));
+    std::fs::write(&declaration, external("table:orders_items")).unwrap();
+    let added = plan();
+    assert_eq!(added["externals"][0]["action"], "add");
+    assert!(added["externals"][0]["content_hash"].is_string());
+    assert_eq!(added["externals"][0]["applied_hash"], serde_json::Value::Null);
+    assert!(text().contains("+ external:handoff"));
+}
+
 /// Applying a manifest fires nothing of itself; a second `apply` over unchanged sources is a no-op modulo
 /// elapsed schedules.
 // spec: run.declare.apply-fires-nothing@89dd7f54

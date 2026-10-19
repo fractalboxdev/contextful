@@ -881,12 +881,13 @@ pub(crate) fn plan(project: &ProjectArgs, declaration: Option<PathBuf>, as_json:
     let model_changes = model_diff(&crate::model_source::collect(&manifests(&l.declaration)?)?, &applied_models(&control.source, version)?);
     let jobs = job_diff(&job_blocks(&declaration_text, None, &declared)?, &applied_jobs(&control.source, version, &applied)?);
     let tables = table_diff(&crate::effective::standalone_tables(&manifests(&l.declaration)?)?, &applied_tables(&control.source, version)?.unwrap_or_default());
+    let externals = external_diff(&declared_externals(&l.declaration)?, &applied_externals(&control.source, version)?);
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&json!({ "applied": version, "pipelines": changes, "jobs": jobs, "models": model_changes, "tables": tables }))?);
+        println!("{}", serde_json::to_string_pretty(&json!({ "applied": version, "pipelines": changes, "jobs": jobs, "models": model_changes, "tables": tables, "externals": externals }))?);
         return Ok(());
     }
     println!("applied: {}", version.map(|v| format!("v{v}")).unwrap_or_else(|| "none".into()));
-    for c in changes.iter().chain(&jobs).chain(&model_changes).chain(&tables) {
+    for c in changes.iter().chain(&jobs).chain(&model_changes).chain(&tables).chain(&externals) {
         println!("{} {}{}", sigil(c.action), c.id, c.schedule.as_deref().map(|s| format!(" ({s})")).unwrap_or_default());
     }
     Ok(())
@@ -1856,6 +1857,15 @@ fn table_diff(declared: &[TableDecl], applied: &[TableDecl]) -> Vec<Change> {
 fn model_diff(declared: &[ModelSpec], applied: &[ModelSpec]) -> Vec<Change> {
     let identities = |models: &[ModelSpec]| -> BTreeMap<String, (String, Option<String>)> {
         models.iter().map(|m| (format!("model:{}", m.id), (contextful_core::run::journal::sha256_hex(&serde_json::to_vec(m).expect("model serializes")), None))).collect()
+    };
+    let (d, a) = (identities(declared), identities(applied));
+    let ids: BTreeSet<_> = d.keys().chain(a.keys()).collect();
+    ids.into_iter().map(|id| change(id, d.get(id).cloned(), a.get(id).cloned())).collect()
+}
+
+fn external_diff(declared: &[External], applied: &[External]) -> Vec<Change> {
+    let identities = |externals: &[External]| -> BTreeMap<String, (String, Option<String>)> {
+        externals.iter().map(|e| (format!("external:{}", e.name), (contextful_core::run::journal::sha256_hex(&serde_json::to_vec(e).expect("external serializes")), None))).collect()
     };
     let (d, a) = (identities(declared), identities(applied));
     let ids: BTreeSet<_> = d.keys().chain(a.keys()).collect();
