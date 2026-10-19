@@ -952,6 +952,132 @@ fn record_run_state(n: &crate::support::Node) {
 
 const RUN_1: &str = "research/tables/filings/data/runs/run-1/ingest-a/part-00000.parquet";
 
+fn unreadable_held_record_preserves_sibling_runs(bytes: &[u8]) {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("conformance", b.clone(), "");
+    let sibling = node("conformance", b.clone(), "");
+    crate::support::trust(&[&a, &sibling], "2030-01-01T00:00:00Z");
+    a.land_into("t0", "run-a", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    sibling.land_into("t1", "run-b", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    sibling.syncer.push(at(NOW)).unwrap();
+    let before = manifest(b.as_ref());
+    let sibling_keys: Vec<String> = before.entries.keys().filter(|k| k.starts_with("research/tables/t1/data/runs/run-b/conformance/")).cloned().collect();
+    assert!(!sibling_keys.is_empty());
+    let path = a.root().join(contextful_sync::HELD_FILE);
+    std::fs::write(&path, bytes).unwrap();
+    let result = a.syncer.push(at(NOW));
+    let after = manifest(b.as_ref());
+    for key in sibling_keys {
+        assert!(after.entries.contains_key(&key) && !after.tombstones.contains_key(&key), "{key}");
+    }
+    assert_eq!(after.generation, before.generation);
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    let error = result.unwrap_err();
+    assert!(error.to_string().starts_with("SyncHeldRecordUnreadable:"), "{error}");
+    assert!(matches!(error, SyncError::HeldRecordUnreadable(_)));
+}
+
+/// An unreadable ownership record grants no deletion authority over sibling runs.
+// spec: store.merge.held-unreadable@cf6878f5
+#[test]
+fn an_unreadable_held_record_preserves_a_sibling_disks_runs() {
+    unreadable_held_record_preserves_sibling_runs(b"invalid-json");
+}
+
+#[test]
+fn a_truncated_held_record_preserves_a_sibling_disks_runs() {
+    unreadable_held_record_preserves_sibling_runs(br#"{"nodes":{"conformance":[],"other":["key"]"#);
+}
+
+#[test]
+fn the_documented_held_record_recovery_preserves_a_sibling_disks_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("conformance", b.clone(), "");
+    let sibling = node("conformance", b.clone(), "");
+    crate::support::trust(&[&a, &sibling], "2030-01-01T00:00:00Z");
+    a.land_into("t0", "run-a", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    sibling.land_into("t1", "run-b", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    sibling.syncer.push(at(NOW)).unwrap();
+    let before = manifest(b.as_ref());
+    let sibling_keys: Vec<String> = before.entries.keys().filter(|k| k.starts_with("research/tables/t1/data/runs/run-b/conformance/")).cloned().collect();
+    assert!(!sibling_keys.is_empty());
+    assert!(a.root().join(".push.lock").exists());
+    let path = a.root().join(contextful_sync::HELD_FILE);
+    std::fs::write(&path, b"invalid-json").unwrap();
+    let error = a.syncer.push(at(NOW)).unwrap_err().to_string();
+    assert!(error.contains("replace it with a valid ownership record mapping this node's id to an empty key list"), "{error}");
+    assert!(error.contains("this grants no deletion authority"), "{error}");
+    let example = error.split("e.g. `").nth(1).and_then(|s| s.split('`').next()).expect("the recovery names a valid record");
+    let recovery = example.replace("<node-id>", &a.syncer.node);
+    std::fs::write(&path, recovery).unwrap();
+    assert!(held_record(&a).is_empty());
+    a.syncer.push(at(NOW)).unwrap();
+    let after = manifest(b.as_ref());
+    for key in sibling_keys {
+        assert!(after.entries.contains_key(&key) && !after.tombstones.contains_key(&key), "{key}");
+    }
+}
+
+/// A record corrupted at commit keeps its bytes when the post-commit write reads it.
+#[test]
+fn a_held_record_corrupted_at_commit_keeps_other_nodes_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let mut a = node("ingest-a", inner.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at(NOW)).unwrap();
+    let path = a.root().join(contextful_sync::HELD_FILE);
+    let mut record: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    record["nodes"]["ingest-b"] = json!(["other-node-key"]);
+    let mut bytes = serde_json::to_vec(&record).unwrap();
+    bytes.pop();
+    let corrupt = bytes.clone();
+    let target = path.clone();
+    a.syncer.bucket = Arc::new(Scripted {
+        inner,
+        script: Script {
+            on_put: Some(Box::new(move |key, _| {
+                if key == "team/manifest.json" {
+                    std::fs::write(&target, &corrupt).unwrap();
+                }
+                None
+            })),
+            ..Script::default()
+        },
+    });
+    let result = a.syncer.push(at(NOW));
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    let error = result.unwrap_err();
+    assert!(error.to_string().starts_with("SyncHeldRecordUnreadable:"), "{error}");
+    assert!(matches!(error, SyncError::HeldRecordUnreadable(_)));
+}
+
+/// An empty valid record keeps the missing-node behavior on either side of a first push.
+#[test]
+fn an_empty_held_record_keeps_the_prior_push_deletion_scope() {
+    for pushed_before in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let b = bucket(dir.path());
+        let a = node("ingest-a", b.clone(), "");
+        a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+        a.syncer.push(at(NOW)).unwrap();
+        assert!(manifest(b.as_ref()).entries.contains_key(RUN_1));
+        std::fs::write(a.root().join(contextful_sync::HELD_FILE), br#"{"nodes":{}}"#).unwrap();
+        if !pushed_before {
+            std::fs::remove_file(a.root().join(".push.lock")).unwrap();
+        }
+        std::fs::remove_dir_all(a.root().join("tables/filings/data/runs/run-1")).unwrap();
+        a.syncer.push(at(NOW)).unwrap();
+        let m = manifest(b.as_ref());
+        assert_eq!(m.tombstones.contains_key(RUN_1), pushed_before);
+        assert_eq!(m.entries.contains_key(RUN_1), !pushed_before);
+    }
+}
+
 /// A push records in `.sync-held.json`, under its node id, each owned key the store holds, adding them before its
 /// commit and replacing the node's keys after; a pull holding the push guard adds each such key the bucket manifest
 /// lists.

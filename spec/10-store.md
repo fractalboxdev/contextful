@@ -712,6 +712,8 @@ Reconciling one bucket manifest between writers: per-entry ownership, tombstones
   *A-store*
 - `held-absent` — A store whose `.sync-held.json` names no keys for its node reads as holding every remote key that node owns when an earlier push left its `.push.lock`, and none otherwise.
   *A-store*
+- `held-unreadable` — An unreadable `.sync-held.json` raises `SyncHeldRecordUnreadable` without granting deletion authority or replacing the record.
+  *because corruption establishes no ownership and a replacement discards other nodes' entries*
 - `ownership` — A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.
   *A-store*
 
