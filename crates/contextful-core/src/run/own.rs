@@ -13,6 +13,28 @@ pub const SEED_SUFFIX: &str = "#seed";
 /// The infix naming a table's receive scope for one batch key.
 pub const RECEIVE_INFIX: &str = "#receive-";
 
+/// The longest run id the store lands under, in chars.
+// mirrors: store.lay-out.run-id-shape
+pub const RUN_ID_MAX_CHARS: usize = 128;
+
+/// The run id a run's `n`th commit lands under: the run's own id for its first commit, then
+/// `<run id>.<n>` with `n` zero-padded to six digits, so each commit names its own parts
+/// (`run.own.checkpoint-run-id`). A later commit's id past [`RUN_ID_MAX_CHARS`] raises
+/// `RunCheckpointIdTooLong` (`run.own.checkpoint-id-length`).
+pub fn segment_run_id(run_id: &str, n: u32) -> Result<String, RunError> {
+    if n == 0 {
+        return Ok(run_id.to_string());
+    }
+    let segment = format!("{run_id}.{n:06}");
+    if segment.len() > RUN_ID_MAX_CHARS {
+        return Err(RunError::RunCheckpointIdTooLong(format!(
+            "run `{run_id}` would land its checkpoint under a {}-char run id, past the store's {RUN_ID_MAX_CHARS}-char bound; it commits nothing and retires its owner",
+            segment.len()
+        )));
+    }
+    Ok(segment)
+}
+
 /// The 16 hex characters a batch key of `pipeline_id` names its runs and scopes by.
 pub fn receive_digest(pipeline_id: &str, key: &str) -> String {
     let mut bytes = pipeline_id.as_bytes().to_vec();

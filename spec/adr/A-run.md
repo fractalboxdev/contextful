@@ -525,3 +525,18 @@ Decision: a terminal receipt names its job, keys, attempts and outcome, and the 
 | Job and entity fields on the attempt's `_runs` row | One row per run phase | A per-entity question folds plan and commit rows of every attempt, failed retries included. |
 | Append before the receipt commits | No false terminal | A refused commit leaves a row claiming an outcome the item never reached. |
 | A relation over the catalog's cursor positions | Complete mediation | A read reaches catalog state outside the store's registered relations. |
+
+## A backfill commits at checkpoints and walks one page per pull
+
+A backfill window outgrows one commit's staging bound, and a watermark walk outgrows one pull.
+
+Decision: a run of a position-addressed source commits its staged parts and the position after its last staged pull each time they reach 512 MiB, then keeps pulling, so a window of any size lands in one fire with bounded staging. Under a monotonic cursor a checkpoint waits for a pull whose every clock passes the frontier, so no instant spans two commits. The HTTP source hands the runner one page per pull, its position carrying the watermark and page token; the page cap counts from the walk's last strict clock advance. A next-URL walk names its next page by a URL the journal never holds, so it stays one pull and commits once.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Checkpoints for position-addressed sources *(chosen)* | — | A run publishes several commits; after a crash, a vendor unordered by its clock loses rows a checkpoint passed; a next-URL listing past 1 GiB fails. |
+| One commit under a 1 GiB staging bound | Completion | A larger window fails every fire. |
+| A larger staging bound | Memory and disk | Staging grows with the window, and a crash discards it. |
+| A next-URL position counting pages | Correctness | A resumed walk re-follows a moved listing by count and lands a row twice or skips it; a replacing table publishes nothing. |
+
+Consequences: a next-URL walk, a replacing table, a body's landing and a seeding or receiving scope commit once.

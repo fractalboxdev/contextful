@@ -9,7 +9,7 @@ use contextful_core::connector::probe::ScopeProbe;
 use contextful_core::connector::reference::{check_material, Template};
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source};
-use contextful_core::run::advance::{admits, clock};
+use contextful_core::run::advance::{admits, clock, compare};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_outbound::client::{classify, Client, HeaderValue};
 use contextful_outbound::probe::probe_through;
@@ -690,13 +690,16 @@ pub struct HttpSource {
     /// The client a fingerprint HEAD takes: the page client's mediation and no body read.
     head_client: Client,
     probed: bool,
-    /// Whether a pull walks every page: under a monotonic cursor the position is a
-    /// watermark, which carries no page token.
+    /// Whether the source serves a monotonic cursor: its position holds the watermark
+    /// beside the walk's page token (`connector.source.http-watermark-walk`).
     watermarked: bool,
     clock_field: Option<String>,
-    /// Tokens this walk served, for `ConnectorPageLoop`, and the requests it issued.
-    seen: Vec<String>,
+    /// Tokens this walk served, for `ConnectorPageLoop`, and the requests it issued
+    /// since it began or, under a watermark, since its clock last strictly advanced.
+    seen: std::collections::HashSet<String>,
     requests: usize,
+    /// The greatest clock value this walk served.
+    served: Option<Value>,
 }
 
 impl HttpSource {
@@ -719,10 +722,24 @@ impl HttpSource {
         };
         let head_client = mediation.client(allow.clone(), origin.clone(), config.limiter.as_ref()).without_body();
         let client = Arc::new(mediation.client(allow.clone(), origin, config.limiter.as_ref()));
-        Ok(HttpSource { config, table: table.to_string(), resolver, client, allow, probe_client, head_client, probed: false, watermarked: false, clock_field: None, seen: Vec::new(), requests: 0 })
+        Ok(HttpSource {
+            config,
+            table: table.to_string(),
+            resolver,
+            client,
+            allow,
+            probe_client,
+            head_client,
+            probed: false,
+            watermarked: false,
+            clock_field: None,
+            seen: std::collections::HashSet::new(),
+            requests: 0,
+            served: None,
+        })
     }
 
-    /// The source serving a monotonic cursor: one pull walks every page from the watermark.
+    /// The source serving a monotonic cursor: one pull reads one page from the watermark.
     pub fn watermarked(mut self) -> HttpSource {
         self.watermarked = true;
         self
@@ -735,11 +752,13 @@ impl HttpSource {
         self
     }
 
-    /// Whether one pull walks every page: under a watermark, and under next-URL or
-    /// Link-header pagination, whose token is a whole URL whose query may carry a
-    /// credential the journal would hold unscrubbed (`connector.source.http-url-walk`).
+    /// Whether one pull walks every page: under an expansion, which resolves every pointer
+    /// of the walk before its first follow-up, and under next-URL or Link-header pagination,
+    /// whose next page is named by a whole URL whose query may carry a credential the journal
+    /// would hold unscrubbed, so no position addresses a page of the walk
+    /// (`connector.source.http-url-walk`).
     fn walks_whole(&self) -> bool {
-        self.watermarked || self.config.expansion.is_some() || matches!(self.config.pagination, Pagination::NextUrl { .. } | Pagination::LinkHeader)
+        self.config.expansion.is_some() || matches!(self.config.pagination, Pagination::NextUrl { .. } | Pagination::LinkHeader)
     }
 
     /// Hydrate every header just in time, a template holding a reference as sensitive material.
@@ -882,14 +901,13 @@ impl HttpSource {
     }
 
     /// Hold the walk to one visit per token and to [`PAGE_CAP`] requests.
-    fn advance(seen: &mut Vec<String>, next: &str, base: &Url) -> Result<(), Failure> {
-        if seen.iter().any(|s| s == next) {
+    fn advance(seen: &mut std::collections::HashSet<String>, next: &str, base: &Url) -> Result<(), Failure> {
+        if !seen.insert(next.to_string()) {
             return Err(Failure::deterministic(
                 FailureTag::Permanent,
                 ConnectorError::ConnectorPageLoop(format!("`{}` served a page token it served before", scrub(base))).to_string(),
             ));
         }
-        seen.push(next.to_string());
         Ok(())
     }
 
@@ -902,7 +920,7 @@ impl HttpSource {
         let mut budget = ExpansionBudget::new(EXPANSION_BYTES, EXPANSION_TIME);
         let base = self.base_url(request)?;
         let mut rows = Vec::new();
-        let mut seen: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut token: Option<String> = None;
         for _ in 0..PAGE_CAP {
             if cancel.requested() {
@@ -1046,6 +1064,94 @@ impl HttpSource {
         }
         Ok((rows, next))
     }
+
+    /// Forget the walk in progress: its served tokens, request count and clock.
+    fn restart(&mut self) {
+        self.seen.clear();
+        self.requests = 0;
+        self.served = None;
+    }
+
+    /// Fetch the page `token` names as one request of the walk, held to [`PAGE_CAP`]
+    /// requests since the walk began or, under a watermark, since its last page whose every
+    /// clock passed every clock the walk served before (`connector.source.page-cap`).
+    fn counted_page(&mut self, base: &Url, token: Option<&str>, request: &PullRequest) -> Result<(Vec<Row>, Option<String>), Failure> {
+        if self.requests >= PAGE_CAP {
+            return Err(HttpSource::capped(base));
+        }
+        self.requests += 1;
+        let (rows, next) = self.page(base, token, request, None)?;
+        if self.advances(&rows, request) {
+            self.requests = 0;
+            self.seen.clear();
+        }
+        if let Some(n) = &next {
+            HttpSource::advance(&mut self.seen, n, base)?;
+        }
+        Ok((rows, next))
+    }
+
+    /// Whether every clock of `rows` passes every clock the walk served before them, a
+    /// watermark walk's strict advance; the walk's greatest clock then takes theirs.
+    fn advances(&mut self, rows: &[Row], request: &PullRequest) -> bool {
+        use std::cmp::Ordering;
+        if !self.watermarked {
+            return false;
+        }
+        let Some(field) = self.clock_field.clone().or_else(|| request.position.as_ref()?.get("field")?.as_str().map(String::from)) else { return false };
+        let mut strictly = !rows.is_empty();
+        for value in rows.iter().map(|row| clock(row, &field)) {
+            let Some(value) = value else {
+                strictly = false;
+                continue;
+            };
+            match self.served.as_ref().map(|served| compare(value, served)) {
+                None | Some(Ok(Ordering::Greater)) => {}
+                Some(Ok(_)) => strictly = false,
+                Some(Err(_)) => return false,
+            }
+        }
+        for value in rows.iter().filter_map(|row| clock(row, &field)) {
+            if self.served.as_ref().is_none_or(|served| compare(value, served).is_ok_and(|o| o == Ordering::Greater)) {
+                self.served = Some(value.clone());
+            }
+        }
+        strictly
+    }
+
+    /// Read the one page a watermark walk's position names. The position after it carries the
+    /// watermark the walk reads from and the next page's token; the walk's last page carries
+    /// no position (`connector.source.http-watermark-walk`).
+    fn walk_page(&mut self, request: &PullRequest) -> Result<Value, Failure> {
+        let base = self.base_url(request)?;
+        let position = request.position.as_ref();
+        let token = match position.and_then(|p| p.get("next")) {
+            None | Some(Value::Null) => None,
+            Some(Value::String(t)) => Some(t.clone()),
+            Some(_) => {
+                return Err(Failure::deterministic(FailureTag::Config, format!("position {} names no page of the walk", position.cloned().unwrap_or_default())));
+            }
+        };
+        if token.is_none() {
+            self.restart();
+        }
+        let (rows, next) = self.counted_page(&base, token.as_deref(), request)?;
+        self.validate_clock(&rows, request)?;
+        let more = next.is_some();
+        let mut pulled = Map::new();
+        pulled.insert("rows".into(), serde_json::to_value(rows).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))?);
+        if let Some(next) = next {
+            let mut cursor = Map::new();
+            if let Some(Value::Object(p)) = position {
+                cursor.extend(["field", "at"].into_iter().filter_map(|k| p.get(k).map(|v| (k.to_string(), v.clone()))));
+            }
+            cursor.insert("next".into(), Value::String(next));
+            pulled.insert("cursor".into(), Value::Object(cursor));
+        }
+        pulled.insert("more".into(), Value::Bool(more));
+        pulled.insert("snapshot_complete".into(), Value::Bool(false));
+        Ok(Value::Object(pulled))
+    }
 }
 
 /// Whether a position is a monotonic watermark `{"field", "at"}`.
@@ -1177,7 +1283,7 @@ impl HttpSource {
         let base = self.base_url(request)?;
         let mut digest = <sha2::Sha256 as sha2::Digest>::new();
         let mut rows = Vec::new();
-        let mut seen: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut token: Option<String> = None;
         for _ in 0..PAGE_CAP {
             if cancel.requested() {
@@ -1235,7 +1341,8 @@ impl HttpSource {
 impl Source for HttpSource {
     /// One pull reads one page and carries the next page's token as its position, so a
     /// walk resumes at the page it stopped on; the last page's position names the start.
-    /// A watermarked source, and one following next URLs, walks every page in one pull.
+    /// A watermarked source's position also carries the watermark the walk reads from. A
+    /// source following next URLs or expanding detail documents walks every page in one pull.
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
         if cancel.requested() {
             return Err(Failure::canceled("stopped ahead of the page request"));
@@ -1247,6 +1354,8 @@ impl Source for HttpSource {
             self.conditional_pull(request, cancel)?
         } else if self.walks_whole() {
             serde_json::json!({ "rows": self.walk(request, cancel)?, "more": false, "snapshot_complete": !self.watermarked })
+        } else if self.watermarked {
+            self.walk_page(request)?
         } else {
             let (rows, next) = self.read_page(request)?;
             serde_json::json!({ "rows": rows, "cursor": { "next": next }, "more": next.is_some(), "snapshot_complete": next.is_none() })

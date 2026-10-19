@@ -55,6 +55,7 @@ ExecutionRewindNotPending      = { clause = "run.own.rewind-not-pending", gloss 
 ExecutionRewindPlanCurrent     = { clause = "run.own.rewind-plan-current", gloss = "An unforced rewind of an owner no attempt has asked another plan reference of." }
 ExecutionRewindUnsafe          = { clause = "run.own.rewind-unsafe", gloss = "A retirement of an owner a live attempt, a waiting attempt or a pending awakeable still holds." }
 RunStagedBytesExceeded         = { clause = "run.own.staged-bytes", gloss = "A run whose staged parts pass the per-run staged-bytes bound." }
+RunCheckpointIdTooLong         = { clause = "run.own.checkpoint-id-length", gloss = "A checkpointing run whose next commit's run id passes the store's run-id bound." }
 CancelTargetNotInFlight        = { clause = "run.cancel.not-in-flight", gloss = "A stop matching no pending, running or waiting run." }
 CancelUnauthorized             = { clause = "run.cancel.stop-unauthorized", gloss = "A credentialed stop whose grants cover no execute over the recorded pipeline." }
 SiteIdUnresolved               = { clause = "run.record.site-id-unresolved", gloss = "A site id with no declaration, two in one place, or an unset variable." }
@@ -179,7 +180,8 @@ parse-child-deadline       = { clause = "run.land.parse-deadline", value = 60, u
 parse-child-memory         = { clause = "run.land.parse-memory", value = 512, unit = "MiB", basis = "chosen", gloss = "Memory one input's decoder child may consume." }
 receive-retry-after        = { clause = "run.land.receive-retry-after", value = 1, unit = "s", basis = "chosen", gloss = "Interval a backpressured sender waits before resending." }
 receive-push-wait          = { clause = "run.land.receive-push-wait", value = 30, unit = "s", basis = "chosen", gloss = "Longest wait a delivered batch spends on the push guard before answering retryable." }
-staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages before its commit." }
+staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages between two of its commits." }
+checkpoint-bytes           = { clause = "run.own.checkpoint-commit", value = 512, unit = "MiB", basis = "chosen", gloss = "Bytes one run stages before it commits a checkpoint and keeps pulling." }
 owner-lease-renewal        = { clause = "run.record.owner-lease", value = 10, unit = "s", basis = "chosen", gloss = "Renewal cadence of a run row's owner lease." }
 owner-lease-ttl            = { clause = "run.record.owner-lease", value = 30, unit = "s", basis = "chosen", gloss = "Life of an unrenewed run owner lease." }
 site-id-min-length         = { clause = "run.record.site-id-length", value = 1, unit = "chars", basis = "chosen", gloss = "Shortest site id." }

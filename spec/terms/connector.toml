@@ -125,7 +125,7 @@ connector-deadline-granularity  = { clause = "connector.package.call-deadline", 
 connector-session-log           = { clause = "connector.package.session-budget", value = 1, unit = "MiB", basis = "chosen", gloss = "Logging budget per connector session." }
 connector-in-flight             = { clause = "connector.package.session-budget", value = 8, unit = "requests", basis = "chosen", gloss = "Outbound requests one session holds open at once." }
 connector-request-body          = { clause = "connector.package.request-body", value = 8, unit = "MiB", basis = "chosen", gloss = "Outbound request body one guest request carries." }
-connector-walk-pages            = { clause = "connector.source.page-cap", value = 1000, unit = "requests", basis = "chosen", gloss = "Requests one paginated walk issues." }
+connector-walk-pages            = { clause = "connector.source.page-cap", value = 1000, unit = "requests", basis = "chosen", gloss = "Requests one paginated walk issues, under a watermark since its clock last strictly advanced." }
 connector-drive-roots           = { clause = "connector.source.drive-root-set", value = 16, unit = "entries", basis = "chosen", gloss = "Distinct selected folder roots in one Drive source." }
 connector-drive-file-bytes      = { clause = "connector.source.drive-file-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Default body bytes one drive file carries before it is skipped." }
 connector-document-chunk        = { clause = "connector.source.heading-threshold", value = 8192, unit = "B", basis = "chosen", gloss = "Note body bytes past which a note lands one row per heading section." }

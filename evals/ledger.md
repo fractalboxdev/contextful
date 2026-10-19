@@ -2,7 +2,7 @@
 
 # Target ledger
 
-154 entries: 96 gated, 44 recorded, 6 scheduled, 8 open.
+154 entries: 101 gated, 39 recorded, 6 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -18,14 +18,14 @@
 | `audit-sync-per-group` | `disclosure.record.group-commit` | `audit.syncs_per_group.max` | gate | test `contextful_policy::audit::an_append_group_shares_one_segment_sync_and_releases_or_refuses_together` | `<= 1` | gated |
 | `audit-truncation-detected` | `disclosure.attest.broken-chain` | `audit.truncation.undetected` | gate | test `contextful_policy::audit::every_trailing_truncation_under_a_rewritten_tip_is_detected` | `== 0` | gated |
 | `backfill-decode-peak-heap` | `connector.source.body-format` | `decode.page.peak_heap_ratio` | gate | probe `backfill-decode-peak-heap` | `<= 15.52` | gated |
-| `backfill-fires-to-complete` | `run.own.staged-bytes` | `ingest.backfill.fires_to_complete` | trend | test `contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire` | — | recorded |
-| `backfill-http-fires-to-complete` | `connector.source.page-cap` | `ingest.backfill.http_fires_to_complete` | trend | test `contextful_engine::runner::a_2000_page_vendor_lands_every_page_through_successive_fires` | — | recorded |
-| `backfill-http-rows-landed` | `connector.source.page-cap` | `ingest.backfill.http_rows_landed_once` | trend | test `contextful_engine::runner::a_2000_page_vendor_lands_every_page_through_successive_fires` | — | recorded |
-| `backfill-http-rows-per-pull` | `connector.source.http-watermark-walk` | `ingest.backfill.http_rows_per_pull` | gate | test `contextful_connectors::http::a_watermarked_walk_hands_the_runner_one_page_per_pull` | `<= 9990` | gated |
-| `backfill-http-rows-per-pull-url` | `connector.source.http-url-walk` | `ingest.backfill.http_url_rows_per_pull` | gate | test `contextful_connectors::http::a_next_url_walk_hands_the_runner_one_page_per_pull` | `<= 9990` | gated |
-| `backfill-parts-per-commit-min` | `run.own.one-commit-per-run` | `ingest.backfill.parts_per_commit_min` | trend | test `contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire` | — | recorded |
-| `backfill-walk-peak-rss` | `connector.source.http-watermark-walk` | `connector.http.watermark_walk.peak_rss` | trend | probe `backfill-walk-peak-rss` | — | recorded |
-| `backfill-window-commits` | `run.own.one-commit-per-run` | `ingest.backfill.window_commits` | trend | test `contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire` | — | recorded |
+| `backfill-fires-to-complete` | `run.own.checkpoint-commit` | `ingest.backfill.fires_to_complete` | gate | test `contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire` | `== 1` | gated |
+| `backfill-http-fires-to-complete` | `connector.source.page-cap` | `ingest.backfill.http_fires_to_complete` | gate | test `contextful_engine::runner::a_2000_page_vendor_lands_every_page_in_one_fire` | `== 1` | gated |
+| `backfill-http-rows-landed` | `connector.source.page-cap` | `ingest.backfill.http_rows_landed_once` | gate | test `contextful_engine::runner::a_2000_page_vendor_lands_every_page_in_one_fire` | `== 1` | gated |
+| `backfill-http-rows-per-pull` | `connector.source.http-watermark-walk` | `ingest.backfill.http_rows_per_pull` | gate | test `contextful_connectors::http::a_watermarked_walk_hands_the_runner_one_page_per_pull` | `<= 10` | gated |
+| `backfill-http-rows-per-pull-url` | `connector.source.http-url-walk` | `ingest.backfill.http_url_rows_per_pull` | gate | test `contextful_connectors::http::a_next_url_walk_hands_the_runner_its_listing_in_one_pull` | `<= 9990` | gated |
+| `backfill-parts-per-commit-min` | `run.own.checkpoint-commit` | `ingest.backfill.parts_per_commit_min` | gate | test `contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire` | `>= 4` | gated |
+| `backfill-walk-peak-rss` | `connector.source.http-watermark-walk` | `connector.http.watermark_walk.peak_rss` | trend | probe `backfill-walk-peak-rss` | `<= 32` | recorded |
+| `backfill-window-commits` | `run.own.checkpoint-commit` | `ingest.backfill.window_commits` | gate | test `contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire` | `== 4` | gated |
 | `bearer-transport-bound` | `authority.issue.one-credential` | `authority.off_transport_admissions` | gate | test `contextful_policy::verify::a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_seeded_loop` | `== 0` | gated |
 | `bucket-keys-per-tick` | `store.push.generation` | `sync.bucket_keys_per_tick_steady_state` | trend | test `contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick` | — | recorded |
 | `catalog-calls-per-landing` | `run.land.receive-entry` | `catalog.calls_per_landing` | gate | test `contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing` | `<= 30` | gated |

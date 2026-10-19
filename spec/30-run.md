@@ -241,6 +241,8 @@ Committing an incremental read position under its declared kind, and the boundar
 - `field-rename` — Opening a position whose stored field differs from the declared `incremental` field raises `CursorFieldMismatch` before any request leaves the host.
   *A-run*
 - `frontier` — The frontier counts every fetched row, landed or not. A committed position moves forward or holds; an empty or older window never rewinds it.
+- `walk-position` — Under a `monotonic` cursor, a pull reporting more and carrying a position other than the one it asked continues its walk: the next pull asks that position and admits rows from the walk's floor, and the run commits the frontier.
+  *A-run*
 - `unorderable-position` — A row with no orderable value in the clock field, or a stream switching between text and numeric positions mid-pass, raises `CursorPositionUnorderable`, terminal for the pull.
   *A-run*
 - `allowed-lateness` — A table declares `allowed_lateness`, default 0 s; a `monotonic` poll re-reads from its stored position minus that window, so a row arriving that late still lands.
@@ -257,6 +259,7 @@ Committing an incremental read position under its declared kind, and the boundar
 - `run.advance.zero-row-commit`: WHEN a complete snapshot holds zero rows after a non-empty replacing run, THEN the current read is empty and a bounded read before the commit retains the older rows.
 - `run.advance.zero-row-commit`: WHEN an unchanged input is skipped, THEN the current read and cursor retain their prior values.
 - `run.advance.zero-row-commit`: WHEN a pull fails before completion, THEN no replacement marker becomes readable.
+- `run.advance.walk-position`: WHEN a `monotonic` walk's pull returns no rows, the position it asked and more, THEN the run ends and commits its frontier.
 
 ## suspend
 
@@ -412,9 +415,23 @@ The execution owner a scope holds and the connector build it pins while pending.
   *A-connector*
 - `backpressure` — The runner stages each shaped batch through the destination as one part before its next pull, so a run holds one pulled batch in memory; the commit names the staged parts.
   *because holding every batch until the commit sizes a run's memory by the sum of its pulls*
-- `one-commit-per-run` — One run produces one atomic commit per table; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step.
-- `staged-bytes` — A stage carrying one run's staged parts past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run commits nothing and retires its owner, so the next fire pulls afresh from the stored cursor.
+- `one-commit-per-run` — One run produces one atomic commit per table, plus one per {{run.own.checkpoint-commit}}; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step or commit.
+- `staged-bytes` — A stage carrying the parts a run staged since its last commit past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run commits nothing more and retires its owner, so the next fire pulls afresh from the stored cursor.
   *because a replay of the run's recorded pulls stages the same bytes past the bound and fails identically, holding the table's owner indefinitely*
+- `checkpoint-commit` — When the parts a run of a position-addressed source staged since its last commit reach 512 MiB, the run commits them with the position after its last staged pull before staging more rows, then keeps pulling under the same execution.
+  *A-run*
+- `checkpoint-frontier` — Under a `monotonic` cursor, a checkpoint commits only before a pull whose every clock passes the run's frontier, so no commit's position splits the rows of one instant.
+  *A-run*
+- `checkpoint-resume` — A checkpoint caches its position and marker in the catalog cursor while the owner stays pending, and collects the journal's recorded pulls, so a resumption pulls afresh from that position.
+  *A-run*
+- `checkpoint-run-id` — A run's first commit lands under its run id and each later one under `<run id>.<n>`, `n` its zero-padded six-digit ordinal, so every commit names its own parts.
+  *because the store holds one manifest per run id, and a later commit naming an earlier one's directory finds it committed*
+- `checkpoint-id-length` — A checkpoint whose next `<run id>.<n>` passes {{store.lay-out.run-id-shape}} raises `RunCheckpointIdTooLong` before it commits; the run commits nothing and retires its owner.
+  *because a run committing its first checkpoint and then failing on the next one's run id leaves a partial window published*
+- `checkpoint-landed` — A run failing after a checkpoint's commit lands records on its row the rows and bytes every landed checkpoint commit carried, including one whose cursor update then fails.
+  *because the checkpoints stay committed, and a failed row counting no rows hides rows every read returns*
+- `checkpoint-scope` — A source is position-addressed when each pull's position names a watermark, page token or stable offset. A {{connector.source.http-url-walk}}, a replacing table, a body's prepared landing, and a seeding or receiving scope commit once.
+  *A-run*
 - `stage-schema` — A stage refuses against `schema.json` and the run's earlier stages, then merges its columns into the run's own staged schema; only the commit merges them into `schema.json`.
   *because otherwise rows no commit publishes fix a column's type in the table's schema*
 - `source-stage-schema` — A deterministic `SchemaIncompatible` from staging an ordinary source batch, raw or prepared, retires its owner unless another live attempt holds it; the failed run changes neither committed cursor nor published rows. This exception excludes prepared body-emission staging.
@@ -451,7 +468,15 @@ flowchart LR
 - `run.own.rewind`: WHEN job `score`'s pending owner pins `plan-a`, a fire asking `plan-b` refuses, and an operator rewinds that execution, THEN the next fire claims a fresh execution under `plan-b` and completes.
 - `run.own.apply-retires-superseded`: WHEN applied v2 changes the model a build job targets while its pending owner pins v1's plan reference, THEN the apply retires that owner and the job's next fire completes.
 - `run.own.backpressure`: WHEN a source serves three pages, THEN the destination stages part 0 after the first pull, part 1 after the second and part 2 after the third, and one commit names all three.
-- `run.own.staged-bytes`: WHEN each of three pulls stages a 400 MiB part, THEN the third stage fails the run `Permanent` with `RunStagedBytesExceeded`, the cursor stays where it stood, and the next fire pulls all three pages under a fresh execution.
+- `run.own.staged-bytes`: WHEN each of three pulls of a replacing table stages a 400 MiB part, THEN the third stage fails the run `Permanent` with `RunStagedBytesExceeded`, the cursor stays where it stood, and the next fire pulls all three pages under a fresh execution.
+- `run.own.checkpoint-commit`: WHEN each of sixteen pulls stages a 128 MiB part, THEN one fire commits four times, four parts each, carrying the positions `p4`, `p8`, `p12` and `p16`.
+- `run.own.checkpoint-frontier`: WHEN five pages of clocks `1 1`, `1`, `2`, `2` and `3` each stage a 512 MiB part, THEN the run commits at positions 1, 2 and 3, and no instant's rows span two commits.
+- `run.own.checkpoint-id-length`: WHEN a run id of 122 chars stages sixteen 128 MiB parts, THEN the run fails with `RunCheckpointIdTooLong` and commits nothing.
+- `run.own.checkpoint-landed`: WHEN a run commits checkpoints at `p4` and `p8` and its tenth pull fails, THEN its `failed` row counts eight rows.
+- `run.own.checkpoint-landed`: WHEN a run's `p12` checkpoint commits and the cursor row moves before its update, THEN its `failed` row counts twelve rows.
+- `run.own.checkpoint-resume`: WHEN a run commits checkpoints at `p4` and `p8` and dies pulling `p9`, THEN the next fire pulls from `p8` and lands every later row once.
+- `run.own.checkpoint-scope`: WHEN an appending table's next-URL walk dies on its third page and the listing gains a first row, THEN the next fire lands each listed row once.
+- `run.own.checkpoint-scope`: WHEN a replacing table's next-URL walk dies mid-walk on three fires, THEN the fourth fire succeeds with every listed row and no fire succeeds with zero.
 - `run.own.stage-schema`: WHEN run `run-s` stages `ts` as text and fails, THEN a later run lands `ts` as a timestamp, and `run-s`'s commit refuses with `StoreSchemaIncompatible`.
 - `run.own.stage-commit-seq`: WHEN run `run-s` stages a part, run `run-c` then commits as `_commit_seq` 1, and `run-s` commits after it, THEN every row of `run-s` reads `_commit_seq` 2.
 - `run.own.stage-instant`: WHEN run `run-a` stages key `k` at 00:01, run `run-b` commits `k` at 00:03 and `run-a` commits at 00:05, THEN the keyed read returns `run-a`'s row, `_ingested_at` 00:05.

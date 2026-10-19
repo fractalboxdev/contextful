@@ -91,6 +91,8 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
   *because a retry after a lost acknowledgement cannot tell whether its first landing committed*
 - `run-conflict` — Any other landing of a run id already committed on its node raises `StoreRunConflict` and changes nothing.
   *because a logged run's readability rides a commit-log entry a replay cannot vouch for, and other rows under one id are another run*
+- `run-id-shape` — A run id holds at most 128 chars of letters, digits, dot, underscore and hyphen; a landing or request-ledger append naming another refuses before writing any file.
+  *because a run id is interpolated into run directories and request-ledger filenames*
 - `uncommitted-run` — A node directory holding no `_manifest.json` is in flight and its parts join no file list; a leased pipeline's run also waits for its commit-log entry.
   *P4*
 - `cursor-in-commit` — A pipeline's committed position is the cursor inside its newest commit: the newest commit-log entry for a leased pipeline, the highest run-manifest cursor otherwise. `machine.sqlite` caches it.

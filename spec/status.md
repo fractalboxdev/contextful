@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 581 | 127 | 47 | 18 | 541 | 0 | 541 |
-| `store` | 3 | 19 | 318 | 64 | 18 | 11 | 307 | 0 | 307 |
+| `run` | 3 | 29 | 589 | 128 | 48 | 18 | 549 | 0 | 549 |
+| `store` | 3 | 19 | 319 | 64 | 19 | 11 | 308 | 0 | 308 |
 | `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2740 | 681 | 219 | 77 | 2446 | 0 | |
+| **total** | 22 | 169 | 2749 | 682 | 221 | 77 | 2455 | 0 | |
 
 Decision records: 18.
 
@@ -27,8 +27,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
-| 2 — The store | 9 | 194 | 184 | passing | closed |
-| 3 — The run path | 12 | 298 | 286 | passing | closed |
+| 2 — The store | 9 | 195 | 185 | passing | closed |
+| 3 — The run path | 12 | 306 | 294 | passing | closed |
 | 4 — Ingest | 25 | 617 | 511 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
@@ -858,7 +858,7 @@ Unscheduled operations: 13.
 | `connector.source.http-page-pull` | `crates/contextful-connectors/tests/integration/http.rs::a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page` | performed |
 | `connector.source.http-scope-probe` | `crates/contextful-connectors/tests/integration/http.rs::the_scope_probe_runs_before_the_first_page` | performed |
 | `connector.source.http-url-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_next_url_walk_keeps_the_next_urls_query_out_of_every_position` | performed |
-| `connector.source.http-watermark-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_watermarked_read_walks_every_page_in_one_pull` | performed |
+| `connector.source.http-watermark-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_watermarked_read_pulls_one_page_carrying_its_floor` | performed |
 | `connector.source.image-header` | `spec/pins.toml` | performed |
 | `connector.source.image-row` | `crates/contextful-connectors/tests/integration/image.rs::an_image_lands_its_header_metadata_and_a_null_body_without_decoding_pixels` | performed |
 | `connector.source.marker-body-pairing` | `crates/contextful-connectors/tests/integration/image.rs::a_body_without_its_marker_or_a_marker_without_its_body_is_refused` | performed |
@@ -1439,6 +1439,7 @@ Unscheduled operations: 13.
 | `run.advance.snapshot-completion` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
 | `run.advance.turning-incremental-on` | `crates/contextful-cli/tests/integration/pipeline.rs::enabling_incremental_over_a_held_position_starts_from_none_once` | performed |
 | `run.advance.unorderable-position` | `crates/contextful-core/tests/integration/run/advance.rs::an_unorderable_clock_value_refuses_the_pull` | performed |
+| `run.advance.walk-position` | `crates/contextful-engine/tests/integration/runner.rs::a_monotonic_walk_ends_when_the_source_repeats_its_position` | performed |
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
 | `run.advance.zero-row-commit` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
 | `run.backfill.attempt-isolation` | `crates/contextful-engine/tests/integration/chunk_lease.rs::an_expired_lease_lets_a_second_worker_claim_the_next_attempt_under_its_own_path` | performed |
@@ -1772,6 +1773,13 @@ Unscheduled operations: 13.
 | `run.own.body-implementation` | `spec/pins.toml` | performed |
 | `run.own.body-parent` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |
 | `run.own.body-public-configuration` | `spec/pins.toml` | performed |
+| `run.own.checkpoint-commit` | `crates/contextful-engine/tests/integration/runner.rs::a_window_staging_two_gib_completes_in_one_fire` | performed |
+| `run.own.checkpoint-frontier` | `crates/contextful-engine/tests/integration/runner.rs::a_monotonic_checkpoint_waits_for_a_strict_frontier_advance` | performed |
+| `run.own.checkpoint-id-length` | `crates/contextful-engine/tests/integration/runner.rs::a_run_id_too_long_for_a_checkpoint_commits_nothing` | performed |
+| `run.own.checkpoint-landed` | `crates/contextful-engine/tests/integration/runner.rs::a_failed_run_records_what_its_checkpoints_landed` | performed |
+| `run.own.checkpoint-resume` | `crates/contextful-engine/tests/integration/runner.rs::a_fire_after_a_crash_resumes_from_the_last_checkpoint` | performed |
+| `run.own.checkpoint-run-id` | `crates/contextful-engine/tests/integration/runner.rs::a_window_staging_two_gib_completes_in_one_fire` | performed |
+| `run.own.checkpoint-scope` | `crates/contextful-engine/tests/integration/runner.rs::an_interrupted_url_walk_resumes_from_its_first_page` | performed |
 | `run.own.execution-id-keys-the-journal` | `crates/contextful-engine/tests/integration/runner.rs::a_second_attempt_under_one_owner_replays_the_firsts_recorded_pulls` | performed |
 | `run.own.execution-owner` | `spec/pins.toml` | performed |
 | `run.own.host-scope` | `crates/contextful-engine/tests/integration/execution.rs::every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row` | performed |
@@ -2134,6 +2142,7 @@ Unscheduled operations: 13.
 | `store.lay-out.node-segment` | `crates/contextful-context/tests/integration/lay_out.rs::two_nodes_writing_one_run_id_land_in_disjoint_files` | performed |
 | `store.lay-out.part-name` | `crates/contextful-core/tests/integration/store/lay_out.rs::a_part_name_pads_its_ordinal_to_five_digits` | performed |
 | `store.lay-out.run-conflict` | `crates/contextful-context/tests/integration/lay_out.rs::a_relanded_run_with_other_rows_or_a_logged_position_conflicts` | performed |
+| `store.lay-out.run-id-shape` | `crates/contextful-context/tests/integration/lay_out.rs::a_run_id_past_128_chars_lands_nothing` | performed |
 | `store.lay-out.run-manifest` | `crates/contextful-context/tests/integration/lay_out.rs::a_run_commits_by_creating_its_manifest_once` | performed |
 | `store.lay-out.run-replay` | `crates/contextful-context/tests/integration/lay_out.rs::a_relanded_run_with_equal_rows_answers_the_committed_manifest` | performed |
 | `store.lay-out.schema-file` | `crates/contextful-context/tests/integration/lay_out.rs::each_batch_merges_into_schema_json` | performed |

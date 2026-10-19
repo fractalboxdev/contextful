@@ -619,3 +619,24 @@ fn a_landed_body_is_one_file_under_blobs_named_by_its_digest() {
     assert!(f.store.land_blob(&wrong, &body).is_err());
     assert!(!f.store.blob_path(&wrong).exists());
 }
+
+/// A run id holds at most 128 chars of letters, digits, dot, underscore and hyphen; a landing or request-ledger
+/// append naming another refuses before writing any file.
+// spec: store.lay-out.run-id-shape@9e4b9fd2
+#[test]
+fn a_run_id_past_128_chars_lands_nothing() {
+    use contextful_context::ledger::append;
+    use contextful_core::store::lay_out::NodeId;
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"");
+    let longest = "r".repeat(128);
+    f.land(&d, &longest, json!([{"id": "a"}]), "2030-01-01T00:00:00Z").unwrap();
+    let before = tree(&f.table_dir("filings"));
+    for refused in ["r".repeat(129), "run/1".to_string()] {
+        let e = f.land(&d, &refused, json!([{"id": "b"}]), "2030-01-01T00:01:00Z").unwrap_err();
+        assert!(e.to_string().contains("1 to 128 chars"), "{e}");
+        let e = append(&f.store, "filings", &refused, &NodeId::parse("ingest-a").unwrap(), &[]).unwrap_err();
+        assert!(e.to_string().contains("1 to 128 chars"), "{e}");
+        assert_eq!(tree(&f.table_dir("filings")), before);
+    }
+}
