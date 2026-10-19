@@ -625,7 +625,7 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *A-store*
 - `part-cache` — `[sync] part_cache_bytes`, default 8 GiB, bounds the fetched parts held locally; past it, the least recently read one that no statement or fold holds leaves the disk.
   *A-store*
-- `part-accounting` — Each verified lazy download counts once toward {{store.pull.part-cache}} as it reaches disk, through sibling fetch failures and reopening with a missing cache index.
+- `part-accounting` — Each verified lazy download counts once toward {{store.pull.part-cache}} as it reaches disk, through sibling fetch failures; reopening adopts receipt-listed parts when the cache index is missing, without bucket reads or receipt-free tree scans.
   *because a partial acquisition and a lost index leave completed downloads subject to eviction*
 - `part-collected` — A part {{store.pull.lazy-parts}} needs that the bucket no longer holds raises `SyncPartCollected`, naming the part and its snapshot, and the next pull advances the pointer past it.
   *because retention collects a superseded snapshot's parts while a container still holding its pointer reads them*

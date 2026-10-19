@@ -4468,7 +4468,7 @@
       "operation": "pull",
       "subject": "part-accounting",
       "kind": "behavior",
-      "statement": "Each verified lazy download counts once toward {{store.pull.part-cache}} as it reaches disk, through sibling fetch failures and reopening with a missing cache index.",
+      "statement": "Each verified lazy download counts once toward {{store.pull.part-cache}} as it reaches disk, through sibling fetch failures; reopening adopts receipt-listed parts when the cache index is missing, without bucket reads or receipt-free tree scans.",
       "why": "because a partial acquisition and a lost index leave completed downloads subject to eviction",
       "file": "spec/10-store.md",
       "line": 628

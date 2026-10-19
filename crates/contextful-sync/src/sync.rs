@@ -119,8 +119,8 @@ pub const HELD_FILE: &str = ".sync-held.json";
 /// The contents of [`HELD_FILE`]: each node id the store pushed or pulled under, and that
 /// node's keys.
 #[derive(Default, serde::Serialize, serde::Deserialize)]
-pub(crate) struct HeldRecord {
-    pub(crate) nodes: BTreeMap<String, BTreeSet<String>>,
+struct HeldRecord {
+    nodes: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// The push guard's file under the store root; a store keeping it has pushed before.

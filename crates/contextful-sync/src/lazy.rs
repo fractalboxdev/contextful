@@ -2,7 +2,7 @@
 //! the bucket when a read first needs it (`store.pull.lazy-parts`), held in a bounded local
 //! cache (`store.pull.part-cache`).
 
-use crate::sync::{sync_dir, write, HeldRecord, HELD_FILE};
+use crate::sync::{sync_dir, write};
 use crate::transfer::each;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::object::{ObjectError, ObjectStore, PartHold, PartSource};
@@ -91,6 +91,8 @@ impl std::fmt::Debug for LazyParts {
 struct Holding {
     inner: Arc<Inner>,
     files: Vec<String>,
+    /// A refused batch persists its completed downloads after releasing its holds.
+    save_on_drop: bool,
 }
 
 impl Drop for Holding {
@@ -104,7 +106,9 @@ impl Drop for Holding {
                 }
             }
         }
-        self.inner.shrink(&mut cache);
+        if self.inner.shrink(&mut cache) || self.save_on_drop {
+            self.inner.save(&cache);
+        }
     }
 }
 
@@ -122,7 +126,7 @@ impl LazyParts {
                 cache.parts.insert(rel, Cached { size, tick: 0 });
             }
         }
-        let source = LazyParts(Arc::new(Inner {
+        LazyParts(Arc::new(Inner {
             bucket,
             prefix: prefix.to_string(),
             project: project.to_string(),
@@ -133,57 +137,13 @@ impl LazyParts {
             receipts: sync_dir(root, project).join(RECEIPTS_DIR),
             entries: Mutex::new(None),
             cache: Mutex::new(cache),
-        }));
-        source.0.recover();
-        source
+        }))
     }
 }
 
 impl Inner {
     fn lock(&self) -> std::sync::MutexGuard<'_, Cache> {
         self.cache.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    /// Adopt unindexed committed parts, preserving held keys and unpushed local writes.
-    fn recover(&self) {
-        let Some(held) = std::fs::read(self.root.join(HELD_FILE)).ok().and_then(|b| serde_json::from_slice::<HeldRecord>(&b).ok()) else { return };
-        let known: BTreeSet<String> = self.lock().parts.keys().cloned().collect();
-        let mut candidates = Vec::new();
-        let mut stack = vec![self.root.join("tables")];
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    stack.push(path);
-                    continue;
-                }
-                let Ok(rel) = path.strip_prefix(&self.root) else { continue };
-                let rel = rel.to_string_lossy().replace('\\', "/");
-                let key = format!("{}/{rel}", self.project);
-                if is_lazy_part(&rel) && !known.contains(&rel) && !held.nodes.values().any(|keys| keys.contains(&key)) {
-                    candidates.push((rel, key));
-                }
-            }
-        }
-        let Some((_, key)) = candidates.first() else { return };
-        if self.entry(key).is_err() {
-            return;
-        }
-        let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(entries) = entries.as_ref() else { return };
-        let mut cache = self.lock();
-        for (rel, key) in candidates {
-            let Some(entry) = entries.get(&key) else { continue };
-            let Ok(bytes) = std::fs::read(self.root.join(&rel)) else { continue };
-            if sha256_hex(&bytes) != entry.sha256 {
-                continue;
-            }
-            let size = bytes.len() as u64;
-            let _ = write(&self.receipts.join(sha256_hex(rel.as_bytes())), rel.as_bytes());
-            cache.bytes += size;
-            cache.parts.insert(rel, Cached { size, tick: 0 });
-        }
-        self.save(&cache);
     }
 
     /// The bucket manifest's entry for `key`, re-reading the manifest once when the held copy lacks it.
@@ -236,12 +196,11 @@ impl Inner {
             cache.bytes += size;
         }
         cache.parts.insert(rel.to_string(), Cached { size, tick });
-        self.save(&cache);
         Ok(())
     }
 
     /// Remove the least recently held fetched parts no read holds until the cache fits its bound.
-    fn shrink(&self, cache: &mut Cache) {
+    fn shrink(&self, cache: &mut Cache) -> bool {
         let before = cache.parts.len();
         while cache.bytes > self.bound {
             let Some(rel) = cache.parts.iter().filter(|(rel, _)| !cache.held.contains_key(*rel)).min_by_key(|(_, c)| c.tick).map(|(rel, _)| rel.clone()) else { break };
@@ -251,9 +210,7 @@ impl Inner {
                 cache.bytes -= c.size;
             }
         }
-        if cache.parts.len() != before {
-            self.save(cache);
-        }
+        cache.parts.len() != before
     }
 
     /// Write the index; download receipts retain each part when the index write fails.
@@ -301,11 +258,15 @@ impl PartSource for LazyParts {
             files.iter().filter(|f| !self.0.root.join(f.as_str()).exists()).cloned().collect()
         };
         // The holding releases every file on any return, a refused fetch included.
-        let holding = Holding { inner: self.0.clone(), files: files.to_vec() };
+        let mut holding = Holding { inner: self.0.clone(), files: files.to_vec(), save_on_drop: !missing.is_empty() };
         each(self.0.width, &missing, |rel| self.0.fetch(rel).map_err(crate::sync::SyncError::Store)).map_err(|e| match e {
             crate::sync::SyncError::Store(s) => s,
             other => StoreError::ReadPartUnavailable(other.to_string()),
         })?;
+        if holding.save_on_drop {
+            self.0.save(&self.0.lock());
+            holding.save_on_drop = false;
+        }
         Ok(PartHold(Arc::new(holding)))
     }
 }
