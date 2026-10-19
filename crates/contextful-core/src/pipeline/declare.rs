@@ -94,6 +94,10 @@ pub struct PipelineSpec {
     pub destination: Option<SourceBlock>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schedule: Option<String>,
+    /// The order among units due at one instant, highest first; absent is 0
+    /// (`surface.dispatch.admission-order`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i64>,
     /// The entry this one lands after: a landing step of that entry's dependent run
     /// (`surface.dispatch.not-a-head`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -145,6 +149,11 @@ impl PipelineSpec {
         self.on_table_error.unwrap_or_default()
     }
 
+    /// The declared dispatch priority, 0 when absent (`surface.dispatch.admission-order`).
+    pub fn priority(&self) -> i64 {
+        self.priority.unwrap_or(0)
+    }
+
     /// The specification's canonical value: every optional field at its default elided,
     /// so an explicit default serializes as its absence.
     pub fn canonical_value(&self) -> Value {
@@ -152,6 +161,9 @@ impl PipelineSpec {
         if spec.journal == Some(spec.default_journal()) { spec.journal = None; }
         if spec.on_table_error == Some(OnTableError::Abort) {
             spec.on_table_error = None;
+        }
+        if spec.priority == Some(0) {
+            spec.priority = None;
         }
         if spec.destination.as_ref().is_some_and(|d| d.name == STORE_DESTINATION && is_empty_object(&d.config)) {
             spec.destination = None;

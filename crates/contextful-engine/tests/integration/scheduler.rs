@@ -3,7 +3,7 @@
 use crate::support::{at, Rig, SetClock, T0};
 use contextful_core::coordinate::{Catalog, LeaseKey, CADENCE_LEASE_RENEWAL_SECS, CADENCE_LEASE_TTL_SECS};
 use contextful_core::run::record::RunStatus;
-use contextful_core::surface::arm::Schedule;
+use contextful_core::surface::arm::{Schedule, WAKE_ANSWER_SECS};
 use contextful_engine::scheduler::{Dispatch, Entry, LeaseState, Scheduler};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -83,7 +83,7 @@ fn scheduler(rig: &Rig, rec: &Arc<Recording>, pool: usize) -> Scheduler {
 }
 
 fn hourly(id: &str) -> Entry {
-    Entry { id: id.into(), schedule: Schedule::parse("every 1h").unwrap() }
+    Entry { id: id.into(), schedule: Schedule::parse("every 1h").unwrap(), priority: 0 }
 }
 
 fn journal_run(rig: &Rig, id: &str, pipeline: &str, started: &str) {
@@ -203,7 +203,7 @@ fn the_cadence_lease_renews_every_30_s() {
     assert_eq!(CADENCE_LEASE_RENEWAL_SECS, 30);
     let (rig, rec) = rig_with(None);
     let mut s = scheduler(&rig, &rec, 4);
-    s.arm(1, vec![Entry { id: "feed".into(), schedule: Schedule::parse("0 3 * * *").unwrap() }]).unwrap();
+    s.arm(1, vec![Entry { id: "feed".into(), schedule: Schedule::parse("0 3 * * *").unwrap(), priority: 0 }]).unwrap();
     journal_run(&rig, "feed-0", "feed", T0);
     s.beat().unwrap();
     let key = LeaseKey::Cadence("prod".into());
@@ -312,7 +312,7 @@ const WAKE_GAP_SECS: i64 = 720;
 /// `count` hourly cron entries `u00`.. on the `0 * * * *` grid, so units whose last runs
 /// share an hour tie at the next slot (unlike `every 1h`, which never snaps).
 fn cron_units(count: usize) -> Vec<Entry> {
-    (0..count).map(|i| Entry { id: format!("u{i:02}"), schedule: Schedule::parse("0 * * * *").unwrap() }).collect()
+    (0..count).map(|i| Entry { id: format!("u{i:02}"), schedule: Schedule::parse("0 * * * *").unwrap(), priority: 0 }).collect()
 }
 
 fn paced(rig: &Rig, run_secs: i64, fails: &[&str], gate: Option<Barrier>) -> Arc<Paced> {
@@ -345,22 +345,9 @@ fn clock_to(rig: &Rig, secs: i64) {
     rig.clock.advance(target - now);
 }
 
-/// One wake as the external trigger runs it: take the lease, beat once, settle until
-/// `deadline`, and release the lease once nothing is in flight. Returns the started ids.
-fn wake_once(s: &mut Scheduler, deadline: std::time::Instant) -> Vec<String> {
-    assert_eq!(s.hold().unwrap(), LeaseState::Held);
-    let beat = s.beat().unwrap();
-    assert_eq!(beat.lease, LeaseState::Held);
-    s.settle(deadline);
-    if s.in_flight().is_empty() {
-        s.release().unwrap();
-    }
-    beat.started
-}
-
-/// [`wake_once`] with every fire held at the barrier until the wake's settle returns, so a
-/// wake admits exactly what its beat started. The held units are then released and joined
-/// before the next wake.
+/// One wake as the external trigger runs it, with every fire held at the barrier until the
+/// wake's settle returns, so a wake admits exactly what its beat started. The held units are
+/// then released and joined before the next wake.
 fn held_wake(s: &mut Scheduler, gate: &Gate) -> Vec<String> {
     assert_eq!(s.hold().unwrap(), LeaseState::Held);
     let beat = s.beat().unwrap();
@@ -377,37 +364,157 @@ fn held_wake(s: &mut Scheduler, gate: &Gate) -> Vec<String> {
     beat.started
 }
 
-/// Twenty hourly units tied by a 14 h outage, pool 1, five wakes per hour, 20 s per fire:
-/// each wake admits one unit, so the last five first fire three ticks after recovery.
+/// A [`Paced`] dispatch whose wake answers `WAKE_ANSWER_SECS` after it opens on the catalog's
+/// clock: a fire ending by then returns at once, and one ending later is still running when
+/// the wake answers, so it holds at the barrier until the test releases it.
+struct Answered {
+    inner: Arc<Paced>,
+    catalog: Arc<dyn Catalog + Send + Sync>,
+    /// The catalog instant the current wake answers at, in unix seconds.
+    answers_at: Mutex<i64>,
+    gate: Barrier,
+}
+
+impl Dispatch for Answered {
+    fn fire(&self, id: &str, steps: &[String], derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String> {
+        let out = self.inner.fire(id, steps, derived_parents, version);
+        if self.catalog.now().unwrap().unix_secs() > *self.answers_at.lock().unwrap() {
+            self.gate.entered.lock().unwrap().send(id.to_string()).unwrap();
+            self.gate.release.lock().unwrap().recv().unwrap();
+        }
+        out
+    }
+}
+
+/// Twenty hourly units tied by a 14 h outage, pool 1, five wakes per hour, 20 s per fire
+/// against the 25 s wake answer: the beat starts one unit, and the slot it frees at 20 s
+/// admits the next, still running at the answer. Two units start per wake, so the last ten
+/// first fire one tick after recovery.
 #[test]
-fn a_backlog_of_twenty_units_clears_within_the_recovery_tick() {
+fn a_backlog_of_twenty_units_clears_one_tick_after_recovery() {
     const UNITS: usize = 20;
-    const WAKES: i64 = 30;
+    const WAKES: i64 = 10;
     let rig = Rig::new();
-    let dispatch = paced(&rig, 20, &[], None);
+    let paced = paced(&rig, 20, &[], None);
+    let (barrier, gate) = barrier();
+    let dispatch = Arc::new(Answered { inner: paced.clone(), catalog: rig.engine.catalog.clone(), answers_at: Mutex::default(), gate: barrier });
     journal_cohort(&rig, &cron_units(UNITS));
     let recovery = 14 * 3600;
     clock_to(&rig, recovery);
-    let mut s = paced_scheduler(&rig, &dispatch);
+    let mut s = Scheduler::new(rig.engine.catalog.clone(), dispatch.clone() as Arc<dyn Dispatch>, "prod", "daemon-a", 1);
     s.arm(1, cron_units(UNITS)).unwrap();
     let mut first_fire: BTreeMap<String, i64> = BTreeMap::new();
+    let mut per_wake = Vec::new();
     for k in 0..WAKES {
         clock_to(&rig, recovery + k * WAKE_GAP_SECS);
-        let deadline = std::time::Instant::now() + Duration::from_secs(25);
-        for id in wake_once(&mut s, deadline) {
+        *dispatch.answers_at.lock().unwrap() = rig.catalog().now().unwrap().unix_secs() + WAKE_ANSWER_SECS as i64;
+        let before = paced.started.lock().unwrap().len();
+        assert_eq!(s.hold().unwrap(), LeaseState::Held);
+        assert_eq!(s.beat().unwrap().lease, LeaseState::Held);
+        // The answer falls on the catalog's clock; the wall deadline only bounds the fixture,
+        // as every fire ending before the answer returns at once and the one past it holds.
+        s.settle(std::time::Instant::now() + Duration::from_secs(1));
+        for _ in s.in_flight() {
+            gate.entered();
+            gate.release();
+        }
+        s.drain();
+        let started = paced.started.lock().unwrap()[before..].to_vec();
+        per_wake.push(started.len());
+        for id in started {
             first_fire.entry(id).or_insert(k * WAKE_GAP_SECS / 3600);
         }
     }
+    assert_eq!(per_wake, [2; WAKES as usize], "the beat's start and one refill per wake");
     // A unit that never fires waits the whole window.
     let window = WAKES * WAKE_GAP_SECS / 3600;
     let waited: Vec<i64> = cron_units(UNITS).iter().map(|e| first_fire.get(&e.id).copied().unwrap_or(window)).collect();
-    assert_eq!(waited, [[0; 5], [1; 5], [2; 5], [3; 5]].concat());
+    assert_eq!(waited, [[0; 10], [1; 10]].concat());
     let most = waited.iter().copied().max().unwrap();
     contextful_eval::record::emit("dispatch-backlog-ticks", most as f64, UNITS as u64, 0);
 }
 
-/// Six hourly units tied on one cron slot, pool 1, five wakes per tick for 12 ticks: the
-/// name tie-break inside the slot leaves every miss on the two name-last units.
+/// A refill admits only what the wake's evaluation left pending: a unit falling due while the
+/// first fire runs waits for the next wake, though a freed slot starts a pending one.
+#[test]
+fn a_unit_falling_due_after_the_evaluation_waits_for_the_next_wake() {
+    let rig = Rig::new();
+    let dispatch = paced(&rig, 20, &[], None);
+    journal_run(&rig, "late-0", "late", T0);
+    clock_to(&rig, 3590);
+    let mut s = paced_scheduler(&rig, &dispatch);
+    s.arm(1, vec![hourly("a"), hourly("b"), hourly("late")]).unwrap();
+    assert_eq!(s.hold().unwrap(), LeaseState::Held);
+    let beat = s.beat().unwrap();
+    assert_eq!((beat.started, beat.pending), (vec!["a".to_string()], vec!["b".to_string()]));
+    s.settle(std::time::Instant::now() + Duration::from_secs(25));
+    s.drain();
+    // `late` fell due at 3600 s, inside a's 20 s fire; the refill admitted b alone.
+    assert_eq!(*dispatch.started.lock().unwrap(), ["a", "b"]);
+    assert_eq!(s.refill().started, ["b"]);
+    assert_eq!(s.beat().unwrap().started, ["late"]);
+    s.drain();
+}
+
+/// A dispatch record the catalog cannot write, here a row another node's clock set past the
+/// catalog's now, fails the beat before any admitted unit starts.
+#[test]
+fn a_dispatch_record_that_will_not_write_starts_nothing() {
+    let rig = Rig::new();
+    let dispatch = paced(&rig, 20, &[], None);
+    let mut s = Scheduler::new(rig.engine.catalog.clone(), dispatch.clone() as Arc<dyn Dispatch>, "prod", "daemon-a", 2);
+    s.arm(1, vec![hourly("a"), hourly("b")]).unwrap();
+    assert_eq!(s.hold().unwrap(), LeaseState::Held);
+    rig.engine.catalog.acquire(&LeaseKey::Dispatch("b".into()), "daemon-b", 3600).unwrap().expect("a free row");
+    let failure = s.beat().unwrap_err().to_string();
+    assert!(failure.contains("recording the dispatch of `b`"), "{failure}");
+    s.drain();
+    assert!(dispatch.started.lock().unwrap().is_empty(), "a's record landed, yet a did not start");
+    assert!(s.in_flight().is_empty());
+}
+
+/// A dispatch whose first fire outlives the cadence lease, after which another holder takes it.
+struct Usurped {
+    inner: Arc<Paced>,
+    catalog: Arc<dyn Catalog + Send + Sync>,
+}
+
+impl Dispatch for Usurped {
+    fn fire(&self, id: &str, steps: &[String], derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String> {
+        let out = self.inner.fire(id, steps, derived_parents, version);
+        self.catalog.acquire(&LeaseKey::Cadence("prod".into()), "daemon-b", CADENCE_LEASE_TTL_SECS).unwrap().expect("the lapsed lease is free");
+        out
+    }
+}
+
+/// A refill admits through the cadence lease: once another holder takes it mid-wake, the
+/// slot the first fire frees starts nothing, and the rest stay waiting, so the wake reports
+/// them pending.
+#[test]
+fn a_refill_starts_nothing_once_another_holder_takes_the_cadence_lease() {
+    let rig = Rig::new();
+    let units = cron_units(3);
+    journal_cohort(&rig, &units);
+    clock_to(&rig, 14 * 3600);
+    let inner = paced(&rig, CADENCE_LEASE_TTL_SECS as i64 + 10, &[], None);
+    let dispatch = Arc::new(Usurped { inner: inner.clone(), catalog: rig.engine.catalog.clone() });
+    let mut s = Scheduler::new(rig.engine.catalog.clone(), dispatch as Arc<dyn Dispatch>, "prod", "daemon-a", 1);
+    s.arm(1, units).unwrap();
+    assert_eq!(s.hold().unwrap(), LeaseState::Held);
+    let beat = s.beat().unwrap();
+    assert_eq!((beat.started, beat.pending), (vec!["u00".to_string()], vec!["u01".to_string(), "u02".to_string()]));
+    let ended = s.settle(std::time::Instant::now() + Duration::from_secs(25));
+    assert_eq!(ended.len(), 1);
+    assert_eq!(*inner.started.lock().unwrap(), ["u00"], "the freed slot admits nothing under another holder's lease");
+    assert_eq!(s.waiting(), ["u01", "u02"]);
+    assert!(s.refill().started.is_empty());
+    assert_eq!(s.refill().stopped.as_deref(), Some("the cadence lease is held by daemon-b"));
+    assert_eq!(rig.catalog().lease_row(&LeaseKey::Cadence("prod".into())).unwrap().holder.as_deref(), Some("daemon-b"));
+}
+
+/// Six hourly units tied on one cron slot, pool 1, five wakes per tick for 12 ticks, every
+/// fire held until its wake answers: the least recent dispatch starts first inside the slot,
+/// so the misses rotate and each unit misses two ticks.
 #[test]
 fn overload_misses_spread_evenly_across_tied_units() {
     const UNITS: usize = 6;
@@ -428,14 +535,17 @@ fn overload_misses_spread_evenly_across_tied_units() {
         }
     }
     let missed: Vec<i64> = cron_units(UNITS).iter().map(|e| TICKS - ticks_fired.get(&e.id).map_or(0, |t| t.len() as i64)).collect();
-    assert_eq!(missed, [0, 0, 0, 0, 6, 6]);
+    assert_eq!(missed, [2; UNITS]);
     let most = missed.iter().copied().max().unwrap();
     contextful_eval::record::emit("dispatch-overload-misses", most as f64, TICKS as u64, 0);
 }
 
-/// A unit failing before its run row keeps its oldest next fire, and a fresh scheduler per
-/// wake (a cycle, or a replaced container) forgets the dispatch: the unit wins the tie on
-/// name every wake and, at pool 1, starts alone.
+/// An armed entry's next fire is the first instant its schedule admits after the later of its
+/// pipeline's last journaled run start and its last dispatch, which the catalog holding the
+/// cadence lease records before the unit starts. A unit failing before its run row then
+/// moves past its dispatch even in a fresh scheduler per wake (a cycle, or a replaced
+/// container), and the tied cohort takes the pool one wake each.
+// spec: surface.arm.next-fire-from-history@d574a85b
 #[test]
 fn a_unit_failing_before_its_run_row_yields_the_pool_to_a_fresh_scheduler() {
     const UNITS: usize = 20;
@@ -453,8 +563,13 @@ fn a_unit_failing_before_its_run_row_yields_the_pool_to_a_fresh_scheduler() {
         s.arm(1, cron_units(UNITS)).unwrap();
         started.extend(held_wake(&mut s, &gate));
     }
-    assert_eq!(started, vec!["u00".to_string(); WAKES as usize]);
+    let expected: Vec<String> = (0..WAKES).map(|i| format!("u{i:02}")).collect();
+    assert_eq!(started, expected);
     assert_eq!(*dispatch.started.lock().unwrap(), started);
+    // u00 journaled no run; its dispatch record alone moved it behind the cohort.
+    assert_eq!(rig.catalog().last_run_start("u00").unwrap(), Some(at(T0)));
+    assert_eq!(rig.catalog().lease_row(&LeaseKey::Dispatch("u00".into())).unwrap().expires_at, Some(at(T0).plus_secs(recovery as u64)));
     let others = started.iter().filter(|id| *id != "u00").count();
+    assert!(others >= 9, "{others}");
     contextful_eval::record::emit("dispatch-failing-head", others as f64, WAKES as u64, 0);
 }

@@ -5,7 +5,11 @@ use contextful_core::time::Instant;
 use std::collections::BTreeSet;
 
 fn due(key: &str, at: &str) -> Due {
-    Due { key: key.into(), at: Instant::parse(at).unwrap() }
+    Due { key: key.into(), at: Instant::parse(at).unwrap(), priority: 0, base: None }
+}
+
+fn ranked(key: &str, priority: i64, base: Option<&str>) -> Due {
+    Due { priority, base: base.map(|b| Instant::parse(b).unwrap()), ..due(key, "2030-01-01T01:00:00Z") }
 }
 
 fn keys(units: &[Due]) -> Vec<&str> {
@@ -21,7 +25,7 @@ fn the_pool_starts_at_most_its_bound() {
     let units: Vec<Due> = ["e", "d", "c", "b", "a", "f"].iter().map(|k| due(k, "2030-01-01T00:00:00Z")).collect();
     let none = BTreeSet::new();
     let a = admit(&units, &none, DEFAULT_POOL);
-    // One beat's order: due instant, then id.
+    // Units tied on instant, priority and base start by id.
     assert_eq!(keys(&a.start), ["a", "b", "c", "d"]);
     assert_eq!(keys(&a.pending), ["e", "f"]);
     // Units in flight count against the bound.
@@ -50,4 +54,38 @@ fn a_key_in_flight_starts_no_second_instance() {
     // With nothing in flight, one key still starts one instance.
     let a = admit(&units, &BTreeSet::new(), 4);
     assert_eq!(keys(&a.start), ["filings", "orders"]);
+}
+
+/// Due units start by earliest next fire, then highest `priority`, then the least recent of
+/// each unit's last run start and last dispatch, a unit with neither first, then id.
+// spec: surface.dispatch.admission-order@b26cf3fe
+#[test]
+fn ties_start_by_priority_then_least_recent_dispatch() {
+    let none = BTreeSet::new();
+    let units = vec![
+        ranked("a", 0, Some("2030-01-01T00:40:00Z")),
+        ranked("b", 0, Some("2030-01-01T00:10:00Z")),
+        ranked("c", 0, None),
+        ranked("d", 5, Some("2030-01-01T00:50:00Z")),
+        ranked("e", -1, None),
+    ];
+    let a = admit(&units, &none, 5);
+    assert_eq!(keys(&a.start), ["d", "c", "b", "a", "e"]);
+    // An earlier due instant outranks any priority, so a unit left pending goes first next.
+    let mut late = units.clone();
+    late.push(due("z", "2030-01-01T00:00:00Z"));
+    let a = admit(&late, &none, 1);
+    assert_eq!((keys(&a.start), a.pending.len()), (vec!["z"], 5));
+    assert_eq!(keys(&a.pending), ["d", "c", "b", "a", "e"]);
+}
+
+/// A unit's dispatch record key spells each id apart, a `job:<name>` id included, and keeps
+/// ':' out of the stored spelling.
+#[test]
+fn each_unit_id_spells_its_own_dispatch_record() {
+    use contextful_core::coordinate::LeaseKey;
+    let ids = ["a:b", "a%3Ab", "a%253Ab", "job:nightly", "job%3Anightly"];
+    let spellings: BTreeSet<String> = ids.iter().map(|id| LeaseKey::Dispatch(id.to_string()).spelling()).collect();
+    assert_eq!(spellings.len(), ids.len(), "{spellings:?}");
+    assert!(spellings.iter().all(|s| !s.contains(':')), "{spellings:?}");
 }

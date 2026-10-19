@@ -218,3 +218,17 @@ Decision: `surface.delegate` binds a name to a loopback or virtual-host URL in t
 | Call mode alone | Long work | A model call outliving its connection has no home. |
 
 Consequences: a consumer's stage is an item of a run with its receipt, budget and fence; a hanging `call` delegate holds its slot until the timeout, and work it finishes after the timeout is paid again unless it dedups on the idempotency key.
+
+## Due units admit by staleness, and a wake refills its freed slots
+
+Decision: `surface.dispatch.admission-order` breaks a tie on next fire by declared priority, then by the least recent of last run start and last dispatch, so overload misses rotate across a tied cohort. Priority orders only units due at one instant: a unit left pending keeps its earlier instant and outranks any priority at the next admission. The scheduler records each dispatch as a zero-second lease row in the catalog before the unit starts, and `surface.arm.next-fire-from-history` reads it, so a fresh process sees a unit that failed before its run row. `surface.dispatch.refill` admits a wake's pending units into slots freed before the answer, through the cadence lease.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Staleness tie-break, catalog dispatch record, refill inside the wake *(chosen)* | — | One catalog write per dispatch and one read per entry per lease acquisition; a fire ending its process after its record waits one interval. |
+| Name tie-break | Fairness under overload | Every miss lands on the name-last units of a tied slot. |
+| Strict priority across due instants | Starvation | A busy high class holds the pool. |
+| Dispatch record in process memory | Fresh processes | A unit failing before its run row wins every cycle at pool 1. |
+| Refill from a fire's end path between wakes | Lease safety | A start after the lease lapsed runs beside another holder's chain. |
+
+Consequences: a unit falling due after a wake's evaluation waits for the next wake; pool 1 with 20 s fires starts two units per wake; `pipeline serve --cycle` evaluates once and admits at most the pool.

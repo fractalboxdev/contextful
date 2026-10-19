@@ -55,7 +55,6 @@ fn an_unreadable_schedule_names_its_diagnostic() {
 
 /// An armed entry's next fire is the first instant its schedule admits after the later of its pipeline's last
 /// journaled run start and its last dispatch; an entry with neither is due when armed.
-// spec: surface.arm.next-fire-from-history@6558f610
 #[test]
 fn the_next_fire_counts_from_the_run_history() {
     let hourly = Schedule::parse("every 1h").unwrap();

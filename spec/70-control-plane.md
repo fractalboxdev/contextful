@@ -71,7 +71,7 @@ The schedule grammar and cron dialect, the trigger adapter and its durability, t
 - `tick-interval` — The in-process adapter evaluates the armed set every 500 ms.
 - `trigger-select` — `[control] trigger` selects `in-process`, the default, or `external`, under which `pipeline serve --http <address>` answers `POST /wake` and runs no tick of its own.
 - `grammar` — A schedule is `every <n><unit>` with unit `s`, `m`, `h` or `d`, or a UTC cron expression of five fields, minute, hour, day of month, month and day of week, each `*`, a value, range, list or `/` step.
-- `next-fire-from-history` — An armed entry's next fire is the first instant its schedule admits after the later of its pipeline's last journaled run start and its last dispatch; an entry with neither is due when armed.
+- `next-fire-from-history` — An armed entry's next fire is the first instant its schedule admits after the later of its last journaled run start and its last dispatch, which the catalog records before start; an entry with neither is due when armed.
   *because a restarted daemon then keeps the cadence its run history shows instead of restarting every interval from boot*
 - `catch-up` — A daemon arming an entry whose next fire has passed fires it once, whatever count of intervals elapsed, and arms the following fire from that run.
   *because replaying each missed interval against an incremental source pulls the same delta once per interval*
@@ -233,6 +233,10 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
 - `heartbeat-lapse` — A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker under the next attempt number.
 - `pool-bound` — A deployment's fire pool runs at most 4 units at once, `[control] pool` replacing the bound; a due unit past the bound stays armed and reports pending.
   *because one bound per deployment caps the process's concurrent pulls, where a bound per exclusion key caps nothing as pipelines are added*
+- `admission-order` — Due units start by earliest next fire, then highest `[[pipeline]]` `priority`, an integer defaulting to 0, then the least recent of each unit's last run start and last dispatch, a unit with neither first, then id.
+  *A-surface*
+- `refill` — A wake whose fire ends before its answer admits each unit its evaluation left pending into the freed slot, through the cadence lease; a unit falling due after the evaluation waits for the next wake.
+  *A-surface*
 - `exclusion-key` — A unit's exclusion key is its pipeline id: a unit due while another under its key is in flight starts no second instance, and its next fire recomputes once the first ends.
   *because two fires of one pipeline race for one cursor*
 - `lease-gated` — A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease held arms nothing and, under `--cycle`, exits naming the holder.

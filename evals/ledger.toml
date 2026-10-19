@@ -1098,30 +1098,28 @@ seed   = 0x5eed_0091
 # ---------------------------------------------------------------- surface
 
 [entry.dispatch-backlog-ticks]
-clause = "surface.arm.trigger-select"
+clause = "surface.dispatch.refill"
 metric = "dispatch.max_ticks_waited_by_due_unit"
 kind   = "test"
 tier   = "gate"
-method = { test = "contextful_engine::scheduler::a_backlog_of_twenty_units_clears_within_the_recovery_tick" }
-target = { op = "<=", value = 3 }
+method = { test = "contextful_engine::scheduler::a_backlog_of_twenty_units_clears_one_tick_after_recovery" }
+target = { op = "<=", value = 1 }
 
 [entry.dispatch-overload-misses]
-clause = "surface.dispatch.pool-bound"
+clause = "surface.dispatch.admission-order"
 metric = "dispatch.max_missed_ticks_per_unit"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_engine::scheduler::overload_misses_spread_evenly_across_tied_units" }
-target = { op = "<=", value = 6 }
+target = { op = "<=", value = 2 }
 
-# A unit failing before its run row wins every wake at pool 1; it moves to the gate tier
-# with a target of at least 9.
 [entry.dispatch-failing-head]
 clause = "surface.arm.next-fire-from-history"
 metric = "dispatch.units_started_behind_failing_head"
 kind   = "test"
-tier   = "trend"
-direction = "higher_is_better"
+tier   = "gate"
 method = { test = "contextful_engine::scheduler::a_unit_failing_before_its_run_row_yields_the_pool_to_a_fresh_scheduler" }
+target = { op = ">=", value = 9 }
 
 # ---------------------------------------------------------------- topology
 

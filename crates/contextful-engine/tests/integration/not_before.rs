@@ -358,7 +358,7 @@ fn the_first_beat_at_the_stored_time_fires_the_waiting_job() {
 
     let fires = Arc::new(Fires::default());
     let mut s = Scheduler::new(rig.engine.catalog.clone(), fires.clone() as Arc<dyn Dispatch>, "prod", "daemon-a", 4);
-    s.arm(1, vec![Entry { id: "job:score".into(), schedule: Cadence::parse("every 1d").unwrap() }]).unwrap();
+    s.arm(1, vec![Entry { id: "job:score".into(), schedule: Cadence::parse("every 1d").unwrap(), priority: 0 }]).unwrap();
     assert_eq!(s.next_due().unwrap(), Some(at(T0).plus_secs(3600)), "the wake precedes the daily fire");
     rig.clock.advance(3599);
     assert!(s.beat().unwrap().started.is_empty());

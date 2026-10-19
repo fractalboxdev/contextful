@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 20 | 314 | 53 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 600 | 128 | 49 | 19 | 560 | 0 | 560 |
 | `store` | 3 | 19 | 322 | 65 | 19 | 11 | 311 | 0 | 311 |
-| `surface` | 2 | 21 | 174 | 67 | 24 | 0 | 148 | 0 | 148 |
+| `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2770 | 683 | 222 | 80 | 2476 | 0 | |
+| **total** | 22 | 169 | 2772 | 683 | 222 | 80 | 2478 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 109 | 97 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 111 | 99 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 61 | 49 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
@@ -2324,7 +2324,7 @@ Unscheduled operations: 13.
 | `surface.apply.weak-conditional-backend` | `crates/contextful-core/tests/integration/surface/control.rs::a_conditional_write_owner_refuses_a_network_filesystem` | performed |
 | `surface.arm.catch-up` | `crates/contextful-engine/tests/integration/scheduler.rs::a_daemon_booting_past_missed_intervals_fires_once` | performed |
 | `surface.arm.grammar` | `crates/contextful-core/tests/integration/surface/arm.rs::a_schedule_is_an_interval_or_a_five_field_cron` | performed |
-| `surface.arm.next-fire-from-history` | `crates/contextful-core/tests/integration/surface/arm.rs::the_next_fire_counts_from_the_run_history` | performed |
+| `surface.arm.next-fire-from-history` | `crates/contextful-engine/tests/integration/scheduler.rs::a_unit_failing_before_its_run_row_yields_the_pool_to_a_fresh_scheduler` | performed |
 | `surface.arm.pulled-future` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_future_dated_run_state_leaves_a_cold_nodes_cadence_alone` | performed |
 | `surface.arm.pulled-history` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_keeps_the_cadence_another_node_fired` | performed |
 | `surface.arm.tick-interval` | `crates/contextful-core/tests/integration/surface/arm.rs::the_tick_is_500_ms` | performed |
@@ -2356,6 +2356,7 @@ Unscheduled operations: 13.
 | `surface.delegate.rejected` | `crates/contextful-core/tests/integration/surface/delegate.rs::an_answer_verifies_for_its_request_within_the_skew_and_inside_the_vocabulary` | performed |
 | `surface.delegate.signed` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_request_signs_over_call_and_an_answer_over_answer_and_its_request_key` | performed |
 | `surface.delegate.status` | `crates/contextful-cli/tests/integration/delegate.rs::a_non_200_answer_spends_one_attempt_and_a_permanent_answer_writes_a_terminal_receipt` | performed |
+| `surface.dispatch.admission-order` | `crates/contextful-core/tests/integration/surface/dispatch.rs::ties_start_by_priority_then_least_recent_dispatch` | performed |
 | `surface.dispatch.callback-rejected` | `crates/contextful-core/tests/integration/surface/worker.rs::a_superseded_or_skewed_callback_changes_no_step` | performed |
 | `surface.dispatch.callback-skew` | `crates/contextful-core/tests/integration/surface/worker.rs::the_relay_accepts_a_timestamp_within_the_skew` | performed |
 | `surface.dispatch.children-reaped` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_ends_every_child_it_dispatched` | performed |
@@ -2372,6 +2373,7 @@ Unscheduled operations: 13.
 | `surface.dispatch.lease-gated` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_under_a_running_daemon_arms_nothing_and_names_the_holder` | performed |
 | `surface.dispatch.not-a-head` | `crates/contextful-engine/tests/integration/scheduler.rs::a_head_fires_its_steps_as_one_unit_and_a_due_step_starts_nothing` | performed |
 | `surface.dispatch.pool-bound` | `crates/contextful-core/tests/integration/surface/dispatch.rs::the_pool_starts_at_most_its_bound` | performed |
+| `surface.dispatch.refill` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_refills_a_freed_slot_with_the_unit_its_evaluation_left_pending` | performed |
 | `surface.dispatch.step-result` | `crates/contextful-core/tests/integration/surface/worker.rs::a_step_result_is_a_pointer_under_the_cap` | performed |
 | `surface.dispatch.submit-exhausted` | `crates/contextful-engine/tests/integration/worker.rs::a_step_every_worker_refuses_fails_after_one_try_each` | performed |
 | `surface.dispatch.submit-signed` | `crates/contextful-cli/tests/integration/worker.rs::a_worker_runs_only_signed_submissions_calling_back_to_its_relay` | performed |

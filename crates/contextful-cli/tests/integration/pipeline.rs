@@ -1933,6 +1933,34 @@ fn a_wake_answers_within_its_bound_naming_what_still_runs() {
     assert!(answer["next_due"].as_str().is_some_and(|t| t.ends_with('Z')), "{answer}");
 }
 
+/// A wake whose fire ends before its answer admits each unit its evaluation left pending
+/// into the freed slot, through the cadence lease; a unit falling due after the evaluation
+/// waits for the next wake. Among units due at one instant, the higher `priority` starts first.
+// spec: surface.dispatch.refill@2363e9fa
+#[test]
+fn a_wake_refills_a_freed_slot_with_the_unit_its_evaluation_left_pending() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n[control]\ntrigger = \"external\"\npool = 1\n\n{}\n{}",
+        scheduled("alpha", &vendor.url("/v1/alpha"), "every 1h"),
+        pipeline("zeta", &vendor.url("/v1/zeta"), "schedule = \"every 1h\"\npriority = 5", "tables = [\"items\"]"),
+    ));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    let (daemon, url) = external(dir.path());
+    let (status, answer) = post(&url);
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(answer["fired"], serde_json::json!(["alpha", "zeta"]), "the freed slot ran the pending unit: {answer}");
+    assert_eq!(answer["pending"], serde_json::json!([]), "{answer}");
+    // The evaluation started the higher priority; the refill started the other, and logs it.
+    let started: Vec<String> = daemon.lines().into_iter().filter(|l| l.contains(": started")).collect();
+    assert_eq!(started.len(), 2, "{started:?}");
+    assert!(started[0].contains("fire zeta: started"), "{started:?}");
+    assert!(started[1].contains("fire alpha: started"), "{started:?}");
+    // Both ran inside the hour, so a second wake finds nothing due.
+    let (_, again) = post(&url);
+    assert_eq!(again["fired"], serde_json::json!([]), "{again}");
+}
+
 /// An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises
 /// `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.
 // spec: surface.reconcile.fail-static@59ee4328
