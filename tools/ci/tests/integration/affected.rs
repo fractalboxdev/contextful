@@ -137,7 +137,7 @@ fn a_spec_change_reaches_validation_and_the_parts_running_each_changed_clause_pi
 
     // A clause pinned in `spec/pins.toml` to the binary's test reaches every binary part.
     let got = after(&[(LOCK, &lock(&["assurance.gate.listed"]))]);
-    for part in ["workspace.compile", "workspace.cli", "workspace.cli-formal", "features.binary-extra", "features.formal-extra"] {
+    for part in ["workspace.compile", "workspace.cli-1", "workspace.cli-4", "workspace.cli-formal", "features.binary-extra", "features.formal-extra"] {
         assert!(got.iter().any(|p| p == part), "`{part}` missing: {got:?}");
     }
     assert!(!got.iter().any(|p| p == "surfaces" || p == "formal" || p == "connectors"), "{got:?}");
@@ -146,23 +146,23 @@ fn a_spec_change_reaches_validation_and_the_parts_running_each_changed_clause_pi
     for id in ["assurance.gate.proved", "assurance.gate.modelled"] {
         let got = after(&[(LOCK, &lock(&[id]))]);
         assert!(got.iter().any(|p| p == "formal") && got.iter().any(|p| p == "workspace.cli-formal"), "{id}: {got:?}");
-        assert!(!got.iter().any(|p| p == "workspace.cli"), "{id}: {got:?}");
+        assert!(!got.iter().any(|p| p == "workspace.cli-1"), "{id}: {got:?}");
     }
 
     // A changed `spec/pins.toml` entry reaches the parts running the test it now names.
     let got = after(&[("spec/pins.toml", "[pin]\n\"assurance.gate.listed\" = { test = \"crates/demo/tests/integration/double.rs::doubles\" }\n")]);
-    for part in ["workspace.foundation", "workspace.cli"] {
+    for part in ["workspace.foundation", "workspace.cli-1"] {
         assert!(got.iter().any(|p| p == part), "`{part}` missing, the old and new pins both reach: {got:?}");
     }
 }
 
-/// A clause pinned in a package's test reaches the parts running that package: a featured package the packages feature part, a connector package the connectors part, the acceptance package the acceptance part, and a TypeScript test the surfaces part
+/// A clause pinned in a package's test reaches the parts running that package: a featured package its own feature part, a connector package the connectors part, the acceptance package the acceptance part, and a TypeScript test the surfaces part
 /// (`assurance.gate.affected-spec`).
 #[test]
 fn a_changed_clause_reaches_the_parts_running_its_package() {
     assert_eq!(
         after(&[(LOCK, &lock(&["assurance.gate.connected"]))]),
-        ["pins", "toolchain", "schema", "test-first.validate", "workspace.compile", "workspace.foundation", "workspace.runtime", "features.packages", "connectors"]
+        ["pins", "toolchain", "schema", "test-first.validate", "workspace.compile", "workspace.foundation", "workspace.runtime", "features.connectors", "connectors"]
     );
     assert_eq!(
         after(&[(LOCK, &lock(&["assurance.gate.accepted"]))]),
@@ -193,9 +193,11 @@ fn a_spec_file_a_stage_reads_reaches_that_stage() {
 #[test]
 fn a_removed_clause_reaches_the_evaluate_stage() {
     let got = after(&[(LOCK, &lock_with(&[], &["assurance.gate.tagged"]))]);
-    assert!(got.iter().any(|p| p == "evaluate"), "{got:?}");
+    for part in ["evaluate.foundation", "evaluate.runtime", "evaluate.read", "evaluate.cli", "evaluate.ci", "evaluate.probe"] {
+        assert!(got.iter().any(|p| p == part), "`{part}` missing: {got:?}");
+    }
     let got = after(&[(LOCK, &lock(&["assurance.gate.tagged"]))]);
-    assert!(!got.iter().any(|p| p == "evaluate"), "a reworded clause keeps its ledger entry resolved: {got:?}");
+    assert!(!got.iter().any(|p| p.starts_with("evaluate.")), "a reworded clause keeps its ledger entry resolved: {got:?}");
 }
 
 /// A change under `formal/` other than a `lean-toolchain` file reaches the formal and evaluate stages, the foundation, CLI and CLI differential workspace parts, and every feature part.
@@ -209,11 +211,19 @@ fn a_formal_change_reaches_every_part_reading_the_lean_tree() {
             "pins",
             "toolchain",
             "schema",
-            "workspace.cli",
+            "workspace.cli-1",
+            "workspace.cli-2",
+            "workspace.cli-3",
+            "workspace.cli-4",
             "workspace.cli-formal",
             "workspace.foundation",
-            "evaluate",
-            "features.packages",
+            "evaluate.foundation",
+            "evaluate.runtime",
+            "evaluate.read",
+            "evaluate.cli",
+            "evaluate.ci",
+            "evaluate.probe",
+            "features.connectors",
             "features.binary-none",
             "features.formal-none",
             "features.binary-all",
