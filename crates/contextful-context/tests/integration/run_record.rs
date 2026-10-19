@@ -71,6 +71,59 @@ fn the_latest_row_per_run_and_phase_wins() {
     assert_eq!(statuses(&history(&f.store, Bounds::default()).unwrap()), [("r1".into(), RunStatus::Failed)]);
 }
 
+/// An append runs a pass on the run record once its trigger fires: 25 unit runs, 50 store
+/// runs, leave one snapshot folding all 50 and history reading every run. A pass that fails
+/// leaves its append succeeding, and the next append runs it; 6 h after a pass, one more
+/// append fires the next.
+// spec: run.record.record-folds@29e1db69
+#[cfg(unix)]
+#[test]
+fn an_append_folds_the_run_record_once_its_trigger_fires() {
+    let f = Fixture::new();
+    let node = NodeId::parse("ingest-a").unwrap();
+    let record = contextful_context::run_record::decl();
+    let base = at("2030-01-01T00:00:00Z");
+    let unit = |i: u64| {
+        let started = base.plus_secs(i * 60);
+        let id = format!("r{i:03}");
+        append(&f.store, &node, &row(&id, RunStatus::Running, Phase::Plan, &started.to_rfc3339()), started).unwrap();
+        append(&f.store, &node, &row(&id, RunStatus::Success, Phase::Commit, &started.to_rfc3339()), started.plus_secs(1)).unwrap();
+    };
+    for i in 0..25 {
+        unit(i);
+    }
+    let state = f.store.state(&record).unwrap();
+    assert_eq!(state.chain.len(), 1, "one pass folded the run record");
+    assert_eq!(state.chain[0].includes_runs.len(), 50);
+    assert!(state.unfolded_runs().is_empty());
+    let read = history(&f.store, Bounds::default()).unwrap();
+    assert_eq!(read.len(), 25);
+    assert!(read.iter().all(|r| r.status == RunStatus::Success), "{:?}", statuses(&read));
+
+    // A pass that cannot stage fails beside a durable append.
+    use std::os::unix::fs::PermissionsExt;
+    let snapshots = f.table_dir(RUN_RECORD_TABLE).join("data/snapshots");
+    std::fs::set_permissions(&snapshots, std::fs::Permissions::from_mode(0o555)).unwrap();
+    for i in 25..50 {
+        unit(i);
+    }
+    std::fs::set_permissions(&snapshots, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(f.store.state(&record).unwrap().chain.len(), 1, "the failed pass published nothing");
+    assert_eq!(history(&f.store, Bounds::default()).unwrap().len(), 50);
+    unit(50);
+    let state = f.store.state(&record).unwrap();
+    assert_eq!(state.chain.len(), 2, "the next append ran the pass");
+    assert_eq!(state.unfolded_runs().len(), 1, "the plan row's pass folded 51 runs; the commit row follows it");
+
+    // 6 h after the previous pass, one append fires the next.
+    let late = base.plus_secs(7 * 3600);
+    append(&f.store, &node, &row("r-late", RunStatus::Running, Phase::Plan, &late.to_rfc3339()), late).unwrap();
+    let state = f.store.state(&record).unwrap();
+    assert_eq!(state.chain.len(), 3);
+    assert!(state.unfolded_runs().is_empty());
+    assert_eq!(history(&f.store, Bounds::default()).unwrap().len(), 52);
+}
+
 /// An inner catalog that keeps chunk rows in memory and answers nothing else.
 #[derive(Default)]
 struct Chunks(Mutex<Vec<ChunkRow>>, Arc<std::sync::atomic::AtomicUsize>);

@@ -289,11 +289,12 @@ fn run_key(phase: &str, unit: u64, seed: u64) -> String {
 
 /// B=200 completions of publication `g`, build b recording a model watermark over `_runs`
 /// that omits 2b store runs, as a model reading an unfolded run record does. The ledger
-/// records the `source-history` row count and body bytes; a retry of the newest run with
-/// identical bytes succeeds and one with different bytes is refused.
+/// records the `source-history` row count and body bytes, at most 16 rows whatever B; a
+/// retry of the newest run with identical bytes succeeds and one with different bytes is
+/// refused.
 #[test]
 fn source_history_stays_bounded_per_publication() {
-    use contextful_core::pipeline::model::{InputFrontier, Watermark};
+    use contextful_core::pipeline::model::{InputFrontier, Omitted, Watermark};
     use contextful_core::time::Instant;
     use contextful_sqlite::{PublicationLedger, SourcePublication};
     const SEED: u64 = 0x5eed_0615;
@@ -302,10 +303,11 @@ fn source_history_stays_bounded_per_publication() {
     let path = dir.path().join("publication.sqlite");
     let ledger = PublicationLedger::open(&path).unwrap();
     let completion = |b: u64| {
-        let runs = (0..b).flat_map(|u| [run_key("plan", u, SEED), run_key("commit", u, SEED)]).collect();
+        let runs: Vec<String> = (0..b).flat_map(|u| [run_key("plan", u, SEED), run_key("commit", u, SEED)]).collect();
+        let frontier = InputFrontier { snapshot_id: None, through: Some(2 * b as i64), omitted: Some(Omitted::of(&runs)), runs: Vec::new() };
         let watermark = Watermark {
             at: Some(Instant::from_unix_secs(1_893_456_000 + b as i64 * 60).unwrap()),
-            inputs: [("_runs".to_string(), InputFrontier { snapshot_id: None, through: None, omitted: None, runs })].into(),
+            inputs: [("_runs".to_string(), frontier)].into(),
             horizon: None,
         };
         SourcePublication {
@@ -332,7 +334,7 @@ fn source_history_stays_bounded_per_publication() {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .unwrap();
-    assert!((1..=BUILDS as i64).contains(&rows), "{rows} source-history rows after {BUILDS} builds");
+    assert!((1..=16).contains(&rows), "{rows} source-history rows after {BUILDS} builds");
     eprintln!("source-history after {BUILDS} builds: {rows} rows, {bytes} bytes");
     contextful_eval::record::emit("source-history-rows", rows as f64, BUILDS, SEED);
     contextful_eval::record::emit("source-history-bytes", bytes as f64, BUILDS, SEED);

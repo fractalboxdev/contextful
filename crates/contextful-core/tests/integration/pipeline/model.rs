@@ -415,9 +415,9 @@ fn an_unsequenced_run_counts_by_the_watermark_instant() {
     assert_eq!(input_waiting(&f, wm, &none, &[old, unread], &[]), vec![None]);
 }
 
-/// A watermark input carrying a `runs` list and no `omitted` reads with those runs included; no build writes `runs`.
+/// A watermark input carrying a `runs` list and no `omitted` reads with those runs included; no build writes `runs`, and a listed frontier keeps them through a round trip.
 #[test]
-fn a_listed_runs_frontier_still_reads_and_is_never_written() {
+fn a_listed_runs_frontier_still_reads_and_survives_a_round_trip() {
     let none = BTreeSet::new();
     let f: InputFrontier = serde_json::from_value(serde_json::json!({"snapshot_id": null, "runs": ["r1/n"]})).unwrap();
     assert_eq!(f.runs, ["r1/n"]);
@@ -426,7 +426,10 @@ fn a_listed_runs_frontier_still_reads_and_is_never_written() {
     let r2 = sequenced("r2", "2030-01-01T01:00:00Z", Some(2));
     assert!(input_waiting(&f, None, &none, std::slice::from_ref(&r1), &[]).is_empty());
     assert_eq!(input_waiting(&f, None, &none, &[r1, r2], &[]), vec![Some(at("2030-01-01T01:00:00Z"))]);
-    assert!(!serde_json::to_string(&f).unwrap().contains("runs"));
+    let echoed: InputFrontier = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+    assert_eq!(echoed, f, "an echo of a listed watermark keeps its runs");
+    let built = InputFrontier::read(None, &[]);
+    assert!(!serde_json::to_string(&built).unwrap().contains("runs"));
 }
 
 /// The model graph refuses a cycle through two or more models (`run.model.model-cycle`).

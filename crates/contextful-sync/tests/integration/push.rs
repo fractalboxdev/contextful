@@ -1083,28 +1083,31 @@ fn tick_row(seed: u64, tick: usize, unit: usize, phase: &str, started_at: contex
 }
 
 /// Each unit run appends a plan row and a commit row to the run record, each one store run of a part and a run
-/// manifest, and nothing folds the run record in a push cycle. Five units a tick, one push a tick, hourly from
-/// 2030-01-01: the records are the `_runs` entries the bucket manifest gains per tick over the last 50 ticks, its
-/// live `_runs` entries and its `_runs` entries plus tombstones per tick, and the bucket keys gained per tick. Under
-/// `contextful-ci measure` the schedule is 240 ticks; elsewhere 8 ticks with a window of 3 exercise the path.
+/// manifest, and the record folds as its trigger fires (`run.record.record-folds`), collecting what its 7 d
+/// window passed. Five units a tick, one push a tick, from 2030-01-01: the records are the `_runs` entries the
+/// bucket manifest gains per tick over the window, its live `_runs` entries and its `_runs` entries plus
+/// tombstones per tick, and the bucket keys gained per tick. Past the 7 d window the live store-run entries gain
+/// none; the live entries gain at most 1 per tick under the hourly schedule and 2 under the daily one. Under `contextful-ci measure` the
+/// schedule is 240 hourly ticks with a window of 50; elsewhere 12 daily ticks with a window of 3.
 #[test]
-fn the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick() {
+fn the_run_record_adds_a_bounded_object_count_per_tick() {
     const SEED: u64 = 0x5eed_0615;
     const UNITS: usize = 5;
     let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
-    let (ticks, window) = if measuring { (240, 50) } else { (8, 3) };
+    let (ticks, window, spacing) = if measuring { (240, 50, 3600) } else { (12, 3, 86_400) };
     let dir = tempfile::tempdir().unwrap();
     let b = bucket(dir.path());
     let a = node("ingest-a", b.clone(), "");
     let id = contextful_core::store::lay_out::NodeId::parse("ingest-a").unwrap();
     let start = at("2030-01-01T00:00:00Z");
-    let runs = |m: &BucketManifest| -> (usize, usize) {
+    let runs = |m: &BucketManifest| -> (usize, usize, usize) {
         let under = |k: &&String| k.starts_with("research/tables/_runs/");
-        (m.entries.keys().filter(under).count(), m.tombstones.keys().filter(under).count())
+        let parts = m.entries.keys().filter(|k| k.starts_with("research/tables/_runs/data/runs/")).count();
+        (m.entries.keys().filter(under).count(), m.tombstones.keys().filter(under).count(), parts)
     };
     let mut marks = Vec::new();
     for tick in 0..ticks {
-        let t = start.plus_secs(tick as u64 * 3600);
+        let t = start.plus_secs(tick as u64 * spacing);
         for unit in 0..UNITS {
             let plan = t.plus_secs(unit as u64);
             contextful_context::run_record::append(&a.syncer.store, &id, &tick_row(SEED, tick, unit, "plan", plan), plan).unwrap();
@@ -1117,11 +1120,16 @@ fn the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick() {
             marks.push((runs(&m), b.list("team/").unwrap().len()));
         }
     }
-    let [((live_from, dead_from), keys_from), ((live, dead), keys)] = marks[..] else { panic!("{marks:?}") };
+    let [((live_from, dead_from, parts_from), keys_from), ((live, dead, parts), keys)] = marks[..] else { panic!("{marks:?}") };
     assert!(live > 0, "the run record reaches the bucket");
     let per_tick = |to: usize, from: usize| (to as f64 - from as f64) / window as f64;
     let (objects, listed, bucket_keys) = (per_tick(live, live_from), per_tick(live + dead, live_from + dead_from), per_tick(keys, keys_from));
     eprintln!("after {ticks} ticks: {live} live `_runs` entries, {dead} tombstoned; per tick {objects} live, {listed} listed, {bucket_keys} bucket keys");
+    assert!(parts <= parts_from, "{parts_from} then {parts} live `_runs` store-run entries past the retention window");
+    // An hourly tick folds every fifth tick, so the snapshot a pass adds amortizes below 1 entry per tick; a
+    // daily tick fires the 24 h interval each tick, and its pass adds at most 2.
+    let ceiling = if measuring { 1.0 } else { 2.0 };
+    assert!(objects <= ceiling, "{objects} live `_runs` entries per tick past the retention window");
     contextful_eval::record::emit("runs-record-objects-per-tick", objects, window as u64, SEED);
     contextful_eval::record::emit("runs-record-live-objects", live as f64, ticks as u64, SEED);
     contextful_eval::record::emit("runs-record-manifest-keys-per-tick", listed, window as u64, SEED);

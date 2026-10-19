@@ -1036,9 +1036,10 @@ impl Face {
     }
 
     /// Register every table on `engine` under its bare name as its unrestricted base
-    /// relation over the readable prefix of its runs (`run.model.build-prefix`), and return
-    /// the registered names beside the state each landed table registered over; a table
-    /// declaring a clock `bounds` bounds compiles under it.
+    /// relation at the latest committed state, and return the registered names beside the
+    /// state each landed table registered over, so the build's frontier names exactly what
+    /// it read (`run.model.watermark`); a table declaring a clock `bounds` bounds compiles
+    /// under it.
     #[allow(clippy::type_complexity)]
     pub(crate) fn register_build(
         &self,
@@ -1050,7 +1051,7 @@ impl Face {
         for t in tables.iter().cloned() {
             let decl = self.decl(&t);
             let state = match self.store.try_schema(&t)? {
-                Some(_) => Some(self.store.prefix_state(&decl)?),
+                Some(_) => Some(self.store.state(&decl)?),
                 None => None,
             };
             engine.register(&t, &self.source_over(&t, bounds.for_table(&decl), None, None, state.as_ref())?.base)?;

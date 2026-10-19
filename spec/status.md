@@ -28,8 +28,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 198 | 188 | passing | closed |
-| 3 — The run path | 12 | 306 | 294 | passing | closed |
-| 4 — Ingest | 25 | 634 | 528 | passing | closed |
+| 3 — The run path | 12 | 307 | 295 | passing | closed |
+| 4 — Ingest | 25 | 633 | 527 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 98 | 97 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -1738,7 +1738,6 @@ Unscheduled operations: 13.
 | `run.model.build-frontier` | `crates/contextful-cli/tests/integration/build.rs::build_fires_no_pipeline_and_reads_the_committed_frontier` | performed |
 | `run.model.build-horizon` | `crates/contextful-cli/tests/integration/build.rs::a_build_at_a_horizon_reads_inputs_available_by_it_and_records_it` | performed |
 | `run.model.build-id` | `crates/contextful-context/tests/integration/build.rs::a_build_id_is_the_snapshot_id` | performed |
-| `run.model.build-prefix` | `crates/contextful-context/tests/integration/build.rs::a_build_reads_no_run_above_an_unpublished_group` | performed |
 | `run.model.build-verb` | `crates/contextful-cli/tests/integration/build.rs::build_publishes_a_model_and_prints_its_receipt` | performed |
 | `run.model.contract-block` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_contract_declares_a_semantic_version_and_typed_columns` | performed |
 | `run.model.contract-major` | `crates/contextful-context/tests/integration/build.rs::a_breaking_change_under_one_major_is_refused_naming_the_column_until_the_major_moves` | performed |
@@ -1879,6 +1878,7 @@ Unscheduled operations: 13.
 | `run.record.owner-lease` | `crates/contextful-core/tests/integration/run/record.rs::an_owner_lease_lives_30_s_and_renews_every_10_s` | performed |
 | `run.record.plan-identity` | `spec/pins.toml` | performed |
 | `run.record.rebuild-restores-history` | `crates/contextful-cli/tests/integration/run.rs::a_catalog_rebuild_restores_every_recorded_run` | performed |
+| `run.record.record-folds` | `crates/contextful-context/tests/integration/run_record.rs::an_append_folds_the_run_record_once_its_trigger_fires` | performed |
 | `run.record.reserved-table` | `crates/contextful-cli/tests/integration/run.rs::a_run_appends_a_plan_and_a_commit_row_to_the_run_record` | performed |
 | `run.record.row-at-open` | `crates/contextful-engine/tests/integration/runner.rs::the_row_exists_before_the_first_pull` | performed |
 | `run.record.run-span` | `crates/contextful-cli/tests/integration/trace.rs::a_run_exports_its_span_under_the_callers_span` | performed |

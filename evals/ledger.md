@@ -2,7 +2,7 @@
 
 # Target ledger
 
-157 entries: 111 gated, 32 recorded, 6 scheduled, 8 open.
+157 entries: 112 gated, 31 recorded, 6 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -27,7 +27,7 @@
 | `backfill-walk-peak-rss` | `connector.source.http-watermark-walk` | `connector.http.watermark_walk.peak_rss` | trend | probe `backfill-walk-peak-rss` | `<= 32` | recorded |
 | `backfill-window-commits` | `run.own.checkpoint-commit` | `ingest.backfill.window_commits` | gate | test `contextful_engine::runner::a_window_staging_two_gib_completes_in_one_fire` | `== 4` | gated |
 | `bearer-transport-bound` | `authority.issue.one-credential` | `authority.off_transport_admissions` | gate | test `contextful_policy::verify::a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_seeded_loop` | `== 0` | gated |
-| `bucket-keys-per-tick` | `store.push.generation` | `sync.bucket_keys_per_tick_steady_state` | trend | test `contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick` | — | recorded |
+| `bucket-keys-per-tick` | `store.push.generation` | `sync.bucket_keys_per_tick_steady_state` | trend | test `contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick` | — | recorded |
 | `catalog-calls-per-group-batch` | `run.land.receive-group` | `catalog.calls_per_group_batch` | gate | test `contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing` | `<= 12` | gated |
 | `catalog-calls-per-group-batch-writes` | `run.land.receive-group` | `catalog.writes_per_group_batch` | gate | test `contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing` | `<= 1.375` | gated |
 | `catalog-calls-per-landing` | `run.land.receive-entry` | `catalog.calls_per_landing` | gate | test `contextful_engine::writers::a_received_batch_counts_its_catalog_calls_per_landing` | `<= 34` | gated |
@@ -123,12 +123,12 @@
 | `receive-rows-per-s-w16` | `run.land.receive-queue` | `land.receive.rows_per_s.w16` | trend | test `contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers` | — | recorded |
 | `receive-rows-per-s-w256` | `run.land.receive-queue` | `land.receive.rows_per_s.w256` | trend | test `contextful_cli::serve::served_receive_throughput_at_one_sixteen_and_256_writers` | — | recorded |
 | `row-key-dedup` | `read.retrieve.row-key-dedup` | `retrieval.hybrid.duplicate_row_rate` | gate | test `contextful_context::read::retrieve::a_ranked_read_keeps_the_newest_row_per_content_hash` | `== 0` | gated |
-| `runs-record-live-objects` | `store.fold.retention` | `store.objects.runs_record_live_after_240_ticks` | gate | test `contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick` | `<= 4801` | gated |
-| `runs-record-manifest-keys-per-tick` | `store.push.generation` | `sync.manifest_keys_per_tick_steady_state` | gate | test `contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick` | `<= 20` | gated |
-| `runs-record-objects-per-tick` | `store.fold.triggers` | `store.objects_per_tick_steady_state` | gate | test `contextful_sync::push::the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick` | `<= 20` | gated |
-| `source-completion-bytes` | `run.export.group-source` | `run.export.source_completion_bytes` | gate | test `contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs` | `<= 48408` | gated |
-| `source-history-bytes` | `run.export.group-source` | `run.export.source_history_bytes` | trend | test `contextful_sqlite::export::source_history_stays_bounded_per_publication` | — | recorded |
-| `source-history-rows` | `run.export.group-source` | `run.export.source_history_rows` | gate | test `contextful_sqlite::export::source_history_stays_bounded_per_publication` | `<= 200` | gated |
+| `runs-record-live-objects` | `store.fold.retention` | `store.objects.runs_record_live_after_240_ticks` | gate | test `contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick` | `<= 3497` | gated |
+| `runs-record-manifest-keys-per-tick` | `store.push.generation` | `sync.manifest_keys_per_tick_steady_state` | gate | test `contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick` | `<= 20.4` | gated |
+| `runs-record-objects-per-tick` | `run.record.record-folds` | `store.objects_per_tick_steady_state` | gate | test `contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick` | `<= 1` | gated |
+| `source-completion-bytes` | `run.export.group-source` | `run.export.source_completion_bytes` | gate | test `contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs` | `<= 332` | gated |
+| `source-history-bytes` | `run.export.group-source-latest` | `run.export.source_history_bytes` | gate | test `contextful_sqlite::export::source_history_stays_bounded_per_publication` | `<= 16384` | gated |
+| `source-history-rows` | `run.export.group-source-latest` | `run.export.source_history_rows` | gate | test `contextful_sqlite::export::source_history_stays_bounded_per_publication` | `<= 16` | gated |
 | `sqlite-journal-conformance` | `run.journal.sqlite-stores` | `journal.sqlite_conformance.failed_cases` | gate | test `contextful_sqlite::stores::the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically` | `== 0` | gated |
 | `stale-fence-differential` | `assurance.differential-test.protocol-harness` | `protocol.drift_cases` | gate | test `contextful_cli::protocol_differential::fixed_seed_replays_protocol_cases_against_the_store` | `== 0` | gated |
 | `stale-fence-never-lands` | `store.lease.stale-fence` | `lease.stale_commits_landed` | gate | test `contextful_context::run_commit::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable` | `== 0` | gated |
@@ -160,6 +160,6 @@
 | `vintage-interleaved-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.interleaved_w8` | gate | test `contextful_context::vintage_cost::eight_writers_landing_interleaved_keys_scan_no_history` | `<= 1000` | gated |
 | `vintage-random-key-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.fresh_random_keys` | gate | test `contextful_context::vintage_cost::a_fresh_filing_id_reads_no_stored_vintage` | `== 0` | gated |
 | `vintage-restate-day-scan` | `store.available-time.vintage-scope` | `vintage.rows_scanned.restate_day` | gate | test `contextful_context::vintage_cost::a_one_day_restatement_reads_only_that_days_vintages` | `<= 100` | gated |
-| `watermark-bytes-runs-record` | `run.model.watermark` | `run.model.watermark_bytes` | gate | test `contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs` | `<= 48301` | gated |
-| `watermark-ids-runs-record` | `run.model.watermark` | `run.model.watermark_ids` | gate | test `contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs` | `<= 1048` | gated |
+| `watermark-bytes-runs-record` | `run.model.watermark` | `run.model.watermark_bytes` | gate | test `contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs` | `<= 512` | gated |
+| `watermark-ids-runs-record` | `run.model.watermark` | `run.model.watermark_ids` | gate | test `contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs` | `<= 0` | gated |
 | `word-boundary-precision` | `read.retrieve.relevance-floor` | `retrieve.substring_trap.returned` | gate | test `contextful_core::read::retrieve::a_substring_trap_row_scores_zero_and_never_returns` | `== 0` | gated |

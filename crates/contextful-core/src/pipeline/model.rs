@@ -449,9 +449,10 @@ pub struct InputFrontier {
     pub through: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub omitted: Option<Omitted>,
-    /// The omitted runs by key, as a watermark carrying no `omitted` records them; read
-    /// and never written (`run.model.watermark-listed-runs`).
-    #[serde(default, skip_serializing)]
+    /// The omitted runs by key, as a watermark carrying no `omitted` records them; no build
+    /// writes them, and a listed watermark keeps them through every round trip
+    /// (`run.model.watermark-listed-runs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub runs: Vec<String>,
 }
 

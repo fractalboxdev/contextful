@@ -784,29 +784,15 @@ impl Store {
 
     /// Everything a read or a fold resolves against, for one table.
     pub fn state(&self, decl: &TableDecl) -> Result<TableState> {
-        let runs = self.committed_runs(&decl.name)?;
-        self.state_over(decl, runs, None)
-    }
-
-    /// A build's read of one table: [`Store::state`] holding only the runs below the lowest
-    /// `commit_seq` a grouped run awaiting its group marker carries, the prefix a
-    /// subscription delivers (`run.model.build-prefix`).
-    pub fn prefix_state(&self, decl: &TableDecl) -> Result<TableState> {
-        let (runs, held) = self.committed_runs_held(&decl.name)?;
-        self.state_over(decl, runs, held)
-    }
-
-    /// The table's state over `runs`, keeping those below `held`. The collected-history
-    /// mark reads every run, so a run above `held` that the chain folded is present.
-    fn state_over(&self, decl: &TableDecl, runs: Vec<RunManifest>, held: Option<i64>) -> Result<TableState> {
         let table = decl.name.as_str();
+        let runs = self.committed_runs(table)?;
         let (chain, parent_collected) = self.chain(table)?;
         let present: BTreeSet<String> = runs.iter().map(RunManifest::key).collect();
         let run_collected = chain.iter().flat_map(|s| &s.includes_runs).any(|r| !present.contains(r.as_str()));
         Ok(TableState {
             table: table.to_string(),
             write_mode: decl.write_mode(),
-            runs: contextful_core::read::subscribe::readable_prefix(runs, held),
+            runs,
             chain,
             history_collected: parent_collected || run_collected,
         })

@@ -25,8 +25,9 @@ use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::reserve::{Injection, COMMIT_SEQ, RUN_RECORD_TABLE};
 use contextful_core::time::Instant;
 use serde_json::{Map, Value};
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
+use std::sync::{Arc, LazyLock, Mutex};
 
 /// The columns each appended row carries; `record` holds the whole run row as JSON.
 const COLUMNS: [&str; 8] = ["run_id", "pipeline_id", "site_id", "status", "phase", "started_at", "ended_at", "record"];
@@ -60,7 +61,54 @@ pub fn append(store: &Store, node: &NodeId, row: &RunRow, at: Instant) -> Result
     getrandom::fill(&mut nonce).map_err(|e| ContextError::Invalid(format!("run record nonce: {e}")))?;
     let store_run = format!("{}-{}-{}", phase_name(row.phase), at.unix_nanos(), crate::store::hex(&nonce));
     let injection = Injection { run_id: store_run, site_id: row.site_id.clone(), batch_seq: None, authored_by: None, authored_agent: None, taint: None };
-    land_engine_owned(store, &decl(), &batch, &RunContext { node: node.clone(), injection, committed_at: at })
+    let manifest = land_engine_owned(store, &decl(), &batch, &RunContext { node: node.clone(), injection, committed_at: at })?;
+    // The row is durable: a pass that fails here is retried by the next append
+    // (`run.record.record-folds`).
+    let _ = fold_when_due(store, at);
+    Ok(manifest)
+}
+
+/// What this process last counted of one store's run record: the pointer ETag and
+/// committed-run listing size it observed, the runs the current snapshot omits, and the
+/// instant the fold interval runs from.
+struct Count {
+    seen: (String, usize),
+    unfolded: usize,
+    since: Option<Instant>,
+}
+
+/// Each store's run-record count, keyed by store root, so an append reads no manifest
+/// unless another writer committed or folded since the last (`store.fold.session-trigger`).
+static COUNTS: LazyLock<Mutex<HashMap<PathBuf, Count>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Run a pass on the run record when its trigger fires, after an append committed at `at`
+/// (`run.record.record-folds`).
+fn fold_when_due(store: &Store, at: Instant) -> Result<()> {
+    let record = decl();
+    let observe = || -> Result<(String, usize)> { Ok((store.pointer_etag(RUN_RECORD_TABLE)?, store.manifest_count(RUN_RECORD_TABLE)?)) };
+    let recount = || -> Result<Count> {
+        let seen = observe()?;
+        let state = store.state(&record)?;
+        let unfolded = state.unfolded_runs();
+        let since = state.chain.first().map(|s| s.created_at).or_else(|| unfolded.first().map(|r| r.committed_at));
+        Ok(Count { seen, unfolded: unfolded.len(), since })
+    };
+    let key = store.root().to_path_buf();
+    let observed = observe()?;
+    let held = COUNTS.lock().unwrap_or_else(|p| p.into_inner()).remove(&key);
+    let count = match held {
+        // Only this append moved the table.
+        Some(c) if c.seen.0 == observed.0 && c.seen.1 + 1 == observed.1 => Count { seen: observed, unfolded: c.unfolded + 1, since: c.since.or(Some(at)) },
+        _ => recount()?,
+    };
+    let count = if contextful_core::store::fold::trigger_fired(count.unfolded, count.since, at, record.fold_run_count()) {
+        crate::fold::fold(store, &record, at)?;
+        recount()?
+    } else {
+        count
+    };
+    COUNTS.lock().unwrap_or_else(|p| p.into_inner()).insert(key, count);
+    Ok(())
 }
 
 /// The run rows the record holds under `bounds`: per run, its latest commit row, or its

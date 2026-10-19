@@ -558,6 +558,8 @@ The durable run record, its statuses, its owner lease and windowed history over 
 - `status-set` — A run status is `pending`, `running`, `waiting`, `success`, `partial_failure`, `failed` or `canceled`, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.
   *because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading*
 - `row-at-open` — A row is written at run open, before the first pull, so a zero-row `success`, a `failed` row carrying its error kind, and no row at all read apart.
+- `record-folds` — An append to {{run.record.reserved-table}} runs a pass on it once {{store.fold.triggers}} fires; a pass that fails leaves the row appended and the append succeeding, and the next append retries it.
+  *A-run*
 - `rebuild-restores-history` — A catalog rebuild restores run history from {{run.record.reserved-table}}, so a rebuilt catalog lists every run the store recorded instead of starting empty.
   *because the catalog is a cache, and a rebuild dropping history loses the only record of failed runs*
 - `time-travel` — Run history inherits the store's transaction-time bound, so one as-of selector rewinds it with every other table.

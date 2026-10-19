@@ -51,7 +51,7 @@ pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option
 }
 
 /// Resolve `decl`'s table under `bounds` over `state`, the state a caller read once, so a
-/// build's frontier names exactly the files its relation reads (`run.model.build-prefix`).
+/// build's frontier names exactly the files its relation reads (`run.model.watermark`).
 pub fn scan_state(store: &Store, decl: &TableDecl, bounds: Bounds, state: &TableState) -> Result<Scan> {
     scan_resolved(store, decl, bounds, state.resolve(bounds.as_of)?, false)
 }
