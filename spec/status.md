@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
-| `run` | 3 | 29 | 557 | 127 | 45 | 17 | 525 | 0 | 525 |
+| `run` | 3 | 29 | 558 | 127 | 46 | 17 | 526 | 0 | 526 |
 | `store` | 3 | 19 | 303 | 64 | 16 | 10 | 292 | 0 | 292 |
 | `surface` | 2 | 21 | 172 | 66 | 24 | 0 | 146 | 0 | 146 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2698 | 680 | 215 | 75 | 2413 | 0 | |
+| **total** | 22 | 169 | 2699 | 680 | 216 | 75 | 2414 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 185 | 175 | passing | closed |
 | 3 — The run path | 12 | 289 | 278 | passing | closed |
-| 4 — Ingest | 25 | 601 | 503 | passing | closed |
+| 4 — Ingest | 25 | 602 | 504 | passing | closed |
 | 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 94 | 93 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
@@ -1700,6 +1700,7 @@ Unscheduled operations: 13.
 | `run.land.receive-key-expired` | `crates/contextful-cli/tests/integration/receive.rs::a_resend_past_the_key_retention_window_is_refused_and_lands_nothing` | performed |
 | `run.land.receive-key-missing` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_refuses_a_delivery_without_a_batch_key` | performed |
 | `run.land.receive-pipeline-unknown` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_answers_404_for_a_pipeline_that_receives_nothing` | performed |
+| `run.land.receive-push-wait` | `crates/contextful-cli/tests/integration/receive.rs::a_held_push_guard_answers_a_delivered_batch_retryable_within_thirty_seconds` | performed |
 | `run.land.receive-queue` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_waits_for_the_land_lock_another_batch_holds` | performed |
 | `run.land.receive-resume` | `crates/contextful-cli/tests/integration/receive.rs::a_resend_after_the_receiver_dies_lands_what_the_uninterrupted_run_lands` | performed |
 | `run.land.receive-retry-after` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |

@@ -217,6 +217,8 @@ The stage order from pull to commit, the one destination, the ingest tally and c
 - `receive-backpressure` — A batch arriving while every queue slot of its pipeline is held raises `ReceiveBackpressure`, retryable, before reading its body.
   *because a sender told to wait sheds load the receiver cannot absorb*
 - `receive-retry-after` — A {{run.land.receive-backpressure}} answer carries a retry interval of 1 s.
+- `receive-push-wait` — A delivered batch's `pull_before_run` and `push_after_run` wait at most 30 s for {{store.push.in-flight}}'s push guard, then answer retryable; a resend under the key pushes its committed tables.
+  *because a sender's request outlives no 300 s wait, and a freed queue slot serves the next batch sooner*
 - `receive-write-not-granted` — A credential lacking `write` over any declared table of a `receive` pipeline raises `ReceiveWriteNotGranted` before the body is read, and no table lands.
   *because a sender whose grant falls short learns it before spending the transfer*
 - `receive-key-expired` — A batch key replays or resumes only within the source's `key_retention_secs` of its first attempt; a later batch under it raises `ReceiveBatchKeyExpired`, non-retryable, before the body is read, and no table lands.
@@ -227,7 +229,7 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a batch without a key can neither replay nor resume under {{run.land.receive-batch-key}}*
 - `receive-pipeline-unknown` — A delivery to a pipeline id that no declaration names, or whose source is not `receive`, raises `ReceivePipelineUnknown` before the body is read, and no table lands.
   *because a sender's misaddressed batch must not land in another pipeline's tables*
-- `receive-endpoint-status` — The receive route answers `400` for {{run.land.receive-key-missing}}, `404` for {{run.land.receive-pipeline-unknown}}, `403` for {{run.land.receive-write-not-granted}}, `413` for {{run.land.receive-batch-too-large}}, `410` for {{run.land.receive-key-expired}}, `503` with `Retry-After` for {{run.land.receive-backpressure}} or a retryable failed table, and `422` for other refused batches.
+- `receive-endpoint-status` — The receive route answers `400` for {{run.land.receive-key-missing}}, `404` for {{run.land.receive-pipeline-unknown}}, `403` for {{run.land.receive-write-not-granted}}, `413` for {{run.land.receive-batch-too-large}}, `410` for {{run.land.receive-key-expired}}, `503` with `Retry-After` for {{run.land.receive-backpressure}}, {{run.land.receive-push-wait}} or a retryable failed table, and `422` otherwise.
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
 - `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull.

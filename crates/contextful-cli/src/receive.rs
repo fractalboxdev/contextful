@@ -18,12 +18,21 @@ use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::own::receive_digest;
 use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_core::run::{Failure, FailureTag, RunError};
+use contextful_core::store::StoreError;
 use contextful_engine::{EngineError, RunSpec};
 use contextful_policy::verify::AdmittedAuthority;
 use serde_json::{json, Value};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+
+/// The longest a delivered batch's pull or push waits for the push guard, in seconds
+/// (`run.land.receive-push-wait`).
+pub(crate) const PUSH_WAIT_SECS: u64 = 30;
+
+/// The marker a batch whose push met a held push guard leaves in its pipeline's queue
+/// directory; the next batch pushes while it stands (`run.land.receive-push-wait`).
+const PUSH_PENDING: &str = "push.pending";
 
 /// The arguments of one receive on the command line.
 pub(crate) struct Receive<'a> {
@@ -45,6 +54,16 @@ pub(crate) struct Refusal {
 impl Refusal {
     fn final_(error: RunError) -> Refusal {
         Refusal { error, retryable: false }
+    }
+
+    /// The retryable refusal of a pull or push whose push guard stayed held past
+    /// [`PUSH_WAIT_SECS`] (`run.land.receive-push-wait`); `None` for any other failure.
+    fn guard_held(e: &anyhow::Error) -> Option<Refusal> {
+        let held = e.chain().find_map(|c| match c.downcast_ref::<contextful_sync::SyncError>() {
+            Some(contextful_sync::SyncError::Store(StoreError::SyncPushInFlight(m))) => Some(m.clone()),
+            _ => None,
+        })?;
+        Some(Refusal { error: RunError::Store(StoreError::SyncPushInFlight(format!("{held}; resend the batch under its key"))), retryable: true })
     }
 
     /// The served status of the refusal (`run.land.receive-endpoint-status`).
@@ -179,7 +198,7 @@ impl Receiver {
     /// The answer of a refused batch.
     pub(crate) fn refused(&self, key: &str, refusal: &Refusal) -> Value {
         let mut answer = json!({ "pipeline": self.spec.id, "key": key, "run_id": self.base(key), "committed": false, "retryable": refusal.retryable, "error": refusal.error.to_string() });
-        if matches!(refusal.error, RunError::ReceiveBackpressure(_)) {
+        if refusal.retryable {
             answer["retry_after_ms"] = json!(RETRY_AFTER_MS);
         }
         answer
@@ -307,12 +326,22 @@ impl Receiver {
         }
         let retryable = failed.as_ref().is_some_and(|(_, r)| *r);
         let answer = json!({ "pipeline": spec.id, "key": key, "run_id": base, "committed": failed.is_none(), "retryable": retryable, "tables": tables });
-        if opened {
-            let pushed = crate::sync::push_after_run(&self.l, w.clock.now());
-            if failed.is_none() {
-                pushed?;
-            } else if let Err(e) = pushed {
-                note(&format!("{e:#}"));
+        // A batch whose push met a held guard left the marker; the next batch pushes what it committed.
+        let pending = self.queue().join(PUSH_PENDING);
+        if opened || pending.exists() {
+            match crate::sync::push_after_run_within(&self.l, w.clock.now(), Some(PUSH_WAIT_SECS)) {
+                Ok(()) => match std::fs::remove_file(&pending) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e).with_context(|| format!("removing {}", pending.display())),
+                    _ => {}
+                },
+                Err(e) => match Refusal::guard_held(&e) {
+                    Some(refusal) => {
+                        std::fs::write(&pending, b"").with_context(|| format!("writing {}", pending.display()))?;
+                        return Ok(Err(refusal));
+                    }
+                    None if failed.is_none() => return Err(e),
+                    None => note(&format!("{e:#}")),
+                },
             }
         }
         Ok(Ok(Landed { answer, failed }))
@@ -321,7 +350,10 @@ impl Receiver {
 
 pub(crate) fn receive(args: Receive<'_>, tasks: &Tasks) -> Result<()> {
     let l = args.project.locate(args.declaration.clone())?;
-    crate::sync::pull_before_run(&l)?;
+    let held = match crate::sync::pull_before_run_within(&l, Some(PUSH_WAIT_SECS)) {
+        Ok(()) => None,
+        Err(e) => Some(Refusal::guard_held(&e).ok_or(e)?),
+    };
     let receiver = Receiver::open(&args.project, args.declaration, &args.id, args.site_id, args.site_id_env, tasks)?;
     let key = args.key;
     if key.trim().is_empty() {
@@ -331,6 +363,9 @@ pub(crate) fn receive(args: Receive<'_>, tasks: &Tasks) -> Result<()> {
         say(&receiver.refused(&key, &refusal));
         Err(refusal.error.into())
     };
+    if let Some(refusal) = held {
+        return refuse(refusal);
+    }
     // The credential is checked before the body is read: it holds `write` over every table.
     let author = args.admit.author(args.project.project.as_deref(), &receiver.text, &[])?;
     if let Some(author) = &author {

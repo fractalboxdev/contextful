@@ -269,7 +269,13 @@ fn s3_bucket(config: &SyncConfig, _url: &str, _region: &str) -> Result<Arc<dyn O
 /// a command starting on a cold disk reads what the other nodes pushed
 /// (`store.pull.before-run`). A store declaring no `[sync]` is left as it is.
 pub fn pull_before_run(l: &Located) -> Result<()> {
-    match pending_pull(l)? {
+    pull_before_run_within(l, None)
+}
+
+/// [`pull_before_run`], waiting at most `guard_wait` seconds for the push guard when given,
+/// and `push_wait_secs` otherwise.
+pub fn pull_before_run_within(l: &Located, guard_wait: Option<u64>) -> Result<()> {
+    match pending_pull_within(l, guard_wait)? {
         Some(pull) => pull.run(),
         None => Ok(()),
     }
@@ -278,10 +284,15 @@ pub fn pull_before_run(l: &Located) -> Result<()> {
 /// The pull `[sync] pull_before_run = true` declares, its bucket and credentials resolved
 /// now and its transfer run later; `None` for a store declaring no such pull.
 pub fn pending_pull(l: &Located) -> Result<Option<PendingPull>> {
+    pending_pull_within(l, None)
+}
+
+fn pending_pull_within(l: &Located, guard_wait: Option<u64>) -> Result<Option<PendingPull>> {
     let (Some(config), _) = sync_config(l)? else { return Ok(None) };
     if config.pull_before_run != Some(true) {
         return Ok(None);
     }
+    let config = capped(config, guard_wait);
     let (syncer, decls) = open_with(l, config)?;
     let replicate_off = replicate_off(&decls)?;
     Ok(Some(PendingPull { syncer, scope: PullScope { tables: Vec::new(), replicate_off, generation: None } }))
@@ -311,16 +322,31 @@ impl PendingPull {
 /// failure arm as on the success arm (`store.push.after-run`,
 /// `run.record.failure-publishes`). A store declaring no `[sync]` is left as it is.
 pub fn push_after_run(l: &Located, at: Instant) -> Result<()> {
+    push_after_run_within(l, at, None)
+}
+
+/// [`push_after_run`], waiting at most `guard_wait` seconds for the push guard when given,
+/// and `push_wait_secs` otherwise.
+pub fn push_after_run_within(l: &Located, at: Instant, guard_wait: Option<u64>) -> Result<()> {
     let (Some(config), _) = sync_config(l)? else { return Ok(()) };
     if config.push_after_run != Some(true) {
         return Ok(());
     }
+    let config = capped(config, guard_wait);
     let r = open_with(l, config).and_then(|(s, _)| push(&s, at)).context("`push_after_run`")?;
     for refusal in &r.refused {
         eprintln!("warning: {refusal}");
     }
     eprintln!("push_after_run: pushed");
     Ok(())
+}
+
+/// `config` with its push guard wait lowered to `guard_wait` seconds when given.
+fn capped(mut config: SyncConfig, guard_wait: Option<u64>) -> SyncConfig {
+    if let Some(cap) = guard_wait {
+        config.push_wait_secs = Some(config.push_wait_secs().min(cap));
+    }
+    config
 }
 
 /// The project's root keyspace, `<prefix>/<project>/`, in its `[sync]` bucket, or `None`

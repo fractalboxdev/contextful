@@ -210,6 +210,71 @@ fn a_batch_waits_for_the_land_lock_another_batch_holds() {
     assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans"), serde_json::json!([["s1"]]));
 }
 
+/// The bound a delivered batch waits for the push guard; `push_wait_secs` declares three times it.
+const RECEIVE_PUSH_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// A project syncing to a fresh `file://` bucket with `push_wait_secs = 90`, its `[sync]` block carrying `extra`.
+fn syncing(bucket: &Path, extra: &str) -> tempfile::TempDir {
+    queued_project(Some(&format!(
+        "endpoint = \"file://{}\"\nbucket = \"context-team\"\nprefix = \"team\"\ncoordination = \"single-writer\"\npush_wait_secs = 90\n{extra}",
+        bucket.display()
+    )))
+}
+
+/// Hold the store's push guard, as a push of the store on the machine does.
+fn hold_push_guard(dir: &Path) -> std::fs::File {
+    let guard = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(dir.join(".contextful/context/research/.push.lock")).unwrap();
+    guard.lock().unwrap();
+    guard
+}
+
+/// Deliver one batch under `key` while the push guard is held: the answer and the time it took.
+fn receive_timed(dir: &Path, key: &str, id: &str) -> (Output, std::time::Duration) {
+    let started = std::time::Instant::now();
+    let out = receive(dir, key, &line("spans", serde_json::json!({ "id": id })));
+    (out, started.elapsed())
+}
+
+/// A delivered batch whose `push_after_run` meets a held push guard answers retryable after 30 s, not after the
+/// declared `push_wait_secs`; a resend under its key once the guard frees pushes the committed table.
+// spec: run.land.receive-push-wait@746d4566
+#[test]
+fn a_held_push_guard_answers_a_delivered_batch_retryable_within_thirty_seconds() {
+    let bucket = tempfile::tempdir().unwrap();
+    let dir = syncing(bucket.path(), "push_after_run = true\n");
+    let guard = hold_push_guard(dir.path());
+    let (out, waited) = receive_timed(dir.path(), "flush-1", "s1");
+    assert!(!out.status.success(), "{}", stderr(&out));
+    let ack = answer(&out);
+    assert_eq!(ack["retryable"], true, "{ack}");
+    assert!(stderr(&out).contains("SyncPushInFlight"), "{}", stderr(&out));
+    assert!(waited >= RECEIVE_PUSH_WAIT && waited < RECEIVE_PUSH_WAIT * 2, "answered after {waited:?}");
+    assert_eq!(files_under(bucket.path()), Vec::<std::path::PathBuf>::new(), "no object reaches the bucket");
+    guard.unlock().unwrap();
+    let resent = receive(dir.path(), "flush-1", &line("spans", serde_json::json!({ "id": "s1" })));
+    assert!(resent.status.success(), "{}", stderr(&resent));
+    let resent = answer(&resent);
+    assert_eq!(resent["tables"][0]["outcome"], "replayed", "{resent}");
+    assert!(files_under(bucket.path()).iter().any(|p| p.to_string_lossy().contains("otel_spans")), "the resend pushes the committed table");
+    assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans"), serde_json::json!([["s1"]]));
+}
+
+/// A delivered batch whose `pull_before_run` meets a held push guard answers retryable after 30 s and lands no table.
+#[test]
+fn a_held_push_guard_refuses_a_pulling_batch_retryable_within_thirty_seconds() {
+    let bucket = tempfile::tempdir().unwrap();
+    let dir = syncing(bucket.path(), "pull_before_run = true\n");
+    let guard = hold_push_guard(dir.path());
+    let (out, waited) = receive_timed(dir.path(), "flush-1", "s1");
+    assert!(!out.status.success(), "{}", stderr(&out));
+    let ack = answer(&out);
+    assert_eq!((ack["retryable"].clone(), ack["committed"].clone()), (serde_json::json!(true), serde_json::json!(false)), "{ack}");
+    assert!(waited >= RECEIVE_PUSH_WAIT && waited < RECEIVE_PUSH_WAIT * 2, "answered after {waited:?}");
+    assert!(!dir.path().join(".contextful/context/research/tables/otel_spans").exists(), "no table lands");
+    guard.unlock().unwrap();
+    assert!(receive(dir.path(), "flush-1", &line("spans", serde_json::json!({ "id": "s1" }))).status.success(), "a freed guard admits the resend");
+}
+
 /// A `receive` pipeline declaring a `schedule` fails validation: a sender, not the cadence, starts its runs.
 // spec: connector.source.receive-unscheduled@0e261316
 #[test]
