@@ -136,3 +136,22 @@ Decision: export is a post-commit reader with one OTLP arm; target secrets resol
 | A sink plugin per backend | Credential custody | Loaded code holds target credentials. |
 
 Consequences: landing never waits on a target; a mirror is at-least-once. Accepted cost: a landing waiting 30 s behind another's part write refuses, a target sees duplicates on recovery, and rows with a null `_commit_seq` refuse the export.
+
+## A managed queue extends ingress behind a port; the writer stays in the engine
+
+**Status:** accepted; extends `topology.compose.one-tree`, whose single-node and edge shapes keep no external queue.
+
+Context: on a container shape with an ephemeral disk, the local `receive` spool waits on the writer, a cold boot blocks every sender, and grouping covers one container's senders.
+
+Criteria: an accepted batch survives eviction and cold boot; one table keeps one writer; a queued receipt never reads as success; laptop and cluster run one tree.
+
+Decision: `topology.compose.queue-extension`, with `run.land.receive-queued` for the answer and `run.export.queue-wake` for fan-out.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Queue port, managed queue where the target declares one *(chosen)* | — | A sender wanting the outcome reads it by batch key. |
+| Local spool on every shape | Durability | An evicted container loses a spooled batch; a cold boot blocks senders. |
+| A managed queue on every shape | One tree | Laptop and edge shapes gain an external process. |
+| Store writes in queue consumers | One writer | Commit ordering rests on locks a consumer does not hold. |
+
+Consequences: grouping spans every sender of a queue. Accepted cost: an expired key ends a delayed batch as a refusal rather than landing it.

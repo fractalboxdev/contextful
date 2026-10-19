@@ -41,12 +41,16 @@ fn each_provider_file_holds_named_shapes_with_one_default() {
     assert!(found[0].contains("kind"), "{found:?}");
 }
 
-// spec: corpus.targets.roles@52319714
+// spec: corpus.targets.roles@fff6e767
 #[test]
-fn a_shape_fills_eight_roles_and_may_fill_a_realtime_projection() {
+fn a_shape_fills_eight_roles_and_may_fill_a_realtime_projection_and_a_queue() {
     let s = Scratch::copy();
     assert!(s.read(CF).contains("realtime "), "the live Cloudflare shape fills the realtime projection");
+    assert!(s.read(CF).contains("queue "), "the live Cloudflare shape fills the queue");
+    assert!(s.cmd(&["state"]).status.success());
+    assert!(s.read("spec/targets.md").contains("| queue |"), "the targets page renders the queue role");
     drop_line(&s, CF, "realtime ");
+    drop_line(&s, CF, "queue ");
     assert!(s.lint("targets").is_empty(), "{:?}", s.lint("targets"));
     for role in ["cron_tick", "reconciler", "orchestrator", "catalog", "object_store", "query_face", "compute", "secrets"] {
         let s = Scratch::copy();

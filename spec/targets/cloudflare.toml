@@ -5,7 +5,7 @@
 provider = "cloudflare"
 title    = "Cloudflare"
 serves   = "Edge-first deployments on native object storage with near-zero idle cost."
-primitives = ["functions", "containers", "workflows", "scheduler", "durable-objects", "d1", "object-store", "secret-store"]
+primitives = ["functions", "containers", "workflows", "scheduler", "durable-objects", "d1", "object-store", "queue", "secret-store"]
 
 [[shape]]
 name     = "worker-container"
@@ -13,7 +13,7 @@ default  = false
 kind     = "orchestrated"
 profiles = ["full"]
 excludes = []
-uses     = ["functions", "containers", "workflows", "scheduler", "durable-objects", "object-store", "secret-store"]
+uses     = ["functions", "containers", "workflows", "scheduler", "durable-objects", "object-store", "queue", "secret-store"]
 
 [shape.roles]
 cron_tick    = "Cron Trigger"
@@ -24,6 +24,7 @@ object_store = "R2"
 query_face   = "Worker router → warm contextful-full Container"
 compute      = "Container"
 secrets      = "Workers Secrets"
+queue        = "Cloudflare Queues with a pull consumer; R2 event notifications for object arrival"
 realtime     = "Durable Object with a hibernating WebSocket"
 
 [[shape]]
@@ -32,7 +33,7 @@ default  = true
 kind     = "orchestrated"
 profiles = ["full"]
 excludes = []
-uses     = ["functions", "containers", "workflows", "scheduler", "durable-objects", "d1", "object-store", "secret-store"]
+uses     = ["functions", "containers", "workflows", "scheduler", "durable-objects", "d1", "object-store", "queue", "secret-store"]
 
 [shape.roles]
 cron_tick    = "Cron Trigger"
@@ -43,4 +44,5 @@ object_store = "R2"
 query_face   = "Worker router → warm contextful-full Container"
 compute      = "Container with cloudflare-d1 storage profile"
 secrets      = "Workers Secrets"
+queue        = "Cloudflare Queues with a pull consumer; R2 event notifications for object arrival"
 realtime     = "Durable Object with a hibernating WebSocket"
