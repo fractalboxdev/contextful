@@ -60,6 +60,11 @@ pub enum CasScope {
 pub trait ObjectStore: Send + Sync {
     /// The object and its ETag, or `None` where no object holds the key.
     fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError>;
+    /// A get sharing its caller's absolute monotonic deadline. Blocking network adapters
+    /// override this method to bound requests and retries; the default delegates to `get`.
+    fn get_within(&self, key: &str, _deadline: std::time::Instant) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+        self.get(key)
+    }
     fn put(&self, key: &str, bytes: &[u8], condition: Condition) -> Result<Put, ObjectError>;
     fn delete(&self, key: &str) -> Result<(), ObjectError>;
     /// Every key beginning with `prefix`, sorted.

@@ -11,6 +11,196 @@ use std::sync::Arc;
 
 const NOW: &str = "2030-01-01T01:00:00Z";
 
+mod deadline {
+    use super::*;
+    use contextful_core::run::journal::sha256_hex;
+    use contextful_core::store::object::{Condition, ObjectError, PartSource, Put};
+    use contextful_core::store::sync::{BucketManifest, Entry, MANIFEST_KEY};
+    use contextful_core::store::StoreError;
+    use contextful_sync::lazy::{Clock, PART_WAIT};
+    use contextful_sync::LazyParts;
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+
+    const PART: &str = "tables/filings/data/part.parquet";
+    const SECOND: &str = "tables/filings/data/second.parquet";
+
+    struct Time(Mutex<Instant>);
+
+    impl Clock for Time {
+        fn now(&self) -> Instant {
+            *self.0.lock().unwrap()
+        }
+        fn sleep(&self, duration: Duration) {
+            *self.0.lock().unwrap() += duration;
+        }
+    }
+
+    struct Slow {
+        time: Arc<Time>,
+        manifest_delay: Duration,
+        part_delay: Duration,
+        unavailable: bool,
+        deadlines: Mutex<Vec<Instant>>,
+    }
+
+    impl ObjectStore for Slow {
+        fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+            let manifest = key == MANIFEST_KEY;
+            self.time.sleep(if manifest { self.manifest_delay } else { self.part_delay });
+            if manifest {
+                let mut manifest = BucketManifest::default();
+                manifest.entries.insert(format!("project/{PART}"), Entry { sha256: sha256_hex(b"rows"), size: 4, owner: String::new() });
+                manifest.entries.insert(format!("project/{SECOND}"), Entry { sha256: sha256_hex(b"rows"), size: 4, owner: String::new() });
+                Ok(Some((serde_json::to_vec(&manifest).unwrap(), "manifest".into())))
+            } else if self.unavailable {
+                Err(ObjectError::Unavailable("offline".into()))
+            } else {
+                Ok(Some((b"rows".to_vec(), "part".into())))
+            }
+        }
+
+        fn get_within(&self, key: &str, deadline: Instant) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+            self.deadlines.lock().unwrap().push(deadline);
+            let delay = if key == MANIFEST_KEY { self.manifest_delay } else { self.part_delay };
+            let remaining = deadline.saturating_duration_since(self.time.now());
+            if delay > remaining {
+                self.time.sleep(remaining);
+                return Err(ObjectError::Unavailable("deadline".into()));
+            }
+            self.get(key)
+        }
+
+        fn put(&self, _: &str, _: &[u8], _: Condition) -> Result<Put, ObjectError> {
+            unreachable!()
+        }
+        fn delete(&self, _: &str) -> Result<(), ObjectError> {
+            unreachable!()
+        }
+        fn list(&self, _: &str) -> Result<Vec<String>, ObjectError> {
+            unreachable!()
+        }
+    }
+
+    #[test]
+    fn fold_input_lookup_and_download_share_the_acquisition_deadline() {
+        let started = Instant::now();
+        let time = Arc::new(Time(Mutex::new(started)));
+        let bucket = Arc::new(Slow {
+            time: time.clone(),
+            manifest_delay: Duration::from_secs(29),
+            part_delay: PART_WAIT * 2,
+            unavailable: false,
+            deadlines: Mutex::new(Vec::new()),
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let parts = LazyParts::with_clock(
+            bucket.clone(),
+            "",
+            "project",
+            dir.path(),
+            100,
+            1,
+            time.clone(),
+        );
+        let result = parts.hold_inputs(&[PART.into()]);
+        assert!(
+            matches!(result, Err(StoreError::ReadPartUnavailable(_))),
+            "{result:?}"
+        );
+        assert_eq!(time.now() - started, PART_WAIT);
+        assert_eq!(*bucket.deadlines.lock().unwrap(), [started + PART_WAIT; 2]);
+    }
+
+    #[test]
+    fn a_part_answer_at_the_deadline_is_kept() {
+        let started = Instant::now();
+        let time = Arc::new(Time(Mutex::new(started)));
+        let bucket = Arc::new(Slow {
+            time: time.clone(),
+            manifest_delay: Duration::ZERO,
+            part_delay: PART_WAIT,
+            unavailable: false,
+            deadlines: Mutex::new(Vec::new()),
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let parts = LazyParts::with_clock(bucket, "", "project", dir.path(), 100, 1, time.clone());
+        let hold = parts.hold(&[PART.into()]).unwrap();
+        assert_eq!(time.now() - started, PART_WAIT);
+        assert_eq!(std::fs::read(dir.path().join(PART)).unwrap(), b"rows");
+        drop(hold);
+    }
+
+    #[test]
+    fn queued_parts_share_the_acquisition_deadline() {
+        let started = Instant::now();
+        let time = Arc::new(Time(Mutex::new(started)));
+        let bucket = Arc::new(Slow {
+            time: time.clone(),
+            manifest_delay: Duration::ZERO,
+            part_delay: Duration::from_secs(20),
+            unavailable: false,
+            deadlines: Mutex::new(Vec::new()),
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let parts = LazyParts::with_clock(
+            bucket.clone(),
+            "",
+            "project",
+            dir.path(),
+            100,
+            1,
+            time.clone(),
+        );
+        let result = parts.hold(&[PART.into(), SECOND.into()]);
+        assert!(
+            matches!(result, Err(StoreError::ReadPartUnavailable(_))),
+            "{result:?}"
+        );
+        assert_eq!(time.now() - started, PART_WAIT);
+        assert_eq!(*bucket.deadlines.lock().unwrap(), [started + PART_WAIT; 3]);
+        assert_eq!(std::fs::read(dir.path().join(PART)).unwrap(), b"rows");
+        assert!(!dir.path().join(SECOND).exists());
+    }
+
+    // spec: read.cache.miss-wait@558a1f3f
+    #[test]
+    fn one_deadline_bounds_manifest_gets_and_backoff() {
+        for (manifest_delay, part_delay, unavailable) in [
+            (PART_WAIT * 2, Duration::ZERO, false),
+            (Duration::from_secs(7), PART_WAIT * 2, false),
+            (Duration::from_millis(7250), Duration::from_millis(250), true),
+            (Duration::from_millis(7250), Duration::ZERO, true),
+        ] {
+            let started = Instant::now();
+            let time = Arc::new(Time(Mutex::new(started)));
+            let bucket = Arc::new(Slow { time: time.clone(), manifest_delay, part_delay, unavailable, deadlines: Mutex::new(Vec::new()) });
+            let dir = tempfile::tempdir().unwrap();
+            let parts = LazyParts::with_clock(bucket.clone(), "", "project", dir.path(), 100, 1, time.clone());
+            let err = parts.hold(&[PART.into()]).unwrap_err();
+            assert!(matches!(err, StoreError::ReadPartUnavailable(ref message) if message.contains(PART)), "{err}");
+            assert_eq!(time.now() - started, PART_WAIT);
+            let deadlines = bucket.deadlines.lock().unwrap();
+            assert!(!deadlines.is_empty());
+            assert!(deadlines.iter().all(|deadline| *deadline == started + PART_WAIT));
+            assert!(!dir.path().join(PART).exists());
+        }
+    }
+
+    #[test]
+    fn the_serving_edge_preserves_the_manifest_deadline() {
+        let started = Instant::now();
+        let time = Arc::new(Time(Mutex::new(started)));
+        let bucket = Arc::new(Slow { time: time.clone(), manifest_delay: PART_WAIT * 2, part_delay: Duration::ZERO, unavailable: false, deadlines: Mutex::new(Vec::new()) });
+        let edge = Arc::new(contextful_sync::ServingEdge::new(bucket.clone(), "", "project", &[]));
+        let dir = tempfile::tempdir().unwrap();
+        let parts = LazyParts::with_clock(edge, "", "project", dir.path(), 100, 1, time.clone());
+        assert!(matches!(parts.hold(&[PART.into()]), Err(StoreError::ReadPartUnavailable(_))));
+        assert_eq!(time.now() - started, PART_WAIT);
+        assert_eq!(*bucket.deadlines.lock().unwrap(), [started + PART_WAIT]);
+    }
+}
+
 /// A writer that landed and pushed `runs` runs of one row each into `filings`.
 fn pushed(b: Arc<dyn ObjectStore>, runs: usize) -> Node {
     let a = node("ingest-a", b, "");

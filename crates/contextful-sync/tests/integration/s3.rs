@@ -185,6 +185,8 @@ mod transport {
         Drop,
         /// Hold the connection open and never answer.
         Stall,
+        /// Answer the headers and hold the body open.
+        BodyStall,
         /// Answer with this status and body.
         Status(u16, &'static str),
     }
@@ -253,6 +255,12 @@ mod transport {
                     std::thread::sleep(Duration::from_secs(120));
                     return;
                 }
+                Answer::BodyStall => {
+                    write!(writer, "HTTP/1.1 200 OK\r\netag: \"e1\"\r\ncontent-length: 4\r\n\r\n").unwrap();
+                    writer.flush().unwrap();
+                    std::thread::sleep(Duration::from_secs(120));
+                    return;
+                }
                 Answer::Status(status, body) => {
                     let body = if method == "HEAD" { "" } else { body };
                     write!(writer, "HTTP/1.1 {status} X\r\netag: \"e1\"\r\ncontent-length: {}\r\n\r\n{body}", body.len()).unwrap();
@@ -272,6 +280,18 @@ mod transport {
         // The first attempt waits 2 s for its answer, so a stalled get resends well before the 10 s bound.
         assert!(started.elapsed() < Duration::from_secs(4), "{:?}", started.elapsed());
         assert_eq!(endpoint.requests(), ["GET", "GET"]);
+    }
+
+    #[test]
+    fn a_get_deadline_bounds_stalls_and_retry_sleeps() {
+        for script in [vec![Answer::Stall; 4], vec![Answer::BodyStall; 4], vec![Answer::Drop; 4], vec![Answer::Status(503, SLOW_DOWN); 5]] {
+            let endpoint = Endpoint::start(script);
+            let started = Instant::now();
+            let result = endpoint.bucket().get_within("a", started + Duration::from_millis(20));
+            assert!(matches!(result, Err(ObjectError::Unavailable(_))), "{result:?}");
+            assert!(started.elapsed() < Duration::from_millis(150), "{:?}", started.elapsed());
+            assert!(!endpoint.requests().is_empty());
+        }
     }
 
     #[test]

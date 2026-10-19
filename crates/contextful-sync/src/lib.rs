@@ -10,6 +10,8 @@ pub mod lazy;
 pub mod run_state;
 #[cfg(feature = "s3-sync")]
 pub mod s3_bucket;
+#[cfg(feature = "s3-sync")]
+mod s3_retry;
 pub mod sync;
 pub mod transfer;
 

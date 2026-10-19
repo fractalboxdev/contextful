@@ -4,60 +4,19 @@
 //! `If-Match: <etag>`, so the backend itself arbitrates every compare-and-set. The `s3`
 //! object source reads through the same adapter, anonymously where it binds no key pair.
 
+use crate::s3_retry::{request_budget, resend_until, Resend, ANSWER_TIMEOUT, REQUEST_TIMEOUT};
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use rusty_s3::actions::{ListObjectsV2, S3Action};
 use rusty_s3::{Bucket, Credentials, UrlStyle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Life of one signed request URL. A request is signed immediately before it is sent, so
 /// the window covers the transfer alone.
 const SIGNATURE_TTL: Duration = Duration::from_secs(300);
 
-/// Wall-clock budget of one request, transfer included.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
-
-/// Bounds on an attempt's connection and on the wait for its answer once sent. A request
-/// whose repetition changes nothing waits 2 s, then 4 s, then 10 s for each attempt's answer,
-/// so 3 attempts held open unanswered end within 31 s; a conditional put waits 10 s once
-/// (`store.endpoint.transport`).
+/// The connection establishment budget for each request attempt.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
-const ANSWER_WINDOWS: [Duration; 3] = [Duration::from_secs(2), Duration::from_secs(4), ANSWER_TIMEOUT];
-
-/// Total attempts of a request whose repetition changes nothing (`store.endpoint.transport`).
-const TRANSPORT_ATTEMPTS: u32 = 3;
-
-/// Total attempts of a request the backend answers throttled, and the backoff before each
-/// resend: a uniform draw below a ceiling doubling from 100 ms to 5 s (`store.endpoint.throttled`).
-const THROTTLED_ATTEMPTS: u32 = 5;
-const BACKOFF_BASE: Duration = Duration::from_millis(100);
-const BACKOFF_CAP: Duration = Duration::from_secs(5);
-
-/// Which failures a request resends after (`store.endpoint.throttled`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Resend {
-    /// A request whose repetition changes nothing: a transport loss, a `429`, a `500` or a `503`.
-    Repeatable,
-    /// A conditional put, which may have applied unanswered: a `429` or a `503` alone, which
-    /// answer a request the backend never applied.
-    Conditional,
-}
-
-impl Resend {
-    fn throttled(self, status: u16) -> bool {
-        matches!(status, 429 | 503) || (status == 500 && self == Resend::Repeatable)
-    }
-}
-
-/// Sleep before throttled resend `n` (1-based): a uniform draw below `BACKOFF_BASE * 2^(n-1)`,
-/// capped at `BACKOFF_CAP`, so clients throttled together spread their resends.
-fn backoff(n: u32) {
-    let ceiling = BACKOFF_BASE.saturating_mul(1 << n.saturating_sub(1).min(16)).min(BACKOFF_CAP);
-    let mut draw = [0u8; 8];
-    let fraction = getrandom::fill(&mut draw).map_or(1.0, |()| u64::from_le_bytes(draw) as f64 / u64::MAX as f64);
-    std::thread::sleep(ceiling.mul_f64(fraction));
-}
 
 /// Keys one list page asks for; a backend may answer fewer.
 const LIST_PAGE: usize = 1000;
@@ -154,34 +113,11 @@ impl S3Bucket {
         }
     }
 
-    fn transport(what: &str, e: ureq::Error) -> ObjectError {
-        ObjectError::Unavailable(format!("{what}: {e}"))
-    }
-
     /// Send a request, each attempt waiting the answer window `send` is handed, and resend it
     /// as `mode` allows: after a transport failure that left no whole answer, within 3 attempts,
     /// and after a throttled answer, within 5. The last answer returns whatever its status.
     fn resend<T>(what: &str, mode: Resend, send: impl Fn(Duration) -> Result<(u16, T), ureq::Error>) -> Result<(u16, T), ObjectError> {
-        let (mut lost, mut throttled) = (0u32, 0u32);
-        loop {
-            let window = match mode {
-                Resend::Repeatable => ANSWER_WINDOWS[(lost as usize).min(ANSWER_WINDOWS.len() - 1)],
-                Resend::Conditional => ANSWER_TIMEOUT,
-            };
-            match send(window) {
-                Ok((status, answer)) if mode.throttled(status) && throttled + 1 < THROTTLED_ATTEMPTS => {
-                    let _ = answer;
-                    throttled += 1;
-                    backoff(throttled);
-                }
-                Ok(answer) => return Ok(answer),
-                Err(_) if mode == Resend::Repeatable && lost + 1 < TRANSPORT_ATTEMPTS => {
-                    lost += 1;
-                    std::thread::sleep(Duration::from_millis(50 * u64::from(lost)));
-                }
-                Err(e) => return Err(S3Bucket::transport(what, e)),
-            }
-        }
+        resend_until(what, mode, None, send)
     }
 
     /// A presigned `GET` of `key`, for a caller sending through its own client.
@@ -267,12 +203,13 @@ fn read_text(response: &mut ureq::http::Response<ureq::Body>) -> String {
     response.body_mut().read_to_string().unwrap_or_default()
 }
 
-impl ObjectStore for S3Bucket {
-    fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+impl S3Bucket {
+    fn get_until(&self, key: &str, deadline: Option<Instant>) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
         let what = format!("GET `{key}`");
         let url = self.presign_get(key);
-        let (status, (tag, bytes)) = S3Bucket::resend(&what, Resend::Repeatable, |window| {
-            let mut response = self.agent.get(&url).config().timeout_recv_response(Some(window)).build().call()?;
+        let (status, (tag, bytes)) = resend_until(&what, Resend::Repeatable, deadline, |window| {
+            let timeout = request_budget(&what, deadline).map_err(|_| ureq::Error::Timeout(ureq::Timeout::Global))?;
+            let mut response = self.agent.get(&url).config().timeout_global(Some(timeout)).timeout_recv_response(Some(window)).build().call()?;
             let tag = etag(&response);
             Ok((response.status().as_u16(), (tag, response.body_mut().with_config().limit(u64::MAX).read_to_vec()?)))
         })?;
@@ -289,6 +226,16 @@ impl ObjectStore for S3Bucket {
                 Err(S3Bucket::failure(&what, status, &body))
             }
         }
+    }
+}
+
+impl ObjectStore for S3Bucket {
+    fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+        self.get_until(key, None)
+    }
+
+    fn get_within(&self, key: &str, deadline: Instant) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+        self.get_until(key, Some(deadline))
     }
 
     fn put(&self, key: &str, bytes: &[u8], condition: Condition) -> Result<Put, ObjectError> {

@@ -7143,7 +7143,7 @@
       "operation": "cache",
       "subject": "miss-wait",
       "kind": "refusal",
-      "statement": "Under {{store.pull.lazy-parts}}, a statement touching a part absent locally waits while the part downloads, and past 30 s fails with `ReadPartUnavailable`, naming the part.",
+      "statement": "Under {{store.pull.lazy-parts}}, each absent part has one 30 s deadline from acquisition start covering manifest lookup, GET attempts and backoff sleeps; expiry raises `ReadPartUnavailable`, naming the part.",
       "why": "A-store",
       "file": "spec/20-read.md",
       "line": 435
