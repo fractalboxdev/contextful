@@ -284,14 +284,16 @@ fn eight_writers_landing_new_keys_scan_no_history() {
 /// 8 threads each landing 25 runs of 100 never-seen keys into one bars table, the keys of a
 /// run dealt round-robin across the writers, so every writer's part of a day spans the
 /// others' key range: the rows every vintage comparison reads in total (ledger
-/// `vintage-interleaved-scan`).
+/// `vintage-interleaved-scan`). Only the key bloom filter skips another writer's part, and
+/// at `BLOOM_FPP` each of about 700 part probes admits one by chance near 1e-3, so the
+/// bound is 10 parts of 100 rows, not 0.
 #[test]
 fn eight_writers_landing_interleaved_keys_scan_no_history() {
     const SEED: u64 = 0x5eed_7109;
     let (writers, runs, per_run) = concurrent_size();
     let read = concurrent_scan(writers, runs, per_run, |w, r, i| format!("S{r:03}-{:05}", i * writers + w));
     eprintln!("{writers} writers × {runs} runs × {per_run} interleaved new keys read {read} stored rows");
-    assert_eq!(read, 0, "no commit reads another writer's keys, though their key ranges overlap");
+    assert!(read <= 10 * per_run as u64, "a commit reads another writer's part only on a bloom false positive, though their key ranges overlap: {read}");
     emit("vintage-interleaved-scan", read as f64, (writers * runs) as u64, SEED);
 }
 
