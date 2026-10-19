@@ -89,9 +89,9 @@ Windows ships no release ({{assurance.build.windows-target}},
 ({{assurance.build.checkout-artifacts}}, {{assurance.build.runtime-checkout}}),
 test-first to one comparison ({{assurance.test.comparison-base}},
 {{assurance.test.merge-source}}, {{assurance.test.base-evidence}}), parts to
-timings and owned processes ({{assurance.gate.stage-timings}},
+timings, owned processes and tiers ({{assurance.gate.stage-timings}},
 {{assurance.gate.part-budget}}, {{assurance.gate.build-admission}},
-{{assurance.gate.timeout-cleanup}}).
+{{assurance.gate.timeout-cleanup}}, {{assurance.gate.nightly-tier}}).
 
 One ledger keys each tracked target to its clause ({{assurance.measure.ledger}}): a
 gate-tier count reds the evaluate stage ({{assurance.measure.count-first}}), and timings
@@ -121,8 +121,8 @@ flowchart LR
 
 A contributor reorders the engine's layers so masking runs before filtering.
 
-Its test fails at base, or the test-first stage stops it; the gate
-then reaches the formal stage
+Its test fails at base, or the test-first stage stops it; the nightly
+run reaches the formal stage
 ({{assurance.gate.formal-stage}}).
 
 If the contributor also edits the composition theorem's Lean statement to match, the
@@ -136,7 +136,7 @@ cases to the reference binary and the engine ({{assurance.differential-test.harn
 A case where a masked column meets a row filter decides differently, shrinks to a minimal
 form ({{assurance.differential-test.minimized}}), enters the counterexample corpus
 ({{assurance.differential-test.discarded-counterexample}}), and replays before fresh cases
-on every later run ({{assurance.differential-test.corpus-replay}}), reproducible from the
+on later runs ({{assurance.differential-test.corpus-replay}}), reproducible from the
 recorded seed ({{assurance.differential-test.seed}}).
 
 The composition theorem is not a

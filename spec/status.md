@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 337 | 69 | 24 | 5 | 295 | 0 | 295 |
+| `assurance` | 3 | 18 | 338 | 69 | 24 | 5 | 296 | 0 | 296 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 2 | 14 | 386 | 92 | 22 | 14 | 303 | 0 | 303 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 4 | 19 | 327 | 67 | 21 | 12 | 316 | 0 | 316 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2789 | 688 | 224 | 82 | 2497 | 0 | |
+| **total** | 23 | 169 | 2790 | 688 | 224 | 82 | 2498 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 61 | 49 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 183 | 148 | passing | closed |
+| 14 — Assurance | 7 | 184 | 149 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
@@ -230,6 +230,7 @@ Unscheduled operations: 13.
 | `assurance.gate.interpolated-claim` | `tools/ci/tests/integration/source_lint.rs::interpolated_subject_claim_names_the_source_line` | performed |
 | `assurance.gate.locked-resolve` | `tools/ci/tests/integration/topology.rs::a_lock_file_behind_its_manifests_stops_the_crate_graph` | performed |
 | `assurance.gate.native-test-files` | `spec/pins.toml` | performed |
+| `assurance.gate.nightly-tier` | `tools/ci/tests/integration/workflow.rs::the_nightly_tier_holds_the_features_formal_and_budget_parts` | performed |
 | `assurance.gate.pins-stage` | `tools/ci/tests/integration/stages.rs::the_pins_stage_records_every_pin_fetches_the_locked_crates_and_refuses_a_floating_one` | performed |
 | `assurance.gate.row-token` | `tools/ci/tests/integration/source_lint.rs::row_returning_store_function_without_the_token_names_the_function` | performed |
 | `assurance.gate.schema-stage` | `tools/ci/tests/integration/stages.rs::the_schema_stage_regenerates_into_scratch_and_refuses_a_stale_committed_copy` | performed |

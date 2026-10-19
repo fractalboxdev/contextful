@@ -22,8 +22,8 @@ fn store_adapter(repo: &Repo) {
     repo.commit("store adapter");
 }
 
-/// A defect appearing under one feature combination alone is reached by a staged run, one command per container.
-// spec: assurance.build.staged-feature-runs@2e9106bf
+/// A defect appearing under one feature combination alone is reached by a staged nightly run, one command per container.
+// spec: assurance.build.staged-feature-runs@568dbf5d
 #[test]
 fn the_features_stage_runs_the_store_adapter_with_read_off() {
     let repo = Repo::init();
@@ -120,7 +120,7 @@ fn bundled(r: &Repo, lib_edge: &str, runs: &str) {
 }
 
 /// Each binary feature run partitions differential tests from its remaining suite.
-// spec: assurance.build.profile-build@eaea56c6
+// spec: assurance.build.profile-build@952d473f
 #[test]
 fn the_features_stage_tests_each_listed_run_in_two_binary_parts() {
     let r = Repo::init();
@@ -134,12 +134,15 @@ fn the_features_stage_tests_each_listed_run_in_two_binary_parts() {
     r.lock();
     r.commit("a binary with a listed run");
 
-    let listed = String::from_utf8_lossy(&r.run_ci(&["stages", "--parts"]).stdout).into_owned();
+    let listed = String::from_utf8_lossy(&r.run_ci(&["stages", "--parts", "--tier", "nightly"]).stdout).into_owned();
     let parts: Vec<&str> = listed.lines().collect();
     let at = |s: &str| parts.iter().position(|x| *x == s).unwrap_or_else(|| panic!("no `{s}` part: {listed}"));
-    assert!(at("evaluate.probe") < at("features.gated") && at("features.gated") < at("features.binary-none"), "{listed}");
+    assert!(at("features.gated") == 0 && at("features.gated") < at("features.binary-none"), "{listed}");
     assert!(at("features.binary-none") < at("features.binary-all") && at("features.binary-all") < at("features.binary-extra"), "{listed}");
-    assert!(at("features.binary-extra") < at("crate-graph") && !parts.contains(&"features"), "{listed}");
+    assert!(at("features.binary-extra") < at("formal") && !parts.contains(&"features"), "{listed}");
+    let required = String::from_utf8_lossy(&r.run_ci(&["stages", "--parts"]).stdout).into_owned();
+    assert!(!required.is_empty() && required.lines().any(|l| l.starts_with("evaluate")), "{required}");
+    assert!(!required.lines().any(|l| l.starts_with("features")), "{required}");
     for label in ["none", "all", "extra"] {
         assert!(at(&format!("features.binary-{label}")) < at(&format!("features.formal-{label}")), "{listed}");
     }

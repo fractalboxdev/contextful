@@ -28,6 +28,17 @@ pub const STAGES: [&str; 13] = [
     "budget",
 ];
 
+/// The stages whose parts form the nightly tier (`assurance.gate.nightly-tier`): FlareDispatch
+/// runs them against the default-branch head, and `stages --parts` omits them from the
+/// required pull-request checks.
+pub const NIGHTLY: [&str; 3] = ["features", "formal", "budget"];
+
+/// Whether a part `<stage>` or `<stage>.<part>` belongs to the named tier, `pr` or `nightly`.
+pub fn in_tier(part: &str, tier: &str) -> bool {
+    let stage = part.split_once('.').map_or(part, |(stage, _)| stage);
+    NIGHTLY.contains(&stage) == (tier == "nightly")
+}
+
 /// Where a stage leaves an output a later stage reads, under the workspace root.
 pub const GATE_DIR: &str = "target/gate";
 /// The pins stage's record of every pinned identity it resolved.

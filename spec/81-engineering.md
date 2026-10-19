@@ -147,7 +147,7 @@ Target directories, the engine-linked invocation, linked query functions, build 
   *A-assurance*
 - `one-engine-build` — The workspace stage builds every engine-linked package in one cargo invocation over the union of their features, and the store adapter's suites resolved without `read` link no SQL engine, so the features stage compiles one copy.
   *A-assurance*
-- `staged-feature-runs` — A defect appearing under one feature combination alone is reached by a staged run, one command per container.
+- `staged-feature-runs` — A defect appearing under one feature combination alone is reached by a staged nightly run, one command per container.
 - `linked-query-functions` — Columnar file reading and statement serialization link into every build linking the SQL engine, and the read path loads no extension while serving.
   *A-assurance*
 - `runtime-extension-load` — A read path loading an extension into a binary that statically links the SQL engine raises `ExtensionAutoloadRefused`.
@@ -156,7 +156,7 @@ Target directories, the engine-linked invocation, linked query functions, build 
   *because every engine-linked test binary embeds the bundled engine, and full debug information multiplies each past a sandbox's disk*
 - `release-profile` — Release builds compile with thin link-time optimization, one codegen unit per crate and symbols stripped, and unwind on panic.
   *because the run keeper survives a panicking job only by unwinding to its guard*
-- `profile-build` — The features stage tests each package under every feature set its manifest lists in `feature-runs`: each other package has its own check; each binary feature run has separate checks for differential tests and all remaining tests.
+- `profile-build` — The features stage tests each package under every feature set its manifest lists in `feature-runs`: each other package has its own nightly check; each binary feature run has separate nightly checks for differential tests and all remaining tests.
   *because one cold build of the binary under one feature set fills most of a stage's wall clock, and a listed set reaches what none and all miss*
 - `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
@@ -189,14 +189,16 @@ Target directories, the engine-linked invocation, linked query functions, build 
 
 Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.
 
-- `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
+- `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — all of both tiers when none is named, else the named subset, which `--plan` prints unrun.
+- `nightly-tier` — `contextful-ci stages --parts --tier nightly` prints the features, formal and budget parts in run order; `stages --parts` prints the remaining parts, the required pull-request checks, and `gate --stage` runs a part of either tier.
+  *A-assurance*
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
   *A-assurance*
 - `remote-check` — The FlareDispatch pull-request webhook dispatches every part `contextful-ci stages --parts --base <base-sha> --affected` lists, each as `flare-dispatch/check:<part>` on the head commit, and completes every other required part as succeeded, not affected.
   *A-assurance*
-- `affected-parts` — `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the required parts the diff from the merge base of `<rev>` and HEAD reaches, always including pins, toolchain and schema.
+- `affected-parts` — `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including pins, toolchain and schema.
   *A-assurance*
-- `affected-every` — A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every required part.
+- `affected-every` — A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every part of either tier.
   *A-assurance*
 - `affected-spec` — A change under `spec/` or `references/` reaches test-first validation, one under `spec/` the foundation workspace part, and each clause whose statement or `spec/pins.toml` entry changed the parts running its pinned test or theorem.
   *A-assurance*
@@ -257,21 +259,21 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because some deployments run with no external reach, and a call nobody configured moves data outside every grant, zone and audit record*
 - `interpolated-claim` — A source lint over the runtime crates finding a subject claim formatted into SQL text raises `EnforceInterpolatedSubjectClaim`, naming the file and line.
   *P1*
-- `formal-stage` — The formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.
+- `formal-stage` — The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.
   *P7*
 - `container` — The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a 45 min per-stage wall clock — and a run dies on any one.
   *A-assurance*
 - `parallel-jobs` — Parallel build jobs number the memory ceiling divided by 3 GiB.
 - `free-disk` — A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.
   *P7*
-- `build-size` — The budget stage holds total build size to 12 GiB, printing that size, the free space and the largest artifacts; a larger build raises `BuildSizeCeilingExceeded`, naming the head of that list.
+- `build-size` — The nightly budget stage holds total build size to 12 GiB, printing that size, the free space and the largest artifacts; a larger build raises `BuildSizeCeilingExceeded`, naming the head of that list.
   *P7*
 - `edge-budget` — The edge profile holds to 50 MiB compressed and 60 MiB idle resident set.
 - `full-budget` — The full profile holds to 150 MiB compressed and 180 MiB idle resident set.
 - `control-budget` — The control profile holds to 60 MiB compressed and 80 MiB idle resident set.
-- `footprint` — Per change and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
+- `footprint` — Per nightly run and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
   *P7*
-- `budget-stage` — The budget stage runs {{assurance.gate.footprint}} over every profile, in one part per profile dispatched as its own check, and the evaluate stage builds no profile.
+- `budget-stage` — The budget stage runs {{assurance.gate.footprint}} over every profile, in one part per profile dispatched as its own nightly check, and the evaluate stage builds no profile.
   *because one link-time-optimized release build of the full profile fills most of one stage's wall clock*
 - `footprint-exceeded` — An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile.
   *P7*
@@ -543,7 +545,7 @@ The target ledger: each tracked target, the clause it serves, how it is measured
   *A-assurance*
 - `run-report` — `contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — and a run id is an integer or a FlareDispatch execution id, each read back from history.
   *because the Dispatcher names a run by its execution id, and an unreadable note hides every older baseline*
-- `scheduled` — The FlareDispatch nightly run executes every tier against the default-branch head and reports one check per run.
+- `scheduled` — The FlareDispatch nightly run executes every measurement tier and every {{assurance.gate.nightly-tier}} part against the default-branch head, reports one check per run, and on failure opens an issue naming the change range since the last passing run.
 - `note-credential` — The Dispatcher appends the run report through the Git data API under its GitHub App installation token, which holds contents write on this repository; the measure container receives no write credential.
   *because the container executes the measured tree's code, and a write token inside it lets any commit rewrite history*
 - `remote-attest` — Status pins only the commands this tree ships; the Dispatcher's schedule and note write pin no test here, and each note commit on `refs/notes/measures` names its measured commit and writer.

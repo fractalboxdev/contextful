@@ -219,13 +219,13 @@ fn footprint_records_exact_compressed_bytes_and_needed_entries_for_each_profile(
     }
 }
 
-/// Per change and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
+/// Per nightly run and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
 ///
 /// Under `contextful-ci measure --tier trend` the step builds all three profiles once,
 /// recording each compressed byte count and NEEDED entry count alongside the number over
 /// budget. Elsewhere, the workspace stage prints the planned builds and the budget stage
 /// gates each artifact.
-// spec: assurance.gate.footprint@32cd798c
+// spec: assurance.gate.footprint@76546e9a
 #[test]
 fn this_repository_profiles_hold_to_their_footprint_budgets() {
     let root = repo_root();
@@ -258,13 +258,13 @@ fn this_repository_profiles_hold_to_their_footprint_budgets() {
     assert!(o.status.success(), "{}", stderr(&o));
 }
 
-/// The budget stage runs the footprint step over every profile, in one part per profile dispatched as its own check, and the evaluate stage builds no profile.
-// spec: assurance.gate.budget-stage@a77562d2
+/// The budget stage runs the footprint step over every profile, in one part per profile dispatched as its own nightly check, and the evaluate stage builds no profile.
+// spec: assurance.gate.budget-stage@3c76c341
 #[test]
 fn the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_none() {
     let stages = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
     assert_eq!(String::from_utf8_lossy(&stages.stdout).lines().last(), Some("budget"));
-    let parts = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(["stages", "--parts"]).current_dir(repo_root()).output().unwrap();
+    let parts = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(["stages", "--parts", "--tier", "nightly"]).current_dir(repo_root()).output().unwrap();
     let listed = String::from_utf8_lossy(&parts.stdout).into_owned();
     let tail: Vec<&str> = listed.lines().rev().take(3).collect();
     assert_eq!(tail, ["budget.full", "budget.edge", "budget.control"], "{listed}");
@@ -276,7 +276,7 @@ fn the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_no
     let o = r.gate(&["--stage", "budget"]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(String::from_utf8_lossy(&o.stdout).contains("budget: no package declares a profile"), "{}", stderr(&o));
-    let listed = String::from_utf8_lossy(&r.run_ci(&["stages", "--parts"]).stdout).into_owned();
+    let listed = String::from_utf8_lossy(&r.run_ci(&["stages", "--parts", "--tier", "nightly"]).stdout).into_owned();
     assert!(!listed.is_empty(), "the exclusion below ranges over no element");
     assert!(!listed.lines().any(|l| l.starts_with("budget")), "{listed}");
 

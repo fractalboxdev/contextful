@@ -84,6 +84,9 @@ enum Cmd {
         /// Also run every stage whose output a selected stage reads.
         #[arg(long)]
         predecessors: bool,
+        /// Print the stages the run selects, one per line in run order, and run none.
+        #[arg(long)]
+        plan: bool,
         /// The revision the change is measured against.
         #[arg(long, default_value = "origin/HEAD")]
         base: String,
@@ -103,6 +106,10 @@ enum Cmd {
         /// Print only the parts the change against `--base` reaches (`assurance.gate.affected-parts`).
         #[arg(long, requires = "base")]
         affected: bool,
+        /// The tier whose parts to print: `pr`, the required pull-request checks, or
+        /// `nightly`, the features, formal and budget parts.
+        #[arg(long, requires = "parts", default_value = "pr", value_parser = ["pr", "nightly"])]
+        tier: String,
         /// Print the selected stage names as a JSON array for a workflow matrix.
         #[arg(long)]
         json: bool,
@@ -302,10 +309,10 @@ fn refuse(code: &'static str, message: String) -> anyhow::Error {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.cmd {
-        Cmd::Stages { parts, base, affected, json } => {
+        Cmd::Stages { parts, base, affected, tier, json } => {
             let listed = if parts {
                 repo_root().and_then(|root| {
-                    let required = dispatched(&root, base.as_deref())?;
+                    let required: Vec<String> = dispatched(&root, base.as_deref())?.into_iter().filter(|p| stage::in_tier(p, &tier)).collect();
                     match base.as_deref() {
                         Some(base) if affected => affected::select(&root, base, required),
                         _ => Ok(required),
@@ -319,7 +326,7 @@ fn main() {
                 Ok(())
             })
         }
-        Cmd::Gate { stages, predecessors, base, base_bound_secs } => gate(&stages, predecessors, &base, Duration::from_secs(base_bound_secs)),
+        Cmd::Gate { stages, predecessors, plan, base, base_bound_secs } => gate(&stages, predecessors, plan, &base, Duration::from_secs(base_bound_secs)),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
@@ -495,7 +502,7 @@ fn dispatched(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
     Ok(out)
 }
 
-fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Result<()> {
+fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Duration) -> Result<()> {
     let root = repo_root()?;
     // A named part selects its stage and narrows it to the named parts; a stage named whole
     // runs whole.
@@ -517,7 +524,12 @@ fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Re
         }
     }
     narrowed.retain(|stage, _| !whole.contains(stage));
-    for stage in stage::select(&root, &stages, predecessors)? {
+    let selected = stage::select(&root, &stages, predecessors)?;
+    if plan {
+        selected.iter().for_each(|stage| println!("{stage}"));
+        return Ok(());
+    }
+    for stage in selected {
         eprintln!("--- stage {stage}");
         free_disk(&root, stage)?;
         let mut mark = stage::mark();

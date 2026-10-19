@@ -121,23 +121,36 @@ The gate measures commits, so commit before running it.
 
 The FlareDispatch GitHub App dispatches `contextful-ci gate` from same-repository
 pull-request heads. Its `contextful-gate` run publishes the
-`flare-dispatch/contextful-gate` parent, 46 static child check-runs, and one
+`flare-dispatch/contextful-gate` parent, 24 static child check-runs, and one
 test-first child per changed source package:
 `flare-dispatch/check:<stage>` for each of `pins`, `toolchain`, `schema`,
-`workspace`, `acceptance`, `evaluate`, `features`, `crate-graph`, `connectors`,
-`surfaces`, `formal` and `budget`. The test-first, workspace, evaluate, features and budget stages dispatch one check per
-part, `flare-dispatch/check:test-first.validate` and `flare-dispatch/check:test-first.<package>`, `flare-dispatch/check:workspace.<part>`,
-`flare-dispatch/check:evaluate.<group>`, `flare-dispatch/check:features.<package>` or `features.<binary|formal>-<set>`, and `flare-dispatch/check:budget.<profile>`, so
-each fits the sandbox's wall clock; `contextful-ci stages --parts --base <rev>` prints the list, and
+`workspace`, `acceptance`, `evaluate`, `crate-graph`, `connectors` and `surfaces`.
+The test-first, workspace and evaluate stages dispatch one check per part,
+`flare-dispatch/check:test-first.validate`, `flare-dispatch/check:test-first.<package>`,
+`flare-dispatch/check:workspace.<part>` and `flare-dispatch/check:evaluate.<group>`, so
+each fits the sandbox's wall clock;
+`contextful-ci stages --parts --base <rev>` prints the required list, and
 `--stage <stage>.<part>` runs one part. A selected subset runs in that order and refuses a
 stage whose predecessor's output is absent; `--predecessors` runs those too. A local run and
-the remote check invoke the identical command. `contextful-ci`'s suite asserts 46
-static dispatchable parts. FlareDispatch runs `contextful-measures` nightly against the default
+the remote check invoke the identical command. `contextful-ci`'s suite asserts 24
+static required parts.
+
+The nightly tier holds the `features`, `formal` and `budget` stages:
+`contextful-ci stages --parts --tier nightly` prints their 22 parts,
+`features.<package>`, `features.<binary|formal>-<set>`, `formal` and `budget.<profile>`,
+which leave the required set.
+FlareDispatch runs them nightly against the default-branch head, names the change range
+since the last passing run, and opens an issue on failure
+(`assurance.gate.nightly-tier`). `contextful-ci gate --stage <part>` runs a nightly part
+locally, `contextful-ci gate` with no stage runs both tiers, and `gate --plan` prints a
+run's stages without running them.
+
+FlareDispatch runs `contextful-measures` nightly against the default
 branch and attaches its report to `refs/notes/measures`. A `v*` tag starts
 `contextful-release`, with `contextful-release-cell` for the ten cells in
 `contextful-ci release --plan`, `contextful-release-formula` for formulae and
 SHA256SUMS, and three independently tagged container images. The disabled
-ruleset proposal under `.github/rulesets/` lists the parent and all 46 static children.
+ruleset proposal under `.github/rulesets/` lists the parent and all 24 static children.
 
 The CLI differential module runs in `workspace.cli-formal` and `features.formal-<set>`;
 `workspace.cli-1` to `workspace.cli-4` and `features.binary-<set>` run the remaining CLI tests;
