@@ -10,4 +10,5 @@ mod push;
 mod redistribute;
 mod run_state;
 mod s3;
+mod s3_retry;
 mod support;

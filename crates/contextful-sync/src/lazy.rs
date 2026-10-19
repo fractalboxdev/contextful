@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, TryLockError};
 use std::time::{Duration, Instant};
 
-/// The acquisition budget for one lazy part (`read.cache.miss-wait`).
+/// The acquisition budget for one lazy hold (`read.cache.miss-wait`).
 pub const PART_WAIT: Duration = Duration::from_secs(30);
 
 /// Monotonic time and sleeping for a part acquisition.
@@ -194,8 +194,7 @@ impl Inner {
 
     /// Fetch `rel` whole, verified against its manifest entry, waiting out an unavailable
     /// bucket within [`PART_WAIT`], and account for it in the cache.
-    fn fetch(&self, rel: &str) -> Result<(), StoreError> {
-        let deadline = self.clock.now() + PART_WAIT;
+    fn fetch(&self, rel: &str, deadline: Instant) -> Result<(), StoreError> {
         let key = format!("{}/{rel}", self.project);
         let snapshot = rel.split('/').skip_while(|s| *s != "snapshots").nth(1).unwrap_or("-");
         let collected = || StoreError::SyncPartCollected(format!("`{rel}` of snapshot `{snapshot}` is gone from the bucket; the next pull advances the pointer past it"));
@@ -230,9 +229,8 @@ impl Inner {
         loop {
             self.remaining(deadline)?;
             let answer = self.bucket.get_within(key, deadline);
-            let remaining = self.remaining(deadline)?;
             match answer {
-                Err(ObjectError::Unavailable(_) | ObjectError::Transport(_)) => self.clock.sleep(Duration::from_secs(1).min(remaining)),
+                Err(ObjectError::Unavailable(_) | ObjectError::Transport(_)) => self.clock.sleep(Duration::from_secs(1).min(self.remaining(deadline)?)),
                 other => return other,
             }
         }
@@ -267,11 +265,12 @@ fn unavailable(what: &str, e: &ObjectError) -> StoreError {
 
 impl PartSource for LazyParts {
     fn hold_inputs(&self, files: &[String]) -> Result<PartHold, StoreError> {
+        let deadline = self.0.clock.now() + PART_WAIT;
         let mut total = 0u64;
         for rel in files {
             total += match std::fs::metadata(self.0.root.join(rel)) {
                 Ok(m) => m.len(),
-                Err(_) => self.0.entry(&format!("{}/{rel}", self.0.project), self.0.clock.now() + PART_WAIT)?.map_or(0, |e| e.size),
+                Err(_) => self.0.entry(&format!("{}/{rel}", self.0.project), deadline)?.map_or(0, |e| e.size),
             };
         }
         if total > self.0.bound {
@@ -280,10 +279,16 @@ impl PartSource for LazyParts {
                 self.0.bound
             )));
         }
-        self.hold(files)
+        self.hold_until(files, deadline)
     }
 
     fn hold(&self, files: &[String]) -> Result<PartHold, StoreError> {
+        self.hold_until(files, self.0.clock.now() + PART_WAIT)
+    }
+}
+
+impl LazyParts {
+    fn hold_until(&self, files: &[String], deadline: Instant) -> Result<PartHold, StoreError> {
         let missing: Vec<String> = {
             let mut cache = self.0.lock();
             cache.tick += 1;
@@ -298,7 +303,7 @@ impl PartSource for LazyParts {
         };
         // The holding releases every file on any return, a refused fetch included.
         let mut holding = Holding { inner: self.0.clone(), files: files.to_vec(), save_on_drop: !missing.is_empty() };
-        each(self.0.width, &missing, |rel| self.0.fetch(rel).map_err(crate::sync::SyncError::Store)).map_err(|e| match e {
+        each(self.0.width, &missing, |rel| self.0.fetch(rel, deadline).map_err(crate::sync::SyncError::Store)).map_err(|e| match e {
             crate::sync::SyncError::Store(s) => s,
             other => StoreError::ReadPartUnavailable(other.to_string()),
         })?;

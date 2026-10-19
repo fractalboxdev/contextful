@@ -23,6 +23,7 @@ mod deadline {
     use std::time::{Duration, Instant};
 
     const PART: &str = "tables/filings/data/part.parquet";
+    const SECOND: &str = "tables/filings/data/second.parquet";
 
     struct Time(Mutex<Instant>);
 
@@ -50,6 +51,7 @@ mod deadline {
             if manifest {
                 let mut manifest = BucketManifest::default();
                 manifest.entries.insert(format!("project/{PART}"), Entry { sha256: sha256_hex(b"rows"), size: 4, owner: String::new() });
+                manifest.entries.insert(format!("project/{SECOND}"), Entry { sha256: sha256_hex(b"rows"), size: 4, owner: String::new() });
                 Ok(Some((serde_json::to_vec(&manifest).unwrap(), "manifest".into())))
             } else if self.unavailable {
                 Err(ObjectError::Unavailable("offline".into()))
@@ -62,7 +64,7 @@ mod deadline {
             self.deadlines.lock().unwrap().push(deadline);
             let delay = if key == MANIFEST_KEY { self.manifest_delay } else { self.part_delay };
             let remaining = deadline.saturating_duration_since(self.time.now());
-            if delay >= remaining {
+            if delay > remaining {
                 self.time.sleep(remaining);
                 return Err(ObjectError::Unavailable("deadline".into()));
             }
@@ -78,6 +80,87 @@ mod deadline {
         fn list(&self, _: &str) -> Result<Vec<String>, ObjectError> {
             unreachable!()
         }
+    }
+
+    #[test]
+    fn fold_input_lookup_and_download_share_the_acquisition_deadline() {
+        let started = Instant::now();
+        let time = Arc::new(Time(Mutex::new(started)));
+        let bucket = Arc::new(Slow {
+            time: time.clone(),
+            manifest_delay: Duration::from_secs(29),
+            part_delay: PART_WAIT * 2,
+            unavailable: false,
+            deadlines: Mutex::new(Vec::new()),
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let parts = LazyParts::with_clock(
+            bucket.clone(),
+            "",
+            "project",
+            dir.path(),
+            100,
+            1,
+            time.clone(),
+        );
+        let result = parts.hold_inputs(&[PART.into()]);
+        assert!(
+            matches!(result, Err(StoreError::ReadPartUnavailable(_))),
+            "{result:?}"
+        );
+        assert_eq!(time.now() - started, PART_WAIT);
+        assert_eq!(*bucket.deadlines.lock().unwrap(), [started + PART_WAIT; 2]);
+    }
+
+    #[test]
+    fn a_part_answer_at_the_deadline_is_kept() {
+        let started = Instant::now();
+        let time = Arc::new(Time(Mutex::new(started)));
+        let bucket = Arc::new(Slow {
+            time: time.clone(),
+            manifest_delay: Duration::ZERO,
+            part_delay: PART_WAIT,
+            unavailable: false,
+            deadlines: Mutex::new(Vec::new()),
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let parts = LazyParts::with_clock(bucket, "", "project", dir.path(), 100, 1, time.clone());
+        let hold = parts.hold(&[PART.into()]).unwrap();
+        assert_eq!(time.now() - started, PART_WAIT);
+        assert_eq!(std::fs::read(dir.path().join(PART)).unwrap(), b"rows");
+        drop(hold);
+    }
+
+    #[test]
+    fn queued_parts_share_the_acquisition_deadline() {
+        let started = Instant::now();
+        let time = Arc::new(Time(Mutex::new(started)));
+        let bucket = Arc::new(Slow {
+            time: time.clone(),
+            manifest_delay: Duration::ZERO,
+            part_delay: Duration::from_secs(20),
+            unavailable: false,
+            deadlines: Mutex::new(Vec::new()),
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let parts = LazyParts::with_clock(
+            bucket.clone(),
+            "",
+            "project",
+            dir.path(),
+            100,
+            1,
+            time.clone(),
+        );
+        let result = parts.hold(&[PART.into(), SECOND.into()]);
+        assert!(
+            matches!(result, Err(StoreError::ReadPartUnavailable(_))),
+            "{result:?}"
+        );
+        assert_eq!(time.now() - started, PART_WAIT);
+        assert_eq!(*bucket.deadlines.lock().unwrap(), [started + PART_WAIT; 3]);
+        assert_eq!(std::fs::read(dir.path().join(PART)).unwrap(), b"rows");
+        assert!(!dir.path().join(SECOND).exists());
     }
 
     // spec: read.cache.miss-wait@558a1f3f

@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 386 | 92 | 22 | 14 | 303 | 0 | 303 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
-| `read` | 2 | 20 | 315 | 54 | 29 | 16 | 272 | 0 | 272 |
+| `read` | 2 | 20 | 315 | 54 | 29 | 16 | 273 | 0 | 273 |
 | `run` | 3 | 29 | 601 | 128 | 49 | 19 | 563 | 0 | 563 |
 | `store` | 4 | 19 | 329 | 68 | 21 | 12 | 318 | 0 | 318 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 80 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2796 | 690 | 224 | 82 | 2504 | 0 | |
+| **total** | 23 | 169 | 2796 | 690 | 224 | 82 | 2505 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
 | 4 — Ingest | 25 | 634 | 530 | passing | closed |
-| 5 — The read face under enforcement | 17 | 317 | 282 | passing | closed |
+| 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
 | 6 — Sync and replicas | 8 | 104 | 103 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
@@ -1185,6 +1185,7 @@ Unscheduled operations: 13.
 | `read.cache.frontier-invalidates` | `crates/contextful-context/tests/integration/read/result_cache.rs::a_landed_run_or_ledger_append_misses_and_reads_the_new_state` | performed |
 | `read.cache.hit-identical` | `crates/contextful-context/tests/integration/read/result_cache.rs::a_hit_is_byte_identical_to_the_miss_and_internals_name_it` | performed |
 | `read.cache.hot-local-parquet` | `crates/contextful-context/tests/integration/read/hydrate.rs::the_face_maps_exactly_the_current_snapshot_set_it_reads` | performed |
+| `read.cache.miss-wait` | `crates/contextful-sync/tests/integration/lazy.rs::one_deadline_bounds_manifest_gets_and_backoff` | performed |
 | `read.cache.pool-connections` | `crates/contextful-context/tests/integration/read/pool.rs::an_entry_keeps_at_most_four_idle_connections` | performed |
 | `read.cache.pool-entries` | `crates/contextful-context/tests/integration/read/pool.rs::the_pool_holds_sixteen_entries_and_evicts_the_oldest` | performed |
 | `read.cache.result-key` | `crates/contextful-context/tests/integration/read/result_cache.rs::one_credential_id_under_another_principal_misses` | performed |
