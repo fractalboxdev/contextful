@@ -136,3 +136,24 @@ Decision: export is a post-commit reader with one OTLP arm; target secrets resol
 | A sink plugin per backend | Credential custody | Loaded code holds target credentials. |
 
 Consequences: landing never waits on a target; a mirror is at-least-once. Accepted cost: a landing waiting 30 s behind another's part write refuses, a target sees duplicates on recovery, and rows with a null `_commit_seq` refuse the export.
+
+## A managed queue extends ingress behind a port; the writer stays in the engine
+
+**Status:** accepted; extends `topology.compose.one-tree`, whose single-node and edge shapes keep no external queue.
+
+Context: on a container shape with an ephemeral disk, the local `receive` spool waits on the writer, a cold boot blocks every sender, and grouping covers one container's senders alone.
+
+Criteria: a sender's batch survives eviction and cold boot; one table keeps one writer; laptop and cluster run one tree; a shape without a managed queue loses nothing it has.
+
+Decision: a `Queue` port carries `receive` batches, object-arrival events and post-commit events. A target profile declaring a `queue` role binds a managed queue; any other binds the local spool. The consumer lands through the engine's commit path, and the batch key replays a redelivered message. A sender chooses a queued answer or a committed one.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Queue port, managed queue where the target declares one *(chosen)* | — | A queued answer acknowledges custody, not readability. |
+| Local spool on every shape | Durability | An evicted container loses a spooled batch, and a cold boot blocks senders. |
+| A managed queue on every shape | One tree | Laptop and edge shapes gain an external process. |
+| Store writes in queue consumers | One writer | Commit ordering rests on locks a consumer does not hold. |
+
+Consequences: grouping spans every sender of a queue. Accepted cost: a queued answer carries no refusal a landing raises later, so its sender reads the outcome by batch key.
+Revisit: a target whose queue caps a message below a batch's body.
+
