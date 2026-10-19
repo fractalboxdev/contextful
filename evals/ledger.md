@@ -2,7 +2,7 @@
 
 # Target ledger
 
-151 entries: 90 gated, 48 recorded, 6 scheduled, 7 open.
+151 entries: 92 gated, 46 recorded, 6 scheduled, 7 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -104,10 +104,10 @@
 | `profile-full-compressed-bytes` | `assurance.gate.footprint` | `footprint.full_compressed_bytes` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
 | `profile-full-needed-entries` | `assurance.gate.footprint` | `footprint.full_needed_entries` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
 | `pull-no-torn-snapshot` | `store.pull.pointer-last` | `pull.torn_reads` | gate | test `contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot` | `== 0` | gated |
-| `push-generation-list-per-round` | `store.push.generation-floor` | `sync.push.generation_keys_listed_per_round` | gate | test `contextful_sync::generation::a_commit_round_counts_the_generation_keys_it_lists` | `<= 1000` | gated |
-| `push-lockstep-rebase-exhausted` | `store.merge.exhausted` | `sync.push.rebase_exhausted_per_parallel_units` | gate | test `contextful_sync::push::lockstep_writers_on_distinct_nodes_count_exhausted_rebases` | `<= 3` | gated |
-| `push-parallel-same-root-refusals` | `store.push.in-flight` | `sync.push.refusals_per_parallel_units` | trend | test `contextful_sync::push::parallel_units_on_one_store_root_count_push_in_flight_refusals` | — | recorded |
-| `push-shared-node-sibling-tombstones` | `store.merge.scoped-union` | `sync.push.sibling_runs_tombstoned` | trend | test `contextful_sync::push::sibling_disks_sharing_a_node_id_count_tombstoned_runs` | — | recorded |
+| `push-generation-list-per-round` | `store.push.generation-probe` | `sync.push.generation_keys_listed_per_round` | gate | test `contextful_sync::generation::a_commit_round_counts_the_generation_keys_it_lists` | `<= 1` | gated |
+| `push-lockstep-rebase-exhausted` | `store.merge.exhausted` | `sync.push.rebase_exhausted_per_parallel_units` | gate | test `contextful_sync::push::lockstep_writers_on_distinct_nodes_count_exhausted_rebases` | `== 0` | gated |
+| `push-parallel-same-root-refusals` | `store.push.in-flight` | `sync.push.refusals_per_parallel_units` | gate | test `contextful_sync::push::parallel_units_on_one_store_root_count_push_in_flight_refusals` | `== 0` | gated |
+| `push-shared-node-sibling-tombstones` | `store.merge.scoped-union` | `sync.push.sibling_runs_tombstoned` | gate | test `contextful_sync::push::sibling_disks_sharing_a_node_id_count_tombstoned_runs` | `== 0` | gated |
 | `read-session-latency` | `read.cache.session-pool` | `session.warm_p95_ms` | trend | test `contextful_context::read::latency::session_and_statement_latency_at_one_fifty_and_five_hundred_runs` | — | recorded |
 | `read-session-one-engine` | `read.cache.session-pool` | `session.engine_opens` | gate | test `contextful_context::read::pool::statements_under_one_key_share_one_resolved_session_and_one_engine` | `== 1` | gated |
 | `recall-evidence-latency` | `read.recall.evidence-gate-bound` | `recall.keyed.evidence_gate_p99_us` | trend | test `contextful_memory::recall::keyed_recall_latency_over_a_full_window_at_the_evidence_gate_bound` | — | recorded |

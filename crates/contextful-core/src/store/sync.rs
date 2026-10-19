@@ -7,10 +7,16 @@ use crate::connector::attach::is_loopback_host;
 use crate::connector::reference::{SecretName, SCHEME};
 use crate::time::Instant;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-/// Default re-commit rounds on a lost manifest compare-and-set: 5 attempts (`store.merge.retries`).
+/// Default consecutive re-commit rounds meeting no newer generation after a lost manifest
+/// compare-and-set: 5 attempts (`store.merge.retries`).
 pub const PUSH_RETRIES: u32 = 5;
+/// Manifest commit rounds one push makes, whatever generations they meet: 64 rounds
+/// (`store.merge.round-ceiling`).
+pub const PUSH_ROUND_CEILING: u32 = 64;
+/// Default wait for the push guard another push of the store holds: 300 s (`store.push.in-flight`).
+pub const PUSH_WAIT_SECS: u64 = 300;
 /// Manifest re-fetches a pull performs against keys moving beneath it: 3 attempts (`store.pull.convergence`).
 pub const PULL_CONVERGENCE: u32 = 3;
 /// Age at which a tombstone leaves the bucket manifest: 30 d (`store.merge.tombstone-ttl`).
@@ -63,6 +69,9 @@ pub struct SyncConfig {
     pub coordination: Option<String>,
     #[serde(default)]
     pub push_retries: Option<u32>,
+    /// Seconds a push waits for the push guard another push of the store holds (`store.push.in-flight`).
+    #[serde(default)]
+    pub push_wait_secs: Option<u64>,
     /// Pull the bucket before a run or the tool server first reads (`store.pull.before-run`).
     #[serde(default)]
     pub pull_before_run: Option<bool>,
@@ -147,6 +156,10 @@ impl SyncConfig {
 
     pub fn push_retries(&self) -> u32 {
         self.push_retries.unwrap_or(PUSH_RETRIES)
+    }
+
+    pub fn push_wait_secs(&self) -> u64 {
+        self.push_wait_secs.unwrap_or(PUSH_WAIT_SECS)
     }
 
     /// Resolve `endpoint` to a bucket adapter's address (`store.endpoint.schemes`): `file://`,
@@ -383,23 +396,47 @@ pub struct Merged {
     pub refused: Vec<StoreError>,
 }
 
-/// Merge this writer's local entries into the remote manifest by a scoped union
-/// (`store.merge`): a local entry counts only for a key `me` owns or an unowned one, and
-/// the remote contributes an entry only where `me` has never written,
-/// so an entry `me` owns and no longer holds leaves with a tombstone. A tombstone naming
-/// another owner's entry refuses and keeps the entry; a tombstone past its TTL leaves. A
-/// commit-log entry whose copies differ refuses outright: a cursor resolves through its
-/// commit, never through whichever copy was written last.
-pub fn merge(remote: &BucketManifest, local: &BTreeMap<String, Entry>, me: &str, now: Instant) -> Result<Merged, StoreError> {
-    merge_verified(remote, local, me, now, &|_, _| Ok(()))
+/// The keys of its node a writer's store held at its last sync (`store.merge.held-record`):
+/// an owned remote entry the store lacks is a local deletion only where the store held it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HeldKeys {
+    /// Every owned key the remote lists: a store that pushed before it kept a record
+    /// (`store.merge.held-absent`).
+    Every,
+    /// Exactly these keys.
+    Keys(BTreeSet<String>),
 }
 
-/// [`merge`], holding each remote tombstone that would remove a listed entry to `verify`:
-/// one it refuses keeps the entry, leaves the manifest and is answered by
-/// `SyncTombstoneUnverified` (`store.merge.tombstone-unverified`).
+impl HeldKeys {
+    /// Whether the store held `key` at its last sync.
+    pub fn holds(&self, key: &str) -> bool {
+        match self {
+            HeldKeys::Every => true,
+            HeldKeys::Keys(keys) => keys.contains(key),
+        }
+    }
+}
+
+/// Merge this writer's local entries into the remote manifest by a scoped union
+/// (`store.merge`), its store having held every owned key the remote lists: a local entry
+/// counts only for a key `me` owns or an unowned one, and the remote contributes an entry
+/// only where `me` has never written, so an entry `me` owns and no longer holds leaves with
+/// a tombstone. A tombstone naming another owner's entry refuses and keeps the entry; a
+/// tombstone past its TTL leaves. A commit-log entry whose copies differ refuses outright:
+/// a cursor resolves through its commit, never through whichever copy was written last.
+pub fn merge(remote: &BucketManifest, local: &BTreeMap<String, Entry>, me: &str, now: Instant) -> Result<Merged, StoreError> {
+    merge_verified(remote, local, &HeldKeys::Every, me, now, &|_, _| Ok(()))
+}
+
+/// [`merge`] against the keys the store `held` at its last sync, so a remote entry `me`
+/// owns leaves with a tombstone only where the store held it and no longer does
+/// (`store.merge.scoped-union`), holding each remote tombstone that would remove a listed
+/// entry to `verify`: one it refuses keeps the entry, leaves the manifest and is answered
+/// by `SyncTombstoneUnverified` (`store.merge.tombstone-unverified`).
 pub fn merge_verified(
     remote: &BucketManifest,
     local: &BTreeMap<String, Entry>,
+    held: &HeldKeys,
     me: &str,
     now: Instant,
     verify: &dyn Fn(&str, &Tombstone) -> Result<(), String>,
@@ -424,8 +461,8 @@ pub fn merge_verified(
         if out.entries.contains_key(key) {
             continue;
         }
-        if entry.owner == me {
-            // Owned here and no longer held here: its deletion propagates.
+        if entry.owner == me && held.holds(key) {
+            // Owned here, held here at the last sync and no longer held: its deletion propagates.
             out.tombstones.insert(key.clone(), Tombstone::unsigned(me, now));
             continue;
         }

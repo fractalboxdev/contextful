@@ -873,15 +873,13 @@ direction = "lower_is_better"
 method = { test = "contextful_context::run_commit::eight_pipelines_share_one_table_commit_lock" }
 seed   = 0x5eed_0103
 
-# Each overlapping push but the holder's refuses: 1 + 3 + 7 over 2, 4 and 8 units, the
-# most the schedule allows; it moves to the gate tier with a target of 0.
 [entry.push-parallel-same-root-refusals]
 clause = "store.push.in-flight"
 metric = "sync.push.refusals_per_parallel_units"
 kind   = "test"
-tier   = "trend"
-direction = "lower_is_better"
+tier   = "gate"
 method = { test = "contextful_sync::push::parallel_units_on_one_store_root_count_push_in_flight_refusals" }
+target = { op = "==", value = 0 }
 seed   = 0x5eed_0090
 
 [entry.push-lockstep-rebase-exhausted]
@@ -890,27 +888,25 @@ metric = "sync.push.rebase_exhausted_per_parallel_units"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_sync::push::lockstep_writers_on_distinct_nodes_count_exhausted_rebases" }
-target = { op = "<=", value = 3 }
+target = { op = "==", value = 0 }
 seed   = 0x5eed_0091
 
-# Every run of the sibling disk is tombstoned, the most the fixture allows; it moves to
-# the gate tier with a target of 0.
 [entry.push-shared-node-sibling-tombstones]
 clause = "store.merge.scoped-union"
 metric = "sync.push.sibling_runs_tombstoned"
 kind   = "test"
-tier   = "trend"
-direction = "lower_is_better"
+tier   = "gate"
 method = { test = "contextful_sync::push::sibling_disks_sharing_a_node_id_count_tombstoned_runs" }
+target = { op = "==", value = 0 }
 seed   = 0x5eed_0092
 
 [entry.push-generation-list-per-round]
-clause = "store.push.generation-floor"
+clause = "store.push.generation-probe"
 metric = "sync.push.generation_keys_listed_per_round"
 kind   = "test"
 tier   = "gate"
 method = { test = "contextful_sync::generation::a_commit_round_counts_the_generation_keys_it_lists" }
-target = { op = "<=", value = 1000 }
+target = { op = "<=", value = 1 }
 seed   = 0x5eed_0093
 
 [entry.runs-record-objects-per-tick]

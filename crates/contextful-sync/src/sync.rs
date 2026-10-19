@@ -8,8 +8,8 @@ use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer, 
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SNAPSHOT_ANCESTORS_MAX};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
-    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge_verified, owner_of, run_state_node, BucketManifest, ControlHead, Coordination, Entry, SyncConfig,
-    Tombstone, GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE,
+    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge_verified, owner_of, run_state_node, BucketManifest, ControlHead, Coordination, Entry, HeldKeys,
+    SyncConfig, Tombstone, GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE, PUSH_ROUND_CEILING,
 };
 use contextful_core::ports::SigningPort;
 use contextful_core::revoke::KeySetLedger;
@@ -107,6 +107,20 @@ fn syncable(rel: &str) -> bool {
         || rel.split('/').any(|s| s.ends_with(".staging"))
         || name == POINTER_FILE)
 }
+
+/// The store's record of the keys its node owns and held at its last sync, a dot-file that
+/// stays local (`store.merge.held-record`).
+pub const HELD_FILE: &str = ".sync-held.json";
+
+/// The contents of [`HELD_FILE`]: each node id the store pushed or pulled under, and that
+/// node's keys.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct HeldRecord {
+    nodes: BTreeMap<String, BTreeSet<String>>,
+}
+
+/// The push guard's file under the store root; a store keeping it has pushed before.
+const PUSH_LOCK_FILE: &str = ".push.lock";
 
 /// Conditional puts one key tries before a push reports it moving.
 const PUT_ROUNDS: u32 = 5;
@@ -776,6 +790,84 @@ impl Syncer {
         Ok(out)
     }
 
+    /// Whether the bucket holds `gen-<n>.json`, listed under that one key so no other
+    /// generation's key returns.
+    fn generation_stands(&self, n: u64) -> Result<bool> {
+        let key = self.key(&generation_key(n))?;
+        Ok(self.bucket.list(&key)?.iter().any(|k| *k == key))
+    }
+
+    /// The newest generation whose copy the bucket holds, read against a manifest at
+    /// generation `read`, and whether `gen-<read>.json` stands (`store.push.generation-probe`):
+    /// past a numbered manifest each generation is probed by its own key, and only a manifest
+    /// without `generation` lists `manifests/` whole.
+    fn generation_floor(&self, read: u64) -> Result<(u64, bool)> {
+        if read == 0 {
+            return Ok((self.generations()?.last().copied().unwrap_or(0), false));
+        }
+        let stands = self.generation_stands(read)?;
+        let mut newest = read;
+        while self.generation_stands(newest + 1)? {
+            newest += 1;
+        }
+        Ok((newest, stands))
+    }
+
+    /// Whether a push of the store took the push guard before, read before this sync takes it.
+    fn pushed_before(&self) -> bool {
+        self.store.root().join(PUSH_LOCK_FILE).exists()
+    }
+
+    /// The keys of this node the store held at its last sync (`store.merge.held-record`); with
+    /// no record for this node, every owned key when the store `pushed_before`, and none
+    /// otherwise (`store.merge.held-absent`).
+    fn held_keys(&self, pushed_before: bool) -> Result<HeldKeys> {
+        Ok(match self.held_record()?.nodes.remove(&self.node) {
+            Some(keys) => HeldKeys::Keys(keys),
+            None if pushed_before => HeldKeys::Every,
+            None => HeldKeys::Keys(BTreeSet::new()),
+        })
+    }
+
+    /// The store's record; an absent or unreadable one reads empty.
+    fn held_record(&self) -> Result<HeldRecord> {
+        let path = self.store.root().join(HELD_FILE);
+        match std::fs::read(&path) {
+            Ok(bytes) => Ok(serde_json::from_slice::<HeldRecord>(&bytes).unwrap_or_default()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(HeldRecord::default()),
+            Err(e) => Err(io(&path, e)),
+        }
+    }
+
+    /// Record `keys` as the keys of this node the store holds, keeping every other node's.
+    fn write_held(&self, keys: &BTreeSet<String>) -> Result<()> {
+        let mut record = self.held_record()?;
+        record.nodes.insert(self.node.clone(), keys.clone());
+        let bytes = serde_json::to_vec(&record).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+        write(&self.store.root().join(HELD_FILE), &bytes)
+    }
+
+    /// Add to the record each key of this node `manifest` lists that the store holds; a
+    /// store holding every owned key adds every one the manifest lists. The caller holds the
+    /// push guard, so no push rewrites the record between this read and its write.
+    fn record_pulled(&self, manifest: &BucketManifest, pushed_before: bool) -> Result<()> {
+        let recorded = self.held_record()?.nodes.contains_key(&self.node);
+        let (mut keys, every) = match self.held_keys(pushed_before)? {
+            HeldKeys::Keys(keys) => (keys, false),
+            HeldKeys::Every => (BTreeSet::new(), true),
+        };
+        let before = keys.len();
+        for key in manifest.entries.keys().filter(|k| owner_of(k).as_deref() == Some(self.node.as_str())) {
+            if every || self.local_path(key).is_some_and(|p| p.exists()) {
+                keys.insert(key.clone());
+            }
+        }
+        if keys.len() != before || !recorded {
+            self.write_held(&keys)?;
+        }
+        Ok(())
+    }
+
     /// Create generation `n`'s immutable copy holding `bytes`; a copy already there holds
     /// the same commit, or the push refuses after its commit (`store.push.generation-conflict`).
     fn put_generation(&self, n: u64, bytes: &[u8]) -> Result<()> {
@@ -844,7 +936,8 @@ impl Syncer {
     /// bucket manifest as the next generation by merge and compare-and-set within the retry
     /// bound, and write that generation's immutable copy.
     pub fn push(&self, now: Instant) -> Result<PushReport> {
-        let _guard = PushGuard::take(self.store.root())?;
+        let pushed_before = self.pushed_before();
+        let _guard = PushGuard::take(self.store.root(), std::time::Duration::from_secs(self.config.push_wait_secs()))?;
         let coordination = match self.probe() {
             Ok(c) => c,
             // A push declaring single-writer coordination proceeds without the demonstration.
@@ -899,7 +992,17 @@ impl Syncer {
                 locals.push(local);
             }
         }
-        let first = self.commit(&plan, now, &report.uploaded)?;
+        // The record names every key this push may list before the commit lists it, so an
+        // interrupted push loses no deletion (`store.merge.held-record`).
+        let held = self.held_keys(pushed_before)?;
+        let holding: BTreeSet<String> = plan.mine.keys().filter(|k| owner_of(k).as_deref() == Some(self.node.as_str())).cloned().collect();
+        if let HeldKeys::Keys(keys) = &held {
+            if !holding.is_subset(keys) {
+                self.write_held(&keys.union(&holding).cloned().collect())?;
+            }
+        }
+        let first = self.commit(&plan, now, &report.uploaded, &held)?;
+        self.write_held(&holding)?;
         report.entries = first.entries;
         report.generation = first.generation;
         report.rounds = first.rounds;
@@ -915,7 +1018,7 @@ impl Syncer {
         }
         // A generation names a pointer only once the bucket holds it.
         if !report.pointers.is_empty() {
-            let second = self.commit(&plan, now, &report.uploaded)?;
+            let second = self.commit(&plan, now, &report.uploaded, &HeldKeys::Keys(holding))?;
             report.entries = second.entries;
             report.generation = second.generation;
             report.rounds += second.rounds;
@@ -989,24 +1092,33 @@ impl Syncer {
     /// Commit the bucket manifest listing `plan` and the project's table pointers as read
     /// before the commit, then write its generation (`store.push.manifest-commit`,
     /// `store.push.generation`).
-    fn commit(&self, plan: &ManifestPlan, now: Instant, uploaded: &[String]) -> Result<Commit> {
+    fn commit(&self, plan: &ManifestPlan, now: Instant, uploaded: &[String], held: &HeldKeys) -> Result<Commit> {
         let retries = self.config.push_retries().max(1);
         let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
-        for round in 1..=retries {
+        // Consecutive rounds meeting no newer generation than the round before count against the retry
+        // bound; every round counts against the ceiling (`store.merge.retries`, `store.merge.round-ceiling`).
+        let (mut round, mut stalled, mut last_floor) = (0u32, 0u32, None::<u64>);
+        while round < PUSH_ROUND_CEILING && stalled < retries {
+            round += 1;
             let (remote, etag) = match self.manifest_bytes()? {
                 Some((remote, bytes, etag)) => (Some((remote, bytes)), Some(etag)),
                 None => (None, None),
             };
-            let generations = self.generations()?;
-            let newest = generations.last().copied().unwrap_or(0);
+            let (newest, stands) = self.generation_floor(remote.as_ref().map_or(0, |(m, _)| m.generation))?;
             // No commit lands past a generation whose copy is absent (`store.push.generation-heal`).
             if let Some((remote, bytes)) = &remote {
-                if remote.generation > 0 && generations.binary_search(&remote.generation).is_err() {
+                if remote.generation > 0 && !stands {
                     // A copy a concurrent writer created between the listing and this put already stands.
                     self.bucket.put(&self.key(&generation_key(remote.generation))?, bytes, Condition::IfNoneMatch)?;
                 }
             }
             let remote = remote.map(|(m, _)| m).unwrap_or_default();
+            let floor = remote.generation.max(newest);
+            match last_floor {
+                Some(last) if floor > last => stalled = 0,
+                _ => stalled += 1,
+            }
+            last_floor = Some(floor);
             self.admit_control_head(plan, &remote)?;
             // Pointers read before the commit name snapshots whose files earlier commits listed.
             let pointers: BTreeMap<String, BucketPointer> = self.project_pointers()?.into_iter().filter(|(k, _)| !self.redistribution.withholds(&self.project, k)).collect();
@@ -1025,7 +1137,7 @@ impl Syncer {
             }
             let ledger = self.key_set_ledger();
             let verify = |key: &str, t: &Tombstone| verify_tombstone(ledger.as_ref(), key, t);
-            let merged = merge_verified(&remote, &entries, &self.node, now, &verify)?;
+            let merged = merge_verified(&remote, &entries, held, &self.node, now, &verify)?;
             let mut committed = merged.manifest;
             // The committed manifest names no withheld table, whatever the manifest it merged named (`authority.bound-redistribution.withhold`).
             committed.entries.retain(|k, _| !self.redistribution.withholds(&self.project, k));
@@ -1035,7 +1147,7 @@ impl Syncer {
                 committed.control_heads.insert(self.project.clone(), head.clone());
             }
             // A manifest rewritten by a writer predating `generation` reads 0; the files keep the count (`store.push.generation-floor`).
-            committed.generation = remote.generation.max(newest) + 1;
+            committed.generation = floor + 1;
             committed.committed_at = Some(now);
             committed.committed_by = Some(self.node.clone());
             committed.pointers = remote.pointers.iter().filter(|(k, _)| !in_project(k)).map(|(k, p)| (k.clone(), p.clone())).collect();
@@ -1062,7 +1174,7 @@ impl Syncer {
             }
         }
         Err(StoreError::SyncManifestRebaseExhausted(format!(
-            "the manifest commit lost {retries} races; every uploaded object is already in the bucket ({}); run the push again",
+            "the manifest commit lost {round} races, {stalled} of them meeting no newer generation; every uploaded object is already in the bucket ({}); run the push again",
             if uploaded.is_empty() { "none this push".to_string() } else { uploaded.join(", ") }
         ))
         .into())
@@ -1369,6 +1481,13 @@ impl Syncer {
                 }
             }
         }
+        // Each listed key of this node the store now holds is one a later push may delete (`store.merge.held-record`).
+        // The record is read and written under the push guard, so no push's record write interleaves.
+        if !replica {
+            let pushed_before = self.pushed_before();
+            let _guard = PushGuard::take(self.store.root(), std::time::Duration::from_secs(self.config.push_wait_secs()))?;
+            self.record_pulled(&manifest, pushed_before)?;
+        }
         // Pointers last: every pointer to write is verified before any is written.
         let candidates: Vec<(String, BucketPointer)> = match &generation {
             Some((listed, _)) => listed.pointers.iter().map(|(k, p)| (k.clone(), p.clone())).collect(),
@@ -1583,27 +1702,40 @@ fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(contextful_context::store::replace_file(path, bytes)?)
 }
 
-/// The push guard: one push of one store per machine, held by an advisory lock the
-/// kernel releases when its holder exits (`store.push.in-flight`).
+/// The push guard: one push of one store per machine at a time, held by an advisory lock
+/// the kernel releases when its holder exits (`store.push.in-flight`).
 struct PushGuard {
     _file: std::fs::File,
 }
 
+/// How often a push waiting on the guard tries it again.
+const PUSH_GUARD_POLL: std::time::Duration = std::time::Duration::from_millis(20);
+
 impl PushGuard {
-    fn take(root: &Path) -> Result<PushGuard> {
+    /// Take the guard, waiting up to `wait` while another push of the store holds it.
+    fn take(root: &Path, wait: std::time::Duration) -> Result<PushGuard> {
         use std::io::Write;
-        let path = root.join(".push.lock");
+        let path = root.join(PUSH_LOCK_FILE);
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d).map_err(|e| io(d, e))?;
         }
         let mut file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path).map_err(|e| io(&path, e))?;
-        match file.try_lock() {
-            Ok(()) => {}
-            Err(std::fs::TryLockError::WouldBlock) => {
-                let holder = std::fs::read_to_string(&path).unwrap_or_default();
-                return Err(StoreError::SyncPushInFlight(format!("process {} holds this store's push guard", holder.trim())).into());
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            match file.try_lock() {
+                Ok(()) => break,
+                Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => std::thread::sleep(PUSH_GUARD_POLL),
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    let holder = std::fs::read_to_string(&path).unwrap_or_default();
+                    return Err(StoreError::SyncPushInFlight(format!(
+                        "process {} held this store's push guard for the {} s this sync waited",
+                        holder.trim(),
+                        wait.as_secs()
+                    ))
+                    .into());
+                }
+                Err(std::fs::TryLockError::Error(e)) => return Err(io(&path, e)),
             }
-            Err(std::fs::TryLockError::Error(e)) => return Err(io(&path, e)),
         }
         file.set_len(0).map_err(|e| io(&path, e))?;
         let _ = write!(file, "{}", std::process::id());

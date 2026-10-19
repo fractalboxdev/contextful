@@ -1482,7 +1482,7 @@ fn the_receive_route_answers_404_for_a_pipeline_that_receives_nothing() {
 
 /// The receive route answers `413` past `max_batch_bytes`, `503` with `Retry-After` while every queue slot is
 /// held, `410` for a key past its retention and `422` for a batch failing a table on a non-retryable class.
-// spec: run.land.receive-endpoint-status@12760ef0
+// spec: run.land.receive-endpoint-status@ffd47ca5
 #[test]
 fn the_receive_route_maps_each_refusal_to_its_status() {
     let (dir, public) = receiving_face();
