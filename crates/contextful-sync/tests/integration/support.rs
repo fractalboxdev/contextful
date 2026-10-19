@@ -170,3 +170,66 @@ impl ObjectStore for Scripted {
         self.inner.cas_scope()
     }
 }
+
+/// A bucket wrapper that holds each get and put for `latency`, counting the requests in
+/// flight and the most ever in flight at once.
+pub struct Slow {
+    pub inner: Arc<dyn ObjectStore>,
+    pub latency: std::time::Duration,
+    pub in_flight: std::sync::atomic::AtomicUsize,
+    pub peak: std::sync::atomic::AtomicUsize,
+    pub gets: std::sync::atomic::AtomicUsize,
+}
+
+impl Slow {
+    pub fn new(inner: Arc<dyn ObjectStore>, latency: std::time::Duration) -> Slow {
+        Slow { inner, latency, in_flight: Default::default(), peak: Default::default(), gets: Default::default() }
+    }
+
+    fn hold<T>(&self, f: impl FnOnce() -> T) -> T {
+        use std::sync::atomic::Ordering::SeqCst;
+        let now = self.in_flight.fetch_add(1, SeqCst) + 1;
+        self.peak.fetch_max(now, SeqCst);
+        std::thread::sleep(self.latency);
+        let out = f();
+        self.in_flight.fetch_sub(1, SeqCst);
+        out
+    }
+}
+
+impl ObjectStore for Slow {
+    fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+        self.gets.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.hold(|| self.inner.get(key))
+    }
+
+    fn put(&self, key: &str, bytes: &[u8], condition: Condition) -> Result<Put, ObjectError> {
+        self.hold(|| self.inner.put(key, bytes, condition))
+    }
+
+    fn delete(&self, key: &str) -> Result<(), ObjectError> {
+        self.inner.delete(key)
+    }
+
+    fn list(&self, prefix: &str) -> Result<Vec<String>, ObjectError> {
+        self.inner.list(prefix)
+    }
+}
+
+/// Seed `bucket` under prefix `team` with `n` small objects of project `research` and a
+/// bucket manifest listing them, as a store of `n` committed objects would leave it.
+pub fn seed_objects(bucket: &dyn ObjectStore, n: usize) -> Vec<String> {
+    use contextful_core::run::journal::sha256_hex;
+    use contextful_core::store::sync::{BucketManifest, Entry};
+    let mut manifest = BucketManifest::default();
+    let mut keys = Vec::with_capacity(n);
+    for i in 0..n {
+        let key = format!("research/tables/filings/_runs/runs/run-{i:05}/manifest.json");
+        let bytes = format!("{{\"run\":{i}}}").into_bytes();
+        bucket.put(&format!("team/{key}"), &bytes, Condition::None).unwrap();
+        manifest.entries.insert(key.clone(), Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() });
+        keys.push(key);
+    }
+    bucket.put("team/manifest.json", &serde_json::to_vec(&manifest).unwrap(), Condition::None).unwrap();
+    keys
+}

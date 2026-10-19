@@ -507,6 +507,10 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *A-surface*
 - `control-diverged` — A push whose signed control head does not descend from the bucket head raises `SyncControlDiverged`, names both heads and leaves the bucket head unchanged.
   *A-surface*
+- `upload-digest` — A push lists in its manifest commit the sha256 of the bytes each upload sent, whatever digest its plan read, and drops that file's digest record when the two differ.
+  *because a file rewritten after the plan otherwise lists a digest no bucket object carries*
+- `transfer-width` — A push keeps up to {{store.pull.transfer-width}} uploads in flight, and commits the bucket manifest only after every upload it started has returned.
+  *because the manifest lists an object only once the bucket holds it*
 - `pointer-carry` — After its manifest commit, a push publishes each local table pointer whose snapshot is whole and whose {{store.lay-out.ancestors}} name the bucket pointer's, or the bucket pointer names none, by a conditional put keeping the bucket's fence.
   *because a snapshot a local fold or a build publishes reads on no other node until its pointer reaches the bucket*
 - `pointer-leased` — A push publishes no pointer for a table whose compaction lease a holder keeps unexpired; that holder publishes under its fence.
@@ -570,6 +574,10 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *P4*
 - `unconverged-resume` — A pull refused by {{store.pull.unconverged}} keeps each object it verified, so the next `sync pull` downloads only the keys still differing; no pull retries past its attempts.
   *A-store*
+- `transfer-width` — A pull keeps up to 16 requests in flight while it downloads objects, and writes each object it verified before any refusal returns.
+  *because one request per round trip makes a cold store's boot grow with its object count rather than its bytes*
+- `digest-record` — A pull and a push take a local file's sha256 from the machine-local digest record when the file's size, modification time, change time and inode match the record's, and hash the file otherwise.
+  *because rehashing every held file on each pull and push grows with the store, and setting a modification time moves the change time*
 - `pointer-last` — A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader meets a pointer ahead of its data.
   *A-store*
 - `tombstone-applied` — A pull deletes the local copy of each key a tombstone names and no entry lists; a key holding no local copy is neither verified nor reported.

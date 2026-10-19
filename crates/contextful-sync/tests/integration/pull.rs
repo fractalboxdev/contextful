@@ -973,3 +973,82 @@ fn cold_pull_wall_over_a_fixed_latency_bucket() {
     contextful_eval::record::emit("sync-cold-pull-wall-p50", p50, repeats as u64, SEED);
     contextful_eval::record::emit("sync-cold-pull-wall-p95", p95, repeats as u64, SEED);
 }
+
+/// Objects in the cold-pull fixture, the size of a deployed store whose `_runs` records dominate.
+const COLD_PULL_OBJECTS: usize = 7_700;
+/// The seed the cold-pull fixture's figures record against.
+const COLD_PULL_SEED: u64 = 0x5eed_0643;
+
+/// A cold pull over a bucket holding each request for 2 ms keeps 16 fetches in flight and
+/// lands every object; it reads each object once.
+// spec: store.pull.transfer-width@baaf5f7a
+#[test]
+fn a_cold_pull_keeps_sixteen_fetches_in_flight_and_reads_each_object_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let keys = crate::support::seed_objects(inner.as_ref(), COLD_PULL_OBJECTS);
+    let slow = Arc::new(crate::support::Slow::new(inner, std::time::Duration::from_millis(2)));
+    let cold = node("ingest-b", slow.clone(), "");
+    let started = std::time::Instant::now();
+    let report = cold.syncer.pull(&PullScope::default()).unwrap();
+    let wall = started.elapsed().as_secs_f64();
+    assert_eq!(report.downloaded.len(), keys.len());
+    assert!(keys.iter().all(|k| cold.root().join(k.strip_prefix("research/").unwrap()).exists()));
+    let peak = slow.peak.load(Ordering::SeqCst);
+    assert_eq!(peak, 16, "requests in flight at once");
+    let gets = slow.gets.load(Ordering::SeqCst);
+    let per_object = gets as f64 / keys.len() as f64;
+    eprintln!("cold pull: {} objects, {gets} gets, peak {peak} in flight, {wall:.2} s", keys.len());
+    contextful_eval::record::emit("sync-cold-pull-requests-per-object", per_object, keys.len() as u64, COLD_PULL_SEED);
+    contextful_eval::record::emit("sync-cold-pull-wall", wall, keys.len() as u64, COLD_PULL_SEED);
+    assert!(per_object <= 1.01, "{gets} gets for {} objects", keys.len());
+}
+
+/// A pull that meets a tampered object keeps every other object it verified.
+#[test]
+fn a_refused_concurrent_pull_keeps_each_object_it_verified() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let keys = crate::support::seed_objects(inner.as_ref(), 64);
+    let tampered = format!("team/{}", keys[40]);
+    let scripted = Arc::new(Scripted {
+        inner,
+        script: Script { on_get: Some(Box::new(move |k| (k == tampered).then(|| Ok(Some((b"tampered".to_vec(), "\"t\"".into())))))), ..Script::default() },
+    });
+    let cold = node("ingest-b", scripted, "");
+    let err = cold.syncer.pull(&PullScope::default()).unwrap_err();
+    assert!(matches!(err, SyncError::Store(StoreError::SyncObjectDigestMismatch(_))), "{err}");
+    assert!(!cold.root().join(keys[40].strip_prefix("research/").unwrap()).exists());
+    for key in keys.iter().filter(|k| **k != keys[40]) {
+        let path = cold.root().join(key.strip_prefix("research/").unwrap());
+        if let Ok(bytes) = std::fs::read(&path) {
+            assert!(bytes.starts_with(b"{\"run\":"), "`{key}` landed verified");
+        }
+    }
+}
+
+/// A pull reads no local file whose size, modification time, change time and inode match its
+/// digest record, and a rewrite restoring the size and modification time still re-downloads.
+// spec: store.pull.digest-record@4a0497aa
+#[test]
+fn a_pull_takes_a_matching_files_digest_from_its_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let keys = crate::support::seed_objects(b.as_ref(), 4);
+    let cold = node("ingest-b", b, "");
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let again = cold.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!((again.bytes_read, again.bytes_hashed), (0, 0), "every record stands for its file");
+
+    let path = cold.root().join(keys[0].strip_prefix("research/").unwrap());
+    let original = std::fs::read(&path).unwrap();
+    let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+    let forged: Vec<u8> = original.iter().map(|b| if *b == b'0' { b'9' } else { *b }).collect();
+    assert_ne!(forged, original);
+    std::fs::write(&path, &forged).unwrap();
+    std::fs::File::options().write(true).open(&path).unwrap().set_modified(modified).unwrap();
+    assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), modified);
+    let report = cold.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(report.downloaded, vec![keys[0].clone()], "the rewrite moved the change time");
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+}

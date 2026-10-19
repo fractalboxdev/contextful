@@ -2,7 +2,7 @@
 
 # Target ledger
 
-151 entries: 92 gated, 46 recorded, 6 scheduled, 7 open.
+153 entries: 93 gated, 46 recorded, 6 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -132,15 +132,17 @@
 | `status-latency-runs-record` | `run.publish.staleness` | `run.publish.status_p95_us` | trend | test `contextful_context::build::status_over_an_unfolded_run_record_at_two_thousand_runs` | — | recorded |
 | `store-write-deny-set` | `topology.package.store-write-engine-free` | `topology.store_write.forbidden_packages` | gate | test `contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package` | `== 0` | gated |
 | `store-write-package-count` | `topology.package.store-write-engine-free` | `topology.store_write.unique_packages` | gate | test `contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package` | `<= 219` | gated |
+| `sync-cold-pull-objects-before-ready` | `store.pull.before-run` | `pull.cold.objects_before_ready` | gate | issue 643 | `<= 3` | open (issue 643) |
 | `sync-cold-pull-overlap` | `store.pull.before-run` | `sync.cold_pull.max_inflight_gets` | trend | test `contextful_sync::pull::a_cold_pull_reports_its_peak_in_flight_object_gets` | — | recorded |
+| `sync-cold-pull-requests-per-object` | `store.pull.transfer-width` | `pull.cold.requests_per_object` | gate | test `contextful_sync::pull::a_cold_pull_keeps_sixteen_fetches_in_flight_and_reads_each_object_once` | `<= 1.01` | gated |
 | `sync-cold-pull-wall-p50` | `store.pull.before-run` | `sync.cold_pull.wall_ms.p50` | trend | test `contextful_sync::pull::cold_pull_wall_over_a_fixed_latency_bucket` | — | recorded |
 | `sync-cold-pull-wall-p95` | `store.pull.before-run` | `sync.cold_pull.wall_ms.p95` | trend | test `contextful_sync::pull::cold_pull_wall_over_a_fixed_latency_bucket` | — | recorded |
-| `sync-noop-pull-hashed-10k` | `store.pull.before-run` | `sync.pull.bytes_hashed_per_noop_pull.at_10k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 10240000` | gated |
-| `sync-noop-pull-hashed-1k` | `store.pull.before-run` | `sync.pull.bytes_hashed_per_noop_pull.at_1k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 1024000` | gated |
+| `sync-noop-pull-hashed-10k` | `store.pull.before-run` | `sync.pull.bytes_hashed_per_noop_pull.at_10k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 0` | gated |
+| `sync-noop-pull-hashed-1k` | `store.pull.before-run` | `sync.pull.bytes_hashed_per_noop_pull.at_1k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 0` | gated |
 | `sync-noop-pull-keys-listed-10k` | `store.pull.pointer-advance` | `sync.pull.keys_listed_per_noop_pull.at_10k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 10010` | gated |
 | `sync-noop-pull-keys-listed-1k` | `store.pull.pointer-advance` | `sync.pull.keys_listed_per_noop_pull.at_1k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 1010` | gated |
 | `sync-noop-pull-manifest-bytes-10k` | `store.pull.before-run` | `sync.pull.manifest_bytes_per_noop_pull.at_10k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 2152176` | gated |
-| `sync-noop-pull-read-10k` | `store.pull.before-run` | `sync.pull.bytes_read_per_noop_pull.at_10k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 10250240` | gated |
+| `sync-noop-pull-read-10k` | `store.pull.before-run` | `sync.pull.bytes_read_per_noop_pull.at_10k` | gate | test `contextful_sync::pull::a_noop_pull_counts_its_listed_keys_hashed_bytes_and_manifest_bytes` | `<= 0` | gated |
 | `unbounded-retrieve-latency` | `read.retrieve.sidecar-generates-candidates` | `retrieve.unbounded.p95_ms` | trend | test `contextful_context::read::horizon::retrieve_latency_at_10k_chunks` | — | recorded |
 | `vector-filtered-recall` | `read.retrieve.sidecar-oversampling` | `slices.filtered.retrieval.vector.recall_at_k` | scheduled | issue 43 | `>= 0.95` | open (issue 43) |
 | `vector-recall` | `read.retrieve.sidecar-generates-candidates` | `retrieval.vector.recall_at_k` | gate | test `contextful_context::index::vector_recall_at_10_holds_against_exact_search` | `>= 0.95` | gated |

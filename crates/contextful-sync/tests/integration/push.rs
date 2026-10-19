@@ -1117,3 +1117,54 @@ fn the_run_record_grows_the_bucket_by_a_fixed_object_count_per_tick() {
     contextful_eval::record::emit("runs-record-manifest-keys-per-tick", listed, window as u64, SEED);
     contextful_eval::record::emit("bucket-keys-per-tick", bucket_keys, window as u64, SEED);
 }
+
+/// A push of a store holding 256 unlisted files keeps 16 uploads in flight, and the manifest
+/// it commits lists every one.
+// spec: store.push.transfer-width@be963434
+#[test]
+fn a_push_keeps_sixteen_uploads_in_flight_and_commits_after_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let inner = bucket(dir.path());
+    let slow = Arc::new(crate::support::Slow::new(inner.clone(), std::time::Duration::from_millis(2)));
+    let a = node("ingest-a", slow.clone(), "");
+    for i in 0..256 {
+        let path = a.root().join(format!("tables/filings/_runs/runs/run-{i:05}/manifest.json"));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, format!("{{\"run\":{i}}}")).unwrap();
+    }
+    let report = a.syncer.push(at(NOW)).unwrap();
+    assert_eq!(report.uploaded.iter().filter(|k| k.contains("/_runs/")).count(), 256, "{:?}", report.uploaded);
+    assert_eq!(slow.peak.load(std::sync::atomic::Ordering::SeqCst), 16, "uploads in flight at once");
+    let listed: BucketManifest = serde_json::from_slice(&inner.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    assert!(report.uploaded.iter().all(|k| listed.entries.contains_key(k) && inner.get(&format!("team/{k}")).unwrap().is_some()));
+}
+
+/// A push whose digest record names another digest for a file it uploads lists the digest of
+/// the bytes it sent.
+// spec: store.push.upload-digest@e347b1fc
+#[test]
+fn a_push_lists_the_digest_of_the_bytes_it_uploaded() {
+    use contextful_core::run::journal::sha256_hex;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    let rel = "tables/filings/_runs/runs/run-00000/manifest.json";
+    let path = a.root().join(rel);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"{\"run\":0}").unwrap();
+    a.syncer.plan_manifest().unwrap();
+    let held = sha256_hex(b"{\"run\":0}");
+    let record = a._dir.path().join(".contextful/sync/research/digests.json");
+    let text = std::fs::read_to_string(&record).unwrap();
+    assert!(text.contains(&held), "the plan recorded the file's digest");
+    let stale = sha256_hex(b"stale");
+    std::fs::write(&record, text.replace(&held, &stale)).unwrap();
+
+    a.syncer.push(at(NOW)).unwrap();
+    let listed: BucketManifest = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    let entry = &listed.entries[&format!("research/{rel}")];
+    let (object, _) = b.get(&format!("team/research/{rel}")).unwrap().unwrap();
+    assert_eq!(entry.sha256, sha256_hex(&object), "the manifest lists the object the bucket holds");
+    assert_eq!(entry.sha256, held);
+    assert!(!std::fs::read_to_string(&record).unwrap().contains(&stale), "the push drops the stale record");
+}

@@ -101,6 +101,9 @@ impl S3Bucket {
             .timeout_global(Some(REQUEST_TIMEOUT))
             .timeout_connect(Some(CONNECT_TIMEOUT))
             .timeout_recv_response(Some(ANSWER_TIMEOUT))
+            // One idle connection per transfer in flight, so a transfer reuses its TLS session (`store.pull.transfer-width`).
+            .max_idle_connections(crate::transfer::TRANSFER_WIDTH)
+            .max_idle_connections_per_host(crate::transfer::TRANSFER_WIDTH)
             .build()
             .new_agent();
         Ok(S3Bucket { bucket, credentials, agent })
