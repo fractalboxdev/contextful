@@ -393,3 +393,20 @@ Consequences: a report without a reference or an execution component refuses; a 
 | The case's judge against a pre-horizon reference *(chosen)* | — | One judge call per retrieved document. |
 | Consumer-landed scores | Comparability | Two runs of one case score leakage by different rules. |
 | A fixed classifier | Domain | A generic classifier misses domain-specific outcomes. |
+
+## A pull request runs the parts its diff reaches
+
+**Status:** accepted
+
+Context: every pull request dispatches every required part, two at a time, each repeating its own cold build, so a prose change waits hours behind binary feature suites. Criteria: branch protection still sees every required check, no change skips a part its diff can reach, and the selection runs locally.
+
+Decision: `assurance.gate.affected-parts` lists the required parts the diff from the merge base reaches. Build inputs and unmapped paths reach every part under `assurance.gate.affected-every`; spec, TypeScript and Lean paths reach their own parts. `assurance.gate.remote-check` completes every unlisted required part as succeeded.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A path map with a dependency closure through pins, every unknown reaching every part *(chosen)* | — | A new top-level directory reaches every part until a clause maps it. |
+| A cargo dependency graph per changed package | Locality | Every part learns which packages it compiles; a lock change still reaches everything. |
+| Every part on every change | Gate wall clock | A spec-only change waits on hours of builds. |
+| Skipped required checks left absent | Branch protection | An absent required check blocks the merge. |
+
+Consequences: a change confined to `spec/`, `references/`, `apps/`, `packages/` or `formal/` runs a fraction of the parts. A part the map omits wrongly stays green until a change under `crates/` or `tools/` runs it.

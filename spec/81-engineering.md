@@ -192,7 +192,19 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
   *A-assurance*
-- `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts --base <base-sha>`, each as `flare-dispatch/check:<part>` on the head commit.
+- `remote-check` — The FlareDispatch pull-request webhook dispatches every part `contextful-ci stages --parts --base <base-sha> --affected` lists, each as `flare-dispatch/check:<part>` on the head commit, and completes every other required part as succeeded, not affected.
+  *A-assurance*
+- `affected-parts` — `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the required parts the diff from the merge base of `<rev>` and HEAD reaches, always including pins, toolchain and schema.
+  *A-assurance*
+- `affected-every` — A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every required part.
+  *A-assurance*
+- `affected-spec` — A change under `spec/` or `references/` reaches test-first validation and, for each clause whose statement or `spec/pins.toml` entry changed, the parts running its pinned test or theorem.
+  *A-assurance*
+- `affected-unplaced` — An unreadable spec lock or pins file, or a changed clause pinned outside every workspace package, reaches every required part.
+  *because a pin the listing cannot place runs on a part the listing cannot name*
+- `affected-surfaces` — A change under `apps/` or `packages/` reaches the TypeScript surfaces part beside pins, toolchain and schema.
+  *A-assurance*
+- `affected-formal` — A change under `formal/` other than its toolchain file reaches the formal stage and every CLI differential part.
   *A-assurance*
 - `windows-checks` — Windows native checks run only as optional diagnostics and contribute no required merge or release verdict.
   *A-assurance*
