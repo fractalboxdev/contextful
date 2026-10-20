@@ -79,8 +79,11 @@ fn audit_reads_projects_one_row_per_table_an_entry_names() {
 }
 
 /// A lookup over a full 24 h window answers within 1 s, the chain's segments parsed on
-/// the call. Under `contextful-ci measure` the window holds 86 400 reads, one per second;
-/// elsewhere 8 640, one per 10 s.
+/// the call. Under `contextful-ci measure` the window holds 86 400 reads, one per second,
+/// and the test runs alone, so it asserts the 1 s bound; elsewhere 8 640, one per 10 s,
+/// beside sibling tests, so it asserts the counts the lookup answers from: one projected
+/// row per read, and each requester's reads grouped per table
+/// (`assurance.measure.count-first`).
 // spec: disclosure.record.projection@ee7e8e76
 #[test]
 fn a_lookup_over_a_24_hour_window_answers_within_one_second() {
@@ -109,5 +112,19 @@ fn a_lookup_over_a_24_hour_window_answers_within_one_second() {
     eprintln!("audit_reads over {reads} reads in 24 h: {:.1} ms", elapsed.as_secs_f64() * 1e3);
     assert_eq!(out["rows"].as_array().unwrap().len(), 2, "{out}");
     contextful_eval::record::emit("audit-projection-latency", elapsed.as_secs_f64() * 1e3, reads, 0);
-    assert!(elapsed < Duration::from_secs(1), "the lookup took {elapsed:?}");
+    if measuring {
+        assert!(elapsed < Duration::from_secs(1), "the lookup took {elapsed:?}");
+        return;
+    }
+    let all = audit_reads(&chain, "SELECT count(*) FROM audit_reads", ReadOptions::default()).unwrap().to_json();
+    assert_eq!(all["rows"], json!([[reads.to_string()]]), "one projected row per read: {all}");
+    let ada = audit_reads(
+        &chain,
+        "SELECT table_name, count(*) FROM audit_reads WHERE on_behalf_of = 'user://ada@acme.example' GROUP BY table_name ORDER BY table_name",
+        ReadOptions::default(),
+    )
+    .unwrap()
+    .to_json();
+    let (notes, salaries) = (0..reads).filter(|i| i % 7 == 0).fold((0, 0), |(n, s), i| if i % 2 == 0 { (n + 1, s) } else { (n, s + 1) });
+    assert_eq!(ada["rows"], json!([["hr/salaries", salaries.to_string()], ["research/notes", notes.to_string()]]), "{ada}");
 }

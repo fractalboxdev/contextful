@@ -76,7 +76,6 @@ fn the_latest_row_per_run_and_phase_wins() {
 /// leaves its append succeeding, and the next append runs it; 6 h after a pass, one more
 /// append fires the next.
 // spec: run.record.record-folds@29e1db69
-#[cfg(unix)]
 #[test]
 fn an_append_folds_the_run_record_once_its_trigger_fires() {
     let f = Fixture::new();
@@ -100,14 +99,16 @@ fn an_append_folds_the_run_record_once_its_trigger_fires() {
     assert_eq!(read.len(), 25);
     assert!(read.iter().all(|r| r.status == RunStatus::Success), "{:?}", statuses(&read));
 
-    // A pass that cannot stage fails beside a durable append.
-    use std::os::unix::fs::PermissionsExt;
-    let snapshots = f.table_dir(RUN_RECORD_TABLE).join("data/snapshots");
-    std::fs::set_permissions(&snapshots, std::fs::Permissions::from_mode(0o555)).unwrap();
+    // A pass that cannot take the pointer lock fails beside a durable append. A directory
+    // at the lock path refuses the open for every user, root included, where a read-only
+    // mode bit binds only an unprivileged one.
+    let lock = f.table_dir(RUN_RECORD_TABLE).join("_pointer.json.lock");
+    std::fs::create_dir(&lock).unwrap();
+    std::fs::write(lock.join("held"), b"").unwrap();
     for i in 25..50 {
         unit(i);
     }
-    std::fs::set_permissions(&snapshots, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::remove_dir_all(&lock).unwrap();
     assert_eq!(f.store.state(&record).unwrap().chain.len(), 1, "the failed pass published nothing");
     assert_eq!(history(&f.store, Bounds::default()).unwrap().len(), 50);
     unit(50);

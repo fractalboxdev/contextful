@@ -382,9 +382,23 @@ fn a_vintage_fold_orders_its_snapshot_by_valid_time() {
 /// Set in the re-executed child to the project directory it commits into.
 const MEMORY_CHILD_VAR: &str = "CONTEXTFUL_VINTAGE_MEMORY_CHILD";
 
-/// This process's peak resident set in bytes: `ru_maxrss` counts KiB on Linux and bytes on
-/// macOS.
-#[cfg(unix)]
+/// This process's own peak resident set in bytes. On Linux `ru_maxrss` survives `execve`,
+/// so a spawned child reports its parent's peak — the whole test binary's, sibling tests
+/// included; the address space's high-water mark (`VmHWM`, KiB) starts fresh at `execve`.
+#[cfg(target_os = "linux")]
+fn peak_rss_bytes() -> u64 {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap();
+    let kib: u64 = status
+        .lines()
+        .find_map(|l| l.strip_prefix("VmHWM:"))
+        .and_then(|v| v.trim().trim_end_matches("kB").trim().parse().ok())
+        .unwrap_or_else(|| panic!("no VmHWM in /proc/self/status"));
+    kib * 1024
+}
+
+/// This process's peak resident set in bytes: `ru_maxrss` counts bytes on macOS, where a
+/// spawned process starts its own count.
+#[cfg(all(unix, not(target_os = "linux")))]
 fn peak_rss_bytes() -> u64 {
     let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
     assert_eq!(unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut usage) }, 0);
