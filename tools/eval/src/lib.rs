@@ -28,6 +28,7 @@ pub mod metrics;
 pub mod public;
 pub mod record;
 pub mod report;
+pub mod semantic;
 pub mod systems;
 pub mod trace;
 pub mod trend;

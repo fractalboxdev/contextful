@@ -99,6 +99,36 @@ fn mean(report: &Value, pointer: &str) -> f64 {
     report.pointer(pointer).and_then(Value::as_f64).unwrap_or_else(|| panic!("{pointer} in {report}"))
 }
 
+#[test]
+fn semantic_quality_uses_cached_real_vectors_through_the_ranked_store() {
+    let issuer = Issuer::new();
+    let token = issuer.mint(READER, "local:device");
+    let fixture = root().join("evals/semantic/v1");
+    let path = issuer.path().join("semantic-report.json");
+    let out = run(issuer.path(), &[
+        "eval", "run", "--goldens", fixture.join("heldout.jsonl").to_str().unwrap(),
+        "--semantic-manifest", fixture.join("manifest.json").to_str().unwrap(),
+        "--semantic-baseline", fixture.join("baseline.json").to_str().unwrap(),
+        "--zone", "local:device", "--public-key", &issuer.public, "--audience", AUD,
+        "--report", path.to_str().unwrap(),
+    ], Some(&token));
+    assert!(out.status.success(), "{}", stderr(&out));
+    let report: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    if let Some(path) = std::env::var_os("CONTEXTFUL_SEMANTIC_CAPTURE") {
+        std::fs::write(path, serde_json::to_string_pretty(&report).unwrap() + "\n").unwrap();
+    }
+    assert_eq!(report["run"]["tier"], "semantic");
+    assert_eq!(report["run"]["k"], 10);
+    assert_eq!(report["n_cases"], 36);
+    assert!(report.get("judge").is_none());
+    assert_eq!(report["retrieval"]["vector"]["recall_at_k"]["n"], 36);
+    assert!(report["slices"]["cross_language"]["n_cases"].as_u64().unwrap() > 0);
+    assert!(mean(&report, "/retrieval/vector/reciprocal_rank/mean") > 0.0);
+    assert_eq!(report["cases"].as_array().unwrap().len(), 36);
+    let value = mean(&report, "/retrieval/hybrid/ndcg_at_k/mean");
+    contextful_eval::record::emit("semantic-retrieval-hybrid-ndcg", value, 36, 683);
+}
+
 /// A corpus of one labelled table, `lab/notes`, whose rows carry 3-dimensional embeddings.
 const LAB: &str = r#"
 [[pipeline.tables]]

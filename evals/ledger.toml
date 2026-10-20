@@ -1511,3 +1511,11 @@ kind = "eval"
 method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
 direction = "higher_is_better"
 seed = 0
+
+[entry.semantic-retrieval-hybrid-ndcg]
+clause = "assurance.evaluate.semantic-report"
+metric = "retrieval.hybrid.ndcg_at_k"
+kind = "eval"
+tier = "scheduled"
+method = { test = "contextful_cli::eval::semantic_quality_uses_cached_real_vectors_through_the_ranked_store" }
+seed = 683

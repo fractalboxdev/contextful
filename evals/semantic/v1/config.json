@@ -1,0 +1,10 @@
+{
+  "k": 10,
+  "fusion": "reciprocal-rank",
+  "normalize_embeddings": true,
+  "max_seq_length": 128,
+  "batch_size": 1,
+  "device": "cpu",
+  "seed": 683,
+  "regression_tolerance": 0.02
+}

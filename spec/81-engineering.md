@@ -363,6 +363,12 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 - `entity-baseline` — Entity-evidence baselines bind fixture version, manifest digest, corpus digest and run configuration, extending {{assurance.baseline.metric-path}} with `entity_evidence.<arm>.<metric>`; versioned ledger entries collect {{assurance.measure.record}} records.
 - `legs` — Each case calls {{read.retrieve.ranked-call}} three times at limit k: the lexical leg with the question alone, the vector leg with an embedding and an empty query, the hybrid leg with both.
 - `stub-embedder` — The deterministic tier embeds every row and question with a seeded feature-hashing stub embedder; a corpus row or a case carrying its own embedding keeps it.
+- `semantic-cache` — `--semantic-manifest` verifies versioned corpus, held-out relevance labels, development queries, configuration and real model embedding caches against their hashes before {{assurance.evaluate.through-the-store}}; the model names its immutable revision, artifact digests, license and embedding configuration.
+  *because model quality needs real vectors whose provenance and inputs survive offline replay*
+- `semantic-inputs` — A semantic run rejects missing, non-finite or mismatched vectors, changed input hashes, relocated held-out files, overlapping development queries and configuration differences before retrieval; every retrieval leg consumes the same verified cases and corpus.
+  *because a cache fallback or corpus substitution changes the experiment while preserving its name*
+- `semantic-report` — Semantic reports carry {{assurance.evaluate.deterministic-tier}} with sample counts and case-bootstrap uncertainty; a comparable baseline reports overall and per-slice regressions under the pinned tolerance.
+- `semantic-separate` — Semantic quality reports use their own tier and input identity, exclude answer judging and deterministic mechanics verdicts, and compare baselines only for matching corpus, labels, model and configuration identities.
 - `run-verdict` — A run holds its report to the floors and, given `--baseline`, to that file; either red verdict exits non-zero, and `--update-baseline` applies {{assurance.baseline.raise-only}} on green alone.
 - `converter` — Each benchmark and application ground truth converts once into the case format through its own converter, and the runner reads nothing else.
 - `deterministic-tier` — Recall@k, R-precision, hit-rate@k, reciprocal rank and nDCG@k run with no model call, reported per leg — lexical, vector, hybrid — and per slice.
