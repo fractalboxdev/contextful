@@ -11,6 +11,8 @@ export type External = { name: string; label?: string; inputs?: string[]; output
 export type Edge = { from: string; to: string; via: string };
 export type Workflows = {
   applied?: number | null;
+  document?: string;
+  sources?: IngestSource[];
   pipelines?: Pipeline[];
   jobs?: Job[];
   models?: Model[];
@@ -20,6 +22,10 @@ export type Workflows = {
   edges?: Edge[];
   runs?: Record<string, Run>;
 };
+
+export type SourceRun = { run_id: string; status: string; rows: number; error_kind?: string | null; message?: string | null };
+export type IngestSource = { id: string; connector: string; destinations: string[]; version: number; schedule?: string | null;
+  trigger: string; after?: string | null; state: string; first_run?: SourceRun | null; latest_run?: SourceRun | null };
 
 export type NodeKind = "pipeline" | "table" | "model" | "job" | "publication" | "external";
 

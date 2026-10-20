@@ -515,6 +515,149 @@ fn published_workflows_include_completed_local_runs_before_sync_push() {
     assert_eq!(view["runs"]["filings-flow"]["status"], "success");
 }
 
+#[test]
+fn admin_source_drafts_validate_and_observe_only_runs_of_the_claimed_version() {
+    let vendor = super::pipeline::Vendor::start(|path| if path.contains("failed") { (500, "unavailable".into()) } else { (200, "[{\"id\":\"one\"}]".into()) });
+    let (dir, public) = project();
+    let root = dir.path();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let read = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let source = json!({ "id": "inbox", "tables": ["items"], "schedule": "every 1h", "source": { "name": "http", "config": { "endpoint": vendor.url("/items") } } });
+    let edit = |expected, source: Value| json!({ "expected": expected, "source": source }).to_string();
+    assert_eq!(control(&addr, "POST", "/control/edit", Some(&read), &edit(1, source.clone())).0, 403);
+    for (value, field) in [
+        (json!({ "id": "inbox", "tables": ["items"], "source": { "name": "missing", "config": {} } }), "source.name"),
+        (json!({ "id": "inbox", "tables": ["items"], "source": { "name": "http", "config": {} } }), "source.config.endpoint"),
+        (json!({ "id": "inbox", "tables": [], "source": { "name": "http", "config": { "endpoint": vendor.url("/items") } } }), "tables"),
+        (json!({ "id": "inbox", "tables": ["items", "items"], "source": { "name": "http", "config": { "endpoint": vendor.url("/items") } } }), "tables"),
+        (json!({ "id": "inbox", "tables": ["items"], "source": { "name": "http", "config": { "endpoint": vendor.url("/items"), "headers": null } } }), "source.config"),
+        (json!({ "id": "inbox", "tables": ["items"], "destination": { "name": "remote" }, "source": { "name": "http", "config": { "endpoint": vendor.url("/items") } } }), "destination"),
+        (json!({ "id": "inbox", "tables": ["items"], "schedule": "invalid", "source": { "name": "http", "config": { "endpoint": vendor.url("/items") } } }), "schedule"),
+    ] {
+        let (status, refusal) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(1, value));
+        assert_eq!(status, 422, "{refusal}");
+        assert_eq!(refusal["error"]["field"], field, "{refusal}");
+        assert!(refusal["error"]["message"].as_str().is_some_and(|message| !message.is_empty()), "{refusal}");
+        let (_, current) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+        assert_eq!(current["applied"], 1);
+    }
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(1, source.clone()));
+    assert_eq!(status, 200, "{draft}");
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 1, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"][0]["version"], 2);
+    assert_eq!(view["sources"][0]["connector"], "http");
+    assert_eq!(view["sources"][0]["destinations"], json!(["inbox_items"]));
+    assert_eq!(view["sources"][0]["first_run"], Value::Null);
+    assert_eq!(view["sources"][0]["state"], "pending");
+    let (status, refused) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(2, source));
+    assert_eq!(status, 422, "{refused}");
+    assert_eq!(refused["error"]["field"], "id");
+    stdout(&run(root, &["pipeline", "run", "inbox", "--applied", "2", "--project", "research", "--run-id", "first", "--site-id", "site-a"]));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"]["status"], "success", "{view}");
+    assert_eq!(view["sources"][0]["first_run"]["rows"], 1);
+    stdout(&run(root, &["pipeline", "run", "inbox", "--applied", "2", "--project", "research", "--run-id", "second", "--site-id", "site-a"]));
+    let (_, later) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(later["sources"][0]["first_run"]["run_id"], "first");
+    assert_eq!(later["sources"][0]["latest_run"]["run_id"], "second");
+    let document = view["document"].as_str().unwrap();
+    let (_, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &json!({ "expected": 2, "document": document }).to_string());
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 2, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"][0]["first_run"], Value::Null, "an identical claim has no run evidence for its version");
+    assert_eq!(view["sources"][0]["state"], "pending");
+    stdout(&run(root, &["pipeline", "run", "inbox", "--applied", "2", "--project", "research", "--run-id", "old-version", "--site-id", "site-a"]));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"], Value::Null);
+    stdout(&run(root, &["pipeline", "run", "inbox", "--applied", "3", "--project", "research", "--run-id", "current-version", "--site-id", "site-a"]));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"]["run_id"], "current-version");
+    let (_, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &json!({ "expected": 3, "document": document.replace("/items", "/failed") }).to_string());
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 3, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert!(!run(root, &["pipeline", "run", "inbox", "--applied", "4", "--project", "research", "--run-id", "failed-version", "--site-id", "site-a"]).status.success());
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"]["status"], "failed", "{view}");
+    assert!(view["sources"][0]["first_run"]["error_kind"].is_string());
+    let split = json!({ "id": "split", "tables": ["items", "failed"], "source": { "name": "http", "config": { "endpoint": vendor.url("/{table}") } } });
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(4, split));
+    assert_eq!(status, 200, "{draft}");
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 4, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert!(!run(root, &["pipeline", "run", "split", "--applied", "5", "--project", "research", "--run-id", "split-first", "--site-id", "site-a"]).status.success());
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][1]["first_run"]["status"], "failed", "a source fire includes every destination: {view}");
+    assert_eq!(view["sources"][1]["first_run"]["rows"], 1);
+    assert_eq!(view["sources"][1]["latest_run"]["run_id"], "split-first");
+}
+
+#[test]
+#[cfg(feature = "component-host")]
+fn admin_source_drafts_check_component_artifacts_and_exported_tables() {
+    let (dir, public) = project();
+    let root = dir.path();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    std::fs::write(root.join("connector.toml"), "name = \"probe\"\n[capabilities]\nallow_hosts = [\"127.0.0.1\"]\nclock = true\n").unwrap();
+    let source = json!({ "id": "guest", "tables": ["items"], "source": { "name": "probe.wasm", "config": { "manifest": "connector.toml" } } });
+    let edit = |source: Value| json!({ "expected": 1, "source": source }).to_string();
+    let (status, refusal) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(source.clone()));
+    assert_eq!(status, 422, "{refusal}");
+    assert_eq!(refusal["error"]["field"], "source");
+    std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-wasm/tests/fixtures/probe.wasm"), root.join("probe.wasm")).unwrap();
+    let mut invalid = source.clone();
+    invalid["tables"] = json!(["absent"]);
+    let (status, refusal) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(invalid));
+    assert_eq!(status, 422, "{refusal}");
+    assert_eq!(refusal["error"]["field"], "tables");
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(source));
+    assert_eq!(status, 200, "{draft}");
+    std::fs::remove_file(root.join("probe.wasm")).unwrap();
+    let apply = json!({ "expected": 1, "nonce": draft["nonce"] }).to_string();
+    let (status, refusal) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
+    assert_eq!(status, 422, "{refusal}");
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["applied"], 1);
+    std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-wasm/tests/fixtures/probe.wasm"), root.join("probe.wasm")).unwrap();
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"][0]["state"], "pending");
+    stdout(&run(root, &["pipeline", "run", "guest", "--applied", "2", "--project", "research", "--run-id", "guest-first", "--site-id", "site-a"]));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"]["status"], "success", "{view}");
+    assert_eq!(view["sources"][0]["first_run"]["rows"], 3);
+}
+
+#[test]
+fn admin_source_addition_preserves_other_work_and_refuses_incompatible_destination_keys() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let original = "[[pipeline]]\nid = \"parent\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/items\" }\n\n[[external]]\nname = \"review\"\ninputs = [\"pipeline:parent\"]\n";
+    let snapshots = contextful_snapshot::SnapshotDir::open(&root.join(".contextful/control/research"));
+    snapshots.import(original).unwrap();
+    std::fs::write(root.join("incompatible.jsonl"), "{\"id\":1.5}\n").unwrap();
+    stdout(&run(root, &["context", "land", "inbox_items", "--project", "research", "--rows", "incompatible.jsonl", "--run-id", "incompatible", "--site-id", "site-a"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let mut source = json!({ "id": "inbox", "tables": [{ "name": "items", "primary_key": ["id"] }], "source": { "name": "http", "config": { "endpoint": "https://example.test/items" } } });
+    let edit = |source: Value| json!({ "expected": 1, "source": source }).to_string();
+    let (status, refusal) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(source.clone()));
+    assert_eq!(status, 422, "{refusal}");
+    assert_eq!(refusal["error"]["field"], "tables");
+    assert_eq!(snapshots.current().unwrap(), Some(1));
+    source["tables"] = json!(["different"]);
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(source));
+    assert_eq!(status, 200, "{draft}");
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 1, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"].as_array().unwrap().len(), 2);
+    assert_eq!(view["externals"][0]["name"], "review");
+}
+
 /// Three pipelines, two models, a build and a store-driven job, a publication and two
 /// external steps around them.
 const GRAPH_PIPELINES: &str = "[[pipeline]]\nid = \"ingest\"\nschedule = \"every 1h\"\ntables = [\"records\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/ingest\" }\n\n\

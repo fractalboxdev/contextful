@@ -152,6 +152,9 @@ fn operator_attestation(request: &HttpRequest, secret: &str) -> Option<(String, 
 
 #[cfg(feature = "data-plane")]
 fn control_failure(error: anyhow::Error) -> HttpResponse {
+    if let Some(refusal) = error.downcast_ref::<crate::cadence::SourceRefusal>() {
+        return HttpResponse::json(422, &json!({ "error": { "identifier": "ApplyValidationRefused", "field": refusal.field, "message": refusal.message } }));
+    }
     if error.chain().any(|part| matches!(part.downcast_ref::<ControlError>(), Some(ControlError::OperatorAttestationInvalid(_)))) {
         return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlOperatorAttestationInvalid" } }));
     }
@@ -272,16 +275,19 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
                 let Some(fields) = body.as_object() else { unreachable!() };
                 let Some(expected) = fields.get("expected").and_then(Value::as_u64) else { return malformed() };
                 if path == EDIT_PATH {
-                    if fields.len() != 2 || fields.keys().any(|field| field != "expected" && field != "document") {
+                    if fields.len() != 2 || fields.keys().any(|field| field != "expected" && field != "document" && field != "source") {
                         return malformed();
                     }
-                    let Some(document) = fields.get("document").and_then(Value::as_str) else { return malformed() };
                     if audit.append(json!({ "contextful.control.operation": "edit", "contextful.operator.subject": operator,
                         "contextful.operator.attestation": "console-hmac",
                         "contextful.credential": authority.credential_id(), "contextful.control.expected": expected })).is_err() {
                         return HttpResponse::json(503, &json!({ "error": { "identifier": "AuditEntryUnpersisted" } }));
                     }
-                    crate::cadence::edit(&project, Some(located.declaration.clone()), expected, document, &operator, tasks, &boundary)
+                    match (fields.get("document"), fields.get("source")) {
+                        (Some(Value::String(document)), None) => crate::cadence::edit(&project, Some(located.declaration.clone()), expected, document, &operator, tasks, &boundary),
+                        (None, Some(source @ Value::Object(_))) => crate::cadence::edit_source(&project, Some(located.declaration.clone()), expected, source.clone(), &operator, tasks, &boundary),
+                        _ => return malformed(),
+                    }
                 } else {
                     if fields.len() != 2 { return malformed(); }
                     let Some(nonce) = fields.get("nonce").and_then(Value::as_str) else { return malformed() };

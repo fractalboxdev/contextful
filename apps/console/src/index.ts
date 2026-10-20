@@ -6,6 +6,7 @@ import { buildView, sanitizeView, type ResultRows } from "./render.ts";
 import { ConsoleError } from "./turn.ts";
 import { parseVantage } from "./turn.ts";
 import { BrowseError } from "./browse.ts";
+import { ControlRefusal } from "./control.ts";
 
 export type Operator = { subject: string; grants: ReadonlySet<"query" | "admin">; assertion?: string; session?: string };
 export type Store = { id: string; label: string };
@@ -384,9 +385,15 @@ export function createConsole(adapters: ConsoleAdapters): { fetch: (request: Req
           if (origin && origin !== url.origin) return refusal("ConsolePageForbidden");
           let document: unknown;
           try { document = await body(request); } catch (error) { return bodyFailure(error); }
-          return json(path.endsWith("/edit") ?
-            await adapters.control.edit(document, adapters.adminCapability, operator) :
-            await adapters.control.apply(document, adapters.adminCapability, operator));
+          try {
+            return json(path.endsWith("/edit") ?
+              await adapters.control.edit(document, adapters.adminCapability, operator) :
+              await adapters.control.apply(document, adapters.adminCapability, operator));
+          } catch (error) {
+            if (error instanceof ControlRefusal) return Response.json({ error: error.error }, { status: error.status, headers: { "Cache-Control": "no-store" } });
+            if (error instanceof Error && error.message === "ConsoleRequestMalformed") return refusal("ConsoleRequestMalformed", 400);
+            throw error;
+          }
         }
       }
       return refusal("ConsoleRouteNotFound", 404);

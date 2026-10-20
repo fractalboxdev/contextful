@@ -111,7 +111,7 @@ export function AsOfSelect({ id, value, onChange }: { id: string; value: string;
 
 export async function post<T>(path: string, payload: unknown): Promise<T> {
   const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-  const value = await response.json() as T & { error?: { identifier?: string } };
-  if (!response.ok) throw new Error(value.error?.identifier ?? `HTTP ${response.status}`);
+  const value = await response.json() as T & { error?: { identifier?: string; field?: string; message?: string } };
+  if (!response.ok) throw new Error(value.error?.message ? `${value.error.field ? `${value.error.field}: ` : ""}${value.error.message}` : value.error?.identifier ?? `HTTP ${response.status}`);
   return value;
 }

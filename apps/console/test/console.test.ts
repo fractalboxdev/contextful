@@ -337,7 +337,7 @@ test("Admin pack listing reaches only the injected listing adapter", async () =>
   assert.deepEqual(calls, ["field-notes:packs/"]);
 });
 
-test("Admin names the selected store on every operational request and shows run outcomes", async () => {
+test("Admin offers a source draft with an applied-document fallback for the selected store", async () => {
   const app = createConsole({
     identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
     stores: [{ id: "one", label: "Store one" }, { id: "two", label: "Store two" }],
@@ -351,8 +351,14 @@ test("Admin names the selected store on every operational request and shows run 
   assert.match(page, /<select id="admin-store"/);
   assert.match(page, /\/admin\/api\/workflows\?store=/);
   assert.match(page, /\/admin\/api\/record\?store=/);
-  assert.match(page, /\{store:\w+,expected:\w+,document:\w+\}:\{store:\w+,expected:\w+,nonce:/);
-  assert.match(page, /\.runs\?\.\[/);
+  assert.match(page, /Add ingest source/);
+  for (const field of ["source-id", "source-connector", "source-endpoint", "source-destination", "source-schedule", "source-config", "document"]) {
+    assert.match(page, new RegExp(`id="${field}"`));
+  }
+  assert.match(page, /Validate and save source draft/);
+  assert.match(page, /Raw TOML document/);
+  assert.match(page, /No ingest sources are applied/);
+  assert.doesNotMatch(page, /server-secret/);
 });
 
 test("Query builds its widget from rows and sanitizes view props before delivery", async () => {

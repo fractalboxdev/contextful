@@ -4,6 +4,12 @@ import { createHash, createHmac, randomBytes } from "node:crypto";
 type ControlStore = { id: string; endpoint: string };
 type ControlOptions = { stores: ControlStore[]; capability?: string; attestationSecret?: string; fetcher?: typeof fetch };
 
+export class ControlRefusal extends Error {
+  readonly status: number;
+  readonly error: { identifier: string; field?: string; message: string };
+  constructor(status: number, error: { identifier: string; field?: string; message: string }) { super(error.message); this.status = status; this.error = error; }
+}
+
 function unavailable(): never {
   throw new Error("ConsoleAdapterUnavailable");
 }
@@ -18,17 +24,18 @@ function selected(stores: ControlStore[], id: string | null): ControlStore {
   throw new Error("ConsoleStoreSelectionRequired");
 }
 
-function controlDocument(document: unknown, editing: boolean): { store: string | null; body: { expected: number; document?: string; nonce?: string } } {
+function controlDocument(document: unknown, editing: boolean): { store: string | null; body: { expected: number; document?: string; source?: object; nonce?: string } } {
   if (document === null || typeof document !== "object" || Array.isArray(document)) throw new Error("ConsoleRequestMalformed");
   const value = document as Record<string, unknown>;
   if (value.store !== undefined && typeof value.store !== "string") throw new Error("ConsoleRequestMalformed");
   if (!Number.isSafeInteger(value.expected) || (value.expected as number) < 1) throw new Error("ConsoleRequestMalformed");
-  if (editing && typeof value.document !== "string") throw new Error("ConsoleRequestMalformed");
+  const source = value.source !== null && typeof value.source === "object" && !Array.isArray(value.source);
+  if (editing && ((typeof value.document === "string") === source || (value.document !== undefined && typeof value.document !== "string") || (value.source !== undefined && !source))) throw new Error("ConsoleRequestMalformed");
   if (!editing && (typeof value.nonce !== "string" || !/^[0-9a-f]{48}$/.test(value.nonce))) throw new Error("ConsoleRequestMalformed");
   const keys = Object.keys(value);
-  if (keys.some((key) => key !== "store" && key !== "expected" && (key !== "document" || !editing) && (key !== "nonce" || editing))) throw new Error("ConsoleRequestMalformed");
+  if (keys.some((key) => key !== "store" && key !== "expected" && ((key !== "document" && key !== "source") || !editing) && (key !== "nonce" || editing))) throw new Error("ConsoleRequestMalformed");
   return { store: typeof value.store === "string" ? value.store : null,
-    body: editing ? { expected: value.expected as number, document: value.document as string } : { expected: value.expected as number, nonce: value.nonce as string } };
+    body: editing ? { expected: value.expected as number, ...(source ? { source: value.source as object } : { document: value.document as string }) } : { expected: value.expected as number, nonce: value.nonce as string } };
 }
 
 export function createLiveControl({ stores, capability, attestationSecret, fetcher = fetch }: ControlOptions): ConsoleAdapters["control"] {
@@ -47,7 +54,16 @@ export function createLiveControl({ stores, capability, attestationSecret, fetch
       headers,
       ...(serialized ? { body: serialized } : {}),
     });
-    if (!response.ok) throw new Error(`ConsoleControlRefused:${response.status}`);
+    if (!response.ok) {
+      const value = await response.json().catch(() => null) as { error?: { identifier?: unknown; field?: unknown; message?: unknown } } | null;
+      const error = value?.error;
+      if (response.status === 422 && error?.identifier === "ApplyValidationRefused" && typeof error.field === "string" &&
+          /^[a-z][a-z0-9_.]*$/.test(error.field) && typeof error.message === "string" && error.message.length <= 500) {
+        throw new ControlRefusal(422, { identifier: "ApplyValidationRefused", field: error.field, message: error.message });
+      }
+      const identifier = response.status === 409 ? "ManifestVersionConflict" : "ConsoleControlRefused";
+      throw new ControlRefusal(response.status, { identifier, message: response.status === 409 ? "The applied version or saved draft changed. Refresh the source list and save the draft again." : "The control service refused the request. Check your access and source configuration." });
+    }
     return response.json();
   }
   return {

@@ -936,6 +936,10 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             if dry_run {
                 return dry_run_counts(&spec, &checked, &l, &text, author.as_ref(), resolver, available);
             }
+            let applied_audit = applied.map(|_| crate::project::read_audit(&l.project, None, None, None)).transpose()?;
+            let prior_runs: std::collections::BTreeSet<String> = if applied.is_some() {
+                w.engine.catalog.runs(Some(&spec.id))?.into_iter().map(|row| row.run_id).collect()
+            } else { Default::default() };
 
             // A declaration's relative paths resolve against the project directory
             // (`store.init.declaration-base`), whichever subdirectory the command runs from.
@@ -1151,6 +1155,25 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 }
             }
             let total = tallies.iter().fold(IngestTally::default(), |sum, (_, t)| sum.plus(t));
+            let recorded = (|| -> Result<()> {
+                if let (Some(version), Some(audit)) = (applied, applied_audit) {
+                    let mut rows = Vec::new();
+                    for id in attempted.iter().filter(|id| !prior_runs.contains(*id)) {
+                        if let Some(row) = w.engine.catalog.run(id)? { rows.push(row.run_id); }
+                    }
+                    if !rows.is_empty() {
+                        audit.append(serde_json::json!({
+                            "contextful.control.version": version,
+                            "contextful.pipeline.id": spec.id,
+                            "contextful.pipeline.hash": spec.content_hash(),
+                            "contextful.run.id": base_run,
+                            "contextful.run.rows": rows,
+                            "contextful.run.failed": !failed.is_empty(),
+                        }))?;
+                    }
+                }
+                Ok(())
+            })();
             println!("tally: {total}");
             for (table, t) in &tallies {
                 println!("tally {table}: {t}");
@@ -1159,11 +1182,13 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             let opened = attempted.iter().any(|id| w.engine.catalog.run(id).ok().flatten().is_some());
             let pushed = if opened { crate::sync::push_after_run(&l, w.clock.now()) } else { Ok(()) };
             if !failed.is_empty() {
+                if let Err(error) = recorded { eprintln!("{error:#}"); }
                 if let Err(e) = pushed {
                     eprintln!("{e:#}");
                 }
                 bail!("pipeline `{}`: {} table(s) failed: {}", spec.id, failed.len(), failed.join(", "));
             }
+            recorded?;
             pushed
         }
     }
