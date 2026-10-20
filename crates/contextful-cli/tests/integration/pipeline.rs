@@ -54,6 +54,19 @@ impl Vendor {
     pub(crate) fn targets(&self) -> Vec<String> {
         self.targets.lock().unwrap().clone()
     }
+
+    /// Wait up to 60 s for the requests seen to satisfy `reached`, answering them.
+    pub(crate) fn wait_until(&self, reached: impl Fn(&[String]) -> bool) -> Vec<String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        loop {
+            let targets = self.targets();
+            if reached(&targets) {
+                return targets;
+            }
+            assert!(std::time::Instant::now() < deadline, "requests never reached the condition: {targets:?}");
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
 }
 
 pub(crate) fn project(manifest: &str) -> tempfile::TempDir {
@@ -1552,18 +1565,20 @@ fn serve_reconciles_continuously_and_rearms_each_applied_version() {
     std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest("/v2/orders"))).unwrap();
     assert!(ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"])).contains("applied v2"));
     let rearmed = daemon.wait_for("armed v2: 1 scheduled pipeline(s)", armed);
-    daemon.wait_for("fire orders: done", rearmed);
-    assert!(vendor.targets().iter().any(|t| t == "/v2/orders"), "{:?}", vendor.targets());
+    // A fire pinned to v1 and still in flight at the re-arm completes under v1, so only the request path tells
+    // which version a fire ran.
+    vendor.wait_until(|t| t.iter().any(|t| t == "/v2/orders"));
 
     // A malformed pointer leaves the armed set running.
     std::fs::write(dir.path().join(CONTROL).join("manifest@current"), "2; drop").unwrap();
     let malformed = daemon.wait_for("ControlPointerMalformed", rearmed);
     assert!(daemon.lines()[malformed].contains("the armed set stays in place"), "{}", daemon.lines()[malformed]);
     let before = vendor.targets().len();
-    daemon.wait_for("fire orders: done", malformed);
-    assert!(vendor.targets().len() > before);
-    assert!(!vendor.targets()[before..].is_empty(), "the exclusion below ranges over no element");
-    assert!(vendor.targets()[before..].iter().all(|t| t == "/v2/orders"), "{:?}", vendor.targets());
+    let targets = vendor.wait_until(|t| t.len() > before);
+    // Once v2 fires, no v1 fire follows it.
+    let first = targets.iter().position(|t| t == "/v2/orders").unwrap();
+    assert!(!targets[first..].is_empty(), "the exclusion below ranges over no element");
+    assert!(targets[first..].iter().all(|t| t == "/v2/orders"), "{targets:?}");
 }
 
 fn serve_cycle_live(dir: &Path) -> serde_json::Value {
