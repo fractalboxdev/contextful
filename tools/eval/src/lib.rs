@@ -16,6 +16,7 @@ pub mod case;
 pub mod checkpoint;
 pub mod convert;
 pub mod embed;
+pub mod entity;
 mod error;
 pub mod floors;
 pub mod forecast;
