@@ -140,16 +140,15 @@ fn balance(file: &mut File, times: &BTreeMap<String, f64>) -> Result<()> {
         let unit = file.group_of(name).map_or_else(|| name.clone(), |g| format!("group {g}"));
         units.entry(unit).or_default().push((name, *seconds));
     }
-    let mut order: Vec<(String, f64, Vec<(&String, f64)>)> =
-        units.into_iter().map(|(u, members)| (u, members.iter().map(|(_, s)| s).sum::<f64>(), members)).collect();
+    let mut order: Vec<(String, f64)> = units.iter().map(|(u, members)| (u.clone(), members.iter().map(|(_, s)| s).sum::<f64>())).collect();
     order.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
-    let mut load = vec![0.0f64; SHARDS];
+    let mut load = [0.0f64; SHARDS];
     file.test.clear();
-    for (_, total, members) in order {
+    for (unit, total) in order {
         let k = (1..=SHARDS).min_by(|a, b| load[a - 1].total_cmp(&load[b - 1])).expect("at least one shard");
         load[k - 1] += total;
-        for (name, seconds) in members {
-            file.test.insert(name.clone(), Entry { shard: k, seconds });
+        for (name, seconds) in &units[&unit] {
+            file.test.insert((*name).clone(), Entry { shard: k, seconds: *seconds });
         }
     }
     estimate(file)?;
