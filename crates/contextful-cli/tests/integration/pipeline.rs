@@ -2010,6 +2010,8 @@ fn a_wake_refills_a_freed_slot_with_the_unit_its_evaluation_left_pending() {
     assert_eq!(answer["fired"], serde_json::json!(["alpha", "zeta"]), "the freed slot ran the pending unit: {answer}");
     assert_eq!(answer["pending"], serde_json::json!([]), "{answer}");
     // The evaluation started the higher priority; the refill started the other, and logs it.
+    // The answer can outrun the capture of the daemon's stderr, so the refill's line is awaited.
+    daemon.wait_for("fire alpha: started", 0);
     let started: Vec<String> = daemon.lines().into_iter().filter(|l| l.contains(": started")).collect();
     assert_eq!(started.len(), 2, "{started:?}");
     assert!(started[0].contains("fire zeta: started"), "{started:?}");
