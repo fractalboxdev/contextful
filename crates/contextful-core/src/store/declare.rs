@@ -520,6 +520,14 @@ impl TableDecl {
         self.is_keyed() && self.available_time.is_some()
     }
 
+    /// The hash column a vintage requires, or no column for an ordinary table.
+    pub fn vintage_hash_column(&self) -> Result<Option<&str>, StoreError> {
+        if !self.is_vintage() { return Ok(None) }
+        self.content_hash_column().map(Some).ok_or_else(|| StoreError::StoreVintageHashUndeclared(format!(
+            "table `{}` keeps vintages and declares no `content_hash_column`", self.name
+        )))
+    }
+
     /// The columns a keyed table keeps one row per: the key, valid-time `from` where
     /// declared, and the availability column on a vintage table
     /// (`store.available-time.vintage-dedup-key`, `store.available-time.vintage-interval-key`).
@@ -640,12 +648,7 @@ impl TableDecl {
         if !super::reserve::is_engine_table(&self.name) {
             check_table_name(&self.name)?;
         }
-        if self.is_vintage() && self.content_hash_column.is_none() {
-            return Err(StoreError::StoreVintageHashUndeclared(format!(
-                "table `{}` keeps vintages and declares no `content_hash_column`",
-                self.name
-            )));
-        }
+        self.vintage_hash_column()?;
         if self.is_vintage() && self.retain_rows.is_some() {
             return Err(StoreError::StoreVintageRetainRows(format!("table `{}` keeps vintages and declares `retain_rows`", self.name)));
         }

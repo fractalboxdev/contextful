@@ -2,7 +2,7 @@
 //! relation vocabulary.
 
 use super::MemoryError;
-use crate::store::declare::{DeclarationMalformed, TableDecl};
+use crate::store::declare::{AvailableTime, DeclarationMalformed, TableDecl};
 use serde::Deserialize;
 
 /// A memory table shape.
@@ -80,13 +80,17 @@ pub struct MemoryTable {
     /// The table's visibility block, under the keys a pipeline table's block takes
     /// (`disclosure.mirror.memory-binding`).
     pub visibility: Option<serde_json::Value>,
+    /// The row's publication instant, under the shared store declaration.
+    pub available_time: Option<AvailableTime>,
+    /// The content hash used by the shared vintage comparison.
+    pub content_hash_column: Option<String>,
 }
 
 impl MemoryTable {
     /// The table as the store declares it: keyed on its shape's key, so a later version of
     /// a row replaces the earlier one on read.
     pub fn table_decl(&self) -> TableDecl {
-        TableDecl { primary_key: Some(vec![self.shape.key().to_string()]), visibility: self.visibility.clone(), ..TableDecl::named(&self.name) }
+        TableDecl { primary_key: Some(vec![self.shape.key().to_string()]), visibility: self.visibility.clone(), available_time: self.available_time.clone(), content_hash_column: self.content_hash_column.clone(), ..TableDecl::named(&self.name) }
     }
 }
 
@@ -109,6 +113,10 @@ struct RawTable {
     labels: Option<String>,
     #[serde(default)]
     visibility: Option<serde_json::Value>,
+    #[serde(default)]
+    available_time: Option<AvailableTime>,
+    #[serde(default)]
+    content_hash_column: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -176,7 +184,7 @@ impl MemoryDeclarations {
             if t.labels.is_some() && shape != Shape::Facts {
                 return Err(DeclarationMalformed(format!("table `{}`: only a `{}` table declares `labels`", t.name, Shape::Facts.name())).into());
             }
-            tables.push(MemoryTable { name: t.name, shape, columns: t.columns, decay_half_life_secs, labels: t.labels, visibility: t.visibility });
+            tables.push(MemoryTable { name: t.name, shape, columns: t.columns, decay_half_life_secs, labels: t.labels, visibility: t.visibility, available_time: t.available_time, content_hash_column: t.content_hash_column });
         }
         Ok(MemoryDeclarations { tables, declared_relations: raw.relation.unwrap_or_default().declared })
     }
