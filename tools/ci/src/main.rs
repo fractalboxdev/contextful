@@ -171,6 +171,10 @@ enum Cmd {
         /// With `--build`, print each build command and build nothing.
         #[arg(long, requires = "build")]
         plan: bool,
+        /// With `--plan`, the host to plan for as `<os>-<arch>`, e.g. `macos-aarch64`; this
+        /// host by default.
+        #[arg(long, requires = "plan", hide = true)]
+        host: Option<String>,
     },
     /// Hold `deny.toml` to the profile-wide dependency refusals and run cargo-deny's bans
     /// over each profile's graph.
@@ -353,12 +357,17 @@ fn main() {
         Cmd::NativeTransport => repo_root().and_then(|root| native_transport::check(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
         Cmd::E2e { minio } => repo_root().and_then(|root| e2e::run(&root, minio)),
-        Cmd::Footprint { profile, artifact, build, plan } => std::env::current_dir().map_err(Into::into).and_then(|root| match artifact {
+        Cmd::Footprint { profile, artifact, build, plan, host } => std::env::current_dir().map_err(Into::into).and_then(|root| match artifact {
             Some(artifact) if profile.len() == 1 => footprint::check(&root, &profile[0], &artifact),
             Some(_) => bail!("an artifact is measured as exactly one `--profile`"),
             None if build => {
                 let profiles = if profile.is_empty() { topology::PROFILES.iter().map(|p| p.to_string()).collect() } else { profile };
-                footprint::build(&root, &profiles, plan)
+                let host = match host.as_deref().map(|h| h.split_once('-')) {
+                    None => footprint::Host::CURRENT,
+                    Some(Some((os, arch))) => footprint::Host { os, arch },
+                    Some(None) => bail!("a host is `<os>-<arch>`"),
+                };
+                footprint::build(&root, host, &profiles, plan)
             }
             None => bail!("pass an artifact, or `--build`"),
         }),
@@ -606,7 +615,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
             if profiles.is_empty() {
                 println!("budget: no package declares a profile");
             } else {
-                footprint::build(root, &profiles, false)?;
+                footprint::build(root, footprint::Host::CURRENT, &profiles, false)?;
                 let _ = std::fs::remove_dir_all(build_target(root, "footprint"));
             }
         }

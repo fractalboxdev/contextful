@@ -21,9 +21,16 @@ const MIB: f64 = 1024.0 * 1024.0;
 /// its loader, and musl's single library and loader.
 const PLATFORM_C: [&str; 8] = ["libc.so", "libm.so", "libpthread.so", "libdl.so", "librt.so", "ld-linux", "ld-musl-", "libc.musl-"];
 
-/// The builder a host other than Linux runs the build in: the container recipe's own,
-/// Rust 1.97 on Alpine pinned by digest, whose native C library is musl.
+/// The builder a host other than x86_64 Linux runs the build in: the container recipe's own,
+/// Rust 1.97 on Alpine pinned by an amd64 digest, whose native C library is musl.
 const BUILDER: &str = "rust:1.97-alpine@sha256:3c38f3f82c2f3d73da3b38e18d279393a04cb43ddded0e35088a8c3324d40900";
+
+/// The platform [`BUILDER`]'s digest names, requested explicitly so an arm64 container
+/// engine runs it emulated rather than refusing or substituting its own toolchain.
+const BUILDER_PLATFORM: &str = "linux/amd64";
+
+/// The architecture every profile's budget measures, the architecture of [`BUILDER_PLATFORM`].
+const ARCH: &str = "x86_64";
 
 /// Where the builder mounts the repository.
 const MOUNT: &str = "/src";
@@ -31,18 +38,36 @@ const MOUNT: &str = "/src";
 /// The host target directory's mount inside the builder.
 const TARGET_MOUNT: &str = "/contextful-target";
 
-/// The static-linked Linux target of this host's architecture: glibc linked statically on a
-/// Linux host, musl inside [`BUILDER`] elsewhere. Either links the SQL engine's C++ runtime
-/// into the artifact.
-fn triple() -> String {
-    let libc = if cfg!(target_os = "linux") { "gnu" } else { "musl" };
-    format!("{}-unknown-linux-{libc}", std::env::consts::ARCH)
+/// The host a footprint build runs on, as its operating system and architecture.
+#[derive(Clone, Copy)]
+pub struct Host<'a> {
+    pub os: &'a str,
+    pub arch: &'a str,
+}
+
+impl Host<'static> {
+    pub const CURRENT: Self = Host { os: std::env::consts::OS, arch: std::env::consts::ARCH };
+}
+
+impl Host<'_> {
+    /// Whether this host builds the target itself rather than inside [`BUILDER`].
+    fn native(self) -> bool {
+        self.os == "linux" && self.arch == ARCH
+    }
+
+    /// The x86_64 static-linked Linux target: glibc linked statically on an x86_64 Linux
+    /// host, musl inside [`BUILDER`] elsewhere. Either links the SQL engine's C++ runtime
+    /// into the artifact.
+    fn triple(self) -> String {
+        let libc = if self.native() { "gnu" } else { "musl" };
+        format!("{ARCH}-unknown-linux-{libc}")
+    }
 }
 
 /// The cargo invocation building `profile` alone as the static-linked Linux release artifact.
-fn cargo_build(profile: &str) -> Vec<String> {
+fn cargo_build(host: Host, profile: &str) -> Vec<String> {
     let args = ["build", "--release", "--locked", "-p", "contextful-cli", "--bin", "contextful", "--no-default-features", "--features", profile, "--target"];
-    args.iter().map(|a| a.to_string()).chain([triple()]).collect()
+    args.iter().map(|a| a.to_string()).chain([host.triple()]).collect()
 }
 
 /// Memory one build job may take: the SQL engine's C++ units peak near it at `-O3`.
@@ -51,8 +76,8 @@ const JOB_MEMORY: u64 = 3 << 30;
 /// Parallel build jobs: the memory the build sees divided by [`JOB_MEMORY`], at least one
 /// and at most the processors available.
 // mirrors: assurance.gate.parallel-jobs
-fn jobs() -> u64 {
-    let memory = if cfg!(target_os = "linux") { linux_memory() } else { builder_memory() };
+fn jobs(host: Host) -> u64 {
+    let memory = if host.native() { linux_memory() } else { builder_memory() };
     let cpus = std::thread::available_parallelism().map(|n| n.get() as u64).unwrap_or(1);
     memory.map_or(1, |m| m / JOB_MEMORY).clamp(1, cpus)
 }
@@ -75,50 +100,50 @@ fn builder_memory() -> Option<u64> {
 
 /// The environment of that invocation. A glibc target
 /// links statically only under `crt-static`; musl links statically by default.
-fn cargo_env(target: &Path) -> Vec<(&'static str, String)> {
+fn cargo_env(host: Host, target: &Path) -> Vec<(&'static str, String)> {
     let mut env = vec![
         ("CARGO_TARGET_DIR", target.display().to_string()),
         ("CARGO_INCREMENTAL", "0".to_string()),
-        ("CARGO_BUILD_JOBS", jobs().to_string()),
+        ("CARGO_BUILD_JOBS", jobs(host).to_string()),
     ];
-    if cfg!(target_os = "linux") {
+    if host.native() {
         env.push(("RUSTFLAGS", "-C target-feature=+crt-static".to_string()));
     }
     env
 }
 
-/// The command building `profile`: cargo on a Linux host, cargo inside [`BUILDER`] with its
-/// C and C++ toolchain added elsewhere.
-fn build_command(root: &Path, profile: &str) -> Command {
+/// The command building `profile`: cargo on an x86_64 Linux host, cargo inside [`BUILDER`]
+/// with its C and C++ toolchain added elsewhere.
+fn build_command(root: &Path, host: Host, profile: &str) -> Command {
     let target = crate::build_target(root, "footprint");
-    if cfg!(target_os = "linux") {
+    if host.native() {
         let mut c = Command::new("cargo");
-        c.args(cargo_build(profile)).envs(cargo_env(&target)).current_dir(root);
+        c.args(cargo_build(host, profile)).envs(cargo_env(host, &target)).current_dir(root);
         return c;
     }
     let mut c = Command::new("docker");
-    c.args(["run", "--rm", "-v", &format!("{}:{MOUNT}", root.display()), "-v", "contextful-footprint-registry:/usr/local/cargo/registry", "-w", MOUNT]);
+    c.args(["run", "--rm", "--platform", BUILDER_PLATFORM, "-v", &format!("{}:{MOUNT}", root.display()), "-v", "contextful-footprint-registry:/usr/local/cargo/registry", "-w", MOUNT]);
     c.args(["-v", &format!("{}:{TARGET_MOUNT}", target.display())]);
-    for (k, v) in cargo_env(Path::new(TARGET_MOUNT)) {
+    for (k, v) in cargo_env(host, Path::new(TARGET_MOUNT)) {
         c.args(["-e", &format!("{k}={v}")]);
     }
-    c.args([BUILDER, "sh", "-c", &format!("apk add --no-cache -q build-base && cargo {}", cargo_build(profile).join(" "))]);
+    c.args([BUILDER, "sh", "-c", &format!("apk add --no-cache -q build-base && cargo {}", cargo_build(host, profile).join(" "))]);
     c
 }
 
-/// The artifact a build of `profile` leaves in the footprint target directory.
-pub fn artifact(root: &Path) -> PathBuf {
-    crate::build_target(root, "footprint").join(triple()).join("release").join("contextful")
+/// The artifact a build of `profile` on `host` leaves in the footprint target directory.
+pub fn artifact(root: &Path, host: Host) -> PathBuf {
+    crate::build_target(root, "footprint").join(host.triple()).join("release").join("contextful")
 }
 
 /// Build each of `profiles` as the static-linked Linux target and hold each artifact to its
-/// budget; with `plan`, print each build command and build nothing. Every profile is
-/// measured before the first refusal propagates, and the count over budget prints last.
-pub fn build(root: &Path, profiles: &[String], plan: bool) -> Result<()> {
+/// budget on `host`; with `plan`, print each build command and build nothing. Every profile
+/// is measured before the first refusal propagates, and the count over budget prints last.
+pub fn build(root: &Path, host: Host, profiles: &[String], plan: bool) -> Result<()> {
     let mut over = Vec::new();
     for profile in profiles {
         budget_mib(root, profile)?;
-        let mut c = build_command(root, profile);
+        let mut c = build_command(root, host, profile);
         let env: Vec<String> = c.get_envs().filter_map(|(k, v)| Some(format!("{}={}", k.to_string_lossy(), v?.to_string_lossy()))).collect();
         let args: Vec<String> = c.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         let shown = format!("{} {} {}", env.join(" "), c.get_program().to_string_lossy(), args.join(" "));
@@ -131,7 +156,7 @@ pub fn build(root: &Path, profiles: &[String], plan: bool) -> Result<()> {
             let what = format!("{} {}", c.get_program().to_string_lossy(), args.join(" "));
             return Err(crate::exited(what, status).context(format!("building `{profile}`")));
         }
-        if let Err(e) = check(root, profile, &artifact(root)) {
+        if let Err(e) = check(root, profile, &artifact(root, host)) {
             eprintln!("{e:#}");
             over.push(format!("`{profile}`"));
         }
