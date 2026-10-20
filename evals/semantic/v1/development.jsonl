@@ -1,0 +1,4 @@
+{"id":"dev-password","question":"Reset a forgotten account password using the recovery link sent to your registered email address.","relevant":"kb/semantic#password"}
+{"id":"dev-refund","question":"A customer receives a refund to the original payment card after returning a defective purchase.","relevant":"kb/semantic#refund"}
+{"id":"dev-battery","question":"Rechargeable batteries store electricity from solar panels for use at night.","relevant":"kb/semantic#battery"}
+{"id":"dev-mfa","question":"Multi-factor authentication (MFA) adds a one-time code from an authenticator app after the password.","relevant":"kb/semantic#mfa"}

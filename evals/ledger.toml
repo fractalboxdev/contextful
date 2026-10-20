@@ -1421,3 +1421,11 @@ method = { test = "contextful_cli::eval::the_native_golden_set_holds_its_floors_
 target = { op = ">=", value = 0.60 }
 seed   = 0x5eed_0078
 mirrors = "assurance.evaluate.precision-floor"
+
+[entry.semantic-retrieval-hybrid-ndcg]
+clause = "assurance.evaluate.semantic-report"
+metric = "retrieval.hybrid.ndcg_at_k"
+kind = "eval"
+tier = "scheduled"
+method = { test = "contextful_cli::eval::semantic_quality_uses_cached_real_vectors_through_the_ranked_store" }
+seed = 683

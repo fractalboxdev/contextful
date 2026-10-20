@@ -1,0 +1,13 @@
+[[pipeline.tables]]
+name = "kb/semantic"
+primary_key = ["doc_id"]
+
+[[pipeline.tables.indexes]]
+kind = "fulltext"
+column = "text"
+
+[[pipeline.tables.indexes]]
+kind = "vector"
+column = "embedding"
+model = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2@e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
+dim = 384

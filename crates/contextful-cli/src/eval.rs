@@ -107,6 +107,12 @@ pub struct RunArgs {
     /// The case file: JSON Lines, one case per line.
     #[arg(long)]
     goldens: PathBuf,
+    /// Verified real-embedding cache; reports semantic quality separately from mechanics.
+    #[arg(long, conflicts_with_all = ["baseline", "update_baseline", "checkpoint", "trace_store", "trace_endpoint", "endpoint", "model", "seed"])]
+    semantic_manifest: Option<PathBuf>,
+    /// A semantic report over the identical versioned inputs, for per-slice regressions.
+    #[arg(long, requires = "semantic_manifest")]
+    semantic_baseline: Option<PathBuf>,
     /// The rank cut-off every at-k metric uses, and the limit each ranked call passes.
     #[arg(long, default_value_t = 10)]
     k: usize,
@@ -430,6 +436,13 @@ pub fn run(cmd: EvalCmd) -> Result<()> {
 }
 
 fn run_cases(a: RunArgs) -> Result<()> {
+    let semantic = a.semantic_manifest.as_ref().map(|manifest| {
+        if a.tier != RunTier::Deterministic {
+            bail!("semantic quality runs without answer judging; use the deterministic reader tier");
+        }
+        let fusion = match a.fusion { Fusion::MinMax => "min-max", Fusion::ReciprocalRank => "reciprocal-rank" };
+        contextful_eval::semantic::Benchmark::open(manifest, &a.goldens, a.k, fusion).map_err(anyhow::Error::msg)
+    }).transpose()?;
     let text = std::fs::read_to_string(&a.goldens).with_context(|| format!("reading `{}`", a.goldens.display()))?;
     let cases = case::load(&text).map_err(|e| anyhow::anyhow!("`{}`: {e}", a.goldens.display()))?;
     // The judged tier reaches the operator's endpoint; the host holds its key
@@ -536,8 +549,10 @@ fn run_cases(a: RunArgs) -> Result<()> {
                 corpus_tokens,
                 context_window: a.context_window,
             };
-            let judged = judge::judge_case(&cases[i], &read.rows, reader.as_ref(), judge.as_ref()).map_err(anyhow::Error::msg)?;
-            let result = CaseResult { id: cases[i].id.clone(), legs: read.legs, edges: None, systems: Some(systems), judged: Some(judged) };
+            let judged = if semantic.is_some() { None } else {
+                Some(judge::judge_case(&cases[i], &read.rows, reader.as_ref(), judge.as_ref()).map_err(anyhow::Error::msg)?)
+            };
+            let result = CaseResult { id: cases[i].id.clone(), legs: read.legs, edges: None, systems: Some(systems), judged };
             if let Some(cp) = &mut checkpoint {
                 cp.append(&result)?;
             }
@@ -548,8 +563,25 @@ fn run_cases(a: RunArgs) -> Result<()> {
     let mut runs: Vec<CaseRun<'_>> = Vec::with_capacity(cases.len());
     for (case, r) in cases.iter().zip(results) {
         let r = r.expect("every case read or resumed");
-        judged.push(r.judged.with_context(|| format!("case `{}` carries no judged result; its checkpoint predates the reading stage", case.id))?);
+        if semantic.is_none() {
+            judged.push(r.judged.with_context(|| format!("case `{}` carries no judged result; its checkpoint predates the reading stage", case.id))?);
+        }
         runs.push(CaseRun { case, legs: r.legs, edges: r.edges, systems: r.systems });
+    }
+    if let Some(benchmark) = semantic {
+        let mut report = benchmark.report(&runs, benchmark.seed()).map_err(anyhow::Error::msg)?;
+        let regressions = if let Some(path) = &a.semantic_baseline {
+            let baseline = serde_json::from_slice(&std::fs::read(path)?)?;
+            benchmark.regressions(&report, &baseline).map_err(anyhow::Error::msg)?
+        } else { Vec::new() };
+        report["regressions"] = serde_json::to_value(&regressions)?;
+        let text = serde_json::to_string_pretty(&report)? + "\n";
+        match &a.report {
+            Some(path) => std::fs::write(path, text)?,
+            None => print!("{text}"),
+        }
+        if !regressions.is_empty() { bail!("semantic quality: {} overall or slice regressions", regressions.len()); }
+        return Ok(());
     }
     let mut report = report::build(&stamp, a.seed, &runs);
     report["judge"] = judge::fold(&judged, a.seed).to_json();
