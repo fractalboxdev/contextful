@@ -825,18 +825,21 @@ fn validated_draft(document: &str, project: &Project, declaration: &Path, tasks:
         if spec.tables.is_empty() {
             return Err(SourceRefusal::new("tables", "Choose at least one destination table.").into());
         }
-        if spec.source.name == "http" && spec.source.config.get("endpoint").and_then(Value::as_str).is_none_or(|endpoint| endpoint.trim().is_empty()) {
-            return Err(SourceRefusal::new("source.config.endpoint", "Enter the HTTP endpoint URL.").into());
-        }
-        if !contextful_connectors::BUILT_IN.contains(&spec.source.name.as_str()) &&
-            contextful_core::connector::component::ComponentSource::parse(&spec.source.name, &spec.source.config).ok().flatten().is_none() {
-            return Err(SourceRefusal::new("source.name", "Choose a supported connector name, such as http or file, or a component artifact path or pinned URL.").into());
-        }
-        contextful_connectors::compiled_in(&spec.source.name)
-            .map_err(|_| SourceRefusal::new("source.name", "This server build does not include the connector. Enable its server feature or choose another connector."))?;
-        let checked = check(spec, declaration, tasks).map_err(|error| match error.downcast_ref::<contextful_core::run::RunError>() {
-            Some(contextful_core::run::RunError::PipelineUnknownDestination(_)) => SourceRefusal::new("destination", "Choose the local store destination."),
-            _ => SourceRefusal::new("source", "Choose an available connector and supply its required configuration fields."),
+        let checked = check(spec, declaration, tasks).map_err(|error| {
+            if spec.source.name == "http" && spec.source.config.get("endpoint").and_then(Value::as_str).is_none_or(|endpoint| endpoint.trim().is_empty()) {
+                return SourceRefusal::new("source.config.endpoint", "Enter the HTTP endpoint URL.");
+            }
+            if !contextful_connectors::BUILT_IN.contains(&spec.source.name.as_str()) &&
+                contextful_core::connector::component::ComponentSource::parse(&spec.source.name, &spec.source.config).ok().flatten().is_none() {
+                return SourceRefusal::new("source.name", "Choose a supported connector name, such as http or file, or a component artifact path or pinned URL.");
+            }
+            if contextful_connectors::compiled_in(&spec.source.name).is_err() {
+                return SourceRefusal::new("source.name", "This server build does not include the connector. Enable its server feature or choose another connector.");
+            }
+            match error.downcast_ref::<contextful_core::run::RunError>() {
+                Some(contextful_core::run::RunError::PipelineUnknownDestination(_)) => SourceRefusal::new("destination", "Choose the local store destination."),
+                _ => SourceRefusal::new("source", "Choose an available connector and supply its required configuration fields."),
+            }
         })?;
         let connector = if let crate::pipeline::Checked::Component(decl) = &checked {
             let vars = std::env::vars().collect();
