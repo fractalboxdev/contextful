@@ -946,7 +946,7 @@ fn held_record(n: &crate::support::Node) -> Vec<String> {
 
 /// Write the node's run state into its store root, as the CLI does before every push.
 fn record_run_state(n: &crate::support::Node) {
-    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: n.syncer.node.clone(), runs: Default::default(), cursors: Vec::new(), control_version: None };
+    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: n.syncer.node.clone(), runs: Default::default(), cursors: Vec::new(), control_version: None, sources: Vec::new() };
     contextful_sync::run_state::record(&n.syncer.store, &state).unwrap();
 }
 

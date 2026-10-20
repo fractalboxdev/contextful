@@ -13,6 +13,25 @@ use serde_json::json;
 
 const NOW: &str = "2030-01-01T01:00:00Z";
 
+#[test]
+fn version_bound_source_fires_travel_with_the_run_state_and_old_states_remain_readable() {
+    let dir = tempfile::tempdir().unwrap();
+    let shared = bucket(dir.path());
+    let (source, target) = (node("ingest-a", shared.clone(), ""), node("read-b", shared, ""));
+    let fire = json!({ "run_id": "first", "status": "failed", "rows": 3, "started_at": "2030-01-01T00:00:00Z", "ended_at": "2030-01-01T00:01:00Z", "error_kind": "Transient" });
+    let sources = json!([{ "pipeline_id": "shop", "version": 7, "config_hash": "a".repeat(64), "first": fire, "latest": fire }]);
+    let mut value = serde_json::to_value(state(&source, "first", "2030-01-01T00:00:00Z", None)).unwrap();
+    value["sources"] = sources.clone();
+    let state: RunState = serde_json::from_value(value).unwrap();
+    run_state::record(&source.syncer.store, &state).unwrap();
+    source.syncer.push(at(NOW)).unwrap();
+    target.syncer.pull(&PullScope::default()).unwrap();
+    let pulled = serde_json::to_value(&run_state::run_states(&target.syncer.store).unwrap()["ingest-a"]).unwrap();
+    assert_eq!(pulled["sources"], sources);
+    let old: RunState = serde_json::from_value(json!({ "format": 1, "node_id": "old", "runs": {}, "cursors": [] })).unwrap();
+    assert!(serde_json::to_value(old).unwrap().get("sources").is_none());
+}
+
 // spec: store.encrypt.run-state-envelope@75ca0ba5
 #[test]
 fn a_bound_run_state_stays_sealed_across_record_and_read() {
@@ -78,6 +97,7 @@ fn state(n: &Node, run: &str, started: &str, cursor: Option<(i64, &str)>) -> Run
             .into_iter()
             .collect(),
         control_version: None,
+        sources: Vec::new(),
     }
 }
 

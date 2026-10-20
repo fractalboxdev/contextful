@@ -111,6 +111,7 @@ pub(crate) struct Receiver {
     spec: PipelineSpec,
     config: ReceiveConfig,
     now: Option<String>,
+    applied_version: Option<u64>,
 }
 
 /// Write `line` to standard error; a served process whose standard error has closed keeps
@@ -158,12 +159,16 @@ fn class(e: &anyhow::Error) -> Option<FailureTag> {
 
 impl Receiver {
     /// Resolve the `receive` pipeline `id` of the project's declaration.
-    pub(crate) fn open(project: &ProjectArgs, declaration: Option<PathBuf>, id: &str, site_id: Option<String>, site_id_env: Option<String>, tasks: &Tasks) -> Result<Receiver> {
+    pub(crate) fn open(project: &ProjectArgs, declaration: Option<PathBuf>, id: &str, site_id: Option<String>, site_id_env: Option<String>, tasks: &Tasks, use_applied: bool) -> Result<Receiver> {
         let l = project.locate(declaration)?;
         let declaration = l.declaration.clone();
         let text = if declaration.exists() { std::fs::read_to_string(&declaration)? } else { String::new() };
         let site_id = crate::run::site_id_for(&text, &declaration, site_id, site_id_env)?;
-        let files = manifests(&declaration)?;
+        let applied = if use_applied { crate::cadence::current_manifest(&l.project, &text)? } else { None };
+        let (applied_version, files) = match applied {
+            Some((version, snapshot)) => (Some(version), vec![crate::effective::public_manifest(snapshot)?]),
+            None => (None, manifests(&declaration)?),
+        };
         crate::secrets::check_records(&declaration, &files)?;
         let Some(spec) = collect(&files)?.into_iter().find(|d| d.spec.id == id).map(|d| d.spec) else {
             return Err(RunError::ReceivePipelineUnknown(format!("no pipeline `{id}` is declared")).into());
@@ -178,7 +183,7 @@ impl Receiver {
         let Checked::Receive(config) = check(&spec, &declaration, tasks)? else {
             bail!("pipeline `{}` reads source `{}`; `pipeline receive` lands the delivered batches of a `receive` source", spec.id, spec.source.name);
         };
-        Ok(Receiver { l, text, site_id, spec, config, now: project.now.clone() })
+        Ok(Receiver { l, text, site_id, spec, config, now: project.now.clone(), applied_version })
     }
 
     /// Every store table the pipeline lands in, in declaration order.
@@ -307,7 +312,11 @@ impl Receiver {
 
     /// The directory holding the pipeline's spooled batches and their answers.
     fn spool(&self) -> PathBuf {
-        self.queue().join("spool")
+        let spool = self.queue().join("spool");
+        match self.applied_version {
+            Some(version) => spool.join(format!("applied-{version}-{}", self.spec.content_hash())),
+            None => spool,
+        }
     }
 
     /// Lead under the held land lock (`run.land.receive-adopt`): first land the batches a dead
@@ -396,6 +405,10 @@ impl Receiver {
         let mut tables: Vec<Vec<Value>> = vec![Vec::new(); members.len()];
         let mut failed: Vec<Option<(String, bool)>> = vec![None; members.len()];
         let mut opened = false;
+        let audit = self.applied_version.map(|_| crate::project::read_audit(&self.l.project, None, None, None)).transpose()?;
+        let prior: std::collections::BTreeSet<_> = if self.applied_version.is_some() {
+            w.engine.catalog.runs(Some(&spec.id))?.into_iter().map(|row| row.run_id).collect()
+        } else { Default::default() };
         for t in &spec.tables {
             let table = spec.table_name(t.name());
             let mut pending: Vec<(usize, String)> = Vec::new();
@@ -467,6 +480,19 @@ impl Receiver {
             }
         }
         // A batch whose push met a held guard left the marker; the next batch pushes what it committed.
+        let recorded = (|| -> Result<()> {
+            if let (Some(version), Some(audit)) = (self.applied_version, audit) {
+                let owned: std::collections::BTreeSet<_> = tables.iter().flatten().filter(|table| table["outcome"] != "replayed")
+                    .filter_map(|table| table["run_id"].as_str()).filter(|id| !prior.contains(*id)).collect();
+                let mut rows = Vec::new();
+                for id in owned {
+                    if w.engine.catalog.run(id)?.is_some_and(|row| row.pipeline_id == spec.id) { rows.push(id.to_string()); }
+                }
+                let key = if members.len() == 1 { members[0].key.clone() } else { group_key(members.iter().map(|member| member.key.as_str())) };
+                crate::source_runs::record(&audit, version, spec, &self.base(&key), &rows, failed.iter().any(Option::is_some))?;
+            }
+            Ok(())
+        })();
         let pending = self.queue().join(PUSH_PENDING);
         if opened || pending.exists() {
             match crate::sync::push_after_run_within(&self.l, w.clock.now(), Some(PUSH_WAIT_SECS)) {
@@ -484,6 +510,7 @@ impl Receiver {
                 },
             }
         }
+        recorded?;
         Ok(Ok(members
             .iter()
             .enumerate()
@@ -761,7 +788,7 @@ pub(crate) fn receive(args: Receive<'_>, tasks: &Tasks) -> Result<()> {
         Ok(()) => None,
         Err(e) => Some(Refusal::guard_held(&e).ok_or(e)?),
     };
-    let receiver = Receiver::open(&args.project, args.declaration, &args.id, args.site_id, args.site_id_env, tasks)?;
+    let receiver = Receiver::open(&args.project, args.declaration, &args.id, args.site_id, args.site_id_env, tasks, false)?;
     let key = args.key;
     if key.trim().is_empty() {
         return Err(RunError::ReceiveBatchKeyMissing("`--key` names the batch; a resend under it replays what committed".into()).into());
@@ -851,7 +878,7 @@ pub(crate) fn served(
     pipeline: &str,
     read: &mut dyn FnMut(u64) -> std::result::Result<Option<Vec<u8>>, contextful_agent::http::HttpResponse>,
 ) -> std::result::Result<Served, contextful_agent::http::HttpResponse> {
-    let receiver = match Receiver::open(project, Some(declaration.to_path_buf()), pipeline, None, None, tasks) {
+    let receiver = match Receiver::open(project, Some(declaration.to_path_buf()), pipeline, None, None, tasks, true) {
         Ok(r) => r,
         Err(e) => {
             return Ok(match e.downcast::<RunError>() {

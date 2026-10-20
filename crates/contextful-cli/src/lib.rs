@@ -9,6 +9,8 @@ mod audit;
 mod build;
 #[cfg(feature = "data-plane")]
 mod cadence;
+#[cfg(feature = "data-plane")]
+mod source_runs;
 #[cfg(feature = "read-plane")]
 mod clock;
 #[cfg(feature = "data-plane")]

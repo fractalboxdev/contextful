@@ -723,7 +723,7 @@ fn a_cold_store_pulls_its_own_node_keys_and_its_push_tombstones_none() {
 
     // A store whose push recorded its node's run state treats its own absent key as its deletion.
     let store = contextful_context::Store::open(replacement._dir.path(), "research").unwrap();
-    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: "ingest-a".into(), runs: Default::default(), cursors: Vec::new(), control_version: None };
+    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: "ingest-a".into(), runs: Default::default(), cursors: Vec::new(), control_version: None, sources: Vec::new() };
     contextful_sync::run_state::record(&store, &state).unwrap();
     std::fs::remove_dir_all(replacement.root().join("tables/filings/data/runs/run-1")).unwrap();
     replacement.syncer.pull(&PullScope::default()).unwrap();
@@ -757,7 +757,7 @@ fn a_run_state_torn_by_an_uncommitted_push_is_discarded_and_the_next_push_heals_
     let first = node("ingest-a", b.clone(), "");
     first.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
     let store = contextful_context::Store::open(first._dir.path(), "research").unwrap();
-    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: "ingest-a".into(), runs: Default::default(), cursors: Vec::new(), control_version: None };
+    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: "ingest-a".into(), runs: Default::default(), cursors: Vec::new(), control_version: None, sources: Vec::new() };
     contextful_sync::run_state::record(&store, &state).unwrap();
     first.syncer.push(at(NOW)).unwrap();
     let key = "research/nodes/ingest-a/run-state.json";

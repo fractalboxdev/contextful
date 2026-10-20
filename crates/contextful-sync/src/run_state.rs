@@ -43,6 +43,29 @@ pub struct CursorMark {
     pub committed_at: Instant,
 }
 
+/// One source fire's combined destination outcome, without credentials or error bodies.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceFire {
+    pub run_id: String,
+    pub status: RunStatus,
+    pub rows: u64,
+    pub started_at: Instant,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<Instant>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_kind: Option<contextful_core::run::FailureTag>,
+}
+
+/// The first and latest fires of one immutable applied source configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceRuns {
+    pub pipeline_id: String,
+    pub version: u64,
+    pub config_hash: String,
+    pub first: SourceFire,
+    pub latest: SourceFire,
+}
+
 /// What one node records of its run history and cursors.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunState {
@@ -57,6 +80,8 @@ pub struct RunState {
     /// The version named by the local default control pointer, when one is applied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub control_version: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<SourceRuns>,
 }
 
 fn first_format() -> u32 {
@@ -95,7 +120,7 @@ impl RunState {
                 cursors.push(CursorMark { pipeline_id, table, position: row.position, run_id, committed_at });
             }
         }
-        Ok(RunState { format: RUN_STATE_FORMAT, node_id: node.to_string(), runs, cursors, control_version: None })
+        Ok(RunState { format: RUN_STATE_FORMAT, node_id: node.to_string(), runs, cursors, control_version: None, sources: Vec::new() })
     }
 }
 

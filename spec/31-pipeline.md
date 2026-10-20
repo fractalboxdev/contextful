@@ -207,6 +207,8 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a land per second otherwise rereads and rewrites the schema under the lock every writer of the table waits on*
 - `receive-entry` — A delivered batch enters at the pull position of {{run.land.stage-order}}: each declared table it touches lands as one run whose single pull yields that table's rows.
   *because a pushed row needs the guard, the recorded pull and redaction a pulled row passes*
+- `receive-applied` — A served delivery loads its source from one immutable applied version, falling back to declarations only when no version exists; its source outcome follows {{surface.open-console.source-run-evidence}}.
+- `receive-version-group` — An applied receive group admits spooled members only from its loaded configuration digest and version; declaration fallback occupies a separate namespace, while queue capacity and the land lock remain shared.
 - `receive-ack` — `contextful pipeline receive <id> --key <key>` reads one batch on stdin and answers after every touched table commits, in declaration order, naming the batch id and each table's run id; a failed table answers retryable only under {{run.retry.retryable-classes}}.
   *because no commit spans two tables, so a sender learns success only once the last table commits*
 - `receive-batch-key` — A batch key fixes each touched table's run id stem `receive-<digest>.<table>` and owner scope, a later attempt taking `.2`, `.3`; a table whose run under the key, or under the group its scope names, committed replays it and lands nothing.

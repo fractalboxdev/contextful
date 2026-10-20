@@ -86,7 +86,7 @@ The hosted console's two pages, their API routes, identity gates, page grants an
 - `source-validation` — Saving and applying a source validates connector availability, required configuration, destination compatibility and duplicate identity under {{surface.apply.validation}}; refusals name the affected field and a correction, and leave the applied version unchanged.
 - `source-first-run` — Admin shows the applied version's first and latest source fires, aggregating rows and failures across destinations; absent matching run evidence, the source remains pending after apply.
   *because claiming configuration establishes no execution outcome*
-- `source-run-evidence` — A source fire records its explicitly loaded applied version, source identity, configuration digest and destination run identities in the operational record; outcomes join that evidence to durable run rows.
+- `source-run-evidence` — A source fire binds its loaded applied version, source identity, configuration digest and destination run identities in the operational record; first and latest summaries travel through {{store.push.run-state}}.
   *because a pipeline name or start time alone can associate an older configuration's run*
 
 #### Scenarios

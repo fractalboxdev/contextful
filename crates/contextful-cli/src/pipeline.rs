@@ -1161,16 +1161,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                     for id in attempted.iter().filter(|id| !prior_runs.contains(*id)) {
                         if let Some(row) = w.engine.catalog.run(id)? { rows.push(row.run_id); }
                     }
-                    if !rows.is_empty() {
-                        audit.append(serde_json::json!({
-                            "contextful.control.version": version,
-                            "contextful.pipeline.id": spec.id,
-                            "contextful.pipeline.hash": spec.content_hash(),
-                            "contextful.run.id": base_run,
-                            "contextful.run.rows": rows,
-                            "contextful.run.failed": !failed.is_empty(),
-                        }))?;
-                    }
+                    crate::source_runs::record(&audit, version, &spec, &base_run, &rows, !failed.is_empty())?;
                 }
                 Ok(())
             })();

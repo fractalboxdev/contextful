@@ -241,6 +241,12 @@ pub(crate) fn snapshot_manifest(project: &Project, text: &str, version: u64) -> 
     Ok(ManifestFile { path: snapshot_file(version), text: control.source.read(version)? })
 }
 
+/// Capture the current pointer once and read that version's immutable document.
+pub(crate) fn current_manifest(project: &Project, text: &str) -> Result<Option<(u64, ManifestFile)>> {
+    let control = control_config(text, project)?;
+    control.source.current()?.map(|version| Ok((version, ManifestFile { path: snapshot_file(version), text: control.source.read(version)? }))).transpose()
+}
+
 /// The applied version and the specifications it holds, by id; none before the first apply.
 fn applied(snaps: &Source) -> Result<(Option<u64>, BTreeMap<String, PipelineSpec>)> {
     let Some(version) = snaps.current()? else { return Ok((None, BTreeMap::new())) };
@@ -267,7 +273,9 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
     let store = contextful_context::Store::open(&project.dir, &project.name)?;
     let states = contextful_sync::run_state::run_states(&store)?;
     let mut runs: BTreeMap<String, contextful_sync::RunMark> = BTreeMap::new();
+    let mut evidence = crate::source_runs::Summaries::new();
     for state in states.into_values() {
+        crate::source_runs::merge(&mut evidence, state.sources);
         for (id, mark) in state.runs {
             if selected.contains(&id) && runs.get(&id).is_none_or(|earlier| mark.started_at > earlier.started_at) {
                 runs.insert(id, mark);
@@ -291,38 +299,18 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
     let externals = parse_externals(&snapshot)?;
     let publications = local_publications(&text)?;
     let graph = Graph::of(&pipelines, &jobs, &models, &publications, &externals)?;
-    let by_id: BTreeMap<_, _> = rows.iter().map(|row| (row.run_id.as_str(), row)).collect();
-    let mut evidence: BTreeMap<(String, String), Vec<(contextful_core::time::Instant, Value)>> = BTreeMap::new();
-    for entry in contextful_policy::audit::entries(&project.audit_dir())? {
-        let attributes = entry.attributes;
-        if attributes["contextful.control.version"].as_u64() != version { continue; }
-        let (Some(pipeline), Some(hash), Some(run), Some(ids)) = (
-            attributes["contextful.pipeline.id"].as_str(), attributes["contextful.pipeline.hash"].as_str(),
-            attributes["contextful.run.id"].as_str(), attributes["contextful.run.rows"].as_array(),
-        ) else { continue; };
-        let rows: Vec<_> = ids.iter().filter_map(|id| by_id.get(id.as_str()?).copied()).filter(|row| row.pipeline_id == pipeline).collect();
-        let Some(first) = rows.iter().min_by_key(|row| row.started_at) else { continue; };
-        let failed = attributes["contextful.run.failed"] == true || rows.iter().any(|row| row.status != contextful_core::run::record::RunStatus::Success);
-        let tag = rows.iter().find_map(|row| row.error_kind);
-        evidence.entry((pipeline.to_string(), hash.to_string())).or_default().push((first.started_at, json!({
-            "run_id": run, "status": if failed { "failed" } else { "success" },
-            "rows": rows.iter().fold(0_u64, |sum, row| sum.saturating_add(row.rows)), "started_at": first.started_at,
-            "ended_at": rows.iter().filter_map(|row| row.ended_at).max(), "error_kind": tag,
-            "message": tag.map(source_failure_message).or(failed.then_some("A destination refused this source run. Check the output table configuration and retry.")),
-        })));
-    }
-    for outcomes in evidence.values_mut() {
-        outcomes.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1["run_id"].as_str().cmp(&right.1["run_id"].as_str())));
-    }
+    crate::source_runs::merge(&mut evidence, crate::source_runs::local(&project.audit_dir(), &rows)?);
     let sources: Vec<Value> = pipelines.iter().map(|spec| {
-        let outcomes = evidence.get(&(spec.id.clone(), spec.content_hash()));
-        let first = outcomes.and_then(|outcomes| outcomes.first()).map(|(_, outcome)| outcome);
-        let latest = outcomes.and_then(|outcomes| outcomes.last()).map(|(_, outcome)| outcome);
+        let outcomes = version.and_then(|version| evidence.get(&(spec.id.clone(), version, spec.content_hash())));
+        let outcome = |fire: &contextful_sync::SourceFire| json!({
+            "run_id": fire.run_id, "status": fire.status, "rows": fire.rows, "started_at": fire.started_at, "ended_at": fire.ended_at,
+            "error_kind": fire.error_kind, "message": fire.error_kind.map(source_failure_message).or((fire.status == contextful_core::run::record::RunStatus::Failed).then_some("A destination refused this source run. Check the output table configuration and retry.")),
+        });
         json!({ "id": spec.id, "connector": spec.source.name,
             "destinations": spec.tables.iter().map(|table| spec.table_name(table.name())).collect::<Vec<_>>(),
             "schedule": spec.schedule, "trigger": if spec.source.name == "receive" { "receive" } else if spec.after.is_some() { "after" } else if spec.schedule.is_some() { "schedule" } else { "manual" },
-            "after": spec.after, "version": version, "first_run": first, "latest_run": latest,
-            "state": latest.and_then(|outcome| outcome["status"].as_str()).unwrap_or("pending"),
+            "after": spec.after, "version": version, "first_run": outcomes.map(|summary| outcome(&summary.first)), "latest_run": outcomes.map(|summary| outcome(&summary.latest)),
+            "state": outcomes.map_or("pending", |summary| summary.latest.status.name()),
         })
     }).collect();
     let document = crate::effective::public_manifest(ManifestFile { path: "applied document".into(), text: snapshot.clone() })?.text;
