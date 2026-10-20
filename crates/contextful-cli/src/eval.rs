@@ -54,6 +54,7 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 mod backtest;
+mod entity;
 
 /// The corpus manifest a corpus directory holds (`assurance.evaluate.corpus-layout`).
 const CORPUS_MANIFEST: &str = "contextful.toml";
@@ -81,6 +82,8 @@ const DEPLOYED_STORE_ROOT: &str = ".contextful/context";
 
 #[derive(Subcommand)]
 pub enum EvalCmd {
+    /// Compare structured memory and ordinary retrieval on native entity evidence fixtures.
+    EntityEvidence(entity::Args),
     /// Run a case file through the ranked read and score it; exits non-zero on a red floor or baseline.
     Run(RunArgs),
     /// Draft candidate cases from a project's entity, fact and edge tables.
@@ -421,6 +424,7 @@ fn session(face: &Face, authority: &AdmittedAuthority, revocation: &contextful_p
 
 pub fn run(cmd: EvalCmd) -> Result<()> {
     match cmd {
+        EvalCmd::EntityEvidence(a) => entity::run(a),
         EvalCmd::Run(a) => run_cases(a),
         EvalCmd::Draft(a) => draft(a),
         EvalCmd::Commit(a) => commit(a),

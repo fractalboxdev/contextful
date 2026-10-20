@@ -8,6 +8,7 @@ mod checkpoint;
 mod convert;
 mod custody;
 mod embed;
+mod entity;
 mod floors;
 mod forecast;
 mod golden;

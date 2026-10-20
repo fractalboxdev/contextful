@@ -1,0 +1,32 @@
+{"entity_id":"plant-0","kind":"company","name":"Amber Manufacturing","aliases":"[\"Amber Works\",\"Amber Group\"]"}
+{"entity_id":"labs-0","kind":"company","name":"Amber Manufacturing Labs","aliases":"[\"Amber Group\"]"}
+{"entity_id":"supplier-0","kind":"company","name":"Amber Supplier","aliases":"[]"}
+{"entity_id":"owner-0","kind":"company","name":"Amber Owner","aliases":"[]"}
+{"entity_id":"plant-1","kind":"company","name":"Birch Manufacturing","aliases":"[\"Birch Works\",\"Birch Group\"]"}
+{"entity_id":"labs-1","kind":"company","name":"Birch Manufacturing Labs","aliases":"[\"Birch Group\"]"}
+{"entity_id":"supplier-1","kind":"company","name":"Birch Supplier","aliases":"[]"}
+{"entity_id":"owner-1","kind":"company","name":"Birch Owner","aliases":"[]"}
+{"entity_id":"plant-2","kind":"company","name":"Cedar Manufacturing","aliases":"[\"Cedar Works\",\"Cedar Group\"]"}
+{"entity_id":"labs-2","kind":"company","name":"Cedar Manufacturing Labs","aliases":"[\"Cedar Group\"]"}
+{"entity_id":"supplier-2","kind":"company","name":"Cedar Supplier","aliases":"[]"}
+{"entity_id":"owner-2","kind":"company","name":"Cedar Owner","aliases":"[]"}
+{"entity_id":"plant-3","kind":"company","name":"Delta Manufacturing","aliases":"[\"Delta Works\",\"Delta Group\"]"}
+{"entity_id":"labs-3","kind":"company","name":"Delta Manufacturing Labs","aliases":"[\"Delta Group\"]"}
+{"entity_id":"supplier-3","kind":"company","name":"Delta Supplier","aliases":"[]"}
+{"entity_id":"owner-3","kind":"company","name":"Delta Owner","aliases":"[]"}
+{"entity_id":"plant-4","kind":"company","name":"Elm Manufacturing","aliases":"[\"Elm Works\",\"Elm Group\"]"}
+{"entity_id":"labs-4","kind":"company","name":"Elm Manufacturing Labs","aliases":"[\"Elm Group\"]"}
+{"entity_id":"supplier-4","kind":"company","name":"Elm Supplier","aliases":"[]"}
+{"entity_id":"owner-4","kind":"company","name":"Elm Owner","aliases":"[]"}
+{"entity_id":"plant-5","kind":"company","name":"Flint Manufacturing","aliases":"[\"Flint Works\",\"Flint Group\"]"}
+{"entity_id":"labs-5","kind":"company","name":"Flint Manufacturing Labs","aliases":"[\"Flint Group\"]"}
+{"entity_id":"supplier-5","kind":"company","name":"Flint Supplier","aliases":"[]"}
+{"entity_id":"owner-5","kind":"company","name":"Flint Owner","aliases":"[]"}
+{"entity_id":"plant-6","kind":"company","name":"Grove Manufacturing","aliases":"[\"Grove Works\",\"Grove Group\"]"}
+{"entity_id":"labs-6","kind":"company","name":"Grove Manufacturing Labs","aliases":"[\"Grove Group\"]"}
+{"entity_id":"supplier-6","kind":"company","name":"Grove Supplier","aliases":"[]"}
+{"entity_id":"owner-6","kind":"company","name":"Grove Owner","aliases":"[]"}
+{"entity_id":"plant-7","kind":"company","name":"Harbour Manufacturing","aliases":"[\"Harbour Works\",\"Harbour Group\"]"}
+{"entity_id":"labs-7","kind":"company","name":"Harbour Manufacturing Labs","aliases":"[\"Harbour Group\"]"}
+{"entity_id":"supplier-7","kind":"company","name":"Harbour Supplier","aliases":"[]"}
+{"entity_id":"owner-7","kind":"company","name":"Harbour Owner","aliases":"[]"}
