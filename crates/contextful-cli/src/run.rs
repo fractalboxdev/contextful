@@ -622,7 +622,8 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             }
             // Every outcome past run open publishes (`run.record.failure-publishes`).
             if w.engine.catalog.run(&spec.run_id)?.is_some() {
-                let pushed = crate::sync::push_after_run(&l, w.clock.now());
+                // The execution database records the run before the push (`store.drain.mark`).
+                let pushed = crate::sync::mark_unpushed(&l, std::slice::from_ref(&spec.run_id)).and_then(|()| crate::sync::push_after_run(&l, w.clock.now()));
                 match (&ran, pushed) {
                     (Ok(row), Err(e)) if row.status == RunStatus::Success => return Err(e),
                     (_, Err(e)) => eprintln!("{e:#}"),

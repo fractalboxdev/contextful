@@ -5430,6 +5430,81 @@
       "line": 24
     },
     {
+      "id": "store.drain.mark",
+      "contract": "store",
+      "operation": "drain",
+      "subject": "mark",
+      "kind": "behavior",
+      "statement": "Under a `postgres` or `cloudflare-d1` storage profile, `run start` and `pipeline run` set `unpushed`, naming the node, on the run row of each run whose run manifest their store holds, before {{store.push.after-run}} pushes.",
+      "why": "A-store",
+      "file": "spec/14-drain.md",
+      "line": 17
+    },
+    {
+      "id": "store.drain.clear",
+      "contract": "store",
+      "operation": "drain",
+      "subject": "clear",
+      "kind": "behavior",
+      "statement": "A committed push removes the mark from each run it read marked for its node whose run manifest the store holds, and sets `lost` on each whose manifest it lacks, naming those on stderr.",
+      "why": "because a committed push carries every run manifest the store holds, and no retry restores a manifest the store has lost",
+      "file": "spec/14-drain.md",
+      "line": 19,
+      "scenarios": [
+        "WHEN a replacement disk holding none of a marked run's files pushes, THEN the run turns `lost` and `sync status` lists it without refusing."
+      ]
+    },
+    {
+      "id": "store.drain.before-read",
+      "contract": "store",
+      "operation": "drain",
+      "subject": "before-read",
+      "kind": "behavior",
+      "statement": "Under such a profile, {{store.pull.before-run}} pushes after its pull while its node holds a run marked `unpushed` and not `lost`; a failed push stops the command before its first read, naming each such run.",
+      "why": "A-store",
+      "file": "spec/14-drain.md",
+      "line": 21,
+      "scenarios": [
+        "WHEN a run's push meets a held push guard and the next `run start` finds the guard free, THEN that start pushes the marked run before its own run opens."
+      ]
+    },
+    {
+      "id": "store.drain.deadline",
+      "contract": "store",
+      "operation": "drain",
+      "subject": "deadline",
+      "kind": "limit",
+      "statement": "On a stop signal, `pipeline serve` declaring `push_after_run` ends its children, then pushes when it ended a running child or its node holds an unpushed run not `lost`, for at most 15 s.",
+      "why": "because a container platform kills a stopping process after its grace period, and a replaced container discards every run its last push missed",
+      "file": "spec/14-drain.md",
+      "line": 23
+    },
+    {
+      "id": "store.drain.unfinished",
+      "contract": "store",
+      "operation": "drain",
+      "subject": "unfinished",
+      "kind": "behavior",
+      "statement": "A stop push failing or outrunning {{store.drain.deadline}} leaves its runs marked and names them on stderr, and `pipeline serve` exits non-zero.",
+      "why": "because a release step reading a clean exit as a carried store discards the runs the push missed",
+      "file": "spec/14-drain.md",
+      "line": 25,
+      "scenarios": [
+        "WHEN a stopping serve's push waits on a push guard past 15 s, THEN serve exits non-zero and the run stays marked."
+      ]
+    },
+    {
+      "id": "store.drain.status",
+      "contract": "store",
+      "operation": "drain",
+      "subject": "status",
+      "kind": "refusal",
+      "statement": "`contextful sync status` prints as JSON each run marked `unpushed`, with its pipeline, table, node, end instant and `lost` flag, and after printing raises `SyncRunsUnpushed` when any is not `lost`.",
+      "why": "because a release step replacing a container discards each unpushed run, and the execution database answers from outside the disk the release discards",
+      "file": "spec/14-drain.md",
+      "line": 27
+    },
+    {
       "id": "read.register.connection-views",
       "contract": "read",
       "operation": "register",
@@ -31541,6 +31616,9 @@
     "spec/13-replica.md": [
       "replicate"
     ],
+    "spec/14-drain.md": [
+      "drain"
+    ],
     "spec/20-read.md": [
       "register",
       "guard",
@@ -31837,6 +31915,7 @@
     "store.available-time": "Availability time: the declared instant each row's value became available from its source, how landing resolves it, and the `available_as_of` bound a read compares against it.",
     "store.bound-time": "The two clocks a row carries, the parameter bounding each, and what a bounded read resolves to.",
     "store.declare": "A table's declaration block: its key, ordering column and write mode, and what a read returns for a withdrawn row.",
+    "store.drain": "Carrying runs committed on a disposable disk to the bucket: the durable unpushed mark, the push retried before a read, the push at stop, and the status a release step reads.",
     "store.emit": "Planning a push from the store alone: the manifest a push commits, computed from local files without reading or writing the bucket.",
     "store.encrypt": "At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and node run-state files, with key derivation and forward key rotation.",
     "store.endpoint": "Opening a store's bucket: the endpoint schemes, the transport, request addressing and signing, credentials, and what a backend's answers mean.",
@@ -32289,6 +32368,18 @@
     [
       "store.available-time.vintage-fold-order",
       "store.available-time.vintage-scope"
+    ],
+    [
+      "store.drain.mark",
+      "store.push.after-run"
+    ],
+    [
+      "store.drain.before-read",
+      "store.pull.before-run"
+    ],
+    [
+      "store.drain.unfinished",
+      "store.drain.deadline"
     ],
     [
       "read.register.connection-views",
@@ -34787,13 +34878,15 @@
           "spec/10-store.md",
           "spec/11-snapshot.md",
           "spec/12-time.md",
-          "spec/13-replica.md"
+          "spec/13-replica.md",
+          "spec/14-drain.md"
         ],
         "titles": [
           "The store and its sync",
           "Snapshot corpora",
           "Time bounds",
-          "Replicas"
+          "Replicas",
+          "Unpushed runs"
         ],
         "gloss": "Parquet parts, manifests and the catalog; snapshot commit, declaration, reserved columns, time bases, compaction; the bucket wire format, leases and replicas."
       },
@@ -39470,6 +39563,10 @@
             "gloss": "",
             "aliases": []
           },
+          "drain": {
+            "gloss": "",
+            "aliases": []
+          },
           "emit": {
             "gloss": "",
             "aliases": []
@@ -39800,6 +39897,10 @@
             "clause": "store.push.in-flight",
             "gloss": "A push of one store waited past its bound for the push guard another push on the machine holds."
           },
+          "SyncRunsUnpushed": {
+            "clause": "store.drain.status",
+            "gloss": "A run committed on a disposable disk carries an unpushed mark no committed push has cleared."
+          },
           "SyncTombstoneForeign": {
             "clause": "store.merge.tombstone-owner",
             "gloss": "A tombstone names an entry another node owns."
@@ -39837,6 +39938,13 @@
             "unit": "runs",
             "basis": "chosen",
             "gloss": "Runs committed on a table since its previous pass that fire the next."
+          },
+          "store-drain-deadline": {
+            "clause": "store.drain.deadline",
+            "value": 15,
+            "unit": "s",
+            "basis": "chosen",
+            "gloss": "Longest push a stopping serve attempts before it exits."
           },
           "store-endpoint-answer": {
             "clause": "store.endpoint.transport",

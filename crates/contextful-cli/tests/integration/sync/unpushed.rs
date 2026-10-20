@@ -1,0 +1,277 @@
+//! A run committed on a disposable disk whose push the bucket never took: the mark the
+//! execution database keeps, the push a later command takes before it reads, the push a
+//! stopping serve takes, and the status a release step reads.
+#![cfg(all(feature = "d1-catalog", feature = "s3-sync"))]
+
+use contextful_acceptance::s3::{S3Server, ACCESS_KEY, SECRET_KEY};
+use serde_json::Value;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Output, Stdio};
+use std::time::{Duration, Instant};
+
+const STORE: &str = ".contextful/context/research";
+
+/// A `cloudflare-d1` project on a fresh disk: the D1 binding, the R2 stand-in, and a run plan
+/// landing one row per run.
+struct Disk {
+    dir: tempfile::TempDir,
+    config: String,
+    d1: String,
+    binding: Child,
+    _bridge: tempfile::TempDir,
+}
+
+impl Drop for Disk {
+    fn drop(&mut self) {
+        let _ = self.binding.kill();
+        let _ = self.binding.wait();
+    }
+}
+
+impl Disk {
+    fn new(s3: &S3Server) -> Disk {
+        let bridge = tempfile::tempdir().unwrap();
+        let mut binding = Command::new("node")
+            .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-d1/tests/fixture.mjs"))
+            .arg(bridge.path())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut line = String::new();
+        BufReader::new(binding.stdout.take().unwrap()).read_line(&mut line).unwrap();
+        let d1 = format!("http://127.0.0.1:{}", line.trim());
+        let config = format!(
+            "[node]\nid = 'site'\n[sync]\nendpoint = '{}'\nbucket = 'conformance'\nprefix = 'drain'\ncoordination = 'cas'\npull_before_run = true\npush_after_run = true\npush_wait_secs = 1\naccess_key_id = 'env://DRAIN_TEST_ACCESS_KEY'\nsecret_access_key = 'env://DRAIN_TEST_SECRET_KEY'\n",
+            s3.endpoint
+        );
+        let disk = Disk { dir: tempfile::tempdir().unwrap(), config, d1, binding, _bridge: bridge };
+        disk.fresh();
+        let init = disk.cf(&["storage", "initialize", "--project", "research"]);
+        assert!(init.status.success(), "{}", String::from_utf8_lossy(&init.stderr));
+        disk
+    }
+
+    fn root(&self) -> &Path {
+        self.dir.path()
+    }
+
+    /// Replace the disk: an empty store root holding only its `config.toml`, the execution
+    /// database untouched.
+    fn fresh(&self) {
+        let store = self.root().join(STORE);
+        let _ = std::fs::remove_dir_all(self.root().join(".contextful/context"));
+        std::fs::create_dir_all(&store).unwrap();
+        std::fs::write(store.join("config.toml"), &self.config).unwrap();
+        std::fs::write(self.root().join("contextful.toml"), "authoring_posture = 'per_request'\n[[pipeline.tables]]\nname = 'filings'\n").unwrap();
+        std::fs::write(self.root().join("one.sh"), "printf '{\"rows\":[{\"id\":1}],\"more\":false}'\n").unwrap();
+        std::fs::write(self.root().join("feed.toml"), "pipeline = 'feed'\ntable = 'filings'\n[connector]\nid = 'vendor'\nversion = '1'\ncommand = ['sh', 'one.sh']\n").unwrap();
+    }
+
+    fn command(&self, args: &[&str]) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_contextful"));
+        command
+            .args(args)
+            .current_dir(self.root())
+            .env_remove("CONTEXTFUL_NODE_ID")
+            .env_remove("CONTEXTFUL_CATALOG_URL")
+            .env("CONTEXTFUL_STORAGE_PROFILE", "cloudflare-d1")
+            .env("CONTEXTFUL_D1_ENDPOINT", &self.d1)
+            .env("CONTEXTFUL_RECOVERY_ID", "generation")
+            .env("DRAIN_TEST_ACCESS_KEY", ACCESS_KEY)
+            .env("DRAIN_TEST_SECRET_KEY", SECRET_KEY);
+        command
+    }
+
+    fn cf(&self, args: &[&str]) -> Output {
+        self.command(args).output().unwrap()
+    }
+
+    fn start(&self, run: &str) -> Output {
+        self.cf(&["run", "start", "--plan", "feed.toml", "--project", "research", "--run-id", run, "--site-id", "site"])
+    }
+
+    /// `sync status`: its exit, its JSON and its standard error.
+    fn status(&self) -> (bool, Value, String) {
+        let out = self.cf(&["sync", "status", "--project", "research"]);
+        let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)));
+        (out.status.success(), json, String::from_utf8_lossy(&out.stderr).into_owned())
+    }
+
+    /// Hold the store's push guard, as a concurrent push of the store on the machine does.
+    fn hold_push_guard(&self) -> std::fs::File {
+        let guard = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(self.root().join(STORE).join(".push.lock")).unwrap();
+        guard.lock().unwrap();
+        guard
+    }
+
+    /// The run row the execution database holds for `run`.
+    fn row(&self, run: &str) -> Option<Value> {
+        let db = contextful_d1::D1::connect(&self.d1).unwrap();
+        let rows = db.query("SELECT row FROM contextful_run WHERE run_id = ?", vec![serde_json::json!(run)]).unwrap().rows;
+        rows.first().map(|r| serde_json::from_str(r["row"].as_str().unwrap()).unwrap())
+    }
+
+    fn local_manifest(&self, run: &str) -> PathBuf {
+        self.root().join(STORE).join(format!("tables/filings/data/runs/{run}/site/_manifest.json"))
+    }
+}
+
+fn bucket_holds(s3: &S3Server, run: &str) -> bool {
+    s3.keys().iter().any(|k| k.ends_with(&format!("tables/filings/data/runs/{run}/site/_manifest.json")))
+}
+
+fn runs(status: &Value) -> Vec<(String, bool)> {
+    status["runs"].as_array().unwrap().iter().map(|r| (r["run_id"].as_str().unwrap().to_string(), r["lost"].as_bool().unwrap())).collect()
+}
+
+/// The bucket forbids the next put, as a bucket refusing the writer does: the next push
+/// fails at its first write.
+fn refuse_next_push(s3: &S3Server) {
+    s3.fail_puts(&["AccessDenied"]);
+}
+
+/// A run whose push the bucket refuses stays marked in the execution database; while the
+/// mark stands and the push still refuses, the next start opens no run, and once the bucket
+/// takes writes, that next start pushes the marked run before its own opens.
+// spec: store.drain.mark@4f1e850e
+// spec: store.drain.before-read@ceb6b399
+// spec: store.drain.status@dc87af4d
+#[test]
+fn a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+
+    refuse_next_push(&s3);
+    let refused = disk.start("r1");
+    assert!(!refused.status.success(), "a refused push fails its run's command");
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("push_after_run"), "{}", String::from_utf8_lossy(&refused.stderr));
+    assert!(disk.local_manifest("r1").exists(), "the run committed locally");
+    assert!(!bucket_holds(&s3, "r1"));
+    let row = disk.row("r1").unwrap();
+    assert_eq!(row["status"], "success");
+    assert_eq!(row["unpushed"]["node"], "site", "{row}");
+
+    let (clean, status, stderr) = disk.status();
+    assert!(!clean, "an unpushed run refuses the status check");
+    assert!(stderr.contains("SyncRunsUnpushed") && stderr.contains("r1"), "{stderr}");
+    assert_eq!(runs(&status), vec![("r1".to_string(), false)]);
+    let listed = &status["runs"][0];
+    assert_eq!((listed["pipeline"].as_str(), listed["table"].as_str(), listed["node"].as_str()), (Some("feed"), Some("filings"), Some("site")));
+    assert!(listed["ended_at"].is_string(), "{listed}");
+
+    // The bucket still refuses: the next start stops before its first read, naming r1.
+    refuse_next_push(&s3);
+    let blocked = disk.start("r2");
+    assert!(!blocked.status.success());
+    let stderr = String::from_utf8_lossy(&blocked.stderr);
+    assert!(stderr.contains("`r1`") && stderr.contains("unpushed"), "{stderr}");
+    assert!(disk.row("r2").is_none(), "no run opens while its pull's push refuses");
+
+    let next = disk.start("r3");
+    assert!(next.status.success(), "{}", String::from_utf8_lossy(&next.stderr));
+    assert!(bucket_holds(&s3, "r1") && bucket_holds(&s3, "r3"));
+    assert!(disk.row("r1").unwrap().get("unpushed").is_none(), "the committed push clears the mark");
+    assert!(disk.row("r3").unwrap().get("unpushed").is_none());
+    let (clean, status, stderr) = disk.status();
+    assert!(clean, "{stderr}");
+    assert!(runs(&status).is_empty(), "{status}");
+}
+
+/// A container replaced before any push carried its marked run: the next push finds no copy
+/// of the run, marks it `lost` and names it, and the status lists it without refusing.
+// spec: store.drain.clear@d9d691e7
+#[test]
+fn a_replacement_disk_marks_a_run_no_push_carried_lost() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+
+    refuse_next_push(&s3);
+    assert!(!disk.start("r1").status.success());
+    disk.fresh();
+
+    let next = disk.start("r2");
+    assert!(next.status.success(), "{}", String::from_utf8_lossy(&next.stderr));
+    let stderr = String::from_utf8_lossy(&next.stderr);
+    assert!(stderr.contains("`r1`") && stderr.contains("lost"), "{stderr}");
+    assert!(!bucket_holds(&s3, "r1") && bucket_holds(&s3, "r2"));
+    assert_eq!(disk.row("r1").unwrap()["unpushed"]["lost"], true);
+    let (clean, status, stderr) = disk.status();
+    assert!(clean, "a lost run is listed without refusing: {stderr}");
+    assert_eq!(runs(&status), vec![("r1".to_string(), true)]);
+}
+
+/// Start `pipeline serve` and return once it serves, its standard error drained on a thread.
+fn serve(disk: &Disk) -> (Child, std::sync::mpsc::Receiver<String>) {
+    let mut child = disk.command(&["pipeline", "serve", "--project", "research"]).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().unwrap();
+    let err = BufReader::new(child.stderr.take().unwrap());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in err.lines().map_while(Result::ok) {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut seen = String::new();
+    loop {
+        match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(line) if line.starts_with("serving `research`") => return (child, rx),
+            Ok(line) => {
+                seen.push_str(&line);
+                seen.push('\n');
+            }
+            Err(_) => panic!("serve never served: {seen}"),
+        }
+    }
+}
+
+/// Send serve a stop signal and wait for it: its exit, its later standard error, and how long it took.
+fn stop(mut child: Child, rx: std::sync::mpsc::Receiver<String>) -> (bool, String, Duration) {
+    let started = Instant::now();
+    let sent = Command::new("kill").args(["-TERM", &child.id().to_string()]).status().unwrap();
+    assert!(sent.success());
+    let status = child.wait().unwrap();
+    let took = started.elapsed();
+    let mut stderr = String::new();
+    while let Ok(line) = rx.recv_timeout(Duration::from_secs(2)) {
+        stderr.push_str(&line);
+        stderr.push('\n');
+    }
+    (status.success(), stderr, took)
+}
+
+/// A stopping serve pushes the run its node left unpushed and exits clean; one whose push
+/// waits on a held push guard gives up at its deadline, exits non-zero and leaves the run
+/// marked.
+// spec: store.drain.deadline@28620696
+// spec: store.drain.unfinished@5fef9d6c
+#[test]
+fn a_stopping_serve_pushes_its_unpushed_run_within_its_deadline() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+    // A guard wait past the deadline, so the deadline alone ends the stop push.
+    std::fs::write(disk.root().join(STORE).join("config.toml"), disk.config.replace("push_wait_secs = 1", "push_wait_secs = 120")).unwrap();
+
+    let (serving, rx) = serve(&disk);
+    refuse_next_push(&s3);
+    assert!(!disk.start("r1").status.success());
+    let (clean, stderr, _) = stop(serving, rx);
+    assert!(clean, "{stderr}");
+    assert!(bucket_holds(&s3, "r1"), "the stop push carries the run: {stderr}");
+    assert!(disk.row("r1").unwrap().get("unpushed").is_none());
+
+    let (serving, rx) = serve(&disk);
+    refuse_next_push(&s3);
+    assert!(!disk.start("r2").status.success());
+    let guard = disk.hold_push_guard();
+    let (clean, stderr, took) = stop(serving, rx);
+    drop(guard);
+    assert!(!clean, "a stop push past its deadline fails serve: {stderr}");
+    assert!(stderr.contains("`r2`"), "{stderr}");
+    assert!(took >= Duration::from_secs(14) && took < Duration::from_secs(40), "the stop push ends at its 15 s deadline, took {took:?}");
+    assert!(!bucket_holds(&s3, "r2"));
+    assert_eq!(disk.row("r2").unwrap()["unpushed"]["node"], "site");
+}

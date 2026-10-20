@@ -539,3 +539,17 @@ Decision: under `[sync] lazy_parts`, a pull brings home manifests, pointers, sch
 
 Consequences: retention can collect a part a lagging container still names, which refuses and advances the pointer; the cache bound caps the largest fold a container runs.
 Revisit: cold-table first reads past the wait bound under ordinary bucket latency.
+
+## An unpushed run is marked in the execution database
+
+On a disposable disk a run commits locally before its push reaches the bucket, so a refused or interrupted push leaves the run on a disk the next release discards. The run row lives in the execution database the profile already keeps durable: `store.drain` marks it there before the push and clears the mark once a committed push carries the run's manifest. A command pulling before its reads pushes first while a mark stands, a stopping serve pushes within a deadline, and `contextful sync status` answers a release step without the disk.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A mark on the execution-database run row *(chosen)* | — | One row update per run and one filtered query per command start; a run killed between commit and mark stays unmarked. |
+| Acknowledge the commit only after the push | Commit boundary | Owner retirement waits on the bucket, so a bucket outage fails every run and replays its recorded calls. |
+| A marker file in the store root | Disposable disk | The marker dies with the disk it describes. |
+| A marker object in the bucket | Failure correlation | The write recording the failure goes to the bucket that refused the push. |
+
+Consequences: a run lost with its disk stays listed as `lost`, and only an unlost mark refuses a release.
+Revisit: a run killed between its commit and its mark under ordinary release cadence.

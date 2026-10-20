@@ -1257,6 +1257,8 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
 struct Children {
     live: Mutex<BTreeMap<u32, Child>>,
     closed: AtomicBool,
+    /// Whether [`Children::end_all`] found a child still running (`store.drain.deadline`).
+    ended_running: AtomicBool,
 }
 
 impl Children {
@@ -1326,6 +1328,7 @@ impl Children {
         if self.signal(false) == 0 {
             return;
         }
+        self.ended_running.store(true, Ordering::SeqCst);
         let deadline = std::time::Instant::now() + grace;
         while std::time::Instant::now() < deadline {
             std::thread::sleep(CHILD_POLL);
@@ -1337,6 +1340,11 @@ impl Children {
         if killed > 0 {
             eprintln!("killed {killed} child run(s) still alive {}s after SIGTERM", grace.as_secs());
         }
+    }
+
+    /// Whether a stop ended a child that was still running.
+    fn ended_running(&self) -> bool {
+        self.ended_running.load(Ordering::SeqCst)
     }
 
     /// Whether no tracked child is still running.
@@ -1685,6 +1693,9 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
         });
         let answered = serve_cycle(&mut scheduler, &control, &l.project, &l.declaration, tasks);
         drop(reaper);
+        if contextful_engine::stop::requested() {
+            crate::sync::drain(&l, children.ended_running())?;
+        }
         answered?;
         if contextful_engine::stop::requested() {
             bail!("a stop signal ended the cycle's dispatched units");
@@ -1739,6 +1750,8 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     drop(reaper);
     report(scheduler.drain());
     scheduler.release()?;
+    // The stop push carries what the ended children committed (`store.drain.deadline`).
+    crate::sync::drain(&l, children.ended_running())?;
     eprintln!("stopped");
     Ok(())
 }
@@ -1838,9 +1851,13 @@ fn serve_wakes(scheduler: &mut Scheduler, control: &ControlConfig, addr: &str, p
         }
     }
     eprintln!("stopping: ending dispatched children, then releasing the cadence lease");
+    let children = reaper.0.clone();
     drop(reaper);
     report(scheduler.drain());
     scheduler.release()?;
+    // The stop push carries what the ended children committed (`store.drain.deadline`).
+    let located = Located { project: project.clone(), declaration: declaration.to_path_buf() };
+    crate::sync::drain(&located, children.ended_running())?;
     eprintln!("stopped");
     Ok(())
 }
