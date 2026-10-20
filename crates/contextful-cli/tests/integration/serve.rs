@@ -691,6 +691,28 @@ fn source_first_receive_fire_uses_the_admin_applied_document() {
 }
 
 #[test]
+fn source_outcomes_require_every_owned_destination_row_to_survive() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let document = "[[pipeline]]\nid = 'inbox'\ntables = ['items', 'archive']\n[pipeline.source]\nname = 'http'\nconfig = { endpoint = 'https://example.test/items' }\n";
+    contextful_snapshot::SnapshotDir::open(&root.join(".contextful/control/research")).import(document).unwrap();
+    let spec = contextful_core::pipeline::declare::collect(&[contextful_core::pipeline::declare::ManifestFile { path: "source.toml".into(), text: document.into() }]).unwrap().remove(0).spec;
+    record_run(root, "surviving", "inbox", "success");
+    record_run(root, "other-source", "another", "success");
+    let audit = contextful_policy::audit::AuditLog::unanchored(root.join(".contextful/audit")).unwrap();
+    for (fire, absent) in [("collected-destination", "missing"), ("foreign-destination", "other-source")] {
+        audit.append(json!({ "contextful.control.version": 1, "contextful.pipeline.id": "inbox", "contextful.pipeline.hash": spec.content_hash(),
+            "contextful.run.id": fire, "contextful.run.rows": ["surviving", absent], "contextful.run.failed": false })).unwrap();
+    }
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"][0]["first_run"], Value::Null, "a surviving destination is not proof of the whole source fire: {view}");
+    assert_eq!(view["sources"][0]["state"], "pending");
+}
+
+#[test]
 fn source_first_and_latest_use_completion_order_for_a_retried_fire() {
     let (dir, public) = project();
     let root = dir.path();

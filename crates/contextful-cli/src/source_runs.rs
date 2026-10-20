@@ -46,8 +46,10 @@ pub(crate) fn local(audit_dir: &Path, rows: &[RunRow]) -> Result<Vec<SourceRuns>
             attributes["contextful.pipeline.id"].as_str(), attributes["contextful.control.version"].as_u64(),
             attributes["contextful.pipeline.hash"].as_str(), attributes["contextful.run.id"].as_str(), attributes["contextful.run.rows"].as_array(),
         ) else { continue; };
-        let ids: std::collections::BTreeSet<_> = ids.iter().filter_map(|id| id.as_str()).collect();
+        let Some(ids) = ids.iter().map(|id| id.as_str()).collect::<Option<std::collections::BTreeSet<_>>>() else { continue; };
+        let owned_count = ids.len();
         let rows: Vec<_> = ids.into_iter().filter_map(|id| by_id.get(id).copied()).filter(|row| row.pipeline_id == pipeline).collect();
+        if rows.len() != owned_count { continue; }
         let Some(first) = rows.iter().min_by_key(|row| row.started_at) else { continue; };
         let failed = attributes["contextful.run.failed"] == true || rows.iter().any(|row| row.status != RunStatus::Success);
         let fire = SourceFire { run_id: run.to_string(), status: if failed { RunStatus::Failed } else { RunStatus::Success },
