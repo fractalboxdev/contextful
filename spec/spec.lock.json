@@ -37564,7 +37564,7 @@
             "clause": "disclosure.record.projection",
             "value": 1,
             "unit": "s",
-            "basis": "chosen",
+            "basis": "measured:audit-projection-latency",
             "gloss": "Response time of a projection lookup."
           },
           "telemetry-projection-window": {

@@ -152,7 +152,7 @@ metric = "audit.projection.window_24h_ms"
 kind   = "bench"
 tier   = "trend"
 direction = "lower_is_better"
-method = { test = "contextful_context::read::audit::a_lookup_over_a_24_hour_window_answers_within_one_second" }
+method = { test = "contextful_context::read::audit::a_lookup_over_a_24_hour_window_projects_every_read" }
 
 [entry.audit-read-waits-on-entry]
 clause = "disclosure.record.unpersisted-entry"
