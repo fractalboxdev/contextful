@@ -400,6 +400,7 @@ fn control_routes_require_admin_and_project_applied_workflows() {
     assert_eq!(view["applied"], json!(1));
     assert_eq!(view["pipelines"][0]["id"], "filings-flow");
     assert_eq!(view["pipelines"][0]["tables"], json!(["research/notes"]));
+    assert_eq!(view["pipelines"][0]["destinations"], json!(["filings_flow_research_notes"]));
 
     assert_eq!(control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":1}").0, 400);
 

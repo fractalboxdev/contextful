@@ -320,7 +320,8 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
     let pipelines: Vec<Value> = pipelines.into_iter().map(|spec| json!({
         "id": spec.id,
         "schedule": spec.schedule,
-        "tables": spec.tables.iter().map(|table| spec.table_name(table.name())).collect::<Vec<_>>(),
+        "tables": spec.tables.iter().map(|table| table.name()).collect::<Vec<_>>(),
+        "destinations": spec.tables.iter().map(|table| spec.table_name(table.name())).collect::<Vec<_>>(),
         "source": spec.source.name,
         "destination": spec.destination.as_ref().map(|destination| destination.name.as_str()).unwrap_or("store"),
         "after": spec.after,

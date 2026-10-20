@@ -287,7 +287,7 @@ export function SourceList({ workflows }: { workflows: Workflows }) {
       const outcome = sourceOutcome(workflows, pipeline);
       return <tr key={pipeline.id} className="border-t border-border" data-source={pipeline.id}>
         <th scope="row" className="p-3 font-mono font-normal">{pipeline.id}</th>
-        <td className="p-3">{pipeline.source ?? "Unknown connector"} → {pipeline.destination ?? "store"}<br />{pipeline.tables?.join(", ")}</td>
+        <td className="p-3">{pipeline.source ?? "Unknown connector"} → {pipeline.destination ?? "store"}<br />{(pipeline.destinations ?? pipeline.tables)?.join(", ")}</td>
         <td className="p-3">{pipeline.schedule ?? (pipeline.after ? `After ${pipeline.after}` : "External trigger")}</td>
         <td className="p-3" role="status">{outcome.first}</td><td className="p-3">{outcome.latest}</td>
       </tr>;
