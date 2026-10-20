@@ -30873,6 +30873,50 @@
       "line": 365
     },
     {
+      "id": "assurance.evaluate.semantic-cache",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "semantic-cache",
+      "kind": "behavior",
+      "statement": "`--semantic-manifest` verifies versioned corpus, held-out relevance labels, development queries, configuration and real model embedding caches against their hashes before {{assurance.evaluate.through-the-store}}; the model names its immutable revision, artifact digests, license and embedding configuration.",
+      "why": "because model quality needs real vectors whose provenance and inputs survive offline replay",
+      "file": "spec/81-engineering.md",
+      "line": 366
+    },
+    {
+      "id": "assurance.evaluate.semantic-inputs",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "semantic-inputs",
+      "kind": "behavior",
+      "statement": "A semantic run rejects missing, non-finite or mismatched vectors, changed input hashes, relocated held-out files, overlapping development queries and configuration differences before retrieval; every retrieval leg consumes the same verified cases and corpus.",
+      "why": "because a cache fallback or corpus substitution changes the experiment while preserving its name",
+      "file": "spec/81-engineering.md",
+      "line": 368
+    },
+    {
+      "id": "assurance.evaluate.semantic-report",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "semantic-report",
+      "kind": "behavior",
+      "statement": "Semantic reports carry {{assurance.evaluate.deterministic-tier}} with sample counts and case-bootstrap uncertainty; a comparable baseline reports overall and per-slice regressions under the pinned tolerance.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 370
+    },
+    {
+      "id": "assurance.evaluate.semantic-separate",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "semantic-separate",
+      "kind": "behavior",
+      "statement": "Semantic quality reports use their own tier and input identity, exclude answer judging and deterministic mechanics verdicts, and compare baselines only for matching corpus, labels, model and configuration identities.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 371
+    },
+    {
       "id": "assurance.evaluate.run-verdict",
       "contract": "assurance",
       "operation": "evaluate",
@@ -30881,7 +30925,7 @@
       "statement": "A run holds its report to the floors and, given `--baseline`, to that file; either red verdict exits non-zero, and `--update-baseline` applies {{assurance.baseline.raise-only}} on green alone.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 366
+      "line": 372
     },
     {
       "id": "assurance.evaluate.converter",
@@ -30892,7 +30936,7 @@
       "statement": "Each benchmark and application ground truth converts once into the case format through its own converter, and the runner reads nothing else.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 367
+      "line": 373
     },
     {
       "id": "assurance.evaluate.deterministic-tier",
@@ -30903,7 +30947,7 @@
       "statement": "Recall@k, R-precision, hit-rate@k, reciprocal rank and nDCG@k run with no model call, reported per leg — lexical, vector, hybrid — and per slice.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 368
+      "line": 374
     },
     {
       "id": "assurance.evaluate.distinct-top-k",
@@ -30914,7 +30958,7 @@
       "statement": "Membership in the top k is distinct, and a repeated id counts once.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 369
+      "line": 375
     },
     {
       "id": "assurance.evaluate.absent-truth",
@@ -30925,7 +30969,7 @@
       "statement": "A ranked metric over a case with no relevant set is NaN and drops out of every aggregate; an empty ranking against a non-empty relevant set scores zero.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 370
+      "line": 376
     },
     {
       "id": "assurance.evaluate.precision-floor",
@@ -30936,7 +30980,7 @@
       "statement": "Precision at rank min(k, R), R being the relevant-set size, holds at or above 60 percent.",
       "why": "because precision@k caps at R/k, below the floor whenever R is small",
       "file": "spec/81-engineering.md",
-      "line": 371
+      "line": 377
     },
     {
       "id": "assurance.evaluate.forbidden-row-rate",
@@ -30947,7 +30991,7 @@
       "statement": "A row named in a must-not-retrieve set holds at 0 percent of a regression case's returned rows.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 373
+      "line": 379
     },
     {
       "id": "assurance.evaluate.duplicate-row-rate",
@@ -30958,7 +31002,7 @@
       "statement": "A repeated table-and-row-key pair holds at 0 percent of the ranking.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 374
+      "line": 380
     },
     {
       "id": "assurance.evaluate.in-window-rate",
@@ -30969,7 +31013,7 @@
       "statement": "A case declaring a recency bound holds its in-window rate at or above 95 percent.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 375
+      "line": 381
     },
     {
       "id": "assurance.evaluate.abstention",
@@ -30980,7 +31024,7 @@
       "statement": "A must-abstain case returns zero rows.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 376
+      "line": 382
     },
     {
       "id": "assurance.evaluate.truth-per-surface",
@@ -30991,7 +31035,7 @@
       "statement": "Expected artifacts score the artifact retriever and expected edges score the edge retriever, reported apart; edge truth with no edge surface configured counts in an unscored tally.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 377
+      "line": 383
     },
     {
       "id": "assurance.evaluate.memory-legs",
@@ -31002,7 +31046,7 @@
       "statement": "Beside {{assurance.evaluate.legs}}, a run naming an admitted reranker adds a hybrid leg passing it as `rerank_with` under {{read.rank.rerank}}, and a memory case adds a keyed leg calling {{read.recall.keyed}} at its time anchor.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 378
+      "line": 384
     },
     {
       "id": "assurance.evaluate.edge-surface",
@@ -31013,7 +31057,7 @@
       "statement": "The edge retriever of {{assurance.evaluate.truth-per-surface}} runs one {{read.traverse.call}} walk per expected entity, over every walkable declared relation at {{read.traverse.hop-bound}}; a case's expected edges score the union of returned edges.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 379
+      "line": 385
     },
     {
       "id": "assurance.evaluate.memory-tags",
@@ -31024,7 +31068,7 @@
       "statement": "A memory case carries one or more tags of `knowledge-update`, `temporal-reasoning`, `abstention` and `selective-forgetting`; a temporal case anchors at `observed_at`, and a forgetting case erases its subject under {{disclosure.erase.privilege}} before reading.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 380
+      "line": 386
     },
     {
       "id": "assurance.evaluate.supersession-correctness",
@@ -31035,7 +31079,7 @@
       "statement": "A run reports, per leg, the rate of memory cases serving a superseded claim at its successor's anchor.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 381
+      "line": 387
     },
     {
       "id": "assurance.evaluate.supersession-floor",
@@ -31046,7 +31090,7 @@
       "statement": "The {{assurance.evaluate.supersession-correctness}} rate holds at 0 percent across native memory cases.",
       "why": "because a retired belief served beside its successor is the distractor memory exists to remove",
       "file": "spec/81-engineering.md",
-      "line": 382
+      "line": 388
     },
     {
       "id": "assurance.evaluate.recall-under-suppression",
@@ -31057,7 +31101,7 @@
       "statement": "A memory case reports recall@k with the claims {{read.recall.suppression-count}} counts excluded from its judged relevant set.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 384
+      "line": 390
     },
     {
       "id": "assurance.evaluate.evidence-cap-rate",
@@ -31068,7 +31112,7 @@
       "statement": "A memory case reports the share of its served claims whose `evidence_omitted` count under {{read.recall.evidence-references}} is above 0.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 385
+      "line": 391
     },
     {
       "id": "assurance.evaluate.memory-converters",
@@ -31079,7 +31123,7 @@
       "statement": "Beside {{assurance.evaluate.converter}}, LongMemEval and MemoryAgentBench each convert into tagged memory cases, and their scores report beside the native set as {{assurance.baseline.native-gate}} holds.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 386
+      "line": 392
     },
     {
       "id": "assurance.evaluate.filtered-recall",
@@ -31090,7 +31134,7 @@
       "statement": "Each run reports restricted recall@k against an exact scan at three restriction selectivities drawn from the zone and row-policy labels of {{assurance.evaluate.policy-labels}}.",
       "why": "because an approximate index loses recall as a filter narrows, and one unfiltered figure hides that loss",
       "file": "spec/81-engineering.md",
-      "line": 387
+      "line": 393
     },
     {
       "id": "assurance.evaluate.judged-dimensions",
@@ -31101,7 +31145,7 @@
       "statement": "The reading stage adds four judged dimensions: answer accuracy; abstention, as correct-refusal and hallucination-on-unknown rates; citation faithfulness; and temporal correctness against the bitemporal columns.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 389
+      "line": 395
     },
     {
       "id": "assurance.evaluate.grounded-reader",
@@ -31112,7 +31156,7 @@
       "statement": "The harness reader answers from retrieved rows alone, and the deterministic tier substitutes a stub reader.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 390
+      "line": 396
     },
     {
       "id": "assurance.evaluate.model-endpoint",
@@ -31123,7 +31167,7 @@
       "statement": "The judge and the reader reach a model through {{connector.infer.model-endpoint}}, and the harness holds no credential.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 391
+      "line": 397
     },
     {
       "id": "assurance.evaluate.judge",
@@ -31134,7 +31178,7 @@
       "statement": "The judge is one pinned open-weights instruct model, called once per judged item at temperature zero; a judge swap is a full re-baseline.",
       "why": "because a majority vote at temperature zero samples one mode and adds cost without reducing variance",
       "file": "spec/81-engineering.md",
-      "line": 392
+      "line": 398
     },
     {
       "id": "assurance.evaluate.judged-run",
@@ -31145,7 +31189,7 @@
       "statement": "`contextful eval run --tier judged` reads and judges every case through the endpoint and model `--endpoint` and `--model` name, stamping that model in the run block; the deterministic tier judges with the stubs.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 394
+      "line": 400
     },
     {
       "id": "assurance.evaluate.cutoff-flags",
@@ -31156,7 +31200,7 @@
       "statement": "`contextful eval run` takes `--snapshot`, `--pretrain-cutoff` and `--posttrain-cutoff` for the reader and `--judge-snapshot`, `--judge-pretrain-cutoff` and `--judge-posttrain-cutoff` for the judge, each cutoff value a month and its tag, as `2024-10:documented`.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 395,
+      "line": 401,
       "scenarios": [
         "WHEN a run passes `--pretrain-cutoff 2024-10:documented` and no `--posttrain-cutoff`, THEN the reader's post-training cutoff compares as each call's own instant."
       ]
@@ -31170,7 +31214,7 @@
       "statement": "A judged run block stamps the reader's and the judge's snapshot ids and their {{connector.infer.cutoffs}}.",
       "why": "because a score from a model trained past a case's resolution measures recall, not reading",
       "file": "spec/81-engineering.md",
-      "line": 396,
+      "line": 402,
       "scenarios": [
         "WHEN a judged run passes `--judge-posttrain-cutoff 2025-03:estimated`, THEN the run block carries that cutoff tagged `estimated` beside the judge's snapshot id."
       ]
@@ -31184,7 +31228,7 @@
       "statement": "Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 398
+      "line": 404
     },
     {
       "id": "assurance.evaluate.checkpoint",
@@ -31195,7 +31239,7 @@
       "statement": "A run appends each case's result as JSONL, and a crash re-runs the in-flight case.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 399
+      "line": 405
     },
     {
       "id": "assurance.evaluate.run-report",
@@ -31206,7 +31250,7 @@
       "statement": "A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 400
+      "line": 406
     },
     {
       "id": "assurance.baseline.file",
@@ -31217,7 +31261,7 @@
       "statement": "A baseline file carries a reserved run block `{k, tier, model, samples}` and one entry per gated metric: a bare number at the run's dead band, or an object overriding the band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 413
+      "line": 419
     },
     {
       "id": "assurance.baseline.default-dead-band",
@@ -31228,7 +31272,7 @@
       "statement": "A rate-valued entry with no override gates at a 2 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 414
+      "line": 420
     },
     {
       "id": "assurance.baseline.rank-quality-dead-band",
@@ -31239,7 +31283,7 @@
       "statement": "The ranked-quality entry gates at a 3 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 415
+      "line": 421
     },
     {
       "id": "assurance.baseline.band-units",
@@ -31250,7 +31294,7 @@
       "statement": "A band carries its metric's own units, and a count entry is pinned at zero with no band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 416
+      "line": 422
     },
     {
       "id": "assurance.baseline.metric-path",
@@ -31261,7 +31305,7 @@
       "statement": "An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`, `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `latency_ms`, `n_cases`, or `slices.<tag>.` before a bare `<metric>` or any of these but `latency_ms`.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 417
+      "line": 423
     },
     {
       "id": "assurance.baseline.sample-count",
@@ -31272,7 +31316,7 @@
       "statement": "Every mean-valued path takes a `.n` suffix naming its sample count.",
       "why": "because blanking one case's truth lifts a NaN-filtered mean without moving the case count",
       "file": "spec/81-engineering.md",
-      "line": 418
+      "line": 424
     },
     {
       "id": "assurance.baseline.unresolvable-path",
@@ -31283,7 +31327,7 @@
       "statement": "A path resolving to nothing, a mean over fewer than 30 cases, a malformed entry or a non-finite band raises `BaselinePathUnresolved` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 420
+      "line": 426
     },
     {
       "id": "assurance.baseline.run-stamp-drift",
@@ -31294,7 +31338,7 @@
       "statement": "A run block differing from the run's own configuration raises `BaselineRunStampMismatch` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 422
+      "line": 428
     },
     {
       "id": "assurance.baseline.cutoff-block",
@@ -31305,7 +31349,7 @@
       "statement": "A judged baseline's run block carries the reader's and the judge's snapshot ids and {{connector.infer.cutoffs}}, so {{assurance.baseline.run-stamp-drift}} refuses a run under a changed snapshot or cutoff.",
       "why": "because a score from a model trained later measures more recall, not better reading",
       "file": "spec/81-engineering.md",
-      "line": 424
+      "line": 430
     },
     {
       "id": "assurance.baseline.interval",
@@ -31316,7 +31360,7 @@
       "statement": "Each judged figure reports a 95 percent percentile-bootstrap interval over cases from 1000 resamples.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 426
+      "line": 432
     },
     {
       "id": "assurance.baseline.raise-only",
@@ -31327,7 +31371,7 @@
       "statement": "A baseline update runs after every gate and floor passes, moves each improved entry to its measured value, moves none in the worse direction, and adds no path.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 427
+      "line": 433
     },
     {
       "id": "assurance.baseline.floors-are-absolute",
@@ -31338,7 +31382,7 @@
       "statement": "An absolute floor gates independently of every committed value.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 428
+      "line": 434
     },
     {
       "id": "assurance.baseline.floor-coverage",
@@ -31349,7 +31393,7 @@
       "statement": "A report lacking a floor's figure on any leg of its `retrieval` surface breaches that floor; only a forbidden-row or in-window rate over no case holds.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 429
+      "line": 435
     },
     {
       "id": "assurance.baseline.offline",
@@ -31360,7 +31404,7 @@
       "statement": "The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 430
+      "line": 436
     },
     {
       "id": "assurance.baseline.trace-store",
@@ -31371,7 +31415,7 @@
       "statement": "A trace store records run history and curation staging, and decides no verdict.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 431
+      "line": 437
     },
     {
       "id": "assurance.baseline.golden-custody",
@@ -31382,7 +31426,7 @@
       "statement": "Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 432
+      "line": 438
     },
     {
       "id": "assurance.baseline.answer-key-in-the-store",
@@ -31393,7 +31437,7 @@
       "statement": "An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 434
+      "line": 440
     },
     {
       "id": "assurance.baseline.generated-redaction",
@@ -31404,7 +31448,7 @@
       "statement": "A golden mined from a live query or promoted from a labeled outcome passes {{authority.redact.write-time}} before commit; a case it cannot redact raises `GoldenRedactionFailed`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 436
+      "line": 442
     },
     {
       "id": "assurance.baseline.promotion-source",
@@ -31415,7 +31459,7 @@
       "statement": "Only an adjudicated outcome label promotes into a golden set; a self-rated row does not.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 438
+      "line": 444
     },
     {
       "id": "assurance.baseline.generators",
@@ -31426,7 +31470,7 @@
       "statement": "Three generators draft candidate cases from the deployment's store — entity-to-fact-to-edge walks, composed edge chains, and questions about absent entities — and a human approves each before commit.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 439
+      "line": 445
     },
     {
       "id": "assurance.baseline.draft-command",
@@ -31437,7 +31481,7 @@
       "statement": "`contextful eval draft` reads the declared entity, fact and edge tables through one admitted session, runs the three generators, and writes their candidates as case lines; it commits nothing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 440
+      "line": 446
     },
     {
       "id": "assurance.baseline.commit-command",
@@ -31448,7 +31492,7 @@
       "statement": "`contextful eval commit` appends each draft an `--approve <id>=<reviewer>` names, redacted under the declaration's removal rules, to the named case file; an id the file already holds refuses the commit.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 441
+      "line": 447
     },
     {
       "id": "assurance.baseline.held-out",
@@ -31459,7 +31503,7 @@
       "statement": "Retrieval and synthesis are tuned on no gate input.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 442
+      "line": 448
     },
     {
       "id": "assurance.baseline.rotation",
@@ -31470,7 +31514,7 @@
       "statement": "The native set rotates on a cadence, a sample of its truth is reviewed on each rotation, and a comparison across generations resolves through the pinned run stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 443
+      "line": 449
     },
     {
       "id": "assurance.baseline.native-gate",
@@ -31481,7 +31525,7 @@
       "statement": "A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 444
+      "line": 450
     },
     {
       "id": "assurance.baseline.public-corpora",
@@ -31492,7 +31536,7 @@
       "statement": "A public benchmark corpus enters through a fetch-manifest entry naming its URL, its dataset's terms and a SHA-256 digest, and is never committed; fetched bytes under another digest raise `PublicCorpusDigestMismatch`.",
       "why": "because a corpus whose bytes drift scores another benchmark under the same name",
       "file": "spec/81-engineering.md",
-      "line": 445
+      "line": 451
     },
     {
       "id": "assurance.baseline.trace-export",
@@ -31503,7 +31547,7 @@
       "statement": "A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 447
+      "line": 453
     },
     {
       "id": "assurance.backtest.bounded-case",
@@ -31514,7 +31558,7 @@
       "statement": "A bounded case carries a horizon, an instant each of its reads passes as {{store.available-time.available-as-of}}; its trajectory is the ordered tool calls, queries and retrieved documents its run records.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 455
+      "line": 461
     },
     {
       "id": "assurance.backtest.checkpoint-route",
@@ -31525,7 +31569,7 @@
       "statement": "A reader, derive engine or embedder naming a checkpoint family resolves each bounded case to the newest family checkpoint whose post-training {{connector.infer.cutoffs}} precedes the case's horizon.",
       "why": "because date-bounded checkpoints remove memorized outcomes at the source",
       "file": "spec/81-engineering.md",
-      "line": 456
+      "line": 462
     },
     {
       "id": "assurance.backtest.cutoff-slice",
@@ -31536,7 +31580,7 @@
       "statement": "A backtest report places each case by its resolution instant minus the reader's post-training cutoff and states leakage against a declared reference, a cutoff discontinuity or a clean control model, never a bare pre/post gap.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 458
+      "line": 464
     },
     {
       "id": "assurance.backtest.cutoff-sensitivity",
@@ -31547,7 +31591,7 @@
       "statement": "The report repeats {{assurance.backtest.cutoff-slice}} with each `estimated` cutoff moved across its declared uncertainty interval, and states the minimum detectable effect.",
       "why": "because finding no leakage bounds it and does not certify its absence",
       "file": "spec/81-engineering.md",
-      "line": 460
+      "line": 466
     },
     {
       "id": "assurance.backtest.latest-arm",
@@ -31558,7 +31602,7 @@
       "statement": "A case set run under a checkpoint family also runs the family's latest checkpoint as a paired arm, and the report states the latest-minus-routed difference.",
       "why": "because the latest-minus-dated gap isolates the leakage premium",
       "file": "spec/81-engineering.md",
-      "line": 462
+      "line": 468
     },
     {
       "id": "assurance.backtest.answer-key-only",
@@ -31569,7 +31613,7 @@
       "statement": "A judge scores a case resolved before the judge's post-training cutoff against the case's stored expected answer alone.",
       "why": "because a judge reasoning about an outcome may remember it",
       "file": "spec/81-engineering.md",
-      "line": 464
+      "line": 470
     },
     {
       "id": "assurance.backtest.run-stamp",
@@ -31580,7 +31624,7 @@
       "statement": "Beyond {{assurance.evaluate.judged-cutoffs}}, taken through {{assurance.evaluate.cutoff-flags}}, a backtest run block stamps the derive engine's and embedder's snapshot ids and cutoffs, the temperature, seed, prompt digest and tool-schema version.",
       "why": "because two runs differing in any of these are two trials, and a report cannot slice on a value it never recorded",
       "file": "spec/81-engineering.md",
-      "line": 466
+      "line": 472
     },
     {
       "id": "assurance.backtest.label-interval",
@@ -31591,7 +31635,7 @@
       "statement": "Every bounded case declares its label interval `[t0, t1]`, the span its outcome is observed over; a bounded case without one raises `EvalLabelIntervalMissing` before any of its reads.",
       "why": "because purge and embargo need each label's span, and a label observed past the horizon is the leak itself",
       "file": "spec/81-engineering.md",
-      "line": 468,
+      "line": 474,
       "scenarios": [
         "WHEN a bounded case declares a horizon and no label interval, THEN the run raises `EvalLabelIntervalMissing` and reads nothing for that case."
       ]
@@ -31605,7 +31649,7 @@
       "statement": "A split purges each training case whose label interval overlaps a test case's, and embargoes each training case starting within a declared span after a test fold ends.",
       "why": "because serially correlated labels carry a test fold's outcome into adjacent training cases",
       "file": "spec/81-engineering.md",
-      "line": 470
+      "line": 476
     },
     {
       "id": "assurance.backtest.trial-ledger",
@@ -31616,7 +31660,7 @@
       "statement": "A financial return-series profile records each run against its case set as a trial row and computes the deflated Sharpe ratio from trial count, Sharpe variance, series length, skew and kurtosis.",
       "why": "because the deflated Sharpe needs every trial's Sharpe, not a reported count",
       "file": "spec/81-engineering.md",
-      "line": 472
+      "line": 478
     },
     {
       "id": "assurance.backtest.seed-repeats",
@@ -31627,7 +31671,7 @@
       "statement": "A configuration runs its declared repeat count; its repeats count as one trial, and the report shows their spread.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 474
+      "line": 480
     },
     {
       "id": "assurance.backtest.universe-table",
@@ -31638,7 +31682,7 @@
       "statement": "A case evaluating changing membership names a membership table declaring valid time and `available_time`; a case naming literal identifiers reports under a separate `fixed-universe` slice.",
       "why": "because a fixed identifier list names only the members known when the case was written",
       "file": "spec/81-engineering.md",
-      "line": 475
+      "line": 481
     },
     {
       "id": "assurance.backtest.fill-instant",
@@ -31649,7 +31693,7 @@
       "statement": "A financial execution profile fills each decision at the first price available strictly after the decision's recorded instant.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 477
+      "line": 483
     },
     {
       "id": "assurance.backtest.execution-component",
@@ -31660,7 +31704,7 @@
       "statement": "A backtest report stamps its declared execution component's digest and parameters under {{topology.bound-application.domain-neutral}}; a report without one raises `EvalExecutionUndeclared`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 479
+      "line": 485
     },
     {
       "id": "assurance.backtest.planted-future",
@@ -31671,7 +31715,7 @@
       "statement": "Each bounded case plants a row available after its horizon in every table it reads; a planted row in the case's trajectory fails the case.",
       "why": "because a planted row proves the bound held on the path the case took, not only in its configuration",
       "file": "spec/81-engineering.md",
-      "line": 481,
+      "line": 487,
       "scenarios": [
         "WHEN a bounded case's trajectory returns the row planted one day after its horizon, THEN the case fails and the report names the call that returned it."
       ]
@@ -31685,7 +31729,7 @@
       "statement": "A financial universe profile plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.",
       "why": "because survivorship shows as a missing delisting return, which no aggregate figure reveals",
       "file": "spec/81-engineering.md",
-      "line": 483
+      "line": 489
     },
     {
       "id": "assurance.backtest.leak-score",
@@ -31696,7 +31740,7 @@
       "statement": "The case's judge model scores each retrieved document 0 to 4 against a reference answer from rows available before the horizon, landing one row per document and case horizon; the report gives Brier per leak tier.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 485
+      "line": 491
     },
     {
       "id": "assurance.backtest.trajectory-check",
@@ -31707,7 +31751,7 @@
       "statement": "A bounded case fails when a call in its trajectory lacks the {{disclosure.record.bound-entry}} attributes, or a retrieved document scores at or above the case's declared leak threshold.",
       "why": "because a bound proves the configuration, and leaked page content passes the bound",
       "file": "spec/81-engineering.md",
-      "line": 487
+      "line": 493
     },
     {
       "id": "assurance.backtest.query-finding",
@@ -31718,7 +31762,7 @@
       "statement": "A recorded query naming an entity first available after the case's horizon lands a finding naming the call.",
       "why": "because a model that remembers the outcome steers its queries toward it",
       "file": "spec/81-engineering.md",
-      "line": 489
+      "line": 495
     },
     {
       "id": "assurance.backtest.trajectory-replay",
@@ -31729,7 +31773,7 @@
       "statement": "`contextful eval replay <run>` re-serves each recorded response without reading the store and reproduces the run report's digest.",
       "why": "because a backtest a third party cannot re-score is a claim, not evidence",
       "file": "spec/81-engineering.md",
-      "line": 491
+      "line": 497
     },
     {
       "id": "assurance.backtest.replay-root",
@@ -31740,7 +31784,7 @@
       "statement": "A backtest run report carries the signed audit-chain root covering its run's {{disclosure.record.bound-entry}} entries.",
       "why": "because the root lets a verifier prove each replayed response is the one the run recorded",
       "file": "spec/81-engineering.md",
-      "line": 493
+      "line": 499
     },
     {
       "id": "assurance.forecast.forecast-case",
@@ -31751,7 +31795,7 @@
       "statement": "A forecast case carries a freeze instant, a resolution statement naming its vintage, a resolution instant and a probability answer; a backtest forecast case is a {{assurance.backtest.bounded-case}} whose horizon is its freeze instant.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 505
+      "line": 511
     },
     {
       "id": "assurance.forecast.resolved-before-freeze",
@@ -31762,7 +31806,7 @@
       "statement": "A backtest forecast case whose resolution instant precedes its freeze instant raises `EvalCaseResolvedBeforeFreeze`.",
       "why": "because a question picked after its answer is known leaks through its own existence",
       "file": "spec/81-engineering.md",
-      "line": 506,
+      "line": 512,
       "scenarios": [
         "WHEN a backtest forecast case freezes on `2014-06-01` and resolved on `2014-05-20`, THEN the run raises `EvalCaseResolvedBeforeFreeze` before reading the case."
       ]
@@ -31776,7 +31820,7 @@
       "statement": "A forecast case settles through the label join within {{read.settle.grace-window}}, and its scores report as {{read.settle.calibration-report}} groups them.",
       "why": "because one settlement path keeps a forecast's Brier score comparable with an application's calibration",
       "file": "spec/81-engineering.md",
-      "line": 508
+      "line": 514
     },
     {
       "id": "assurance.forecast.lead-time",
@@ -31787,7 +31831,7 @@
       "statement": "An answer recorded less than the case's declared minimum lead before resolution scores on a separate track.",
       "why": "because an answer given near resolution reads the outcome rather than forecasting it",
       "file": "spec/81-engineering.md",
-      "line": 510
+      "line": 516
     },
     {
       "id": "assurance.forecast.market-context",
@@ -31798,7 +31842,7 @@
       "statement": "A prediction-market profile supplies freeze-instant probability prices as available rows, and the report shows each forecaster's score improvement over that baseline.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 512
+      "line": 518
     },
     {
       "id": "assurance.forecast.imputed",
@@ -31809,7 +31853,7 @@
       "statement": "A missing answer scores as probability 0.5 for a dataset case; a prediction-market profile instead uses its freeze-instant probability price.",
       "why": "because dropping a missing answer rewards abstaining on hard questions",
       "file": "spec/81-engineering.md",
-      "line": 513
+      "line": 519
     },
     {
       "id": "assurance.forecast.coverage-floor",
@@ -31820,7 +31864,7 @@
       "statement": "A forecaster answering below 95 percent of a round's cases is reported unranked.",
       "why": "because imputation alone still lets a forecaster pick its questions",
       "file": "spec/81-engineering.md",
-      "line": 515
+      "line": 521
     },
     {
       "id": "assurance.forecast.no-evidence-baseline",
@@ -31831,7 +31875,7 @@
       "statement": "Each round also scores a forecaster given the question text alone, and the report subtracts its Brier score from each forecaster's.",
       "why": "because which questions exist can reveal their answers without any retrieval",
       "file": "spec/81-engineering.md",
-      "line": 517
+      "line": 523
     },
     {
       "id": "assurance.forecast.tracks-separate",
@@ -31842,7 +31886,7 @@
       "statement": "Backtest, prospective, tool-free and tool-using scores never pool into one figure.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 519
+      "line": 525
     },
     {
       "id": "assurance.measure.ledger",
@@ -31853,7 +31897,7 @@
       "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 532
+      "line": 538
     },
     {
       "id": "assurance.measure.unresolved-entry",
@@ -31864,7 +31908,7 @@
       "statement": "An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 533,
+      "line": 539,
       "scenarios": [
         "WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs."
       ]
@@ -31878,7 +31922,7 @@
       "statement": "An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 535,
+      "line": 541,
       "scenarios": [
         "WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it."
       ]
@@ -31892,7 +31936,7 @@
       "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry is measured on the default-branch run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 536
+      "line": 542
     },
     {
       "id": "assurance.measure.judged-tier",
@@ -31903,7 +31947,7 @@
       "statement": "An entry whose metric names a judged figure is scheduled-tier; on another tier it resolves to nothing under {{assurance.measure.unresolved-entry}}.",
       "why": "because a judged figure costs a model call per item and moves with the judge, not with the change",
       "file": "spec/81-engineering.md",
-      "line": 537
+      "line": 543
     },
     {
       "id": "assurance.measure.count-first",
@@ -31914,7 +31958,7 @@
       "statement": "A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.",
       "why": "because a shared container moves wall-clock figures past any band narrow enough to catch a regression",
       "file": "spec/81-engineering.md",
-      "line": 539
+      "line": 545
     },
     {
       "id": "assurance.measure.record",
@@ -31925,7 +31969,7 @@
       "statement": "A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 541
+      "line": 547
     },
     {
       "id": "assurance.measure.seeded",
@@ -31936,7 +31980,7 @@
       "statement": "Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.",
       "why": "because a failure that cannot replay cannot be fixed",
       "file": "spec/81-engineering.md",
-      "line": 543
+      "line": 549
     },
     {
       "id": "assurance.measure.seed-mismatch",
@@ -31947,7 +31991,7 @@
       "statement": "A gate or scheduled record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch` and counts as red; a trend mismatch leaves no comparable record.",
       "why": "because a figure measured under another seed replays nothing the ledger names",
       "file": "spec/81-engineering.md",
-      "line": 545
+      "line": 551
     },
     {
       "id": "assurance.measure.timing-iterations",
@@ -31958,7 +32002,7 @@
       "statement": "A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 547
+      "line": 553
     },
     {
       "id": "assurance.measure.timing-batches",
@@ -31969,7 +32013,7 @@
       "statement": "A timed figure is the median of 5 repeats of its timed batch.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 548
+      "line": 554
     },
     {
       "id": "assurance.measure.trend-direction",
@@ -31980,7 +32024,7 @@
       "statement": "Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 549
+      "line": 555
     },
     {
       "id": "assurance.measure.trend-baseline",
@@ -31991,7 +32035,7 @@
       "statement": "A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 551,
+      "line": 557,
       "scenarios": [
         "WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes."
       ]
@@ -32005,7 +32049,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 553,
+      "line": 559,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -32019,7 +32063,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 554
+      "line": 560
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -32030,7 +32074,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 555
+      "line": 561
     },
     {
       "id": "assurance.measure.threshold-cost",
@@ -32041,7 +32085,7 @@
       "statement": "A gate-tier target that rises under `<=`, falls under `>=` or moves under `==` carries a `# cost:` comment above its entry that its entry at `<rev>` lacks, or `contextful-ci measure --since <rev>` raises `MeasureThresholdLoosened`.",
       "why": "because a loosened gate otherwise reads as a changed number, and the cost it accepts goes unrecorded",
       "file": "spec/81-engineering.md",
-      "line": 556
+      "line": 562
     },
     {
       "id": "assurance.measure.history",
@@ -32052,7 +32096,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 558
+      "line": 564
     },
     {
       "id": "assurance.measure.run-report",
@@ -32063,7 +32107,7 @@
       "statement": "`contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — and a run id is an integer or a FlareDispatch execution id, each read back from history.",
       "why": "because the Dispatcher names a run by its execution id, and an unreadable note hides every older baseline",
       "file": "spec/81-engineering.md",
-      "line": 560,
+      "line": 566,
       "scenarios": [
         "WHEN the baseline note's run id is `contextful-measures_2026-10-14`, THEN the report's annotation names that run id as its baseline."
       ]
@@ -32077,7 +32121,7 @@
       "statement": "The FlareDispatch nightly run executes every measurement tier and every {{assurance.gate.nightly-tier}} part against the default-branch head, reports one check per run, and on failure opens an issue naming the change range since the last passing run.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 562
+      "line": 568
     },
     {
       "id": "assurance.measure.note-credential",
@@ -32088,7 +32132,7 @@
       "statement": "The Dispatcher appends the run report through the Git data API under its GitHub App installation token, which holds contents write on this repository; the measure container receives no write credential.",
       "why": "because the container executes the measured tree's code, and a write token inside it lets any commit rewrite history",
       "file": "spec/81-engineering.md",
-      "line": 563
+      "line": 569
     },
     {
       "id": "assurance.measure.remote-attest",
@@ -32099,7 +32143,7 @@
       "statement": "Status pins only the commands this tree ships; the Dispatcher's schedule and note write pin no test here, and each note commit on `refs/notes/measures` names its measured commit and writer.",
       "why": "because a pin demonstrates code in this tree, and the Dispatcher's code lives in its own repository",
       "file": "spec/81-engineering.md",
-      "line": 565
+      "line": 571
     },
     {
       "id": "assurance.measure.measured-basis",
@@ -32110,7 +32154,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 567
+      "line": 573
     },
     {
       "id": "assurance.release.version",
@@ -32121,7 +32165,7 @@
       "statement": "A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 595,
+      "line": 601,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -32135,7 +32179,7 @@
       "statement": "A commit's store format is the `FormatVersion::CURRENT` constant in its `crates/contextful-core/src/store/lay_out.rs`, and `1.0` where that constant is absent; a constant that does not parse raises `TagStoreFormatUnread`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 597,
+      "line": 603,
       "scenarios": [
         "WHEN 16 milestones compute `closed`, `v0.16.1` declares store format `1.0` and `HEAD` declares `2.0`, THEN the computed version is `v0.17.0` and its message carries `Store format 1.0 → 2.0`."
       ]
@@ -32149,7 +32193,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 599
+      "line": 605
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -32160,7 +32204,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/81-engineering.md",
-      "line": 601
+      "line": 607
     },
     {
       "id": "assurance.release.off-branch",
@@ -32171,7 +32215,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 603
+      "line": 609
     },
     {
       "id": "assurance.release.version-regressed",
@@ -32182,7 +32226,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 605,
+      "line": 611,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -32196,7 +32240,7 @@
       "statement": "A computed `<minor>` equal to the highest existing tag's, while `HEAD`'s store format major differs from that tag's, raises `TagFormatBreakPatch`, naming both formats.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 607,
+      "line": 613,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0` while the store format moves from `1.0` to `2.0`, THEN the computed `v0.9.1` raises `TagFormatBreakPatch`."
       ]
@@ -32210,7 +32254,7 @@
       "statement": "A tag whose store format major exceeds the highest existing tag's carries the message line `Store format <old> → <new>: upgrade every reader, then every writer together.`",
       "why": "because an older reader refuses a manifest of the newer major, and an older writer refuses the table once a newer writer commits",
       "file": "spec/81-engineering.md",
-      "line": 609
+      "line": 615
     },
     {
       "id": "assurance.release.workspace-version",
@@ -32221,7 +32265,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 611
+      "line": 617
     },
     {
       "id": "assurance.release.gate-failed",
@@ -32232,7 +32276,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 613
+      "line": 619
     },
     {
       "id": "assurance.release.release-tag-version",
@@ -32243,7 +32287,7 @@
       "statement": "`contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.",
       "why": "because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version",
       "file": "spec/81-engineering.md",
-      "line": 615
+      "line": 621
     },
     {
       "id": "assurance.release.release-run",
@@ -32254,7 +32298,7 @@
       "statement": "A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.",
       "why": "because distributed builds and formula generation share one tag identity",
       "file": "spec/81-engineering.md",
-      "line": 617
+      "line": 623
     },
     {
       "id": "assurance.release.release-dry-run",
@@ -32265,7 +32309,7 @@
       "statement": "A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.",
       "why": "because a packaging rehearsal must not claim a released version",
       "file": "spec/81-engineering.md",
-      "line": 619
+      "line": 625
     },
     {
       "id": "assurance.consumer.suite",
@@ -35693,6 +35737,14 @@
     [
       "assurance.evaluate.legs",
       "read.retrieve.ranked-call"
+    ],
+    [
+      "assurance.evaluate.semantic-cache",
+      "assurance.evaluate.through-the-store"
+    ],
+    [
+      "assurance.evaluate.semantic-report",
+      "assurance.evaluate.deterministic-tier"
     ],
     [
       "assurance.evaluate.run-verdict",
