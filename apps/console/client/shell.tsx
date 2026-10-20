@@ -109,9 +109,14 @@ export function AsOfSelect({ id, value, onChange }: { id: string; value: string;
   );
 }
 
+export class RequestFailure extends Error {
+  field?: string;
+  constructor(message: string, field?: string) { super(message); this.field = field; }
+}
+
 export async function post<T>(path: string, payload: unknown): Promise<T> {
   const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-  const value = await response.json() as T & { error?: { identifier?: string } };
-  if (!response.ok) throw new Error(value.error?.identifier ?? `HTTP ${response.status}`);
+  const value = await response.json() as T & { error?: { identifier?: string; message?: string; field?: string } };
+  if (!response.ok) throw new RequestFailure(value.error?.message ?? value.error?.identifier ?? `HTTP ${response.status}`, value.error?.field);
   return value;
 }

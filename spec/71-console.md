@@ -143,6 +143,12 @@ The Admin page's operational views.
 
 - `workflow-canvas` — Admin projects the store-published pipelines, jobs, models, publications and external steps as one node–edge graph under {{surface.visualize.dataflow-edges}}, with each pipeline's schedule, steps and latest run outcome.
   *A-surface*
+- `ingest-sources` — Admin lists each applied pipeline's connector, destination tables, schedule or trigger, and latest table outcome; applied-version confirmation remains separate under {{run.declare.apply-fires-nothing}}.
+  *A-surface*
+- `source-run-confirmation` — Admin confirms a table run only when an engine audit receipt binds its recorded run id to the applied version and pipeline content hash; unmatched versions and absent receipts remain pending, including unconfirmed sibling tables.
+  *because an older version completing after an apply proves no ingestion under the claimed source definition*
+- `first-source-run` — Admin retains the first matching table outcome, including zero-row success, beside the latest outcome, rows and actionable failure; multiple-table outcomes name the table.
+  *A-surface*
 - `dataflow-edges` — The published workflow lists edges `{from, to, via}` between typed node ids: pipeline and build-job `after`, pipeline to produced table, table or model to its reading model or job, build job to model, job to written table and publication.
   *because a graph the client infers from names draws edges the store never declared*
 - `external-step` — Admin draws each `[[external]]` declaration as a node marked as run outside the engine, joined by its inputs and outputs; the engine runs, schedules and records nothing for it.

@@ -172,7 +172,18 @@ fn control_failure(error: anyhow::Error) -> HttpResponse {
     let status = surface.map_or(503, SurfaceError::status);
     let identifier = surface.map(|refusal| refusal.to_string().split(':').next().unwrap_or("ControlUnavailable").to_string())
         .unwrap_or_else(|| "ControlUnavailable".into());
-    HttpResponse::json(status, &json!({ "error": { "identifier": identifier } }))
+    let mut detail = json!({ "identifier": identifier });
+    if let Some(SurfaceError::ApplyValidationRefused(message)) = surface {
+        // Field names carry an actionable refusal without returning configuration values,
+        // local paths or an internal error chain to the console.
+        let field = if message.contains("PipelineDuplicateId") { "identity" }
+            else if message.contains("destination") || message.contains("PipelineDestination") { "destination" }
+            else if message.contains("schedule") || message.contains("Schedule") { "schedule" }
+            else if message.contains("source") || message.contains("endpoint") || message.contains("Connector") { "source" }
+            else { "document" };
+        detail["field"] = json!(field);
+    }
+    HttpResponse::json(status, &json!({ "error": detail }))
 }
 
 /// The issuer key pins, resolved and parsed before the listener binds; no generated key

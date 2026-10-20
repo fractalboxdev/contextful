@@ -275,15 +275,42 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
         }
     }
     let wired = wire_at(project, &None)?;
-    for row in wired.engine.catalog.runs(None)? {
+    let local_runs = wired.engine.catalog.runs(None)?;
+    let mut run_details = BTreeMap::new();
+    for row in &local_runs {
         if selected.contains(&row.pipeline_id) && runs.get(&row.pipeline_id).is_none_or(|earlier| row.started_at > earlier.started_at) {
             runs.insert(row.pipeline_id.clone(), contextful_sync::RunMark {
-                run_id: row.run_id,
-                table: row.table,
+                run_id: row.run_id.clone(),
+                table: row.table.clone(),
                 status: row.status,
                 started_at: row.started_at,
                 ended_at: row.ended_at,
             });
+        }
+        if selected.contains(&row.pipeline_id) && run_details.get(&row.pipeline_id).is_none_or(|earlier: &&contextful_core::run::record::RunRow| row.started_at > earlier.started_at) {
+            run_details.insert(row.pipeline_id.clone(), row);
+        }
+    }
+    let run_view = |row: &contextful_core::run::record::RunRow| json!({
+        "run_id": row.run_id, "table": row.table, "status": row.status,
+        "rows": row.rows, "started_at": row.started_at, "ended_at": row.ended_at,
+        "failure": row.error_kind.map(|kind| kind.name()),
+    });
+    let mut source_runs: BTreeMap<String, Value> = BTreeMap::new();
+    let receipts = contextful_policy::audit::entries(&project.audit_dir())?;
+    for spec in &pipelines {
+        let matching: BTreeSet<&str> = receipts.iter().filter_map(|entry| {
+            let attributes = &entry.attributes;
+            (attributes["contextful.control.version"].as_u64() == version &&
+             attributes["contextful.pipeline.id"].as_str() == Some(spec.id.as_str()) &&
+             attributes["contextful.pipeline.hash"].as_str() == Some(spec.content_hash().as_str()))
+                .then(|| attributes["contextful.run.id"].as_str()).flatten()
+        }).collect();
+        let mut observed: Vec<_> = local_runs.iter().filter(|row| row.pipeline_id == spec.id && matching.contains(row.run_id.as_str())).collect();
+        observed.sort_by_key(|row| row.started_at);
+        if let (Some(first), Some(latest)) = (observed.first(), observed.last()) {
+            let complete = spec.tables.iter().all(|table| observed.iter().any(|row| row.table == spec.table_name(table.name())));
+            source_runs.insert(spec.id.clone(), json!({ "applied": version, "first": run_view(first), "latest": run_view(latest), "complete": complete }));
         }
     }
     let models = applied_models(&control.source, version)?;
@@ -293,8 +320,9 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
     let pipelines: Vec<Value> = pipelines.into_iter().map(|spec| json!({
         "id": spec.id,
         "schedule": spec.schedule,
-        "tables": spec.tables.iter().map(|table| table.name()).collect::<Vec<_>>(),
+        "tables": spec.tables.iter().map(|table| spec.table_name(table.name())).collect::<Vec<_>>(),
         "source": spec.source.name,
+        "destination": spec.destination.as_ref().map(|destination| destination.name.as_str()).unwrap_or("store"),
         "after": spec.after,
         "steps": spec.transforms.iter().map(|step| match step {
             TransformOp::Select { .. } => "select",
@@ -315,6 +343,8 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
     let publications: Vec<Value> = publications.iter().map(|(name, job, members)| json!({ "name": name, "job": job, "members": members })).collect();
     Ok(json!({
         "applied": version,
+        "document": if snapshot.is_empty() { String::new() } else { crate::effective::public_manifest(ManifestFile { path: "applied snapshot".into(), text: snapshot })?.text },
+        "connectors": contextful_connectors::BUILT_IN.iter().map(|name| json!({ "name": name, "available": contextful_connectors::compiled_in(name).is_ok() })).collect::<Vec<_>>(),
         "pipelines": pipelines,
         "jobs": jobs,
         "models": models,
@@ -323,6 +353,8 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
         "tables": graph.tables,
         "edges": graph.edges.iter().map(|(from, to, via)| json!({ "from": from, "to": to, "via": via })).collect::<Vec<_>>(),
         "runs": runs,
+        "run_details": run_details.into_iter().map(|(id, row)| (id, run_view(row))).collect::<BTreeMap<_, _>>(),
+        "source_runs": source_runs,
         "truncated": truncated,
         "declined": 0,
     }))
@@ -708,15 +740,6 @@ fn applied_jobs(source: &Source, version: Option<u64>, specs: &BTreeMap<String, 
     version.map(|v| job_blocks(&source.read(v)?, None, specs)).transpose().map(Option::unwrap_or_default)
 }
 
-/// A pipeline-only editor refuses a store whose applied snapshot carries jobs.
-fn refuse_job_edit(control: &ControlConfig) -> Result<()> {
-    let (version, specs) = applied(&control.source)?;
-    if !applied_jobs(&control.source, version, &specs)?.is_empty() || !applied_models(&control.source, version)?.is_empty() || !applied_externals(&control.source, version)?.is_empty() {
-        return Err(SurfaceError::ApplyValidationRefused("the applied snapshot contains jobs, models or external steps; use the registered host's pipeline apply to edit them".into()).into());
-    }
-    Ok(())
-}
-
 /// The snapshot document: sorted pipeline specifications and validated job blocks.
 fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value], models: &[ModelSpec], tables: Option<&[TableDecl]>, externals: &[External]) -> Result<String> {
     #[derive(Serialize)]
@@ -740,21 +763,25 @@ fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value], models: 
     Ok(format!("# An applied snapshot, claimed by `contextful pipeline apply`; immutable once claimed.\n\n{body}"))
 }
 
-fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks, tables: Option<&[TableDecl]>) -> Result<String> {
+fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks, tables: Option<&[TableDecl]>, prior: &str) -> Result<String> {
     let specs = collect(&[ManifestFile { path: "manifest@draft.toml".into(), text: document.to_owned() }])
         .map_err(|e| SurfaceError::ApplyValidationRefused(e.to_string()))?;
     let specs: BTreeMap<String, PipelineSpec> = specs.into_iter().map(|entry| (entry.spec.id.clone(), entry.spec)).collect();
-    if !job_blocks(document, None, &specs)?.is_empty() {
-        return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit jobs; use the registered host's pipeline apply".into()).into());
-    }
-    if !crate::model_source::applied(&ManifestFile { path: "draft".into(), text: document.into() })?.is_empty() { bail!("the pipeline editor does not edit models; use pipeline apply"); }
-    if !parse_externals(document)?.is_empty() {
-        return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit external steps; use pipeline apply".into()).into());
+    let proposed: toml::Value = toml::from_str(document).map_err(|e| SurfaceError::ApplyValidationRefused(e.to_string()))?;
+    let inherited: toml::Value = toml::from_str(prior)?;
+    for key in ["job", "model", "external"] {
+        if proposed.get(key) != inherited.get(key) {
+            return Err(SurfaceError::ApplyValidationRefused(format!("the pipeline editor retains applied `{key}` blocks unchanged; use the registered host's pipeline apply to edit them")).into());
+        }
     }
     if !crate::effective::snapshot_tables(document)?.unwrap_or_default().is_empty() || !crate::effective::standalone_tables(&[ManifestFile { path: "draft.toml".into(), text: document.into() }])?.is_empty() {
         return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit standalone tables; use pipeline apply".into()).into());
     }
-    let rendered = render(&specs, &[], &[], tables, &[])?;
+    let jobs = job_blocks(document, None, &specs)?;
+    let models = crate::model_source::applied(&ManifestFile { path: "draft".into(), text: document.into() })?;
+    let externals = parse_externals(document)?;
+    let rendered = render(&specs, &jobs, &models, tables, &externals)?;
+    snapshot_externals(&rendered, &specs)?;
     for spec in specs.values() {
         if let Some(schedule) = spec.schedule.as_deref() {
             Schedule::parse(schedule).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e}", spec.id)))?;
@@ -767,14 +794,13 @@ fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks, tables: Op
 /// Store one validated, version-bound control draft without changing the applied pointer.
 pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, document: &str, operator: &str, tasks: &Tasks, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<Value> {
     let (located, _, control) = located(project, declaration)?;
-    refuse_job_edit(&control)?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
     if control.source.current()? != Some(expected) {
         return Err(SurfaceError::ManifestVersionConflict(format!("the editor read v{expected}, which is no longer current")).into());
     }
     let tables = applied_tables(&control.source, Some(expected))?;
-    let text = validated_draft(document, &located.declaration, tasks, tables.as_deref())?;
+    let text = validated_draft(document, &located.declaration, tasks, tables.as_deref(), &control.source.read(expected)?)?;
     let draft = Draft::new(expected, text, operator.to_owned())?;
     snapshots.save_draft_guarded(&draft, boundary)?;
     Ok(json!({ "expected": expected, "nonce": draft.nonce }))
@@ -789,7 +815,6 @@ pub(crate) fn claim_operator_nonce(project: &ProjectArgs, declaration: Option<Pa
 /// Revalidate the saved draft and claim it only at the version the editor read.
 pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks, authority: &AdmittedAuthority, admit: &AdmitArgs, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<()> {
     let (initial, _, control) = located(project, declaration.clone())?;
-    refuse_job_edit(&control)?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
     let draft = snapshots.read_draft()?;
@@ -798,7 +823,7 @@ pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, e
     }
     let tables = applied_tables(&control.source, Some(expected))?;
     let public = crate::effective::public_manifest(ManifestFile { path: "saved draft".into(), text: draft.document.clone() })?;
-    if validated_draft(&public.text, &initial.declaration, tasks, tables.as_deref())? != draft.document {
+    if validated_draft(&public.text, &initial.declaration, tasks, tables.as_deref(), &control.source.read(expected)?)? != draft.document {
         return Err(SurfaceError::ApplyValidationRefused("the saved draft is not the validated snapshot".into()).into());
     }
     let (fresh, _, control) = located(project, declaration)?;
@@ -1231,6 +1256,7 @@ struct ChildDispatch {
     /// The seed each store-driven or synthesize fire's credential is minted under, and the root holding
     /// the issuance policy (`surface.dispatch.fire-credential`).
     issuer: Option<(PathBuf, PathBuf)>,
+    public_key: Option<String>,
 }
 
 enum ChildStepError {
@@ -1281,7 +1307,11 @@ impl ChildDispatch {
                         .env(crate::admit::AUDIENCE_VAR, credential.audience);
                 }
             }
-            None => { cmd.args(["pipeline", "run", id]); }
+            None => {
+                cmd.args(["pipeline", "run", id]);
+                if let Some((seed, _)) = &self.issuer { cmd.arg("--issuer-key").arg(seed); }
+                if let Some(pins) = &self.public_key { cmd.arg("--public-key").arg(pins); }
+            }
         }
         cmd.args(["--applied", &version.to_string(), "--project", &self.project]);
         if let Some(d) = &self.declaration {
@@ -1534,6 +1564,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
                 now: project.now.clone(),
                 children: children.clone(),
                 issuer: issuer_key.map(|seed| (seed.to_path_buf(), root)),
+                public_key: public_key.map(str::to_owned),
             })
         }
     };

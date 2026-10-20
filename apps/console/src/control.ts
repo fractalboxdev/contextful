@@ -4,6 +4,29 @@ import { createHash, createHmac, randomBytes } from "node:crypto";
 type ControlStore = { id: string; endpoint: string };
 type ControlOptions = { stores: ControlStore[]; capability?: string; attestationSecret?: string; fetcher?: typeof fetch };
 
+const fields = {
+  identity: "Choose a unique source identity.",
+  source: "Choose an available connector and check its required configuration fields.",
+  destination: "Choose the store destination and compatible output tables.",
+  schedule: "Enter a valid schedule, or leave it empty for a triggered source.",
+  document: "Check the TOML document and retain the existing jobs, models and external steps.",
+} as const;
+
+export class ControlRefusal extends Error {
+  readonly detail: { identifier: string; message: string; field?: string };
+  readonly status: number;
+  constructor(status: number, identifier: string, field?: string) {
+    const safeField = field && Object.hasOwn(fields, field) ? field as keyof typeof fields : undefined;
+    const message = identifier === "ManifestVersionConflict" || identifier === "ControlDraftAbsent"
+      ? "The applied version changed. Reload the control document and validate your draft again."
+      : identifier === "ApplyValidationRefused" ? fields[safeField ?? "document"]
+      : "The store control service is unavailable. Retry after checking the store connection.";
+    super(message);
+    this.status = status;
+    this.detail = { identifier, ...(safeField ? { field: safeField } : {}), message };
+  }
+}
+
 function unavailable(): never {
   throw new Error("ConsoleAdapterUnavailable");
 }
@@ -47,7 +70,13 @@ export function createLiveControl({ stores, capability, attestationSecret, fetch
       headers,
       ...(serialized ? { body: serialized } : {}),
     });
-    if (!response.ok) throw new Error(`ConsoleControlRefused:${response.status}`);
+    if (!response.ok) {
+      const value = await response.json().catch(() => null) as { error?: { identifier?: string; field?: string } } | null;
+      const identifier = value?.error?.identifier;
+      const admitted = response.status === 422 && identifier === "ApplyValidationRefused" ||
+        response.status === 409 && (identifier === "ManifestVersionConflict" || identifier === "ControlDraftAbsent");
+      throw new ControlRefusal(admitted ? response.status : 503, admitted ? identifier! : "ConsoleControlUnavailable", admitted ? value?.error?.field : undefined);
+    }
     return response.json();
   }
   return {

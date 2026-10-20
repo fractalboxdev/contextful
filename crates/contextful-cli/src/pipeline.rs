@@ -145,6 +145,9 @@ pub enum PipelineCmd {
         /// Fire the specification applied snapshot version N holds rather than the declared one.
         #[arg(long)]
         applied: Option<u64>,
+        /// Audit signing port for an applied-version run receipt, checked against current issuer pins.
+        #[arg(long)]
+        issuer_key: Option<PathBuf>,
         /// Print a derive pipeline's eligible, already-derived and outstanding unit counts
         /// from one selection, calling no engine and landing no row.
         #[arg(long)]
@@ -890,7 +893,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             crate::receive::receive(crate::receive::Receive { id, key, project, declaration, site_id, site_id_env, admit: &admit }, tasks)
         }
         PipelineCmd::Worker { project, declaration, listen } => crate::worker::serve_worker(&project, declaration, &listen),
-        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied, dry_run, available_as_of } => {
+        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied, issuer_key, dry_run, available_as_of } => {
             let l = project.locate(declaration)?;
             crate::sync::pull_before_run(&l)?;
             let declaration = l.declaration.clone();
@@ -1115,6 +1118,26 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 }
                 if let Ok(row) = &outcome {
                     trace.close(row);
+                }
+                if let Some(version) = applied {
+                    let recorded = match &outcome {
+                        Ok(row) => Some(row.clone()),
+                        Err(_) => w.engine.catalog.run(&run_id)?.filter(|row| row.trace_id.as_deref() == Some(trace.trace_id().as_str())),
+                    };
+                    if let Some(row) = recorded {
+                        // The receipt binds a real recorded outcome to the immutable document
+                        // this command loaded. A missing receipt leaves Admin's version pending.
+                        let receipt = crate::project::read_audit(&l.project, issuer_key.as_deref(), admit.public_key.as_deref(), admit.keyset.as_deref())
+                            .and_then(|audit| audit.append(serde_json::json!({
+                                "contextful.control.version": version,
+                                "contextful.pipeline.id": spec.id,
+                                "contextful.pipeline.hash": spec.content_hash(),
+                                "contextful.run.id": row.run_id,
+                            })).map_err(Into::into));
+                        if receipt.is_err() {
+                            eprintln!("{}: the applied-version run receipt is unavailable; Admin retains pending confirmation", spec.id);
+                        }
+                    }
                 }
                 let row = match outcome {
                     Ok(row) => row,

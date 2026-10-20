@@ -11,6 +11,44 @@ const token = (() => {
   return `${header}.${claims}.${sign("RSA-SHA256", Buffer.from(`${header}.${claims}`), privateKey).toString("base64url")}`;
 })();
 
+test("Admin preserves safe field refusals and version conflicts without forwarding engine internals", async () => {
+  for (const [status, upstream, expected] of [
+    [422, { identifier: "ApplyValidationRefused", field: "source", message: "SQL stack /private/internal secret" },
+      { identifier: "ApplyValidationRefused", field: "source", message: "Choose an available connector and check its required configuration fields." }],
+    [409, { identifier: "ManifestVersionConflict" },
+      { identifier: "ManifestVersionConflict", message: "The applied version changed. Reload the control document and validate your draft again." }],
+    [503, { identifier: "RawInternalFailure", message: "secret" },
+      { identifier: "ConsoleControlUnavailable", message: "The store control service is unavailable. Retry after checking the store connection." }],
+  ] as const) {
+    const control = createLiveControl({ stores: [{ id: "one", endpoint: "https://store.example" }], capability: "secret",
+      fetcher: async () => Response.json({ error: upstream }, { status }) });
+    const app = createConsole({ identity: { kind: "access", issuer: "https://access.example", queryAudience: "query-app", adminAudience: "admin-app", publicKey },
+      stores: [{ id: "one", label: "One" }], adminCapability: "secret", control,
+      turn: async () => ({ answer: "", sources: [], widgets: [] }), read: { list: async () => [] } });
+    const response = await app.fetch(new Request("https://console.example/admin/api/edit", {
+      method: "POST", headers: { "cf-access-jwt-assertion": token, origin: "https://console.example" }, body: JSON.stringify({ store: "one", expected: 1, document: "" }),
+    }));
+    assert.equal(response.status, status);
+    assert.deepEqual(await response.json(), { error: expected });
+  }
+});
+
+test("Query grants cannot draft or apply ingest sources", async () => {
+  const header = Buffer.from(JSON.stringify({ alg: "RS256" })).toString("base64url");
+  const claims = Buffer.from(JSON.stringify({ iss: "https://access.example", aud: "query-app", sub: "reader", exp: Math.floor(Date.now() / 1000) + 300 })).toString("base64url");
+  const queryToken = `${header}.${claims}.${sign("RSA-SHA256", Buffer.from(`${header}.${claims}`), privateKey).toString("base64url")}`;
+  let calls = 0;
+  const control = createLiveControl({ stores: [{ id: "one", endpoint: "https://store.example" }], capability: "secret", fetcher: async () => { calls++; return Response.json({}); } });
+  const app = createConsole({ identity: { kind: "access", issuer: "https://access.example", queryAudience: "query-app", adminAudience: "admin-app", publicKey },
+    stores: [{ id: "one", label: "One" }], adminCapability: "secret", control,
+    turn: async () => ({ answer: "", sources: [], widgets: [] }), read: { list: async () => [] } });
+  for (const action of ["edit", "apply"]) {
+    const response = await app.fetch(new Request(`https://console.example/admin/api/${action}`, { method: "POST", headers: { "cf-access-jwt-assertion": queryToken, origin: "https://console.example" }, body: "{}" }));
+    assert.equal(response.status, 403);
+  }
+  assert.equal(calls, 0);
+});
+
 test("Admin route retrieves applied workflow state and applies through the server capability", async () => {
   const calls: { path: string; authorization: string | null; body: string }[] = [];
   const fetcher: typeof fetch = async (input, init) => {

@@ -360,6 +360,10 @@ The configuration document, the records it presents read-only, the structured sc
   *because publishing into the registry runs a separate signed path*
 - `store-draft` — An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.
   *A-surface*
+- `source-draft` — Admin's ingest form appends a pipeline declaration to {{topology.package.control-team-state}} through {{surface.edit.store-draft}}, retains raw TOML editing, and reaches {{surface.open-console.engine-faces}} under {{surface.open-console.admin-grant}}.
+  *A-surface*
+- `source-validation` — Source drafting checks connector availability, required configuration, destination compatibility and duplicate identity through {{surface.apply.validation}}; refusals name the affected field without returning configuration values or internal errors.
+  *because an operator needs the field to correct while secret values and engine diagnostics stay outside browser responses*
 
 ## apply
 

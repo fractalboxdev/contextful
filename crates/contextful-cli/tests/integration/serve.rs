@@ -513,6 +513,95 @@ fn published_workflows_include_completed_local_runs_before_sync_push() {
     assert_eq!(status, 200, "{view}");
     assert_eq!(view["runs"]["filings-flow"]["run_id"], "run-flow");
     assert_eq!(view["runs"]["filings-flow"]["status"], "success");
+    assert_eq!(view["run_details"]["filings-flow"]["rows"], 1);
+    assert_eq!(view["run_details"]["filings-flow"]["run_id"], "run-flow");
+    assert_eq!(view["pipelines"][0]["source"], "http");
+    assert_eq!(view["pipelines"][0]["destination"], "store");
+    let editable: toml::Value = toml::from_str(view["document"].as_str().unwrap()).unwrap();
+    assert_eq!(editable["pipeline"][0]["id"].as_str(), Some("filings-flow"));
+    assert!(editable.get("standalone_tables").is_none());
+    let connectors = view["connectors"].as_array().unwrap();
+    assert!(!connectors.is_empty());
+    assert!(connectors.iter().any(|connector| connector["name"] == "http" && connector["available"] == true));
+}
+
+#[test]
+fn admin_source_draft_validates_before_apply_and_observes_native_rows_from_the_claimed_document() {
+    let calls = std::sync::Arc::new(AtomicU64::new(0));
+    let vendor = super::pipeline::Vendor::start(move |path| {
+        if path.contains("refused") { (400, "private-runtime-detail".into()) }
+        else { (200, if calls.fetch_add(1, Ordering::SeqCst) < 2 { "[{\"note_id\":\"first\"}]" } else { "[]" }.into()) }
+    });
+    let (dir, public) = project();
+    let root = dir.path();
+    let original = "[[pipeline]]\nid = \"existing\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/notes\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/existing.toml"), original).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (_, before) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    let editable = before["document"].as_str().unwrap();
+    let added = format!("\n[[pipeline]]\nid = \"new-source\"\nschedule = \"every 1h\"\ntables = [\"research/filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n", vendor.url("/filings"));
+    let runtime_failure = format!("\n[[pipeline]]\nid = \"runtime-failure\"\ntables = [\"research/refused\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n", vendor.url("/refused"));
+    let valid = format!("{editable}{added}{runtime_failure}");
+    for (document, field) in [
+        (valid.replace("name = \"http\"", "name = \"absent-connector\""), "source"),
+        (valid.replace(&vendor.url("/filings"), ""), "source"),
+        (format!("{valid}\n[pipeline.destination]\nname = \"absent-destination\"\n"), "destination"),
+        (format!("{valid}{added}"), "identity"),
+        (valid.replace("every 1h", "bad schedule"), "schedule"),
+    ] {
+        let edit = json!({ "expected": 1, "document": document }).to_string();
+        let (status, refusal) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+        assert_eq!(status, 422, "{refusal}");
+        assert_eq!(refusal["error"]["field"], field, "{refusal}");
+        assert!(!root.join(".contextful/control/research/manifest@draft.json").exists());
+        let (_, state) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+        assert_eq!(state["applied"], 1);
+    }
+    let edit = json!({ "expected": 1, "document": valid }).to_string();
+    let (status, saved) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+    assert_eq!(status, 200, "{saved}");
+    let apply = json!({ "expected": 1, "nonce": saved["nonce"] }).to_string();
+    let (status, claimed) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
+    assert_eq!(status, 200, "{claimed}");
+    assert_eq!(claimed["applied"], 2);
+    assert!(claimed["run_details"]["new-source"].is_null());
+    assert!(!root.join("pipelines/new-source.toml").exists());
+    stdout(&run(root, &["pipeline", "run", "new-source", "--applied", "2", "--project", "research", "--run-id", "first-new-source", "--site-id", "site-a"]));
+    let (_, observed) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(observed["run_details"]["new-source"]["run_id"], "first-new-source");
+    assert_eq!(observed["run_details"]["new-source"]["status"], "success");
+    assert_eq!(observed["run_details"]["new-source"]["rows"], 1);
+    assert_eq!(observed["source_runs"]["new-source"]["applied"], 2);
+    assert_eq!(observed["source_runs"]["new-source"]["first"]["run_id"], "first-new-source");
+    let next = valid.replace("every 1h", "every 2h");
+    let (_, saved) = control(&addr, "POST", "/control/edit", Some(&admin), &json!({ "expected": 2, "document": next }).to_string());
+    let (status, claimed) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 2, "nonce": saved["nonce"] }).to_string());
+    assert_eq!(status, 200, "{claimed}");
+    assert_eq!(claimed["applied"], 3);
+    assert!(claimed["source_runs"]["new-source"].is_null());
+    stdout(&run(root, &["pipeline", "run", "new-source", "--applied", "2", "--project", "research", "--run-id", "old-version-late", "--site-id", "site-a"]));
+    let (_, state) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(state["run_details"]["new-source"]["run_id"], "old-version-late");
+    assert!(state["source_runs"]["new-source"].is_null(), "an old version completing after apply proves no current-version run");
+    stdout(&run(root, &["pipeline", "run", "new-source", "--applied", "3", "--project", "research", "--run-id", "current-zero-rows", "--site-id", "site-a"]));
+    let (_, state) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(state["source_runs"]["new-source"]["first"]["run_id"], "current-zero-rows");
+    assert_eq!(state["source_runs"]["new-source"]["first"]["status"], "success");
+    assert_eq!(state["source_runs"]["new-source"]["first"]["rows"], 0);
+    let failed = run(root, &["pipeline", "run", "runtime-failure", "--applied", "3", "--project", "research", "--run-id", "failed-current", "--site-id", "site-a"]);
+    assert!(!failed.status.success());
+    let (_, state) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(state["source_runs"]["runtime-failure"]["first"]["run_id"], "failed-current");
+    assert_eq!(state["source_runs"]["runtime-failure"]["first"]["failure"], "Permanent");
+    assert!(!state.to_string().contains("private-runtime-detail"));
+    stdout(&run(root, &["audit", "anchor", "--project", "research", "--issuer-key", ".contextful/issuer.seed"]));
+    stdout(&run(root, &["pipeline", "run", "new-source", "--applied", "3", "--project", "research", "--run-id", "held-chain-run", "--site-id", "site-a", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public]));
+    let (_, state) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(state["source_runs"]["new-source"]["first"]["run_id"], "current-zero-rows");
+    assert_eq!(state["source_runs"]["new-source"]["latest"]["run_id"], "held-chain-run");
 }
 
 /// Three pipelines, two models, a build and a store-driven job, a publication and two
@@ -623,9 +712,17 @@ fn a_pipeline_only_apply_preserves_external_steps_and_the_editor_refuses_them() 
     let (status, refused) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
     assert_eq!(status, 422, "{refused}");
     assert_eq!(refused["error"]["identifier"], "ApplyValidationRefused");
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    let document = format!("{}\n[[pipeline]]\nid = \"added\"\ntables = [\"records\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"https://example.test/added\" }}\n", view["document"].as_str().unwrap());
+    let (status, saved) = control(&addr, "POST", "/control/edit", Some(&admin), &json!({ "expected": 2, "document": document }).to_string());
+    assert_eq!(status, 200, "unchanged jobs, models and external steps survive source drafting: {saved}");
+    let (status, claimed) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 2, "nonce": saved["nonce"] }).to_string());
+    assert_eq!(status, 200, "{claimed}");
+    let preserved: toml::Value = toml::from_str(&std::fs::read_to_string(root.join(".contextful/control/research/manifest@v3.toml")).unwrap()).unwrap();
+    for key in ["job", "model", "external", "standalone_tables"] { assert_eq!(preserved[key], snapshot[key], "{key}"); }
     // A full apply from declarations without external steps drops them.
     stdout(&run(root, &["pipeline", "apply", "--project", "research"]));
-    let snapshot: toml::Value = toml::from_str(&std::fs::read_to_string(root.join(".contextful/control/research/manifest@v3.toml")).unwrap()).unwrap();
+    let snapshot: toml::Value = toml::from_str(&std::fs::read_to_string(root.join(".contextful/control/research/manifest@v4.toml")).unwrap()).unwrap();
     assert!(snapshot.get("external").is_none());
 }
 

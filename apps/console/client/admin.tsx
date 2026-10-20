@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { CheckIcon, FileCode2Icon, LoaderIcon, SaveIcon, WorkflowIcon } from "lucide-react";
-import { post, Shell, StoreSelect, TopNav, type Store } from "./shell.tsx";
+import { post, RequestFailure, Shell, StoreSelect, TopNav, type Store } from "./shell.tsx";
 import { workflowGraph, type GraphNode, type NodeKind, type Workflows } from "./graph.ts";
 import { Badge, Button, Textarea, cn } from "./ui.tsx";
+import { appendSource, sourceOutcome, type SourceDraft } from "./sources.ts";
 
 type Loaded<T> = { store: string; value: T } | { store: string; error: string };
 
@@ -40,8 +41,8 @@ export function AdminApp() {
   }, []);
 
   useEffect(() => {
-    setWorkflows(null);
-    setRecord(null);
+    setWorkflows((current) => current?.store === store ? current : null);
+    setRecord((current) => current?.store === store ? current : null);
     if (!store) return;
     let ignore = false;
     void read<Workflows>("/admin/api/workflows?store=", store).then((loaded) => { if (!ignore) setWorkflows(loaded); });
@@ -51,6 +52,12 @@ export function AdminApp() {
 
   const current = workflows && "value" in workflows ? workflows.value : null;
   const applied = current?.applied ?? null;
+
+  useEffect(() => {
+    if (!current || applied === null) return;
+    const timer = setInterval(() => setRefreshKey((key) => key + 1), 5000);
+    return () => clearInterval(timer);
+  }, [store, applied]);
 
   return (
     <Shell page="admin" header={
@@ -82,7 +89,7 @@ export function AdminApp() {
               {record === null ? "Reading the record…" : "error" in record ? record.error : JSON.stringify(record.value, null, 2)}
             </pre>
           </section>
-          <ControlDocument key={store} store={store} applied={applied} onApplied={() => setRefreshKey((key) => key + 1)} />
+          <ControlDocument key={store} store={store} applied={applied} workflows={current} onApplied={() => setRefreshKey((key) => key + 1)} />
         </div>
       </main>
     </Shell>
@@ -166,17 +173,37 @@ function GraphNodeCard({ node, style }: { node: GraphNode; style: { left: number
 }
 
 /** Save a TOML draft against the applied version, then apply that draft by its nonce. */
-function ControlDocument({ store, applied, onApplied }: { store: string; applied: number | null; onApplied: () => void }) {
+function ControlDocument({ store, applied, workflows, onApplied }: { store: string; applied: number | null; workflows: Workflows | null; onApplied: () => void }) {
   const [text, setText] = useState("");
   const [nonce, setNonce] = useState<string | null>(null);
   const [result, setResult] = useState("");
   const [busy, setBusy] = useState<"edit" | "apply" | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [base, setBase] = useState<number | null>(null);
+  const [field, setField] = useState<string | undefined>();
+  const [source, setSource] = useState<SourceDraft>({ id: "", connector: "http", table: "", schedule: "every 1h", config: 'endpoint = "https://example.com/data"' });
+
+  useEffect(() => {
+    if (!dirty && workflows?.document !== undefined) { setText(workflows.document); setBase(applied); }
+  }, [workflows?.document, applied, dirty]);
+
+  useEffect(() => {
+    if (dirty && base !== applied) { setNonce(null); setResult("The applied version changed. Reload the control document and validate your draft again."); }
+  }, [applied, base, dirty]);
+
+  function change(value: string) { setText(value); setDirty(true); setNonce(null); setResult(""); setField(undefined); }
+
+  function addSource() {
+    try { change(appendSource(text, source)); setResult("Source added to the draft. Validate and save before applying."); }
+    catch (error) { setResult(error instanceof Error ? error.message : "Check the source fields."); }
+  }
 
   async function run(action: "edit" | "apply") {
-    if (applied === null || !Number.isSafeInteger(applied) || !store) {
+    if (applied === null || !Number.isSafeInteger(applied) || !store || workflows?.document === undefined) {
       setResult("Select a store with an applied version.");
       return;
     }
+    if (base !== applied) { setResult("The applied version changed. Reload the control document and validate your draft again."); return; }
     if (action === "apply" && !nonce) {
       setResult("Save a draft before applying.");
       return;
@@ -184,14 +211,16 @@ function ControlDocument({ store, applied, onApplied }: { store: string; applied
     setBusy(action);
     try {
       const body = action === "edit" ? { store, expected: applied, document: text } : { store, expected: applied, nonce };
-      const answer = await post<{ nonce?: string }>(`/admin/api/${action}`, body);
-      setResult(`${action} complete`);
-      if (action === "edit") setNonce(answer.nonce ?? null);
+      const answer = await post<{ nonce?: string; applied?: number }>(`/admin/api/${action}`, body);
+      if (action === "edit") { setNonce(answer.nonce ?? null); setResult("Draft validated and saved. The applied version is unchanged."); }
       else {
         setNonce(null);
+        setDirty(false);
+        setResult(`Applied version ${answer.applied ?? "unknown"} claimed. First-run confirmation appears below; applying starts no run.`);
         onApplied();
       }
     } catch (error) {
+      setField(error instanceof RequestFailure ? error.field : undefined);
       setResult(error instanceof Error ? error.message : "Request failed");
     } finally {
       setBusy(null);
@@ -199,6 +228,29 @@ function ControlDocument({ store, applied, onApplied }: { store: string; applied
   }
 
   return (
+    <>
+    <section aria-labelledby="sources-title" className="flex flex-col gap-3">
+      <h2 id="sources-title" className="text-sm font-semibold">Ingest sources</h2>
+      <p className="text-xs text-muted-foreground">Applied sources come from the store control document. A claimed version waits for its schedule or trigger; recorded table runs confirm ingestion.</p>
+      {workflows ? <SourceList workflows={workflows} /> : <p className="text-xs text-muted-foreground">Reading applied sources…</p>}
+      <fieldset disabled={busy !== null || workflows?.document === undefined} className="grid gap-3 rounded-xl border border-border p-4 md:grid-cols-2">
+        <legend className="px-1 text-sm font-medium">Add an ingest source</legend>
+        {([
+          ["id", "Source identity"], ["connector", "Connector"], ["table", "Output table"], ["schedule", "Schedule (empty for a trigger)"],
+        ] as const).map(([key, label]) => <label key={key} htmlFor={`source-${key}`} className="flex flex-col gap-1 text-xs">{label}
+          <input id={`source-${key}`} value={source[key]} list={key === "connector" ? "source-connectors" : undefined}
+            aria-invalid={field === ({ id: "identity", connector: "source", table: "destination", schedule: "schedule" } as const)[key] || undefined}
+            aria-describedby={field === ({ id: "identity", connector: "source", table: "destination", schedule: "schedule" } as const)[key] ? "result" : undefined}
+            onChange={(event) => setSource((current) => ({ ...current, [key]: event.target.value }))} className="rounded-lg border border-input bg-transparent p-2 text-sm" />
+        </label>)}
+        <datalist id="source-connectors">{workflows?.connectors?.map((connector) => <option key={connector.name} value={connector.name}>{connector.available ? "Available" : "Unavailable in this build"}</option>)}</datalist>
+        <p className="text-xs text-muted-foreground md:col-span-2">Destination: this store. Use an available native connector or a registered component reference. The store validates connector fields and table compatibility.</p>
+        <label htmlFor="source-config" className="flex flex-col gap-1 text-xs md:col-span-2">Connector configuration (TOML; credential references only)
+          <Textarea id="source-config" value={source.config} aria-invalid={field === "source" || undefined} aria-describedby={field === "source" ? "result" : undefined} onChange={(event) => setSource((current) => ({ ...current, config: event.target.value }))} className="font-mono text-xs" spellCheck={false} />
+        </label>
+        <Button type="button" variant="outline" onClick={addSource}>Add source to draft</Button>
+      </fieldset>
+    </section>
     <section aria-labelledby="control-title" className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 id="control-title" className="flex items-center gap-1.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
@@ -209,18 +261,36 @@ function ControlDocument({ store, applied, onApplied }: { store: string; applied
           {nonce && <Badge variant="warning" className="ml-2">Draft saved</Badge>}
         </p>
       </div>
-      <label htmlFor="document" className="sr-only">TOML document</label>
-      <Textarea id="document" value={text} onChange={(event) => { setText(event.target.value); setNonce(null); }} spellCheck={false}
+      <label htmlFor="document" className="text-xs text-muted-foreground">TOML document — advanced editing</label>
+      <Textarea id="document" value={text} aria-invalid={field !== undefined || undefined} aria-describedby="result" onChange={(event) => change(event.target.value)} spellCheck={false}
         placeholder={"[pipelines.example]\nschedule = \"every 1h\""} className="min-h-48 font-mono text-xs" />
       <div className="flex items-center gap-2">
-        <Button id="edit" type="button" variant="outline" disabled={busy !== null} onClick={() => void run("edit")}>
-          {busy === "edit" ? <LoaderIcon className="animate-spin" /> : <SaveIcon />} Save draft
+        <Button id="edit" type="button" variant="outline" disabled={busy !== null || workflows?.document === undefined || base !== applied} onClick={() => void run("edit")}>
+          {busy === "edit" ? <LoaderIcon className="animate-spin" /> : <SaveIcon />} Validate and save draft
         </Button>
         <Button id="apply" type="button" disabled={busy !== null || !nonce} onClick={() => void run("apply")}>
           {busy === "apply" ? <LoaderIcon className="animate-spin" /> : <CheckIcon />} Apply draft
         </Button>
+        {dirty && base !== applied && <Button type="button" variant="outline" onClick={() => { setNonce(null); setDirty(false); setResult("Applied document reloaded. Add the source and validate the draft again."); }}>Reload applied document</Button>}
         <p id="result" role="status" className="text-xs text-muted-foreground">{result}</p>
       </div>
     </section>
+    </>
   );
+}
+
+export function SourceList({ workflows }: { workflows: Workflows }) {
+  if (!workflows.pipelines?.length) return <p className="text-xs text-muted-foreground">No ingest sources are applied.</p>;
+  return <div className="overflow-x-auto rounded-xl border border-border"><table className="w-full text-left text-xs">
+    <thead><tr>{["Source", "Connector / destination", "Schedule or trigger", "First confirmed table run of applied version", "Latest table outcome"].map((label) => <th key={label} className="p-3 font-medium">{label}</th>)}</tr></thead>
+    <tbody>{workflows.pipelines.map((pipeline) => {
+      const outcome = sourceOutcome(workflows, pipeline);
+      return <tr key={pipeline.id} className="border-t border-border" data-source={pipeline.id}>
+        <th scope="row" className="p-3 font-mono font-normal">{pipeline.id}</th>
+        <td className="p-3">{pipeline.source ?? "Unknown connector"} → {pipeline.destination ?? "store"}<br />{pipeline.tables?.join(", ")}</td>
+        <td className="p-3">{pipeline.schedule ?? (pipeline.after ? `After ${pipeline.after}` : "External trigger")}</td>
+        <td className="p-3" role="status">{outcome.first}</td><td className="p-3">{outcome.latest}</td>
+      </tr>;
+    })}</tbody>
+  </table></div>;
 }

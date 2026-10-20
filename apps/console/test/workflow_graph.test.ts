@@ -46,7 +46,7 @@ const published: Workflows = {
   runs: { ingest: { status: "success", run_id: "run-1" }, "job:score": { status: "failed", run_id: "run-2" } },
 };
 
-async function renderGraph(workflows: Workflows): Promise<string> {
+async function renderGraph(workflows: Workflows, component: "WorkflowGraph" | "SourceList" = "WorkflowGraph"): Promise<string> {
   const dir = new URL("../client/dist/", import.meta.url);
   mkdirSync(dir, { recursive: true });
   const outfile = new URL(`.workflow-graph-${process.pid}.mjs`, dir);
@@ -55,8 +55,8 @@ async function renderGraph(workflows: Workflows): Promise<string> {
     platform: "node", format: "esm", target: "node22", packages: "external", logLevel: "warning", outfile: outfile.pathname,
   });
   try {
-    const { WorkflowGraph } = await import(outfile.href) as { WorkflowGraph: ComponentType<{ workflows: Workflows }> };
-    return renderToStaticMarkup(createElement(WorkflowGraph, { workflows }));
+    const components = await import(outfile.href) as Record<string, ComponentType<{ workflows: Workflows }>>;
+    return renderToStaticMarkup(createElement(components[component], { workflows }));
   } finally {
     rmSync(outfile);
   }
@@ -112,4 +112,17 @@ test("the canvas draws external steps as nodes marked outside the engine, with n
 
 test("an empty published workflow draws no canvas", async () => {
   assert.match(await renderGraph({ applied: null, pipelines: [], edges: [] }), /No workflows are published/);
+});
+
+test("the source list names table-specific zero-row outcomes and current-version pending confirmation", async () => {
+  const html = await renderGraph({ applied: 3,
+    pipelines: [{ id: "filings", source: "http", destination: "store", tables: ["reports"], schedule: "every 1h" }, { id: "incoming", source: "receive", tables: ["events"] }],
+    source_runs: { filings: { applied: 3, first: { table: "reports", status: "success", rows: 0 }, latest: { status: "success", rows: 0 }, complete: true } },
+  }, "SourceList");
+  assert.match(html, /First confirmed table run of applied version/);
+  assert.match(html, /Table reports: success · 0 rows/);
+  assert.match(html, /Pending — no run confirmed for applied version 3/);
+  assert.match(html, /http.*→.*store/);
+  assert.match(html, /every 1h/);
+  assert.match(html, /External trigger/);
 });

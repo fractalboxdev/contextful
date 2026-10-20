@@ -2,8 +2,8 @@
 // edge list, and a layered layout computed without measuring the DOM, so the prerendered
 // first paint and the hydrated page draw the same picture.
 
-export type Run = { status?: string; run_id?: string };
-export type Pipeline = { id: string; schedule?: string | null; steps?: string[]; after?: string | null };
+export type Run = { status?: string; run_id?: string; rows?: number; failure?: string | null; table?: string };
+export type Pipeline = { id: string; source?: string; destination?: string; tables?: string[]; schedule?: string | null; steps?: string[]; after?: string | null };
 export type Job = { name: string; kind: string; schedule?: string | null; after?: string | null; target?: string | null };
 export type Model = { id: string; publish?: boolean };
 export type Publication = { name: string; job: string; members?: string[] };
@@ -19,6 +19,10 @@ export type Workflows = {
   tables?: string[];
   edges?: Edge[];
   runs?: Record<string, Run>;
+  document?: string;
+  connectors?: { name: string; available: boolean }[];
+  run_details?: Record<string, Run>;
+  source_runs?: Record<string, { applied: number; first: Run; latest: Run; complete?: boolean }>;
 };
 
 export type NodeKind = "pipeline" | "table" | "model" | "job" | "publication" | "external";
