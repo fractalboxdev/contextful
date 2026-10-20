@@ -34,6 +34,8 @@ impl Scratch {
         let live = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec");
         copy_dir(&live, &root.join("spec"));
         let s = Scratch { _dir: dir, root };
+        let ledger = live.join("../evals/ledger.toml");
+        s.write("evals/ledger.toml", &std::fs::read_to_string(ledger).unwrap());
         s.write("spec/pins.toml", "[pin]\n\n[floor]\n");
         s
     }
