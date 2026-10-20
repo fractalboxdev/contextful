@@ -12,7 +12,7 @@ use contextful_context::{node, Store};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
 use contextful_core::coordinate::Catalog;
-use contextful_core::run::record::{RunRow, Unpushed};
+use contextful_core::run::record::RunRow;
 use contextful_core::store::lay_out::{Pointer, MANIFEST_FILE, POINTER_FILE};
 use contextful_core::store::object::ObjectStore;
 use contextful_core::store::sync::{confine, Endpoint, SyncConfig};
@@ -342,7 +342,7 @@ impl PendingPull {
     /// (`store.drain.before-read`).
     fn push_unpushed(&self) -> Result<()> {
         let Some(catalog) = durable_catalog(&self.syncer.store)? else { return Ok(()) };
-        let marked = marked_for(catalog.as_ref(), &self.syncer.node)?;
+        let marked = pending(catalog.as_ref(), &self.syncer.store, &self.syncer.node)?;
         if marked.is_empty() {
             return Ok(());
         }
@@ -442,8 +442,9 @@ fn record_run_state(_store: &Store, _project: &str, _node_id: &str) -> Result<()
 fn push(s: &Syncer, at: Instant) -> Result<contextful_sync::sync::PushReport> {
     record_run_state(&s.store, &s.project, &s.node)?;
     let catalog = durable_catalog(&s.store)?;
-    let marked = match &catalog {
-        Some(c) => marked_for(c.as_ref(), &s.node)?,
+    // Which marked runs the store held before the push walked it: those the push carries.
+    let marked: Vec<(RunRow, bool)> = match &catalog {
+        Some(c) => marked_for(c.as_ref(), &s.node)?.into_iter().map(|r| { let held = holds_run(&s.store, &r.run_id, &s.node); (r, held) }).collect(),
         None => Vec::new(),
     };
     let report = s.push(at)?;
@@ -475,6 +476,19 @@ fn marked_for(catalog: &dyn Catalog, node: &str) -> Result<Vec<RunRow>> {
     Ok(catalog.unpushed_runs()?.into_iter().filter(|r| r.unpushed.as_ref().is_some_and(|u| u.node == node && !u.lost)).collect())
 }
 
+/// Whether a run is still running under an unexpired owner lease, so its own process
+/// commits or abandons it.
+fn live(row: &RunRow, now: Instant) -> bool {
+    row.status.is_in_flight() && row.reaped(now).is_none()
+}
+
+/// The marked runs a push can carry now: each the store holds, and each no live owner is
+/// still running.
+fn pending(catalog: &dyn Catalog, store: &Store, node: &str) -> Result<Vec<RunRow>> {
+    let now = catalog.now()?;
+    Ok(marked_for(catalog, node)?.into_iter().filter(|r| holds_run(store, &r.run_id, node) || !live(r, now)).collect())
+}
+
 /// Whether the store holds a committed run manifest of `run_id` on `node`, under any table.
 fn holds_run(store: &Store, run_id: &str, node: &str) -> bool {
     let Ok(tables) = std::fs::read_dir(store.root().join("tables")) else { return false };
@@ -486,42 +500,45 @@ fn run_list(rows: &[RunRow]) -> String {
     rows.iter().map(|r| format!("`{}`", r.run_id)).collect::<Vec<_>>().join(", ")
 }
 
-/// After a committed push, clear each mark whose run the store holds, which the push carried,
-/// and mark lost each whose run it no longer holds (`store.drain.clear`).
-fn settle(catalog: &dyn Catalog, store: &Store, node: &str, marked: &[RunRow]) -> Result<()> {
-    for row in marked {
-        let held = holds_run(store, &row.run_id, node);
+/// After a committed push, clear each mark whose run the store held when the push began,
+/// which the push carried, and mark lost each whose run the store does not hold and no live
+/// owner is running (`store.drain.clear`).
+fn settle(catalog: &dyn Catalog, store: &Store, node: &str, marked: &[(RunRow, bool)]) -> Result<()> {
+    let now = catalog.now()?;
+    for (row, held_before) in marked {
+        let lost = !held_before && !holds_run(store, &row.run_id, node) && !live(row, now);
+        if !held_before && !lost {
+            continue;
+        }
         catalog.update_run(&row.run_id, &mut |r| {
             let ours = r.unpushed.as_ref().is_some_and(|u| u.node == node);
-            if ours && held {
+            if ours && *held_before {
                 r.unpushed = None;
             } else if let Some(u) = r.unpushed.as_mut().filter(|_| ours) {
                 u.lost = true;
             }
             Ok(())
         })?;
-        if !held {
-            eprintln!("warning: run `{}` committed on node `{node}`, and neither the bucket nor this store holds it; it is marked lost", row.run_id);
+        if lost {
+            eprintln!("warning: run `{}` opened on node `{node}`, and neither the bucket nor this store holds its commit; it is marked lost", row.run_id);
         }
     }
     Ok(())
 }
 
-/// Mark each of `run_ids` whose run manifest the store holds as unpushed on this node before
-/// `push_after_run` pushes, under a disposable-disk storage profile (`store.drain.mark`).
+/// Drop the mark of each of `run_ids` that closed without a run manifest in the store: the
+/// run committed nothing a push carries (`store.drain.mark`).
 #[cfg(feature = "data-plane")]
-pub fn mark_unpushed(l: &Located, run_ids: &[String]) -> Result<()> {
-    let (Some(config), _) = sync_config(l)? else { return Ok(()) };
-    if config.push_after_run != Some(true) {
-        return Ok(());
-    }
+pub fn unmark_uncommitted(l: &Located, run_ids: &[String]) -> Result<()> {
     let store = Store::open(&l.project.dir, &l.project.name)?;
     let Some(catalog) = durable_catalog(&store)? else { return Ok(()) };
     let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
     let node = node.to_string();
-    for id in run_ids.iter().filter(|id| holds_run(&store, id, &node)) {
+    for id in run_ids.iter().filter(|id| !holds_run(&store, id, &node)) {
         catalog.update_run(id, &mut |r| {
-            r.unpushed = Some(Unpushed { node: node.clone(), lost: false });
+            if !r.status.is_in_flight() && r.unpushed.as_ref().is_some_and(|u| u.node == node) {
+                r.unpushed = None;
+            }
             Ok(())
         })?;
     }
@@ -532,25 +549,21 @@ pub fn mark_unpushed(l: &Located, run_ids: &[String]) -> Result<()> {
 #[cfg(feature = "data-plane")]
 pub const DRAIN_SECS: u64 = 15;
 
-/// On a stop signal, push once the children are ended when one was running or this node
-/// holds an unpushed run, for at most [`DRAIN_SECS`] (`store.drain.deadline`); a push
-/// failing or outrunning it fails serve and names the runs it leaves marked
-/// (`store.drain.unfinished`).
+/// On a stop signal, once the children are ended, push while this node holds a marked run a
+/// push can carry, for at most [`DRAIN_SECS`] (`store.drain.deadline`); a push failing or
+/// outrunning it fails serve and names the runs it leaves marked (`store.drain.unfinished`).
 #[cfg(feature = "data-plane")]
-pub fn drain(l: &Located, ended_child: bool) -> Result<()> {
+pub fn drain(l: &Located) -> Result<()> {
     let (Some(config), _) = sync_config(l)? else { return Ok(()) };
     if config.push_after_run != Some(true) {
         return Ok(());
     }
     let store = Store::open(&l.project.dir, &l.project.name)?;
+    let Some(catalog) = durable_catalog(&store)? else { return Ok(()) };
     let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
     let node = node.to_string();
-    let catalog = durable_catalog(&store)?;
-    let marked = match &catalog {
-        Some(c) => marked_for(c.as_ref(), &node)?,
-        None => Vec::new(),
-    };
-    if !ended_child && marked.is_empty() {
+    let marked = pending(catalog.as_ref(), &store, &node)?;
+    if marked.is_empty() {
         return Ok(());
     }
     let located = Located { project: l.project.clone(), declaration: l.declaration.clone() };
@@ -561,7 +574,7 @@ pub fn drain(l: &Located, ended_child: bool) -> Result<()> {
     });
     let answered = rx.recv_timeout(std::time::Duration::from_secs(DRAIN_SECS));
     let left = || -> String {
-        let rows = catalog.as_ref().and_then(|c| marked_for(c.as_ref(), &node).ok()).unwrap_or_else(|| marked.clone());
+        let rows = marked_for(catalog.as_ref(), &node).unwrap_or_else(|_| marked.clone());
         if rows.is_empty() { "no run is marked unpushed".to_string() } else { format!("run(s) {} stay unpushed", run_list(&rows)) }
     };
     match answered {
@@ -571,14 +584,27 @@ pub fn drain(l: &Located, ended_child: bool) -> Result<()> {
     }
 }
 
-/// Every run marked unpushed, any node's, and the refusal while one is not lost
-/// (`store.drain.status`).
+/// The exit status of `sync status` refusing with `SyncRunsUnpushed`, apart from a status
+/// that could not read the execution database (`store.drain.status`).
+pub const UNPUSHED_STATUS: i32 = 3;
+
+/// Every run marked unpushed, any node's, as JSON with a typed `error`: `SyncRunsUnpushed`
+/// exiting [`UNPUSHED_STATUS`] while one is not lost (`store.drain.status`), and
+/// `SyncStatusUnread` exiting 1 when the execution database answers no read
+/// (`store.drain.status-unread`).
 fn status(args: &SyncArgs) -> Result<()> {
     let l = locate(args.project.as_deref(), args.declaration.clone())?;
     let store = Store::open(&l.project.dir, &l.project.name)?;
-    let rows = match durable_catalog(&store)? {
-        Some(c) => c.unpushed_runs()?,
-        None => Vec::new(),
+    let read = durable_catalog(&store).and_then(|c| match c {
+        Some(c) => Ok(c.unpushed_runs()?),
+        None => Ok(Vec::new()),
+    });
+    let rows = match read {
+        Ok(rows) => rows,
+        Err(e) => {
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "runs": null, "error": "SyncStatusUnread", "message": format!("{e:#}") }))?);
+            anyhow::bail!("SyncStatusUnread: the execution database answered no read of its unpushed runs: {e:#}");
+        }
     };
     let listed: Vec<serde_json::Value> = rows
         .iter()
@@ -594,10 +620,12 @@ fn status(args: &SyncArgs) -> Result<()> {
             }))
         })
         .collect();
-    println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "runs": listed }))?);
     let open: Vec<RunRow> = rows.into_iter().filter(|r| r.unpushed.as_ref().is_some_and(|u| !u.lost)).collect();
+    let error = (!open.is_empty()).then_some("SyncRunsUnpushed");
+    println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "runs": listed, "error": error }))?);
     if !open.is_empty() {
-        anyhow::bail!("SyncRunsUnpushed: run(s) {} committed on a disposable disk, and no committed push carried them; replacing that disk discards them", run_list(&open));
+        eprintln!("SyncRunsUnpushed: run(s) {} opened on a disposable disk, and no committed push carried them; replacing that disk discards them", run_list(&open));
+        std::process::exit(UNPUSHED_STATUS);
     }
     Ok(())
 }

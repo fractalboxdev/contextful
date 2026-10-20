@@ -597,6 +597,8 @@
 "sync::two_sites_declaring_different_residency_diverge_at_push" = { shard = 5, seconds = 5.9 }
 "sync::unpushed::a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it" = { shard = 6, seconds = 8.0 }
 "sync::unpushed::a_replacement_disk_marks_a_run_no_push_carried_lost" = { shard = 3, seconds = 6.0 }
+"sync::unpushed::a_run_killed_after_its_local_commit_stays_marked_until_a_push_carries_it" = { shard = 8, seconds = 6.0 }
+"sync::unpushed::a_status_reaching_no_execution_database_fails_apart_from_an_unpushed_refusal" = { shard = 4, seconds = 3.0 }
 "sync::unpushed::a_stopping_serve_pushes_its_unpushed_run_within_its_deadline" = { shard = 1, seconds = 30.0 }
 "token::a_compromise_bumps_the_project_epoch_and_retires_the_key_at_once" = { shard = 7, seconds = 7.6 }
 "token::a_fresh_project_writes_its_policy_and_mints_under_the_default_issuer_key" = { shard = 6, seconds = 4.7 }

@@ -70,6 +70,11 @@ impl Disk {
     }
 
     fn command(&self, args: &[&str]) -> Command {
+        self.command_via(&self.d1, args)
+    }
+
+    /// A command reaching the execution database at `d1`.
+    fn command_via(&self, d1: &str, args: &[&str]) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_contextful"));
         command
             .args(args)
@@ -77,7 +82,7 @@ impl Disk {
             .env_remove("CONTEXTFUL_NODE_ID")
             .env_remove("CONTEXTFUL_CATALOG_URL")
             .env("CONTEXTFUL_STORAGE_PROFILE", "cloudflare-d1")
-            .env("CONTEXTFUL_D1_ENDPOINT", &self.d1)
+            .env("CONTEXTFUL_D1_ENDPOINT", d1)
             .env("CONTEXTFUL_RECOVERY_ID", "generation")
             .env("DRAIN_TEST_ACCESS_KEY", ACCESS_KEY)
             .env("DRAIN_TEST_SECRET_KEY", SECRET_KEY);
@@ -92,11 +97,16 @@ impl Disk {
         self.cf(&["run", "start", "--plan", "feed.toml", "--project", "research", "--run-id", run, "--site-id", "site"])
     }
 
-    /// `sync status`: its exit, its JSON and its standard error.
-    fn status(&self) -> (bool, Value, String) {
-        let out = self.cf(&["sync", "status", "--project", "research"]);
+    /// `sync status` against the execution database at `d1`: its exit code, its JSON and its
+    /// standard error.
+    fn status_via(&self, d1: &str) -> (Option<i32>, Value, String) {
+        let out = self.command_via(d1, &["sync", "status", "--project", "research"]).output().unwrap();
         let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)));
-        (out.status.success(), json, String::from_utf8_lossy(&out.stderr).into_owned())
+        (out.status.code(), json, String::from_utf8_lossy(&out.stderr).into_owned())
+    }
+
+    fn status(&self) -> (Option<i32>, Value, String) {
+        self.status_via(&self.d1)
     }
 
     /// Hold the store's push guard, as a concurrent push of the store on the machine does.
@@ -134,10 +144,10 @@ fn refuse_next_push(s3: &S3Server) {
 
 /// A run whose push the bucket refuses stays marked in the execution database; while the
 /// mark stands and the push still refuses, the next start opens no run, and once the bucket
-/// takes writes, that next start pushes the marked run before its own opens.
-// spec: store.drain.mark@4f1e850e
-// spec: store.drain.before-read@ceb6b399
-// spec: store.drain.status@dc87af4d
+/// takes writes, that next start pushes the marked run before its own opens. The status
+/// names the refusal in its JSON and exits 3 while the mark stands, and exits 0 once clear.
+// spec: store.drain.before-read@9530eb7d
+// spec: store.drain.status@bbee8e12
 #[test]
 fn a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it() {
     let s3 = S3Server::start("conformance");
@@ -153,8 +163,9 @@ fn a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it() {
     assert_eq!(row["status"], "success");
     assert_eq!(row["unpushed"]["node"], "site", "{row}");
 
-    let (clean, status, stderr) = disk.status();
-    assert!(!clean, "an unpushed run refuses the status check");
+    let (code, status, stderr) = disk.status();
+    assert_eq!(code, Some(3), "an unpushed run refuses the status check with its own exit code: {stderr}");
+    assert_eq!(status["error"], "SyncRunsUnpushed", "{status}");
     assert!(stderr.contains("SyncRunsUnpushed") && stderr.contains("r1"), "{stderr}");
     assert_eq!(runs(&status), vec![("r1".to_string(), false)]);
     let listed = &status["runs"][0];
@@ -174,14 +185,34 @@ fn a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it() {
     assert!(bucket_holds(&s3, "r1") && bucket_holds(&s3, "r3"));
     assert!(disk.row("r1").unwrap().get("unpushed").is_none(), "the committed push clears the mark");
     assert!(disk.row("r3").unwrap().get("unpushed").is_none());
-    let (clean, status, stderr) = disk.status();
-    assert!(clean, "{stderr}");
+    let (code, status, stderr) = disk.status();
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(status["error"].is_null(), "{status}");
     assert!(runs(&status).is_empty(), "{status}");
+}
+
+/// A status whose execution database answers no read fails apart from the unpushed
+/// refusal: `runs` null, `error` `SyncStatusUnread`, exit 1.
+// spec: store.drain.status-unread@c4601b6f
+#[test]
+fn a_status_reaching_no_execution_database_fails_apart_from_an_unpushed_refusal() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let dead = format!("http://{}", closed.local_addr().unwrap());
+    drop(closed);
+
+    let (code, status, stderr) = disk.status_via(&dead);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert_eq!(status["error"], "SyncStatusUnread", "{status}");
+    assert!(status["runs"].is_null(), "an unread status lists nothing: {status}");
+    assert!(status["message"].is_string(), "{status}");
+    assert!(stderr.contains("SyncStatusUnread") && !stderr.contains("SyncRunsUnpushed"), "{stderr}");
 }
 
 /// A container replaced before any push carried its marked run: the next push finds no copy
 /// of the run, marks it `lost` and names it, and the status lists it without refusing.
-// spec: store.drain.clear@d9d691e7
+// spec: store.drain.clear@58e01fb6
 #[test]
 fn a_replacement_disk_marks_a_run_no_push_carried_lost() {
     let s3 = S3Server::start("conformance");
@@ -197,9 +228,104 @@ fn a_replacement_disk_marks_a_run_no_push_carried_lost() {
     assert!(stderr.contains("`r1`") && stderr.contains("lost"), "{stderr}");
     assert!(!bucket_holds(&s3, "r1") && bucket_holds(&s3, "r2"));
     assert_eq!(disk.row("r1").unwrap()["unpushed"]["lost"], true);
-    let (clean, status, stderr) = disk.status();
-    assert!(clean, "a lost run is listed without refusing: {stderr}");
+    let (code, status, stderr) = disk.status();
+    assert_eq!(code, Some(0), "a lost run is listed without refusing: {stderr}");
     assert_eq!(runs(&status), vec![("r1".to_string(), true)]);
+}
+
+/// A proxy in front of the execution database that forwards each request until `manifest`
+/// exists, then holds every later one unanswered: the process issuing it waits there, past
+/// its local commit, until it is killed.
+struct StallAfterCommit {
+    url: String,
+    stalled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl StallAfterCommit {
+    fn start(upstream: &str, manifest: PathBuf) -> StallAfterCommit {
+        use std::io::{Read, Write};
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let upstream = upstream.trim_start_matches("http://").to_string();
+        let stalled = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = stalled.clone();
+        std::thread::spawn(move || {
+            for client in listener.incoming().map_while(Result::ok) {
+                let Ok(server) = std::net::TcpStream::connect(&upstream) else { continue };
+                let (mut client_in, mut server_out) = (client.try_clone().unwrap(), server.try_clone().unwrap());
+                let (mut server_in, mut client_out) = (server, client);
+                std::thread::spawn(move || {
+                    let mut buf = [0u8; 8192];
+                    while let Ok(n) = server_in.read(&mut buf) {
+                        if n == 0 || client_out.write_all(&buf[..n]).is_err() {
+                            break;
+                        }
+                    }
+                });
+                let (manifest, flag) = (manifest.clone(), flag.clone());
+                std::thread::spawn(move || {
+                    let mut buf = [0u8; 8192];
+                    while let Ok(n) = client_in.read(&mut buf) {
+                        if n == 0 {
+                            break;
+                        }
+                        if manifest.exists() {
+                            flag.store(true, Ordering::SeqCst);
+                            // Hold the request; the client dies waiting on it.
+                            let _ = client_in.read(&mut buf);
+                            break;
+                        }
+                        if server_out.write_all(&buf[..n]).is_err() {
+                            break;
+                        }
+                    }
+                });
+            }
+        });
+        StallAfterCommit { url, stalled }
+    }
+}
+
+/// A run killed after its local commit and before its own push, here while its execution
+/// database stops answering, still carries its mark: the status refuses on it, and the next
+/// push carries it and clears the mark.
+// spec: store.drain.mark@2e203d57
+#[test]
+fn a_run_killed_after_its_local_commit_stays_marked_until_a_push_carries_it() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+    let proxy = StallAfterCommit::start(&disk.d1, disk.local_manifest("r1"));
+
+    let mut run = disk
+        .command_via(&proxy.url, &["run", "start", "--plan", "feed.toml", "--project", "research", "--run-id", "r1", "--site-id", "site"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !proxy.stalled.load(std::sync::atomic::Ordering::SeqCst) {
+        assert!(Instant::now() < deadline, "the run reached its local commit");
+        assert!(run.try_wait().unwrap().is_none(), "the run waits past its commit");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    run.kill().unwrap();
+    run.wait().unwrap();
+
+    assert!(disk.local_manifest("r1").exists(), "the run committed locally");
+    assert!(!bucket_holds(&s3, "r1"));
+    assert_eq!(disk.row("r1").unwrap()["unpushed"]["node"], "site", "the mark predates the commit");
+    let (code, status, stderr) = disk.status();
+    assert_eq!(code, Some(3), "{stderr}");
+    assert_eq!(runs(&status), vec![("r1".to_string(), false)]);
+
+    let pushed = disk.cf(&["sync", "push", "--project", "research"]);
+    assert!(pushed.status.success(), "{}", String::from_utf8_lossy(&pushed.stderr));
+    assert!(bucket_holds(&s3, "r1"), "the push carries the killed run's commit");
+    assert!(disk.row("r1").unwrap().get("unpushed").is_none());
+    let (code, status, stderr) = disk.status();
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(runs(&status).is_empty(), "{status}");
 }
 
 /// Start `pipeline serve` and return once it serves, its standard error drained on a thread.
@@ -246,7 +372,7 @@ fn stop(mut child: Child, rx: std::sync::mpsc::Receiver<String>) -> (bool, Strin
 /// A stopping serve pushes the run its node left unpushed and exits clean; one whose push
 /// waits on a held push guard gives up at its deadline, exits non-zero and leaves the run
 /// marked.
-// spec: store.drain.deadline@28620696
+// spec: store.drain.deadline@185cc464
 // spec: store.drain.unfinished@5fef9d6c
 #[test]
 fn a_stopping_serve_pushes_its_unpushed_run_within_its_deadline() {

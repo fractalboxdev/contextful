@@ -173,6 +173,9 @@ pub struct RecordedCatalog {
     store: Store,
     resolve: NodeResolver,
     node: Mutex<Option<NodeId>>,
+    /// Whether a row opening in flight reaches the wrapped catalog marked unpushed on this
+    /// node (`store.drain.mark`).
+    mark_unpushed: bool,
 }
 
 fn storage(e: ContextError) -> Failure {
@@ -181,7 +184,15 @@ fn storage(e: ContextError) -> Failure {
 
 impl RecordedCatalog {
     pub fn new(inner: Arc<dyn Catalog + Send + Sync>, store: Store, resolve: NodeResolver) -> RecordedCatalog {
-        RecordedCatalog { inner, store, resolve, node: Mutex::new(None) }
+        RecordedCatalog { inner, store, resolve, node: Mutex::new(None), mark_unpushed: false }
+    }
+
+    /// Mark each run row opening in flight as unpushed on this catalog's node, so the mark is
+    /// durable before the run's landing can commit (`store.drain.mark`). The store's run
+    /// record keeps the row unmarked.
+    pub fn marking_unpushed(mut self) -> RecordedCatalog {
+        self.mark_unpushed = true;
+        self
     }
 
     fn node(&self) -> std::result::Result<NodeId, Failure> {
@@ -286,6 +297,11 @@ impl Catalog for RecordedCatalog {
     }
     fn put_run(&self, row: &RunRow) -> std::result::Result<(), Failure> {
         self.record(row)?;
+        if self.mark_unpushed && row.status.is_in_flight() && row.unpushed.is_none() {
+            let mut marked = row.clone();
+            marked.unpushed = Some(contextful_core::run::record::Unpushed { node: self.node()?.to_string(), lost: false });
+            return self.inner.put_run(&marked);
+        }
         self.inner.put_run(row)
     }
     fn run(&self, run_id: &str) -> std::result::Result<Option<RunRow>, Failure> {

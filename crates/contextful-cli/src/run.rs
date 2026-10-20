@@ -195,7 +195,8 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
     let clock = clock(now)?;
     let catalog_path = project.store_root().join(MACHINE_CATALOG_FILE);
     let catalog = open_catalog(&catalog_path, clock.clone(), store.file_cipher())?;
-    if remote.is_some() && !catalog.supports_strict_execution_guards() {
+    let disposable = remote.is_some();
+    if disposable && !catalog.supports_strict_execution_guards() {
         bail!("StorageCapabilityMissing: replacement-safe execution requires strict dispatch and publication guards");
     }
     let (rows, blobs, awakeables): (SharedJournal, SharedBlobs, SharedAwakeables) = if let Some(remote) = remote {
@@ -212,7 +213,10 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
     // The machine catalog caches run rows in front of the store's run record
     // (`run.record.reserved-table`).
     let resolve: run_record::NodeResolver = Box::new(|s| contextful_context::node::resolve(s, |k| std::env::var(k).ok()).map(|(n, _)| n));
-    let catalog: Arc<dyn Catalog + Send + Sync> = Arc::new(run_record::RecordedCatalog::new(catalog, store, resolve));
+    let recorded = run_record::RecordedCatalog::new(catalog, store, resolve);
+    // A disposable disk's run carries its unpushed mark from its open (`store.drain.mark`);
+    // preflight has required `push_after_run` there.
+    let catalog: Arc<dyn Catalog + Send + Sync> = Arc::new(if disposable { recorded.marking_unpushed() } else { recorded });
     let journal = Journal::over(rows, blobs);
     let registry = Registry::over(awakeables.clone(), journal.clone());
     Ok(Wired { engine: Engine { catalog, journal, awakeables: Some(awakeables), keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds() }, registry, clock })
@@ -623,7 +627,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             // Every outcome past run open publishes (`run.record.failure-publishes`).
             if w.engine.catalog.run(&spec.run_id)?.is_some() {
                 // The execution database records the run before the push (`store.drain.mark`).
-                let pushed = crate::sync::mark_unpushed(&l, std::slice::from_ref(&spec.run_id)).and_then(|()| crate::sync::push_after_run(&l, w.clock.now()));
+                let pushed = crate::sync::unmark_uncommitted(&l, std::slice::from_ref(&spec.run_id)).and_then(|()| crate::sync::push_after_run(&l, w.clock.now()));
                 match (&ran, pushed) {
                     (Ok(row), Err(e)) if row.status == RunStatus::Success => return Err(e),
                     (_, Err(e)) => eprintln!("{e:#}"),

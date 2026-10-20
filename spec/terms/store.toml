@@ -67,7 +67,8 @@ SyncPrefixEscape             = { clause = "store.push.prefix-escape", gloss = "A
 SyncPrefixUnbound            = { clause = "store.push.prefix-unbound", gloss = "The variable named by `prefix_from` is unset at startup." }
 SyncPrefixOverspecified      = { clause = "store.push.prefix-overspecified", gloss = "`prefix` and `prefix_from` are declared together." }
 SyncPushInFlight             = { clause = "store.push.in-flight", gloss = "A push of one store waited past its bound for the push guard another push on the machine holds." }
-SyncRunsUnpushed             = { clause = "store.drain.status", gloss = "A run committed on a disposable disk carries an unpushed mark no committed push has cleared." }
+SyncRunsUnpushed             = { clause = "store.drain.status", gloss = "A run opened on a disposable disk carries an unpushed mark no committed push has cleared." }
+SyncStatusUnread             = { clause = "store.drain.status-unread", gloss = "A status check reached no answer from the execution database holding the unpushed marks." }
 SyncManifestFormatUnsupported = { clause = "store.push.format-unsupported", gloss = "A bucket or generation manifest carries a format newer than the reader parses." }
 SyncGenerationConflict       = { clause = "store.push.generation-conflict", gloss = "A generation manifest already holds another commit's bytes under the number a push committed." }
 SyncPartCollected            = { clause = "store.pull.part-collected", gloss = "A part a lazy store needs is gone from the bucket." }
