@@ -240,13 +240,13 @@ fn shaped_claim_availability_is_enforced_by_native_recall() {
     let (dir, public, _) = project();
     let p = dir.path();
     let mut manifest = std::fs::read_to_string(p.join("contextful.toml")).unwrap();
-    manifest = manifest.replace("name = \"research/notes\"", "name = \"research/notes\"\n[pipeline.tables.available_time]\ncolumn = \"_ingested_at\"");
-    manifest.push_str("\n[table.available_time]\ncolumn = \"concluded_at\"\nzone = \"UTC\"\n");
+    manifest = manifest.replace("name = \"research/notes\"", "name = \"research/notes\"\n[pipeline.tables.available_time]\ncolumn = \"published_at\"");
+    manifest.push_str("\ncontent_hash_column = \"digest\"\n[table.available_time]\ncolumn = \"concluded_at\"\nzone = \"UTC\"\n");
     std::fs::write(p.join("contextful.toml"), manifest).unwrap();
-    std::fs::write(p.join("historical-notes.jsonl"), "{\"note_id\":\"historical\",\"text\":\"A historical note.\"}\n").unwrap();
+    std::fs::write(p.join("historical-notes.jsonl"), "{\"note_id\":\"historical\",\"text\":\"A historical note.\",\"published_at\":\"2020-01-01T00:00:00Z\"}\n").unwrap();
     stdout(&run(p, &["context", "land", "research/notes", "--project", "research", "--rows", "historical-notes.jsonl", "--run-id", "historical-notes", "--site-id", "site-a", "--now", "2020-01-01T00:00:00Z"], &[]));
     let claim = |id: &str, object: &str, concluded: &str| json!({
-        "claim_id": id, "subject": "acme", "predicate": "cfo", "object": object,
+        "claim_id": id, "subject": "acme", "predicate": "cfo", "object": object, "digest": id,
         "scope": null, "tier": "curated", "confidence": 1.0,
         "valid_from": "2020-01-01T00:00:00Z", "valid_to": null,
         "evidence": "[{\"table\":\"research/notes\",\"run\":\"historical-notes\",\"seq\":0}]",

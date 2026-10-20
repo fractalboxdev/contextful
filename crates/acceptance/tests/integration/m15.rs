@@ -218,6 +218,7 @@ column = "published_at"
 name = "research/facts"
 shape = "memory_facts"
 columns = ["claim_id", "subject", "predicate", "object", "scope", "tier", "confidence", "valid_from", "valid_to", "evidence", "superseded_by", "grant_id", "agent", "concluded_at"]
+content_hash_column = "digest"
 [table.available_time]
 column = "concluded_at"
 zone = "UTC"
@@ -225,7 +226,7 @@ zone = "UTC"
     p.write("notes.jsonl", &json!({ "id": "n1", "text": "A historical record", "published_at": "2010-01-01T00:00:00Z" }).to_string());
     ok(&p.run(&cf, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "notes", "--site-id", "site-a", "--type", "published_at=timestamp", "--now", "2010-01-01T00:01:00Z"]));
     let claim = |id: &str, concluded: &str| json!({
-        "claim_id": id, "subject": "acme", "predicate": "related_to", "object": id,
+        "claim_id": id, "subject": "acme", "predicate": "related_to", "object": id, "digest": id,
         "scope": null, "tier": "curated", "confidence": 1.0,
         "valid_from": "2010-01-01T00:00:00Z", "valid_to": null,
         "evidence": "[{\"table\":\"research/notes\",\"run\":\"notes\",\"seq\":0}]",

@@ -82,6 +82,14 @@ fn landing_a_row_without_an_availability_instant_is_refused() {
     assert!(f.store.try_schema("earnings").unwrap().is_none());
 }
 
+#[test]
+fn landing_a_vintage_without_a_hash_declaration_refuses_without_panicking() {
+    let f = Fixture::new();
+    let d = decl("name = \"claims\"\nprimary_key = [\"claim_id\"]\n[pipeline.tables.available_time]\ncolumn = \"concluded_at\"");
+    let result = f.land_typed(&d, "run-1", json!([{ "claim_id": "c1", "concluded_at": "2030-01-01T00:00:00Z" }]), "2030-01-02T00:00:00Z", &[("concluded_at", ColumnType::Timestamp)]);
+    assert!(matches!(result, Err(ContextError::Store(StoreError::StoreVintageHashUndeclared(_)))), "{result:?}");
+}
+
 /// Three releases of one quarter's GDP, landed together after the last.
 #[cfg(feature = "read")]
 fn gdp() -> (Fixture, contextful_core::store::declare::TableDecl) {

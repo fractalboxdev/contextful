@@ -89,13 +89,14 @@ fn reserved_memory_relations_match_the_declared_core() {
 #[test]
 fn shaped_memory_tables_preserve_the_declared_availability() {
     for shape in Shape::ALL {
-        let text = format!("[[table]]\nname = \"team_memory\"\nshape = \"{}\"\ncolumns = {:?}\n[table.available_time]\ncolumn = \"published_at\"\nzone = \"UTC\"\n", shape.name(), shape.canonical_columns());
+        let text = format!("[[table]]\nname = \"team_memory\"\nshape = \"{}\"\ncolumns = {:?}\ncontent_hash_column = \"digest\"\n[table.available_time]\ncolumn = \"published_at\"\nzone = \"UTC\"\n", shape.name(), shape.canonical_columns());
         let declarations = MemoryDeclarations::parse(&text).unwrap();
         let table = declarations.tables[0].table_decl();
         let available = table.available_time.unwrap();
         assert_eq!(available.column, "published_at");
         assert_eq!(available.zone.as_deref(), Some("UTC"));
         assert_eq!(table.primary_key, Some(vec![shape.key().to_string()]));
+        assert_eq!(table.content_hash_column.as_deref(), Some("digest"));
     }
     let plain = MemoryDeclarations::parse(&manifest("memory_facts", FACT_COLUMNS)).unwrap();
     assert!(plain.tables[0].table_decl().available_time.is_none());
