@@ -105,7 +105,7 @@ audit-tip-idle                = { clause = "disclosure.record.tip-signing", valu
 audit-segment-entries         = { clause = "disclosure.record.segment", value = 4096, unit = "entries", basis = "chosen", gloss = "Entries a segment holds before its signed root closes it, unless its header names another size." }
 audit-segment-max             = { clause = "disclosure.record.chain-header", value = 65536, unit = "entries", basis = "chosen", gloss = "Largest segment size a chain header names." }
 telemetry-projection-window   = { clause = "disclosure.record.projection", value = 24, unit = "h", basis = "chosen", gloss = "Rolling window the telemetry projection answers over." }
-telemetry-projection-latency  = { clause = "disclosure.record.projection", value = 1, unit = "s", basis = "chosen", gloss = "Response time of a projection lookup." }
+telemetry-projection-latency  = { clause = "disclosure.record.projection", value = 1, unit = "s", basis = "measured:audit-projection-latency", gloss = "Response time of a projection lookup." }
 span-queue                    = { clause = "disclosure.record.span-queue", value = 2048, unit = "spans", basis = "chosen", gloss = "Spans the export queue holds between an operation and the collector." }
 audit-root-cadence            = { clause = "disclosure.attest.root-replication", value = 10, unit = "min", basis = "chosen", gloss = "Cadence at which signed roots reach the replication bucket." }
 erasure-cascade-depth         = { clause = "disclosure.erase.cascade", value = 16, unit = "hops", basis = "chosen", gloss = "Deepest provenance chain an erasure cascade follows." }

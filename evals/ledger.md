@@ -12,7 +12,7 @@
 | `audit-append-throughput` | `disclosure.record.group-commit` | `audit.append.per_s` | trend | test `contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers` | — | recorded |
 | `audit-inclusion-proof` | `disclosure.attest.inclusion-proof` | `audit.proof.hashes` | gate | test `contextful_policy::audit::an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment` | `<= 12` | gated |
 | `audit-open-bounded-heap` | `disclosure.record.single-writer` | `audit.open.retained_heap_delta_kib` | gate | probe `audit-open-bounded-heap` | `< 64` | gated |
-| `audit-projection-latency` | `disclosure.record.projection` | `audit.projection.window_24h_ms` | trend | test `contextful_context::read::audit::a_lookup_over_a_24_hour_window_answers_within_one_second` | — | recorded |
+| `audit-projection-latency` | `disclosure.record.projection` | `audit.projection.window_24h_ms` | trend | test `contextful_context::read::audit::a_lookup_over_a_24_hour_window_projects_every_read` | — | recorded |
 | `audit-query-digest-keyed` | `disclosure.record.segment` | `audit.digest.dictionary_matches` | gate | probe `audit-query-digest-keyed` | `== 0` | gated |
 | `audit-read-waits-on-entry` | `disclosure.record.unpersisted-entry` | `audit.read.rows_before_sync` | gate | test `contextful_agent::audit::a_read_whose_entry_does_not_sync_releases_no_rows` | `== 0` | gated |
 | `audit-sync-per-group` | `disclosure.record.group-commit` | `audit.syncs_per_group.max` | gate | test `contextful_policy::audit::an_append_group_shares_one_segment_sync_and_releases_or_refuses_together` | `<= 1` | gated |

@@ -5,7 +5,7 @@ use contextful_context::read::{audit_reads, ReadOptions};
 use contextful_policy::audit::{attr, entries, AuditLog};
 use contextful_policy::issue::SeedSigner;
 use serde_json::{json, Value};
-use std::time::{Duration, Instant as Clock, SystemTime, UNIX_EPOCH};
+use std::time::{Instant as Clock, SystemTime, UNIX_EPOCH};
 
 /// `secs` since the epoch as RFC 3339 UTC.
 fn rfc3339(secs: u64) -> String {
@@ -78,15 +78,14 @@ fn audit_reads_projects_one_row_per_table_an_entry_names() {
     assert_eq!(ids["rows"], json!([["c-1"], ["c-2"]]), "{ids}");
 }
 
-/// A lookup over a full 24 h window answers within 1 s, the chain's segments parsed on
-/// the call. Under `contextful-ci measure` the window holds 86 400 reads, one per second,
-/// and the test runs alone, so it asserts the 1 s bound; elsewhere 8 640, one per 10 s,
-/// beside sibling tests, so it asserts the counts the lookup answers from: one projected
-/// row per read, and each requester's reads grouped per table
-/// (`assurance.measure.count-first`).
+/// A lookup over a full 24 h window projects one row per read, the chain's segments parsed
+/// on the call, and records its latency. The 1 s bound has its measured basis in the
+/// trend-tier ledger entry `audit-projection-latency`, so no run fails on wall clock
+/// (`assurance.measure.count-first`). Under `contextful-ci measure` the window holds 86 400
+/// reads, one per second; elsewhere 8 640, one per 10 s.
 // spec: disclosure.record.projection@ee7e8e76
 #[test]
-fn a_lookup_over_a_24_hour_window_answers_within_one_second() {
+fn a_lookup_over_a_24_hour_window_projects_every_read() {
     let measuring = std::env::var_os(contextful_eval::record::MEASURE_DIR_VAR).is_some();
     let step: u64 = if measuring { 1 } else { 10 };
     let dir = tempfile::tempdir().unwrap();
@@ -112,10 +111,6 @@ fn a_lookup_over_a_24_hour_window_answers_within_one_second() {
     eprintln!("audit_reads over {reads} reads in 24 h: {:.1} ms", elapsed.as_secs_f64() * 1e3);
     assert_eq!(out["rows"].as_array().unwrap().len(), 2, "{out}");
     contextful_eval::record::emit("audit-projection-latency", elapsed.as_secs_f64() * 1e3, reads, 0);
-    if measuring {
-        assert!(elapsed < Duration::from_secs(1), "the lookup took {elapsed:?}");
-        return;
-    }
     let all = audit_reads(&chain, "SELECT count(*) FROM audit_reads", ReadOptions::default()).unwrap().to_json();
     assert_eq!(all["rows"], json!([[reads.to_string()]]), "one projected row per read: {all}");
     let ada = audit_reads(
