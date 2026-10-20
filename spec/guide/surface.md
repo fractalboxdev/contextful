@@ -8,7 +8,7 @@ contract: surface
 
 The console's Query page answers questions with grounded prose, widgets and sources
 ({{surface.ground.sources-block}}). Its Admin page shows workflows ({{surface.visualize.workflow-canvas}}), source outcomes ({{surface.open-console.source-first-run}}),
-learnings and drafts ({{surface.open-console.source-draft}}), and edits the control document ({{surface.open-console.engine-faces}}). Hosted deployments gate each page
+learnings and drafts ({{surface.open-console.source-draft}}, {{surface.open-console.source-preservation}}), and edits the control document ({{surface.open-console.engine-faces}}). Hosted deployments gate each page
 and its API ({{surface.open-console.identity-gate}}, {{surface.open-console.page-grants}}).
 The control plane arms work the engine names;
 Query reaches rows through governed reads under the operator's credential

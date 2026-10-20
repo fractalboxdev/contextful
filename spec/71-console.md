@@ -82,7 +82,8 @@ The hosted console's two pages, their API routes, identity gates, page grants an
   *A-surface*
 - `source-list` — Admin lists ingest sources from the applied control document, naming each connector, destination, schedule or trigger, applied version and latest run outcome.
   *because the applied document owns source identity and configuration*
-- `source-draft` — Admin adds a source through the version-bound edit and apply path of {{surface.open-console.engine-faces}}, with a source form and a raw TOML fallback; other applied jobs, models and external steps remain intact.
+- `source-draft` — Admin adds a source through the version-bound edit and apply path of {{surface.open-console.engine-faces}}, with a source form and a raw TOML fallback.
+- `source-preservation` — Adding a source through {{surface.open-console.source-draft}} preserves the applied jobs, models and external steps.
 - `source-validation` — Saving and applying a source validates connector availability, required configuration, destination compatibility and duplicate identity under {{surface.apply.validation}}; refusals name the affected field and a correction, and leave the applied version unchanged.
 - `source-first-run` — Admin shows the applied version's first and latest source fires, aggregating rows and failures across destinations; absent matching run evidence, the source remains pending after apply.
   *because claiming configuration establishes no execution outcome*

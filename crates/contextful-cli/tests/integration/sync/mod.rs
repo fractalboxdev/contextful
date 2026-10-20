@@ -65,6 +65,7 @@ fn a_cold_node_pulls_and_adopts_the_admin_attested_control_version() {
     assert_eq!(vendor.targets(), ["/v1/orders"]);
 }
 
+// spec: surface.open-console.source-run-evidence@cf237651
 #[test]
 fn source_first_run_outcomes_survive_push_pull_to_a_serving_node_without_a_machine_catalog() {
     let vendor = crate::pipeline::Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));

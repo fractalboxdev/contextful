@@ -337,14 +337,19 @@ test("Admin pack listing reaches only the injected listing adapter", async () =>
   assert.deepEqual(calls, ["field-notes:packs/"]);
 });
 
-test("Admin offers a source draft with an applied-document fallback for the selected store", async () => {
-  const app = createConsole({
+function sourceDraftFixture() {
+  return createConsole({
     identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
     stores: [{ id: "one", label: "Store one" }, { id: "two", label: "Store two" }],
     adminCapability: "server-secret", turn: async () => ({ answer: "", sources: [], widgets: [] }),
     read: { list: async () => [] },
     control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
   });
+}
+
+// spec: surface.open-console.source-draft@286ab9dc
+test("Admin offers a source draft with an applied-document fallback for the selected store", async () => {
+  const app = sourceDraftFixture();
   const page = await (await app.fetch(new Request("https://console.example/admin", { headers: access(adminAudience) }))).text();
   const stores = await app.fetch(new Request("https://console.example/admin/api/stores", { headers: access(adminAudience) }));
   assert.deepEqual(await stores.json(), [{ id: "one", label: "Store one" }, { id: "two", label: "Store two" }]);

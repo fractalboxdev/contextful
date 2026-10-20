@@ -515,6 +515,9 @@ fn published_workflows_include_completed_local_runs_before_sync_push() {
     assert_eq!(view["runs"]["filings-flow"]["status"], "success");
 }
 
+// spec: surface.open-console.source-list@f6c315e3
+// spec: surface.open-console.source-validation@f0724b97
+// spec: surface.open-console.source-first-run@ddcddca4
 #[test]
 fn admin_source_drafts_validate_and_observe_only_runs_of_the_claimed_version() {
     let vendor = super::pipeline::Vendor::start(|path| if path.contains("failed") { (500, "unavailable".into()) } else { (200, "[{\"id\":\"one\"}]".into()) });
@@ -632,6 +635,7 @@ fn admin_source_drafts_check_component_artifacts_and_exported_tables() {
     assert_eq!(view["sources"][0]["first_run"]["rows"], 3);
 }
 
+// spec: surface.open-console.source-preservation@3f369635
 #[test]
 fn admin_source_addition_preserves_other_work_and_refuses_incompatible_destination_keys() {
     let (dir, public) = project();
@@ -658,6 +662,7 @@ fn admin_source_addition_preserves_other_work_and_refuses_incompatible_destinati
     assert_eq!(view["externals"][0]["name"], "review");
 }
 
+// spec: run.land.receive-applied@a7f67bf7
 #[test]
 fn source_first_receive_fire_uses_the_admin_applied_document() {
     let (dir, public) = project();
@@ -734,6 +739,7 @@ fn source_first_and_latest_use_completion_order_for_a_retried_fire() {
     assert_eq!(view["sources"][0]["latest_run"]["rows"], 1);
 }
 
+// spec: run.land.receive-version-group@89e4b98d
 #[test]
 fn applied_receive_groups_leave_an_older_versions_orphan_batch_unclaimed() {
     let (dir, public) = receiving_face();
