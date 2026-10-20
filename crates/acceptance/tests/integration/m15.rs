@@ -259,9 +259,10 @@ zone = "UTC"
     let mut observed = args.clone();
     observed["as_of_ingest"] = json!("2015-01-01T00:00:00Z");
     assert_eq!(objects(&call(&cf, &p, &public, &bounded, "memory.recall", observed)), ["known"]);
-    let mut widened = args;
-    widened["observed_at"] = json!("2016-01-01T00:00:00Z");
-    let refused = call(&cf, &p, &public, &bounded, "memory.recall", widened);
+    let mut later_validity = args;
+    later_validity["observed_at"] = json!("2016-01-01T00:00:00Z");
+    assert_eq!(objects(&call(&cf, &p, &public, &bounded, "memory.recall", later_validity)), ["backfilled", "known"]);
+    let refused = call(&cf, &p, &public, &bounded, "context.query", json!({ "sql": r#"SELECT claim_id FROM "research/facts""#, "available_as_of": "2016-01-01T00:00:00Z" }));
     assert_eq!(refused["result"]["structuredContent"]["error"]["identifier"], json!("ReadBoundExceedsHorizon"), "{refused}");
 }
 
