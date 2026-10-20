@@ -136,8 +136,8 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
     }
 }
 
-/// Workspace compilation, the differential CLI partition and the first CLI shard run separately; four groups run every other package.
-// spec: assurance.gate.workspace-parts@f8703584
+/// Remote workspace checks compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.
+// spec: assurance.gate.workspace-parts@63542de6
 #[test]
 fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let r = Repo::init();
@@ -147,6 +147,7 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
         r.write(&format!("crates/{name}/src/lib.rs"), "");
         r.write(&format!("crates/{name}/tests/integration/main.rs"), "");
     }
+    r.write("tools/ci/cli-shards.toml", "[test]\n");
     r.lock();
     r.commit("one workspace package");
     let log = r.root.join("cargo.log");
@@ -166,13 +167,16 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     assert!(calls.contains("test --package contextful-cli --test integration -- --list --format terse"), "{calls}");
     assert!(!calls.contains("--workspace"), "CLI runs no workspace compile: {calls}");
 
-    // The four shards run every ordinary integration test once by exact name, and no test
-    // any `differential::` filter reaches, `protocol_differential::` among them.
+    // The shards run every ordinary integration test once by exact name, and no test any
+    // `differential::` filter reaches, `protocol_differential::` among them.
     let ordinary: Vec<String> = (0..16).map(|i| format!("ordinary_{i:02}")).collect();
     let differential = ["differential::reference", "protocol_differential::seeded", "protocol_differential::replays"];
     let names: Vec<String> = ordinary.iter().cloned().chain(differential.iter().map(|n| n.to_string())).collect();
     let mut sharded = Vec::new();
-    for k in 1..=4 {
+    let parts = r.run_ci(&["stages", "--parts"]);
+    let shards = String::from_utf8_lossy(&parts.stdout).lines().filter(|p| p.starts_with("workspace.cli-") && *p != "workspace.cli-formal").count();
+    assert!(shards >= 4, "{}", String::from_utf8_lossy(&parts.stdout));
+    for k in 1..=shards {
         std::fs::remove_file(&log).unwrap();
         let shard = r.gate_with_cargo(&listing(&log, &names), &["--stage", &format!("workspace.cli-{k}")]);
         assert!(shard.status.success(), "cli-{k}: {}", stderr(&shard));

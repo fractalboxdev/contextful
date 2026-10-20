@@ -80,3 +80,18 @@ mod visibility;
 mod storage;
 #[cfg(feature = "data-plane")]
 mod worker;
+
+/// A nested `cargo` for building an example from inside a test. Package metadata belongs to
+/// this integration executable, not the nested build; build scripts track these variables, so
+/// inheriting them invalidates native artifacts and the nested build recompiles the graph.
+pub(crate) fn nested_cargo() -> std::process::Command {
+    let mut cargo = std::process::Command::new(env!("CARGO"));
+    for (name, _) in std::env::vars_os() {
+        if name.to_str().is_some_and(|name| {
+            name.starts_with("CARGO_PKG_") || name.starts_with("CARGO_CFG_") || matches!(name, "CARGO_MANIFEST_DIR" | "CARGO_MANIFEST_PATH" | "CARGO_MANIFEST_LINKS" | "OUT_DIR")
+        }) {
+            cargo.env_remove(name);
+        }
+    }
+    cargo
+}

@@ -68,9 +68,17 @@ fn nightly(part: &str) -> bool {
 }
 
 #[test]
+fn the_committed_cli_shard_map_holds_every_shard_of_several_tests_within_budget() {
+    let shards = listed(&["stages", "--parts"]).into_iter().filter(|p| p.strip_prefix("workspace.cli-").is_some_and(|k| k.parse::<usize>().is_ok())).count();
+    let printed = listed(&["cli-shards"]);
+    assert_eq!(printed.len(), shards, "{printed:?}");
+    assert!(printed.iter().all(|line| !line.starts_with("cli-") || !line.contains(" 0 test(s)")), "a shard runs no mapped test: {printed:?}");
+}
+
+#[test]
 fn every_gate_stage_has_a_dispatchable_part() {
     let required = listed(&["stages", "--parts"]);
-    assert_eq!(required.len(), 24, "the remote gate expects one required check per part: {required:?}");
+    assert_eq!(required.len(), 28, "the remote gate expects one required check per part: {required:?}");
     assert!(required.iter().any(|part| part == "workspace.cli-1"), "the CLI suite has no separate remote check: {required:?}");
     let mut parts = required.clone();
     parts.extend(listed(&["stages", "--parts", "--tier", "nightly"]));

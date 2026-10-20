@@ -11,6 +11,7 @@ mod measure;
 mod release;
 mod layout;
 mod shell;
+mod shards;
 mod row_token;
 mod source_lint;
 mod vacuous;
@@ -122,6 +123,18 @@ enum Cmd {
     SourceLint,
     /// Run `shellcheck` over every tracked shell file, as the toolchain stage does.
     Shellcheck,
+    /// Print each CLI shard's estimated test wall clock from the shard map and fail past the
+    /// budget; with `--report`, first rewrite the map from a libtest timing report
+    /// (`assurance.gate.cli-shard-map`).
+    CliShards {
+        /// A libtest `--format json -Z unstable-options --report-time` report of the CLI
+        /// integration suite, relative to the repository root.
+        #[arg(long)]
+        report: Option<PathBuf>,
+        /// The factor turning the report's durations into gate-container seconds.
+        #[arg(long, default_value_t = 1.0, requires = "report")]
+        scale: f64,
+    },
     /// Hold every package's tests to one integration target, gated suites to a head
     /// `cfg`, and a top-level test file to a stated reason, as the crate-graph stage does.
     TestLayout,
@@ -331,6 +344,7 @@ fn main() {
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
         Cmd::Shellcheck => repo_root().and_then(|root| shell::check(&root)),
+        Cmd::CliShards { report, scale } => repo_root().and_then(|root| shards::command(&root, report.as_deref(), scale, DIFFERENTIAL_FILTER)),
         Cmd::TestLayout => repo_root().and_then(|root| layout::check(&root)),
         Cmd::Vacuous { files } => repo_root().and_then(|root| {
             let files = if files.is_empty() { tracked(&root)?.into_iter().filter(|p| is_test(p)).collect() } else { files };
@@ -456,10 +470,6 @@ fn repo_root() -> Result<PathBuf> {
 /// `assurance.build.profile-build`, `assurance.gate.budget-stage`).
 const SPLIT: [&str; 5] = ["test-first", "workspace", "evaluate", "features", "budget"];
 
-/// The shards the remaining CLI tests split into by a hash of each test's name
-/// (`assurance.gate.workspace-parts`).
-const CLI_SHARDS: usize = 4;
-
 /// A package's name with the workspace prefix `contextful-` removed.
 fn short(package: &str) -> &str {
     package.strip_prefix("contextful-").unwrap_or(package)
@@ -473,7 +483,7 @@ fn parts(root: &Path, stage: &str, base: Option<&str>) -> Result<Vec<String>> {
     Ok(match stage {
         "test-first" => match base { Some(base) => test_first_parts(root, base)?, None => vec!["validate".into()] },
         "workspace" => std::iter::once("compile".to_string())
-            .chain((1..=CLI_SHARDS).map(|k| format!("cli-{k}")))
+            .chain((1..=shards::SHARDS).map(|k| format!("cli-{k}")))
             .chain(["cli-formal", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string))
             .collect(),
         "evaluate" => measure::EVALUATE_PARTS.into_iter().map(str::to_string).collect(),
@@ -697,7 +707,7 @@ fn workspace_part(package: &str) -> &'static str {
 
 fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
     if let Some(only) = only {
-        let shards: Vec<usize> = (1..=CLI_SHARDS).filter(|k| only.iter().any(|part| *part == format!("cli-{k}"))).collect();
+        let shards: Vec<usize> = (1..=shards::SHARDS).filter(|k| only.iter().any(|part| *part == format!("cli-{k}"))).collect();
         let formal = only.iter().any(|part| part == "cli-formal");
         if only.iter().any(|part| part == "compile") {
             let mut args = vec!["test", "--workspace"];
@@ -743,12 +753,35 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
 const DIFFERENTIAL_FILTER: &str = "differential::";
 
 /// Shard `k` of the remaining CLI tests (`assurance.gate.workspace-parts`): every
-/// integration test [`DIFFERENTIAL_FILTER`] does not reach whose name hashes to `k` of
-/// [`CLI_SHARDS`], run by exact name; the first shard also runs the library and binary unit
-/// tests and the doctests, which no hash partition reaches.
+/// integration test [`DIFFERENTIAL_FILTER`] does not reach that the shard map assigns `k`,
+/// run by exact name, and every test the map lacks when `k` is the least-loaded shard
+/// (`assurance.gate.cli-shard-map`); that least-loaded shard also runs the library and binary
+/// unit tests and the doctests, which no test listing reaches.
 fn cli_shard(root: &Path, k: usize) -> Result<()> {
     let binary = topology::BINARY;
-    if k == 1 {
+    let listing = ["test", "--package", binary, "--test", "integration", "--", "--list", "--format", "terse"];
+    let out = Command::new("cargo").args(listing).env("CARGO_TARGET_DIR", stage_target(root, "workspace")).current_dir(root).output()?;
+    if !out.status.success() {
+        return Err(exited_output(&format!("cargo {}", listing.join(" ")), &out));
+    }
+    let listed: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| line.strip_suffix(": test"))
+        .filter(|name| !name.contains(DIFFERENTIAL_FILTER))
+        .map(str::to_string)
+        .collect();
+    let shards::Assignment { tests: names, unmapped, stale, fallback } = shards::assign(root, &listed, k)?;
+    if !unmapped.is_empty() || !stale.is_empty() {
+        eprintln!(
+            "workspace: CLI shard map drift in {}: {} unmapped test(s), each run with its group or in cli-{fallback}: {}; {} stale entry(ies): {}",
+            shards::MAP,
+            unmapped.len(),
+            unmapped.join(" "),
+            stale.len(),
+            stale.join(" ")
+        );
+    }
+    if k == fallback {
         let kinds = target_kinds(root, binary)?;
         let mut units = vec!["test", "--package", binary];
         if kinds.iter().any(|kind| kind == "lib") {
@@ -764,33 +797,13 @@ fn cli_shard(root: &Path, k: usize) -> Result<()> {
             run_staged(root, "workspace", &["test", "--package", binary, "--doc"])?;
         }
     }
-    let listing = ["test", "--package", binary, "--test", "integration", "--", "--list", "--format", "terse"];
-    let out = Command::new("cargo").args(listing).env("CARGO_TARGET_DIR", stage_target(root, "workspace")).current_dir(root).output()?;
-    if !out.status.success() {
-        return Err(exited_output(&format!("cargo {}", listing.join(" ")), &out));
-    }
-    let names: Vec<String> = String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter_map(|line| line.strip_suffix(": test"))
-        .filter(|name| !name.contains(DIFFERENTIAL_FILTER) && shard_of(name) == k)
-        .map(str::to_string)
-        .collect();
-    eprintln!("workspace: CLI shard {k} of {CLI_SHARDS} runs {} integration test(s)", names.len());
+    eprintln!("workspace: CLI shard {k} of {} runs {} integration test(s)", shards::SHARDS, names.len());
     if names.is_empty() {
         return Ok(());
     }
     let mut args = vec!["test", "--package", binary, "--test", "integration", "--", "--exact"];
     args.extend(names.iter().map(String::as_str));
     run_staged(root, "workspace", &args)
-}
-
-/// The 1-based shard a test name hashes to: the first eight bytes of its SHA-256 digest, as
-/// a big-endian integer, modulo [`CLI_SHARDS`], so every machine agrees.
-fn shard_of(name: &str) -> usize {
-    use sha2::Digest;
-    let digest = sha2::Sha256::digest(name.as_bytes());
-    let head = u64::from_be_bytes(digest[..8].try_into().expect("a SHA-256 digest holds eight bytes"));
-    (head % CLI_SHARDS as u64) as usize + 1
 }
 
 /// The target kinds `package` declares, from `cargo metadata`.

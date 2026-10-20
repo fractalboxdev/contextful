@@ -25,7 +25,7 @@ fn decide_exe() -> &'static Path {
     static BUILT: OnceLock<PathBuf> = OnceLock::new();
     BUILT.get_or_init(|| {
         let args = ["build", "-q", "-p", "contextful-cli", "--no-default-features", "--example", "decide"];
-        let status = Command::new(env!("CARGO")).args(args).status().unwrap();
+        let status = crate::nested_cargo().args(args).status().unwrap();
         assert!(status.success(), "building the decide example");
         Path::new(BIN).parent().unwrap().join("examples").join("decide")
     })

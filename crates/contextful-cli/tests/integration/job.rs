@@ -88,14 +88,7 @@ fn cf(dir: &Path, args: &[&str]) -> Output {
 fn host_binary() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
     BUILT.call_once(|| {
-        let mut build = Command::new(env!("CARGO"));
-        // Package metadata belongs to this integration executable, not the nested build.
-        // Build scripts track these variables; inheriting them invalidates native artifacts.
-        for (name, _) in std::env::vars_os() {
-            if name.to_str().is_some_and(|name| name.starts_with("CARGO_PKG_") || name.starts_with("CARGO_CFG_") || matches!(name, "CARGO_MANIFEST_DIR" | "CARGO_MANIFEST_PATH" | "CARGO_MANIFEST_LINKS" | "OUT_DIR")) {
-                build.env_remove(name);
-            }
-        }
+        let mut build = crate::nested_cargo();
         build.args(["build", "--locked", "-q", "-p", "contextful-cli", "--example", "store_driven"]);
         if cfg!(feature = "contextful-full") {
             build.args(["--no-default-features", "--features", "contextful-full"]);
