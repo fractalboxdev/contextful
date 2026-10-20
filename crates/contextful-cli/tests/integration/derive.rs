@@ -179,7 +179,7 @@ fn the_verb_refuses_a_fetch_engine_and_runs_a_transcriber_over_one_file() {
 pub(crate) fn host_binary() -> std::path::PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
     BUILT.call_once(|| {
-        let status = Command::new(env!("CARGO")).args(["build", "-q", "-p", "contextful-cli", "--example", "host_derive"]).status().unwrap();
+        let status = crate::nested_cargo().args(["build", "-q", "-p", "contextful-cli", "--example", "host_derive"]).status().unwrap();
         assert!(status.success(), "building the host_derive example");
     });
     std::path::Path::new(env!("CARGO_BIN_EXE_contextful")).parent().unwrap().join("examples").join("host_derive")

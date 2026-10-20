@@ -30,6 +30,7 @@ fn cli_repo() -> Repo {
     suite.push_str("mod differential {\n    #[test]\n    fn reference() { std::fs::write(\"reference.ran\", \"yes\").unwrap(); }\n}\n");
     suite.push_str("mod protocol_differential {\n    #[test]\n    fn seeded() { std::fs::write(\"protocol.ran\", \"yes\").unwrap(); }\n}\n");
     r.write("crates/contextful-cli/tests/integration/main.rs", &suite);
+    r.write("tools/ci/cli-shards.toml", "[test]\n");
     r.lock();
     r.commit("a CLI suite of twelve ordinary tests, a unit test and a doctest");
     r
@@ -55,8 +56,8 @@ fn mapped(test: &str, shard: usize, seconds: f64) -> String {
     format!("\"{test}\" = {{ shard = {shard}, seconds = {seconds:.1} }}\n")
 }
 
-/// `tools/ci/cli-shards.toml` assigns each remaining CLI test, a nested-build group whole, one shard by recorded duration within 12 min per multi-unit shard; an unmapped test, reported as drift, joins its group or the least-loaded shard, which adds unit tests and doctests.
-// spec: assurance.gate.cli-shard-map@36e5640c
+/// `tools/ci/cli-shards.toml` assigns each remaining CLI test, a nested-build group whole, one shard by recorded duration within 9 min per shard; an unmapped test, reported as drift, joins its group or the least-loaded shard, which adds unit tests and doctests.
+// spec: assurance.gate.cli-shard-map@1648cae3
 #[test]
 fn the_shard_map_runs_each_cli_test_once_and_a_test_it_lacks_in_the_least_loaded_shard() {
     let r = cli_repo();
@@ -134,7 +135,7 @@ fn timed(name: &str, seconds: f64) -> String {
 }
 
 /// The balancer writes a map holding every timed test once, the differential ones excepted, keeps
-/// each group on one shard, and refuses a report whose shards of several units exceed 12 min.
+/// each group on one shard, and refuses a report leaving any shard past 9 min.
 #[test]
 fn the_balancer_spreads_a_timing_report_within_the_shard_budget() {
     let r = Repo::init();
@@ -147,8 +148,6 @@ fn the_balancer_spreads_a_timing_report_within_the_shard_budget() {
         report.push_str(&timed(name, 100.0 + i as f64));
     }
     report.push_str(&timed("differential::reference", 5000.0));
-    // One indivisible unit past the budget holds a shard alone and is reported, not refused.
-    report.push_str(&timed("lone::giant", 3000.0));
     r.write("timings.json", &report);
     r.write("tools/ci/cli-shards.toml", "[group]\ntogether = [\"module_0::\"]\n");
     let out = r.run_ci(&["cli-shards", "--report", "timings.json", "--scale", "2"]);
@@ -159,14 +158,11 @@ fn the_balancer_spreads_a_timing_report_within_the_shard_budget() {
     let tests = map["test"].as_table().unwrap();
     let mut keys: Vec<&String> = tests.keys().collect();
     keys.sort();
-    let giant = "lone::giant".to_string();
-    let mut want: Vec<&String> = names.iter().chain([&giant]).collect();
+    let mut want: Vec<&String> = names.iter().collect();
     want.sort();
     assert_eq!(keys, want, "the map holds another set than the timed ordinary tests");
     assert!(map["group"]["together"].as_array().is_some_and(|g| g.len() == 1), "the rewrite dropped the curated groups: {text}");
     let shard_of = |name: &str| tests[name]["shard"].as_integer().unwrap() as usize;
-    let alone = shard_of(&giant);
-    assert!(tests.keys().filter(|k| shard_of(k) == alone).count() == 1, "the over-budget test shares its shard: {text}");
     let together: Vec<usize> = names.iter().filter(|n| n.starts_with("module_0::")).map(|n| shard_of(n)).collect();
     assert!(together.len() > 1, "the group holds fewer than two tests: {together:?}");
     assert!(together.windows(2).all(|w| w[0] == w[1]), "the group spans shards: {together:?}");
@@ -178,26 +174,69 @@ fn the_balancer_spreads_a_timing_report_within_the_shard_budget() {
         assert!((tests[name]["seconds"].as_float().unwrap() - 2.0 * (100.0 + i)).abs() < 0.1, "{name}: the recorded time is the scaled report time");
         load[shard - 1] += tests[name]["seconds"].as_float().unwrap();
     }
-    assert!(load.iter().enumerate().all(|(k, l)| *l > 0.0 || k + 1 == alone), "a shard holds no test: {load:?}");
+    assert!(load.iter().all(|l| *l > 0.0), "a shard holds no test: {load:?}");
 
     // The committed map's check prints each shard's estimate and holds it within budget.
     let out = r.run_ci(&["cli-shards"]);
     assert!(out.status.success(), "{}", stderr(&out));
     let printed = String::from_utf8_lossy(&out.stdout);
     assert_eq!(printed.lines().filter(|l| l.starts_with("cli-")).count(), n, "{printed}");
-    assert!(printed.lines().any(|l| l.starts_with(&format!("cli-{alone} ")) && l.contains("indivisible")), "{printed}");
 
-    // Four threads at 720 s each hold 2880 test-seconds a shard: one more test-second refuses.
+    // Four threads at 540 s each hold 2160 test-seconds a shard: one more test-second refuses.
     let mut heavy = String::new();
     for i in 0..4 * n {
-        heavy.push_str(&timed(&format!("heavy::case_{i:03}"), 720.0));
+        heavy.push_str(&timed(&format!("heavy::case_{i:03}"), 540.0));
     }
     heavy.push_str(&timed("heavy::straw", 1.0));
     r.write("heavy.json", &heavy);
     let out = r.run_ci(&["cli-shards", "--report", "heavy.json"]);
     assert!(!out.status.success(), "a report beyond the budget wrote a map");
-    assert!(stderr(&out).contains("12 min"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("9 min"), "{}", stderr(&out));
     assert_eq!(std::fs::read_to_string(r.root.join("tools/ci/cli-shards.toml")).unwrap(), text, "a refused report rewrote the map");
+
+    // One test past the budget holds a shard alone and still exceeds it: no shard count splits it.
+    r.write("giant.json", &(timed("lone::giant", 600.0) + &timed("lone::small", 1.0)));
+    let out = r.run_ci(&["cli-shards", "--report", "giant.json"]);
+    assert!(!out.status.success(), "a test past the budget wrote a map");
+    assert!(stderr(&out).contains("lone::giant") && stderr(&out).contains("9 min"), "{}", stderr(&out));
+    assert_eq!(std::fs::read_to_string(r.root.join("tools/ci/cli-shards.toml")).unwrap(), text, "a refused report rewrote the map");
+}
+
+/// Runs `contextful-ci cli-shards` against `map` as the committed shard map.
+fn check_map(map: Option<&str>) -> std::process::Output {
+    let r = Repo::init();
+    r.lock();
+    if let Some(map) = map {
+        r.write("tools/ci/cli-shards.toml", map);
+    }
+    r.run_ci(&["cli-shards"])
+}
+
+/// A group split across shards builds its nested example once per shard, so the map refuses it.
+#[test]
+fn the_shard_check_refuses_a_group_spanning_two_shards() {
+    let map = format!("[group]\nnested = [\"nested::\"]\n\n[test]\n{}{}", mapped("nested::a", 1, 10.0), mapped("nested::b", 2, 10.0));
+    let out = check_map(Some(&map));
+    assert!(!out.status.success(), "a group spanning two shards passed");
+    assert!(stderr(&out).contains("`nested` spans shards 1 and 2"), "{}", stderr(&out));
+}
+
+/// A shard's estimate never falls below its longest test: a 600 s test beside a 1 s one exceeds
+/// 9 min, though their 601 s over four threads does not.
+#[test]
+fn the_shard_check_holds_a_shard_to_its_longest_test() {
+    let map = format!("[test]\n{}{}", mapped("long::case", 1, 600.0), mapped("short::case", 1, 1.0));
+    let out = check_map(Some(&map));
+    assert!(!out.status.success(), "a shard holding a 600 s test passed");
+    assert!(stderr(&out).contains("`long::case` 600 s"), "{}", stderr(&out));
+}
+
+/// Without the map every test would pile onto one shard, so the check and every shard refuse.
+#[test]
+fn the_shard_check_refuses_a_missing_map() {
+    let out = check_map(None);
+    assert!(!out.status.success(), "a repository without a shard map passed");
+    assert!(stderr(&out).contains("tools/ci/cli-shards.toml"), "{}", stderr(&out));
 }
 
 #[test]

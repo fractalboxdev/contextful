@@ -222,7 +222,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because one base build per package fits the sandbox's wall clock more reliably*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.
   *A-assurance*
-- `cli-shard-map` — `tools/ci/cli-shards.toml` assigns each remaining CLI test, a nested-build group whole, one shard by recorded duration within 12 min per multi-unit shard; an unmapped test, reported as drift, joins its group or the least-loaded shard, which adds unit tests and doctests.
+- `cli-shard-map` — `tools/ci/cli-shards.toml` assigns each remaining CLI test, a nested-build group whole, one shard by recorded duration within 9 min per shard; an unmapped test, reported as drift, joins its group or the least-loaded shard, which adds unit tests and doctests.
   *A-assurance*
 - `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
   *A-assurance*

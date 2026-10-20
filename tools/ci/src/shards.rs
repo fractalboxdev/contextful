@@ -16,9 +16,10 @@ pub const SHARDS: usize = 8;
 /// Libtest threads in one gate container, its processor count.
 const THREADS: f64 = 4.0;
 
-/// The estimated test wall clock a shard of several units holds within: 12 min
-/// (`assurance.gate.cli-shard-map`).
-const BUDGET_SECS: f64 = 720.0;
+/// The estimated test wall clock every shard holds within: 9 min
+/// (`assurance.gate.cli-shard-map`), which with the shard's cold compile of about 650 s keeps
+/// the part near 20 min.
+const BUDGET_SECS: f64 = 540.0;
 
 /// One test's shard and its recorded duration in gate-container seconds.
 #[derive(Clone, Copy, serde::Deserialize)]
@@ -28,7 +29,7 @@ struct Entry {
     seconds: f64,
 }
 
-#[derive(Default, serde::Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct File {
     /// Group name to the test-name prefixes its members start with.
@@ -59,8 +60,7 @@ pub struct Assignment {
 fn read(root: &Path) -> Result<File> {
     let text = match std::fs::read_to_string(root.join(MAP)) {
         Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(File::default()),
-        Err(e) => return Err(e).with_context(|| format!("reading {MAP}")),
+        Err(e) => return Err(e).with_context(|| format!("reading {MAP}; without it every CLI test runs in one shard")),
     };
     let file: File = toml::from_str(&text).with_context(|| format!("parsing {MAP}"))?;
     for (name, entry) in &file.test {
@@ -155,22 +155,26 @@ fn balance(file: &mut File, times: &BTreeMap<String, f64>) -> Result<()> {
     Ok(())
 }
 
-/// Each shard's estimated wall clock and whether it holds one indivisible unit, refusing a map
-/// whose shard of several units exceeds the budget, since more shards would split it.
-fn estimate(file: &File) -> Result<Vec<(f64, usize, bool)>> {
+/// Each shard's estimated wall clock and test count, refusing a map with any shard past the
+/// budget: a unit that alone exceeds it names itself, since no shard count splits it.
+fn estimate(file: &File) -> Result<Vec<(f64, usize)>> {
     let mut per: Vec<Vec<f64>> = vec![Vec::new(); SHARDS];
-    let mut units: Vec<std::collections::BTreeSet<String>> = vec![Default::default(); SHARDS];
+    let mut units: BTreeMap<String, Vec<f64>> = BTreeMap::new();
     for (name, entry) in &file.test {
         per[entry.shard - 1].push(entry.seconds);
-        units[entry.shard - 1].insert(file.group_of(name).map_or_else(|| name.clone(), |g| format!("group {g}")));
+        units.entry(file.group_of(name).map_or_else(|| name.clone(), |g| format!("group {g}"))).or_default().push(entry.seconds);
     }
-    let out: Vec<(f64, usize, bool)> = per.iter().zip(&units).map(|(s, u)| (wall(s), s.len(), u.len() == 1)).collect();
-    let over: Vec<String> =
-        out.iter().enumerate().filter(|(_, (w, _, one))| *w > BUDGET_SECS && !one).map(|(i, (w, _, _))| format!("cli-{} {w:.0} s", i + 1)).collect();
+    let minutes = BUDGET_SECS / 60.0;
+    let lone: Vec<String> = units.iter().map(|(u, s)| (u, wall(s))).filter(|(_, w)| *w > BUDGET_SECS).map(|(u, w)| format!("`{u}` {w:.0} s")).collect();
+    if !lone.is_empty() {
+        bail!("{} alone exceed the {minutes:.0} min shard budget; shorten them or their nested build", lone.join(", "));
+    }
+    let out: Vec<(f64, usize)> = per.iter().map(|s| (wall(s), s.len())).collect();
+    let over: Vec<String> = out.iter().enumerate().filter(|(_, (w, _))| *w > BUDGET_SECS).map(|(i, (w, _))| format!("cli-{} {w:.0} s", i + 1)).collect();
     if !over.is_empty() {
         let total: f64 = file.test.values().map(|e| e.seconds).sum();
         bail!(
-            "{} exceed the 12 min shard budget; {SHARDS} shards hold {:.0} s of tests, so raise `SHARDS` in tools/ci/src/shards.rs",
+            "{} exceed the {minutes:.0} min shard budget; {SHARDS} shards hold {:.0} s of tests, so raise `SHARDS` in tools/ci/src/shards.rs",
             over.join(", "),
             total / THREADS
         );
@@ -183,9 +187,10 @@ fn render(file: &File) -> String {
     let mut out = String::from(
         "# Each remaining CLI integration test's shard and its duration in gate-container seconds\n\
          # (`assurance.gate.cli-shard-map`). `contextful-ci cli-shards --report <libtest json>\n\
-         # --scale <gate/local>` rewrites [test] from a timed run and keeps [group]. A group names\n\
-         # the prefixes of tests sharing one nested build, kept on one shard. An unmapped test runs\n\
-         # with its group or in the least-loaded shard, and every shard reports it as drift.\n\n[group]\n",
+         # --scale <gate/local>` rewrites [test] from the timed run AGENTS.md names and keeps [group].\n\
+         # A group names the prefixes of tests sharing one nested build, kept on one shard. An\n\
+         # unmapped test runs with its group or in the least-loaded shard, and every shard\n\
+         # reports it as drift.\n\n[group]\n",
     );
     for (name, prefixes) in &file.group {
         out.push_str(&format!("{} = [{}]\n", quote(name), prefixes.iter().map(|p| quote(p)).collect::<Vec<_>>().join(", ")));
@@ -199,7 +204,7 @@ fn render(file: &File) -> String {
 
 /// `contextful-ci cli-shards`: with `report`, rewrites the map's tests from its timings,
 /// refusing a report no assignment fits; then prints each shard's estimated wall clock and
-/// fails when a shard of several units exceeds the budget.
+/// fails when any shard exceeds the budget.
 pub fn command(root: &Path, report: Option<&Path>, scale: f64, skip: &str) -> Result<()> {
     let mut file = read(root)?;
     if let Some(path) = report {
@@ -211,9 +216,8 @@ pub fn command(root: &Path, report: Option<&Path>, scale: f64, skip: &str) -> Re
         }
         std::fs::write(&out, render(&file)).with_context(|| format!("writing {MAP}"))?;
     }
-    for (i, (wall, count, one)) in estimate(&file)?.iter().enumerate() {
-        let note = if *one && *wall > BUDGET_SECS { ", one indivisible unit past the budget" } else { "" };
-        println!("cli-{} {count} test(s) {wall:.0} s{note}", i + 1);
+    for (i, (wall, count)) in estimate(&file)?.iter().enumerate() {
+        println!("cli-{} {count} test(s) {wall:.0} s", i + 1);
     }
     Ok(())
 }

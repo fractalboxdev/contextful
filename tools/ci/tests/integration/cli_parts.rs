@@ -5,6 +5,7 @@ fn remote_cli_parts_run_every_test_once_and_propagate_differential_failures() {
     let r = Repo::init();
     r.write("crates/contextful-cli/Cargo.toml", &(manifest("contextful-cli", "") + "\n[features]\nextra = []\n"));
     r.write("crates/contextful-cli/src/lib.rs", "");
+    r.write("tools/ci/cli-shards.toml", "[test]\n");
     r.write("crates/contextful-cli/tests/integration/main.rs", "#[test] fn ordinary() { std::fs::write(\"ordinary.ran\", \"yes\").unwrap(); }\nmod differential { #[test] fn reference() { std::fs::write(\"reference.ran\", \"yes\").unwrap(); } }\n");
     r.lock();
     r.commit("CLI ordinary and differential suites");

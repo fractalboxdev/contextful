@@ -147,6 +147,7 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
         r.write(&format!("crates/{name}/src/lib.rs"), "");
         r.write(&format!("crates/{name}/tests/integration/main.rs"), "");
     }
+    r.write("tools/ci/cli-shards.toml", "[test]\n");
     r.lock();
     r.commit("one workspace package");
     let log = r.root.join("cargo.log");

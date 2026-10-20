@@ -201,7 +201,7 @@ Revisit: the store format promises compatibility across majors, or `v1` opens.
 
 Context: the feature-unified workspace suite exceeds the 1800 s sandbox cap on a cold remote build. Criteria: every package suite runs, the feature union compiles, and each dispatched command runs locally too.
 
-Decision: `assurance.gate.workspace-parts` compiles the union untested, runs `differential::` tests in one check, and splits the remaining CLI tests into eight shards by the map of `assurance.gate.cli-shard-map`: local four-thread durations scaled to a measured gate shard, each nested-example group on one shard. Four parts run the other suites; the local stage keeps one invocation under `assurance.build.one-engine-build`.
+Decision: `assurance.gate.workspace-parts` compiles the union untested, runs `differential::` tests in one check, and splits the remaining CLI tests into eight shards by the map of `assurance.gate.cli-shard-map`: local four-thread durations scaled to a measured gate shard, a group of tests sharing one costly nested build on one shard. Four parts run the other suites; the local stage keeps one invocation under `assurance.build.one-engine-build`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -210,7 +210,7 @@ Decision: `assurance.gate.workspace-parts` compiles the union untested, runs `di
 | One CLI test build handed to every shard | Operability | FlareDispatch hands parts one prebuilt `[[bin]]` from the parent, no test executable between parts. |
 | `cargo nextest --partition hash:k/4` | Operability | The gate image carries no nextest, which runs no doctests. |
 
-Consequences: fourteen workspace checks cover the local stage's packages, each ordinary CLI test once. Each example-build group holds one shard past 12 min alone. A multi-unit shard over budget raises the shard count.
+Consequences: fourteen workspace checks cover the local stage's packages, each ordinary CLI test once. A nested example build inherits no package environment from the test process, so it reuses the shard's compiled graph. A shard over budget raises the shard count; a unit over it alone must shorten.
 
 ## Gate parts run under a 45 min exec deadline
 

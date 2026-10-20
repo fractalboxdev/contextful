@@ -155,9 +155,11 @@ ruleset proposal under `.github/rulesets/` lists the parent and all 28 static ch
 The CLI differential module runs in `workspace.cli-formal` and `features.formal-<set>`;
 `workspace.cli-1` to `workspace.cli-8` and `features.binary-<set>` run the remaining CLI tests;
 the eight `workspace.cli-<k>` shards follow the duration-balanced map in
-`tools/ci/cli-shards.toml`, and the least-loaded shard also runs the CLI's unit tests,
-doctests and any test the map lacks. After adding CLI tests, regenerate the map from a
-timed run: `contextful-ci cli-shards --report <libtest json> --scale <gate/local>`.
+`tools/ci/cli-shards.toml`; an unmapped test runs with its group, else in the least-loaded
+shard, which also runs the CLI's unit tests and doctests. After adding CLI tests, regenerate
+the map from a four-thread timed run:
+`RUSTC_BOOTSTRAP=1 cargo test -p contextful-cli --test integration -- --skip differential:: --test-threads 4 -Z unstable-options --format json --report-time > .tmp/cli-times.json`,
+then `contextful-ci cli-shards --report .tmp/cli-times.json --scale 4`.
 
 ### Landing without a remote verdict
 
