@@ -590,6 +590,16 @@ impl Catalog for D1Catalog {
             .collect()
     }
 
+    fn unpushed_runs(&self) -> Result<Vec<RunRow>, Failure> {
+        self.db
+            .query("SELECT row FROM contextful_run WHERE json_extract(row, '$.unpushed') IS NOT NULL ORDER BY run_id COLLATE BINARY", vec![])
+            .map_err(storage)?
+            .rows
+            .iter()
+            .map(Self::parse_run)
+            .collect()
+    }
+
     fn history(&self, pipeline_id: Option<&str>, window: &Window) -> Result<HistoryPage, Failure> {
         let since = window.since.map_or(i64::MIN, |s| {
             let ns = s.unix_nanos();

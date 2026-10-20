@@ -59,6 +59,7 @@ pub fn run_row(run_id: &str, pipeline: &str, status: RunStatus) -> RunRow {
         credential_providers: Default::default(),
         bound_hits: Vec::new(),
         next_attempt_at: None,
+        unpushed: None,
     }
 }
 

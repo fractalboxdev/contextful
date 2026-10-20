@@ -300,6 +300,9 @@ impl Catalog for RecordedCatalog {
     fn last_run_start(&self, pipeline_id: &str) -> std::result::Result<Option<Instant>, Failure> {
         self.inner.last_run_start(pipeline_id)
     }
+    fn unpushed_runs(&self) -> std::result::Result<Vec<RunRow>, Failure> {
+        self.inner.unpushed_runs()
+    }
     fn update_run(
         &self,
         run_id: &str,

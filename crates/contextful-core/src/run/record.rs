@@ -203,6 +203,19 @@ pub struct RunRow {
     /// every other row.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_attempt_at: Option<Instant>,
+    /// A run committed on a disposable disk whose run manifest no committed push has
+    /// carried (`store.drain.mark`); absent on every other row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unpushed: Option<Unpushed>,
+}
+
+/// The node whose store holds an unpushed run, and whether a later push found that store
+/// without it (`store.drain.clear`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Unpushed {
+    pub node: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lost: bool,
 }
 
 /// One bound hit: the step whose attempt struck it, that attempt, and the bound
