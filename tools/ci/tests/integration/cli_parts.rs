@@ -9,8 +9,16 @@ fn remote_cli_parts_run_every_test_once_and_propagate_differential_failures() {
     r.lock();
     r.commit("CLI ordinary and differential suites");
     let package = r.root.join("crates/contextful-cli");
-    let shards = ["workspace.cli-1", "workspace.cli-2", "workspace.cli-3", "workspace.cli-4"];
-    for (ordinary, differential) in [(&shards[..], "workspace.cli-formal"), (&["features.binary-all"][..], "features.formal-all")] {
+    let listed = r.run_ci(&["stages", "--parts"]);
+    assert!(listed.status.success(), "{}", stderr(&listed));
+    let shards: Vec<String> = String::from_utf8_lossy(&listed.stdout)
+        .lines()
+        .filter(|p| p.strip_prefix("workspace.cli-").is_some_and(|k| k.parse::<usize>().is_ok()))
+        .map(str::to_string)
+        .collect();
+    assert!(!shards.is_empty());
+    let binary = ["features.binary-all".to_string()];
+    for (ordinary, differential) in [(&shards[..], "workspace.cli-formal"), (&binary[..], "features.formal-all")] {
         for part in ordinary {
             let out = r.gate(&["--stage", part]);
             assert!(out.status.success(), "{part}: {}", stderr(&out));

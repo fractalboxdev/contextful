@@ -121,7 +121,7 @@ The gate measures commits, so commit before running it.
 
 The FlareDispatch GitHub App dispatches `contextful-ci gate` from same-repository
 pull-request heads. Its `contextful-gate` run publishes the
-`flare-dispatch/contextful-gate` parent, 24 static child check-runs, and one
+`flare-dispatch/contextful-gate` parent, 28 static child check-runs, and one
 test-first child per changed source package:
 `flare-dispatch/check:<stage>` for each of `pins`, `toolchain`, `schema`,
 `workspace`, `acceptance`, `evaluate`, `crate-graph`, `connectors` and `surfaces`.
@@ -132,7 +132,7 @@ each fits the sandbox's wall clock;
 `contextful-ci stages --parts --base <rev>` prints the required list, and
 `--stage <stage>.<part>` runs one part. A selected subset runs in that order and refuses a
 stage whose predecessor's output is absent; `--predecessors` runs those too. A local run and
-the remote check invoke the identical command. `contextful-ci`'s suite asserts 24
+the remote check invoke the identical command. `contextful-ci`'s suite asserts 28
 static required parts.
 
 The nightly tier holds the `features`, `formal` and `budget` stages:
@@ -150,12 +150,14 @@ branch and attaches its report to `refs/notes/measures`. A `v*` tag starts
 `contextful-release`, with `contextful-release-cell` for the ten cells in
 `contextful-ci release --plan`, `contextful-release-formula` for formulae and
 SHA256SUMS, and three independently tagged container images. The disabled
-ruleset proposal under `.github/rulesets/` lists the parent and all 24 static children.
+ruleset proposal under `.github/rulesets/` lists the parent and all 28 static children.
 
 The CLI differential module runs in `workspace.cli-formal` and `features.formal-<set>`;
-`workspace.cli-1` to `workspace.cli-4` and `features.binary-<set>` run the remaining CLI tests;
-the four `workspace.cli-<k>` shards split them by a SHA-256 hash of each test name, and
-`workspace.cli-1` also runs the CLI's unit tests and doctests.
+`workspace.cli-1` to `workspace.cli-8` and `features.binary-<set>` run the remaining CLI tests;
+the eight `workspace.cli-<k>` shards follow the duration-balanced map in
+`tools/ci/cli-shards.toml`, and the least-loaded shard also runs the CLI's unit tests,
+doctests and any test the map lacks. After adding CLI tests, regenerate the map from a
+timed run: `contextful-ci cli-shards --report <libtest json> --scale <gate/local>`.
 
 ### Landing without a remote verdict
 
