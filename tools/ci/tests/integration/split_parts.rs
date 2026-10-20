@@ -168,6 +168,7 @@ fn the_balancer_spreads_a_timing_report_within_the_shard_budget() {
     let alone = shard_of(&giant);
     assert!(tests.keys().filter(|k| shard_of(k) == alone).count() == 1, "the over-budget test shares its shard: {text}");
     let together: Vec<usize> = names.iter().filter(|n| n.starts_with("module_0::")).map(|n| shard_of(n)).collect();
+    assert!(together.len() > 1, "the group holds fewer than two tests: {together:?}");
     assert!(together.windows(2).all(|w| w[0] == w[1]), "the group spans shards: {together:?}");
     let mut load = vec![0.0; n];
     for name in &names {
