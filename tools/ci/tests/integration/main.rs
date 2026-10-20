@@ -14,6 +14,7 @@ mod disk;
 mod domain;
 mod e2e;
 mod features;
+mod footprint;
 mod image;
 mod layout;
 mod lean;
