@@ -192,9 +192,9 @@ impl VintageHistory {
         before_commit_seq: Option<i64>,
         landing: impl IntoIterator<Item = &'a Map<String, Value>>,
     ) -> Result<Option<Self>> {
-        if !decl.is_vintage() { return Ok(None) }
+        let Some(hash) = decl.vintage_hash_column()? else { return Ok(None) };
         let available = decl.available_time.as_ref().expect("a vintage has availability time").column.clone();
-        let hash = decl.content_hash_column().expect("a vintage has a content hash").to_string();
+        let hash = hash.to_string();
         let mut columns = decl.primary_key().to_vec();
         columns.extend(decl.valid_time.as_ref().map(|valid| valid.from.clone()));
         let valid_from = decl.valid_time.as_ref().map(|valid| valid.from.clone());

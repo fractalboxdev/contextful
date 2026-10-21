@@ -204,6 +204,68 @@ fn m15_horizon() {
     assert_eq!(rows(&previewed).as_array().unwrap().len(), 1, "{previewed}");
 }
 
+#[test]
+fn m15_shaped_memory_availability() {
+    let cf = bin("contextful");
+    let p = GitRepo::init();
+    p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
+    p.write("contextful.toml", r#"authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "research/notes"
+[pipeline.tables.available_time]
+column = "published_at"
+[[table]]
+name = "research/facts"
+shape = "memory_facts"
+columns = ["claim_id", "subject", "predicate", "object", "scope", "tier", "confidence", "valid_from", "valid_to", "evidence", "superseded_by", "grant_id", "agent", "concluded_at"]
+content_hash_column = "digest"
+[table.available_time]
+column = "concluded_at"
+zone = "UTC"
+"#);
+    p.write("notes.jsonl", &json!({ "id": "n1", "text": "A historical record", "published_at": "2010-01-01T00:00:00Z" }).to_string());
+    ok(&p.run(&cf, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "notes", "--site-id", "site-a", "--type", "published_at=timestamp", "--now", "2010-01-01T00:01:00Z"]));
+    let claim = |id: &str, concluded: &str| json!({
+        "claim_id": id, "subject": "acme", "predicate": "related_to", "object": id, "digest": id,
+        "scope": null, "tier": "curated", "confidence": 1.0,
+        "valid_from": "2010-01-01T00:00:00Z", "valid_to": null,
+        "evidence": "[{\"table\":\"research/notes\",\"run\":\"notes\",\"seq\":0}]",
+        "superseded_by": null, "grant_id": "fixture", "agent": "fixture", "concluded_at": concluded,
+    });
+    let land = |file: &str, run: &str, now: &str, claims: &[Value]| {
+        p.write(file, &claims.iter().map(Value::to_string).collect::<Vec<_>>().join("\n"));
+        ok(&p.run(&cf, &["context", "land", "research/facts", "--project", "research", "--rows", file, "--run-id", run, "--site-id", "site-a", "--type", "concluded_at=timestamp", "--now", now]));
+    };
+    land("first.jsonl", "first", "2014-01-01T00:01:00Z", &[claim("known", "2014-01-01T00:00:00Z"), claim("future", "2016-01-01T00:00:00Z")]);
+    land("backfill.jsonl", "backfill", "2030-01-01T00:00:00Z", &[claim("backfilled", "2014-01-01T00:00:00Z")]);
+    let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let mint = |horizon: bool| {
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://reader@example.invalid", "--zone", "on-prem:hq", "--table", "research/*", "--ttl", "600"];
+        if horizon { args.extend(["--horizon", "2015-01-01T00:00:00Z"]); }
+        ok(&p.run(&cf, &args))
+    };
+    let bounded = mint(true);
+    let current = mint(false);
+    let objects = |answer: &Value| {
+        let columns = answer["result"]["structuredContent"]["columns"].as_array().unwrap();
+        let object_at = columns.iter().position(|c| c == "object").unwrap();
+        let mut found: Vec<String> = rows(answer).as_array().unwrap().iter().map(|r| r[object_at].as_str().unwrap().to_string()).collect();
+        found.sort();
+        found
+    };
+    let args = json!({ "table": "research/facts", "subject": "acme" });
+    assert_eq!(objects(&call(&cf, &p, &public, &current, "memory.recall", args.clone())), ["backfilled", "future", "known"]);
+    assert_eq!(objects(&call(&cf, &p, &public, &bounded, "memory.recall", args.clone())), ["backfilled", "known"]);
+    let mut observed = args.clone();
+    observed["as_of_ingest"] = json!("2015-01-01T00:00:00Z");
+    assert_eq!(objects(&call(&cf, &p, &public, &bounded, "memory.recall", observed)), ["known"]);
+    let mut later_validity = args;
+    later_validity["observed_at"] = json!("2016-01-01T00:00:00Z");
+    assert_eq!(objects(&call(&cf, &p, &public, &bounded, "memory.recall", later_validity)), ["backfilled", "known"]);
+    let refused = call(&cf, &p, &public, &bounded, "context.query", json!({ "sql": r#"SELECT claim_id FROM "research/facts""#, "available_as_of": "2016-01-01T00:00:00Z" }));
+    assert_eq!(refused["result"]["structuredContent"]["error"]["identifier"], json!("ReadBoundExceedsHorizon"), "{refused}");
+}
+
 const SWEEP: &str = r#"authoring_posture = "per_request"
 [[pipeline.tables]]
 name = "filings"

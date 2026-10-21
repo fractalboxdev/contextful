@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 386 | 92 | 22 | 14 | 303 | 0 | 303 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
-| `read` | 2 | 20 | 315 | 54 | 29 | 16 | 273 | 0 | 273 |
+| `read` | 2 | 20 | 316 | 54 | 29 | 16 | 274 | 0 | 274 |
 | `run` | 3 | 29 | 601 | 128 | 49 | 19 | 563 | 0 | 563 |
 | `store` | 4 | 19 | 329 | 68 | 21 | 12 | 318 | 0 | 318 |
 | `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
 | `topology` | 1 | 6 | 81 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2798 | 690 | 225 | 82 | 2506 | 0 | |
+| **total** | 23 | 169 | 2799 | 690 | 225 | 82 | 2507 | 0 | |
 
 Decision records: 18.
 
@@ -32,7 +32,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 634 | 530 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
 | 6 — Sync and replicas | 8 | 104 | 103 | passing | closed |
-| 7 — Memory | 6 | 92 | 77 | passing | closed |
+| 7 — Memory | 6 | 93 | 78 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 112 | 99 | passing | closed |
@@ -1193,6 +1193,7 @@ Unscheduled operations: 13.
 | `read.cache.session-pool` | `crates/contextful-context/tests/integration/read/pool.rs::statements_under_one_key_share_one_resolved_session_and_one_engine` | performed |
 | `read.cache.volatile-bypasses` | `crates/contextful-context/tests/integration/read/result_cache.rs::a_statement_calling_a_volatile_function_executes_each_time` | performed |
 | `read.cache.warming-read` | `crates/contextful-agent/tests/integration/http.rs::a_read_while_the_snapshot_set_hydrates_answers_503_with_retry_after_and_admits_nothing` | performed |
+| `read.declare.availability` | `crates/contextful-cli/tests/integration/memory.rs::shaped_claim_availability_is_enforced_by_native_recall` | performed |
 | `read.declare.canonical-column` | `crates/contextful-core/tests/integration/memory/declare.rs::a_shaped_table_omitting_a_canonical_column_is_refused` | performed |
 | `read.declare.reserved-relations` | `crates/contextful-cli/tests/integration/memory.rs::relation_rename_rewrites_stored_edges_before_the_old_name_is_removed` | performed |
 | `read.declare.settlement-shapes` | `crates/contextful-core/tests/integration/memory/declare.rs::predictions_and_outcomes_are_shapes_keyed_on_the_prediction` | performed |

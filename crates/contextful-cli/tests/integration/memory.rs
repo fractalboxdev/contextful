@@ -235,6 +235,34 @@ fn recall_cli_answers_historical_and_current_claims_as_json() {
     assert_eq!(evidence["rows"], json!([["agent://synthesizer", "3"]]), "{evidence}");
 }
 
+// spec: read.declare.availability@961dd228
+#[test]
+fn shaped_claim_availability_is_enforced_by_native_recall() {
+    let (dir, public, _) = project();
+    let p = dir.path();
+    let mut manifest = std::fs::read_to_string(p.join("contextful.toml")).unwrap();
+    manifest = manifest.replace("name = \"research/notes\"", "name = \"research/notes\"\n[pipeline.tables.available_time]\ncolumn = \"published_at\"");
+    manifest.push_str("\ncontent_hash_column = \"digest\"\n[table.available_time]\ncolumn = \"concluded_at\"\nzone = \"UTC\"\n");
+    std::fs::write(p.join("contextful.toml"), manifest).unwrap();
+    std::fs::write(p.join("historical-notes.jsonl"), "{\"note_id\":\"historical\",\"text\":\"A historical note.\",\"published_at\":\"2020-01-01T00:00:00Z\"}\n").unwrap();
+    stdout(&run(p, &["context", "land", "research/notes", "--project", "research", "--rows", "historical-notes.jsonl", "--run-id", "historical-notes", "--site-id", "site-a", "--now", "2020-01-01T00:00:00Z"], &[]));
+    let claim = |id: &str, object: &str, concluded: &str| json!({
+        "claim_id": id, "subject": "acme", "predicate": "cfo", "object": object, "digest": id,
+        "scope": null, "tier": "curated", "confidence": 1.0,
+        "valid_from": "2020-01-01T00:00:00Z", "valid_to": null,
+        "evidence": "[{\"table\":\"research/notes\",\"run\":\"historical-notes\",\"seq\":0}]",
+        "superseded_by": null, "grant_id": "fixture", "agent": "fixture", "concluded_at": concluded,
+    });
+    let rows = [claim("known", "Dana", "2025-01-01T00:00:00Z"), claim("future", "Lee", "2026-01-01T00:00:00Z")];
+    std::fs::write(p.join("claims.jsonl"), rows.iter().map(Value::to_string).collect::<Vec<_>>().join("\n")).unwrap();
+    stdout(&run(p, &["context", "land", "memory/facts", "--project", "research", "--rows", "claims.jsonl", "--run-id", "claims-1", "--site-id", "site-a", "--type", "concluded_at=timestamp", "--now", "2025-01-02T00:00:00Z"], &[]));
+    let token = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://reader@example.invalid", "--zone", "on-prem:hq", "--table", "research/*", "--table", "memory/*", "--horizon", "2025-06-01T00:00:00Z", "--ttl", "600"], &[]));
+    let recalled: Value = serde_json::from_str(&stdout(&run(p, &["memory", "recall", "--project", "research", "--table", "memory/facts", "--subject", "acme", "--public-key", &public, "--audience", AUD], &[("CONTEXTFUL_TOKEN", &token)]))).unwrap();
+    let object_at = recalled["columns"].as_array().unwrap().iter().position(|c| c == "object").unwrap();
+    assert_eq!(recalled["rows"].as_array().unwrap().len(), 1, "{recalled}");
+    assert_eq!(recalled["rows"][0][object_at], json!("Dana"), "{recalled}");
+}
+
 /// A read verb's `--issuer-key` never anchors the chain: over an unanchored chain it refuses
 /// and appends nothing, unsigned reads go on, and once `audit anchor` holds the chain the
 /// same verb appends signed entries.

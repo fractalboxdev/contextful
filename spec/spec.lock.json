@@ -7871,6 +7871,17 @@
       "line": 71
     },
     {
+      "id": "read.declare.availability",
+      "contract": "read",
+      "operation": "declare",
+      "subject": "availability",
+      "kind": "behavior",
+      "statement": "A shaped memory table accepts `[table.available_time]` under {{store.available-time.declaration}} and `content_hash_column` under {{store.declare.table-block}}, carrying both into every read and landing.",
+      "why": "because a conclusion's publication time differs from its economic validity and shared availability bounds exclude later conclusions from historical recall",
+      "file": "spec/21-memory.md",
+      "line": 73
+    },
+    {
       "id": "read.synthesize.extract-attempts",
       "contract": "read",
       "operation": "synthesize",
@@ -7879,7 +7890,7 @@
       "statement": "A schema-invalid response is re-prompted with its validation feedback, at most 3 attempts per batch in total.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 79
+      "line": 81
     },
     {
       "id": "read.synthesize.dead-letter",
@@ -7890,7 +7901,7 @@
       "statement": "A batch exhausting {{read.synthesize.extract-attempts}} writes the response, template hash and drop reason to the dead-letter table, raises `MemoryExtractExhausted`, and leaves the cursor unadvanced.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 80
+      "line": 82
     },
     {
       "id": "read.synthesize.pass-cursor",
@@ -7901,7 +7912,7 @@
       "statement": "A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under {{read.synthesize.prompt-bound}}, recording each batch once its claims commit.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 82
+      "line": 84
     },
     {
       "id": "read.synthesize.prompt-bound",
@@ -7912,7 +7923,7 @@
       "statement": "A batch packs fenced rows up to 32 KiB; a fenced row over that bound travels in a batch of its own.",
       "why": "because one oversized row neither stalls the pass nor drags its neighbours past the bound",
       "file": "spec/21-memory.md",
-      "line": 83
+      "line": 85
     },
     {
       "id": "read.synthesize.row-cap",
@@ -7923,7 +7934,7 @@
       "statement": "A row is fenced at 16384 chars under {{connector.infer.value-cap}}; a truncated row still reaches the model, its batch commits and advances the cursor, and the pass report counts it in `truncated`.",
       "why": "because a silent cut hides that a conclusion rests on a partial row",
       "file": "spec/21-memory.md",
-      "line": 85
+      "line": 87
     },
     {
       "id": "read.synthesize.attribution",
@@ -7934,7 +7945,7 @@
       "statement": "Every landed claim carries `grant_id`, the chain-final revocation identifier of the credential that wrote it, `agent`, that credential's agent member, and `_authored_by`, its on-behalf-of principal.",
       "why": "because a reader weighs a conclusion by which grant could have produced it",
       "file": "spec/21-memory.md",
-      "line": 87
+      "line": 89
     },
     {
       "id": "read.synthesize.claim-taint",
@@ -7945,7 +7956,7 @@
       "statement": "A source row carries its own `_taint`, else `ingested:third-party`. Every row a batch commits lands under {{store.reserve.taint}} with the least-trusted label among the batch's rows.",
       "why": "because a row no label vouches for is trusted least, and a claim re-synthesized from claims stays as low as its origin",
       "file": "spec/21-memory.md",
-      "line": 89
+      "line": 91
     },
     {
       "id": "read.synthesize.cadence",
@@ -7956,7 +7967,7 @@
       "statement": "A claims table synthesizes when `contextful memory synthesize` runs; a `[[job]]` of kind `synthesize` targeting it with a `schedule` replaces that default, and each fire still advances only through {{read.synthesize.pass-cursor}}.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 91
+      "line": 93
     },
     {
       "id": "read.synthesize.confidence-calibration",
@@ -7967,7 +7978,7 @@
       "statement": "A model-emitted confidence is labelled `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score; a validated map supplies the reported calibrated confidence.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 93
+      "line": 95
     },
     {
       "id": "read.synthesize.gleaning",
@@ -7978,7 +7989,7 @@
       "statement": "A table declaring gleaning under {{read.declare.gleanings}} re-prompts each schema-valid batch for omitted claims, up to its declared passes; gleaned and first-pass claims commit together in the batch's one commit, and gleaned claims carry `_pass = 'glean'`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 95
+      "line": 97
     },
     {
       "id": "read.synthesize.gleaning-attempt",
@@ -7989,7 +8000,7 @@
       "statement": "A gleaning response gets one attempt and no re-prompt; {{read.synthesize.extract-attempts}} does not apply to it.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 97
+      "line": 99
     },
     {
       "id": "read.synthesize.gleaning-invalid",
@@ -8000,7 +8011,7 @@
       "statement": "A schema-invalid gleaning response discards the gleaned claims, commits the first-pass claims alone, advances the cursor, and the pass report counts the batch in `glean_failed`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 99
+      "line": 101
     },
     {
       "id": "read.synthesize.extract-cache",
@@ -8011,7 +8022,7 @@
       "statement": "A schema-valid response is kept in an enforced, tenant-scoped cache table keyed on the fenced batch bytes' digest, template hash, model identifier and {{connector.infer.cutoffs}}; an identical key reuses it without a model call.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 101
+      "line": 103
     },
     {
       "id": "read.synthesize.cache-provenance",
@@ -8022,7 +8033,7 @@
       "statement": "A cache entry carries `_provenance` naming its batch's fenced rows, so {{disclosure.erase.cascade}} invalidates the entry when an erasure reaches any of them.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 103
+      "line": 105
     },
     {
       "id": "read.synthesize.cache-attribution",
@@ -8033,7 +8044,7 @@
       "statement": "A cache hit copies claims only; {{read.synthesize.attribution}} stamps `grant_id`, `agent` and `_authored_by` fresh, and the pass report counts the batch in `cached`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 105
+      "line": 107
     },
     {
       "id": "read.revise.tier",
@@ -8044,7 +8055,7 @@
       "statement": "`tier` is stamped from the write path and grounding, never the payload: a synthesis pass stamps `derived`, a direct write `curated`, a fetched result `researched`, and mixed grounding takes the lowest.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 133
+      "line": 135
     },
     {
       "id": "read.revise.direct-tier",
@@ -8055,7 +8066,7 @@
       "statement": "A direct write stamps `derived` in place of the `curated` of {{read.revise.tier}} when its credential carries an agent member or a cited row's label, read as {{read.synthesize.claim-taint}} reads it, is `ingested:third-party`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 135
+      "line": 137
     },
     {
       "id": "read.revise.supersede",
@@ -8066,7 +8077,7 @@
       "statement": "A claim of equal or higher tier retires a live prior on its subject, predicate and scope when both are open-ended or share a valid-from instant, except {{read.revise.unscoped-collision}}; the prior ends at the successor's start and names it.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 137
+      "line": 139
     },
     {
       "id": "read.revise.direct-write",
@@ -8077,7 +8088,7 @@
       "statement": "The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 139
+      "line": 141
     },
     {
       "id": "read.revise.observed-at",
@@ -8088,7 +8099,7 @@
       "statement": "`contextful memory write --observed-at <instant>` lands the claim with `valid_from` at that instant; without it, `valid_from` is the write's own instant.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 141
+      "line": 143
     },
     {
       "id": "read.revise.dedup-key",
@@ -8099,7 +8110,7 @@
       "statement": "`--dedup-key <key>` derives `claim_id` from the key beside the subject, predicate, object and scope, and a write whose `claim_id` the table already holds lands nothing.",
       "why": "because a retried write restates one observation, while one fact observed twice under two keys keeps two validity intervals",
       "file": "spec/21-memory.md",
-      "line": 142
+      "line": 144
     },
     {
       "id": "read.revise.observed-order",
@@ -8110,7 +8121,7 @@
       "statement": "A direct write whose `valid_from` precedes the `valid_from` of an unsuperseded claim of its subject, predicate and scope with another object raises `MemoryObservationOutOfOrder`, and nothing lands.",
       "why": "because retiring the later claim at the earlier instant ends it before it starts, and it then answers at no instant",
       "file": "spec/21-memory.md",
-      "line": 144
+      "line": 146
     },
     {
       "id": "read.revise.citation-live",
@@ -8121,7 +8132,7 @@
       "statement": "A direct write citing a keyed table's row that reads through the writer's session as a version its key has since replaced raises `MemoryCitationNotLive`, and nothing lands.",
       "why": "because such a claim rests on a replaced version from its first read, while a citation no readable row carries lands undigested and recall withholds it",
       "file": "spec/21-memory.md",
-      "line": 146
+      "line": 148
     },
     {
       "id": "read.revise.edge-supersede",
@@ -8132,7 +8143,7 @@
       "statement": "A new edge from a source under a relation declaring `cardinality = one` ends that source's live edge of the relation at the new edge's `valid_from`, and the ended edge names the new one in `superseded_by`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 148
+      "line": 150
     },
     {
       "id": "read.revise.unscoped-collision",
@@ -8143,7 +8154,7 @@
       "statement": "Direct writes with no scope, equal subject, predicate and valid-from, and different objects record both claim ids in the dead-letter table; neither claim retires the other until an explicit revision resolves the conflict.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 150
+      "line": 152
     },
     {
       "id": "read.revise.retention-default",
@@ -8154,7 +8165,7 @@
       "statement": "Claims retain their recorded validity until explicit expiry or erasure; a claims table declaring `decay_half_life` halves a claim's ranked score per half-life since its `valid_from`, never deleting a claim or changing its validity.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 152
+      "line": 154
     },
     {
       "id": "read.revise.served-write",
@@ -8165,7 +8176,7 @@
       "statement": "A writable served face answers `POST /memory/claims` under a per-request network credential, lands a declared claim through the direct write, and keeps the read MCP tool set closed.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 154
+      "line": 156
     },
     {
       "id": "read.revise.served-scope",
@@ -8176,7 +8187,7 @@
       "statement": "A claim write whose `actor` or `session` differs from the admitted credential's `on_behalf_of` or `task`, or whose `session` holds a colon, raises `MemoryClaimScopeRefused`; accepted claims take scope from those members, never from the payload.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 156
+      "line": 158
     },
     {
       "id": "read.revise.browser-request",
@@ -8187,7 +8198,7 @@
       "statement": "An `Origin` header on the served claim-write route raises `MemoryClaimBrowserRefused` before credential admission and commits nothing.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 158
+      "line": 160
     },
     {
       "id": "read.revise.malformed-request",
@@ -8198,7 +8209,7 @@
       "statement": "Malformed JSON, unknown fields, a client-selected claim scope, or an empty dedup key on the served claim-write route raises `MemoryClaimMalformed` and commits nothing.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 160
+      "line": 162
     },
     {
       "id": "read.revise.served-dedup",
@@ -8209,7 +8220,7 @@
       "statement": "A served claim write passes its `dedup_key` to {{read.revise.dedup-key}}, returns `landed: false` on restatement, and returns the bound scope on both outcomes.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 162
+      "line": 164
     },
     {
       "id": "read.revise.served-fault",
@@ -8220,7 +8231,7 @@
       "statement": "A served claim write whose store effect refuses raises `MemoryClaimWriteRefused` and lands nothing.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 164
+      "line": 166
     },
     {
       "id": "read.recall.evidence-unresolved",
@@ -8231,7 +8242,7 @@
       "statement": "An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 175,
+      "line": 177,
       "scenarios": [
         "WHEN entry 290 of 300 reads masked, THEN the claim is suppressed with `MemoryEvidenceUnresolved`."
       ]
@@ -8245,7 +8256,7 @@
       "statement": "A claim naming more than 256 entries of evidence serves its first 256 in cited table, run and sequence order, and reports the count of the rest in its `evidence_omitted` field.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 177,
+      "line": 179,
       "scenarios": [
         "WHEN a claim cites 300 readable rows, THEN recall serves 256 entries with `evidence_omitted = 44`."
       ]
@@ -8259,7 +8270,7 @@
       "statement": "`evidence_omitted` is a reserved projected column of {{read.recall.ranked-arm}}, null for a row outside a `memory_facts` table under {{read.retrieve.reserved-columns-project-null}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 179
+      "line": 181
     },
     {
       "id": "read.recall.evidence-gate-bound",
@@ -8270,7 +8281,7 @@
       "statement": "A claim naming more than 4096 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 180
+      "line": 182
     },
     {
       "id": "read.recall.evidence-key",
@@ -8281,7 +8292,7 @@
       "statement": "The write landing a claim stamps each citation into a keyed table with a pepper-keyed digest of the cited row's key; recall resolves a citation whose row no longer reads through the digest's live version.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 182
+      "line": 184
     },
     {
       "id": "read.recall.evidence-key-masked",
@@ -8292,7 +8303,7 @@
       "statement": "A citation whose key column reads masked or nulled by zone in the writer's session carries no digest; a masked or nulled column outside the key leaves the digest stamped.",
       "why": "because a masked key cell digests a value no other session reads, while a cell outside the key plays no part in matching it",
       "file": "spec/21-memory.md",
-      "line": 184
+      "line": 186
     },
     {
       "id": "read.recall.evidence-no-value",
@@ -8303,7 +8314,7 @@
       "statement": "A citation stored in a memory row carries the cited table, run, sequence and key digest, and no cell value of the cited row.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 186
+      "line": 188
     },
     {
       "id": "read.recall.evidence-stale",
@@ -8314,7 +8325,7 @@
       "statement": "A claim served through its key digest while its cited run and sequence no longer read counts under `stale` in the `contextful.recall` block, which names no claim.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 188
+      "line": 190
     },
     {
       "id": "read.recall.ranked-arm",
@@ -8325,7 +8336,7 @@
       "statement": "A `corpus.retrieve` arm over a `memory_facts` table serves only live claims — no `superseded_by`, and a `valid_to` null or past the read's anchor — whose evidence passes the gate.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 190
+      "line": 192
     },
     {
       "id": "read.recall.recall-block-presence",
@@ -8336,7 +8347,7 @@
       "statement": "A `corpus.retrieve` response carries the `contextful.recall` block exactly when one of its arms reads a `memory_facts` table, whichever of `prefix` and `tables` chose the arms.",
       "why": "because the block counts what claim arms withheld, and a read with no claim arm withheld no claim",
       "file": "spec/21-memory.md",
-      "line": 191
+      "line": 193
     },
     {
       "id": "read.recall.suppression-count",
@@ -8347,7 +8358,7 @@
       "statement": "A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.",
       "why": "because a count discloses that a conclusion was withheld, never what it concluded",
       "file": "spec/21-memory.md",
-      "line": 193
+      "line": 195
     },
     {
       "id": "read.recall.keyed",
@@ -8358,7 +8369,7 @@
       "statement": "`memory.recall` takes `table`, `subject`, `observed_at`, `as_of_ingest` and `limit`, and returns the claims whose `subject` equals `subject` exactly and whose `valid_from` and `valid_to` cover `observed_at` as {{store.bound-time.valid-as-of}} does.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 195
+      "line": 197
     },
     {
       "id": "read.recall.cli-verb",
@@ -8369,7 +8380,7 @@
       "statement": "The `contextful memory recall` verb calls the `memory.recall` tool with its arguments, prints the tool's JSON response, and appends the read entry {{disclosure.record.read-entry}} names for that call.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 196
+      "line": 198
     },
     {
       "id": "read.recall.keyed-clocks",
@@ -8380,7 +8391,7 @@
       "statement": "`as_of_ingest` bounds the read as {{store.bound-time.as-of}} does; absent, the read takes the latest committed state, and an absent `observed_at` the call's instant. `contextful.bounds` echoes each supplied bound under its argument name, with a per-name `inclusive` map.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 197
+      "line": 199
     },
     {
       "id": "read.recall.keyed-history",
@@ -8391,7 +8402,7 @@
       "statement": "A claim a successor retired still answers an `observed_at` inside its validity; the keyed read filters on validity alone, never on `superseded_by`.",
       "why": "because the question is what held at that instant, and the retired claim is the answer its interval records",
       "file": "spec/21-memory.md",
-      "line": 198
+      "line": 200
     },
     {
       "id": "read.recall.keyed-gate",
@@ -8402,7 +8413,7 @@
       "statement": "Every keyed claim passes {{read.recall.evidence-gate-bound}}, and every evidence entry, served or omitted, passes {{read.recall.evidence-unresolved}}; the response carries {{read.recall.suppression-count}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 200
+      "line": 202
     },
     {
       "id": "read.recall.keyed-window",
@@ -8413,7 +8424,7 @@
       "statement": "The keyed read gates claims in order and stops once it keeps one claim past the row ceiling, so the suppression count covers the claims gated before that stop.",
       "why": "because a one-row recall over a subject with thousands of claims otherwise resolves every claim's evidence",
       "file": "spec/21-memory.md",
-      "line": 201
+      "line": 203
     },
     {
       "id": "read.recall.keyed-evidence-batch",
@@ -8424,7 +8435,7 @@
       "statement": "The keyed read resolves a claim's citations into one table and run with one statement, listed among the executed SQL under `internals: true`.",
       "why": "because one statement per citation costs a claim at the gate bound one engine round trip per entry",
       "file": "spec/21-memory.md",
-      "line": 203
+      "line": 205
     },
     {
       "id": "read.recall.keyed-order",
@@ -8435,7 +8446,7 @@
       "statement": "Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 205
+      "line": 207
     },
     {
       "id": "read.recall.keyed-not-claims",
@@ -8446,7 +8457,7 @@
       "statement": "A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.",
       "why": "because a keyed read answers with a claim's subject, validity and evidence, which no other table carries",
       "file": "spec/21-memory.md",
-      "line": 206
+      "line": 208
     },
     {
       "id": "read.recall.confidence-label",
@@ -8457,7 +8468,7 @@
       "statement": "Each keyed claim carries `confidence_label`, `calibrated` or `uncalibrated` under {{read.synthesize.confidence-calibration}}, fitted on its table's declared `labels` table joined `prediction_id` to `claim_id`, read through the caller's session.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 208
+      "line": 210
     },
     {
       "id": "read.recall.stale-revision",
@@ -8468,7 +8479,7 @@
       "statement": "A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 210
+      "line": 212
     },
     {
       "id": "read.recall.usage-ledger",
@@ -8479,7 +8490,7 @@
       "statement": "A `memory.recall` read, a `memory.explain` read carrying claims, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 212
+      "line": 214
     },
     {
       "id": "read.recall.ranked-order",
@@ -8490,7 +8501,7 @@
       "statement": "Within one in-window flag value of {{read.rank.question-window-is-a-tier}}, claims order by tier, `curated`, then `derived`, then `researched`; claims of one tier keep {{read.rank.fusion}} order.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 214
+      "line": 216
     },
     {
       "id": "read.resolve-entity.ambiguous-mention",
@@ -8501,7 +8512,7 @@
       "statement": "A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "read.resolve-entity.edge-endpoint",
@@ -8512,7 +8523,7 @@
       "statement": "A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "read.resolve-entity.graph-index",
@@ -8523,7 +8534,7 @@
       "statement": "An external graph engine is a derived index of admitted memory edges; an entity or ownership answer resolves through the store's enforced rows at the read frontier.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "read.resolve-entity.ownership-answer",
@@ -8534,7 +8545,7 @@
       "statement": "An artifact's ownership answer returns the target of every `owned_by` edge from it visible to the caller, newest `_ingested_at` first, with principal id breaking equal-instant ties.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "read.resolve-entity.ownership-live",
@@ -8545,7 +8556,7 @@
       "statement": "The ownership answer omits an `owned_by` edge whose `valid_to` falls at or before the anchor.",
       "why": "because an ended edge records a past owner, and returning it names that owner as current",
       "file": "spec/21-memory.md",
-      "line": 247
+      "line": 249
     },
     {
       "id": "read.resolve-entity.knowledge-card",
@@ -8556,7 +8567,7 @@
       "statement": "`memory.explain` takes `table`, `reference` and an optional `claims` table, resolves `reference` against the names and aliases of `table`, and returns that identity's `entity_id`, `kind`, `name` and `aliases`.",
       "why": "because a caller holding a name or an alias in any script needs the canonical record without knowing its opaque id",
       "file": "spec/21-memory.md",
-      "line": 249,
+      "line": 251,
       "scenarios": [
         "WHEN `reference` is an alias written in another script, THEN `memory.explain` returns the one identity carrying it."
       ]
@@ -8570,7 +8581,7 @@
       "statement": "A card naming `claims` carries the claims {{read.recall.keyed}} returns at the call instant, under {{read.recall.keyed-gate}}, whose `subject` equals the identity's `entity_id` or its canonical `name`.",
       "why": "because synthesis keys a resolved claim by canonical name and `claim_id` hashes the subject, so re-keying stored claims by id re-identifies every one",
       "file": "spec/21-memory.md",
-      "line": 251
+      "line": 253
     },
     {
       "id": "read.resolve-entity.card-candidates",
@@ -8581,7 +8592,7 @@
       "statement": "A `reference` matching two or more identities with no exact canonical name separating them returns their `entity_id`s as candidates and no identity; a `reference` matching none returns an empty card.",
       "why": "because naming one of several matches guesses on the caller's behalf, and an absent identity is an answer, not a fault",
       "file": "spec/21-memory.md",
-      "line": 253,
+      "line": 255,
       "scenarios": [
         "WHEN `reference` is an alias two identities share, THEN the card lists both `entity_id`s and no identity."
       ]
@@ -8595,7 +8606,7 @@
       "statement": "The card reads `table` and `claims` through the caller's session; a session registering no `claims` relation receives the identity alone, and a card carrying no claims names that table in neither its body nor its read entry.",
       "why": "because a grant on identities is narrower than a grant on what the workspace concludes about them",
       "file": "spec/21-memory.md",
-      "line": 255,
+      "line": 257,
       "scenarios": [
         "WHEN the caller holds a read grant on `table` and none on `claims`, THEN the card carries the identity and no claims."
       ]
@@ -8609,7 +8620,7 @@
       "statement": "The `contextful memory explain` verb, `--internals` included, calls the `memory.explain` tool with its arguments, prints the tool's JSON response, and appends the read entry that call appends.",
       "why": "because a read outside the audit chain is a read no owner can account for",
       "file": "spec/21-memory.md",
-      "line": 257
+      "line": 259
     },
     {
       "id": "read.resolve-entity.card-not-entities",
@@ -8620,7 +8631,7 @@
       "statement": "A granted `table` declaring a shape other than `memory_entities`, or no memory shape, raises `MemoryExplainNotEntities`.",
       "why": "because only a `memory_entities` table carries the identity, kind and aliases a card returns",
       "file": "spec/21-memory.md",
-      "line": 259
+      "line": 261
     },
     {
       "id": "read.settle.registration",
@@ -8631,7 +8642,7 @@
       "statement": "A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 275
+      "line": 277
     },
     {
       "id": "read.settle.source-mismatch",
@@ -8642,7 +8653,7 @@
       "statement": "An observation naming a `metric` series other than the registration's, or carrying a verdict whose resolution source or registered series is absent or differs, raises `OutcomeSourceMismatch`, naming each source by its wire name.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 277
+      "line": 279
     },
     {
       "id": "read.settle.settling-citation",
@@ -8653,7 +8664,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 279
+      "line": 281
     },
     {
       "id": "read.settle.grace-window",
@@ -8664,7 +8675,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 281
+      "line": 283
     },
     {
       "id": "read.settle.calibration-report",
@@ -8675,7 +8686,7 @@
       "statement": "Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error over 10 equal-width bins, and the held-out score {{read.synthesize.confidence-calibration}} uses, over every fifth prediction.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 282
+      "line": 284
     },
     {
       "id": "read.settle.statement-bound",
@@ -8686,7 +8697,7 @@
       "statement": "A registration's optional `statement`, the falsifiable claim it scores, holds at most 4096 B; a longer one raises `OutcomeStatementTooLong`, and the statement takes part in {{read.settle.registration-conflict}}.",
       "why": "because a registration reads on its own only with its claim text, and an unbounded text field lets one row outweigh the table",
       "file": "spec/21-memory.md",
-      "line": 284
+      "line": 286
     },
     {
       "id": "read.settle.metric-reference",
@@ -8697,7 +8708,7 @@
       "statement": "A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against and is never looked up in the store; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.",
       "why": "because a registration precedes its series' first landing, so a store lookup refuses every prediction made before its data exists",
       "file": "spec/21-memory.md",
-      "line": 286
+      "line": 288
     },
     {
       "id": "read.settle.deadline-date",
@@ -8708,7 +8719,7 @@
       "statement": "A `deadline_at` given as a bare `YYYY-MM-DD` resolves as {{store.bound-time.instant-comparison}} resolves a date: the deadline is the next UTC midnight, so the whole named day precedes it.",
       "why": "because one date spelling then means one instant on every clock the engine compares",
       "file": "spec/21-memory.md",
-      "line": 288
+      "line": 290
     },
     {
       "id": "read.settle.predict-verb",
@@ -8719,7 +8730,7 @@
       "statement": "`contextful memory predict --into <table> --registration <json>` checks {{read.settle.registration}} and lands the registration in that `predictions` table under the admitted credential's write grant, then prints `prediction_id: <id>`.",
       "why": "because a registration nothing lands leaves its outcome no prediction to settle against",
       "file": "spec/21-memory.md",
-      "line": 290
+      "line": 292
     },
     {
       "id": "read.settle.observe-verb",
@@ -8730,7 +8741,7 @@
       "statement": "`contextful memory observe --into <table> --observation <json>` reads the prediction's stored registration through the writer's session, checks {{read.settle.source-mismatch}} and {{read.settle.settling-citation}}, lands it in that `outcomes` table, and prints its label row.",
       "why": "because a verdict is checked against the source registered before it, never one the observation asserts",
       "file": "spec/21-memory.md",
-      "line": 292
+      "line": 294
     },
     {
       "id": "read.settle.verb-attribution",
@@ -8741,7 +8752,7 @@
       "statement": "Both verbs admit a capability token as `contextful memory write` does, and each landed row carries `_authored_by` from its subject under {{store.reserve.injected}}.",
       "why": "because a settled outcome is weighed by who registered and who observed it",
       "file": "spec/21-memory.md",
-      "line": 294
+      "line": 296
     },
     {
       "id": "read.settle.prediction-unregistered",
@@ -8752,7 +8763,7 @@
       "statement": "An observation naming a `prediction_id` no row of the declared `predictions` table carries in the writer's session raises `OutcomePredictionUnregistered`, and nothing lands.",
       "why": "because a verdict with no registration has no source to check it against",
       "file": "spec/21-memory.md",
-      "line": 296
+      "line": 298
     },
     {
       "id": "read.settle.restated-landing",
@@ -8763,7 +8774,7 @@
       "statement": "A registration or observation identical to the stored row of its `prediction_id` lands nothing, and the verb succeeds with its usual output.",
       "why": "because a retried verb restates one registration, and landing it again commits a run that records nothing new",
       "file": "spec/21-memory.md",
-      "line": 298
+      "line": 300
     },
     {
       "id": "read.settle.registration-conflict",
@@ -8774,7 +8785,7 @@
       "statement": "A registration whose `prediction_id` a stored registration with any other field already holds raises `OutcomeRegistrationConflict`, and nothing lands.",
       "why": "because rewriting a registration after the fact changes the deadline or source a verdict is scored against",
       "file": "spec/21-memory.md",
-      "line": 300
+      "line": 302
     },
     {
       "id": "read.settle.outcome-settled",
@@ -8785,7 +8796,7 @@
       "statement": "An observation differing from a stored outcome of its `prediction_id` that carries a verdict raises `OutcomeAlreadySettled`; a stored outcome without a verdict is replaced.",
       "why": "because a verdict rewritten after scoring silently changes the calibration it fed",
       "file": "spec/21-memory.md",
-      "line": 302
+      "line": 304
     },
     {
       "id": "read.settle.label-join",
@@ -8796,7 +8807,7 @@
       "statement": "The label view of Shapes runs over a declared `predictions` and `outcomes` table pair as read through the reader's session.",
       "why": "because the view's grace window and self-rated filter then hold for every reader, not each reader's own join",
       "file": "spec/21-memory.md",
-      "line": 304
+      "line": 306
     },
     {
       "id": "read.settle.calibration-verb",
@@ -8807,7 +8818,7 @@
       "statement": "`contextful memory calibration --table <claims>` joins label rows carrying a verdict to that claims table on `prediction_id` equal to `claim_id`, through the caller's session, and prints {{read.settle.calibration-report}} with the count of joined predictions, as JSON under `--json`.",
       "why": "because a prediction's shape, predicate and emitted confidence are those of the claim it scores",
       "file": "spec/21-memory.md",
-      "line": 306
+      "line": 308
     },
     {
       "id": "read.traverse.call",
@@ -8818,7 +8829,7 @@
       "statement": "`memory.traverse` takes `table`, `seed`, `rel_types`, `hops`, `as_of_ingest`, `observed_at` and `available_as_of`, and returns the reached edges whose `valid_from` and `valid_to` cover `observed_at`, under one frozen anchor, as {{read.respond.one-projection}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 328
+      "line": 330
     },
     {
       "id": "read.traverse.clocks",
@@ -8829,7 +8840,7 @@
       "statement": "An absent `as_of_ingest` reads the latest committed state, an absent `observed_at` the call's instant, and an absent `hops` 1; `contextful.bounds` echoes each supplied bound as {{read.recall.keyed-clocks}} does.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 329
+      "line": 331
     },
     {
       "id": "read.traverse.cli-verb",
@@ -8840,7 +8851,7 @@
       "statement": "The `contextful memory traverse` verb passes its arguments through {{read.traverse.call}} and prints the same JSON response.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 330
+      "line": 332
     },
     {
       "id": "read.traverse.enforced-edges",
@@ -8851,7 +8862,7 @@
       "statement": "Every edge reads through the caller's enforced session, and each edge's citations pass {{read.recall.evidence-unresolved}}; an edge failing either is neither returned nor walked through.",
       "why": "because walking through a hidden edge reveals the node beyond it",
       "file": "spec/21-memory.md",
-      "line": 331
+      "line": 333
     },
     {
       "id": "read.traverse.engine",
@@ -8862,7 +8873,7 @@
       "statement": "An engine-backed walk answers through {{read.resolve-entity.graph-index}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 333
+      "line": 335
     },
     {
       "id": "read.traverse.walkable",
@@ -8873,7 +8884,7 @@
       "statement": "A `rel_types` entry whose declared relation is not walkable raises `MemoryTraverseRelationUnwalkable`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 334
+      "line": 336
     },
     {
       "id": "read.traverse.hop-bound",
@@ -8884,7 +8895,7 @@
       "statement": "A walk follows at most 3 hops; a larger `hops` raises `MemoryTraverseHopsExceeded`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 336
+      "line": 338
     },
     {
       "id": "read.traverse.fan-out",
@@ -8895,7 +8906,7 @@
       "statement": "A node expands at most 64 memory-edges, ordered by `valid_from` newest first then edge id; the rest count in `edges_omitted`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 338
+      "line": 340
     },
     {
       "id": "read.traverse.frontier-cap",
@@ -8906,7 +8917,7 @@
       "statement": "A walk stops at 512 memory-edges and counts unexpanded edges in `edges_omitted`; a non-zero `edges_omitted` marks the walk incomplete, and `truncated` stays with {{read.respond.truncation-cause}}.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 340
+      "line": 342
     },
     {
       "id": "read.traverse.omitted-readable",
@@ -8917,7 +8928,7 @@
       "statement": "`edges_omitted` counts only edges the caller's session reads.",
       "why": "because a count of hidden edges discloses their existence, as {{read.recall.suppression-count}} avoids naming claims",
       "file": "spec/21-memory.md",
-      "line": 342
+      "line": 344
     },
     {
       "id": "read.traverse.cycle",
@@ -8928,7 +8939,7 @@
       "statement": "A visited node is never expanded again; the walk proceeds breadth-first by hop.",
       "why": "because a revisited node adds no edge and a cycle otherwise exhausts {{read.traverse.frontier-cap}}",
       "file": "spec/21-memory.md",
-      "line": 344
+      "line": 346
     },
     {
       "id": "run.journal.step-output",
@@ -32560,6 +32571,14 @@
     [
       "read.declare.serving-taint",
       "connector.infer.provenance-order"
+    ],
+    [
+      "read.declare.availability",
+      "store.available-time.declaration"
+    ],
+    [
+      "read.declare.availability",
+      "store.declare.table-block"
     ],
     [
       "read.synthesize.dead-letter",

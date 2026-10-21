@@ -337,7 +337,7 @@ fn required_tools() {
     let err = stderr(&o);
     assert!(o.status.success(), "{err}");
     assert!(err.contains("measure: required-tools = 1"), "{err}");
-    assert_eq!(bin.calls(), ["elan toolchain list"]);
+    assert_eq!(bin.calls(), ["elan toolchain list", "elan toolchain list"]);
 }
 
 /// The whole evaluate stage refuses a native case set no entry runs, and reports the floor

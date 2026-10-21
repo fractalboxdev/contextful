@@ -139,7 +139,26 @@ fn fixture_tools(dir: &std::path::Path) -> RestorePath {
     let helpers = dir.join("helpers");
     std::fs::create_dir(&helpers).unwrap();
     std::fs::write(helpers.join("initdb"), "#!/bin/sh\nexit 0\n").unwrap();
-    std::fs::write(helpers.join("postgres"), "#!/usr/bin/python3\nimport signal, socket, sys\nport = int(sys.argv[sys.argv.index('-p') + 1])\nsignal.signal(signal.SIGINT, lambda *_: sys.exit(0))\nwith socket.socket() as server:\n    server.bind(('127.0.0.1', port))\n    server.listen()\n    while True:\n        connection, _ = server.accept()\n        connection.close()\n").unwrap();
+    let listener_source = helpers.join("postgres.rs");
+    std::fs::write(&listener_source, r#"
+use std::net::TcpListener;
+
+fn main() {
+    let args: Vec<_> = std::env::args().collect();
+    let port = args.windows(2).find(|pair| pair[0] == "-p").unwrap()[1].parse::<u16>().unwrap();
+    let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
+    for connection in listener.incoming() {
+        drop(connection.unwrap());
+    }
+}
+"#).unwrap();
+    let compiled = std::process::Command::new("rustc")
+        .arg(&listener_source)
+        .arg("-o")
+        .arg(helpers.join("postgres"))
+        .status()
+        .unwrap();
+    assert!(compiled.success(), "failed to compile synthetic postgres listener");
     for helper in ["initdb", "postgres"] {
         std::fs::set_permissions(helpers.join(helper), std::fs::Permissions::from_mode(0o700))
             .unwrap();
