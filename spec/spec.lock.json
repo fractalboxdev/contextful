@@ -7865,7 +7865,7 @@
       "operation": "declare",
       "subject": "availability",
       "kind": "behavior",
-      "statement": "A shaped memory table accepts `[table.available_time]` under {{store.available-time.declaration}} and `content_hash_column` under {{store.available-time.vintage-hash-undeclared}}, carrying both into every read and landing.",
+      "statement": "A shaped memory table accepts `[table.available_time]` under {{store.available-time.declaration}} and `content_hash_column` under {{store.declare.table-block}}, carrying both into every read and landing.",
       "why": "because a conclusion's publication time differs from its economic validity and shared availability bounds exclude later conclusions from historical recall",
       "file": "spec/21-memory.md",
       "line": 73
@@ -32567,7 +32567,7 @@
     ],
     [
       "read.declare.availability",
-      "store.available-time.vintage-hash-undeclared"
+      "store.declare.table-block"
     ],
     [
       "read.synthesize.dead-letter",

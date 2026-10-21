@@ -235,7 +235,7 @@ fn recall_cli_answers_historical_and_current_claims_as_json() {
     assert_eq!(evidence["rows"], json!([["agent://synthesizer", "3"]]), "{evidence}");
 }
 
-// spec: read.declare.availability@d514210e
+// spec: read.declare.availability@961dd228
 #[test]
 fn shaped_claim_availability_is_enforced_by_native_recall() {
     let (dir, public, _) = project();

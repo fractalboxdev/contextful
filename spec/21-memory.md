@@ -70,7 +70,7 @@ The seven memory table shapes, their canonical columns, tier and scope, and the 
   *because declarations naming relations as strings keep loading, and a walk crosses only a relation its author opted in*
 - `settlement-shapes` — The `predictions` shape carries one column per registration field, `deadline_at` resolved for a horizon; the `outcomes` shape carries one column per observation field. Both key on `prediction_id`.
   *because the label join reads these columns by name, and one row per prediction keeps one label per prediction*
-- `availability` — A shaped memory table accepts `[table.available_time]` under {{store.available-time.declaration}} and `content_hash_column` under {{store.available-time.vintage-hash-undeclared}}, carrying both into every read and landing.
+- `availability` — A shaped memory table accepts `[table.available_time]` under {{store.available-time.declaration}} and `content_hash_column` under {{store.declare.table-block}}, carrying both into every read and landing.
   *because a conclusion's publication time differs from its economic validity and shared availability bounds exclude later conclusions from historical recall*
 
 
