@@ -1139,7 +1139,9 @@ fn acceptance(root: &Path) -> Result<()> {
             }
         }
     }
-    run_staged(root, "acceptance", &["test", "-p", ACCEPTANCE_PACKAGE])
+    // Acceptance scenarios launch daemons and nested builds. Keep their simultaneous
+    // processes below the runner's capacity so scenario deadlines measure the case.
+    run_staged(root, "acceptance", &["test", "-p", ACCEPTANCE_PACKAGE, "--", "--test-threads=4"])
 }
 
 /// A workspace member declaring a feature other than `default`.
