@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 316 | 54 | 29 | 16 | 274 | 0 | 274 |
-| `run` | 3 | 29 | 601 | 128 | 49 | 19 | 563 | 0 | 563 |
+| `run` | 3 | 29 | 603 | 128 | 49 | 19 | 565 | 0 | 565 |
 | `store` | 4 | 19 | 329 | 68 | 21 | 12 | 318 | 0 | 318 |
-| `surface` | 2 | 21 | 176 | 67 | 24 | 0 | 150 | 0 | 150 |
+| `surface` | 2 | 21 | 182 | 67 | 24 | 0 | 156 | 0 | 156 |
 | `topology` | 1 | 6 | 81 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2799 | 690 | 225 | 82 | 2507 | 0 | |
+| **total** | 23 | 169 | 2807 | 690 | 225 | 82 | 2515 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
-| 4 — Ingest | 25 | 634 | 530 | passing | closed |
+| 4 — Ingest | 25 | 636 | 532 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
 | 6 — Sync and replicas | 8 | 104 | 103 | passing | closed |
 | 7 — Memory | 6 | 93 | 78 | passing | closed |
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 112 | 99 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
-| 12 — The operator console | 12 | 61 | 49 | passing | closed |
+| 12 — The operator console | 12 | 67 | 55 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
 | 14 — Assurance | 7 | 185 | 150 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
@@ -1728,6 +1728,7 @@ Unscheduled operations: 13.
 | `run.land.partial-parse` | `crates/contextful-decode/tests/integration/pdf.rs::a_page_that_fails_to_render_refuses_the_whole_document` | performed |
 | `run.land.receive-ack` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_over_two_tables_answers_after_both_commit_naming_its_run_id` | performed |
 | `run.land.receive-adopt` | `crates/contextful-cli/tests/integration/receive.rs::a_group_whose_leader_dies_lands_each_member_once` | performed |
+| `run.land.receive-applied` | `crates/contextful-cli/tests/integration/serve.rs::source_first_receive_fire_uses_the_admin_applied_document` | performed |
 | `run.land.receive-backpressure` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
 | `run.land.receive-batch-key` | `crates/contextful-cli/tests/integration/receive.rs::a_resent_key_replays_committed_tables_and_lands_the_rest` | performed |
 | `run.land.receive-batch-too-large` | `crates/contextful-cli/tests/integration/receive.rs::a_body_one_byte_past_the_bound_lands_nothing` | performed |
@@ -1745,6 +1746,7 @@ Unscheduled operations: 13.
 | `run.land.receive-retry-after` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
 | `run.land.receive-spool` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_spooled_by_a_dead_receiver_lands_in_the_next_group` | performed |
 | `run.land.receive-torn` | `crates/contextful-cli/tests/integration/receive.rs::a_member_resent_after_its_group_tore_replays_the_group` | performed |
+| `run.land.receive-version-group` | `crates/contextful-cli/tests/integration/serve.rs::applied_receive_groups_leave_an_older_versions_orphan_batch_unclaimed` | performed |
 | `run.land.receive-wait` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_no_group_claims_within_the_wait_withdraws_and_answers_retryable` | performed |
 | `run.land.receive-write-not-granted` | `crates/contextful-cli/tests/integration/receive.rs::a_token_without_write_on_one_table_is_refused_before_the_body_is_read` | performed |
 | `run.land.session` | `crates/contextful-context/tests/integration/session.rs::a_session_commits_each_micro_batch_as_its_own_run` | performed |
@@ -2439,6 +2441,12 @@ Unscheduled operations: 13.
 | `surface.learn.write-refused` | `apps/console/test/answer_memory.test.ts::apps/console/test/answer_memory.test.ts::hosted Query reports a served learning refusal without exposing its credential` | performed |
 | `surface.open-console.narrow-sidebar` | `apps/console/test/transcripts.test.ts::apps/console/test/transcripts.test.ts::Query keeps chat controls reachable below the sidebar breakpoint` | performed |
 | `surface.open-console.saved-transcript` | `apps/console/test/transcripts.test.ts::apps/console/test/transcripts.test.ts::Query restores a saved transcript only for its operator, reading session and a listed store` | performed |
+| `surface.open-console.source-draft` | `apps/console/test/console.test.ts::apps/console/test/console.test.ts::Admin offers a source draft with an applied-document fallback for the selected store` | performed |
+| `surface.open-console.source-first-run` | `crates/contextful-cli/tests/integration/serve.rs::admin_source_drafts_validate_and_observe_only_runs_of_the_claimed_version` | performed |
+| `surface.open-console.source-list` | `crates/contextful-cli/tests/integration/serve.rs::admin_source_drafts_validate_and_observe_only_runs_of_the_claimed_version` | performed |
+| `surface.open-console.source-preservation` | `crates/contextful-cli/tests/integration/serve.rs::admin_source_addition_preserves_other_work_and_refuses_incompatible_destination_keys` | performed |
+| `surface.open-console.source-run-evidence` | `crates/contextful-cli/tests/integration/sync/mod.rs::source_first_run_outcomes_survive_push_pull_to_a_serving_node_without_a_machine_catalog` | performed |
+| `surface.open-console.source-validation` | `crates/contextful-cli/tests/integration/serve.rs::admin_source_drafts_validate_and_observe_only_runs_of_the_claimed_version` | performed |
 | `surface.package.owner-flag` | `crates/contextful-cli/tests/integration/mcp.rs::explicit_owner_requires_a_signed_credential_for_the_selected_store` | performed |
 | `surface.package.stdio-credential` | `crates/contextful-cli/tests/integration/mcp.rs::a_server_with_no_credential_raises_stdio_credential_missing` | performed |
 | `surface.package.store-selector` | `crates/contextful-cli/tests/integration/mcp.rs::a_spawned_server_without_a_project_manifest_refuses_before_framing` | performed |
