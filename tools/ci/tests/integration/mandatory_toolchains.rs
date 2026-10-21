@@ -18,6 +18,10 @@ fn run(part: &str, required: bool) {
 }
 
 fn run_with_package(part: &str, required: bool, package: Option<&str>) {
+    run_with_rustup(part, required, package, false);
+}
+
+fn run_with_rustup(part: &str, required: bool, package: Option<&str>, fail_first: bool) {
     let r = Repo::init();
     let tools = tempfile::tempdir().unwrap();
     let elan = tools.path().join("elan");
@@ -52,11 +56,20 @@ test "$(cat "$ELAN_HOME/installed")" = "$EXPECTED_PIN"
 printf '%s\n' "$ELAN_TOOLCHAIN"
 "#);
     executable(&bin.join("rustc"), "printf '%s\\n' \"$WASM_LIB\"\n");
-    executable(&bin.join("rustup"), r#"
+    let rustup = if fail_first { r#"
+test "$*" = 'target add wasm32-unknown-unknown'
+if test ! -f "$WASM_LIB.attempted"; then
+  touch "$WASM_LIB.attempted"
+  exit 1
+fi
+mkdir -p "$WASM_LIB"
+touch "$WASM_LIB/libstd.rlib"
+"# } else { r#"
 test "$*" = 'target add wasm32-unknown-unknown'
 mkdir -p "$WASM_LIB"
 touch "$WASM_LIB/libstd.rlib"
-"#);
+"# };
+    executable(&bin.join("rustup"), rustup);
     executable(&bin.join("cargo"), r#"
 if test "$1" = metadata; then cat metadata.json; exit 0; fi
 test "$1" = test
@@ -82,6 +95,7 @@ fi
         .current_dir(&r.root)
         .env("PATH", path)
         .env("ELAN_HOME", &elan)
+        .env("RUSTUP_HOME", tools.path().join("rustup"))
         .env("WASM_LIB", &wasm)
         .env("EXPECTED_PIN", PIN)
         .env("EXPECT_REQUIRED", if required { "1" } else { "0" })
@@ -102,6 +116,11 @@ fi
 
 #[test]
 fn evaluate_requires_pinned_lean_and_wasm_before_collecting_a_record() { run("evaluate", true); }
+
+#[test]
+fn a_failed_wasm_download_is_retried_before_the_gate_runs() {
+    run_with_rustup("evaluate", true, Some("contextful-cli"), true);
+}
 
 #[test]
 fn formal_none_requires_pinned_lean_and_wasm() { run("features.formal-none", true); }
