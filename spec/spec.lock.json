@@ -13898,12 +13898,12 @@
       "operation": "export",
       "subject": "group-d1-takeover",
       "kind": "behavior",
-      "statement": "`contextful export group <name> --take-over` under `cloudflare-d1` takes the publication lease whatever its holder or expiry and advances its fence, so the prior holder's next sender write matches no lease.",
-      "why": "because a delivery killed at its caller's time bound holds the lease until expiry, and the fence makes a live prior holder's writes harmless",
+      "statement": "`contextful export group <name> --take-over` under `cloudflare-d1` takes the publication lease whatever its holder or expiry and advances its fence, so the prior holder's next write, a producer completion included, matches no lease and refuses.",
+      "why": "because a delivery killed at its caller's time bound holds the lease until expiry, and a fenced producer's build retry records its completion again",
       "file": "spec/31-pipeline.md",
       "line": 438,
       "scenarios": [
-        "WHEN a delivery is killed before its acknowledgement while its lease runs, THEN a retry with `--take-over` delivers at once and the killed writer's acknowledgement refuses as fenced."
+        "WHEN a delivery is killed before its acknowledgement while its lease runs, THEN a retry with `--take-over` delivers at once and the killed writer's next write refuses as fenced."
       ]
     },
     {
