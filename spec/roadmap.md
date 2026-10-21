@@ -202,7 +202,7 @@ Acceptance: `contextful_acceptance::m14::m14_assurance`
 | `assurance.backtest` | Bounded cases routed to dated checkpoints, leakage stated against a reference, purged and embargoed splits, a trial ledger, planted leaks and a replayable trajectory. |
 | `assurance.forecast` | Forecast cases frozen before resolution, settled through the label join, scored on tracks that never pool. |
 
-Reach: An earnings row landed in one commit with its period end and filing acceptance answers no `available_as_of` read between the two, and answers one after acceptance.
+Reach: A source observation landed with its valid instant and later publication instant answers no `available_as_of` read between the two, and answers one after publication.
 
 Acceptance: `contextful_acceptance::m15::m15_point_in_time`
 

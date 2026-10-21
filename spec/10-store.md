@@ -798,11 +798,11 @@ A table declaration, `declare::TableDecl`:
 
 ```toml
 [[pipeline.tables]]
-name         = "filings"
+name         = "documents"
 primary_key  = ["document_id", "page"]
 order_by     = "revised_at"
 write_mode   = "replace"
-cluster_by   = ["issuer", "revised_at"]
+cluster_by   = ["source_id", "revised_at"]
 partition_by = ["tenant"]
 retain_runs  = "7d"
 
@@ -830,25 +830,25 @@ tokenizer = "cjk"
 A run manifest, a snapshot manifest and a table pointer, `lay_out::RunManifest`, `lay_out::SnapshotManifest` and `lay_out::Pointer`:
 
 ```json
-{ "run_id": "run-4815", "table": "filings", "node_id": "ingest-a",
+{ "run_id": "run-4815", "table": "documents", "node_id": "ingest-a",
   "format_version": "1.0", "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
-  "committed_at": "2025-03-15T15:58:00Z", "pipeline_id": "filings-sync",
+  "committed_at": "2025-03-15T15:58:00Z", "pipeline_id": "documents-sync",
   "cursor": { "field": "revised_at", "at": "2025-03-15T15:57:41Z" }, "fence": null }
 
 { "snapshot_id": "snapshot-01742054400000000000", "parent": "snapshot-01741968000000000000",
-  "format_version": "1.0", "table": "filings", "created_at": "2025-03-15T16:00:00Z",
+  "format_version": "1.0", "table": "documents", "created_at": "2025-03-15T16:00:00Z",
   "includes_runs": ["run-4812/ingest-a", "run-4813/ingest-a", "run-4814/ingest-b"],
   "primary_key": ["document_id", "page"], "order_by": "revised_at", "row_count": 128400,
   "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12,
   "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
   "indexes": [{ "kind": "vector", "path": "indexes/vec-embedding-e5-small/zone=all",
-                "table": "filings", "snapshot_id": "snapshot-01742054400000000000",
+                "table": "documents", "snapshot_id": "snapshot-01742054400000000000",
                 "column": "embedding", "id_column": "passage_id", "model": "e5-small", "dim": 384,
                 "metric": "cosine", "m": 16, "ef_construction": 200,
                 "builder": "contextful-hnsw", "builder_version": 2, "row_count": 128400,
                 "key_version": 3 },
               { "kind": "fulltext", "path": "indexes/fts-body-cjk",
-                "table": "filings", "snapshot_id": "snapshot-01742054400000000000", "column": "body",
+                "table": "documents", "snapshot_id": "snapshot-01742054400000000000", "column": "body",
                 "id_column": "passage_id", "tokenizer": "cjk",
                 "builder": "contextful-postings", "builder_version": 2, "row_count": 128400,
                 "term_count": 902113, "key_version": 3 }] }
@@ -860,16 +860,16 @@ A lease object and a commit-log entry, `lease::BucketLease` and `commit_log::Com
 
 ```json
 { "holder": "ingest-a", "acquired_at": "2025-03-15T16:00:00Z", "expires_at": "2025-03-15T16:10:00Z", "fence": 418 }
-{ "kind": "commit", "table": "filings", "run_id": "run-4816", "cursor": { "kind": "opaque-token", "value": "eyJwYWdlIjo0Mn0" }, "fence": 418 }
+{ "kind": "commit", "table": "documents", "run_id": "run-4816", "cursor": { "kind": "opaque-token", "value": "eyJwYWdlIjo0Mn0" }, "fence": 418 }
 ```
 
 A bucket manifest, `sync::BucketManifest`:
 
 ```json
 { "format": 1, "generation": 7,
-  "entries": { "filings/tables/filings/_pointer.json": { "sha256": "9f2c41d07be3a5c8e6f1d2b4a7c90e3f5d8b1a6c4e7f2d9b0a3c5e8f1d4b7a2c", "size": 74, "owner": "ingest-a" } },
-  "tombstones": { "filings/tables/filings/data/runs/run-4811/ingest-a/part-00000.parquet": { "owner": "ingest-a", "deleted_at": "2025-03-15T16:00:00Z" } },
-  "pointers": { "filings/tables/filings/_pointer.json": { "snapshot_id": "snapshot-01741968000000000000", "fence": 11 } } }
+  "entries": { "documents/tables/documents/_pointer.json": { "sha256": "9f2c41d07be3a5c8e6f1d2b4a7c90e3f5d8b1a6c4e7f2d9b0a3c5e8f1d4b7a2c", "size": 74, "owner": "ingest-a" } },
+  "tombstones": { "documents/tables/documents/data/runs/run-4811/ingest-a/part-00000.parquet": { "owner": "ingest-a", "deleted_at": "2025-03-15T16:00:00Z" } },
+  "pointers": { "documents/tables/documents/_pointer.json": { "snapshot_id": "snapshot-01741968000000000000", "fence": 11 } } }
 ```
 
 A store's `config.toml`, `config::StoreConfig`:

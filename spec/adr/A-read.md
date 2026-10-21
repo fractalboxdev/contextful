@@ -351,7 +351,7 @@ Consequences: edges share the claims' validity-line discipline, and history answ
 
 ## The as-of join matches on availability time, not valid time
 
-`read.as-of-join` matches a driving row to the right relation's latest row whose declared availability instant precedes the driving instant. Valid time says when a value held; availability time says when anyone could see it. A restated figure keeps its original valid time, and a renamed identifier's new ticker is announced before it takes effect, so a valid-time match hands a backtest a value published after its decision. The join runs inside one statement over registered relations, so restriction, masks and the three bounds compose as they do for any read; a right relation declaring no availability time refuses rather than falling back.
+`read.as-of-join` matches a driving row to the right relation's latest row whose declared availability instant precedes the driving instant. Valid time says when a value held; availability time says when anyone could see it. A restated figure keeps its original valid time, and a resource's new label can be published after its effective date, so a valid-time match hands a backtest a value published after its decision. The join runs inside one statement over registered relations, so restriction, masks and the three bounds compose as they do for any read; a right relation declaring no availability time refuses rather than falling back.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

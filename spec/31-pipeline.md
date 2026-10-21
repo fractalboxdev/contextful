@@ -641,23 +641,23 @@ A pipeline declaration:
 
 ```toml
 [[pipeline]]
-id = "meta-ads"
+id = "record-sync"
 incremental = "updated_time"
 on_table_error = "abort"
 
 [pipeline.source]
 name = "http"
-config = { endpoint = "https://api.example.test/v19.0", format = "json" }
+config = { endpoint = "https://api.example.test/v1/records", format = "json" }
 
 [[pipeline.tables]]
-name = "insights"
-primary_key = ["ad_id", "date_start"]
-order_by = "date_start"
+name = "records"
+primary_key = ["record_id", "observed_at"]
+order_by = "observed_at"
 write_mode = "append"
 
 [[pipeline.transforms]]
 op = "cast"
-column = "spend"
+column = "value"
 to = "float64"
 
 [pipeline.backfill]
@@ -666,21 +666,21 @@ chunk_size = "7d"
 
 [pipeline.seed]
 below = "2025-06-01T00:00:00Z"
-source = { name = "file", config = { root = "exports/meta-ads", format = "jsonl" } }
+source = { name = "file", config = { root = "exports/record-sync", format = "jsonl" } }
 
 [[job]]
 name = "nightly-fold"
 schedule = "0 3 * * *"
 kind = "fold"
-target = "meta_ads_insights"
+target = "record_sync_records"
 ```
 
 A model over a landed table, and the verbs that build and hold it:
 
 ```toml
 [[model]]
-id = "daily_filings"
-sql = "SELECT CAST(date_trunc('day', updated_at) AS VARCHAR) AS day, count(*) AS n FROM filings_records GROUP BY 1"
+id = "daily_records"
+sql = "SELECT CAST(date_trunc('day', updated_at) AS VARCHAR) AS day, count(*) AS n FROM record_sync_records GROUP BY 1"
 unique_key = ["day"]
 
 [model.contract]
@@ -695,10 +695,10 @@ max_lag = "1d"
 
 [[model.test]]
 name = "counts-positive"
-sql = "SELECT * FROM daily_filings WHERE n <= 0"
+sql = "SELECT * FROM daily_records WHERE n <= 0"
 ```
 
 ```sh
-contextful build daily_filings --json
-contextful build hold --for 7d daily_filings <build id> --json
+contextful build daily_records --json
+contextful build hold --for 7d daily_records <build id> --json
 ```

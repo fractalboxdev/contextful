@@ -140,12 +140,12 @@ flowchart LR
 
 ## Worked example
 
-The `meta-ads` pipeline pulls ad insights incrementally. Its declaration names `updated_time`
+The `record-sync` pipeline pulls source records incrementally. Its declaration names `updated_time`
 as the stream clock ({{run.declare.incremental-field}}), so the source reports a monotonic
 cursor that stores the field name beside the value ({{run.advance.watermark-shape}}).
 
 Without a pending owner, a fire receives a fresh execution id ({{run.own.retirement}}). The pull admits rows at or after the stored position, re-landing
-the boundary instant ({{run.advance.inclusive-boundary}}); `insights` declares a
+the boundary instant ({{run.advance.inclusive-boundary}}); `records` declares a
 `primary_key`, so those repeats are idempotent ({{run.advance.declared-key-required}}).
 
 The process dies after its first page.

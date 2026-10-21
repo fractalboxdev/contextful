@@ -71,8 +71,8 @@ fn a_late_answer_scores_on_its_own_track() {
     assert_eq!((s.answered, s.brier), (0, 0.25));
 }
 
-/// A market case carries the freeze-instant market price as an available row, and the report shows each forecaster's edge over it.
-// spec: assurance.forecast.market-context@4b8851f1
+/// A prediction-market profile supplies freeze-instant probability prices as available rows, and the report shows each forecaster's score improvement over that baseline.
+// spec: assurance.forecast.market-context@3354fec0
 #[test]
 fn a_market_case_reports_each_forecasters_edge_over_the_freeze_price() {
     let cases = [case("fed-cut", 1.0, Source::Market { freeze_price: 0.6 }), case("cpi", 0.0, Source::Market { freeze_price: 0.3 })];
@@ -83,8 +83,8 @@ fn a_market_case_reports_each_forecasters_edge_over_the_freeze_price() {
     assert_eq!(dataset.market_edge, None);
 }
 
-/// A missing answer scores as probability 0.5 on a dataset case and as the freeze-instant market price on a market case.
-// spec: assurance.forecast.imputed@c271d81e
+/// A missing answer scores as probability 0.5 for a dataset case; a prediction-market profile instead uses its freeze-instant probability price.
+// spec: assurance.forecast.imputed@c038e9fe
 #[test]
 fn a_missing_answer_imputes_the_neutral_or_market_probability() {
     assert_eq!(case("gdp", 1.0, Source::Dataset).imputed(), 0.5);

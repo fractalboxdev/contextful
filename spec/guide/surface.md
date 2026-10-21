@@ -88,7 +88,7 @@ every capability a turn exercises: tools come from the turn's admitted packs
 
 ## Worked example
 
-Admin displays each pipeline, schedule, step and run. The operator applies a nightly `fold` targeting `meta_ads_insights`. The
+Admin displays each pipeline, schedule, step and run. The operator applies a nightly `fold` targeting `record_sync_records`. The
 target resolves to a produced table ({{surface.fire.target-unbound}}), so validation
 passes. A second operator applied a minute earlier; the compare-and-swap loses, and the
 surface reloads the winner and reapplies the pending edit. The next poll arms the
@@ -103,7 +103,7 @@ carries no credential name; the name derives from the id
 and mints a per-reader credential, falling back or refusing as
 {{surface.ground.mint-refused}} states.
 
-The operator asks which filings landed this week. The vantage parses as a calendar day
+The operator asks which records landed this week. The vantage parses as a calendar day
 ({{surface.set-vantage.unparseable}}); recall reads prior conclusions; the planner picks a
 read tool over data tables, never memory relations
 ({{surface.plan-turn.planner-reached-memory}}). If the first round leaves the question

@@ -49,7 +49,8 @@ concern alongside the checker's structural rules.
 
 | Check | What the reader sees | Example |
 | --- | --- | --- |
-| Roles have context | An actor's first mention explains its part in the operation; a commercial audience appears only where purchasing affects the contract. | `assurance.scope-claim` concerns evidence for named decisions, without a buyer persona. The reader in `assurance.backtest` is a model with a post-training cutoff. |
+| Domain meanings belong to consumers | Core contracts name declared data and capabilities; industry rules, units and scoring appear within selected adapters or evaluation profiles. | `topology.bound-application` fixes this boundary; historical evaluation accepts source records, while a financial profile supplies return-series scoring. |
+| Roles have context | An actor's first mention explains its part in the operation; sector-specific roles belong to a selected consumer profile. | Core contracts name callers and operators. The reader in `assurance.backtest` is a model with a post-training cutoff. |
 | Claims retain their conditions | A summary preserves the object, assumptions and exceptions of its referenced clauses. | `assurance.prove` distinguishes model properties from execution guarantees; `disclosure.bound-staleness` includes a declared public-only posture. |
 | Results retain their meaning | Empty results, fallback scores and fenced commits describe observable outcomes without implying stronger conclusions. | `read.respond` distinguishes delivered rows from truncation; `read.rank` permits different orderings; `topology.coordinate` fences a fire without claiming exactly-once dispatch. |
 | Examples follow a specified path | A worked example uses inputs and checks within the cited operation's scope and states the condition exposing a failure. | `assurance.differential-test` compares zone-admission decisions on generated cases; SQL masking and filtering lie outside those decision cases. |

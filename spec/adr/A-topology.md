@@ -46,17 +46,17 @@ Consequences: a change to the version claim lands once and both callers take it.
 
 ## The engine and its consumers meet only at public surfaces
 
-`topology.compose` admits exactly three crossings between read path and run path: the connector interface world, the columnar-part-plus-manifest layout, and capability tokens, each versioned with a conformance suite both sides run. The engine owns no domain; an application names its vocabulary in a per-store lexicon, and a behavior becomes a shared abstraction once a second application needs it. `topology.bound-application` gives the commercial layer only the public surfaces, and a paid feature is net-new, never a license check on a data-plane capability.
+`topology.compose` admits exactly three crossings between read path and run path: the connector interface world, the columnar-part-plus-manifest layout, and capability tokens, each versioned with a conformance suite both sides run. `topology.bound-application.domain-neutral` places industry meanings, business rules and scoring in consumer-declared configuration, connectors, components or selected evaluation profiles. Consumers name vocabulary in per-store lexicons; a behavior becomes shared once a second application needs it. Additional distribution features use public surfaces, with no license check on a data-plane capability.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Three versioned crossings; public surfaces only *(chosen)* | — | A fourth crossing is a design question, and the commercial layer waits for each public surface it needs. |
+| Three versioned crossings; domain-neutral engine; public surfaces only *(chosen)* | — | A fourth crossing is a design question; each consumer supplies its domain meanings and waits for any public surface it needs. |
 | A general internal RPC surface | Review surface | Every call is a place a capability can enter. |
 | Direct dependencies from read path onto run path | Composability | The run path stops being droppable and the edge profile is lost. |
-| A privileged internal API for the commercial layer | Wholeness | The open engine becomes a subset of itself. |
+| A privileged internal API for one consumer | Wholeness | Other consumers receive a subset of the engine. |
 | The first application's vocabulary as engine defaults | Inheritance | Every later application receives meanings it did not choose. |
 
-Consequences: `assurance.gate` enforces these boundaries over the package graph and source, since they have no run-time trigger.
+Consequences: `assurance.gate` checks package and source boundaries. Domain meanings and example vocabulary also require editorial review; selecting a financial evaluation helper requires a financial profile rather than changing general evaluation defaults.
 
 ## A deploy verifies by observation
 

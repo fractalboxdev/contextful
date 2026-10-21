@@ -149,7 +149,7 @@ A disclosure policy on a governed model:
 
 ```toml
 [model.disclosure]
-grouping_allowlist    = ["industry", "region", "quarter"]
+grouping_allowlist    = ["category", "region", "period"]
 contributor_key       = "tenant_id"
 min_group_size        = 5
 max_contributor_share = 0.4
@@ -159,7 +159,7 @@ forbidden_columns     = ["tenant_id", "subject_id", "account_email"]
 per_run_spend         = 0.5        # epsilon reserved from each contributing unit per release
 
 [model.disclosure.metric_bounds]
-revenue = { lower = 0, upper = 1000000, quantum = 1 }
+value = { lower = 0, upper = 1000000, quantum = 1 }
 
 [disclosure]
 unit_lifetime_cap = 10             # epsilon each contributing unit spends across every release
@@ -169,16 +169,16 @@ The breakdown a governed statement emits, and the rows published from it:
 
 ```
 -- emitted: one row per (group, contributor)
-industry   region  quarter  tenant_id  revenue
-retail     emea    2        t-0191     412000
-retail     emea    2        t-0044      98000
-retail     emea    2        t-0332      61000
-logistics  emea    2        t-0044      55000
+category  region  period  tenant_id  value
+group-a   emea    2       t-0191     412000
+group-a   emea    2       t-0044      98000
+group-a   emea    2       t-0332      61000
+group-b   emea    2       t-0044      55000
 
 -- published after noisy partition selection, suppression and roll-up;
 -- the figure is noised, not the exact sum 571000
-industry      region  quarter  revenue
-retail        emea    2        568940
+category  region  period  value
+group-a   emea    2       568940
 __suppressed__
 ```
 
@@ -186,7 +186,7 @@ The envelope a capped template read returns:
 
 ```json
 {
-  "rows": [{ "quarter": 2, "revenue": 568940 }],
+  "rows": [{ "period": 2, "value": 568940 }],
   "truncated": true,
   "row_ceiling": 500,
   "suppression_present": true,
