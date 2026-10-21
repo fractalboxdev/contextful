@@ -47,10 +47,11 @@ owner and the operation it affects ({{corpus.anatomy.scenario}},
 ## What the corpus never says
 
 No authored file says whether something is built, and none carries a date. Build state
-is computed: a clause pinned to a test or a Lean theorem is `performed` when that
-artifact exists and runs, and `broken` when it does not, is ignored, or was written
-against older wording ({{corpus.state.status-is-computed}},
-{{corpus.state.verdict}}, {{corpus.state.stale-pin}}). Words that date a
+is computed from qualifying artifacts, including test and theorem pins
+({{corpus.state.status-is-computed}}, {{corpus.state.verdict}}). When a clause carries
+both pins, both must qualify ({{corpus.state.theorem-beside-test}}). Ignored tests,
+unfinished bodies and stale tags compute `broken`
+({{corpus.state.verdict}}, {{corpus.state.unfinished-test}}, {{corpus.state.stale-pin}}). Words that date a
 sentence are refused outright ({{corpus.render.dated-prose}}), and so are the modals
 that describe a path not taken ({{corpus.render.counterfactual}}).
 
@@ -74,9 +75,10 @@ To add a refusal to the store's fold: write one item under `## fold`, naming the
 in the statement; register the error in `spec/terms/store.toml` against that clause
 ({{corpus.registry.fragment}}); give the item a Why. Run the checker. It computes the
 kind as refusal and writes the clause into the lock file. The next `state` run lists it
-as `committed` and adds the error to the store card. When a test tagged with the
-clause id and its statement digest lands, status flips to `performed`
-({{corpus.state.tag-pin}}). Reword the statement later and the tag goes stale until
+as `committed` and adds the error to the store card. A qualifying test tagged with the
+clause id and its statement digest supplies its test pin ({{corpus.state.tag-pin}});
+the verdict follows {{corpus.state.verdict}} and {{corpus.state.theorem-beside-test}}.
+Reword the statement later and the tag goes stale until
 the test is checked against the new wording.
 
 To hand the work to someone, run `contextful-spec slice store.fold`: it packs the

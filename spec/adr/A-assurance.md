@@ -36,7 +36,7 @@ Consequences: a missing or mismatched native receipt records a failed diagnostic
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Inventory plus transitive assumption audit, qualified claims, zero-dependency package *(chosen)* | — | Every lemma is hand-rolled; the inventory is maintained by hand; the claim is narrower than a buyer prefers. |
+| Inventory plus transitive assumption audit, qualified claims, zero-dependency package *(chosen)* | — | Every lemma is hand-rolled; the inventory is maintained by hand; the claim covers named decisions under stated assumptions. |
 | A source pattern over package files | Catching a proof of `False` | A parenthesized hole or a respelled tactic passes. |
 | Build and read the exit status | Catching a proof of `False` | A hole elaborates as a warning and exits zero. |
 | An inventory generated from the declarations | Independence | A weakened statement carries its inventory with it. |

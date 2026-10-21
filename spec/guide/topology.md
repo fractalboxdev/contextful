@@ -51,7 +51,7 @@ flowchart LR
   RET -- "reads snapshot" --> EDGE
 ```
 
-- The cadence tick fires. The reconciler holds the deployment's cadence lease and renews it on a fixed interval ({{topology.coordinate.cadence-lease-renewal}}). The fallback cron fires only after taking that same lease ({{topology.coordinate.cadence-fallback}}), so two schedulers never dispatch one unit twice.
+- The cadence tick fires. The reconciler holds the deployment's cadence lease and renews it on a fixed interval ({{topology.coordinate.cadence-lease-renewal}}). The fallback cron takes that same lease before firing, so its fire holds the current fence ({{topology.coordinate.cadence-fallback}}).
 - The run path invokes a component connector as a journaled step; it runs because the full profile links a component host ({{topology.package.component-host}}).
 - Rows cross to the read path as parts plus a manifest, and the cursor advances by one compare-and-swap on its stored version ({{topology.coordinate.cursor-cas}}).
 - The store pushes to the bucket. The function-class provider hosts the edge profile alone ({{topology.package.edge-eligibility}}), which pulls the same parts and serves read-only SQL.

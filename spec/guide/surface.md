@@ -6,12 +6,12 @@ contract: surface
 
 ## What it is for
 
-Query answers questions with grounded prose, widgets and sources
-({{surface.ground.sources-block}}). Admin visualizes deployed workflows ({{surface.visualize.workflow-canvas}}), run outcomes
-and learnings, and edits the versioned control document ({{surface.open-console.engine-faces}}). Hosted deployments gate each page
+The console's Query page answers questions with grounded prose, widgets and sources
+({{surface.ground.sources-block}}). Its Admin page shows workflows ({{surface.visualize.workflow-canvas}}), outcomes
+and learnings, and edits the control document ({{surface.open-console.engine-faces}}). Hosted deployments gate each page
 and its API ({{surface.open-console.identity-gate}}, {{surface.open-console.page-grants}}).
-The control plane arms only work the engine names;
-Query reaches rows through governed reads under the operator's own credential
+The control plane arms work the engine names;
+Query reaches rows through governed reads under the operator's credential
 ({{assurance.structure-tree.one-home}}).
 
 ```mermaid
