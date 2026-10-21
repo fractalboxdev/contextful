@@ -18,10 +18,10 @@ fn run(part: &str, required: bool) {
 }
 
 fn run_with_package(part: &str, required: bool, package: Option<&str>) {
-    run_with_rustup(part, required, package, false);
+    run_with_toolchains(part, required, package, false, false);
 }
 
-fn run_with_rustup(part: &str, required: bool, package: Option<&str>, fail_first: bool) {
+fn run_with_toolchains(part: &str, required: bool, package: Option<&str>, fail_rustup_first: bool, fail_lean_first: bool) {
     let r = Repo::init();
     let tools = tempfile::tempdir().unwrap();
     let elan = tools.path().join("elan");
@@ -46,7 +46,13 @@ fn run_with_rustup(part: &str, required: bool, package: Option<&str>, fail_first
     executable(&elan.join("bin/elan"), r#"
 case "$1 $2" in
   'toolchain list') if test -f "$ELAN_HOME/installed"; then cat "$ELAN_HOME/installed"; fi ;;
-  'toolchain install') test "$3" = "$EXPECTED_PIN"; printf '%s\n' "$3" > "$ELAN_HOME/installed" ;;
+  'toolchain install')
+    test "$3" = "$EXPECTED_PIN"
+    if test "$FAIL_LEAN_FIRST" = 1 && test ! -f "$ELAN_HOME/attempted"; then
+      touch "$ELAN_HOME/attempted"
+      exit 1
+    fi
+    printf '%s\n' "$3" > "$ELAN_HOME/installed" ;;
   *) exit 91 ;;
 esac
 "#);
@@ -56,7 +62,7 @@ test "$(cat "$ELAN_HOME/installed")" = "$EXPECTED_PIN"
 printf '%s\n' "$ELAN_TOOLCHAIN"
 "#);
     executable(&bin.join("rustc"), "printf '%s\\n' \"$WASM_LIB\"\n");
-    let rustup = if fail_first { r#"
+    let rustup = if fail_rustup_first { r#"
 test "$*" = 'target add wasm32-unknown-unknown'
 if test ! -f "$WASM_LIB.attempted"; then
   touch "$WASM_LIB.attempted"
@@ -98,6 +104,7 @@ fi
         .env("RUSTUP_HOME", tools.path().join("rustup"))
         .env("WASM_LIB", &wasm)
         .env("EXPECTED_PIN", PIN)
+        .env("FAIL_LEAN_FIRST", if fail_lean_first { "1" } else { "0" })
         .env("EXPECT_REQUIRED", if required { "1" } else { "0" })
         .env_remove("ELAN_TOOLCHAIN")
         .env_remove("CONTEXTFUL_REQUIRE_LEAN")
@@ -119,7 +126,12 @@ fn evaluate_requires_pinned_lean_and_wasm_before_collecting_a_record() { run("ev
 
 #[test]
 fn a_failed_wasm_download_is_retried_before_the_gate_runs() {
-    run_with_rustup("evaluate", true, Some("contextful-cli"), true);
+    run_with_toolchains("evaluate", true, Some("contextful-cli"), true, false);
+}
+
+#[test]
+fn a_failed_lean_download_is_retried_before_the_gate_runs() {
+    run_with_toolchains("evaluate", true, Some("contextful-cli"), false, true);
 }
 
 #[test]
