@@ -680,7 +680,7 @@ A model over a landed table, and the verbs that build and hold it:
 ```toml
 [[model]]
 id = "daily_records"
-sql = "SELECT CAST(date_trunc('day', updated_at) AS VARCHAR) AS day, count(*) AS n FROM record_sync_records GROUP BY 1"
+sql = "SELECT CAST(date_trunc('day', updated_time) AS VARCHAR) AS day, count(*) AS n FROM record_sync_records GROUP BY 1"
 unique_key = ["day"]
 
 [model.contract]

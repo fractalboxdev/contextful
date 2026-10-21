@@ -28,7 +28,8 @@ fn edit_entry(s: &Scratch, prefix: &str, f: impl Fn(&str) -> String) {
 #[test]
 fn each_contract_registers_its_operations_errors_and_bounds_in_its_own_fragment() {
     let s = Scratch::copy();
-    assert!(registry(&s).is_empty());
+    let findings = registry(&s);
+    assert!(findings.is_empty(), "{findings:?}");
     assert!(s.cmd(&["extract"]).status.success());
     let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
     let store = &lock["registry"]["fragments"]["store"];

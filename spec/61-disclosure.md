@@ -170,9 +170,11 @@ The breakdown a governed statement emits, and the rows published from it:
 ```
 -- emitted: one row per (group, contributor)
 category  region  period  tenant_id  value
-group-a   emea    2       t-0191     412000
-group-a   emea    2       t-0044      98000
-group-a   emea    2       t-0332      61000
+group-a   emea    2       t-0191     142000
+group-a   emea    2       t-0044     128000
+group-a   emea    2       t-0332     111000
+group-a   emea    2       t-0072     102000
+group-a   emea    2       t-0088      88000
 group-b   emea    2       t-0044      55000
 
 -- published after noisy partition selection, suppression and roll-up;
