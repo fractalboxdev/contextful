@@ -20,5 +20,5 @@ pub use fs_bucket::{FsBucket, VolumeClass};
 pub use lazy::LazyParts;
 #[cfg(feature = "s3-sync")]
 pub use s3_bucket::{S3Bucket, S3Credentials};
-pub use run_state::{CursorMark, RunMark, RunState};
+pub use run_state::{CursorMark, RunMark, RunState, SourceFire, SourceRuns};
 pub use sync::{plan_manifest, GenerationSummary, Held, HELD_FILE, ManifestPlan, PullScope, Redistribution, SiteResidency, SyncError, Syncer};

@@ -47,6 +47,10 @@ const published: Workflows = {
 };
 
 async function renderGraph(workflows: Workflows): Promise<string> {
+  return renderAdmin("WorkflowGraph", { workflows });
+}
+
+async function renderAdmin(component: string, props: object): Promise<string> {
   const dir = new URL("../client/dist/", import.meta.url);
   mkdirSync(dir, { recursive: true });
   const outfile = new URL(`.workflow-graph-${process.pid}.mjs`, dir);
@@ -55,12 +59,38 @@ async function renderGraph(workflows: Workflows): Promise<string> {
     platform: "node", format: "esm", target: "node22", packages: "external", logLevel: "warning", outfile: outfile.pathname,
   });
   try {
-    const { WorkflowGraph } = await import(outfile.href) as { WorkflowGraph: ComponentType<{ workflows: Workflows }> };
-    return renderToStaticMarkup(createElement(WorkflowGraph, { workflows }));
+    const components = await import(`${outfile.href}?component=${component}`) as Record<string, ComponentType<object>>;
+    return renderToStaticMarkup(createElement(components[component], props));
   } finally {
     rmSync(outfile);
   }
 }
+
+test("source rows distinguish applied pending state, first failure and latest successful rows", async () => {
+  const html = await renderAdmin("SourceList", { sources: [
+    { id: "inbox", connector: "http", destinations: ["inbox_items"], version: 2, trigger: "manual", state: "pending", first_run: null, latest_run: null },
+    { id: "guest", connector: "source.wasm", destinations: ["guest_items"], version: 3, trigger: "schedule", schedule: "every 1h", state: "success",
+      first_run: { run_id: "first", status: "failed", rows: 0, message: "Renew the source credential." }, latest_run: { run_id: "latest", status: "success", rows: 3 } },
+  ] });
+  assert.match(html, /Applied version 2/);
+  assert.match(html, /Waiting for the first run of this applied version/);
+  assert.match(html, /Applying a source does not start a run/);
+  assert.match(html, /First run first: failed, 0 rows/);
+  assert.match(html, /Renew the source credential/);
+  assert.match(html, /Latest run latest: success, 3 rows/);
+  assert.match(html, /every 1h/);
+  assert.match(html, /guest_items/);
+});
+
+test("source rows show a retried fire's changed failure reason under the same identity", async () => {
+  const html = await renderAdmin("SourceList", { sources: [
+    { id: "inbox", connector: "receive", destinations: ["inbox_items"], version: 3, trigger: "receive", state: "failed",
+      first_run: { run_id: "receive-group", status: "failed", rows: 0, message: "Wait for the source rate limit." },
+      latest_run: { run_id: "receive-group", status: "failed", rows: 0, message: "Renew the source credential." } },
+  ] });
+  assert.match(html, /First run: Wait for the source rate limit/);
+  assert.match(html, /Latest run: Renew the source credential/);
+});
 
 function nodes(html: string): Map<string, string> {
   const found = new Map<string, string>();

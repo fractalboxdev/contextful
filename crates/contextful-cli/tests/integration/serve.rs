@@ -131,7 +131,7 @@ fn project_declaring(keys: &str) -> (tempfile::TempDir, String) {
 }
 
 /// A started face, killed however the test ends.
-struct Listener(Child);
+pub(super) struct Listener(Child);
 
 impl Drop for Listener {
     fn drop(&mut self) {
@@ -141,7 +141,7 @@ impl Drop for Listener {
 }
 
 /// Start the face; its address, reported on standard error.
-fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
+pub(super) fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
     serve_binary(Path::new(env!("CARGO_BIN_EXE_contextful")), dir, args)
 }
 
@@ -262,7 +262,7 @@ fn query() -> Value {
     json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })
 }
 
-fn control(addr: &str, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, Value) {
+pub(super) fn control(addr: &str, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, Value) {
     let headers = if method == "POST" && (path == "/control/edit" || path == "/control/apply") {
         let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
         let nonce = NONCE.fetch_add(1, Ordering::SeqCst);
@@ -513,6 +513,275 @@ fn published_workflows_include_completed_local_runs_before_sync_push() {
     assert_eq!(status, 200, "{view}");
     assert_eq!(view["runs"]["filings-flow"]["run_id"], "run-flow");
     assert_eq!(view["runs"]["filings-flow"]["status"], "success");
+}
+
+// spec: surface.open-console.source-list@f6c315e3
+// spec: surface.open-console.source-validation@f0724b97
+// spec: surface.open-console.source-first-run@ddcddca4
+#[test]
+fn admin_source_drafts_validate_and_observe_only_runs_of_the_claimed_version() {
+    let vendor = super::pipeline::Vendor::start(|path| if path.contains("failed") { (500, "unavailable".into()) } else { (200, "[{\"id\":\"one\"}]".into()) });
+    let (dir, public) = project();
+    let root = dir.path();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let read = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let source = json!({ "id": "inbox", "tables": ["items"], "schedule": "every 1h", "source": { "name": "http", "config": { "endpoint": vendor.url("/items") } } });
+    let edit = |expected, source: Value| json!({ "expected": expected, "source": source }).to_string();
+    assert_eq!(control(&addr, "POST", "/control/edit", Some(&read), &edit(1, source.clone())).0, 403);
+    for (value, field) in [
+        (json!({ "id": "inbox", "tables": ["items"], "source": { "name": "missing", "config": {} } }), "source.name"),
+        (json!({ "id": "inbox", "tables": ["items"], "source": { "name": "http", "config": {} } }), "source.config.endpoint"),
+        (json!({ "id": "inbox", "tables": [], "source": { "name": "http", "config": { "endpoint": vendor.url("/items") } } }), "tables"),
+        (json!({ "id": "inbox", "tables": ["items", "items"], "source": { "name": "http", "config": { "endpoint": vendor.url("/items") } } }), "tables"),
+        (json!({ "id": "inbox", "tables": ["items"], "source": { "name": "http", "config": { "endpoint": vendor.url("/items"), "headers": null } } }), "source.config"),
+        (json!({ "id": "inbox", "tables": ["items"], "destination": { "name": "remote" }, "source": { "name": "http", "config": { "endpoint": vendor.url("/items") } } }), "destination"),
+        (json!({ "id": "inbox", "tables": ["items"], "schedule": "invalid", "source": { "name": "http", "config": { "endpoint": vendor.url("/items") } } }), "schedule"),
+    ] {
+        let (status, refusal) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(1, value));
+        assert_eq!(status, 422, "{refusal}");
+        assert_eq!(refusal["error"]["field"], field, "{refusal}");
+        assert!(refusal["error"]["message"].as_str().is_some_and(|message| !message.is_empty()), "{refusal}");
+        let (_, current) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+        assert_eq!(current["applied"], 1);
+    }
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(1, source.clone()));
+    assert_eq!(status, 200, "{draft}");
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 1, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"][0]["version"], 2);
+    assert_eq!(view["sources"][0]["connector"], "http");
+    assert_eq!(view["sources"][0]["destinations"], json!(["inbox_items"]));
+    assert_eq!(view["sources"][0]["first_run"], Value::Null);
+    assert_eq!(view["sources"][0]["state"], "pending");
+    let (status, refused) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(2, source));
+    assert_eq!(status, 422, "{refused}");
+    assert_eq!(refused["error"]["field"], "id");
+    stdout(&run(root, &["pipeline", "run", "inbox", "--applied", "2", "--project", "research", "--run-id", "first", "--site-id", "site-a"]));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"]["status"], "success", "{view}");
+    assert_eq!(view["sources"][0]["first_run"]["rows"], 1);
+    stdout(&run(root, &["pipeline", "run", "inbox", "--applied", "2", "--project", "research", "--run-id", "second", "--site-id", "site-a"]));
+    let (_, later) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(later["sources"][0]["first_run"]["run_id"], "first");
+    assert_eq!(later["sources"][0]["latest_run"]["run_id"], "second");
+    let document = view["document"].as_str().unwrap();
+    let (_, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &json!({ "expected": 2, "document": document }).to_string());
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 2, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"][0]["first_run"], Value::Null, "an identical claim has no run evidence for its version");
+    assert_eq!(view["sources"][0]["state"], "pending");
+    stdout(&run(root, &["pipeline", "run", "inbox", "--applied", "2", "--project", "research", "--run-id", "old-version", "--site-id", "site-a"]));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"], Value::Null);
+    stdout(&run(root, &["pipeline", "run", "inbox", "--applied", "3", "--project", "research", "--run-id", "current-version", "--site-id", "site-a"]));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"]["run_id"], "current-version");
+    let (_, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &json!({ "expected": 3, "document": document.replace("/items", "/failed") }).to_string());
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 3, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert!(!run(root, &["pipeline", "run", "inbox", "--applied", "4", "--project", "research", "--run-id", "failed-version", "--site-id", "site-a"]).status.success());
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"]["status"], "failed", "{view}");
+    assert!(view["sources"][0]["first_run"]["error_kind"].is_string());
+    let split = json!({ "id": "split", "tables": ["items", "failed"], "source": { "name": "http", "config": { "endpoint": vendor.url("/{table}") } } });
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(4, split));
+    assert_eq!(status, 200, "{draft}");
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 4, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert!(!run(root, &["pipeline", "run", "split", "--applied", "5", "--project", "research", "--run-id", "split-first", "--site-id", "site-a"]).status.success());
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][1]["first_run"]["status"], "failed", "a source fire includes every destination: {view}");
+    assert_eq!(view["sources"][1]["first_run"]["rows"], 1);
+    assert_eq!(view["sources"][1]["latest_run"]["run_id"], "split-first");
+}
+
+#[test]
+#[cfg(feature = "component-host")]
+fn admin_source_drafts_check_component_artifacts_and_exported_tables() {
+    let (dir, public) = project();
+    let root = dir.path();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    std::fs::write(root.join("connector.toml"), "name = \"probe\"\n[capabilities]\nallow_hosts = [\"127.0.0.1\"]\nclock = true\n").unwrap();
+    let source = json!({ "id": "guest", "tables": ["items"], "source": { "name": "probe.wasm", "config": { "manifest": "connector.toml" } } });
+    let edit = |source: Value| json!({ "expected": 1, "source": source }).to_string();
+    let (status, refusal) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(source.clone()));
+    assert_eq!(status, 422, "{refusal}");
+    assert_eq!(refusal["error"]["field"], "source");
+    std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-wasm/tests/fixtures/probe.wasm"), root.join("probe.wasm")).unwrap();
+    let mut invalid = source.clone();
+    invalid["tables"] = json!(["absent"]);
+    let (status, refusal) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(invalid));
+    assert_eq!(status, 422, "{refusal}");
+    assert_eq!(refusal["error"]["field"], "tables");
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(source));
+    assert_eq!(status, 200, "{draft}");
+    std::fs::remove_file(root.join("probe.wasm")).unwrap();
+    let apply = json!({ "expected": 1, "nonce": draft["nonce"] }).to_string();
+    let (status, refusal) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
+    assert_eq!(status, 422, "{refusal}");
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["applied"], 1);
+    std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-wasm/tests/fixtures/probe.wasm"), root.join("probe.wasm")).unwrap();
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"][0]["state"], "pending");
+    stdout(&run(root, &["pipeline", "run", "guest", "--applied", "2", "--project", "research", "--run-id", "guest-first", "--site-id", "site-a"]));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"]["status"], "success", "{view}");
+    assert_eq!(view["sources"][0]["first_run"]["rows"], 3);
+}
+
+// spec: surface.open-console.source-preservation@3f369635
+#[test]
+fn admin_source_addition_preserves_other_work_and_refuses_incompatible_destination_keys() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let original = "[[pipeline]]\nid = \"parent\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/items\" }\n\n[[external]]\nname = \"review\"\ninputs = [\"pipeline:parent\"]\n";
+    let snapshots = contextful_snapshot::SnapshotDir::open(&root.join(".contextful/control/research"));
+    snapshots.import(original).unwrap();
+    std::fs::write(root.join("incompatible.jsonl"), "{\"id\":1.5}\n").unwrap();
+    stdout(&run(root, &["context", "land", "inbox_items", "--project", "research", "--rows", "incompatible.jsonl", "--run-id", "incompatible", "--site-id", "site-a"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let mut source = json!({ "id": "inbox", "tables": [{ "name": "items", "primary_key": ["id"] }], "source": { "name": "http", "config": { "endpoint": "https://example.test/items" } } });
+    let edit = |source: Value| json!({ "expected": 1, "source": source }).to_string();
+    let (status, refusal) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(source.clone()));
+    assert_eq!(status, 422, "{refusal}");
+    assert_eq!(refusal["error"]["field"], "tables");
+    assert_eq!(snapshots.current().unwrap(), Some(1));
+    source["tables"] = json!(["different"]);
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit(source));
+    assert_eq!(status, 200, "{draft}");
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 1, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"].as_array().unwrap().len(), 2);
+    assert_eq!(view["externals"][0]["name"], "review");
+}
+
+// spec: run.land.receive-applied@a7f67bf7
+#[test]
+fn source_first_receive_fire_uses_the_admin_applied_document() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let declaration = root.join("contextful.toml");
+    let text = std::fs::read_to_string(&declaration).unwrap();
+    std::fs::write(&declaration, format!("site_id = 'site-a'\n{text}")).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let write = mint_write(root, "received_events");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let source = json!({ "id": "received", "tables": ["events"], "source": { "name": "receive", "config": { "format": "jsonl", "max_batch_bytes": 512, "max_queue_depth": 2, "key_retention_secs": 3600 } } });
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &json!({ "expected": 1, "source": source }).to_string());
+    assert_eq!(status, 200, "{draft}");
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 1, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    let body = delivered("events", json!({ "id": "one" }));
+    let (status, _, answer) = deliver_to(&addr, "received", Some(&write), Some("first-batch"), body.len(), &body);
+    assert_eq!(status, 200, "{answer}");
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["version"], 2);
+    assert_eq!(view["sources"][0]["first_run"]["rows"], 1, "{view}");
+    assert_eq!(view["sources"][0]["state"], "success");
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/unapplied.toml"), "[[pipeline]]\nid = 'unapplied'\ntables = ['events']\n[pipeline.source]\nname = 'receive'\nconfig = { format = 'jsonl', max_batch_bytes = 512, max_queue_depth = 2, key_retention_secs = 3600 }\n").unwrap();
+    assert_eq!(deliver_to(&addr, "unapplied", Some(&write), Some("unapplied-batch"), body.len(), &body).0, 404);
+    let (_, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &json!({ "expected": 2, "document": "" }).to_string());
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 2, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(deliver_to(&addr, "received", Some(&write), Some("removed-batch"), body.len(), &body).0, 404);
+}
+
+#[test]
+fn source_outcomes_require_every_owned_destination_row_to_survive() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let document = "[[pipeline]]\nid = 'inbox'\ntables = ['items', 'archive']\n[pipeline.source]\nname = 'http'\nconfig = { endpoint = 'https://example.test/items' }\n";
+    contextful_snapshot::SnapshotDir::open(&root.join(".contextful/control/research")).import(document).unwrap();
+    let spec = contextful_core::pipeline::declare::collect(&[contextful_core::pipeline::declare::ManifestFile { path: "source.toml".into(), text: document.into() }]).unwrap().remove(0).spec;
+    record_run(root, "surviving", "inbox", "success");
+    record_run(root, "other-source", "another", "success");
+    let audit = contextful_policy::audit::AuditLog::unanchored(root.join(".contextful/audit")).unwrap();
+    for (fire, absent) in [("collected-destination", "missing"), ("foreign-destination", "other-source")] {
+        audit.append(json!({ "contextful.control.version": 1, "contextful.pipeline.id": "inbox", "contextful.pipeline.hash": spec.content_hash(),
+            "contextful.run.id": fire, "contextful.run.rows": ["surviving", absent], "contextful.run.failed": false })).unwrap();
+    }
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"][0]["first_run"], Value::Null, "a surviving destination is not proof of the whole source fire: {view}");
+    assert_eq!(view["sources"][0]["state"], "pending");
+}
+
+#[test]
+fn source_first_and_latest_use_completion_order_for_a_retried_fire() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let document = "[[pipeline]]\nid = 'inbox'\ntables = ['items']\n[pipeline.source]\nname = 'http'\nconfig = { endpoint = 'https://example.test/items' }\n";
+    contextful_snapshot::SnapshotDir::open(&root.join(".contextful/control/research")).import(document).unwrap();
+    let spec = contextful_core::pipeline::declare::collect(&[contextful_core::pipeline::declare::ManifestFile { path: "source.toml".into(), text: document.into() }]).unwrap().remove(0).spec;
+    let first = json!({ "run_id": "retried", "status": "failed", "rows": 0, "started_at": "2030-01-01T00:00:00Z", "ended_at": "2030-01-01T00:00:01Z", "error_kind": "Transient" });
+    let latest = json!({ "run_id": "retried", "status": "success", "rows": 1, "started_at": "2030-01-01T00:00:00Z", "ended_at": "2030-01-01T00:00:02Z" });
+    for (node, outcome) in [("a", first.clone()), ("b", latest)] {
+        let path = root.join(format!(".contextful/context/research/nodes/{node}/run-state.json"));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, serde_json::to_vec(&json!({ "format": 1, "node_id": node, "runs": {}, "cursors": [], "sources": [{ "pipeline_id": "inbox", "version": 1, "config_hash": spec.content_hash(), "first": first, "latest": outcome }] })).unwrap()).unwrap();
+    }
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"]["status"], "failed", "{view}");
+    assert_eq!(view["sources"][0]["latest_run"]["status"], "success");
+    assert_eq!(view["sources"][0]["latest_run"]["rows"], 1);
+}
+
+// spec: run.land.receive-version-group@89e4b98d
+#[test]
+fn applied_receive_groups_leave_an_older_versions_orphan_batch_unclaimed() {
+    let (dir, public) = receiving_face();
+    let root = dir.path();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let write = mint_write(root, "*");
+    let args = ["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public];
+    let (mut listener, addr) = serve(root, &args);
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    let document = view["document"].as_str().unwrap();
+    let queue = root.join(".contextful/run/research/receive/otel");
+    std::fs::create_dir_all(&queue).unwrap();
+    let held = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(queue.join("land.lock")).unwrap();
+    held.lock().unwrap();
+    let old_body = delivered("spans", json!({ "id": "old" }));
+    let mut waiting = TcpStream::connect(&addr).unwrap();
+    write!(waiting, "POST /receive/otel HTTP/1.1\r\nAuthorization: Bearer {write}\r\nContextful-Batch-Key: older-version\r\nContent-Type: application/x-ndjson\r\nContent-Length: {}\r\n\r\n{old_body}", old_body.len()).unwrap();
+    let spool = queue.join("spool");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        let paths = std::fs::read_dir(&spool).map(|entries| entries.flatten().map(|entry| entry.path()).collect::<Vec<_>>()).unwrap_or_default();
+        let spooled = paths.iter().any(|path| path.extension().is_some_and(|ext| ext == "batch") ||
+            (path.is_dir() && std::fs::read_dir(path).is_ok_and(|entries| entries.flatten().any(|entry| entry.path().extension().is_some_and(|ext| ext == "batch")))));
+        if spooled { break; }
+        assert!(std::time::Instant::now() < deadline, "the older version's request did not spool");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let (_, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &json!({ "expected": 1, "document": document }).to_string());
+    let (status, view) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 1, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 200, "{view}");
+    listener.0.kill().unwrap();
+    listener.0.wait().unwrap();
+    drop(waiting);
+    drop(held);
+    let (_listener, addr) = serve(root, &args);
+    let body = delivered("spans", json!({ "id": "current" }));
+    let (status, _, answer) = deliver_to(&addr, "otel", Some(&write), Some("current-version"), body.len(), &body);
+    assert_eq!(status, 200, "{answer}");
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["version"], 2);
+    assert_eq!(view["sources"][0]["first_run"]["rows"], 1, "an orphan decoded under another version stays outside this fire: {view}");
 }
 
 /// Three pipelines, two models, a build and a store-driven job, a publication and two

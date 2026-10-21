@@ -65,6 +65,44 @@ fn a_cold_node_pulls_and_adopts_the_admin_attested_control_version() {
     assert_eq!(vendor.targets(), ["/v1/orders"]);
 }
 
+// spec: surface.open-console.source-run-evidence@cf237651
+#[test]
+fn source_first_run_outcomes_survive_push_pull_to_a_serving_node_without_a_machine_catalog() {
+    let vendor = crate::pipeline::Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let bucket = tempfile::tempdir().unwrap();
+    let sync = file_sync(bucket.path(), "");
+    let writer = project("ingest-a", &sync);
+    let document = format!("authoring_posture = 'per_request'\nsite_id = 'site-a'\n[[pipeline]]\nid = 'orders'\ntables = ['items']\n[pipeline.source]\nname = 'http'\nconfig = {{ endpoint = '{}' }}\n", vendor.url("/orders"));
+    std::fs::write(writer.path().join("contextful.toml"), &document).unwrap();
+    std::fs::write(writer.path().join(".contextful/issuance.toml"), format!("default_audience = '{AUD}'\nmax_lifetime_secs = 3600\n")).unwrap();
+    let public = ok(&cf(writer.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"], &[]));
+    let admin = ok(&cf(writer.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "admin", "--table", "*"], &[]));
+    ok(&cf(writer.path(), &["pipeline", "import", "--project", "research", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public, "--audience", AUD], &[("CONTEXTFUL_TOKEN", &admin)]));
+    ok(&cf(writer.path(), &["pipeline", "run", "orders", "--applied", "1", "--project", "research", "--run-id", "first-on-writer", "--site-id", "site-a"], &[]));
+    ok(&cf(writer.path(), &["pipeline", "run", "orders", "--applied", "1", "--project", "research", "--run-id", "latest-on-writer", "--site-id", "site-a"], &[]));
+    ok(&cf(writer.path(), &["sync", "push", "--project", "research"], &[]));
+    std::fs::remove_file(writer.path().join(STORE).join("machine.sqlite")).unwrap();
+    ok(&cf(writer.path(), &["sync", "push", "--project", "research"], &[]));
+    let reader = project("read-b", &sync);
+    std::fs::write(reader.path().join("contextful.toml"), &document).unwrap();
+    ok(&cf(reader.path(), &["sync", "pull", "--project", "research"], &[]));
+    let snapshot = std::fs::read_to_string(writer.path().join(".contextful/control/research/manifest@v1.toml")).unwrap();
+    contextful_snapshot::SnapshotDir::open(&reader.path().join(".contextful/control/research")).import(&snapshot).unwrap();
+    let (_listener, addr) = crate::serve::serve(reader.path(), &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = crate::serve::control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["sources"][0]["first_run"]["run_id"], "first-on-writer", "{view}");
+    assert_eq!(view["sources"][0]["first_run"]["rows"], 1);
+    assert_eq!(view["sources"][0]["latest_run"]["run_id"], "latest-on-writer");
+    assert_eq!(view["sources"][0]["state"], "success");
+    let mut newer = snapshot.clone();
+    newer.push('\n');
+    contextful_snapshot::SnapshotDir::open(&reader.path().join(".contextful/control/research")).claim(Some(1), &newer).unwrap();
+    let (_, view) = crate::serve::control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["sources"][0]["first_run"], Value::Null, "a remote older-version fire cannot prove the reader's newer claim");
+    assert_eq!(view["sources"][0]["state"], "pending");
+}
+
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;

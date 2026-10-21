@@ -241,6 +241,12 @@ pub(crate) fn snapshot_manifest(project: &Project, text: &str, version: u64) -> 
     Ok(ManifestFile { path: snapshot_file(version), text: control.source.read(version)? })
 }
 
+/// Capture the current pointer once and read that version's immutable document.
+pub(crate) fn current_manifest(project: &Project, text: &str) -> Result<Option<(u64, ManifestFile)>> {
+    let control = control_config(text, project)?;
+    control.source.current()?.map(|version| Ok((version, ManifestFile { path: snapshot_file(version), text: control.source.read(version)? }))).transpose()
+}
+
 /// The applied version and the specifications it holds, by id; none before the first apply.
 fn applied(snaps: &Source) -> Result<(Option<u64>, BTreeMap<String, PipelineSpec>)> {
     let Some(version) = snaps.current()? else { return Ok((None, BTreeMap::new())) };
@@ -267,7 +273,9 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
     let store = contextful_context::Store::open(&project.dir, &project.name)?;
     let states = contextful_sync::run_state::run_states(&store)?;
     let mut runs: BTreeMap<String, contextful_sync::RunMark> = BTreeMap::new();
+    let mut evidence = crate::source_runs::Summaries::new();
     for state in states.into_values() {
+        crate::source_runs::merge(&mut evidence, state.sources);
         for (id, mark) in state.runs {
             if selected.contains(&id) && runs.get(&id).is_none_or(|earlier| mark.started_at > earlier.started_at) {
                 runs.insert(id, mark);
@@ -275,11 +283,12 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
         }
     }
     let wired = wire_at(project, &None)?;
-    for row in wired.engine.catalog.runs(None)? {
+    let rows = wired.engine.catalog.runs(None)?;
+    for row in &rows {
         if selected.contains(&row.pipeline_id) && runs.get(&row.pipeline_id).is_none_or(|earlier| row.started_at > earlier.started_at) {
             runs.insert(row.pipeline_id.clone(), contextful_sync::RunMark {
-                run_id: row.run_id,
-                table: row.table,
+                run_id: row.run_id.clone(),
+                table: row.table.clone(),
                 status: row.status,
                 started_at: row.started_at,
                 ended_at: row.ended_at,
@@ -290,6 +299,21 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
     let externals = parse_externals(&snapshot)?;
     let publications = local_publications(&text)?;
     let graph = Graph::of(&pipelines, &jobs, &models, &publications, &externals)?;
+    crate::source_runs::merge(&mut evidence, crate::source_runs::local(&project.audit_dir(), &rows)?);
+    let sources: Vec<Value> = pipelines.iter().map(|spec| {
+        let outcomes = version.and_then(|version| evidence.get(&(spec.id.clone(), version, spec.content_hash())));
+        let outcome = |fire: &contextful_sync::SourceFire| json!({
+            "run_id": fire.run_id, "status": fire.status, "rows": fire.rows, "started_at": fire.started_at, "ended_at": fire.ended_at,
+            "error_kind": fire.error_kind, "message": fire.error_kind.map(source_failure_message).or((fire.status == contextful_core::run::record::RunStatus::Failed).then_some("A destination refused this source run. Check the output table configuration and retry.")),
+        });
+        json!({ "id": spec.id, "connector": spec.source.name,
+            "destinations": spec.tables.iter().map(|table| spec.table_name(table.name())).collect::<Vec<_>>(),
+            "schedule": spec.schedule, "trigger": if spec.source.name == "receive" { "receive" } else if spec.after.is_some() { "after" } else if spec.schedule.is_some() { "schedule" } else { "manual" },
+            "after": spec.after, "version": version, "first_run": outcomes.map(|summary| outcome(&summary.first)), "latest_run": outcomes.map(|summary| outcome(&summary.latest)),
+            "state": outcomes.map_or("pending", |summary| summary.latest.status.name()),
+        })
+    }).collect();
+    let document = crate::effective::public_manifest(ManifestFile { path: "applied document".into(), text: snapshot.clone() })?.text;
     let pipelines: Vec<Value> = pipelines.into_iter().map(|spec| json!({
         "id": spec.id,
         "schedule": spec.schedule,
@@ -315,6 +339,8 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
     let publications: Vec<Value> = publications.iter().map(|(name, job, members)| json!({ "name": name, "job": job, "members": members })).collect();
     Ok(json!({
         "applied": version,
+        "document": document,
+        "sources": sources,
         "pipelines": pipelines,
         "jobs": jobs,
         "models": models,
@@ -326,6 +352,22 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
         "truncated": truncated,
         "declined": 0,
     }))
+}
+
+fn source_failure_message(tag: contextful_core::run::FailureTag) -> &'static str {
+    use contextful_core::run::FailureTag;
+    match tag {
+        FailureTag::Transient => "The source could not complete its request. Check endpoint availability and retry.",
+        FailureTag::Permanent => "The source rejected the request. Check its endpoint and connector options before retrying.",
+        FailureTag::AuthExpired => "The source credential expired. Renew its secret reference and retry.",
+        FailureTag::RateLimited => "The source rate limit stopped this run. Wait for the limit to reset and retry.",
+        FailureTag::SchemaIncompatible => "The source rows do not match the destination schema. Check table columns and transforms.",
+        FailureTag::SecretNotFound => "A source secret reference is unavailable. Configure its credential provider and retry.",
+        FailureTag::Storage => "The destination could not persist the run. Check store access and available storage.",
+        FailureTag::UnknownConnector => "The source connector is unavailable. Check its name and the server's connector support.",
+        FailureTag::Config => "The connector configuration refused the run. Check its required fields and table mappings.",
+        FailureTag::Canceled => "The source run was canceled. Start another run when the source is ready.",
+    }
 }
 
 /// The local `[[publication]]` blocks as `(name, producer job, members)`; delivery
@@ -740,28 +782,121 @@ fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value], models: 
     Ok(format!("# An applied snapshot, claimed by `contextful pipeline apply`; immutable once claimed.\n\n{body}"))
 }
 
-fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks, tables: Option<&[TableDecl]>) -> Result<String> {
+fn validated_draft(document: &str, project: &Project, declaration: &Path, tasks: &Tasks, tables: Option<&[TableDecl]>, preserving: Option<&str>) -> Result<String> {
     let specs = collect(&[ManifestFile { path: "manifest@draft.toml".into(), text: document.to_owned() }])
-        .map_err(|e| SurfaceError::ApplyValidationRefused(e.to_string()))?;
+        .map_err(|error| match error {
+            contextful_core::run::RunError::PipelineDuplicateId(_) => SourceRefusal::new("id", "Choose distinct source identities."),
+            contextful_core::run::RunError::PipelineTableNameCollision(_) => SourceRefusal::new("tables", "Choose source identities and output tables that expand to distinct destination names."),
+            contextful_core::run::RunError::PipelineUnknownDestination(_) => SourceRefusal::new("destination", "Choose the local store destination."),
+            _ => SourceRefusal::new("source", "Check source fields, destination declarations and predecessor references against the applied document."),
+        })?;
     let specs: BTreeMap<String, PipelineSpec> = specs.into_iter().map(|entry| (entry.spec.id.clone(), entry.spec)).collect();
-    if !job_blocks(document, None, &specs)?.is_empty() {
-        return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit jobs; use the registered host's pipeline apply".into()).into());
-    }
-    if !crate::model_source::applied(&ManifestFile { path: "draft".into(), text: document.into() })?.is_empty() { bail!("the pipeline editor does not edit models; use pipeline apply"); }
-    if !parse_externals(document)?.is_empty() {
-        return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit external steps; use pipeline apply".into()).into());
+    let jobs = job_blocks(document, None, &specs)?;
+    let models = crate::model_source::applied(&ManifestFile { path: "draft".into(), text: document.into() })?;
+    let externals = parse_externals(document)?;
+    let baseline = preserving.unwrap_or_default();
+    if job_blocks(baseline, None, &specs)? != jobs ||
+        crate::model_source::applied(&ManifestFile { path: "applied document".into(), text: baseline.into() })? != models ||
+        parse_externals(baseline)? != externals {
+        return Err(SurfaceError::ApplyValidationRefused("the source editor preserves jobs, models and external steps; use pipeline apply to change them".into()).into());
     }
     if !crate::effective::snapshot_tables(document)?.unwrap_or_default().is_empty() || !crate::effective::standalone_tables(&[ManifestFile { path: "draft.toml".into(), text: document.into() }])?.is_empty() {
         return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit standalone tables; use pipeline apply".into()).into());
     }
-    let rendered = render(&specs, &[], &[], tables, &[])?;
+    let rendered = render(&specs, &jobs, &models, tables, &externals)?;
+    self_valid(&rendered)?;
+    let store = contextful_context::Store::open_declared(&project.dir, &project.name, declaration)?;
     for spec in specs.values() {
         if let Some(schedule) = spec.schedule.as_deref() {
-            Schedule::parse(schedule).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e}", spec.id)))?;
+            Schedule::parse(schedule).map_err(|_| SourceRefusal::new("schedule", "Enter a valid schedule, such as every 1h."))?;
         }
-        check(spec, declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
+        if spec.tables.is_empty() {
+            return Err(SourceRefusal::new("tables", "Choose at least one destination table.").into());
+        }
+        let checked = check(spec, declaration, tasks).map_err(|error| {
+            if spec.source.name == "http" && spec.source.config.get("endpoint").and_then(Value::as_str).is_none_or(|endpoint| endpoint.trim().is_empty()) {
+                return SourceRefusal::new("source.config.endpoint", "Enter the HTTP endpoint URL.");
+            }
+            if !contextful_connectors::BUILT_IN.contains(&spec.source.name.as_str()) &&
+                contextful_core::connector::component::ComponentSource::parse(&spec.source.name, &spec.source.config).ok().flatten().is_none() {
+                return SourceRefusal::new("source.name", "Choose a supported connector name, such as http or file, or a component artifact path or pinned URL.");
+            }
+            if contextful_connectors::compiled_in(&spec.source.name).is_err() {
+                return SourceRefusal::new("source.name", "This server build does not include the connector. Enable its server feature or choose another connector.");
+            }
+            match error.downcast_ref::<contextful_core::run::RunError>() {
+                Some(contextful_core::run::RunError::PipelineUnknownDestination(_)) => SourceRefusal::new("destination", "Choose the local store destination."),
+                _ => SourceRefusal::new("source", "Choose an available connector and supply its required configuration fields."),
+            }
+        })?;
+        let connector = if let crate::pipeline::Checked::Component(decl) = &checked {
+            let vars = std::env::vars().collect();
+            let resolver = contextful_outbound::assemble(&vars, std::sync::Arc::new(crate::clock::SystemClock))?;
+            let loaded = crate::component::load(&spec.source.name, decl, &project.dir, &project.name, Some(&resolver), crate::component::ComponentTarget::default(), store.requires_connector_pin())
+                .map_err(|_| SourceRefusal::new("source", "Provide an available component artifact with a valid digest and capability manifest."))?;
+            let names = loaded.discover(decl).map_err(|_| SourceRefusal::new("source", "Provide a component that exports source discovery."))?;
+            if spec.tables.iter().any(|table| !names.iter().any(|name| name == table.name())) {
+                return Err(SourceRefusal::new("tables", "Choose destination tables exported by the component's discovery.").into());
+            }
+            loaded.connector_spec()
+        } else { crate::pipeline::built_in(spec) };
+        for table in &spec.tables {
+            let destination = spec.destination_decl(table);
+            if let Some(schema) = store.try_schema(&destination.name)? {
+                let declared = contextful_core::store::reconcile::Schema {
+                    columns: destination.column_types().into_iter().map(|(name, ty)| contextful_core::store::reconcile::Column::new(name, ty, true)).collect(),
+                    ..Default::default()
+                };
+                schema.merge(&declared, destination.primary_key()).and_then(|merged| destination.validate(&merged))
+                    .map_err(|_| SourceRefusal::new("tables", "Choose destination column types, keys and writer rules compatible with the existing table schema."))?;
+            }
+            let plan = crate::pipeline::plan(spec, table.name(), connector.clone())?;
+            let normalize = contextful_core::pipeline::normalize::Normalize::parse(spec.normalize.as_ref())?;
+            store.validate_source_plan(&plan, Some(normalize))
+                .map_err(|_| SourceRefusal::new("tables", "Choose destination schemas and writer rules compatible with the existing store."))?;
+        }
     }
     Ok(rendered)
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("{message}")]
+pub(crate) struct SourceRefusal {
+    pub field: &'static str,
+    pub message: &'static str,
+}
+
+impl SourceRefusal {
+    fn new(field: &'static str, message: &'static str) -> Self { Self { field, message } }
+}
+
+/// Add one source to the applied document and save it through the versioned editor.
+pub(crate) fn edit_source(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, source: Value, operator: &str, tasks: &Tasks, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<Value> {
+    let (located, _, control) = located(project, declaration.clone())?;
+    let (version, specs) = applied(&control.source)?;
+    if version != Some(expected) {
+        return Err(SurfaceError::ManifestVersionConflict("Read the applied version again before saving a source.".into()).into());
+    }
+    let spec: PipelineSpec = serde_json::from_value(source)
+        .map_err(|_| SourceRefusal::new("source", "Supply a source identity, connector configuration and destination tables."))?;
+    if spec.id.trim().is_empty() || specs.contains_key(&spec.id) {
+        return Err(SourceRefusal::new("id", "Choose a nonempty source identity that the applied document does not contain.").into());
+    }
+    if spec.tables.is_empty() {
+        return Err(SourceRefusal::new("tables", "Choose at least one destination table.").into());
+    }
+    let snapshot = control.source.read(expected)?;
+    let public = crate::effective::public_manifest(ManifestFile { path: "applied document".into(), text: snapshot.clone() })?;
+    let mut document: toml::Value = toml::from_str(&public.text)?;
+    let pipelines = document.as_table_mut().context("applied document is a table")?.entry("pipeline").or_insert_with(|| toml::Value::Array(Vec::new()));
+    let source = toml::Value::try_from(spec).map_err(|_| SourceRefusal::new("source.config", "Use TOML-compatible connector options: strings, numbers, booleans, lists or objects; remove null values."))?;
+    pipelines.as_array_mut().context("applied pipelines are an array")?.push(source);
+    let tables = applied_tables(&control.source, Some(expected))?;
+    let document = validated_draft(&toml::to_string(&document)?, &located.project, &located.declaration, tasks, tables.as_deref(), Some(&snapshot))?;
+    let draft = Draft::new(expected, document, operator.to_owned())?;
+    owner(&control)?.save_draft_guarded(&draft, boundary)?;
+    let public = crate::effective::public_manifest(ManifestFile { path: "source draft".into(), text: draft.document })?;
+    Ok(json!({ "expected": expected, "nonce": draft.nonce, "document": public.text }))
 }
 
 /// Store one validated, version-bound control draft without changing the applied pointer.
@@ -774,7 +909,7 @@ pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected
         return Err(SurfaceError::ManifestVersionConflict(format!("the editor read v{expected}, which is no longer current")).into());
     }
     let tables = applied_tables(&control.source, Some(expected))?;
-    let text = validated_draft(document, &located.declaration, tasks, tables.as_deref())?;
+    let text = validated_draft(document, &located.project, &located.declaration, tasks, tables.as_deref(), None)?;
     let draft = Draft::new(expected, text, operator.to_owned())?;
     snapshots.save_draft_guarded(&draft, boundary)?;
     Ok(json!({ "expected": expected, "nonce": draft.nonce }))
@@ -789,7 +924,6 @@ pub(crate) fn claim_operator_nonce(project: &ProjectArgs, declaration: Option<Pa
 /// Revalidate the saved draft and claim it only at the version the editor read.
 pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks, authority: &AdmittedAuthority, admit: &AdmitArgs, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<()> {
     let (initial, _, control) = located(project, declaration.clone())?;
-    refuse_job_edit(&control)?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
     let draft = snapshots.read_draft()?;
@@ -798,7 +932,7 @@ pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, e
     }
     let tables = applied_tables(&control.source, Some(expected))?;
     let public = crate::effective::public_manifest(ManifestFile { path: "saved draft".into(), text: draft.document.clone() })?;
-    if validated_draft(&public.text, &initial.declaration, tasks, tables.as_deref())? != draft.document {
+    if validated_draft(&public.text, &initial.project, &initial.declaration, tasks, tables.as_deref(), Some(&control.source.read(expected)?))? != draft.document {
         return Err(SurfaceError::ApplyValidationRefused("the saved draft is not the validated snapshot".into()).into());
     }
     let (fresh, _, control) = located(project, declaration)?;

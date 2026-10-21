@@ -102,3 +102,41 @@ test("the live control adapter signs the verified subject and exact request body
   await assert.rejects(control.edit({ store: "one", expected: 1, document: "", operator: "forged" }, "admin-capability",
     { subject: "verified-operator", grants: new Set(["admin"]) }), /ConsoleRequestMalformed/);
 });
+
+test("source drafts use the existing versioned edit route and retain field refusals", async () => {
+  const calls: unknown[] = [];
+  const operator = { subject: "operator", grants: new Set<"admin">(["admin"]) };
+  const source = { id: "inbox", tables: ["items"], source: { name: "http", config: {} } };
+  const control = createLiveControl({ stores: [{ id: "one", endpoint: "https://engine.example" }], capability: "server-admin",
+    fetcher: async (input, init) => {
+      assert.equal(new URL(String(input)).pathname, "/control/edit");
+      calls.push(JSON.parse(String(init?.body)));
+      return Response.json({ error: { identifier: "ApplyValidationRefused", field: "source.config.endpoint", message: "Enter an HTTP endpoint." } }, { status: 422 });
+    },
+  });
+  const app = createConsole({ identity: { kind: "access", issuer: "https://access.example", queryAudience: "query-app", adminAudience: "admin-app", publicKey },
+    stores: [{ id: "one", label: "One" }], adminCapability: "server-admin", read: { list: async () => [] },
+    turn: async () => ({ answer: "", sources: [], widgets: [] }), control });
+  const answer = await app.fetch(new Request("https://console.example/admin/api/edit", { method: "POST",
+    headers: { "cf-access-jwt-assertion": token, origin: "https://console.example" }, body: JSON.stringify({ store: "one", expected: 1, source }) }));
+  assert.equal(answer.status, 422);
+  assert.deepEqual(await answer.json(), { error: { identifier: "ApplyValidationRefused", field: "source.config.endpoint", message: "Enter an HTTP endpoint." } });
+  assert.deepEqual(calls, [{ expected: 1, source }]);
+  await assert.rejects(control.edit({ store: "one", expected: 1, source, document: "" }, "server-admin", operator), /ConsoleRequestMalformed/);
+});
+
+test("Query sessions cannot submit source drafts or read the Admin source list", async () => {
+  const header = Buffer.from(JSON.stringify({ alg: "RS256" })).toString("base64url");
+  const claims = Buffer.from(JSON.stringify({ iss: "https://access.example", aud: "query-app", sub: "reader", exp: Math.floor(Date.now() / 1000) + 300 })).toString("base64url");
+  const queryToken = `${header}.${claims}.${sign("RSA-SHA256", Buffer.from(`${header}.${claims}`), privateKey).toString("base64url")}`;
+  const control = createLiveControl({ stores: [{ id: "one", endpoint: "https://engine.example" }], capability: "server-admin",
+    fetcher: async () => { throw new Error("Query reaches no control call"); } });
+  const app = createConsole({ identity: { kind: "access", issuer: "https://access.example", queryAudience: "query-app", adminAudience: "admin-app", publicKey },
+    stores: [{ id: "one", label: "One" }], adminCapability: "server-admin", read: { list: async () => [] },
+    turn: async () => ({ answer: "", sources: [], widgets: [] }), control });
+  for (const [path, method] of [["workflows", "GET"], ["edit", "POST"], ["apply", "POST"]]) {
+    const answer = await app.fetch(new Request(`https://console.example/admin/api/${path}`, { method,
+      headers: { "cf-access-jwt-assertion": queryToken, origin: "https://console.example" }, ...(method === "POST" ? { body: "{}" } : {}) }));
+    assert.equal(answer.status, 403);
+  }
+});

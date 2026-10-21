@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { CheckIcon, FileCode2Icon, LoaderIcon, SaveIcon, WorkflowIcon } from "lucide-react";
 import { post, Shell, StoreSelect, TopNav, type Store } from "./shell.tsx";
-import { workflowGraph, type GraphNode, type NodeKind, type Workflows } from "./graph.ts";
+import { workflowGraph, type GraphNode, type IngestSource, type NodeKind, type Workflows } from "./graph.ts";
 import { Badge, Button, Textarea, cn } from "./ui.tsx";
 
 type Loaded<T> = { store: string; value: T } | { store: string; error: string };
@@ -14,9 +14,9 @@ function runVariant(status: string | undefined) {
   return "muted" as const;
 }
 
-async function read<T>(query: string, store: string): Promise<Loaded<T>> {
+async function read<T>(query: string, store: string, signal?: AbortSignal): Promise<Loaded<T>> {
   try {
-    const response = await fetch(query + encodeURIComponent(store));
+    const response = await fetch(query + encodeURIComponent(store), { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) });
     const value = await response.json() as T & { error?: { identifier?: string } };
     return response.ok ? { store, value } : { store, error: value.error?.identifier ?? "Request failed" };
   } catch (error) {
@@ -51,6 +51,20 @@ export function AdminApp() {
 
   const current = workflows && "value" in workflows ? workflows.value : null;
   const applied = current?.applied ?? null;
+  const pending = current?.sources?.some((source) => ["pending", "running", "waiting"].includes(source.state)) ?? false;
+
+  useEffect(() => {
+    if (!store || !pending) return;
+    let ignore = false;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      const loaded = await read<Workflows>("/admin/api/workflows?store=", store, controller.signal);
+      if (!ignore) { setWorkflows(loaded); timer = setTimeout(() => void poll(), 5000); }
+    }
+    timer = setTimeout(() => void poll(), 5000);
+    return () => { ignore = true; controller.abort(); clearTimeout(timer); };
+  }, [store, pending]);
 
   return (
     <Shell page="admin" header={
@@ -64,6 +78,13 @@ export function AdminApp() {
             <h1 className="text-xl font-semibold">Store operations</h1>
             <p className="text-sm text-muted-foreground">Pipelines, jobs, models, publications and the steps around them, with run outcomes, come from the store.</p>
           </div>
+          <section aria-labelledby="sources-title" className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h2 id="sources-title" className="text-sm font-medium">Ingest sources</h2>
+              <Button type="button" variant="outline" onClick={() => setRefreshKey((key) => key + 1)}>Refresh outcomes</Button>
+            </div>
+            <SourceList sources={current?.sources ?? []} />
+          </section>
           <section aria-labelledby="canvas-title" className="flex flex-col gap-3">
             <h2 id="canvas-title" className="flex items-center gap-1.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
               <WorkflowIcon className="size-3" /> Workflow canvas
@@ -82,11 +103,28 @@ export function AdminApp() {
               {record === null ? "Reading the record…" : "error" in record ? record.error : JSON.stringify(record.value, null, 2)}
             </pre>
           </section>
-          <ControlDocument key={store} store={store} applied={applied} onApplied={() => setRefreshKey((key) => key + 1)} />
+          <ControlDocument key={store} store={store} applied={applied} document={current?.document ?? ""} onApplied={() => setRefreshKey((key) => key + 1)} />
         </div>
       </main>
     </Shell>
   );
+}
+
+export function SourceList({ sources }: { sources: IngestSource[] }) {
+  if (sources.length === 0) return <p className="text-sm text-muted-foreground">No ingest sources are applied.</p>;
+  return <ul className="flex flex-col gap-3">{sources.map((source) => {
+    const latest = source.latest_run;
+    return <li key={source.id} className="rounded-xl border border-border bg-card/40 p-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2"><strong>{source.id}</strong><Badge variant={runVariant(source.state)}>{source.state}</Badge><span className="text-muted-foreground">Applied version {source.version}</span></div>
+      <p className="mt-1 font-mono text-xs">{source.connector} → {source.destinations.join(", ")}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{source.schedule ?? (source.after ? `After ${source.after}` : source.trigger === "receive" ? "Triggered by incoming rows" : "Manual trigger")}</p>
+      <p className="mt-2 text-xs">{source.first_run ? `First run ${source.first_run.run_id}: ${source.first_run.status}, ${source.first_run.rows} rows` : "Waiting for the first run of this applied version. Applying a source does not start a run."}</p>
+      {source.first_run?.message && <p className="mt-1 text-xs text-destructive">First run: {source.first_run.message}</p>}
+      {latest && <p className="mt-1 text-xs">Latest run {latest.run_id}: {latest.status}, {latest.rows} rows</p>}
+      {latest?.message && (latest.run_id !== source.first_run?.run_id || latest.message !== source.first_run?.message) &&
+        <p role="status" className="mt-1 text-xs text-destructive">Latest run: {latest.message}</p>}
+    </li>;
+  })}</ul>;
 }
 
 const NODE_W = 184;
@@ -166,29 +204,39 @@ function GraphNodeCard({ node, style }: { node: GraphNode; style: { left: number
 }
 
 /** Save a TOML draft against the applied version, then apply that draft by its nonce. */
-function ControlDocument({ store, applied, onApplied }: { store: string; applied: number | null; onApplied: () => void }) {
+function ControlDocument({ store, applied, document, onApplied }: { store: string; applied: number | null; document: string; onApplied: () => void }) {
   const [text, setText] = useState("");
-  const [nonce, setNonce] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ nonce: string; expected: number } | null>(null);
   const [result, setResult] = useState("");
   const [busy, setBusy] = useState<"edit" | "apply" | null>(null);
+  const [identity, setIdentity] = useState("");
+  const [connector, setConnector] = useState("http");
+  const [endpoint, setEndpoint] = useState("");
+  const [destination, setDestination] = useState("items");
+  const [schedule, setSchedule] = useState("");
+  const [configuration, setConfiguration] = useState("{}");
+  useEffect(() => { setText(document); setDraft(null); }, [document, applied]);
 
-  async function run(action: "edit" | "apply") {
+  async function run(action: "edit" | "apply", source?: object) {
     if (applied === null || !Number.isSafeInteger(applied) || !store) {
       setResult("Select a store with an applied version.");
       return;
     }
-    if (action === "apply" && !nonce) {
+    if (action === "apply" && (!draft || draft.expected !== applied)) {
       setResult("Save a draft before applying.");
       return;
     }
     setBusy(action);
     try {
-      const body = action === "edit" ? { store, expected: applied, document: text } : { store, expected: applied, nonce };
-      const answer = await post<{ nonce?: string }>(`/admin/api/${action}`, body);
-      setResult(`${action} complete`);
-      if (action === "edit") setNonce(answer.nonce ?? null);
+      const body = action === "edit" ? { store, expected: applied, ...(source ? { source } : { document: text }) } : { store, expected: draft!.expected, nonce: draft!.nonce };
+      const answer = await post<{ nonce?: string; document?: string }>(`/admin/api/${action}`, body);
+      setResult(action === "edit" ? "Configuration validated. Review the draft, then apply." : "Version applied. Waiting for its first run; refresh outcomes to check progress.");
+      if (action === "edit") {
+        setDraft(answer.nonce ? { nonce: answer.nonce, expected: applied } : null);
+        if (answer.document !== undefined) setText(answer.document);
+      }
       else {
-        setNonce(null);
+        setDraft(null);
         onApplied();
       }
     } catch (error) {
@@ -198,29 +246,60 @@ function ControlDocument({ store, applied, onApplied }: { store: string; applied
     }
   }
 
+  function saveSource() {
+    try {
+      const config = JSON.parse(configuration) as unknown;
+      if (config === null || typeof config !== "object" || Array.isArray(config)) throw new Error("source.config: Enter a JSON object.");
+      void run("edit", { id: identity.trim(), tables: destination.split(",").map((table) => table.trim()).filter(Boolean),
+        ...(schedule.trim() ? { schedule: schedule.trim() } : {}), source: { name: connector.trim(), config: { ...config, ...(connector.trim() === "http" ? { endpoint: endpoint.trim() } : {}) } } });
+    } catch {
+      setResult("source.config: Enter a valid JSON object for connector options.");
+    }
+  }
+
   return (
     <section aria-labelledby="control-title" className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 id="control-title" className="flex items-center gap-1.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-          <FileCode2Icon className="size-3" /> Control document
+          <FileCode2Icon className="size-3" /> Add ingest source
         </h2>
         <p id="version" className="text-xs text-muted-foreground">
           {applied === null ? "No applied version" : <>Applied version <span className="font-mono text-foreground">{applied}</span></>}
-          {nonce && <Badge variant="warning" className="ml-2">Draft saved</Badge>}
+          {draft && <Badge variant="warning" className="ml-2">Validated draft saved</Badge>}
         </p>
       </div>
-      <label htmlFor="document" className="sr-only">TOML document</label>
-      <Textarea id="document" value={text} onChange={(event) => { setText(event.target.value); setNonce(null); }} spellCheck={false}
-        placeholder={"[pipelines.example]\nschedule = \"every 1h\""} className="min-h-48 font-mono text-xs" />
+      <form onSubmit={(event) => { event.preventDefault(); saveSource(); }} onChange={() => setDraft(null)} className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-2">
+        <fieldset disabled={busy !== null} className="contents">
+        <SourceField id="source-id" label="Source identity" value={identity} onChange={setIdentity} placeholder="inbox" />
+        <SourceField id="source-connector" label="Connector name or component artifact" value={connector} onChange={setConnector} placeholder="http or connectors/source.wasm" />
+        {connector.trim() === "http" && <SourceField id="source-endpoint" label="HTTP endpoint" value={endpoint} onChange={setEndpoint} placeholder="https://api.example/items" />}
+        <SourceField id="source-destination" label="Output tables (comma separated)" value={destination} onChange={setDestination} placeholder="items" />
+        <SourceField id="source-schedule" label="Schedule (empty for manual trigger)" value={schedule} onChange={setSchedule} placeholder="every 1h" />
+        <label htmlFor="source-config" className="flex flex-col gap-1 text-xs sm:col-span-2">Connector options (JSON)<Textarea id="source-config" value={configuration} onChange={(event) => setConfiguration(event.target.value)} className="min-h-20 font-mono text-xs" /></label>
+        <p className="text-xs text-muted-foreground sm:col-span-2">Output tables land under the source identity prefix. Credentials use secret references in connector options.</p>
+        <Button type="submit" variant="outline" disabled={busy !== null || !store || applied === null}>{busy === "edit" ? <LoaderIcon className="animate-spin" /> : <SaveIcon />} Validate and save source draft</Button>
+        </fieldset>
+      </form>
+      <details>
+        <summary className="cursor-pointer text-sm">Raw TOML document</summary>
+        <label htmlFor="document" className="sr-only">TOML document</label>
+        <Textarea id="document" value={text} disabled={busy !== null} onChange={(event) => { setText(event.target.value); setDraft(null); }} spellCheck={false}
+          className="mt-3 min-h-48 font-mono text-xs" />
+      </details>
       <div className="flex items-center gap-2">
         <Button id="edit" type="button" variant="outline" disabled={busy !== null} onClick={() => void run("edit")}>
           {busy === "edit" ? <LoaderIcon className="animate-spin" /> : <SaveIcon />} Save draft
         </Button>
-        <Button id="apply" type="button" disabled={busy !== null || !nonce} onClick={() => void run("apply")}>
+        <Button id="apply" type="button" disabled={busy !== null || !draft || draft.expected !== applied} onClick={() => void run("apply")}>
           {busy === "apply" ? <LoaderIcon className="animate-spin" /> : <CheckIcon />} Apply draft
         </Button>
         <p id="result" role="status" className="text-xs text-muted-foreground">{result}</p>
       </div>
     </section>
   );
+}
+
+function SourceField({ id, label, value, onChange, placeholder }: { id: string; label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
+  return <label htmlFor={id} className="flex flex-col gap-1 text-xs">{label}<input id={id} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder}
+    className="rounded-lg border border-border bg-background px-3 py-2 text-sm" /></label>;
 }

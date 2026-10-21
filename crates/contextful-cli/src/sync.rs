@@ -392,6 +392,14 @@ fn record_run_state(store: &Store, project: &str, node_id: &str) -> Result<()> {
     let clock = Arc::new(crate::clock::SystemClock);
     let catalog = crate::run::open_catalog(&machine, clock, store.file_cipher())?;
     let mut state = RunState::read(catalog.as_ref(), node_id)?;
+    let project_dir = store.root().ancestors().nth(project.split('/').count() + 2).context("the store has a project directory")?;
+    let project_path = contextful_context::project::Project { dir: project_dir.to_path_buf(), name: project.to_string() };
+    let mut summaries = crate::source_runs::Summaries::new();
+    if let Some(prior) = run_state::run_states(store)?.remove(node_id) {
+        crate::source_runs::merge(&mut summaries, prior.sources);
+    }
+    crate::source_runs::merge(&mut summaries, crate::source_runs::local(&project_path.audit_dir(), &catalog.runs(None)?)?);
+    state.sources = summaries.into_values().collect();
     state.control_version = run_state::local_control_version(store, project)?;
     run_state::record(store, &state)?;
     Ok(())
