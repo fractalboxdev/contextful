@@ -936,12 +936,24 @@ fn provision_lean_pin(root: &Path, pin: &str) -> Result<()> {
 /// lacks it, and set `CONTEXTFUL_REQUIRE_WASM=1` for every test process this gate run
 /// starts, so a WebAssembly-backed test fails rather than skips.
 fn provision_wasm(root: &Path) -> Result<()> {
-    if !wasm_target_installed(root) {
+    // Gate parts may share one RUSTUP_HOME; rustup's target download is not safe to race.
+    let rustup_home = std::env::var_os("RUSTUP_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".rustup")))
+        .context("neither RUSTUP_HOME nor HOME is set")?;
+    std::fs::create_dir_all(&rustup_home)?;
+    let lock = std::fs::File::options().create(true).read(true).write(true).open(rustup_home.join(".contextful-wasm-target.lock"))?;
+    lock.lock()?;
+    for attempt in 0..3 {
+        if wasm_target_installed(root) { break }
         eprintln!("wasm: installing {WASM_TARGET}");
-        run(root, "rustup", &["target", "add", WASM_TARGET])?;
-        if !wasm_target_installed(root) {
+        let installed = run(root, "rustup", &["target", "add", WASM_TARGET]);
+        if wasm_target_installed(root) { break }
+        if attempt == 2 {
+            installed?;
             bail!("`rustup target add {WASM_TARGET}` left the toolchain without the target");
         }
+        std::thread::sleep(Duration::from_millis(250 * (attempt + 1)));
     }
     std::env::set_var(REQUIRE_WASM, "1");
     eprintln!("wasm: {WASM_TARGET} provisioned; {REQUIRE_WASM}=1");
