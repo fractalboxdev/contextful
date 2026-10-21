@@ -207,9 +207,18 @@ impl RecordedCatalog {
         }
     }
 
+    /// Append `row` to the run record without its unpushed mark: the mark lives in the
+    /// execution database alone, so no push carries it into the bucket (`store.drain.mark`).
     fn record(&self, row: &RunRow) -> std::result::Result<(), Failure> {
         let node = self.node()?;
         let at = self.inner.now()?;
+        let unmarked;
+        let row = if row.unpushed.is_some() {
+            unmarked = RunRow { unpushed: None, ..row.clone() };
+            &unmarked
+        } else {
+            row
+        };
         append(&self.store, &node, row, at).map(|_| ()).map_err(storage)
     }
 

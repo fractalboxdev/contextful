@@ -213,8 +213,10 @@ impl Catalog for Chunks {
         let run = row(&format!("windowed-{}", pipeline_id.unwrap_or("all")), RunStatus::Success, Phase::Commit, "2030-01-01T00:00:00Z");
         Ok(contextful_core::run::record::HistoryPage { window: window.clone(), runs: vec![run], truncated: true })
     }
-    fn update_run(&self, _: &str, _: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure> {
-        unimplemented!()
+    fn update_run(&self, run_id: &str, f: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure> {
+        let mut rows = self.2.lock().unwrap();
+        let Some(r) = rows.iter_mut().rev().find(|r| r.run_id == run_id) else { return Ok(None) };
+        Ok(Some(f(r).map(|()| r.clone())))
     }
 }
 
@@ -328,4 +330,19 @@ fn a_marking_catalog_marks_a_run_unpushed_at_its_open() {
     let plain = RecordedCatalog::new(inner.clone(), f.store.clone(), Box::new(|_| Ok(NodeId::parse("ingest-a").unwrap())));
     plain.put_run(&row("r2", RunStatus::Running, Phase::Plan, "2030-01-01T00:00:00Z")).unwrap();
     assert!(inner.2.lock().unwrap()[2].unpushed.is_none(), "an unmarking catalog marks nothing");
+}
+
+/// A marked run's move to its commit phase appends a run-record row without the mark the
+/// execution database holds, so no push carries a mark into the bucket.
+#[test]
+fn a_marked_runs_phase_move_records_its_row_unmarked() {
+    let f = Fixture::new();
+    let inner = Arc::new(Chunks::default());
+    let recorded = RecordedCatalog::new(inner.clone(), f.store.clone(), Box::new(|_| Ok(NodeId::parse("ingest-a").unwrap()))).marking_unpushed();
+    recorded.put_run(&row("r1", RunStatus::Running, Phase::Plan, "2030-01-01T00:00:00Z")).unwrap();
+    let moved = recorded.update_run("r1", &mut |r| { r.phase = Phase::Commit; Ok(()) }).unwrap().unwrap().unwrap();
+    assert!(moved.unpushed.is_some(), "the execution database keeps the mark");
+    let recorded_rows = history(&f.store, Bounds::default()).unwrap();
+    assert!(recorded_rows.iter().any(|r| r.phase == Phase::Commit), "the commit phase is recorded");
+    assert!(recorded_rows.iter().all(|r| r.unpushed.is_none()), "the run record stays unmarked: {recorded_rows:?}");
 }
