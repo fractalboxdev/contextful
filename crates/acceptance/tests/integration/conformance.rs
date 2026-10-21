@@ -452,15 +452,29 @@ fn the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution(
 fn consumer_scenarios_reject_cursor_skips_duplicate_identity_and_premature_acknowledgement() {
     let dir = tempfile::tempdir().unwrap();
     let binary = artifact(dir.path());
-    let actual = serde_json::to_string(binary.to_str().unwrap()).unwrap();
+    let actual = binary.to_string_lossy().replace('\'', "'\\''");
     for (scenario, mutation, diagnostic) in [
-        ("pagination-checkpoint", "if args[:2] == ['run', 'start']:\n    p = pathlib.Path('vendor.sh')\n    p.write_text(p.read_text().replace('\"cursor\":\"p2\"', '\"cursor\":\"done\"'))\n", "ConformanceCursorSkipOrDuplicateIdentity"),
-        ("public-identity-masking", "if args[:1] == ['query'] and '--json' in args:\n    result = subprocess.run([actual] + args, capture_output=True)\n    value = json.loads(result.stdout)\n    value['rows'][1][0] = value['rows'][0][0]\n    print(json.dumps(value))\n    sys.exit(result.returncode)\n", "ConformancePublicIdentityChanged"),
-        ("typed-export-acknowledgement", "if args[:2] == ['export', 'run']:\n    sys.exit(0)\n", "ConformanceAcknowledgementBeforeCommit"),
-        ("applied-scheduling", "if args[:2] == ['pipeline', 'serve'] and '--now' in args:\n    counter = pathlib.Path('cycle-counter')\n    n = int(counter.read_text()) if counter.exists() else 0\n    counter.write_text(str(n + 1))\n    args[args.index('--now') + 1] = '2030-01-01T%02d:00:00Z' % n\n", "ConformanceScheduleRepeatedWithinWindow"),
+        ("pagination-checkpoint", r#"if [ "$1 $2" = 'run start' ]; then
+    sed 's/"cursor":"p2"/"cursor":"done"/g' vendor.sh > vendor.sh.tmp
+    mv vendor.sh.tmp vendor.sh
+fi"#, "ConformanceCursorSkipOrDuplicateIdentity"),
+        ("public-identity-masking", r#"if [ "$1" = query ]; then
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    "$actual" "$@" > "$tmp" || exit $?
+    sed 's/public-0002/public-0001/g' "$tmp"
+    exit $?
+fi"#, "ConformancePublicIdentityChanged"),
+        ("typed-export-acknowledgement", "if [ \"$1 $2\" = 'export run' ]; then exit 0; fi", "ConformanceAcknowledgementBeforeCommit"),
+        ("applied-scheduling", r#"if [ "$1 $2" = 'pipeline serve' ]; then
+    n=$(cat cycle-counter 2>/dev/null || printf 0)
+    printf '%s' "$((n + 1))" > cycle-counter
+    stamp=$(printf '2030-01-01T%02d:00:00Z' "$n")
+    exec "$actual" "$1" "$2" "$3" "$4" "$5" "$6" "$stamp" "$8" "$9"
+fi"#, "ConformanceScheduleRepeatedWithinWindow"),
     ] {
         let wrapper = dir.path().join(scenario);
-        executable(&wrapper, &format!("#!/usr/bin/python3\nimport json, os, pathlib, subprocess, sys\nactual = {actual}\nargs = sys.argv[1:]\n{mutation}os.execv(actual, [actual] + args)\n"));
+        executable(&wrapper, &format!("#!/bin/sh\nactual='{actual}'\n{mutation}\nexec \"$actual\" \"$@\"\n"));
         let report = conformance::run(&Options { binary: wrapper, storage_profile: "local".into(), required: vec![scenario.into()], timeout_seconds: 40 }).unwrap();
         assert!(!report.passed(), "{scenario} accepted its planted defect");
         let result = report.scenarios.iter().find(|result| result.id == scenario).unwrap();
