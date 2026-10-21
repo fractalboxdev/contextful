@@ -82,6 +82,16 @@ test("source rows distinguish applied pending state, first failure and latest su
   assert.match(html, /guest_items/);
 });
 
+test("source rows show a retried fire's changed failure reason under the same identity", async () => {
+  const html = await renderAdmin("SourceList", { sources: [
+    { id: "inbox", connector: "receive", destinations: ["inbox_items"], version: 3, trigger: "receive", state: "failed",
+      first_run: { run_id: "receive-group", status: "failed", rows: 0, message: "Wait for the source rate limit." },
+      latest_run: { run_id: "receive-group", status: "failed", rows: 0, message: "Renew the source credential." } },
+  ] });
+  assert.match(html, /First run: Wait for the source rate limit/);
+  assert.match(html, /Latest run: Renew the source credential/);
+});
+
 function nodes(html: string): Map<string, string> {
   const found = new Map<string, string>();
   for (const part of html.split('<div class="node ').slice(1)) {

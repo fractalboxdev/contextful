@@ -121,7 +121,8 @@ export function SourceList({ sources }: { sources: IngestSource[] }) {
       <p className="mt-2 text-xs">{source.first_run ? `First run ${source.first_run.run_id}: ${source.first_run.status}, ${source.first_run.rows} rows` : "Waiting for the first run of this applied version. Applying a source does not start a run."}</p>
       {source.first_run?.message && <p className="mt-1 text-xs text-destructive">First run: {source.first_run.message}</p>}
       {latest && <p className="mt-1 text-xs">Latest run {latest.run_id}: {latest.status}, {latest.rows} rows</p>}
-      {latest?.message && latest.run_id !== source.first_run?.run_id && <p role="status" className="mt-1 text-xs text-destructive">Latest run: {latest.message}</p>}
+      {latest?.message && (latest.run_id !== source.first_run?.run_id || latest.message !== source.first_run?.message) &&
+        <p role="status" className="mt-1 text-xs text-destructive">Latest run: {latest.message}</p>}
     </li>;
   })}</ul>;
 }
