@@ -357,8 +357,10 @@ unsettled: Does an encrypted store seal its rows in the Postgres catalog, or kee
 
 ## bound-application
 
-Where the engine's contracts end, what an application owns, and the surfaces the commercial layer reaches.
+Where the engine's contracts end, what an application owns, and the surfaces a consumer reaches.
 
+- `domain-neutral` — The engine processes declared data, schemas, policies, time bounds and capabilities; domain meanings, business rules and sector-specific metrics belong to consumer configuration, connectors, components or explicitly selected evaluation profiles.
+  *A-topology*
 - `restated-case` — A case with neither a generated artifact nor a callable route stays with the application, which restates the engine rule at its site under {{assurance.structure-tree.mirror-exemption}}.
   *because a restatement naming its clause id surfaces when the rule changes, and an adapter for one case costs more than it guards*
 

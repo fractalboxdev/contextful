@@ -32,8 +32,8 @@ flowchart LR
     AUD["run audit"]
   end
   MINT(["lease endpoint"])
-  subgraph CUST["customer"]
-    MGR[("customer-operated manager")]
+  subgraph CUST["deployment"]
+    MGR[("operator-managed secret store")]
   end
   VEND(["vendor API"])
   DECL -->|"secret://name"| RES
@@ -80,7 +80,7 @@ The credential plane, the `secret://` scheme and the template grammar.
 The provider port, the chain and its precedence, hydration timing, the redacting wrapper and the postures.
 
 - `provider-port` — One port answers a reference with material. Every backend is an adapter behind it, and `CONTEXTFUL_SECRETS_BACKEND` selects the adapters the chain assembles.
-- `provider-chain` — The chain runs: lease provider, process environment, operating-system keychain, customer-operated manager, then a tunnel into the customer trust zone.
+- `provider-chain` — The chain runs: lease provider, process environment, operating-system keychain, operator-managed secret store, then a tunnel into the deployment trust zone.
   *A-connector*
 - `first-hit-wins` — Hydration stops at the earliest adapter answering the name, and later adapters are not consulted for that reference during the run.
 - `shadowed-name` — At first hydration, a name answered by the serving adapter and by any adapter behind it raises `SecretNameShadowed`, naming the logical name and both adapters.
@@ -109,8 +109,8 @@ flowchart LR
   REF["secret reference"] -->|"lookup"| L["lease provider"]
   L -->|"miss or undeclared name"| E["process environment"]
   E -->|"miss or template not opted"| K["operating-system keychain"]
-  K -->|"miss"| M[("customer-operated manager")]
-  M -->|"miss"| T["customer trust-zone tunnel"]
+  K -->|"miss"| M[("operator-managed secret store")]
+  M -->|"miss"| T["deployment trust-zone tunnel"]
   T -->|"miss everywhere"| U["unresolved reference"]
   L & E & K & M & T -->|"first hit, first hydration"| SH{"also answered behind adapter?"}
   SH -->|"yes: SecretNameShadowed"| SHADOW["shadowed name"]
@@ -158,7 +158,7 @@ The declaration-scoped lease provider at the head of the chain: endpoint, expiry
   *A-connector*
 - `bootstrap-declared-leased` — Listing the bootstrap name among the leased scopes raises `SecretBootstrapLeased` at startup.
   *A-connector*
-- `bootstrap-backend` — `CONTEXTFUL_LEASE_BOOTSTRAP_BACKEND` composes a customer-operated manager behind the lease provider to hold the mint reference.
+- `bootstrap-backend` — `CONTEXTFUL_LEASE_BOOTSTRAP_BACKEND` composes an operator-managed secret store behind the lease provider to hold the mint reference.
 - `mint-transport` — The mint client reaches its endpoint over TLS or loopback and ignores system proxy configuration.
   *A-connector*
 - `redirect` — A `3xx` from the mint endpoint raises `SecretLeaseRedirect`; the mint credential is not replayed at the target.
@@ -248,7 +248,7 @@ The division of labor on credential turnover and the rotation mechanisms.
 - `division-of-labor` — A credential store contributes versioned storage and a trigger. The host drives the OAuth loop from the connector's auth policy and writes the token back as a blind versioned put.
   *A-connector*
 - `expiry-hint` — The host may store an opaque `expires_at` hint beside the ciphertext for cache invalidation.
-- `static-key` — A static key in a customer manager turns over with no engine step: a run hydrates the current version at its next cache miss.
+- `static-key` — A static key in an operator-managed secret store turns over with no engine step: a run hydrates the current version at its next cache miss.
   *because the 300 s cache bound already caps staleness, and a per-manager change feed adds a listener and failure domain to every adapter*
 - `oauth-credential` — An OAuth credential refreshes at the point {{connector.lease.retirement-margin}} computes from its declared expiry, puts the new version to the adapter that answered its name, conditioned on the hydrated version, then clears that name's cache entry.
   *A-connector*
@@ -325,7 +325,7 @@ A declaration binding one credential through a template:
 name = "http"
 
 [pipeline.source.config]
-endpoint = "https://api.vendor.example/v1/orders"   # one exact host: a credential attaches here
+endpoint = "https://api.vendor.example/v1/records"   # one exact host: a credential attaches here
 format   = "json"
 
 [pipeline.source.config.headers]
@@ -337,9 +337,9 @@ An operator record in `contextful.toml`, holding no value and no ciphertext:
 ```toml
 [secret.vendor-token]
 description = "Vendor API key"
-account     = "acct-4471 (orders tenancy)"
-grants      = ["orders.read", "orders.export"]
-surfaces    = [{ surface = "orders pipeline", binding = "Authorization header" }]
+account     = "acct-4471 (records namespace)"
+grants      = ["records.read", "records.export"]
+surfaces    = [{ surface = "records pipeline", binding = "Authorization header" }]
 rotate      = "console.vendor.example/settings/api-keys"
 expires     = "never"
 ```

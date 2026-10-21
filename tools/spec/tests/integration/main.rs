@@ -26,16 +26,15 @@ pub struct Scratch {
 }
 
 impl Scratch {
-    /// A scratch root holding a copy of this repository's `spec/` with no pins, so
+    /// A scratch root holding the corpus and its benchmark ledger with no pins, so
     /// each suite states every pin it depends on.
     pub fn copy() -> Scratch {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_path_buf();
-        let live = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec");
-        copy_dir(&live, &root.join("spec"));
+        let live = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        copy_dir(&live.join("spec"), &root.join("spec"));
         let s = Scratch { _dir: dir, root };
-        let ledger = live.join("../evals/ledger.toml");
-        s.write("evals/ledger.toml", &std::fs::read_to_string(ledger).unwrap());
+        s.write("evals/ledger.toml", &std::fs::read_to_string(live.join("evals/ledger.toml")).unwrap());
         s.write("spec/pins.toml", "[pin]\n\n[floor]\n");
         s
     }

@@ -407,14 +407,14 @@ An external step, and the edges it adds to the published workflow:
 ```toml
 [[external]]
 name    = "review"
-label   = "Analyst review"
+label   = "Operator review"
 inputs  = ["table:normalize_records"]
 outputs = ["pipeline:enrich"]
 ```
 
 ```json
 {
-  "externals": [{ "name": "review", "label": "Analyst review", "inputs": ["table:normalize_records"], "outputs": ["pipeline:enrich"] }],
+  "externals": [{ "name": "review", "label": "Operator review", "inputs": ["table:normalize_records"], "outputs": ["pipeline:enrich"] }],
   "edges": [
     { "from": "table:normalize_records", "to": "external:review", "via": "input" },
     { "from": "external:review", "to": "pipeline:enrich", "via": "output" }
@@ -426,10 +426,10 @@ A tool return, split three ways:
 
 ```json
 {
-  "grounding": "3 filings landed on 2 Mar, the newest from Northwind at 09:14.",
+  "grounding": "3 records landed on 2 Mar, the newest from Northwind at 09:14.",
   "view": {
     "component": "table.v1",
-    "props": { "columns": ["Filed on", "Publisher"], "rows": [["2 Mar", "Northwind"]] }
+    "props": { "columns": ["Published on", "Publisher"], "rows": [["2 Mar", "Northwind"]] }
   },
   "internals": { "tool": "context.query", "rows": 3, "elapsed_ms": 41, "redactions": 0 }
 }
@@ -444,8 +444,8 @@ x         = "observed_on"
 measure   = "midpoint"
 low       = "band_low"
 high      = "band_high"
-series    = "instrument"
-unit      = "index pts"
+series    = "resource"
+unit      = "units"
 ```
 
 The catch-up payload one greeting renders from:
@@ -459,11 +459,11 @@ The catch-up payload one greeting renders from:
     {
       "subject": "northwind",
       "display": "Northwind",
-      "learning": "Northwind's filings lead the sector by about a week.",
+      "learning": "Northwind has new records this week.",
       "tier": "derived",
       "articles": [
-        { "title": "Northwind files early again", "source": "example-press.com",
-          "url": "https://example-press.com/northwind-files-early", "published_on": "<day>" }
+        { "title": "Northwind publishes new records", "source": "example-press.com",
+          "url": "https://example-press.com/northwind-records", "published_on": "<day>" }
       ],
       "followUp": "What changed for Northwind this week?"
     }

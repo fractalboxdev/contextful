@@ -40,15 +40,15 @@ The two clocks a row carries, the parameter bounding each, and what a bounded re
 
 ## available-time
 
-Availability time: the declared instant each row's value became public, how landing resolves it, and the `available_as_of` bound a read compares against it.
+Availability time: the declared instant each row's value became available from its source, how landing resolves it, and the `available_as_of` bound a read compares against it.
 
-- `declaration` — `[pipeline.tables.available_time]` declares `column`, the `timestamptz` instant a row's value became public, and an optional `zone`, UTC by default; landing writes the instant resolved from the source, never an engine stamp, and an availability bound compares that column alone.
+- `declaration` — `[pipeline.tables.available_time]` declares `column`, the `timestamptz` instant a value became available from its source, and optional `zone`, UTC by default; landing preserves that instant, never an engine stamp, and availability bounds compare that column alone.
   *A-store*
 - `lag-fill` — A declared `available_time.lag` fills a null column at landing with valid-time `to`, else `from`, plus the duration {{store.available-time.lag-class}} assigns the row, and the engine injects `_available_imputed` true on that row.
-  *because a filing becomes public a filer-class deadline after period end, 40 to 90 days for a 10-Q or 10-K*
+  *because a source can publish different record classes after different declared delays*
 - `lag-class` — `available_time.lag = { class_column = "<column>", classes = { <class> = "<n>d" } }` maps each row's class to a duration; a row whose class names no entry resolves no instant and refuses as {{store.available-time.null}}.
 - `date-end` — A date-typed availability value resolves at landing to the start of the following day in the declared `zone`.
-  *because a date-only filing or headline can land after the close*
+  *because a date alone gives no publication time within that day*
 - `live-since` — `available_time.live_since` names the instant a source began publishing live; the engine injects `_available_reconstructed` true on each row available before it.
   *because a vendor's point-in-time history before its live date was rebuilt after the fact*
 - `available-as-of` — `available_as_of` wraps the inner source with `<column> <= available_as_of` over the declared column, conjoined with {{store.bound-time.as-of}} and {{store.bound-time.valid-as-of}} where given.
@@ -60,7 +60,7 @@ Availability time: the declared instant each row's value became public, how land
 - `undeclared` — An `available_as_of` read naming a table that declares no `available_time` raises `StoreAvailableTimeUndeclared`, naming the table.
   *because falling back to `_ingested_at` hides a backfill and falling back to nothing leaks it*
 - `null` — Landing a row whose resolved availability instant is null raises `StoreAvailableTimeNull`, naming the table and the run.
-  *because a row without an availability instant is visible to every bound or to none, and either misstates what was public*
+  *because a row without an availability instant is visible to every bound or to none, and either misstates what was available from the source*
 - `vintage-rows` — A keyed table declaring `available_time` is a vintage table: it keeps one row per primary key, valid-time `from` where declared, and availability instant, so a restatement lands beside the value it revises.
   *A-store*
 - `vintage-resolution` — A read of a vintage table returns, per primary key and valid-time `from`, the vintage with the latest availability instant at or before `available_as_of`, or the latest of all when the read carries no availability bound.
@@ -84,16 +84,16 @@ Availability time: the declared instant each row's value became public, how land
 - `vintage-fold-order` — A fold over a vintage table declaring `valid_time` and no `cluster_by` sorts its snapshot by valid-time `from`, then primary key, instead of by key alone, so footer bounds serve {{store.available-time.vintage-scope}} after the fold.
   *A-store*
 - `adjustment-factors` — `available_time.adjustment = { table = "<name>", factor_column = "<column>", adjust_columns = [...] }` keeps values raw; an `available_as_of` read multiplies each listed numeric column by the product of factor vintages available by the bound.
-  *because a back-adjusted 2014 price encodes splits announced after 2014*
+  *because applying a correction published later exposes information unavailable at an earlier read bound*
 - `adjustment-join` — A factor row applies to each row agreeing on every factor-table `primary_key` column whose valid-time `from` precedes the factor row's valid-time `from`.
   *A-store*
 
 #### Scenarios
 
-- `store.available-time.available-as-of`: WHEN a 2026 backfill lands 2014Q1 GDP with availability date `2014-04-30`, THEN `available_as_of` `2014-05-01` returns the row and `available_as_of` `2014-04-29` returns none.
-- `store.available-time.vintage-resolution`: WHEN 2014Q1 GDP lands at 17149.6 available `2014-04-30`, 17101.3 available `2014-05-29` and 17016.0 available `2014-06-25`, THEN `available_as_of` `2014-06-01` returns 17101.3 and an unbounded read returns 17016.0, before and after a fold.
-- `store.available-time.vintage-first`: WHEN the same three 2014Q1 GDP vintages have landed, THEN a read carrying `vintage = "first"` returns 17149.6.
-- `store.available-time.vintage-hash`: WHEN a re-pull lands 2014Q1 GDP at 17016.0 with an unchanged content hash, THEN the table still holds three 2014Q1 vintages.
-- `store.available-time.vintage-scope`: WHEN day 101 of 100 symbols lands over 100 stored daily runs, THEN its comparison decodes no stored row; WHEN day 50 is restated, THEN it decodes only day 50's 100 rows.
+- `store.available-time.available-as-of`: WHEN a 2026 backfill lands a first-quarter measurement with availability date `2014-04-30`, THEN `available_as_of` `2014-05-01` returns the row and `available_as_of` `2014-04-29` returns none.
+- `store.available-time.vintage-resolution`: WHEN a first-quarter measurement lands at 17149.6 available `2014-04-30`, 17101.3 available `2014-05-29` and 17016.0 available `2014-06-25`, THEN `available_as_of` `2014-06-01` returns 17101.3 and an unbounded read returns 17016.0, before and after a fold.
+- `store.available-time.vintage-first`: WHEN those three measurement vintages have landed, THEN a read carrying `vintage = "first"` returns 17149.6.
+- `store.available-time.vintage-hash`: WHEN a re-pull lands the measurement at 17016.0 with an unchanged content hash, THEN the table still holds three measurement vintages.
+- `store.available-time.vintage-scope`: WHEN day 101 of 100 entities lands over 100 stored daily runs, THEN its comparison decodes no stored row; WHEN day 50 is restated, THEN it decodes only day 50's 100 rows.
 
 unsettled: Does `vintage = "first"` count a same-day correction as a revision of the initial release? owner: store affects: store.available-time

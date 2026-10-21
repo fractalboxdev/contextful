@@ -444,14 +444,14 @@ prompt  no            -        -
 completion no         -        -
 ```
 
-A column policy and a zone declaration:
+A column policy using optional health-data classes (`mrn`, medical record number, and `phi`, protected health information), and a zone declaration:
 
 ```toml
 [pipeline.tables.policy.columns]
-patient_mrn   = { class = "mrn",   strategy = "hash", combine = "truncate:4" }
+record_number   = { class = "mrn",   strategy = "hash", combine = "truncate:4" }
 contact_email = { class = "email", strategy = "tokenize", combine = "truncate:4" }
-case_notes    = { class = "phi",   summarize_only = true }
-salary_band   = { strategy = "bucket:10000" }
+restricted_text    = { class = "phi",   summarize_only = true }
+value_band   = { strategy = "bucket:10000" }
 internal_id   = { strategy = "hash" }
 
 [pipeline.tables.policy.zone]
@@ -469,7 +469,7 @@ predicate = "region = subject.region AND classification <= subject.clearance"
 replicate = false
 
 [[principal]]
-id   = "analyst-loop"
+id   = "reader-loop"
 zone = { allow = ["local:device"] }
 
 [project.zone]
@@ -513,13 +513,13 @@ The serve-time outcome and the response envelope:
 
 ```json
 {
-  "row": { "drop": false, "masked_columns": ["case_notes"] },
+  "row": { "drop": false, "masked_columns": ["restricted_text"] },
   "envelope": {
     "rows_removed_by_predicate": 41,
     "rows_removed_by_zone": 7,
-    "columns_masked_by_policy": ["patient_mrn", "contact_email"],
-    "columns_masked_by_zone": ["case_notes"],
-    "asserted_zone": "on-prem:ward-3",
+    "columns_masked_by_policy": ["record_number", "contact_email"],
+    "columns_masked_by_zone": ["restricted_text"],
+    "asserted_zone": "on-prem:team-a",
     "incognito": true
   }
 }
@@ -528,6 +528,6 @@ The serve-time outcome and the response envelope:
 The two refusals on the wire:
 
 ```json
-{ "error": { "code": "scope_denied", "http": 403, "table": "patient_visits", "granted_scope": "ward-3", "requested_scope": "ward-7" } }
-{ "error": { "code": "unknown_relation", "http": 404, "relation": "payroll" } }
+{ "error": { "code": "scope_denied", "http": 403, "table": "records", "granted_scope": "team-a", "requested_scope": "team-b" } }
+{ "error": { "code": "unknown_relation", "http": 404, "relation": "restricted_records" } }
 ```

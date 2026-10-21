@@ -201,6 +201,26 @@ automation, test placement, and the gate's resource budget.
 
 ## Writing
 
+### Domain neutrality
+
+Contextful's application boundary is specified by
+[`topology.bound-application.domain-neutral`](./spec/01-topology.md#bound-application).
+Use domain-neutral roles and examples: caller, operator, subject, consumer, source,
+record, resource and observation. Introduce each role where its responsibility matters.
+
+Keep industry workflows, units, business rules and scoring conventions in explicitly
+selected consumer configuration, connectors, components or evaluation profiles. A
+financial evaluation profile can define prices, returns or Sharpe ratios; general
+evaluation assumes none of them. Name the profile wherever a clause depends on it.
+
+Preserve exact provider, protocol and supported data-class names at their adapter or
+classification boundary. Explain sector-specific names there; avoid treating a buyer,
+trader, patient or analyst as the engine's default user. A worked example demonstrates
+the generic contract with consumer-declared fields rather than implying a built-in
+industry schema.
+
+### Voice
+
 Affirmative present tense — the system does the thing, now, as a standing fact.
 Every sentence carries a number, a name, a constraint or a refusal. No narration
 of how a change was produced, in any file, at any time.

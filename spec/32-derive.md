@@ -94,7 +94,7 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
 - `dry-run` — `pipeline run --dry-run` on a derive pipeline prints its eligible, already-derived and outstanding unit counts from one selection, calling no engine and landing no row.
   *A-run*
 - `available-select` — A derive run carrying `available_as_of` selects only parent rows {{store.available-time.available-as-of}} admits at that bound, and each derived row lands its parent row's availability instant.
-  *because a passage derived from a later filing otherwise answers an earlier horizon*
+  *because content derived from a later source record otherwise answers an earlier horizon*
 
 unsettled: Does a joined row's content enter the unit's {{run.emit.derivation-key}}, so a joined row landing after its unit settles derives it again (issue 95)? owner: derive affects: run.select
 unsettled: Does a host task joining another derive pipeline's output table run after that pipeline, as {{run.select.derive-order}} orders a driving table's reader (issue 95)? owner: derive affects: run.select

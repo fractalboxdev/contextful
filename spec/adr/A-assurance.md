@@ -36,7 +36,7 @@ Consequences: a missing or mismatched native receipt records a failed diagnostic
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Inventory plus transitive assumption audit, qualified claims, zero-dependency package *(chosen)* | — | Every lemma is hand-rolled; the inventory is maintained by hand; the claim is narrower than a buyer prefers. |
+| Inventory plus transitive assumption audit, qualified claims, zero-dependency package *(chosen)* | — | Every lemma is hand-rolled; the inventory is maintained by hand; the claim covers named decisions under stated assumptions. |
 | A source pattern over package files | Catching a proof of `False` | A parenthesized hole or a respelled tactic passes. |
 | Build and read the exit status | Catching a proof of `False` | A hole elaborates as a warning and exits zero. |
 | An inventory generated from the declarations | Independence | A weakened statement carries its inventory with it. |
@@ -53,7 +53,7 @@ Revisit: a mathematics library elaborates inside the per-change budget.
 | --- | --- | --- |
 | Labeled corpora, two-guard golden isolation, store redaction, in-perimeter traces *(chosen)* | — | Labeling precedes the first number; the golden set lives outside every ingestion root; a collector is operated per environment. |
 | Bypass enforcement for evaluation runs | Coverage | An over-restrictive policy never surfaces as a recall regression. |
-| Commit mined queries verbatim | Data movement | Customer text replicates to every clone of the tree. |
+| Commit mined queries verbatim | Data movement | Source text replicates to every clone of the tree. |
 | A redactor written for goldens | One implementation of the rules | A second redactor diverges toward preserving more text. |
 | Hosted trace collection for every run | Content | Primary data leaves the perimeter, beyond the store's deletion. |
 
@@ -406,17 +406,17 @@ Revisit: a copy under another name escapes to production.
 
 Context: a model can remember outcomes its weights saw, and recency alone lifts accuracy near a cutoff. Criteria: a reported leak survives a model that cannot have seen the outcome; one figure answers one question.
 
-Decision: `assurance.backtest.cutoff-slice` states leakage against a declared reference, a cutoff discontinuity or a clean control model. `assurance.forecast.tracks-separate` keeps backtest, prospective, tool-free and tool-using scores apart. The platform owns fill timing (`assurance.backtest.fill-instant`); costs, slippage and sizing live in a declared execution component (`assurance.backtest.execution-component`). Decoding corrections and log-probability regressions belong to the consumer, reading `connector.infer.logprobs` and the run record. Prompt disclaimers and anonymization are no control.
+Decision: `assurance.backtest.cutoff-slice` states leakage against a declared reference, a cutoff discontinuity or a clean control model. `assurance.forecast.tracks-separate` keeps historical, prospective, tool-free and tool-using scores apart. Each report stamps execution metadata (`assurance.backtest.execution-component`). Consumer-selected financial profiles own return-series scoring, price fills and execution parameters (`assurance.backtest.trial-ledger`, `assurance.backtest.fill-instant`); prediction-market profiles supply probability-price baselines (`assurance.forecast.market-context`). Decoding corrections belong to the consumer, reading `connector.infer.logprobs` and the run record.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Reference-based estimate, separate tracks, platform fill, component costs *(chosen)* | — | Every report declares a reference and an execution component; small tracks report wide intervals. |
+| Reference-based estimate, separate tracks, declared execution metadata, optional domain profiles *(chosen)* | — | Every report declares a reference and an execution component; a consumer selects sector-specific scoring; small tracks report wide intervals. |
 | Bare pre/post-cutoff gap | Survives a clean model | Recency reads as leakage near every cutoff. |
 | One pooled score across tracks | One figure, one question | A tool-using backtest lifts a prospective forecaster's rank. |
 | Costs inside the platform | One home per capability | Every venue's cost model becomes an engine release. |
 | Platform decoding corrections | Consumer choice | One correction fixed for every model and question. |
 
-Consequences: a report without a reference or an execution component refuses; a consumer correcting decoding reads the landed log-probabilities.
+Consequences: a report without a reference or an execution component refuses; a consumer correcting decoding reads the landed log-probabilities. Financial helper functions retain their public names and apply only to their selected profile.
 
 ## The case's judge scores leakage against a pre-horizon reference
 

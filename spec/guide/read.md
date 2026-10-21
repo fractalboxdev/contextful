@@ -37,7 +37,7 @@ sequenceDiagram
   end
 ```
 
-Ranked reads use `corpus.retrieve` ({{read.retrieve.ranked-call}}) over a prefix and table list ({{read.retrieve.table-list}}): content tokens ({{read.retrieve.content-tokens}}), a per-table recency window ({{read.retrieve.candidate-window}}) that sidecars widen ({{read.retrieve.sidecar-generates-candidates}}), a full-text probe ({{read.retrieve.fulltext-probe}}) and a relevance floor ({{read.retrieve.relevance-floor}}). Ranking fuses cosine with BM25 ({{read.rank.fusion}}); a question's timeframe is a tier, not a filter ({{read.rank.question-window-is-a-tier}}). A missing lexical backend changes the order, never the answer ({{read.rank.degradation-not-error}}).
+Ranked reads use `corpus.retrieve` ({{read.retrieve.ranked-call}}) over a prefix and table list ({{read.retrieve.table-list}}): content tokens ({{read.retrieve.content-tokens}}), a per-table recency window ({{read.retrieve.candidate-window}}) that sidecars widen ({{read.retrieve.sidecar-generates-candidates}}), a full-text probe ({{read.retrieve.fulltext-probe}}) and a relevance floor ({{read.retrieve.relevance-floor}}). Ranking fuses cosine with BM25 ({{read.rank.fusion}}); a question's timeframe is a tier, not a filter ({{read.rank.question-window-is-a-tier}}). A missing lexical backend uses token scoring with recency breaking ties ({{read.rank.degradation-not-error}}).
 
 ```mermaid
 sequenceDiagram
@@ -125,14 +125,14 @@ sequenceDiagram
 
 ## Worked example
 
-An agent with a capability token wants one vendor's current renewal terms.
+An agent with a capability token wants one resource's current status.
 
 - It calls `context.describe` and learns row counts, declared indexes and the published row ceiling ({{read.register.describe-payload}}), which the engine applies exactly as published ({{read.register.advertised-is-enforced}}).
-- It sends SQL that joins `contracts` to a `read_parquet` call, and the guard refuses the table function ({{read.guard.table-function}}). It retries with a join to `payroll`, which it holds no grant on; the refusal echoes only what it asked for ({{read.guard.unregistered-relation}}).
-- It switches to `corpus.retrieve` with the query "vendor renewal terms" and a filter on `vendor_id`. A table lacking `vendor_id` drops its arm instead of running unfiltered ({{read.retrieve.unsatisfiable-arm-drops}}). The `contracts` vector sidecar sits under its size cap ({{read.retrieve.sidecar-size-cap}}), so the probe adds candidates, each re-joined through enforcement ({{authority.compose.vector-arm}}).
+- It sends SQL that joins `documents` to a `read_parquet` call, and the guard refuses the table function ({{read.guard.table-function}}). It retries with a join to `restricted_records`, which it holds no grant on; the refusal echoes only what it asked for ({{read.guard.unregistered-relation}}).
+- It switches to `corpus.retrieve` with the query "resource status" and a filter on `resource_id`. A table lacking `resource_id` drops its arm instead of running unfiltered ({{read.retrieve.unsatisfiable-arm-drops}}). The `documents` vector sidecar sits under its size cap ({{read.retrieve.sidecar-size-cap}}), so the probe adds candidates, each re-joined through enforcement ({{authority.compose.vector-arm}}).
 - Rows keep one copy per table and row key ({{read.retrieve.row-key-dedup}}), sort in-window first, and return with the `contextful.retrieval` block ({{read.rank.retrieval-block}}). Counts reflect delivered rows ({{read.rank.delivered-counts}}). Rows carry integer scores; the lexical engine's float score stays inside ({{read.rank.internal-score-stays-internal}}).
-- To report that no contract mentions a penalty clause, the agent counts rows, never trusting a low top score ({{read.respond.coverage-is-a-count}}).
-- It asks memory what the workspace concluded about the vendor. One fact cites a row in a table masked for this caller, so recall suppresses that fact and still answers with the rest ({{read.recall.evidence-unresolved}}).
+- To report that no document mentions a status change, the agent counts rows, never trusting a low top score ({{read.respond.coverage-is-a-count}}).
+- It asks memory what the workspace concluded about the resource. One fact cites a row in a table masked for this caller, so recall suppresses that fact and still answers with the rest ({{read.recall.evidence-unresolved}}).
 
 ## Where to look
 

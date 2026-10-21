@@ -13,8 +13,8 @@ fn available(s: &str) -> Bounds {
     Bounds { available_as_of: Some(Bound::parse(s).unwrap()), ..Bounds::default() }
 }
 
-/// `[pipeline.tables.available_time]` declares `column`, the `timestamptz` instant a row's value became public, and an optional `zone`, UTC by default; landing writes the instant resolved from the source, never an engine stamp, and an availability bound compares that column alone.
-// spec: store.available-time.declaration@4bf8f9e1
+/// `[pipeline.tables.available_time]` declares `column`, the `timestamptz` instant a value became available from its source, and optional `zone`, UTC by default; landing preserves that instant, never an engine stamp, and availability bounds compare that column alone.
+// spec: store.available-time.declaration@05062acd
 #[test]
 fn an_available_time_block_declares_its_column_and_zone() {
     let t = TableDecl::parse_pipeline(EARNINGS).unwrap().remove(0);

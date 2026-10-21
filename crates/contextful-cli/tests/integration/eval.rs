@@ -1093,8 +1093,8 @@ fn the_runner_plants_a_row_past_each_horizon_and_reads_without_it() {
     assert!(!calls.contains("__planted__"), "no planted row reached the trajectory");
 }
 
-/// A universe case plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.
-// spec: assurance.backtest.planted-delisting@8fd87406
+/// A financial universe profile plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.
+// spec: assurance.backtest.planted-delisting@0df81a8b
 #[test]
 fn a_universe_case_fails_unless_its_trajectory_holds_the_delisting_return() {
     let issuer = Issuer::new();

@@ -172,8 +172,8 @@ fn a_backtest_run_block_stamps_every_trial_dimension() {
     assert_ne!(serde_json::from_value::<BacktestStamp>(changed).unwrap(), stamp, "another seed is another trial");
 }
 
-/// Every run against one case set lands its return series as one trial row, and the report computes the deflated Sharpe ratio from trial count, Sharpe variance, series length, skew and kurtosis.
-// spec: assurance.backtest.trial-ledger@b5669ec1
+/// A financial return-series profile records each run against its case set as a trial row and computes the deflated Sharpe ratio from trial count, Sharpe variance, series length, skew and kurtosis.
+// spec: assurance.backtest.trial-ledger@f321bc53
 #[test]
 fn the_ledger_deflates_the_best_sharpe_by_every_trial() {
     assert!((normal_quantile(0.975) - 1.959_964).abs() < 1e-5);
@@ -210,8 +210,8 @@ fn a_configurations_repeats_are_one_trial_with_a_spread() {
     assert!(lo < trial.sharpe() && trial.sharpe() < hi, "{lo} {} {hi}", trial.sharpe());
 }
 
-/// A case names its universe as a membership table declaring valid time and `available_time`; a case naming literal symbols reports under a separate `fixed-universe` slice.
-// spec: assurance.backtest.universe-table@09d1bcc4
+/// A case evaluating changing membership names a membership table declaring valid time and `available_time`; a case naming literal identifiers reports under a separate `fixed-universe` slice.
+// spec: assurance.backtest.universe-table@cfe72adc
 #[test]
 fn a_literal_universe_reports_apart_and_a_table_declares_both_clocks() {
     let tables = TableDecl::parse_pipeline(
@@ -223,8 +223,8 @@ fn a_literal_universe_reports_apart_and_a_table_declares_both_clocks() {
     assert_eq!(Universe::Symbols(vec!["AAPL".into(), "MSFT".into()]).slice(&tables), Ok(Some(FIXED_UNIVERSE)));
 }
 
-/// The report fills each decision at the first price available strictly after the decision's recorded instant.
-// spec: assurance.backtest.fill-instant@2f847e04
+/// A financial execution profile fills each decision at the first price available strictly after the decision's recorded instant.
+// spec: assurance.backtest.fill-instant@ca63f365
 #[test]
 fn a_decision_fills_at_the_first_price_strictly_after_it() {
     let prices = [
@@ -237,8 +237,8 @@ fn a_decision_fills_at_the_first_price_strictly_after_it() {
     assert!(fill(&prices, at("2015-01-07T00:00:00Z")).is_none());
 }
 
-/// Costs, slippage, sizing and liquidity caps belong to a declared execution component whose digest and parameters the report stamps; a report without one raises `EvalExecutionUndeclared`.
-// spec: assurance.backtest.execution-component@ee7367db
+/// A backtest report stamps its declared execution component's digest and parameters under {{topology.bound-application.domain-neutral}}; a report without one raises `EvalExecutionUndeclared`.
+// spec: assurance.backtest.execution-component@38f1770c
 #[test]
 fn a_report_stamps_its_execution_component_or_refuses() {
     let component = ExecutionComponent { digest: "cd".repeat(32), parameters: [("cost_bps".to_string(), json!(5)), ("adv_cap".to_string(), json!(0.1))].into() };
