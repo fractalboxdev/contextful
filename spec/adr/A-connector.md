@@ -247,4 +247,4 @@ Decision: `connector.source.drive-file-selection` admits one explicit file set. 
 | Treat a picked folder as access to descendants | Proven access | A selected folder may not grant its children's bytes under `drive.file`. |
 | One global refresh lock | Distributed correctness | Another process can still rotate the same credential. |
 
-Consequences: a selected id inaccessible to its bound credential refuses before rows or cursor advance. A lease endpoint can own refresh-token custody while the source mints access tokens.
+Consequences: an inaccessible id refuses first capture; a later loss of access withdraws its rows. A lease endpoint can own refresh-token custody while the source mints access tokens.

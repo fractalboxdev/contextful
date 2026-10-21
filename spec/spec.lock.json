@@ -19172,12 +19172,26 @@
       "operation": "source",
       "subject": "drive-file-access",
       "kind": "refusal",
-      "statement": "The source validates every selected file through the bound credential before capture; an inaccessible or non-file id raises `ConnectorDriveFileRejected` without landing rows or advancing position.",
+      "statement": "Before first capture, the source validates every selected file through the bound credential; an inaccessible or non-file id raises `ConnectorDriveFileRejected` without landing rows or advancing position.",
       "why": "because an inaccessible picker id cannot count as a complete selection",
       "file": "spec/40-connector.md",
       "line": 674,
       "scenarios": [
         "WHEN a picked id is inaccessible to the bound credential, THEN `ConnectorDriveFileRejected` commits neither rows nor position."
+      ]
+    },
+    {
+      "id": "connector.source.drive-file-revoked",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-file-revoked",
+      "kind": "behavior",
+      "statement": "A captured file that becomes inaccessible under a valid credential lands tombstones for its file and pages; an authentication or transient failure advances no position.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 676,
+      "scenarios": [
+        "WHEN a captured file loses access under a valid credential, THEN its file and pages receive tombstones before the selection position advances."
       ]
     },
     {
@@ -19189,7 +19203,7 @@
       "statement": "The position binds sorted `file_ids` and mode; changing either rereads retained files, and a complete read tombstones deselected files and their pages.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 676,
+      "line": 677,
       "scenarios": [
         "WHEN a file id leaves a complete selection, THEN its file row and prior pages land tombstones."
       ]
@@ -19203,7 +19217,7 @@
       "statement": "A connection-bound run stamps its Drive `files` and `pages` rows and tombstones with the admitted `tenant` and `principal`; the source cannot supply either value.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 678,
+      "line": 679,
       "scenarios": [
         "WHEN two tenants select the same file id, THEN each landed row carries only its admitted tenant and principal."
       ]
@@ -19217,7 +19231,7 @@
       "statement": "A connection-bound Drive row and position key include connection identity beside `file_id`, so two connections selecting one file cannot overwrite each other.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 679
+      "line": 680
     },
     {
       "id": "connector.reference.credential-plane",
