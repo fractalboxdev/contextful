@@ -148,7 +148,15 @@ fn served_http_keeps_read_admission_and_limits_control_to_the_data_plane() {
         answer
     };
     assert!(request("GET", "/health").starts_with("HTTP/1.1 200"));
-    let refused = request("POST", "/mcp");
+    // Binding precedes snapshot hydration; the read face answers 503 until it is local.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let refused = loop {
+        let answer = request("POST", "/mcp");
+        if !answer.starts_with("HTTP/1.1 503") || std::time::Instant::now() >= deadline {
+            break answer;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
     assert!(refused.starts_with("HTTP/1.1 401"), "{refused}");
     assert!(refused.to_ascii_lowercase().contains("www-authenticate:"), "{refused}");
     for (method, path) in [("GET", "/control/workflows"), ("POST", "/control/apply")] {
