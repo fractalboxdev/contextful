@@ -235,3 +235,53 @@ Acceptance: `contextful_acceptance::m17::m17_delegated`
 Reach: A backfill chunk's provider step crashed after half its pages resumes under an in-tree test filler and lands parts byte-identical to the engine runner's.
 
 Acceptance: `contextful_acceptance::m18::m18_orchestrate`
+
+## 19 — Drive connections
+
+| Operations | Intent |
+| --- | --- |
+| `surface.connection` | Tenant-bound connection creation, pause, deletion and shared scheduling. |
+
+Reach: A Picker-selected file creates one tenant-bound Drive pipeline, lands scoped rows, pauses without another fire, and deletes with its credential revoked.
+
+Acceptance: `contextful_acceptance::m19::m19_drive_connections`
+
+## 20 — Drive permission custody
+
+| Operations | Intent |
+| --- | --- |
+| `disclosure.drive-sweep`, `connector.principal-secrets` | Source permission reads, verified identity links and per-principal credential custody. |
+
+Reach: A Drive permission withdrawal stops an enterprise reader within the declared visibility bound, while two connection refreshes resolve one versioned credential.
+
+Acceptance: `contextful_acceptance::m20::m20_drive_permissions`
+
+## 21 — Sheet rows
+
+| Operations | Intent |
+| --- | --- |
+| `connector.drive-sheet` | Workbook export and keyed rows for each sheet. |
+
+Reach: A selected workbook lands rows from two sheets with distinct keys, and removing a row lands its tombstone.
+
+Acceptance: `contextful_acceptance::m21::m21_sheet_rows`
+
+## 22 — Drive change cursor
+
+| Operations | Intent |
+| --- | --- |
+| `connector.drive-changes` | Full-walk handoff, paged changes and safe cursor recovery. |
+
+Reach: A change during the initial walk lands once through the change cursor, and an invalid cursor triggers a complete selected reconciliation.
+
+Acceptance: `contextful_acceptance::m22::m22_drive_changes`
+
+## 23 — Workspace delegation
+
+| Operations | Intent |
+| --- | --- |
+| `connector.drive-domain-auth` | Domain approval, impersonated user scope and organization-export boundary. |
+
+Reach: A delegated Workspace connection reads only as its admitted domain user and refuses a subject outside the approved domain before token minting.
+
+Acceptance: `contextful_acceptance::m23::m23_workspace_delegation`

@@ -290,3 +290,18 @@ The restaging gate stands until re-synthesis restores the facts the cascade inva
 | Flush the whole cache on any erasure | Cost | Every restaging re-extracts the full table through the model. |
 | Leave cache and dead-letter rows to their own retention | Physical removal | A model response quoting the erased row outlives the deadline. |
 | Restage under the erasing credential | Attribution | Restored claims carry the forget grant instead of the writer's. |
+## Drive permission coverage includes every selected file
+
+**Status:** accepted
+
+Context: a selected file can have several permission pages, and a refused page does not prove that the source's prior grants remain complete.
+
+Decision: `disclosure.drive-sweep.permission-pages` reads all pages before replacing grants. `disclosure.drive-sweep.unreadable-resource` marks an incomplete file unread and preserves the coverage watermark.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Complete per-file permission reads *(chosen)* | — | A refused file stalls complete coverage and can close reads past the staleness budget. |
+| Treat a refused file as grantless | Truthfulness | Empty grants conceal an unread resource. |
+| Advance after the first permission page | Revocation coverage | Later pages can hold the revoked principal. |
+
+Consequences: Drive's user, group, domain and anyone permissions land as typed grants; identity links determine which grants reach a Contextful subject.

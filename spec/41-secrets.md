@@ -7,6 +7,7 @@ owns:
   - attach
   - rotate
   - record
+  - principal-secrets
 ---
 
 # Outbound credentials
@@ -265,8 +266,6 @@ The division of labor on credential turnover and the rotation mechanisms.
   *A-connector*
 - `turnover-preserves-the-name` — Every rotation mechanism keeps the logical name, touching no declaration and no pinned connector artifact.
 
-unsettled: Does a process-wide gate serialize refreshes of one name across resolvers? owner: connector affects: connector.rotate
-
 #### Scenarios
 
 - `connector.rotate.write-back-denied`: WHEN the answering adapter refuses the put of a refreshed token, THEN the run fails and no request carries the refreshed token.
@@ -315,6 +314,23 @@ Optional operator metadata, provider observations, the inventory of configured b
 - `connector.record.record-rejected`: WHEN `contextful.toml` holds `[secret.vendor-tokne]` beside a binding named `vendor-token`, THEN the declaration read refuses and the message carries no record value.
 - `connector.record.observe-port`: WHEN a lease-served binding is listed, THEN its lease observation reads unsupported and the mint endpoint receives 0 requests.
 - `connector.record.record-is-inert`: WHEN an operator record's description changes, THEN the pipeline's content hash is unchanged.
+
+## principal-secrets
+
+Per-principal credential names and the adapter that serves their material.
+
+- `name-binding` — A connection binds one opaque secret name to its admitted tenant and principal; a run hydrates only the name bound to its connection.
+- `adapter-port` — A principal secret adapter resolves a name to material and a version; its write half conditionally stores a replacement version under the same name.
+- `write-serialization` — Concurrent refreshes of one name serialize across resolvers through the adapter's conditional version; the losing refresh rehydrates the winner under {{connector.rotate.conditional-put}}.
+  *A-connector*
+- `lease-custody` — A lease endpoint holding refresh tokens answers the connection's name under {{connector.lease.lease}}; Contextful retains neither the refresh token nor its replacement.
+- `disconnect` — Deleting a connection revokes its principal secret name before another run can hydrate it; a failed revocation keeps the connection paused.
+  *because a deleted connection must not regain vendor access from a cached lease*
+
+#### Scenarios
+
+- `connector.principal-secrets.name-binding`: WHEN two principals connect one OAuth client, THEN each run resolves only its own refresh-token name.
+- `connector.principal-secrets.write-serialization`: WHEN two refreshes race on one name, THEN one version wins and the other resolver rehydrates it.
 
 ## Shapes
 
