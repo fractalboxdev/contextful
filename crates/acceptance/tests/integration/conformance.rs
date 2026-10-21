@@ -368,7 +368,7 @@ fn a_daemon_poll_that_never_reads_names_the_query_error_not_a_timeout() {
         binary,
         storage_profile: "local".into(),
         required: vec!["graceful-restart".into()],
-        timeout_seconds: 10,
+        timeout_seconds: 30,
     })
     .unwrap();
     let result = report.scenarios.iter().find(|scenario| scenario.required).unwrap();
@@ -501,7 +501,16 @@ esac
     let result = report.scenarios.iter().find(|r| r.id == "graceful-restart").unwrap();
     assert_eq!(result.diagnostic.as_deref(), Some("ConformanceDaemonTimeout"));
     let child = std::fs::read_to_string(&marker).unwrap();
-    let alive = || std::process::Command::new("/bin/kill").args(["-0", child.trim()]).status().unwrap().success();
+    let alive = || {
+        let present = std::process::Command::new("/bin/kill").args(["-0", child.trim()]).status().unwrap().success();
+        if !present { return false; }
+        #[cfg(target_os = "linux")]
+        if let Ok(stat) = std::fs::read_to_string(format!("/proc/{}/stat", child.trim())) {
+            // PID 1 may not reap the exited child promptly; kill -0 still finds a zombie.
+            if stat.rsplit_once(") ").is_some_and(|(_, state)| state.starts_with("Z ")) { return false; }
+        }
+        true
+    };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while alive() && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(50));

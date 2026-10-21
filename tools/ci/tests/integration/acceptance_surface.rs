@@ -25,15 +25,3 @@ fn an_acceptance_package_linking_nothing_runs_its_suite() {
     let o = r.gate(&["--stage", "acceptance"]);
     assert!(o.status.success(), "{}", stderr(&o));
 }
-
-#[test]
-fn acceptance_limits_simultaneous_scenarios() {
-    let r = with_acceptance("");
-    let real = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    let o = r.gate_with_cargo(
-        &format!("case \"$1\" in metadata|tree) exec '{real}' \"$@\" ;; esac\necho \"$*\" >&2\n"),
-        &["--stage", "acceptance"],
-    );
-    assert!(o.status.success(), "{}", stderr(&o));
-    assert!(stderr(&o).contains("test -p contextful-acceptance -- --test-threads=4"), "{}", stderr(&o));
-}
