@@ -19136,7 +19136,7 @@
       "operation": "source",
       "subject": "drive-file-selection",
       "kind": "behavior",
-      "statement": "On `gdrive-picks`, `file_ids` selects distinct individual files without a folder root; `folder_id` and `folder_ids` are absent.",
+      "statement": "On `gdrive-picks` and `gdrive-sheet`, `file_ids` selects distinct individual files without a folder root; `folder_id` and `folder_ids` are absent.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
       "line": 669

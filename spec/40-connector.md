@@ -666,7 +666,7 @@ The declared behavior of each source compiled into the engine.
 - `drive-origin` — The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.
 - `drive-position-owned` — `incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.
 - `drive-picker-source` — The `gdrive-picks` source serves `files` and `pages` with {{connector.source.drive-oauth}} and {{connector.source.drive-page-grain}} for files selected through Picker.
-- `drive-file-selection` — On `gdrive-picks`, `file_ids` selects distinct individual files without a folder root; `folder_id` and `folder_ids` are absent.
+- `drive-file-selection` — On `gdrive-picks` and `gdrive-sheet`, `file_ids` selects distinct individual files without a folder root; `folder_id` and `folder_ids` are absent.
   *A-connector*
 - `drive-file-selection-limit` — `file_ids` holds at most 128 entries.
 - `drive-file-selection-invalid` — An empty, repeated or mixed `file_ids` selection, or one exceeding {{connector.source.drive-file-selection-limit}}, raises `ConnectorDriveFilesInvalid` before a Drive request.
