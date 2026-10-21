@@ -910,16 +910,35 @@ fn provision_lean_pin(root: &Path, pin: &str) -> Result<()> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".elan")))
         .context("neither ELAN_HOME nor HOME is set")?;
+    // Gate parts may share one ELAN_HOME; hold installation and its retry under one lock.
+    std::fs::create_dir_all(&elan_home)?;
+    let lock = std::fs::File::options().create(true).read(true).write(true).open(elan_home.join(".contextful-lean-toolchain.lock"))?;
+    lock.lock()?;
     let bin = elan_home.join("bin");
-    if !bin.join("elan").exists() {
+    for attempt in 0..3 {
+        if bin.join("elan").exists() { break }
         eprintln!("lean: installing elan into {}", elan_home.display());
         let script = format!("curl -sSfL {ELAN_INIT} | sh -s -- -y --no-modify-path --default-toolchain none");
-        run(root, "sh", &["-c", &script])?;
+        let installed = run(root, "sh", &["-c", &script]);
+        if bin.join("elan").exists() { break }
+        if attempt == 2 {
+            installed?;
+            bail!("elan installer left {} without an executable", bin.display());
+        }
+        std::thread::sleep(Duration::from_millis(250 * (attempt + 1)));
     }
     let elan = bin.join("elan");
+    for attempt in 0..3 {
+        let listed = Command::new(&elan).args(["toolchain", "list"]).output().context("running elan")?;
+        if String::from_utf8_lossy(&listed.stdout).lines().any(|l| l.split_whitespace().next() == Some(pin)) { break }
+        let installed = run(root, &elan.to_string_lossy(), &["toolchain", "install", pin]);
+        let failed = installed.is_err();
+        if attempt == 2 { installed?; }
+        if failed { std::thread::sleep(Duration::from_millis(250 * (attempt + 1))); }
+    }
     let listed = Command::new(&elan).args(["toolchain", "list"]).output().context("running elan")?;
     if !String::from_utf8_lossy(&listed.stdout).lines().any(|l| l.split_whitespace().next() == Some(pin)) {
-        run(root, &elan.to_string_lossy(), &["toolchain", "install", pin])?;
+        bail!("elan did not install pinned toolchain `{pin}`");
     }
     let path = std::env::var_os("PATH").unwrap_or_default();
     let joined = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path)))?;
