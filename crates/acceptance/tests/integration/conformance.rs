@@ -363,7 +363,7 @@ fn a_failed_or_hung_scenario_step_names_its_verb_and_error_identifier() {
 fn a_daemon_poll_that_never_reads_names_the_query_error_not_a_timeout() {
     let dir = tempfile::tempdir().unwrap();
     let binary = dir.path().join("contextful");
-    executable(&binary, "#!/bin/sh\ncase \"$1 $2\" in\n'--version ') printf 'contextful fixture contextful-full\\n';;\n*' --help') ;;\n'token keygen') printf 'public-key\\n';;\n'token mint') printf 'token\\n';;\n'pipeline import') ;;\n'pipeline serve')\n  url=$(sed -n 's/.*endpoint = \"\\([^\"]*\\)\".*/\\1/p' contextful.toml)\n  /usr/bin/python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1]).read()' \"$url\"\n  trap 'exit 0' TERM\n  while :; do sleep 0.1; done;;\n'query --json') printf 'ReadDurationExceeded: statement reached 30 s\\n' >&2; exit 1;;\n*) exit 99;;\nesac\n");
+    executable(&binary, "#!/bin/sh\ncase \"$1 $2\" in\n'--version ') printf 'contextful fixture contextful-full\\n';;\n*' --help') ;;\n'token keygen') printf 'public-key\\n';;\n'token mint') printf 'token\\n';;\n'pipeline import') ;;\n'pipeline serve')\n  url=$(sed -n 's/.*endpoint = \"\\([^\"]*\\)\".*/\\1/p' contextful.toml)\n  curl -fsS \"$url\" >/dev/null || exit 1\n  trap 'exit 0' TERM\n  while :; do sleep 0.1; done;;\n'query --json') printf 'ReadDurationExceeded: statement reached 30 s\\n' >&2; exit 1;;\n*) exit 99;;\nesac\n");
     let report = conformance::run(&Options {
         binary,
         storage_profile: "local".into(),
