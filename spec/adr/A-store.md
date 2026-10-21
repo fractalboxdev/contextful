@@ -427,7 +427,7 @@ Revisit: a source publishing a per-row availability stamp the engine verifies.
 
 **Status:** accepted
 
-Context: a statistics agency revises a figure after first release, and a filer restates a period. A keyed table keeps one survivor per key, so a restatement overwrites the value an earlier reader saw, and only a snapshot inside `retain_runs` still answers with it. Criteria: a past availability bound answers the same in every later year; one scan serves a bounded read; a re-pull adds nothing.
+Context: a source revises a value after publication. A keyed table keeps one survivor per key, so a revision overwrites the value an earlier reader saw, and only a snapshot inside `retain_runs` still answers with it. Criteria: a past availability bound answers the same in every later year; one scan serves a bounded read; a re-pull adds nothing.
 
 Decision: a keyed table declaring `available_time` keys each row on its availability instant too. A read resolves one vintage per key and valid-time `from`; a declared content hash suppresses an unchanged re-pull, and a wall-clock row-age cutoff is refused.
 
@@ -449,7 +449,7 @@ Decision: the comparison decodes only row groups whose key bloom filters and foo
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Pruned read of the stored parts *(chosen)* | — | A random-key table without valid time prunes only where it declares `bloom_filter`. |
-| Decode the whole table per landing | Commit cost | A 100-day backfill of 100 symbols decodes 495,000 stored rows. |
+| Decode the whole table per landing | Commit cost | A 100-day backfill of 100 entities decodes 495,000 stored rows. |
 | A latest-vintage sidecar per table | No new structure | Every commit, fold, erasure and sync keeps a second file in step. |
 
 Consequences: a valid-time vintage snapshot sorts by time, so a key lookup in it reads every row group's key bounds.
@@ -478,13 +478,13 @@ Revisit: a random-key vintage table declaring no bloom filter whose landings dec
 
 ## Adjustment factors apply at read time, back from each factor's effective date
 
-A price table keeps raw values. Under `available_as_of` each listed numeric column multiplies by the product of the factor table's vintages available by the bound that agree on the factor table's key and take effect after the row's valid-time `from`. An unbounded read returns raw values. A re-pull matching its key's latest content hash stays on disk and drops at read.
+A measurement table keeps raw values. Under `available_as_of` each listed numeric column multiplies by the product of the factor table's vintages available by the bound that agree on the factor table's key and take effect after the row's valid-time `from`. An unbounded read returns raw values. A re-pull matching its key's latest content hash stays on disk and drops at read.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Raw storage, factors applied per read *(chosen)* | — | Each bounded read joins the factor table. |
-| Store back-adjusted prices | Point-in-time | A 2014 price encodes a split announced in 2020. |
-| One adjusted copy per factor vintage | Storage | Every split rewrites the price history. |
+| Store corrected values | Point-in-time | A historical value encodes a correction published after that value's availability instant. |
+| One adjusted copy per factor vintage | Storage | Every factor revision rewrites the measurement history. |
 
 ## A push tombstones only the owned keys its store held
 

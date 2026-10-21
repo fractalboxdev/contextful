@@ -9,6 +9,25 @@ on are an availability-time column beside the two clocks of `store.bound-time`,
 vintages, a per-row as-of join, a read horizon, walk-forward sweeps and a backtest
 protocol with a trial ledger.
 
+## Domain-neutral controls and consumer profiles
+
+`topology.bound-application.domain-neutral` keeps source availability, label intervals,
+checkpoint cutoffs, bounded reads and trajectory replay independent of an industry.
+Backtesting means historical evaluation; forecasting means probability estimates for
+consumer-declared outcomes. Neither term selects financial data.
+
+Financial return-series profiles use `assurance.backtest.trial-ledger` for deflated
+Sharpe scoring, `assurance.backtest.fill-instant` for price timing, and
+`assurance.backtest.planted-delisting` for delisting-return coverage. The consumer's
+execution component supplies costs, slippage, sizing and liquidity assumptions through
+the opaque parameters recorded by `assurance.backtest.execution-component`.
+Prediction-market profiles use probability prices under
+`assurance.forecast.market-context` and `assurance.forecast.imputed`. These named
+profiles give the financial literature below a specific application boundary; general
+cases carry source records, declared outcomes and execution metadata.
+Return-series consumers call `TrialLedger`; case `delisting` and forecast `market_price`
+select the corresponding optional paths.
+
 ## Model memory
 
 ### FinCAD

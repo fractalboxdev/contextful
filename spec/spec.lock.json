@@ -1750,6 +1750,17 @@
       "line": 314
     },
     {
+      "id": "topology.bound-application.domain-neutral",
+      "contract": "topology",
+      "operation": "bound-application",
+      "subject": "domain-neutral",
+      "kind": "behavior",
+      "statement": "The engine processes declared data, schemas, policies, time bounds and capabilities; domain meanings, business rules and sector-specific metrics belong to consumer configuration, connectors, components or explicitly selected evaluation profiles.",
+      "why": "A-topology",
+      "file": "spec/01-topology.md",
+      "line": 362
+    },
+    {
       "id": "topology.bound-application.restated-case",
       "contract": "topology",
       "operation": "bound-application",
@@ -1758,7 +1769,7 @@
       "statement": "A case with neither a generated artifact nor a callable route stays with the application, which restates the engine rule at its site under {{assurance.structure-tree.mirror-exemption}}.",
       "why": "because a restatement naming its clause id surfaces when the rule changes, and an adapter for one case costs more than it guards",
       "file": "spec/01-topology.md",
-      "line": 362
+      "line": 364
     },
     {
       "id": "store.lay-out.components",
@@ -5090,7 +5101,7 @@
       "operation": "available-time",
       "subject": "declaration",
       "kind": "behavior",
-      "statement": "`[pipeline.tables.available_time]` declares `column`, the `timestamptz` instant a row's value became public, and an optional `zone`, UTC by default; landing writes the instant resolved from the source, never an engine stamp, and an availability bound compares that column alone.",
+      "statement": "`[pipeline.tables.available_time]` declares `column`, the `timestamptz` instant a value became available from its source, and optional `zone`, UTC by default; landing preserves that instant, never an engine stamp, and availability bounds compare that column alone.",
       "why": "A-store",
       "file": "spec/12-time.md",
       "line": 45
@@ -5102,7 +5113,7 @@
       "subject": "lag-fill",
       "kind": "behavior",
       "statement": "A declared `available_time.lag` fills a null column at landing with valid-time `to`, else `from`, plus the duration {{store.available-time.lag-class}} assigns the row, and the engine injects `_available_imputed` true on that row.",
-      "why": "because a filing becomes public a filer-class deadline after period end, 40 to 90 days for a 10-Q or 10-K",
+      "why": "because a source can publish different record classes after different declared delays",
       "file": "spec/12-time.md",
       "line": 47
     },
@@ -5124,7 +5135,7 @@
       "subject": "date-end",
       "kind": "behavior",
       "statement": "A date-typed availability value resolves at landing to the start of the following day in the declared `zone`.",
-      "why": "because a date-only filing or headline can land after the close",
+      "why": "because a date alone gives no publication time within that day",
       "file": "spec/12-time.md",
       "line": 50
     },
@@ -5150,7 +5161,7 @@
       "file": "spec/12-time.md",
       "line": 54,
       "scenarios": [
-        "WHEN a 2026 backfill lands 2014Q1 GDP with availability date `2014-04-30`, THEN `available_as_of` `2014-05-01` returns the row and `available_as_of` `2014-04-29` returns none."
+        "WHEN a 2026 backfill lands a first-quarter measurement with availability date `2014-04-30`, THEN `available_as_of` `2014-05-01` returns the row and `available_as_of` `2014-04-29` returns none."
       ]
     },
     {
@@ -5204,7 +5215,7 @@
       "subject": "null",
       "kind": "refusal",
       "statement": "Landing a row whose resolved availability instant is null raises `StoreAvailableTimeNull`, naming the table and the run.",
-      "why": "because a row without an availability instant is visible to every bound or to none, and either misstates what was public",
+      "why": "because a row without an availability instant is visible to every bound or to none, and either misstates what was available from the source",
       "file": "spec/12-time.md",
       "line": 62
     },
@@ -5230,7 +5241,7 @@
       "file": "spec/12-time.md",
       "line": 66,
       "scenarios": [
-        "WHEN 2014Q1 GDP lands at 17149.6 available `2014-04-30`, 17101.3 available `2014-05-29` and 17016.0 available `2014-06-25`, THEN `available_as_of` `2014-06-01` returns 17101.3 and an unbounded read returns 17016.0, before and after a fold."
+        "WHEN a first-quarter measurement lands at 17149.6 available `2014-04-30`, 17101.3 available `2014-05-29` and 17016.0 available `2014-06-25`, THEN `available_as_of` `2014-06-01` returns 17101.3 and an unbounded read returns 17016.0, before and after a fold."
       ]
     },
     {
@@ -5244,7 +5255,7 @@
       "file": "spec/12-time.md",
       "line": 68,
       "scenarios": [
-        "WHEN the same three 2014Q1 GDP vintages have landed, THEN a read carrying `vintage = \"first\"` returns 17149.6."
+        "WHEN those three measurement vintages have landed, THEN a read carrying `vintage = \"first\"` returns 17149.6."
       ]
     },
     {
@@ -5258,7 +5269,7 @@
       "file": "spec/12-time.md",
       "line": 70,
       "scenarios": [
-        "WHEN a re-pull lands 2014Q1 GDP at 17016.0 with an unchanged content hash, THEN the table still holds three 2014Q1 vintages."
+        "WHEN a re-pull lands the measurement at 17016.0 with an unchanged content hash, THEN the table still holds three measurement vintages."
       ]
     },
     {
@@ -5327,7 +5338,7 @@
       "file": "spec/12-time.md",
       "line": 82,
       "scenarios": [
-        "WHEN day 101 of 100 symbols lands over 100 stored daily runs, THEN its comparison decodes no stored row; WHEN day 50 is restated, THEN it decodes only day 50's 100 rows."
+        "WHEN day 101 of 100 entities lands over 100 stored daily runs, THEN its comparison decodes no stored row; WHEN day 50 is restated, THEN it decodes only day 50's 100 rows."
       ]
     },
     {
@@ -5348,7 +5359,7 @@
       "subject": "adjustment-factors",
       "kind": "behavior",
       "statement": "`available_time.adjustment = { table = \"<name>\", factor_column = \"<column>\", adjust_columns = [...] }` keeps values raw; an `available_as_of` read multiplies each listed numeric column by the product of factor vintages available by the bound.",
-      "why": "because a back-adjusted 2014 price encodes splits announced after 2014",
+      "why": "because applying a correction published later exposes information unavailable at an earlier read bound",
       "file": "spec/12-time.md",
       "line": 86
     },
@@ -7467,7 +7478,7 @@
       "file": "spec/20-read.md",
       "line": 501,
       "scenarios": [
-        "WHEN a point-in-time security master maps stable id `sec-1` to ticker `FB` available `2012-05-18` and to `META` available `2022-06-09`, THEN a trade of `sec-1` on `2021-03-01` joins `FB` and one on `2022-07-01` joins `META`."
+        "WHEN a resource directory maps stable id `resource-1` to label `alpha` available `2012-05-18` and to `beta` available `2022-06-09`, THEN an event for `resource-1` on `2021-03-01` joins `alpha` and one on `2022-07-01` joins `beta`."
       ]
     },
     {
@@ -14928,7 +14939,7 @@
       "subject": "available-select",
       "kind": "behavior",
       "statement": "A derive run carrying `available_as_of` selects only parent rows {{store.available-time.available-as-of}} admits at that bound, and each derived row lands its parent row's availability instant.",
-      "why": "because a passage derived from a later filing otherwise answers an earlier horizon",
+      "why": "because content derived from a later source record otherwise answers an earlier horizon",
       "file": "spec/32-derive.md",
       "line": 96
     },
@@ -19104,7 +19115,7 @@
       "operation": "resolve",
       "subject": "provider-chain",
       "kind": "behavior",
-      "statement": "The chain runs: lease provider, process environment, operating-system keychain, customer-operated manager, then a tunnel into the customer trust zone.",
+      "statement": "The chain runs: lease provider, process environment, operating-system keychain, operator-managed secret store, then a tunnel into the deployment trust zone.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
       "line": 83
@@ -19489,7 +19500,7 @@
       "operation": "lease",
       "subject": "bootstrap-backend",
       "kind": "behavior",
-      "statement": "`CONTEXTFUL_LEASE_BOOTSTRAP_BACKEND` composes a customer-operated manager behind the lease provider to hold the mint reference.",
+      "statement": "`CONTEXTFUL_LEASE_BOOTSTRAP_BACKEND` composes an operator-managed secret store behind the lease provider to hold the mint reference.",
       "why": "",
       "file": "spec/41-secrets.md",
       "line": 161
@@ -19808,7 +19819,7 @@
       "operation": "rotate",
       "subject": "static-key",
       "kind": "behavior",
-      "statement": "A static key in a customer manager turns over with no engine step: a run hydrates the current version at its next cache miss.",
+      "statement": "A static key in an operator-managed secret store turns over with no engine step: a run hydrates the current version at its next cache miss.",
       "why": "because the 300 s cache bound already caps staleness, and a per-manager change feed adds a listener and failure domain to every adapter",
       "file": "spec/41-secrets.md",
       "line": 251
@@ -30481,7 +30492,7 @@
       "operation": "backtest",
       "subject": "trial-ledger",
       "kind": "behavior",
-      "statement": "Every run against one case set lands its return series as one trial row, and the report computes the deflated Sharpe ratio from trial count, Sharpe variance, series length, skew and kurtosis.",
+      "statement": "A financial return-series profile records each run against its case set as a trial row and computes the deflated Sharpe ratio from trial count, Sharpe variance, series length, skew and kurtosis.",
       "why": "because the deflated Sharpe needs every trial's Sharpe, not a reported count",
       "file": "spec/81-engineering.md",
       "line": 460
@@ -30503,8 +30514,8 @@
       "operation": "backtest",
       "subject": "universe-table",
       "kind": "behavior",
-      "statement": "A case names its universe as a membership table declaring valid time and `available_time`; a case naming literal symbols reports under a separate `fixed-universe` slice.",
-      "why": "because a literal symbol list names the survivors known when the case was written",
+      "statement": "A case evaluating changing membership names a membership table declaring valid time and `available_time`; a case naming literal identifiers reports under a separate `fixed-universe` slice.",
+      "why": "because a fixed identifier list names only the members known when the case was written",
       "file": "spec/81-engineering.md",
       "line": 463
     },
@@ -30514,7 +30525,7 @@
       "operation": "backtest",
       "subject": "fill-instant",
       "kind": "behavior",
-      "statement": "The report fills each decision at the first price available strictly after the decision's recorded instant.",
+      "statement": "A financial execution profile fills each decision at the first price available strictly after the decision's recorded instant.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 465
@@ -30525,7 +30536,7 @@
       "operation": "backtest",
       "subject": "execution-component",
       "kind": "refusal",
-      "statement": "Costs, slippage, sizing and liquidity caps belong to a declared execution component whose digest and parameters the report stamps; a report without one raises `EvalExecutionUndeclared`.",
+      "statement": "A backtest report stamps its declared execution component's digest and parameters under {{topology.bound-application.domain-neutral}}; a report without one raises `EvalExecutionUndeclared`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 467
@@ -30550,7 +30561,7 @@
       "operation": "backtest",
       "subject": "planted-delisting",
       "kind": "behavior",
-      "statement": "A universe case plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.",
+      "statement": "A financial universe profile plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.",
       "why": "because survivorship shows as a missing delisting return, which no aggregate figure reveals",
       "file": "spec/81-engineering.md",
       "line": 471
@@ -30663,7 +30674,7 @@
       "operation": "forecast",
       "subject": "market-context",
       "kind": "behavior",
-      "statement": "A market case carries the freeze-instant market price as an available row, and the report shows each forecaster's edge over it.",
+      "statement": "A prediction-market profile supplies freeze-instant probability prices as available rows, and the report shows each forecaster's score improvement over that baseline.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 500
@@ -30674,7 +30685,7 @@
       "operation": "forecast",
       "subject": "imputed",
       "kind": "behavior",
-      "statement": "A missing answer scores as probability 0.5 on a dataset case and as the freeze-instant market price on a market case.",
+      "statement": "A missing answer scores as probability 0.5 for a dataset case; a prediction-market profile instead uses its freeze-instant probability price.",
       "why": "because dropping a missing answer rewards abstaining on hard questions",
       "file": "spec/81-engineering.md",
       "line": 501
@@ -31597,13 +31608,13 @@
   "ledes": {
     "assurance.audit-assumptions": "The assumption allowlist, the transitive footprint audit over the elaborated environment, the inventory and the report.",
     "assurance.automate": "Typed subcommands over compiled binaries, and the boundary shell keeps.",
-    "assurance.backtest": "Look-ahead-free backtests: the bounded case, model-knowledge controls, label intervals and splits, trial accounting, fill timing and execution, planted leaks, and the trajectory evidence a case is judged on.",
+    "assurance.backtest": "Historical evaluations, called backtests: bounded cases, model-knowledge controls, label intervals and splits, execution metadata, planted leaks and replayable trajectories. Financial return-series and execution profiles are consumer-selected applications of this flow ({{topology.bound-application.domain-neutral}}).",
     "assurance.baseline": "Holding a run against committed baselines and absolute floors, intervals, golden custody and case generation.",
     "assurance.build": "Target directories, the engine-linked invocation, linked query functions, build targets, release artifacts and the dependency allowlist.",
     "assurance.consumer": "Artifact compatibility: source-independent execution, required capabilities, scenario evidence, storage profiles and release distribution.",
     "assurance.differential-test": "The executable reference models, the case generators, the minimized counterexample corpus and the command running them.",
     "assurance.evaluate": "The read-path quality harness: case format, deterministic metrics and floors, judged dimensions, the reader and the judge.",
-    "assurance.forecast": "Forecast cases resolved after they are asked: the freeze instant, settlement, lead time, market context, imputation, coverage, the no-evidence baseline and the tracks scores never pool across.",
+    "assurance.forecast": "Probability forecasts over consumer-declared outcomes: freeze instant, settlement, lead time, imputation, coverage, reference baselines and separate scoring tracks. Prediction-market baselines belong to an explicitly selected profile ({{topology.bound-application.domain-neutral}}).",
     "assurance.gate": "Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.",
     "assurance.measure": "The target ledger: each tracked target, the clause it serves, how it is measured and its record per commit.",
     "assurance.model": "The Lean policy package and the Lean protocol state machine, their pins, and the definitions theorems and checks range over.",
@@ -31616,7 +31627,7 @@
     "authority.attenuate": "Deriving a narrower child offline, and the narrowing legality of each grant dimension.",
     "authority.bound-redistribution": "The per-table licence bound applied at push, the root-object allowlist, and the per-credential edge filter.",
     "authority.compose": "The three layers as one reference monitor, and the order a registered relation applies.",
-    "authority.exchange": "Trading a verified external assertion for a scoped credential under injected verifying material and a declared policy.",
+    "authority.exchange": "Exchanging a verified external assertion for a scoped credential under injected verifying material and a declared policy.",
     "authority.filter-rows": "The typed row-predicate grammar, subject binding, the tenant equality and the project default.",
     "authority.grant": "What a credential says a holder does: actions, table patterns, tenant scope, the template allowlist, ceilings, and resources answering by name.",
     "authority.identify": "The subject tuple, its per-member attestation, hygiene at the mint, and the identity links connecting a subject to a source's principals.",
@@ -31718,7 +31729,7 @@
     "run.sweep": "Walk-forward runs: one store-driven job run once per origin across a declared span, each origin reading only what was available at it, under one frozen transaction-time bound.",
     "run.test-engine": "Building one derive engine outside a pipeline and running it against one file.",
     "run.transform": "The declarative chain that rewrites a batch in place.",
-    "store.available-time": "Availability time: the declared instant each row's value became public, how landing resolves it, and the `available_as_of` bound a read compares against it.",
+    "store.available-time": "Availability time: the declared instant each row's value became available from its source, how landing resolves it, and the `available_as_of` bound a read compares against it.",
     "store.bound-time": "The two clocks a row carries, the parameter bounding each, and what a bounded read resolves to.",
     "store.declare": "A table's declaration block: its key, ordering column and write mode, and what a read returns for a withdrawn row.",
     "store.emit": "Planning a push from the store alone: the manifest a push commits, computed from local files without reading or writing the bucket.",
@@ -31758,7 +31769,7 @@
     "surface.set-vantage": "A session's time basis: its vantage, the bound each leg carries, the snapshot timeline and the arrivals strip.",
     "surface.speak": "The language every Query-visible string carries, the audience contract, and the deterministic backstops beneath it.",
     "surface.visualize": "The Admin page's operational views.",
-    "topology.bound-application": "Where the engine's contracts end, what an application owns, and the surfaces the commercial layer reaches.",
+    "topology.bound-application": "Where the engine's contracts end, what an application owns, and the surfaces a consumer reaches.",
     "topology.compose": "The two halves of the engine, the three crossings between them, complete mediation, and the properties holding across both halves.",
     "topology.coordinate": "The conditional-write primitive, every single-writer operation, lease rows with their fence, and the catalog backends.",
     "topology.deploy": "One declaration across providers, deployment roles, self-hosted shapes, the reference target and output parity.",
@@ -34497,6 +34508,10 @@
     [
       "assurance.backtest.run-stamp",
       "assurance.evaluate.cutoff-flags"
+    ],
+    [
+      "assurance.backtest.execution-component",
+      "topology.bound-application.domain-neutral"
     ],
     [
       "assurance.backtest.trajectory-check",

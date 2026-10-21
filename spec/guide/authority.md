@@ -126,14 +126,14 @@ empty result ({{authority.refuse.not-empty}}).
 ## Worked example
 
 Dana signs into the console. It posts her identity provider's assertion to the exchange; the
-policy maps her `analyst` role to `read` on `research/*`, and the `org_id` claim becomes the
+policy maps her `reader` role to `read` on `workspace/*`, and the `org_id` claim becomes the
 tenant scope `acme-eu` on every minted grant ({{authority.exchange.tenant}}).
 
-Her research agent spawns a sub-agent and derives it a child limited to `research/filings`,
+Her reader agent spawns a sub-agent and derives it a child limited to `workspace/documents`,
 bound to the sub-agent's own key pair ({{authority.attenuate.per-sub-agent}}). A derivation
 that adds `write` refuses, naming the dimension ({{authority.attenuate.widens}}).
 
-The sub-agent queries `research/filings` with no tenant filter. Admission passes, and the
+The sub-agent queries `workspace/documents` with no tenant filter. Admission passes, and the
 relation conjoins a byte-exact tenant equality the query never wrote
 ({{authority.filter-rows.tenant-equality}}). A statement naming `acme-us` in its top-level
 conjuncts is caught by the scope guard ({{authority.refuse.scope-guard}}) and refused with

@@ -160,7 +160,7 @@ fn a_put_losing_to_another_writer_adopts_its_version() {
 }
 
 /// A static key turns over with no engine step: the next cache miss hydrates the current version.
-// spec: connector.rotate.static-key@4b64dac5
+// spec: connector.rotate.static-key@7392e919
 #[test]
 fn a_static_key_turns_over_at_the_next_cache_miss() {
     let manager = Manager::new("key-v1");

@@ -421,7 +421,7 @@ unsettled: How does a bumped epoch reach a checkpoint on another node before the
 
 ## exchange
 
-Trading a verified external assertion for a scoped credential under injected verifying material and a declared policy.
+Exchanging a verified external assertion for a scoped credential under injected verifying material and a declared policy.
 
 - `surface` — `contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`. The command reads the assertion from `--jwt` or standard input, and a holder proof from `--dpop`.
   *A-authority*
@@ -516,8 +516,8 @@ The authority block's content, as the profile maps it:
   "grants": [
     {
       "actions": ["read"],
-      "tables": ["research/*"],
-      "tenant": { "table": "research/filings", "value": "acme-eu" },
+      "tables": ["workspace/*"],
+      "tenant": { "table": "workspace/documents", "value": "acme-eu" },
       "templates": ["quarterly_rollup"],
       "max_rows": 5000
     }
@@ -529,11 +529,11 @@ The authority block's content, as the profile maps it:
 Table-pattern coverage:
 
 ```text
-name                  research/*   research/filings   *
-research              no           no                 yes
-research/filings      yes          yes                yes
-research/filings/eu   yes          no                 yes
-sales/invoices        no           no                 yes
+name                    workspace/*  workspace/documents  *
+workspace               no           no                   yes
+workspace/documents     yes          yes                  yes
+workspace/documents/eu  yes          no                   yes
+other/records           no           no                   yes
 ```
 
 Narrowing legality, parent to proposed child:
@@ -569,14 +569,14 @@ minted_aud     = "contextful://acme-research"
 [subject_map]
 on_behalf_of = { claim = "sub", template = "user://{}" }
 
-[[role_grants.analyst]]
+[[role_grants.reader]]
 actions   = ["read"]
-tables    = ["research/*"]
+tables    = ["workspace/*"]
 templates = ["quarterly_rollup"]
 
 [[role_grants.loader]]
 actions = ["write"]
-tables  = ["research/filings"]
+tables  = ["workspace/documents"]
 ```
 
 Admission, from transmitted bytes to the value an effect acts under:

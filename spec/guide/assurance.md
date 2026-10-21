@@ -6,23 +6,22 @@ contract: assurance
 
 ## What it is for
 
-**Contextful** makes claims a buyer acts on: a reader receives only the rows policy
-admits, and a stale lease holder never commits. Assurance keeps each claim no wider than
-its evidence: Lean proofs, a differential harness against running code, and gates.
+Assurance connects **Contextful**'s specified behavior to evidence: Lean proofs over
+explicit models, differential tests comparing model and implementation decisions, and
+engineering gates. Each claim names its scope and assumptions
+({{assurance.scope-claim.claim-sentence}}).
 
 ## In plain words
 
-Think of **Contextful** as a librarian who makes two promises: you only get the books
-your card allows, and two librarians never stamp the same book at once. Assurance checks
-those promises without taking the librarian's word.
-
-- **The math check.** A proof assistant reads the rulebook, not the code, and proves the
-  promises follow from it. An auditor confirms no proof hides a skipped step
-  ({{assurance.audit-assumptions.hole-assumption}}).
-- **The twin check.** A small reference program built from the proofs and the real engine
-  answer the same made-up questions ({{assurance.differential-test.harness}}).
-- **The house rules.** Every code change arrives with a test that failed before it
-  ({{assurance.test.test-first}}), the gate runs its stages in a fixed order
+- **Proofs.** Lean checks properties of the models. Each theorem names what it leaves
+  open ({{assurance.prove.negative-space}}), and the assumption audit rejects proof
+  holes ({{assurance.audit-assumptions.hole-assumption}}).
+- **Comparisons.** An executable reference model and the implementation answer the same
+  generated cases ({{assurance.differential-test.harness}}). Agreement covers those
+  cases ({{assurance.differential-test.case-classes}}).
+- **Engineering checks.** Rust source changes carry a test that fails against the base
+  ({{assurance.test.test-first}}), with an explicit refactor exemption
+  ({{assurance.test.refactor-trailer}}). The gate runs its stages in a fixed order
   ({{assurance.gate.stage-sequence}}), and search results are scored against rows that
   must never appear ({{assurance.evaluate.forbidden-row-rate}}).
 
@@ -75,8 +74,8 @@ Refinement reaches pure decision functions only ({{assurance.scope-claim.refinem
 Beneath the proofs sit the engineering rules: one implementation per capability
 ({{assurance.structure-tree.one-home}}), each home registered
 ({{assurance.structure-tree.capability-registry}}) and its copies matched across languages
-({{assurance.structure-tree.cross-language}}), a failing test before a source change
-({{assurance.test.test-first}}), and ordered gate stages
+({{assurance.structure-tree.cross-language}}), test-first with its refactor exemption
+({{assurance.test.test-first}}, {{assurance.test.refactor-trailer}}), and ordered gate stages
 ({{assurance.gate.stage-sequence}}), each a remote check
 ({{assurance.gate.remote-check}}). The quality harness
 ({{assurance.evaluate.run-command}}) loads its corpus through the real store
@@ -99,7 +98,7 @@ only annotate ({{assurance.measure.trend-band}}) against earlier matching report
 ({{assurance.measure.trend-baseline}}) in their declared direction
 ({{assurance.measure.trend-direction}}).
 
-A backtest places each case against the reader's cutoff ({{assurance.backtest.cutoff-slice}})
+A backtest places each case against the reader model's post-training cutoff ({{assurance.backtest.cutoff-slice}})
 and purges overlapping labels ({{assurance.backtest.split}}); forecast tracks never pool
 ({{assurance.forecast.tracks-separate}}).
 
@@ -119,22 +118,24 @@ flowchart LR
 
 ## Worked example
 
-A contributor reorders the engine's layers so masking runs before filtering.
+A contributor changes zone admission so an allow-set entry `on-prem:*` rejects
+`on-prem:lab`, a zone it admits under {{authority.place.disjunctive}}.
 
 Its test fails at base, or the test-first stage stops it; the nightly
 run reaches the formal stage
 ({{assurance.gate.formal-stage}}).
 
-If the contributor also edits the composition theorem's Lean statement to match, the
-inventory, edited apart from the declarations ({{assurance.audit-assumptions.inventory}}), no
-longer matches and the check command fails ({{assurance.audit-assumptions.check-command}}). A
-proof finished with a hole fails on its footprint
+The model follows the specification independently of the engine
+({{assurance.model.from-the-spec}}). A changed theorem statement with an unchanged inventory
+fails the statement check ({{assurance.audit-assumptions.statement-drift}}). A proof
+finished with a hole fails on its footprint
 ({{assurance.audit-assumptions.hole-assumption}}).
 
-Otherwise the differential harness feeds generated
-cases to the reference binary and the engine ({{assurance.differential-test.harness}}).
-A case where a masked column meets a row filter decides differently, shrinks to a minimal
-form ({{assurance.differential-test.minimized}}), enters the counterexample corpus
+Zone admission is one of the harness's decision cases
+({{assurance.differential-test.decision-cases}}). When a generated case exercises this
+disagreement, the reference binary admits and the implementation rejects
+({{assurance.differential-test.harness}}). The case shrinks to a minimal form
+({{assurance.differential-test.minimized}}), enters the counterexample corpus
 ({{assurance.differential-test.discarded-counterexample}}), and replays before fresh cases
 on later runs ({{assurance.differential-test.corpus-replay}}), reproducible from the
 recorded seed ({{assurance.differential-test.seed}}).

@@ -506,7 +506,7 @@ The point-in-time join: an `ASOF JOIN` written in one read statement or template
 
 #### Scenarios
 
-- `read.as-of-join.per-row-bound`: WHEN a point-in-time security master maps stable id `sec-1` to ticker `FB` available `2012-05-18` and to `META` available `2022-06-09`, THEN a trade of `sec-1` on `2021-03-01` joins `FB` and one on `2022-07-01` joins `META`.
+- `read.as-of-join.per-row-bound`: WHEN a resource directory maps stable id `resource-1` to label `alpha` available `2012-05-18` and to `beta` available `2022-06-09`, THEN an event for `resource-1` on `2021-03-01` joins `alpha` and one on `2022-07-01` joins `beta`.
 
 unsettled: Does an as-of join's `max_age` measure valid time or availability time? owner: read-path affects: read.as-of-join
 

@@ -438,7 +438,7 @@ Holding a run against committed baselines and absolute floors, intervals, golden
 
 ## backtest
 
-Look-ahead-free backtests: the bounded case, model-knowledge controls, label intervals and splits, trial accounting, fill timing and execution, planted leaks, and the trajectory evidence a case is judged on.
+Historical evaluations, called backtests: bounded cases, model-knowledge controls, label intervals and splits, execution metadata, planted leaks and replayable trajectories. Financial return-series and execution profiles are consumer-selected applications of this flow ({{topology.bound-application.domain-neutral}}).
 
 - `bounded-case` — A bounded case carries a horizon, an instant each of its reads passes as {{store.available-time.available-as-of}}; its trajectory is the ordered tool calls, queries and retrieved documents its run records.
 - `checkpoint-route` — A reader, derive engine or embedder naming a checkpoint family resolves each bounded case to the newest family checkpoint whose post-training {{connector.infer.cutoffs}} precedes the case's horizon.
@@ -457,18 +457,18 @@ Look-ahead-free backtests: the bounded case, model-knowledge controls, label int
   *because purge and embargo need each label's span, and a label observed past the horizon is the leak itself*
 - `split` — A split purges each training case whose label interval overlaps a test case's, and embargoes each training case starting within a declared span after a test fold ends.
   *because serially correlated labels carry a test fold's outcome into adjacent training cases*
-- `trial-ledger` — Every run against one case set lands its return series as one trial row, and the report computes the deflated Sharpe ratio from trial count, Sharpe variance, series length, skew and kurtosis.
+- `trial-ledger` — A financial return-series profile records each run against its case set as a trial row and computes the deflated Sharpe ratio from trial count, Sharpe variance, series length, skew and kurtosis.
   *because the deflated Sharpe needs every trial's Sharpe, not a reported count*
 - `seed-repeats` — A configuration runs its declared repeat count; its repeats count as one trial, and the report shows their spread.
-- `universe-table` — A case names its universe as a membership table declaring valid time and `available_time`; a case naming literal symbols reports under a separate `fixed-universe` slice.
-  *because a literal symbol list names the survivors known when the case was written*
-- `fill-instant` — The report fills each decision at the first price available strictly after the decision's recorded instant.
+- `universe-table` — A case evaluating changing membership names a membership table declaring valid time and `available_time`; a case naming literal identifiers reports under a separate `fixed-universe` slice.
+  *because a fixed identifier list names only the members known when the case was written*
+- `fill-instant` — A financial execution profile fills each decision at the first price available strictly after the decision's recorded instant.
   *A-assurance*
-- `execution-component` — Costs, slippage, sizing and liquidity caps belong to a declared execution component whose digest and parameters the report stamps; a report without one raises `EvalExecutionUndeclared`.
+- `execution-component` — A backtest report stamps its declared execution component's digest and parameters under {{topology.bound-application.domain-neutral}}; a report without one raises `EvalExecutionUndeclared`.
   *A-assurance*
 - `planted-future` — Each bounded case plants a row available after its horizon in every table it reads; a planted row in the case's trajectory fails the case.
   *because a planted row proves the bound held on the path the case took, not only in its configuration*
-- `planted-delisting` — A universe case plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.
+- `planted-delisting` — A financial universe profile plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.
   *because survivorship shows as a missing delisting return, which no aggregate figure reveals*
 - `leak-score` — The case's judge model scores each retrieved document 0 to 4 against a reference answer from rows available before the horizon, landing one row per document and case horizon; the report gives Brier per leak tier.
   *A-assurance*
@@ -488,7 +488,7 @@ Look-ahead-free backtests: the bounded case, model-knowledge controls, label int
 
 ## forecast
 
-Forecast cases resolved after they are asked: the freeze instant, settlement, lead time, market context, imputation, coverage, the no-evidence baseline and the tracks scores never pool across.
+Probability forecasts over consumer-declared outcomes: freeze instant, settlement, lead time, imputation, coverage, reference baselines and separate scoring tracks. Prediction-market baselines belong to an explicitly selected profile ({{topology.bound-application.domain-neutral}}).
 
 - `forecast-case` — A forecast case carries a freeze instant, a resolution statement naming its vintage, a resolution instant and a probability answer; a backtest forecast case is a {{assurance.backtest.bounded-case}} whose horizon is its freeze instant.
 - `resolved-before-freeze` — A backtest forecast case whose resolution instant precedes its freeze instant raises `EvalCaseResolvedBeforeFreeze`.
@@ -497,8 +497,8 @@ Forecast cases resolved after they are asked: the freeze instant, settlement, le
   *because one settlement path keeps a forecast's Brier score comparable with an application's calibration*
 - `lead-time` — An answer recorded less than the case's declared minimum lead before resolution scores on a separate track.
   *because an answer given near resolution reads the outcome rather than forecasting it*
-- `market-context` — A market case carries the freeze-instant market price as an available row, and the report shows each forecaster's edge over it.
-- `imputed` — A missing answer scores as probability 0.5 on a dataset case and as the freeze-instant market price on a market case.
+- `market-context` — A prediction-market profile supplies freeze-instant probability prices as available rows, and the report shows each forecaster's score improvement over that baseline.
+- `imputed` — A missing answer scores as probability 0.5 for a dataset case; a prediction-market profile instead uses its freeze-instant probability price.
   *because dropping a missing answer rewards abstaining on hard questions*
 - `coverage-floor` — A forecaster answering below 95 percent of a round's cases is reported unranked.
   *because imputation alone still lets a forecaster pick its questions*
@@ -511,7 +511,7 @@ Forecast cases resolved after they are asked: the freeze instant, settlement, le
 
 - `assurance.forecast.resolved-before-freeze`: WHEN a backtest forecast case freezes on `2014-06-01` and resolved on `2014-05-20`, THEN the run raises `EvalCaseResolvedBeforeFreeze` before reading the case.
 
-unsettled: Which reference anchors difficulty-adjusted Brier for finance cases, market price or a two-way fixed-effects fit? owner: eval affects: assurance.forecast
+unsettled: Which consumer-selected reference anchors difficulty-adjusted probability scores across case sets? owner: eval affects: assurance.forecast
 
 ## measure
 

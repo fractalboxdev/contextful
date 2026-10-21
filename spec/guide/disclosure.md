@@ -6,17 +6,20 @@ contract: disclosure
 
 ## What it is for
 
-A **Contextful** workspace that indexes an organization's wiki, drive and chat answers
-everyone, so it inherits the question those sources already settled: who may see what.
-Visibility mirrors source permissions into every read, so a reader sees only what
-the source shows them.
+A **Contextful** workspace indexing an organization's wiki, drive and chat applies source
+permissions to reads. Visibility follows the table's declared fidelity
+({{disclosure.declare-fidelity.family-bound}}) and freshness budget
+({{disclosure.bound-staleness.access-stale}}).
 Disclosure lets a derived figure cross from many contributors to one asker without
 carrying any contributor's rows. Accountability leaves a verifiable trace of every read
 and removes a subject or a tenant on demand.
 
-One stance runs through all three: when the evidence behind a decision is missing, stale
-or unverifiable, the operation refuses with a typed error instead of returning fewer rows.
-An empty answer then means an empty corpus, never a quiet failure.
+A visibility read with insufficient freshness refuses
+({{disclosure.bound-staleness.access-stale}}), except for the declared public-only posture
+({{disclosure.bound-staleness.public-only}}), which reports its narrowing
+({{disclosure.bound-staleness.degraded-block}}). An empty result describes the delivered
+rows ({{read.respond.zero-rows-is-success}}), with truncation reported separately
+({{read.respond.truncation-cause}}).
 
 ## How it works
 
@@ -56,8 +59,8 @@ grant with no resource ({{disclosure.sweep.orphan-grant}}) and advancing its cov
 through a bounded group closure ({{disclosure.reach.closure-walk}}) to a reachable set, and
 the registered view semi-joins content against it ({{disclosure.reach.semi-join}}).
 Every served table carries a visibility block ({{disclosure.mirror.unbound-table}}) naming a sweep and a staleness budget
-({{disclosure.mirror.incomplete-binding}}), and a read past that budget refuses
-({{disclosure.bound-staleness.access-stale}}).
+({{disclosure.mirror.incomplete-binding}}); stale reads follow
+{{disclosure.bound-staleness.access-stale}} and {{disclosure.bound-staleness.public-only}}.
 
 Fidelity states how closely a table follows its source. The family caps the claim
 ({{disclosure.declare-fidelity.family-bound}}), and a source that computes access with its
@@ -93,7 +96,7 @@ until anchored ({{disclosure.attest.anchor-verb}}); a held chain stays held
 A wiki page is shared with `planning`, which contains `eng-leads`, which contains Ada.
 
 The wiki pack maps the source's `viewer` level to read, names the `item-exception`
-family, and binds the `pages` table as `mirrored` with a budget written in the grammar of
+family, and binds the `pages` table as `mirrored` with `on_stale = "refuse"` and a budget in the grammar of
 {{disclosure.bound-staleness.budget-grammar}}. The sweep lands one resource row, one grant
 to `planning`, and two membership rows.
 

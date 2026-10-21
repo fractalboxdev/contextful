@@ -12,7 +12,7 @@ The store holds Parquet, manifests and one pointer per table ({{store.lay-out.co
 
 `contextful init` names the project ({{store.init.declaration-file}}), gives its store a synced identity ({{store.init.store-identity}}), and declares its authoring posture ({{store.init.posture}}); commands below it find it ({{store.init.discovery}}).
 
-Files never change once written ({{store.lay-out.immutable-files}}). A write adds a run directory and commits by conditionally creating that run's manifest ({{store.lay-out.run-manifest}}); until the manifest exists, the run's parts join no read ({{store.lay-out.uncommitted-run}}). The pipeline's cursor rides inside the same commit, so rows and position land together ({{store.lay-out.cursor-in-commit}}).
+Run files and snapshot directories are immutable ({{store.lay-out.immutable-files}}). A write adds a run directory and commits by conditionally creating that run's manifest ({{store.lay-out.run-manifest}}); until the manifest exists, the run's parts join no read ({{store.lay-out.uncommitted-run}}). The pipeline's cursor rides inside the same commit, so rows and position land together ({{store.lay-out.cursor-in-commit}}).
 
 A read resolves an explicit sorted file list from the pointer and the manifests, never a glob ({{store.reconcile.explicit-file-list}}). An unkeyed table reads as the union of its committed runs ({{store.declare.unkeyed-union}}); a keyed table reads through a view that keeps one survivor per key ({{store.declare.dedup-view}}), picked by `order_by` ({{store.declare.order-by-default}}). Schemas grow additively: a new column joins and older files read it as null ({{store.reconcile.additive}}). The type lattice admits one promotion ({{store.reconcile.lattice}}), and any other clash refuses at the write ({{store.reconcile.incompatible}}). A source with mixed scalar kinds uses {{store.reconcile.variant}}.
 
@@ -30,14 +30,14 @@ A pull carries the signed control head ({{store.pull.control-head}}) without cha
 
 ## Worked example
 
-Take the keyed table `filings`, with `primary_key = ["document_id", "page"]` and `order_by = "revised_at"`.
+Take the keyed table `documents`, with `primary_key = ["document_id", "page"]` and `order_by = "revised_at"`.
 
 - Node `ingest-a` resolves its node id once at start ({{store.lay-out.node-id-order}}), takes the pipeline's lease, and renews it ({{store.lease.renewal}}).
 - A run lands parts under `data/runs/<run-id>/ingest-a/`, and the engine injects `_ingested_at` and `_run_id` ({{store.reserve.injected}}). One batch sends `page` as a float; it refuses before any Parquet, because a key never widens ({{store.reconcile.key-widening}}).
 - The run commits under the lease fence. A paused machine that lost its lease then commits; the higher fence beats it, and its run stays unreadable ({{store.lease.stale-fence}}).
 - A query now gets the current snapshot plus the committed runs it omits, deduped per key ({{store.bound-time.unbounded-latest}}).
 - A fold trigger fires ({{store.fold.triggers}}). The pass holds the compaction lease and stamps its fence into the manifest and the pointer ({{store.fold.compaction-lease}}); the new snapshot's `includes_runs` names the folded runs ({{store.fold.includes-runs}}). The previous snapshot stays reachable to bounded reads ({{store.fold.supersedes}}) until retention collects it ({{store.fold.retention}}).
-- An auditor's read of `filings` as of last week resolves the snapshot then current ({{store.bound-time.as-of}}), so the fold changes no answer. An instant older than retained history refuses and names the oldest answerable instant ({{store.bound-time.as-of-unretained}}).
+- An auditor's read of `documents` as of last week resolves the snapshot then current ({{store.bound-time.as-of}}), so the fold changes no answer. An instant older than retained history refuses and names the oldest answerable instant ({{store.bound-time.as-of-unretained}}).
 - The node pushes, and a laptop replica refreshes. A query needing a sidecar the replica lacks refuses and names the refresh that supplies it ({{store.replicate.missing-index}}).
 
 ## Clocks
@@ -53,10 +53,10 @@ flowchart LR
   subgraph stamped["Engine stamp"]
     T["transaction time 2026"]
   end
-  P(["GDP publisher"]) -->|"measures the quarter"| V
+  P(["source publisher"]) -->|"measures the quarter"| V
   P -->|"releases first figure"| A
   B["2026 backfill run"] -->|"commit writes"| T
-  B -->|"lands source rows"| G[("gdp")]
+  B -->|"lands source rows"| G[("measurements")]
   V -->|"valid_as_of compares"| G
   A -->|"available_as_of compares"| G
   T -->|"as_of compares"| G
@@ -64,9 +64,9 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  P(["GDP publisher"]) -->|"releases revised figure"| H{"content hash unchanged?"}
+  P(["source publisher"]) -->|"releases revised figure"| H{"content hash unchanged?"}
   H -->|"unchanged"| S["skipped re-pull"]
-  H -->|"changed"| G[("gdp")]
+  H -->|"changed"| G[("measurements")]
   G -->|"read resolves vintage"| F{"first vintage requested?"}
   F -->|"first"| E["earliest vintage"]
   F -->|"default"| B{"availability bound given?"}

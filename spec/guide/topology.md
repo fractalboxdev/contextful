@@ -6,7 +6,7 @@ contract: topology
 
 ## What it is for
 
-**Contextful** is one engine that pulls data from sources, keeps it as open files, and answers questions over it under enforcement. This contract fixes the engine's shape: which half owns which job, the only places the halves touch, which binary links which capabilities, how a deployment proves it matches its declaration, and the one coordination primitive every writer relies on. Every other contract places itself on this map, so read this guide first.
+**Contextful** is one engine that pulls data from sources, keeps it as open files, and answers questions over it under enforcement. This contract fixes the engine's shape: which half owns which job, the only places the halves touch, which binary links which capabilities, how a deployment proves it matches its declaration, and the one coordination primitive every writer relies on. Consumers supply domain meanings ({{topology.bound-application.domain-neutral}}).
 
 ## How it works
 
@@ -24,11 +24,11 @@ Coordination rests on one linearizable conditional write ({{topology.coordinate.
 
 ## Worked example
 
-A team runs `contextful-full` on one server with a local catalog file ({{topology.coordinate.backends}}) and serves analysts from a function-class provider.
+A team runs `contextful-full` on one server with a local catalog file ({{topology.coordinate.backends}}) and serves readers from a function-class provider.
 
 ```mermaid
 flowchart LR
-  ANALYST(["analyst"])
+  CALLER(["caller"])
   BUCKET[("bucket")]
 
   subgraph SERVER["one server running contextful-full"]
@@ -47,16 +47,16 @@ flowchart LR
   STEP -- "parts + manifest" --> STORE
   STORE -- "push" --> BUCKET
   BUCKET -- "pull" --> EDGE
-  ANALYST -- "query + credential" --> HOP -- "same credential" --> RET
+  CALLER -- "query + credential" --> HOP -- "same credential" --> RET
   RET -- "reads snapshot" --> EDGE
 ```
 
-- The cadence tick fires. The reconciler holds the deployment's cadence lease and renews it on a fixed interval ({{topology.coordinate.cadence-lease-renewal}}). The fallback cron fires only after taking that same lease ({{topology.coordinate.cadence-fallback}}), so two schedulers never dispatch one unit twice.
+- The cadence tick fires. The reconciler holds the deployment's cadence lease and renews it on a fixed interval ({{topology.coordinate.cadence-lease-renewal}}). The fallback cron takes that same lease before firing, so its fire holds the current fence ({{topology.coordinate.cadence-fallback}}).
 - The run path invokes a component connector as a journaled step; it runs because the full profile links a component host ({{topology.package.component-host}}).
 - Rows cross to the read path as parts plus a manifest, and the cursor advances by one compare-and-swap on its stored version ({{topology.coordinate.cursor-cas}}).
 - The store pushes to the bucket. The function-class provider hosts the edge profile alone ({{topology.package.edge-eligibility}}), which pulls the same parts and serves read-only SQL.
 - A pipeline fired on the edge deployment refuses by name, since the replica links no run path ({{topology.package.capability-absent}}); without a component host, a component connector refuses and no native source substitutes ({{topology.package.host-missing}}). A target capping per-invocation wall clock also excludes first-time backfills ({{topology.deploy.wall-clock-cap}}).
-- `contextful-ci deploy probe` requests the replica's hostname anonymously, exiting nonzero if the answer falls outside the declared gate ({{topology.publish-hostname.posture-mismatch}}). An analyst's request then passes the routing hop to a retrieval container, which reaches readiness before its hydration finishes ({{topology.publish-hostname.container-readiness}}).
+- `contextful-ci deploy probe` requests the replica's hostname anonymously, exiting nonzero if the answer falls outside the declared gate ({{topology.publish-hostname.posture-mismatch}}). A caller's request then passes the routing hop to a retrieval container, which reaches readiness before its hydration finishes ({{topology.publish-hostname.container-readiness}}).
 
 ## Where to look
 
