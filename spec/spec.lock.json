@@ -30877,8 +30877,8 @@
       "contract": "assurance",
       "operation": "evaluate",
       "subject": "semantic-cache",
-      "kind": "behavior",
-      "statement": "`--semantic-manifest` verifies versioned corpus, held-out relevance labels, development queries, configuration and real model embedding caches against their hashes before {{assurance.evaluate.through-the-store}}; the model names its immutable revision, artifact digests, license and embedding configuration.",
+      "kind": "refusal",
+      "statement": "`--semantic-manifest` hashes corpus, held-out labels, development queries, configuration, and the model's license, embedding configuration and artifacts at an immutable revision; a changed, unhashed or symbolically linked input or a second table raises `EvalSemanticCacheUnverified` before {{assurance.evaluate.through-the-store}}.",
       "why": "because model quality needs real vectors whose provenance and inputs survive offline replay",
       "file": "spec/81-engineering.md",
       "line": 366
@@ -30888,8 +30888,8 @@
       "contract": "assurance",
       "operation": "evaluate",
       "subject": "semantic-inputs",
-      "kind": "behavior",
-      "statement": "A semantic run rejects missing, non-finite or mismatched vectors, changed input hashes, relocated held-out files, overlapping development queries and configuration differences before retrieval; every retrieval leg consumes the same verified cases and corpus.",
+      "kind": "refusal",
+      "statement": "A missing, non-finite, zero-norm or mismatched vector, a relocated held-out file, an overlapping development query or a configuration difference raises `EvalSemanticInputRejected` before retrieval; every leg consumes the same verified cases and corpus.",
       "why": "because a cache fallback or corpus substitution changes the experiment while preserving its name",
       "file": "spec/81-engineering.md",
       "line": 368
@@ -36426,6 +36426,14 @@
           "EvalLabelIntervalMissing": {
             "clause": "assurance.backtest.label-interval",
             "gloss": "A bounded case declaring no label interval."
+          },
+          "EvalSemanticCacheUnverified": {
+            "clause": "assurance.evaluate.semantic-cache",
+            "gloss": "A semantic cache input changed, unhashed, symbolically linked, or a second table."
+          },
+          "EvalSemanticInputRejected": {
+            "clause": "assurance.evaluate.semantic-inputs",
+            "gloss": "A semantic vector, held-out file, development split or configuration that fails verification."
           },
           "ExtensionAutoloadRefused": {
             "clause": "assurance.build.runtime-extension-load",

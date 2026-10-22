@@ -36,6 +36,7 @@ fn open(dir: &Path) -> Result<Benchmark, String> {
         10,
         "reciprocal-rank",
     )
+    .map_err(|e| e.to_string())
 }
 
 /// Replace the first canonical document's first element with `value`, rehash and write the manifest.
@@ -75,7 +76,8 @@ fn the_versioned_cache_refuses_changed_inputs_and_missing_real_vectors() {
         10,
         "reciprocal-rank",
     )
-    .unwrap_err();
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("held-out"), "{error}");
     std::fs::copy(
         root.join("heldout.jsonl"),
@@ -88,7 +90,8 @@ fn the_versioned_cache_refuses_changed_inputs_and_missing_real_vectors() {
         10,
         "reciprocal-rank",
     )
-    .unwrap_err();
+    .unwrap_err()
+    .to_string();
     assert!(
         error.contains("held-out"),
         "an identical copy cannot redirect the verified corpus: {error}"
@@ -162,7 +165,9 @@ fn a_second_table_is_refused_whether_pinned_declared_or_carrying_a_vector() {
         std::fs::write(temp.path().join("manifest.json"), manifest.to_string()).unwrap();
         let error = open(temp.path()).unwrap_err();
         assert!(
-            error.contains("other than kb/semantic") && error.contains("kb/semantic-extra"),
+            error.contains("EvalSemanticCacheUnverified")
+                && error.contains("other than kb/semantic")
+                && error.contains("kb/semantic-extra"),
             "{error}"
         );
     }
@@ -177,7 +182,10 @@ fn vectors_outside_single_precision_are_refused() {
         let mut manifest = copy_fixture(temp.path());
         mutate_first_element(temp.path(), &mut manifest, value);
         let error = open(temp.path()).unwrap_err();
-        assert!(error.contains("semantic document"), "{name}: {error}");
+        assert!(
+            error.contains("EvalSemanticInputRejected") && error.contains("semantic document"),
+            "{name}: {error}"
+        );
     }
     let temp = tempfile::tempdir().unwrap();
     let mut manifest = copy_fixture(temp.path());
@@ -197,6 +205,48 @@ fn a_table_key_joins_components_with_slashes_on_any_host() {
         "corpus/rows/kb/semantic.jsonl"
     );
     assert!(semantic::manifest_key(Path::new("elsewhere"), &path).is_err());
+}
+
+/// A symbolic link in place of the manifest, a pinned input or the held-out argument is
+/// refused before any input is read through it: hashes and the held-out comparison follow
+/// links, so a link would admit bytes from outside the verified cache.
+#[cfg(unix)]
+#[test]
+fn symbolic_links_to_the_manifest_inputs_or_held_out_file_are_refused() {
+    use std::os::unix::fs::symlink;
+    for link in ["heldout.jsonl", "config.json", "manifest.json", "goldens"] {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = temp.path().join("cache");
+        copy_fixture(&cache);
+        std::fs::copy(
+            root().join("evals/semantic/v1/manifest.json"),
+            cache.join("manifest.json"),
+        )
+        .unwrap();
+        let outside = temp.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let mut goldens = cache.join("heldout.jsonl");
+        if link == "goldens" {
+            goldens = outside.join("heldout.jsonl");
+            symlink(cache.join("heldout.jsonl"), &goldens).unwrap();
+        } else {
+            std::fs::rename(cache.join(link), outside.join(link)).unwrap();
+            symlink(outside.join(link), cache.join(link)).unwrap();
+        }
+        let error = Benchmark::open(
+            &cache.join("manifest.json"),
+            &goldens,
+            10,
+            "reciprocal-rank",
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+        .unwrap_err();
+        assert!(
+            error.contains("EvalSemanticCacheUnverified") && error.contains("symbolic link"),
+            "{link}: {error}"
+        );
+    }
 }
 
 #[test]
