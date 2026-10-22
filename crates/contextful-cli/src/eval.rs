@@ -307,7 +307,8 @@ fn land_corpus(corpus: &Corpus, store: &Store, embedder: Option<&StubEmbedder>, 
             corpus_tokens += systems::tokens(&row_text(row, decl.primary_key()));
             if !row.contains_key(EMBEDDING_COLUMN) {
                 let Some(embedder) = embedder else {
-                    bail!("`{table}` row {} carries no embedding; a semantic run stubs none", i + 1);
+                    let reason = format!("`{table}` row {} carries no embedding; a semantic run stubs none", i + 1);
+                    return Err(EvalError::EvalSemanticInputRejected { reason }.into());
                 };
                 let v = embedder.embed(&row_text(row, decl.primary_key()));
                 row.insert(EMBEDDING_COLUMN.into(), serde_json::to_value(v)?);
@@ -382,7 +383,10 @@ fn read_case(
     let embedding = match (&case.query_embedding, embedder) {
         (Some(embedding), _) => embedding.clone(),
         (None, Some(embedder)) => embedder.embed(&case.question),
-        (None, None) => bail!("case `{}` carries no embedding; a semantic run stubs none", case.id),
+        (None, None) => {
+            let reason = format!("case `{}` carries no embedding; a semantic run stubs none", case.id);
+            return Err(EvalError::EvalSemanticInputRejected { reason }.into());
+        }
     };
     let prefix = case.prefix.clone().unwrap_or_default();
     let mut legs = BTreeMap::new();

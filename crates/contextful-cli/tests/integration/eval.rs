@@ -161,7 +161,7 @@ fn a_semantic_run_refuses_a_second_table_instead_of_stubbing_its_vectors() {
         "--report", path.to_str().unwrap(),
     ], Some(&token));
     assert!(!out.status.success());
-    assert!(stderr(&out).contains("other than kb/semantic"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("EvalSemanticCacheUnverified: semantic corpus holds a table other than kb/semantic"), "{}", stderr(&out));
     assert!(!path.exists());
 }
 

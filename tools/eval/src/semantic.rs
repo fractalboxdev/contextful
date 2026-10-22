@@ -8,6 +8,7 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::case::{self, Case};
+use crate::error::EvalError;
 use crate::judge::{bootstrap_interval, BOOTSTRAP_RESAMPLES, INTERVAL_LEVEL};
 use crate::metrics::{self, Aggregate, RowRef, LEGS};
 use crate::report::CaseRun;
@@ -75,12 +76,38 @@ fn vector(value: &Value, dimension: usize) -> bool {
     norm.is_finite() && norm > 0.0
 }
 
+/// Whether `path` itself, not what it resolves to, is a symbolic link.
+fn linked(path: &Path) -> Result<bool, String> {
+    std::fs::symlink_metadata(path)
+        .map(|m| m.file_type().is_symlink())
+        .map_err(|e| format!("semantic benchmark `{}`: {e}", path.display()))
+}
+
 impl Benchmark {
     /// Verify every input before a scratch store opens; a cache never falls back to stubs.
-    pub fn open(path: &Path, goldens: &Path, k: usize, fusion: &str) -> Result<Self, String> {
+    /// A cache failure raises `EvalSemanticCacheUnverified`, an input failure
+    /// `EvalSemanticInputRejected`.
+    pub fn open(path: &Path, goldens: &Path, k: usize, fusion: &str) -> Result<Self, EvalError> {
+        let (manifest, raw) = Self::verify_cache(path, goldens)
+            .map_err(|reason| EvalError::EvalSemanticCacheUnverified { reason })?;
+        Self::verify_inputs(manifest, raw, path, goldens, k, fusion)
+            .map_err(|reason| EvalError::EvalSemanticInputRejected { reason })
+    }
+
+    /// The manifest, every pinned input and the held-out argument: none a symbolic link,
+    /// each hashed as pinned, and one table under `corpus/rows/`.
+    fn verify_cache(path: &Path, goldens: &Path) -> Result<(Manifest, Vec<u8>), String> {
         let read = |p: &Path| {
             std::fs::read(p).map_err(|e| format!("semantic benchmark `{}`: {e}", p.display()))
         };
+        for p in [path, goldens] {
+            if linked(p)? {
+                return Err(format!(
+                    "semantic benchmark input is a symbolic link: {}",
+                    p.display()
+                ));
+            }
+        }
         let raw = read(path)?;
         let manifest: Manifest = serde_json::from_slice(&raw).map_err(|e| e.to_string())?;
         let root = path.parent().unwrap_or(Path::new("."));
@@ -103,6 +130,11 @@ impl Benchmark {
             }
         }
         for (name, digest) in &manifest.files {
+            if safe_path(name) && linked(&root.join(name))? {
+                return Err(format!(
+                    "semantic benchmark input is a symbolic link: {name}"
+                ));
+            }
             if !safe_path(name) || hash(&read(&root.join(name))?) != *digest {
                 return Err(format!("semantic benchmark input hash differs: {name}"));
             }
@@ -139,6 +171,22 @@ impl Benchmark {
                 }
             }
         }
+        Ok((manifest, raw))
+    }
+
+    /// The held-out file, configuration, document vectors and cases of a verified cache.
+    fn verify_inputs(
+        manifest: Manifest,
+        raw: Vec<u8>,
+        path: &Path,
+        goldens: &Path,
+        k: usize,
+        fusion: &str,
+    ) -> Result<Self, String> {
+        let read = |p: &Path| {
+            std::fs::read(p).map_err(|e| format!("semantic benchmark `{}`: {e}", p.display()))
+        };
+        let root = path.parent().unwrap_or(Path::new("."));
         if goldens.canonicalize().map_err(|e| e.to_string())?
             != root
                 .join(&manifest.heldout)
