@@ -1,0 +1,18 @@
+{
+  "exchanges": [
+    {
+      "method": "GET",
+      "path": "/drive/v3/files/doc-plan",
+      "query": {"fields": "id,name,mimeType,modifiedTime,version,size,md5Checksum,driveId"},
+      "status": 200,
+      "body": {"id": "doc-plan", "name": "Plan", "mimeType": "application/vnd.google-apps.document", "modifiedTime": "2031-01-02T09:00:00.000Z", "version": "5"}
+    },
+    {
+      "method": "GET",
+      "path": "/drive/v3/files/sheet-budget",
+      "query": {"fields": "id,name,mimeType,modifiedTime,version,size,md5Checksum,driveId"},
+      "status": 200,
+      "body": {"id": "sheet-budget", "name": "Budget", "mimeType": "application/vnd.google-apps.spreadsheet", "modifiedTime": "2031-01-02T09:00:00.000Z", "version": "7"}
+    }
+  ]
+}

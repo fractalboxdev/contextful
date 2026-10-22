@@ -180,6 +180,41 @@ fn sha256(bytes: &[u8]) -> String {
     sha2::Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// A picked file is read by id, without listing any folder, and deselection withdraws it.
+#[test]
+fn picker_file_ids_capture_and_withdraw_without_folder_listing() {
+    let fake = Fake::start();
+    fake.overlay("picks.json");
+    let mut config = fake.config(json!({"file_ids": ["doc-plan"]}));
+    config.as_object_mut().unwrap().remove("folder_id");
+    let parsed = DriveConfig::parse_picks(&config).expect("picked selection");
+    let first = Drive::new(parsed, resolver(vec![("drive-refresh", REFRESH), ("drive-client-id", "client-7.apps.example"), ("drive-client-secret", CLIENT_SECRET)]), Arc::new(InProcess), Arc::new(Held::default())).unwrap();
+    let (rows, position, _) = pull(&mut first.source("files").unwrap(), None);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["file_id"], "doc-plan");
+    assert!(fake.received("/drive/v3/files").is_empty(), "picked ids do not list folders");
+    assert_eq!(position["file_ids"], json!(["doc-plan"]));
+
+    let mut empty = fake.config(json!({"file_ids": ["sheet-budget"]}));
+    empty.as_object_mut().unwrap().remove("folder_id");
+    let second = Drive::new(DriveConfig::parse_picks(&empty).unwrap(), resolver(vec![("drive-refresh", REFRESH), ("drive-client-id", "client-7.apps.example"), ("drive-client-secret", CLIENT_SECRET)]), Arc::new(InProcess), Arc::new(Held::default())).unwrap();
+    let (rows, _, _) = pull(&mut second.source("files").unwrap(), Some(position));
+    assert_eq!(by_id(&rows, "doc-plan")["capture_status"], "removed");
+    assert_eq!(by_id(&rows, "sheet-budget")["capture_status"], "captured");
+}
+
+/// Ambiguous and oversized Picker selections refuse before any provider request.
+#[test]
+fn picker_file_ids_validate_before_requests() {
+    let fake = Fake::start();
+    for ids in [json!([]), json!(["doc-plan", "doc-plan"]), json!((0..129).map(|i| format!("id{i}")).collect::<Vec<_>>())] {
+        let mut config = fake.config(json!({"file_ids": ids}));
+        config.as_object_mut().unwrap().remove("folder_id");
+        assert!(DriveConfig::parse_picks(&config).unwrap_err().to_string().contains("ConnectorDriveFilesInvalid"));
+    }
+    assert!(fake.received("/drive/v3/files").is_empty());
+}
+
 /// Pull `source` from `position`, answering its rows and the position after them.
 fn pull(source: &mut DriveSource, position: Option<Value>) -> (Vec<serde_json::Map<String, Value>>, Value, Vec<u8>) {
     let bytes = source.pull(&request(position), &Never).unwrap();
