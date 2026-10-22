@@ -170,6 +170,22 @@ fn files_holding(dir: &Path, needle: &str) -> usize {
     n
 }
 
+/// Picker file ids reach the built binary without a folder listing.
+#[test]
+fn a_picked_file_pipeline_lands_only_its_selected_file() {
+    let fake = Fake::start();
+    fake.recordings.lock().unwrap().push("picks.json");
+    let dir = project(&fake);
+    let manifest = std::fs::read_to_string(dir.path().join("contextful.toml")).unwrap()
+        .replace("name = \"drive\"", "name = \"gdrive-picks\"")
+        .replace("folder_id = \"root-f\"", "file_ids = [\"doc-plan\"]");
+    std::fs::write(dir.path().join("contextful.toml"), manifest).unwrap();
+    let out = fire(dir.path(), "picked-1", "2031-03-01T00:00:00Z");
+    assert!(out.contains("team_files: picked-1.team_files success · 1 rows"), "{out}");
+    assert_eq!(query(dir.path(), "SELECT file_id FROM team_files")["rows"], json!([["doc-plan"]]));
+    assert_eq!(fake.count("/drive/v3/files"), 0, "Picker ids make no folder listing");
+}
+
 /// One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages`
 /// tables.
 ///
