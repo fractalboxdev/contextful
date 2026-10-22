@@ -383,8 +383,13 @@ impl Rotator {
         let if_version = self.resolver.hydrated_version(name);
         let (fresh, expires_hint) = refresh(&current)?;
         match writer.put(name, &fresh, if_version.as_deref(), expires_hint) {
-            Ok(_) | Err(PutError::Conflict(_)) => {
+            Ok(_) => {
                 self.resolver.forget(name);
+                Ok(())
+            }
+            Err(PutError::Conflict(_)) => {
+                self.resolver.forget(name);
+                self.resolver.hydrate(name)?;
                 Ok(())
             }
             Err(PutError::Denied(reason)) => Err(denied(format!("`{adapter}` refused the put for `secret://{name}`: {reason}"))),
