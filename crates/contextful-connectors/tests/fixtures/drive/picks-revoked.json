@@ -3,7 +3,7 @@
     {
       "method": "GET",
       "path": "/drive/v3/files/doc-plan",
-      "query": {"fields": "id,name,mimeType,modifiedTime,version,size,md5Checksum,driveId"},
+      "query": {"fields": "id,name,mimeType,modifiedTime,version,size,md5Checksum,driveId,trashed"},
       "status": 404,
       "body": {"error": {"code": 404}}
     }

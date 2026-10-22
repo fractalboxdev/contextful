@@ -19274,12 +19274,13 @@
       "operation": "source",
       "subject": "drive-file-access",
       "kind": "refusal",
-      "statement": "Before first capture, the source validates every selected file through the bound credential; an inaccessible or non-file id raises `ConnectorDriveFileRejected` without landing rows or advancing position.",
+      "statement": "The source validates every selected file through the bound credential; a never-captured inaccessible or trashed id, a non-file id, or a file outside a configured `drive_id` raises `ConnectorDriveFileRejected` without landing rows or advancing position.",
       "why": "because an inaccessible picker id cannot count as a complete selection",
       "file": "spec/40-connector.md",
       "line": 674,
       "scenarios": [
-        "WHEN a picked id is inaccessible to the bound credential, THEN `ConnectorDriveFileRejected` commits neither rows nor position."
+        "WHEN a picked id is inaccessible to the bound credential, THEN `ConnectorDriveFileRejected` commits neither rows nor position.",
+        "WHEN a picked file lies in another Shared Drive than the configured `drive_id`, THEN `ConnectorDriveFileRejected` commits neither rows nor position."
       ]
     },
     {
@@ -19288,12 +19289,13 @@
       "operation": "source",
       "subject": "drive-file-revoked",
       "kind": "behavior",
-      "statement": "A captured file that becomes inaccessible under a valid credential lands tombstones for its file and pages; an authentication or transient failure advances no position.",
+      "statement": "A captured file that becomes inaccessible or trashed under a valid credential lands tombstones for its file and pages once; the position keeps its id withdrawn, so later fires succeed; an authentication or transient failure advances no position.",
       "why": "",
       "file": "spec/40-connector.md",
       "line": 676,
       "scenarios": [
-        "WHEN a captured file loses access under a valid credential, THEN its file and pages receive tombstones before the selection position advances."
+        "WHEN a captured file loses access under a valid credential, THEN its file and pages receive tombstones before the selection position advances.",
+        "WHEN two fires follow a captured file's revocation, THEN the first lands its tombstone, the second lands none, and both keep the other picked files in the position."
       ]
     },
     {

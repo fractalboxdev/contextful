@@ -671,9 +671,9 @@ The declared behavior of each source compiled into the engine.
 - `drive-file-selection-limit` — `file_ids` holds at most 128 entries.
 - `drive-file-selection-invalid` — An empty, repeated or mixed `file_ids` selection, or one exceeding {{connector.source.drive-file-selection-limit}}, raises `ConnectorDriveFilesInvalid` before a Drive request.
   *because an ambiguous selection cannot establish which files a later tombstone withdraws*
-- `drive-file-access` — Before first capture, the source validates every selected file through the bound credential; an inaccessible or non-file id raises `ConnectorDriveFileRejected` without landing rows or advancing position.
+- `drive-file-access` — The source validates every selected file through the bound credential; a never-captured inaccessible or trashed id, a non-file id, or a file outside a configured `drive_id` raises `ConnectorDriveFileRejected` without landing rows or advancing position.
   *because an inaccessible picker id cannot count as a complete selection*
-- `drive-file-revoked` — A captured file that becomes inaccessible under a valid credential lands tombstones for its file and pages; an authentication or transient failure advances no position.
+- `drive-file-revoked` — A captured file that becomes inaccessible or trashed under a valid credential lands tombstones for its file and pages once; the position keeps its id withdrawn, so later fires succeed; an authentication or transient failure advances no position.
 - `drive-file-position` — The position binds sorted `file_ids` and mode; changing either rereads retained files, and a complete read tombstones deselected files and their pages.
   *A-connector*
 - `drive-row-scope` — A connection-bound run stamps its Drive `files` and `pages` rows and tombstones with the admitted `tenant` and `principal`; the source cannot supply either value.
@@ -704,6 +704,8 @@ unsettled: Does Picker selection of a folder under `drive.file` grant the app ac
 - `connector.source.drive-file-selection-invalid`: WHEN `file_ids` repeats one id or appears beside `folder_id`, THEN validation raises `ConnectorDriveFilesInvalid` before any request.
 - `connector.source.drive-file-access`: WHEN a picked id is inaccessible to the bound credential, THEN `ConnectorDriveFileRejected` commits neither rows nor position.
 - `connector.source.drive-file-revoked`: WHEN a captured file loses access under a valid credential, THEN its file and pages receive tombstones before the selection position advances.
+- `connector.source.drive-file-revoked`: WHEN two fires follow a captured file's revocation, THEN the first lands its tombstone, the second lands none, and both keep the other picked files in the position.
+- `connector.source.drive-file-access`: WHEN a picked file lies in another Shared Drive than the configured `drive_id`, THEN `ConnectorDriveFileRejected` commits neither rows nor position.
 - `connector.source.drive-file-position`: WHEN a file id leaves a complete selection, THEN its file row and prior pages land tombstones.
 - `connector.source.drive-row-scope`: WHEN two tenants select the same file id, THEN each landed row carries only its admitted tenant and principal.
 
