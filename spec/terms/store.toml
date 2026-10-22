@@ -20,6 +20,7 @@ probe      = {}
 merge      = {}
 lease      = {}
 replicate  = {}
+drain      = {}
 
 
 [error]
@@ -66,6 +67,8 @@ SyncPrefixEscape             = { clause = "store.push.prefix-escape", gloss = "A
 SyncPrefixUnbound            = { clause = "store.push.prefix-unbound", gloss = "The variable named by `prefix_from` is unset at startup." }
 SyncPrefixOverspecified      = { clause = "store.push.prefix-overspecified", gloss = "`prefix` and `prefix_from` are declared together." }
 SyncPushInFlight             = { clause = "store.push.in-flight", gloss = "A push of one store waited past its bound for the push guard another push on the machine holds." }
+SyncRunsUnpushed             = { clause = "store.drain.status", gloss = "A run opened on a disposable disk carries an unpushed mark no committed push has cleared." }
+SyncStatusUnread             = { clause = "store.drain.status-unread", gloss = "A status check reached no answer from the execution database holding the unpushed marks." }
 SyncManifestFormatUnsupported = { clause = "store.push.format-unsupported", gloss = "A bucket or generation manifest carries a format newer than the reader parses." }
 SyncGenerationConflict       = { clause = "store.push.generation-conflict", gloss = "A generation manifest already holds another commit's bytes under the number a push committed." }
 SyncPartCollected            = { clause = "store.pull.part-collected", gloss = "A part a lazy store needs is gone from the bucket." }
@@ -125,5 +128,6 @@ store-tombstone-ttl         = { clause = "store.merge.tombstone-ttl", value = 30
 store-push-retries          = { clause = "store.merge.retries", value = 5, unit = "attempts", basis = "chosen", gloss = "Default consecutive re-commit rounds meeting no newer generation on a lost bucket manifest compare-and-set." }
 store-push-round-ceiling    = { clause = "store.merge.round-ceiling", value = 64, unit = "rounds", basis = "chosen", gloss = "Manifest commit rounds one push makes, whatever generations they meet." }
 store-push-wait             = { clause = "store.push.in-flight", value = 300, unit = "s", basis = "chosen", gloss = "Default wait for the push guard another push of the store holds." }
+store-drain-deadline        = { clause = "store.drain.deadline", value = 15, unit = "s", basis = "chosen", gloss = "Longest push a stopping serve attempts before it exits." }
 store-lease-ttl             = { clause = "store.lease.ttl", value = 10, unit = "min", basis = "chosen", gloss = "Granted life of a lease." }
 store-lease-renewal         = { clause = "store.lease.renewal", value = 200, unit = "s", basis = "chosen", gloss = "Interval at which a holder renews, a third of the grant." }

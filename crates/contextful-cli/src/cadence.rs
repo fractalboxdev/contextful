@@ -1685,7 +1685,18 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
         });
         let answered = serve_cycle(&mut scheduler, &control, &l.project, &l.declaration, tasks);
         drop(reaper);
-        answered?;
+        if contextful_engine::stop::requested() {
+            // A failed stop push reports beside the cycle's own error, never in its place.
+            match (answered, crate::sync::drain(&l)) {
+                (Err(cycle), Err(drain)) => return Err(cycle.context(format!("{drain:#}"))),
+                (Ok(_), Err(drain)) => return Err(drain),
+                (answered, Ok(())) => {
+                    answered?;
+                }
+            }
+        } else {
+            answered?;
+        }
         if contextful_engine::stop::requested() {
             bail!("a stop signal ended the cycle's dispatched units");
         }
@@ -1739,6 +1750,8 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     drop(reaper);
     report(scheduler.drain());
     scheduler.release()?;
+    // The stop push carries what the ended children committed (`store.drain.deadline`).
+    crate::sync::drain(&l)?;
     eprintln!("stopped");
     Ok(())
 }
@@ -1841,6 +1854,9 @@ fn serve_wakes(scheduler: &mut Scheduler, control: &ControlConfig, addr: &str, p
     drop(reaper);
     report(scheduler.drain());
     scheduler.release()?;
+    // The stop push carries what the ended children committed (`store.drain.deadline`).
+    let located = Located { project: project.clone(), declaration: declaration.to_path_buf() };
+    crate::sync::drain(&located)?;
     eprintln!("stopped");
     Ok(())
 }

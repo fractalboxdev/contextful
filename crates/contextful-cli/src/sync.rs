@@ -11,7 +11,9 @@ use contextful_context::fold::fold_under;
 use contextful_context::{node, Store};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
-use contextful_core::store::lay_out::{Pointer, POINTER_FILE};
+use contextful_core::coordinate::Catalog;
+use contextful_core::run::record::RunRow;
+use contextful_core::store::lay_out::{Pointer, MANIFEST_FILE, POINTER_FILE, RUNS_DIR};
 use contextful_core::store::object::ObjectStore;
 use contextful_core::store::sync::{confine, Endpoint, SyncConfig};
 use contextful_policy::replica::RootBucket;
@@ -22,6 +24,7 @@ use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_sync::{run_state, RunState};
 use contextful_policy::enforce::policy::TablePolicy;
 use contextful_sync::{FsBucket, PullScope, Redistribution, SiteResidency, Syncer};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -79,6 +82,12 @@ pub enum SyncCmd {
         /// Print JSON.
         #[arg(long)]
         json: bool,
+    },
+    /// List, as JSON, each run committed on a disposable disk that no committed push has
+    /// carried, refusing while one is not lost.
+    Status {
+        #[command(flatten)]
+        args: SyncArgs,
     },
     /// Take or release a table's compaction lease in the bucket.
     #[command(subcommand)]
@@ -153,6 +162,7 @@ fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)
     let text = std::fs::read_to_string(&l.declaration).unwrap_or_default();
     let control_dir = control_dir(&text, &l.project.dir, &l.project.name)?;
     let decls = TableDecl::parse_declaration_set(&text, &pipeline_files(&l.declaration)?)?;
+    // `withheld` reads the same declaration set for the unpushed marks (`store.drain.mark`).
     let site_id = crate::project::site_id_for(&text, &l.declaration, None, None).unwrap_or_else(|_| node_id.to_string());
     let residency = Some(SiteResidency { site_id, regions: crate::reside::declared(&text)?.map(|r| r.entries()) });
     // Tombstones sign with the project's issuer key and verify against its key-set ledger
@@ -327,6 +337,24 @@ impl PendingPull {
             let _ = writeln!(std::io::stderr(), "pull_before_run: warning: {discarded}");
         }
         let _ = writeln!(std::io::stderr(), "pull_before_run: pulled {} objects and {} pointers", r.downloaded.len(), r.pointers.len());
+        self.push_unpushed()
+    }
+
+    /// Push before the first read while this node holds a run marked unpushed and not lost
+    /// (`store.drain.before-read`).
+    fn push_unpushed(&self) -> Result<()> {
+        let Some(catalog) = durable_catalog(&self.syncer.store)? else { return Ok(()) };
+        let marked = pending(catalog.as_ref(), &self.syncer.store, &self.syncer.redistribution.withheld, &self.syncer.node)?;
+        if marked.is_empty() {
+            return Ok(());
+        }
+        let runs = run_list(&marked);
+        let r = push(&self.syncer, now(&None)?)
+            .with_context(|| format!("`pull_before_run`: run(s) {runs} stay unpushed, and no read starts before a push carries them"))?;
+        for refusal in &r.refused {
+            eprintln!("warning: {refusal}");
+        }
+        eprintln!("pull_before_run: pushed unpushed run(s) {runs}");
         Ok(())
     }
 }
@@ -411,10 +439,221 @@ fn record_run_state(_store: &Store, _project: &str, _node_id: &str) -> Result<()
     Ok(())
 }
 
-/// Record the run state, then push.
+/// Record the run state, then push; a committed push settles each unpushed mark this node
+/// held before it started (`store.drain.clear`).
 fn push(s: &Syncer, at: Instant) -> Result<contextful_sync::sync::PushReport> {
     record_run_state(&s.store, &s.project, &s.node)?;
-    Ok(s.push(at)?)
+    let catalog = durable_catalog(&s.store)?;
+    // Which marked runs the store held before the push walked it: those the push carries.
+    let marked: Vec<(RunRow, bool)> = match &catalog {
+        Some(c) => {
+            let runs = carried_runs(&s.store, &s.redistribution.withheld)?;
+            marked_for(c.as_ref(), &s.node)?.into_iter().map(|r| { let held = holds_run(&runs, &r.run_id, &s.node); (r, held) }).collect()
+        }
+        None => Vec::new(),
+    };
+    let report = s.push(at)?;
+    if let Some(c) = &catalog {
+        settle(c.as_ref(), &s.store, &s.redistribution.withheld, &s.node, &marked)?;
+    }
+    Ok(report)
+}
+
+/// The catalog holding run rows in the execution database a disposable-disk storage profile
+/// binds; `None` under the local profile, whose disk is not disposable.
+#[cfg(feature = "data-plane")]
+fn durable_catalog(store: &Store) -> Result<Option<Arc<dyn Catalog + Send + Sync>>> {
+    if !crate::storage::validate_environment()? {
+        return Ok(None);
+    }
+    let machine = store.root().join(MACHINE_CATALOG_FILE);
+    Ok(Some(crate::run::open_catalog(&machine, Arc::new(crate::clock::SystemClock), store.file_cipher())?))
+}
+
+/// A read-plane build fires no runs, so it holds no run row to mark.
+#[cfg(not(feature = "data-plane"))]
+fn durable_catalog(_store: &Store) -> Result<Option<Arc<dyn Catalog + Send + Sync>>> {
+    Ok(None)
+}
+
+/// The runs marked unpushed on `node` and not lost.
+fn marked_for(catalog: &dyn Catalog, node: &str) -> Result<Vec<RunRow>> {
+    Ok(catalog.unpushed_runs()?.into_iter().filter(|r| r.unpushed.as_ref().is_some_and(|u| u.node == node && !u.lost)).collect())
+}
+
+/// Whether a run is still running under an unexpired owner lease, so its own process
+/// commits or abandons it.
+fn live(row: &RunRow, now: Instant) -> bool {
+    row.status.is_in_flight() && row.reaped(now).is_none()
+}
+
+/// The marked runs a push can carry now: each the store holds, and each no live owner is
+/// still running.
+fn pending(catalog: &dyn Catalog, store: &Store, withheld: &BTreeSet<String>, node: &str) -> Result<Vec<RunRow>> {
+    let now = catalog.now()?;
+    let runs = carried_runs(store, withheld)?;
+    Ok(marked_for(catalog, node)?.into_iter().filter(|r| holds_run(&runs, &r.run_id, node) || !live(r, now)).collect())
+}
+
+/// The runs directory of each table a push carries: every table the store holds, nested names
+/// and tables the erasure frontier replaced included, less the `withheld` ones no push ships
+/// (`authority.bound-redistribution.withhold`).
+fn carried_runs(store: &Store, withheld: &BTreeSet<String>) -> Result<Vec<PathBuf>> {
+    let mut dirs = Vec::new();
+    for table in store.tables()?.into_iter().filter(|t| !withheld.contains(t)) {
+        dirs.push(store.table_dir(&table)?.join(RUNS_DIR));
+    }
+    Ok(dirs)
+}
+
+/// Whether one of the `runs` directories holds a committed run manifest of `run_id` on `node`.
+fn holds_run(runs: &[PathBuf], run_id: &str, node: &str) -> bool {
+    runs.iter().any(|d| d.join(run_id).join(node).join(MANIFEST_FILE).is_file())
+}
+
+/// The tables the declaration withholds from every push, as [`open_with`] reads them.
+#[cfg(feature = "data-plane")]
+fn withheld(l: &Located) -> Result<BTreeSet<String>> {
+    let text = std::fs::read_to_string(&l.declaration).unwrap_or_default();
+    let decls = TableDecl::parse_declaration_set(&text, &pipeline_files(&l.declaration)?)?;
+    Ok(replicate_off(&decls)?.into_iter().collect())
+}
+
+/// Each run id, quoted, for a message.
+fn run_list(rows: &[RunRow]) -> String {
+    rows.iter().map(|r| format!("`{}`", r.run_id)).collect::<Vec<_>>().join(", ")
+}
+
+/// After a committed push, clear each mark whose run the store held when the push began,
+/// which the push carried, and mark lost each whose run the store does not hold and no live
+/// owner is running (`store.drain.clear`).
+fn settle(catalog: &dyn Catalog, store: &Store, withheld: &BTreeSet<String>, node: &str, marked: &[(RunRow, bool)]) -> Result<()> {
+    let now = catalog.now()?;
+    let runs = carried_runs(store, withheld)?;
+    for (row, held_before) in marked {
+        let lost = !held_before && !holds_run(&runs, &row.run_id, node) && !live(row, now);
+        if !held_before && !lost {
+            continue;
+        }
+        catalog.update_run(&row.run_id, &mut |r| {
+            let ours = r.unpushed.as_ref().is_some_and(|u| u.node == node);
+            if ours && *held_before {
+                r.unpushed = None;
+            } else if let Some(u) = r.unpushed.as_mut().filter(|_| ours) {
+                u.lost = true;
+            }
+            Ok(())
+        })?;
+        if lost {
+            eprintln!("warning: run `{}` opened on node `{node}`, and neither the bucket nor this store holds its commit; it is marked lost", row.run_id);
+        }
+    }
+    Ok(())
+}
+
+/// Drop the mark of each of `run_ids` that closed without a run manifest in a table a push
+/// carries: the run committed nothing a push ships (`store.drain.mark`).
+#[cfg(feature = "data-plane")]
+pub fn unmark_uncommitted(l: &Located, run_ids: &[String]) -> Result<()> {
+    let store = Store::open(&l.project.dir, &l.project.name)?;
+    let Some(catalog) = durable_catalog(&store)? else { return Ok(()) };
+    let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
+    let node = node.to_string();
+    let runs = carried_runs(&store, &withheld(l)?)?;
+    for id in run_ids.iter().filter(|id| !holds_run(&runs, id, &node)) {
+        catalog.update_run(id, &mut |r| {
+            if !r.status.is_in_flight() && r.unpushed.as_ref().is_some_and(|u| u.node == node) {
+                r.unpushed = None;
+            }
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
+/// The longest push a stopping `pipeline serve` attempts (`store.drain.deadline`).
+#[cfg(feature = "data-plane")]
+pub const DRAIN_SECS: u64 = 15;
+
+/// On a stop signal, once the children are ended, push while this node holds a marked run a
+/// push can carry, for at most [`DRAIN_SECS`] (`store.drain.deadline`); a push failing or
+/// outrunning it fails serve and names the runs it leaves marked (`store.drain.unfinished`).
+#[cfg(feature = "data-plane")]
+pub fn drain(l: &Located) -> Result<()> {
+    let (Some(config), _) = sync_config(l)? else { return Ok(()) };
+    if config.push_after_run != Some(true) {
+        return Ok(());
+    }
+    let store = Store::open(&l.project.dir, &l.project.name)?;
+    let Some(catalog) = durable_catalog(&store)? else { return Ok(()) };
+    let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
+    let node = node.to_string();
+    let marked = pending(catalog.as_ref(), &store, &withheld(l)?, &node)?;
+    if marked.is_empty() {
+        return Ok(());
+    }
+    let located = Located { project: l.project.clone(), declaration: l.declaration.clone() };
+    let at = now(&None)?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(push_after_run_within(&located, at, Some(DRAIN_SECS)));
+    });
+    let answered = rx.recv_timeout(std::time::Duration::from_secs(DRAIN_SECS));
+    let left = || -> String {
+        let rows = marked_for(catalog.as_ref(), &node).unwrap_or_else(|_| marked.clone());
+        if rows.is_empty() { "no run is marked unpushed".to_string() } else { format!("run(s) {} stay unpushed", run_list(&rows)) }
+    };
+    match answered {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e.context(format!("the stop push failed; {}", left()))),
+        Err(_) => anyhow::bail!("the stop push did not finish within {DRAIN_SECS} s; {}", left()),
+    }
+}
+
+/// The exit status of `sync status` refusing with `SyncRunsUnpushed`, apart from a status
+/// that could not read the execution database (`store.drain.status`).
+pub const UNPUSHED_STATUS: i32 = 3;
+
+/// Every run marked unpushed, any node's, as JSON with a typed `error`: `SyncRunsUnpushed`
+/// exiting [`UNPUSHED_STATUS`] while one is not lost (`store.drain.status`), and
+/// `SyncStatusUnread` exiting 1 when the execution database answers no read
+/// (`store.drain.status-unread`).
+fn status(args: &SyncArgs) -> Result<()> {
+    let l = locate(args.project.as_deref(), args.declaration.clone())?;
+    let store = Store::open(&l.project.dir, &l.project.name)?;
+    let read = durable_catalog(&store).and_then(|c| match c {
+        Some(c) => Ok(c.unpushed_runs()?),
+        None => Ok(Vec::new()),
+    });
+    let rows = match read {
+        Ok(rows) => rows,
+        Err(e) => {
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "runs": null, "error": "SyncStatusUnread", "message": format!("{e:#}") }))?);
+            anyhow::bail!("SyncStatusUnread: the execution database answered no read of its unpushed runs: {e:#}");
+        }
+    };
+    let listed: Vec<serde_json::Value> = rows
+        .iter()
+        .filter_map(|r| {
+            let u = r.unpushed.as_ref()?;
+            Some(serde_json::json!({
+                "run_id": r.run_id,
+                "pipeline": r.pipeline_id,
+                "table": r.table,
+                "node": u.node,
+                "ended_at": r.ended_at.map(|t| t.to_string()),
+                "lost": u.lost,
+            }))
+        })
+        .collect();
+    let open: Vec<RunRow> = rows.into_iter().filter(|r| r.unpushed.as_ref().is_some_and(|u| !u.lost)).collect();
+    let error = (!open.is_empty()).then_some("SyncRunsUnpushed");
+    println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "runs": listed, "error": error }))?);
+    if !open.is_empty() {
+        eprintln!("SyncRunsUnpushed: run(s) {} opened on a disposable disk, and no committed push carried them; replacing that disk discards them", run_list(&open));
+        std::process::exit(UNPUSHED_STATUS);
+    }
+    Ok(())
 }
 
 pub fn run(cmd: SyncCmd) -> Result<()> {
@@ -428,6 +667,7 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&plan.manifest())?);
             Ok(())
         }
+        SyncCmd::Status { args } => status(&args),
         SyncCmd::Probe { args } => {
             let (s, _) = open(&args)?;
             let (c, why) = s.probe_with_reason()?;

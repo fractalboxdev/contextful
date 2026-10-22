@@ -295,6 +295,11 @@ pub trait Catalog {
     fn last_run_start(&self, pipeline_id: &str) -> Result<Option<Instant>, Failure> {
         Ok(self.runs(Some(pipeline_id))?.iter().map(|r| r.started_at).max())
     }
+    /// Every run row carrying an `unpushed` mark (`store.drain.mark`). A SQL catalog
+    /// filters in its `WHERE`; this default filters what [`Catalog::runs`] returns.
+    fn unpushed_runs(&self) -> Result<Vec<RunRow>, Failure> {
+        Ok(self.runs(None)?.into_iter().filter(|r| r.unpushed.is_some()).collect())
+    }
     /// Apply `f` to a run row under the catalog's write serialization; `None` when no
     /// row carries `run_id`, and the row unchanged when `f` refuses.
     fn update_run(&self, run_id: &str, f: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure>;

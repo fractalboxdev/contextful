@@ -423,6 +423,7 @@ fn run_row(id: &str) -> RunRow {
         credential_providers: Default::default(),
         bound_hits: Vec::new(),
         next_attempt_at: None,
+        unpushed: None,
     }
 }
 

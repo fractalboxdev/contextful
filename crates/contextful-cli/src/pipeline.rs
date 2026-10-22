@@ -1171,7 +1171,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             }
             // Every outcome past run open publishes (`run.record.failure-publishes`).
             let opened = attempted.iter().any(|id| w.engine.catalog.run(id).ok().flatten().is_some());
-            let pushed = if opened { crate::sync::push_after_run(&l, w.clock.now()) } else { Ok(()) };
+            // A run that closed without committing drops its mark before the push (`store.drain.mark`).
+            let pushed = if opened { crate::sync::unmark_uncommitted(&l, &attempted).and_then(|()| crate::sync::push_after_run(&l, w.clock.now())) } else { Ok(()) };
             if !failed.is_empty() {
                 if let Err(error) = recorded { eprintln!("{error:#}"); }
                 if let Err(e) = pushed {

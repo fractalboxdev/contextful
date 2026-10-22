@@ -9,6 +9,7 @@ mod run_state;
 mod node_id;
 mod redistribute;
 mod s3;
+mod unpushed;
 mod without_s3;
 
 #[test]
