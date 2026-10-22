@@ -19222,6 +19222,120 @@
       "line": 667
     },
     {
+      "id": "connector.source.drive-picker-source",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-picker-source",
+      "kind": "behavior",
+      "statement": "The `gdrive-picks` source serves `files` and `pages` with {{connector.source.drive-oauth}} and {{connector.source.drive-page-grain}} for files selected through Picker.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 668
+    },
+    {
+      "id": "connector.source.drive-file-selection",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-file-selection",
+      "kind": "behavior",
+      "statement": "On `gdrive-picks` and `gdrive-sheet`, `file_ids` selects distinct individual files without a folder root; `folder_id` and `folder_ids` are absent.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 669
+    },
+    {
+      "id": "connector.source.drive-file-selection-limit",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-file-selection-limit",
+      "kind": "limit",
+      "statement": "`file_ids` holds at most 128 entries.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 671
+    },
+    {
+      "id": "connector.source.drive-file-selection-invalid",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-file-selection-invalid",
+      "kind": "refusal",
+      "statement": "An empty, repeated or mixed `file_ids` selection, or one exceeding {{connector.source.drive-file-selection-limit}}, raises `ConnectorDriveFilesInvalid` before a Drive request.",
+      "why": "because an ambiguous selection cannot establish which files a later tombstone withdraws",
+      "file": "spec/40-connector.md",
+      "line": 672,
+      "scenarios": [
+        "WHEN `file_ids` repeats one id or appears beside `folder_id`, THEN validation raises `ConnectorDriveFilesInvalid` before any request."
+      ]
+    },
+    {
+      "id": "connector.source.drive-file-access",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-file-access",
+      "kind": "refusal",
+      "statement": "Before first capture, the source validates every selected file through the bound credential; an inaccessible or non-file id raises `ConnectorDriveFileRejected` without landing rows or advancing position.",
+      "why": "because an inaccessible picker id cannot count as a complete selection",
+      "file": "spec/40-connector.md",
+      "line": 674,
+      "scenarios": [
+        "WHEN a picked id is inaccessible to the bound credential, THEN `ConnectorDriveFileRejected` commits neither rows nor position."
+      ]
+    },
+    {
+      "id": "connector.source.drive-file-revoked",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-file-revoked",
+      "kind": "behavior",
+      "statement": "A captured file that becomes inaccessible under a valid credential lands tombstones for its file and pages; an authentication or transient failure advances no position.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 676,
+      "scenarios": [
+        "WHEN a captured file loses access under a valid credential, THEN its file and pages receive tombstones before the selection position advances."
+      ]
+    },
+    {
+      "id": "connector.source.drive-file-position",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-file-position",
+      "kind": "behavior",
+      "statement": "The position binds sorted `file_ids` and mode; changing either rereads retained files, and a complete read tombstones deselected files and their pages.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 677,
+      "scenarios": [
+        "WHEN a file id leaves a complete selection, THEN its file row and prior pages land tombstones."
+      ]
+    },
+    {
+      "id": "connector.source.drive-row-scope",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-row-scope",
+      "kind": "behavior",
+      "statement": "A connection-bound run stamps its Drive `files` and `pages` rows and tombstones with the admitted `tenant` and `principal`; the source cannot supply either value.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 679,
+      "scenarios": [
+        "WHEN two tenants select the same file id, THEN each landed row carries only its admitted tenant and principal."
+      ]
+    },
+    {
+      "id": "connector.source.drive-row-identity",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-row-identity",
+      "kind": "behavior",
+      "statement": "A connection-bound Drive row and position key include connection identity beside `file_id`, so two connections selecting one file cannot overwrite each other.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 680
+    },
+    {
       "id": "connector.reference.credential-plane",
       "contract": "connector",
       "operation": "reference",
@@ -19230,7 +19344,7 @@
       "statement": "Outbound credential material is a plane separate from the one admitting a caller into a store. A key keeps its inbound or outbound use wherever its bytes are stored.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 55
+      "line": 56
     },
     {
       "id": "connector.reference.declaration-binds-a-reference",
@@ -19241,7 +19355,7 @@
       "statement": "A declaration lists the credential names it needs in its capability block and binds each to a `secret://<name>` reference resolved at run time.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 57
+      "line": 58
     },
     {
       "id": "connector.reference.reference-scheme",
@@ -19252,7 +19366,7 @@
       "statement": "`secret://<name>` carries a logical name matching `[a-z0-9-]+` of at most 128 chars. A reference is never a storage path, a file name or a key identifier.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 59
+      "line": 60
     },
     {
       "id": "connector.reference.backend-independence",
@@ -19263,7 +19377,7 @@
       "statement": "The adapter maps a logical name to a storage location, so moving between credential stores re-points the backend and edits no declaration.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 60
+      "line": 61
     },
     {
       "id": "connector.reference.value-template",
@@ -19274,7 +19388,7 @@
       "statement": "A value embedding a credential is a template of literal text with `${secret://<name>}` placeholders, such as `Bearer ${secret://vendor-token}`.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 61
+      "line": 62
     },
     {
       "id": "connector.reference.foreign-placeholder",
@@ -19285,7 +19399,7 @@
       "statement": "`${env://NAME}` or a bare `${NAME}` inside a template raises `SecretForeignPlaceholder` at parse, naming the value and the span.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 62
+      "line": 63
     },
     {
       "id": "connector.reference.malformed-placeholder",
@@ -19296,7 +19410,7 @@
       "statement": "An unclosed, empty or nested placeholder raises `SecretMalformedTemplate` while the declaration is read, ahead of any text leaving the process.",
       "why": "P1",
       "file": "spec/41-secrets.md",
-      "line": 64
+      "line": 65
     },
     {
       "id": "connector.reference.environment-is-a-miss",
@@ -19307,7 +19421,7 @@
       "statement": "Template hydration treats the process-environment adapter as a miss and continues down the chain; a name nothing answers falls to {{connector.resolve.unresolved-name}}.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 66
+      "line": 67
     },
     {
       "id": "connector.reference.environment-opt-in",
@@ -19318,7 +19432,7 @@
       "statement": "`CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES=1` re-admits the environment adapter to template hydration and logs one warning per process naming the variable.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 68
+      "line": 69
     },
     {
       "id": "connector.reference.whole-value-binding",
@@ -19329,7 +19443,7 @@
       "statement": "`env://NAME` binds a whole credential outside the template grammar.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 69
+      "line": 70
     },
     {
       "id": "connector.reference.whole-value-reference",
@@ -19340,7 +19454,7 @@
       "statement": "A `secret://<name>` bound whole outside any template, such as a `[sync]` credential key, hydrates through every assembled adapter, the process environment included, under {{connector.resolve.first-hit-wins}} and {{connector.resolve.shadowed-name}}.",
       "why": "because a whole-value key sits in the node's own configuration, where `env://NAME` already reads the environment directly",
       "file": "spec/41-secrets.md",
-      "line": 70
+      "line": 71
     },
     {
       "id": "connector.reference.material-in-a-declaration",
@@ -19351,7 +19465,7 @@
       "statement": "A credential-shaped literal standing where a reference belongs raises `SecretMaterialInDeclaration` at validation, naming the key.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 72
+      "line": 73
     },
     {
       "id": "connector.reference.lease-has-no-scheme",
@@ -19362,7 +19476,7 @@
       "statement": "A leased credential binds as `secret://<name>`. No lease spelling exists in the manifest grammar.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 74
+      "line": 75
     },
     {
       "id": "connector.reference.name-is-the-join",
@@ -19373,7 +19487,7 @@
       "statement": "The logical name is the one join between a declaration, a provider entry, a cache key, a record and a run's provider attribution.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 76
+      "line": 77
     },
     {
       "id": "connector.resolve.provider-port",
@@ -19384,7 +19498,7 @@
       "statement": "One port answers a reference with material. Every backend is an adapter behind it, and `CONTEXTFUL_SECRETS_BACKEND` selects the adapters the chain assembles.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 82
+      "line": 83
     },
     {
       "id": "connector.resolve.provider-chain",
@@ -19395,7 +19509,7 @@
       "statement": "The chain runs: lease provider, process environment, operating-system keychain, operator-managed secret store, then a tunnel into the deployment trust zone.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 83
+      "line": 84
     },
     {
       "id": "connector.resolve.first-hit-wins",
@@ -19406,7 +19520,7 @@
       "statement": "Hydration stops at the earliest adapter answering the name, and later adapters are not consulted for that reference during the run.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 85
+      "line": 86
     },
     {
       "id": "connector.resolve.shadowed-name",
@@ -19417,7 +19531,7 @@
       "statement": "At first hydration, a name answered by the serving adapter and by any adapter behind it raises `SecretNameShadowed`, naming the logical name and both adapters.",
       "why": "because a stray environment variable otherwise shadows the manager unnoticed",
       "file": "spec/41-secrets.md",
-      "line": 86
+      "line": 87
     },
     {
       "id": "connector.resolve.hydration-is-just-in-time",
@@ -19428,7 +19542,7 @@
       "statement": "The host asks the resolver for each request while building it; cached material follows {{connector.resolve.cache-ttl}}. No declaration, journal entry, audit record, run record or log line carries a hydrated value.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 88
+      "line": 89
     },
     {
       "id": "connector.resolve.redacting-wrapper",
@@ -19439,7 +19553,7 @@
       "statement": "Every hydrated value, a pure-literal template included, rides a wrapper whose debug and display forms print a fixed sentinel. The bytes are revealed only where the host writes the request.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 90
+      "line": 91
     },
     {
       "id": "connector.resolve.wiped-on-drop",
@@ -19450,7 +19564,7 @@
       "statement": "A hydrated wrapper has no `Clone`; shared owners reference one buffer, which zeroes when its last owner drops, including an expired cache entry. Request and transport copies are outside the wrapper.",
       "why": "because a freed credential otherwise stays readable until the allocator reuses its memory",
       "file": "spec/41-secrets.md",
-      "line": 91
+      "line": 92
     },
     {
       "id": "connector.resolve.resolver-per-source",
@@ -19461,7 +19575,7 @@
       "statement": "One resolver with its own cache is built per source, and concurrent first hydrations of one name collapse under a single-flight gate.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 93
+      "line": 94
     },
     {
       "id": "connector.resolve.cache-ttl",
@@ -19472,7 +19586,7 @@
       "statement": "A cache entry lives at most 300 s.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 94
+      "line": 95
     },
     {
       "id": "connector.resolve.unresolved-name",
@@ -19483,7 +19597,7 @@
       "statement": "A reference no assembled adapter answers raises `SecretUnresolvedReference` naming it, at preflight where the binding is static and at the call otherwise.",
       "why": "P2",
       "file": "spec/41-secrets.md",
-      "line": 95
+      "line": 96
     },
     {
       "id": "connector.resolve.posture",
@@ -19494,7 +19608,7 @@
       "statement": "Four postures order material's distance from the engine: inline environment material, reference with just-in-time hydration, an external manager read through workload identity, and a secretless broker sidecar. The workload-identity manager is the default.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 97
+      "line": 98
     },
     {
       "id": "connector.resolve.inline-outside-development",
@@ -19505,7 +19619,7 @@
       "statement": "A profile other than development binding plaintext material at a call site raises `SecretInlineCredential` naming the binding.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 99
+      "line": 100
     },
     {
       "id": "connector.resolve.forwarding-sidecar",
@@ -19516,7 +19630,7 @@
       "statement": "A sidecar reading a stored long-lived credential and forwarding it outward raises `SecretForwardingBroker`. A sidecar minting a short-lived scoped credential is a lease provider.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 101
+      "line": 102
     },
     {
       "id": "connector.resolve.adapter-is-optional",
@@ -19527,7 +19641,7 @@
       "statement": "Each managed backend is one adapter holding opaque versioned ciphertext; a deployment links only the adapters it uses.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 103
+      "line": 104
     },
     {
       "id": "connector.resolve.know-how-in-an-adapter",
@@ -19538,7 +19652,7 @@
       "statement": "An adapter exposing a provider-specific exchange, refresh or lifetime entry point raises `SecretProviderKnowHowInBackend` at load.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 104
+      "line": 105
     },
     {
       "id": "connector.lease.scope-declaration",
@@ -19549,7 +19663,7 @@
       "statement": "`CONTEXTFUL_LEASE_SCOPES` lists the logical names hydrating as run-time leases, each optionally as `name=scope`.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 125
+      "line": 126
     },
     {
       "id": "connector.lease.head-of-chain",
@@ -19560,7 +19674,7 @@
       "statement": "For a declared name the lease provider answers and no adapter behind it is reached; a shadowing adapter raises under {{connector.resolve.shadowed-name}}.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 126
+      "line": 127
     },
     {
       "id": "connector.lease.undeclared-name-defers",
@@ -19571,7 +19685,7 @@
       "statement": "An undeclared name sends the lease provider no request and leaves precedence among the other adapters untouched.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 128
+      "line": 129
     },
     {
       "id": "connector.lease.empty-scope-set",
@@ -19582,7 +19696,7 @@
       "statement": "Selecting the lease backend with no scope declared raises `SecretLeaseScopesEmpty` at startup.",
       "why": "P3",
       "file": "spec/41-secrets.md",
-      "line": 129
+      "line": 130
     },
     {
       "id": "connector.lease.lease",
@@ -19593,7 +19707,7 @@
       "statement": "A lease is material plus one expiry, held as a pair in memory for the run, evicted at expiry, and written to no file, journal entry or audit record.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 131
+      "line": 132
     },
     {
       "id": "connector.lease.malformed-lease",
@@ -19604,7 +19718,7 @@
       "statement": "A lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient failure.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 133
+      "line": 134
     },
     {
       "id": "connector.lease.cache-window",
@@ -19615,7 +19729,7 @@
       "statement": "A leased name's cache entry is bounded by the tighter of {{connector.resolve.cache-ttl}} and the lease's own expiry.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 135
+      "line": 136
     },
     {
       "id": "connector.lease.retirement-margin",
@@ -19626,7 +19740,7 @@
       "statement": "An entry retires 10 percent of its window ahead of expiry, the margin capped at 30 s.",
       "why": "because a request sent near the boundary still lands inside the grant",
       "file": "spec/41-secrets.md",
-      "line": 136
+      "line": 137
     },
     {
       "id": "connector.lease.endpoint",
@@ -19637,7 +19751,7 @@
       "statement": "The provider answers `POST <provider-url>/leases` carrying a bearer mint credential and body `{ \"scope\": \"<lease scope>\" }`.",
       "why": "because a batched answer ties one scope's refusal to every name in it and mints material no request has asked for",
       "file": "spec/41-secrets.md",
-      "line": 138
+      "line": 139
     },
     {
       "id": "connector.lease.response",
@@ -19648,7 +19762,7 @@
       "statement": "A success carries `value` plus one expiry — `expires_in` seconds, `expires_at` epoch seconds, or an RFC 3339 instant — at the top level or under `lease`.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 140
+      "line": 141
     },
     {
       "id": "connector.lease.unknown-scope",
@@ -19659,7 +19773,7 @@
       "statement": "A `404` raises `SecretLeaseScopeUnknown` as a configuration fault; a declared name never falls through to a stored credential.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 141
+      "line": 142
     },
     {
       "id": "connector.lease.mint-rejected",
@@ -19670,7 +19784,7 @@
       "statement": "A `401` or `403` raises `SecretMintRejected`, classed `auth_expired`.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 143
+      "line": 144
     },
     {
       "id": "connector.lease.rate-limited",
@@ -19681,7 +19795,7 @@
       "statement": "A `429` passes its `Retry-After` to the run's retry, classed `rate_limited`.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 145
+      "line": 146
     },
     {
       "id": "connector.lease.request-rejected",
@@ -19692,7 +19806,7 @@
       "statement": "Any other `4xx` raises `SecretLeaseRequestRejected` as a permanent configuration fault.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 147
+      "line": 148
     },
     {
       "id": "connector.lease.transient-class",
@@ -19703,7 +19817,7 @@
       "statement": "A `5xx` and a transport error are transient. The mint client retries nothing itself; the run's retry schedule is the one retry layer.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 149
+      "line": 150
     },
     {
       "id": "connector.lease.vendor-requests-on-failure",
@@ -19714,7 +19828,7 @@
       "statement": "A run holding an expired lease whose provider is unreachable issues 0 requests to the vendor.",
       "why": "P6",
       "file": "spec/41-secrets.md",
-      "line": 151
+      "line": 152
     },
     {
       "id": "connector.lease.calls-per-resolver",
@@ -19725,7 +19839,7 @@
       "statement": "A resolver issues at most 1 calls to the mint endpoint per declared name per lease window.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 153
+      "line": 154
     },
     {
       "id": "connector.lease.bootstrap-credential",
@@ -19736,7 +19850,7 @@
       "statement": "The engine authenticates to the mint endpoint with one standing `secret://` credential scoped to minting alone. Revoking it severs every leased source at its next expiry.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 154
+      "line": 155
     },
     {
       "id": "connector.lease.bootstrap-non-recursion",
@@ -19747,7 +19861,7 @@
       "statement": "The lease provider holds the chain as assembled before it joined, so the mint reference hydrates only through adapters behind it.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 156
+      "line": 157
     },
     {
       "id": "connector.lease.bootstrap-unserved",
@@ -19758,7 +19872,7 @@
       "statement": "A bootstrap name no adapter behind the lease provider answers raises `SecretBootstrapUnresolved`, naming the reference.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 157
+      "line": 158
     },
     {
       "id": "connector.lease.bootstrap-declared-leased",
@@ -19769,7 +19883,7 @@
       "statement": "Listing the bootstrap name among the leased scopes raises `SecretBootstrapLeased` at startup.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 159
+      "line": 160
     },
     {
       "id": "connector.lease.bootstrap-backend",
@@ -19780,7 +19894,7 @@
       "statement": "`CONTEXTFUL_LEASE_BOOTSTRAP_BACKEND` composes an operator-managed secret store behind the lease provider to hold the mint reference.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 161
+      "line": 162
     },
     {
       "id": "connector.lease.mint-transport",
@@ -19791,7 +19905,7 @@
       "statement": "The mint client reaches its endpoint over TLS or loopback and ignores system proxy configuration.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 162
+      "line": 163
     },
     {
       "id": "connector.lease.redirect",
@@ -19802,7 +19916,7 @@
       "statement": "A `3xx` from the mint endpoint raises `SecretLeaseRedirect`; the mint credential is not replayed at the target.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 164
+      "line": 165
     },
     {
       "id": "connector.attach.host-mediation",
@@ -19813,7 +19927,7 @@
       "statement": "The host implements outbound HTTP itself: it judges every request against the declaration ahead of socket I/O, stamps a host-assigned request id, and writes the bound credential onto a permitted request.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 199
+      "line": 200
     },
     {
       "id": "connector.attach.no-material-to-a-guest",
@@ -19824,7 +19938,7 @@
       "statement": "No host import hands credential bytes to guest code; a guest names a request and receives a response.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 201
+      "line": 202
     },
     {
       "id": "connector.attach.unpermitted-request",
@@ -19835,7 +19949,7 @@
       "statement": "A request whose host the declaration does not cover raises `SecretUnpermittedRequest` and fails the guest call even where guest code discards the error.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 203
+      "line": 204
     },
     {
       "id": "connector.attach.transport-port",
@@ -19846,7 +19960,7 @@
       "statement": "The mediated client reaches the network only through a transport port. Its send half connects to an address the client vetted, follows no redirect, and applies the client's proxy choice, timeout and body ceiling.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 205
+      "line": 206
     },
     {
       "id": "connector.attach.resolve-half",
@@ -19857,7 +19971,7 @@
       "statement": "Name resolution runs through the port's resolve half, after {{connector.meter.pre-send-hook}} admits the hop; the client vets each address it answers under {{connector.attach.private-address}}.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 207
+      "line": 208
     },
     {
       "id": "connector.attach.resolve-once",
@@ -19868,7 +19982,7 @@
       "statement": "The host resolves a permitted host name once per request and connects to the address it vetted, with no second lookup between check and connect.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 209
+      "line": 210
     },
     {
       "id": "connector.attach.private-address",
@@ -19879,7 +19993,7 @@
       "statement": "A host name resolving to a private, link-local, unique-local, loopback or cloud-metadata address raises `ConnectorPrivateAddress`, unless the configured host is itself a loopback name or literal.",
       "why": "because an allowlisted name pointed at an internal range is SSRF",
       "file": "spec/41-secrets.md",
-      "line": 211
+      "line": 212
     },
     {
       "id": "connector.attach.bound-host",
@@ -19890,7 +20004,7 @@
       "statement": "A source binding any credential carries one non-wildcard host, checked at validation and at session open; a wildcard entry, or an endpoint host a table name binds, beside a bound credential raises `SecretWildcardHost`.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 213
+      "line": 214
     },
     {
       "id": "connector.attach.default-attachment",
@@ -19901,7 +20015,7 @@
       "statement": "With no further declaration the host writes `Authorization: Bearer <value>` from the single bound credential.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 215
+      "line": 216
     },
     {
       "id": "connector.attach.attach-block",
@@ -19912,7 +20026,7 @@
       "statement": "An `[attach]` block maps a header name to a value template. The host hydrates it onto the permitted request, overriding the guest's header of that name.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 216
+      "line": 217
     },
     {
       "id": "connector.attach.per-request-hydration",
@@ -19923,7 +20037,7 @@
       "statement": "A guest session stores hydration handles and plain static headers; the host calls each handle for every permitted request and releases its hydrated header when that request completes.",
       "why": "because session-held credential material outlives the request and delays rotation",
       "file": "spec/41-secrets.md",
-      "line": 217
+      "line": 218
     },
     {
       "id": "connector.attach.literal-attach-value",
@@ -19934,7 +20048,7 @@
       "statement": "An attach value embedding no reference raises `SecretLiteralAttachValue`.",
       "why": "because a constant header belongs in the guest's request construction",
       "file": "spec/41-secrets.md",
-      "line": 219
+      "line": 220
     },
     {
       "id": "connector.attach.redirect-pinning",
@@ -19945,7 +20059,7 @@
       "statement": "Every source, credential-bearing or not, follows a hop only when it keeps the configured host and port on the same or a stronger transport; cleartext to TLS at that host and port is followed.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 221
+      "line": 222
     },
     {
       "id": "connector.attach.weakened-hop",
@@ -19956,7 +20070,7 @@
       "statement": "A redirect or vendor-supplied next link moving from TLS to cleartext, or to another host or port, raises `SecretRedirectOffOrigin`, and the read fails.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 223
+      "line": 224
     },
     {
       "id": "connector.attach.landed-origin",
@@ -19967,7 +20081,7 @@
       "statement": "The origin answering the request whose body lands equals the configured host and port.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 225
+      "line": 226
     },
     {
       "id": "connector.attach.referer-off",
@@ -19978,7 +20092,7 @@
       "statement": "`Referer` is off on every outbound client.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 227
+      "line": 228
     },
     {
       "id": "connector.attach.header-selects-client",
@@ -19989,7 +20103,7 @@
       "statement": "Declaring any header, literal or hydrated, selects the hardened client, which bypasses the system proxy; a source declaring none keeps the proxy.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 228
+      "line": 229
     },
     {
       "id": "connector.attach.cleartext-endpoint",
@@ -20000,7 +20114,7 @@
       "statement": "A header hydrated from a reference is marked sensitive, and sending it to a cleartext endpoint raises `SecretCleartextEndpoint`, IPv4 and IPv6 loopback exempt.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 229
+      "line": 230
     },
     {
       "id": "connector.attach.sensitive-header-record",
@@ -20011,7 +20125,7 @@
       "statement": "A run records which header names carried a credential, by name only.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 231
+      "line": 232
     },
     {
       "id": "connector.attach.url-scrubbing",
@@ -20022,7 +20136,7 @@
       "statement": "A URL reaching an error message, a log line or a landed column carries scheme, host, port and path; query, fragment and userinfo are dropped.",
       "why": "A-authority",
       "file": "spec/41-secrets.md",
-      "line": 232
+      "line": 233
     },
     {
       "id": "connector.attach.typed-url-edit",
@@ -20033,7 +20147,7 @@
       "statement": "Metered vendor traffic and control-plane traffic each dispatch through one client whose error mapping clears the URL as a typed edit; a URL arriving otherwise is scrubbed as text.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 234
+      "line": 235
     },
     {
       "id": "connector.attach.credential-in-a-url",
@@ -20044,7 +20158,7 @@
       "statement": "A configured endpoint carrying userinfo raises `SecretCredentialInUrl` at validation, naming the source.",
       "why": "A-authority",
       "file": "spec/41-secrets.md",
-      "line": 235
+      "line": 236
     },
     {
       "id": "connector.attach.mediation-covers-every-egress",
@@ -20055,7 +20169,7 @@
       "statement": "A built-in source, a guest connector, a model call and a limiter call each attach through the one mediated client; {{connector.attach.exec-environment}} names the one attachment outside it.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 237
+      "line": 238
     },
     {
       "id": "connector.attach.exec-environment",
@@ -20066,7 +20180,7 @@
       "statement": "An exec step's env template hydrates through its source's resolver at spawn into the environment {{run.exec.no-shell}} clears, the one attachment outside host mediation, and enters {{connector.record.provider-attribution}}.",
       "why": "because the derive driver hands a vendor child its own credential, and a loopback attaching proxy remains an open design",
       "file": "spec/41-secrets.md",
-      "line": 239
+      "line": 240
     },
     {
       "id": "connector.rotate.division-of-labor",
@@ -20077,7 +20191,7 @@
       "statement": "A credential store contributes versioned storage and a trigger. The host drives the OAuth loop from the connector's auth policy and writes the token back as a blind versioned put.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 248
+      "line": 249
     },
     {
       "id": "connector.rotate.expiry-hint",
@@ -20088,7 +20202,7 @@
       "statement": "The host may store an opaque `expires_at` hint beside the ciphertext for cache invalidation.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 250
+      "line": 251
     },
     {
       "id": "connector.rotate.static-key",
@@ -20099,7 +20213,7 @@
       "statement": "A static key in an operator-managed secret store turns over with no engine step: a run hydrates the current version at its next cache miss.",
       "why": "because the 300 s cache bound already caps staleness, and a per-manager change feed adds a listener and failure domain to every adapter",
       "file": "spec/41-secrets.md",
-      "line": 251
+      "line": 252
     },
     {
       "id": "connector.rotate.oauth-credential",
@@ -20110,7 +20224,7 @@
       "statement": "An OAuth credential refreshes at the point {{connector.lease.retirement-margin}} computes from its declared expiry, puts the new version to the adapter that answered its name, conditioned on the hydrated version, then clears that name's cache entry.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 253
+      "line": 254
     },
     {
       "id": "connector.rotate.operator-entered",
@@ -20121,7 +20235,7 @@
       "statement": "A development or keychain secret is re-entered by an operator re-pointing the reference.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 255
+      "line": 256
     },
     {
       "id": "connector.rotate.leased-credential",
@@ -20132,7 +20246,7 @@
       "statement": "A leased credential re-mints ahead of its window with no write-back, and a failed re-mint leaves the source with no credential rather than an older one.",
       "why": "P4",
       "file": "spec/41-secrets.md",
-      "line": 256
+      "line": 257
     },
     {
       "id": "connector.rotate.write-back-denied",
@@ -20143,7 +20257,7 @@
       "statement": "A refused put, or an answering adapter with no write half, raises `SecretRotationWriteDenied`; the refreshed token is dropped unserved and the run fails closed.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 258,
+      "line": 259,
       "scenarios": [
         "WHEN the answering adapter refuses the put of a refreshed token, THEN the run fails and no request carries the refreshed token."
       ]
@@ -20157,7 +20271,7 @@
       "statement": "A put losing to a version another writer stored re-hydrates that version and raises nothing.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 260,
+      "line": 261,
       "scenarios": [
         "WHEN another writer stored a newer version first, THEN the next hydration returns that version and the rotation raises nothing."
       ]
@@ -20171,7 +20285,7 @@
       "statement": "Token lifetime, exchange rules, refresh endpoint and scopes, expired-token codes and rate-limit headers live in the connector's `[auth]`, `[rate_limit]` and `[retry]` blocks, pinned by connector id and version.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 262
+      "line": 263
     },
     {
       "id": "connector.rotate.no-master-key",
@@ -20182,7 +20296,7 @@
       "statement": "The engine holds references, and no single encryption key exists whose theft with a database copy yields every credential.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 264
+      "line": 265
     },
     {
       "id": "connector.rotate.turnover-preserves-the-name",
@@ -20193,7 +20307,7 @@
       "statement": "Every rotation mechanism keeps the logical name, touching no declaration and no pinned connector artifact.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 266
+      "line": 267
     },
     {
       "id": "connector.record.operator-record",
@@ -20204,7 +20318,7 @@
       "statement": "An optional operator record describes one logical name's intended grants, account or tenancy, consuming surfaces and rotation location; supplied creation and expiry assertions remain operator metadata.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 279
+      "line": 278
     },
     {
       "id": "connector.record.metadata-storage",
@@ -20215,7 +20329,7 @@
       "statement": "A committed operator record contains descriptive metadata only; neither a credential value nor a decryption key is required to record a binding.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 281
+      "line": 280
     },
     {
       "id": "connector.record.provider-custody",
@@ -20226,7 +20340,7 @@
       "statement": "The selected provider owns credential values, versions and rotation state; an external-manager binding requires no ciphertext copy in the repository.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 283,
+      "line": 282,
       "scenarios": [
         "WHEN a binding selects an external manager with no encrypted repository entry, THEN the manager remains the sole owner of its value and versions."
       ]
@@ -20240,7 +20354,7 @@
       "statement": "An operator record identifies each documented consuming surface and its credential binding name.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 285
+      "line": 284
     },
     {
       "id": "connector.record.optional-record",
@@ -20251,7 +20365,7 @@
       "statement": "A binding without an operator record remains resolvable and appears in inventory with unknown descriptive fields.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 286,
+      "line": 285,
       "scenarios": [
         "WHEN a configured binding has no operator record, THEN inventory includes the binding with unknown descriptive fields."
       ]
@@ -20265,7 +20379,7 @@
       "statement": "Grants an operator has not established are recorded as unknown.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 287
+      "line": 286
     },
     {
       "id": "connector.record.rotation-record",
@@ -20276,7 +20390,7 @@
       "statement": "A rotation follows {{connector.rotate.turnover-preserves-the-name}} without requiring a repository commit; operator metadata changes only when its assertions change.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 288,
+      "line": 287,
       "scenarios": [
         "WHEN a manager rotates a credential, THEN no repository commit is required."
       ]
@@ -20290,7 +20404,7 @@
       "statement": "`contextful secrets list` enumerates configured logical bindings and displays their configured adapters, operator metadata and available provider observations; it reads no credential values and claims no complete inventory of a provider's secrets.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 290
+      "line": 289
     },
     {
       "id": "connector.record.observation-provenance",
@@ -20301,7 +20415,7 @@
       "statement": "Each provider-observed field names its adapter and observation time; operator assertions remain separately labelled, including when they disagree with provider observations.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 291,
+      "line": 290,
       "scenarios": [
         "WHEN an operator expiry differs from an observed expiry, THEN inventory shows both with their distinct provenance."
       ]
@@ -20315,7 +20429,7 @@
       "statement": "Unsupported, denied or failed metadata reads appear as unavailable with their reason; inventory never substitutes an operator assertion for a provider observation or hydrates a value to obtain metadata.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 292,
+      "line": 291,
       "scenarios": [
         "WHEN a provider denies metadata access, THEN inventory reports the reason without reading a credential value."
       ]
@@ -20329,7 +20443,7 @@
       "statement": "An absent expiry is unknown; `no expiry` requires an explicit assertion or observation, and days remaining is computed only for a dated expiry, retaining its provenance.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 293,
+      "line": 292,
       "scenarios": [
         "WHEN neither operator nor provider supplies an expiry, THEN inventory reports unknown expiry and no days remaining."
       ]
@@ -20343,7 +20457,7 @@
       "statement": "The inventory marks each dated expiry falling within 30 d and each elapsed expiry, retaining the expiry's provenance.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 294
+      "line": 293
     },
     {
       "id": "connector.record.configured-is-not-observed",
@@ -20354,7 +20468,7 @@
       "statement": "A configured adapter identifies a binding's configuration; only {{connector.record.provider-attribution}} identifies the adapter that answered a run's reference.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 295,
+      "line": 294,
       "scenarios": [
         "WHEN a binding configures several adapters and has no run attribution, THEN inventory reports configuration without asserting an answering adapter."
       ]
@@ -20368,7 +20482,7 @@
       "statement": "A run's commit-phase row, and its row on the failure arm, carry `credential_providers`: each logical name the run hydrated mapped to the adapter that answered it, names only.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 296
+      "line": 295
     },
     {
       "id": "connector.record.record-table",
@@ -20379,7 +20493,7 @@
       "statement": "An operator record is a `[secret.<name>]` table in the discovered `contextful.toml`, keyed `description`, `account`, `grants`, `surfaces`, `rotate`, `created` and `expires`, each optional; `expires = \"never\"` is the one explicit no-expiry assertion.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 297
+      "line": 296
     },
     {
       "id": "connector.record.record-rejected",
@@ -20390,7 +20504,7 @@
       "statement": "A `[secret.<name>]` table outside the discovered `contextful.toml`, naming no `secret://` name a manifest binds, or holding an unknown key, mistyped value or credential-shaped string raises `SecretRecordRejected` at declaration read, naming file, name and key path, never the value.",
       "why": "because a misspelled name otherwise describes nothing while the real binding reads undescribed, and an echoed value carries a pasted token into CI logs",
       "file": "spec/41-secrets.md",
-      "line": 299,
+      "line": 298,
       "scenarios": [
         "WHEN `contextful.toml` holds `[secret.vendor-tokne]` beside a binding named `vendor-token`, THEN the declaration read refuses and the message carries no record value."
       ]
@@ -20404,7 +20518,7 @@
       "statement": "Resolution, attachment, rotation and a pipeline's content hash read no operator record; editing one changes no plan, run or hydrated value.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 301,
+      "line": 300,
       "scenarios": [
         "WHEN an operator record's description changes, THEN the pipeline's content hash is unchanged."
       ]
@@ -20418,7 +20532,7 @@
       "statement": "An adapter's observe half answers a name with presence, version, creation and expiry, or unavailable with a reason, and holds no hydrated value; the inventory holds observe halves only.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 302,
+      "line": 301,
       "scenarios": [
         "WHEN a lease-served binding is listed, THEN its lease observation reads unsupported and the mint endpoint receives 0 requests."
       ]
@@ -20432,7 +20546,270 @@
       "statement": "`secrets list` exits 0 whatever its marks; `--json` prints one object per binding per line: name, configured adapters, latest answered adapter with run id and instant, operator fields, and observations with adapter and time.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 304
+      "line": 303
+    },
+    {
+      "id": "connector.principal-secrets.name-binding",
+      "contract": "connector",
+      "operation": "principal-secrets",
+      "subject": "name-binding",
+      "kind": "behavior",
+      "statement": "A connection binds one opaque secret name to its admitted tenant and principal; a run hydrates only the name bound to its connection.",
+      "why": "",
+      "file": "spec/41-secrets.md",
+      "line": 322,
+      "scenarios": [
+        "WHEN two principals connect one OAuth client, THEN each run resolves only its own refresh-token name."
+      ]
+    },
+    {
+      "id": "connector.principal-secrets.adapter-port",
+      "contract": "connector",
+      "operation": "principal-secrets",
+      "subject": "adapter-port",
+      "kind": "behavior",
+      "statement": "A principal secret adapter resolves a name to material and a version; its write half conditionally stores a replacement version under the same name.",
+      "why": "",
+      "file": "spec/41-secrets.md",
+      "line": 323
+    },
+    {
+      "id": "connector.principal-secrets.write-serialization",
+      "contract": "connector",
+      "operation": "principal-secrets",
+      "subject": "write-serialization",
+      "kind": "behavior",
+      "statement": "Concurrent refreshes of one name serialize across resolvers through the adapter's conditional version; the losing refresh rehydrates the winner under {{connector.rotate.conditional-put}}.",
+      "why": "A-connector",
+      "file": "spec/41-secrets.md",
+      "line": 324,
+      "scenarios": [
+        "WHEN two refreshes race on one name, THEN one version wins and the other resolver rehydrates it."
+      ]
+    },
+    {
+      "id": "connector.principal-secrets.lease-custody",
+      "contract": "connector",
+      "operation": "principal-secrets",
+      "subject": "lease-custody",
+      "kind": "behavior",
+      "statement": "A lease endpoint holding refresh tokens answers the connection's name under {{connector.lease.lease}}; Contextful retains neither the refresh token nor its replacement.",
+      "why": "",
+      "file": "spec/41-secrets.md",
+      "line": 326
+    },
+    {
+      "id": "connector.principal-secrets.disconnect",
+      "contract": "connector",
+      "operation": "principal-secrets",
+      "subject": "disconnect",
+      "kind": "behavior",
+      "statement": "Deleting a connection revokes its principal secret name before another run can hydrate it; a failed revocation keeps the connection paused.",
+      "why": "because a deleted connection must not regain vendor access from a cached lease",
+      "file": "spec/41-secrets.md",
+      "line": 327
+    },
+    {
+      "id": "connector.drive-sheet.source-name",
+      "contract": "connector",
+      "operation": "drive-sheet",
+      "subject": "source-name",
+      "kind": "behavior",
+      "statement": "The `gdrive-sheet` source serves `rows` and shares {{connector.source.drive-oauth}} and {{connector.source.drive-file-selection}} without changing the `gdrive` source's `files` and `pages` tables.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 17
+    },
+    {
+      "id": "connector.drive-sheet.export-format",
+      "contract": "connector",
+      "operation": "drive-sheet",
+      "subject": "export-format",
+      "kind": "behavior",
+      "statement": "A Google Sheet selected for structured capture exports as XLSX; CSV contains only the first sheet.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 18
+    },
+    {
+      "id": "connector.drive-sheet.sheet-identity",
+      "contract": "connector",
+      "operation": "drive-sheet",
+      "subject": "sheet-identity",
+      "kind": "behavior",
+      "statement": "Each landed spreadsheet row carries `file_id`, sheet id, sheet name, source row number, connection identity, `tenant` and `principal`.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 19,
+      "scenarios": [
+        "WHEN a workbook has two sheets with row 3 on each, THEN their landed keys differ by sheet id."
+      ]
+    },
+    {
+      "id": "connector.drive-sheet.row-key",
+      "contract": "connector",
+      "operation": "drive-sheet",
+      "subject": "row-key",
+      "kind": "behavior",
+      "statement": "A spreadsheet row key joins connection identity, file id, sheet id and source row number; a complete recapture tombstones keys absent from the new workbook.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 20,
+      "scenarios": [
+        "WHEN a complete recapture removes a row, THEN the old row key receives a tombstone."
+      ]
+    },
+    {
+      "id": "connector.drive-sheet.cell-values",
+      "contract": "connector",
+      "operation": "drive-sheet",
+      "subject": "cell-values",
+      "kind": "behavior",
+      "statement": "The row preserves each cell's typed value and its column position; an empty cell is distinct from a missing row.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 21
+    },
+    {
+      "id": "connector.drive-sheet.formula-value",
+      "contract": "connector",
+      "operation": "drive-sheet",
+      "subject": "formula-value",
+      "kind": "behavior",
+      "statement": "A formula cell lands its exported result and records that the source cell was a formula; the row does not evaluate the formula inside Contextful.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 22
+    },
+    {
+      "id": "connector.drive-sheet.export-refusal",
+      "contract": "connector",
+      "operation": "drive-sheet",
+      "subject": "export-refusal",
+      "kind": "behavior",
+      "statement": "A workbook whose export exceeds {{connector.source.drive-file-cap}} lands a named skipped file row and no partial spreadsheet rows.",
+      "why": "because a truncated workbook cannot establish row identity or removal",
+      "file": "spec/42-drive-extensions.md",
+      "line": 23
+    },
+    {
+      "id": "connector.drive-changes.initial-token",
+      "contract": "connector",
+      "operation": "drive-changes",
+      "subject": "initial-token",
+      "kind": "behavior",
+      "statement": "An initial full walk obtains a start page token before listing and commits that token with the complete walk, so changes during listing remain replayable.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 35
+    },
+    {
+      "id": "connector.drive-changes.cursor-scope",
+      "contract": "connector",
+      "operation": "drive-changes",
+      "subject": "cursor-scope",
+      "kind": "behavior",
+      "statement": "The cursor binds the connection, credential principal, declared drive, selected roots or file ids, and capture mode; a changed binding starts a full walk.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 36
+    },
+    {
+      "id": "connector.drive-changes.page-commit",
+      "contract": "connector",
+      "operation": "drive-changes",
+      "subject": "page-commit",
+      "kind": "behavior",
+      "statement": "A change read follows every `nextPageToken` and advances to `newStartPageToken` only after the resulting rows and removals commit.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 37,
+      "scenarios": [
+        "WHEN a change response has another page, THEN the committed cursor does not skip that page."
+      ]
+    },
+    {
+      "id": "connector.drive-changes.selection-filter",
+      "contract": "connector",
+      "operation": "drive-changes",
+      "subject": "selection-filter",
+      "kind": "behavior",
+      "statement": "Each changed file is admitted only when its current ancestry or id satisfies the bound selection; a move outside it lands tombstones.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 38
+    },
+    {
+      "id": "connector.drive-changes.removed-file",
+      "contract": "connector",
+      "operation": "drive-changes",
+      "subject": "removed-file",
+      "kind": "behavior",
+      "statement": "A removed change withdraws the file and its pages only after the source establishes that the selected file is gone or inaccessible.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 39
+    },
+    {
+      "id": "connector.drive-changes.invalid-token",
+      "contract": "connector",
+      "operation": "drive-changes",
+      "subject": "invalid-token",
+      "kind": "behavior",
+      "statement": "A rejected or expired change token starts a full selected walk; the source advances no removals from the incomplete change response.",
+      "why": "because a missing change interval cannot prove the retained files still satisfy the selection",
+      "file": "spec/42-drive-extensions.md",
+      "line": 40,
+      "scenarios": [
+        "WHEN Drive rejects the cursor, THEN a complete walk reconciles removals before a new token commits."
+      ]
+    },
+    {
+      "id": "connector.drive-domain-auth.delegation-grant",
+      "contract": "connector",
+      "operation": "drive-domain-auth",
+      "subject": "delegation-grant",
+      "kind": "behavior",
+      "statement": "Domain-wide delegation requires an operator-declared Workspace domain, authorized service account and approved scope set bound to the connection.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 52
+    },
+    {
+      "id": "connector.drive-domain-auth.impersonated-principal",
+      "contract": "connector",
+      "operation": "drive-domain-auth",
+      "subject": "impersonated-principal",
+      "kind": "behavior",
+      "statement": "Every delegated Drive request names one admitted Workspace user as its subject; the row and permission sweep retain that subject's identity.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 53
+    },
+    {
+      "id": "connector.drive-domain-auth.domain-boundary",
+      "contract": "connector",
+      "operation": "drive-domain-auth",
+      "subject": "domain-boundary",
+      "kind": "refusal",
+      "statement": "A delegated request for a subject outside its declared domain raises `ConnectorDriveDomainRejected` before token minting.",
+      "why": "because administrator approval for one domain conveys no authority over another",
+      "file": "spec/42-drive-extensions.md",
+      "line": 54,
+      "scenarios": [
+        "WHEN a connection names a user outside its approved domain, THEN `ConnectorDriveDomainRejected` precedes any Google request."
+      ]
+    },
+    {
+      "id": "connector.drive-domain-auth.organization-export",
+      "contract": "connector",
+      "operation": "drive-domain-auth",
+      "subject": "organization-export",
+      "kind": "behavior",
+      "statement": "A sanctioned organization-wide export declares its scope and disclosure posture explicitly under {{connector.source.twin-api}}; delegated user reads do not imply that export.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 56
     },
     {
       "id": "authority.identify.subject-tuple",
@@ -23754,7 +24131,7 @@
       "statement": "On an organization-wide face, a table with no visibility block raises `VisibilityUnboundTable` from diagnose and from the serving guardrail at start, naming the table.",
       "why": "P5",
       "file": "spec/60-visibility.md",
-      "line": 59
+      "line": 60
     },
     {
       "id": "disclosure.mirror.face-scope",
@@ -23765,7 +24142,7 @@
       "statement": "`[project] face_scope = \"organization\"` makes every face the project serves organization-wide; absent or `\"personal\"`, its faces are personal, and another value does not load.",
       "why": "because a local store serves its owner first, so the organization-wide guardrails bind where a project declares an organization audience",
       "file": "spec/60-visibility.md",
-      "line": 61
+      "line": 62
     },
     {
       "id": "disclosure.mirror.incomplete-binding",
@@ -23776,7 +24153,7 @@
       "statement": "A binding at a servable level lacking a declared sweep for its source or a `max_acl_staleness` raises `VisibilityBindingIncomplete`.",
       "why": "P5",
       "file": "spec/60-visibility.md",
-      "line": 63
+      "line": 64
     },
     {
       "id": "disclosure.mirror.binding-keys",
@@ -23787,7 +24164,7 @@
       "statement": "A table's `visibility` block names its `source`, the `resource_key` column holding each row's `resource_id`, its `resource_kind`, `fidelity`, `family`, `max_acl_staleness`, and `on_stale` of `refuse`, the default, or `public_only`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 65
+      "line": 66
     },
     {
       "id": "disclosure.mirror.memory-binding",
@@ -23798,7 +24175,7 @@
       "statement": "A memory `[[table]]` takes a `visibility` block under the keys of {{disclosure.mirror.binding-keys}}, parsed as a pipeline table's block, so an organization-wide face serves it bound.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 66
+      "line": 67
     },
     {
       "id": "disclosure.mirror.grants-table",
@@ -23809,7 +24186,7 @@
       "statement": "A sweep lands a source's access data as ordinary rows of `_visibility/<source>/resources`, `grants`, `principals`, `group_members`, `identity_links`, `tombstones` and `freshness`, through the land path and its write lock.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 67
+      "line": 68
     },
     {
       "id": "disclosure.mirror.unmirrorable-opening",
@@ -23820,7 +24197,7 @@
       "statement": "A resource whose access list the sweep could not mirror opens only through a grant row the store owner lands carrying `expires_at`; the row confers nothing past that instant, and no manifest key opens a resource.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 69
+      "line": 70
     },
     {
       "id": "disclosure.sweep.coverage-watermark",
@@ -23831,7 +24208,7 @@
       "statement": "A sweep run that failed or skipped any governed resource of its source and advances `watermark_at` raises `VisibilityWatermarkUncovered`, and the watermark stays where it stood.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 76
+      "line": 77
     },
     {
       "id": "disclosure.sweep.ungapped-stream",
@@ -23842,7 +24219,7 @@
       "statement": "Advancing `watermark_at` from an event stream the mapping has not declared gap-detectable raises `VisibilityUngappedStream`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 78
+      "line": 79
     },
     {
       "id": "disclosure.sweep.orphan-grant",
@@ -23853,7 +24230,7 @@
       "statement": "A grant landing with no resource row, or on a resource of the unknown class, raises `VisibilityOrphanGrant` at commit and joins no reachable set.",
       "why": "P5",
       "file": "spec/60-visibility.md",
-      "line": 80
+      "line": 81
     },
     {
       "id": "disclosure.sweep.sweep-block",
@@ -23864,7 +24241,7 @@
       "statement": "An `[[acl_sweep]]` block declares one source's sweep: `source`, the `enumerate` table whose rows are its governed resources, `full` and `incremental` cadences as `{ every = <budget> }`, and optional `credential` and `events`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 82
+      "line": 83
     },
     {
       "id": "disclosure.sweep.cadence-grammar",
@@ -23875,7 +24252,7 @@
       "statement": "A sweep cadence's `every` takes the grammar of {{disclosure.bound-staleness.budget-grammar}}.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 83
+      "line": 84
     },
     {
       "id": "disclosure.sweep.sweep-verb",
@@ -23886,7 +24263,7 @@
       "statement": "`visibility sweep --source <s> --kind full|incremental|webhook [--grants <file>] [--directory <file>]` runs one sweep of a declared source, reading its permission endpoint under `credential`, or the file when `--grants` is given, and commits as one run.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 84
+      "line": 85
     },
     {
       "id": "disclosure.sweep.grants-file",
@@ -23897,7 +24274,7 @@
       "statement": "A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line, a grant carrying `resource_id`, `principal`, `principal_kind` and `level`, or `resource_id` with `\"unread\": true`; an unmarked resource with no grant line holds none.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 85
+      "line": 86
     },
     {
       "id": "disclosure.sweep.bare-resource",
@@ -23908,7 +24285,7 @@
       "statement": "A `--grants` line carrying `resource_id` alone names a resource read holding no grant, so a webhook run naming it withdraws every grant that resource held.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 86
+      "line": 87
     },
     {
       "id": "disclosure.sweep.directory-file",
@@ -23919,7 +24296,7 @@
       "statement": "A `--directory` file is the identity provider's directory read, one JSON object per line: a link carrying `source_principal`, `subject`, `method` and `confidence`, or a membership carrying `group`, `member` and `member_kind`; a run without one keeps the current rows.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 87
+      "line": 88
     },
     {
       "id": "disclosure.sweep.full-run",
@@ -23930,7 +24307,7 @@
       "statement": "A full run replaces the source's resource and grant rows with those it read, writes a tombstone per grant it no longer observes, and sets `last_full_sweep_at`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 88
+      "line": 89
     },
     {
       "id": "disclosure.sweep.incremental-run",
@@ -23941,7 +24318,7 @@
       "statement": "An incremental run replaces the grants of each resource it read, tombstoning those withdrawn, leaves every other resource's grants standing, and sets `last_incremental_at`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 89
+      "line": 90
     },
     {
       "id": "disclosure.sweep.webhook-run",
@@ -23952,7 +24329,7 @@
       "statement": "A webhook run applies one delivery of the source's `events` stream: it replaces the grants of each resource its file names, leaves every other resource standing, and moves `watermark_at` to the instant it began reading.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 90
+      "line": 91
     },
     {
       "id": "disclosure.sweep.empty-delivery",
@@ -23963,7 +24340,7 @@
       "statement": "A webhook run whose file names no resource lands nothing, and `watermark_at` stays where it stood.",
       "why": "because an empty delivery reads no resource, so it carries no evidence the source's grants stand",
       "file": "spec/60-visibility.md",
-      "line": 91
+      "line": 92
     },
     {
       "id": "disclosure.sweep.superseded-run",
@@ -23974,7 +24351,7 @@
       "statement": "Before it lands, a run collects every run of its source's `resources`, `grants`, `principals`, `group_members` and `identity_links` but the current one, so each of those tables holds at most two runs.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 93
+      "line": 94
     },
     {
       "id": "disclosure.sweep.watermark-advance",
@@ -23985,7 +24362,7 @@
       "statement": "A run reading every governed resource sets the source's `watermark_at` to the instant it began reading; lag is now minus `watermark_at`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 94
+      "line": 95
     },
     {
       "id": "disclosure.sweep.sweep-epoch",
@@ -23996,7 +24373,7 @@
       "statement": "A committed run advances its source's epoch by one.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 95
+      "line": 96
     },
     {
       "id": "disclosure.reach.subject-principals",
@@ -24007,7 +24384,7 @@
       "statement": "A subject `user://<p>` reaches the `user` principal spelled `<p>` and each principal an `identity_links` row maps to it, then the groups those principals belong to.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 102
+      "line": 103
     },
     {
       "id": "disclosure.reach.closure-walk",
@@ -24018,7 +24395,7 @@
       "statement": "The closure walks the group graph with a visited set, ending any cycle, to a depth of `max_group_depth`, default 8 hops, and a breadth of 10000 nodes.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 103
+      "line": 104
     },
     {
       "id": "disclosure.reach.closure-overflow",
@@ -24029,7 +24406,7 @@
       "statement": "A closure reaching its depth or node bound raises `VisibilityClosureDepth` with the non-retryable HTTP status 422 and returns no set.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 104
+      "line": 105
     },
     {
       "id": "disclosure.reach.cache-capacity",
@@ -24040,7 +24417,7 @@
       "statement": "The reachable-set cache holds at most 100000 entries and evicts the least recently used.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 106
+      "line": 107
     },
     {
       "id": "disclosure.reach.degraded-uncached",
@@ -24051,7 +24428,7 @@
       "statement": "Retaining a reachable set or result produced past a budget, or under the narrowing posture, raises `VisibilityDegradedCached`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 107
+      "line": 108
     },
     {
       "id": "disclosure.reach.semi-join",
@@ -24062,7 +24439,7 @@
       "statement": "The semi-join opening {{authority.compose.relation-order}} admits a row of a bound table when its `resource_key` value names a resource with a read-conferring, unexpired, untombstoned grant in the reader's reachable set.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 109
+      "line": 110
     },
     {
       "id": "disclosure.reach.read-level",
@@ -24073,7 +24450,7 @@
       "statement": "A grant confers read when its `level`, mapped through the `level` table of the pack mapping its table, or taken verbatim where no pack maps that table, is `read`, `write` or `admin`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 110
+      "line": 111
     },
     {
       "id": "disclosure.reach.public-grant",
@@ -24084,7 +24461,7 @@
       "statement": "A grant whose `principal_kind`, mapped through the `principal_kind` table of the pack mapping its table, or taken verbatim where that table names no such kind, is `public` joins every subject's reachable set.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 111
+      "line": 112
     },
     {
       "id": "disclosure.reach.closure-projection",
@@ -24095,7 +24472,7 @@
       "statement": "The group closure is a projection in `derived.sqlite`, rebuilt from the `_visibility` rows after each sweep and on a replica after each pull; no replica opens closure files.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 112
+      "line": 113
     },
     {
       "id": "disclosure.reach.cache-epochs",
@@ -24106,7 +24483,7 @@
       "statement": "The reachable-set cache keys on the subject, the directory epoch and the epoch of each source the read touches, so a sweep invalidates only sets reading its source.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 114
+      "line": 115
     },
     {
       "id": "disclosure.bound-staleness.budget-grammar",
@@ -24117,7 +24494,7 @@
       "statement": "`max_acl_staleness` is a positive integer with one suffix from `s`, `m`, `h`, `d`. A compound form, a bare number or another suffix raises `VisibilityBudgetMalformed`, naming the table and the text read.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 136
+      "line": 137
     },
     {
       "id": "disclosure.bound-staleness.access-stale",
@@ -24128,7 +24505,7 @@
       "statement": "A read raises `VisibilityAccessStale` (HTTP 503, carrying source, lag, budget and last observation) when a touched table's source lag exceeds its budget, the source has no completed full run, or the public-status watermark is past budget.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 138
+      "line": 139
     },
     {
       "id": "disclosure.bound-staleness.budget-below-cadence",
@@ -24139,7 +24516,7 @@
       "statement": "A budget tighter than the sweep cadence its source sustains raises `VisibilityBudgetUnreachable` at diagnose, naming both figures.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 140
+      "line": 141
     },
     {
       "id": "disclosure.bound-staleness.clock-offset",
@@ -24150,7 +24527,7 @@
       "statement": "`CONTEXTFUL_NOW_OFFSET_SECS`, a non-negative integer, moves the instant a staleness check reads as now that many seconds later, so it can refuse a read and never extends a budget.",
       "why": "because a test observes a budget elapse without waiting, and an offset that only ages state cannot admit a read",
       "file": "spec/60-visibility.md",
-      "line": 142
+      "line": 143
     },
     {
       "id": "disclosure.bound-staleness.offset-malformed",
@@ -24161,7 +24538,7 @@
       "statement": "A `CONTEXTFUL_NOW_OFFSET_SECS` value other than a non-negative integer stops the process before it serves, naming the variable.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 144
+      "line": 145
     },
     {
       "id": "disclosure.bound-staleness.public-watermark",
@@ -24172,7 +24549,7 @@
       "statement": "A table's public-status watermark is the oldest `acl_observed_at` among its source's resources holding a read-conferring, unexpired `public` grant; with no such resource it lags zero.",
       "why": "because an incremental run over the public resources refreshes each one's observation, so public status stays current while the full watermark lags",
       "file": "spec/60-visibility.md",
-      "line": 145
+      "line": 146
     },
     {
       "id": "disclosure.bound-staleness.public-only",
@@ -24183,7 +24560,7 @@
       "statement": "Past its budget, a `public_only` table whose source has a completed full run and a public-status watermark within budget serves only rows whose resource holds a read-conferring, unexpired `public` grant.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 147
+      "line": 148
     },
     {
       "id": "disclosure.bound-staleness.degraded-block",
@@ -24194,7 +24571,7 @@
       "statement": "A read touching a table served under {{disclosure.bound-staleness.public-only}} answers with a `contextful.visibility` block holding `degraded` true and the narrowed tables under `narrowed`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 148
+      "line": 149
     },
     {
       "id": "disclosure.declare-fidelity.family-bound",
@@ -24205,7 +24582,7 @@
       "statement": "A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound`, and the manifest declaring it does not load.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 154
+      "line": 155
     },
     {
       "id": "disclosure.declare-fidelity.family-undeclared",
@@ -24216,7 +24593,7 @@
       "statement": "A mapping landing a table without naming its `family` raises `VisibilityFamilyUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 156
+      "line": 157
     },
     {
       "id": "disclosure.declare-fidelity.federated-registered",
@@ -24227,7 +24604,7 @@
       "statement": "Registering a `federated` table on a read face raises `VisibilityFederatedRegistered`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 158
+      "line": 159
     },
     {
       "id": "disclosure.declare-fidelity.federated-cache",
@@ -24238,7 +24615,7 @@
       "statement": "Retaining a federated result under a key omitting the subject raises `VisibilityFederatedCacheShared`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 160
+      "line": 161
     },
     {
       "id": "disclosure.declare-fidelity.computed-inputs",
@@ -24249,7 +24626,7 @@
       "statement": "A source that computes access with a sharing engine is queried live. A mapping projecting that engine's inputs into the `grants` table raises `VisibilityComputedInputsMirrored`, naming the source.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 162
+      "line": 163
     },
     {
       "id": "disclosure.declare-fidelity.roster-from-payload",
@@ -24260,7 +24637,7 @@
       "statement": "A mapping deriving grants from a people list inside content — attendees, invitees, recipients, contacts — rather than from the source's permission endpoint raises `VisibilityRosterFromPayload`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 164
+      "line": 165
     },
     {
       "id": "disclosure.declare-fidelity.federated-credential",
@@ -24271,7 +24648,7 @@
       "statement": "A federated leg runs under a credential the read obtains by token exchange for the reader's subject, never under the sweep's `credential` or the store owner's.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 166
+      "line": 167
     },
     {
       "id": "disclosure.declare-fidelity.federated-citation",
@@ -24282,7 +24659,7 @@
       "statement": "A federated result with no store row cites the source URL it fetched and the instant of that fetch.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 168
+      "line": 169
     },
     {
       "id": "disclosure.pack.mapping-absent",
@@ -24293,7 +24670,7 @@
       "statement": "A pack landing a table with neither an access mapping nor `excluded` raises `VisibilityMappingAbsent` at diagnose, naming the pack and the table.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 175
+      "line": 176
     },
     {
       "id": "disclosure.pack.asserts-access",
@@ -24304,7 +24681,7 @@
       "statement": "An access-shaped key the mapping schema does not define raises `VisibilityPackAssertsAccess` by name. Fields outside the mapping are fetch inputs and reach no authorization decision.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 177
+      "line": 178
     },
     {
       "id": "disclosure.pack.any-of-allowlist",
@@ -24315,7 +24692,7 @@
       "statement": "An allowlist evaluated as any-of raises `VisibilityAllowlistAnyOf` at load.",
       "why": "P1",
       "file": "spec/60-visibility.md",
-      "line": 179
+      "line": 180
     },
     {
       "id": "disclosure.pack.unsupported-coarse",
@@ -24326,7 +24703,7 @@
       "statement": "Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`.",
       "why": "A-disclosure",
       "file": "spec/60-visibility.md",
-      "line": 181
+      "line": 182
     },
     {
       "id": "disclosure.pack.pack-block",
@@ -24337,7 +24714,7 @@
       "statement": "A `[pack.<name>]` block names the `tables` it lands, its `excluded` tables, one `access.<table>` mapping per mapped table, and an optional container `allowlist` of `containers` with `evaluate = \"all-of\"`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 183
+      "line": 184
     },
     {
       "id": "disclosure.pack.mapping-keys",
@@ -24348,7 +24725,79 @@
       "statement": "An access mapping holds `resource_key`, `resource_kind`, `family`, `fidelity`, `container_key`, `principal_kind` and `level`, and no other key.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 184
+      "line": 185
+    },
+    {
+      "id": "disclosure.drive-sweep.resource-set",
+      "contract": "disclosure",
+      "operation": "drive-sweep",
+      "subject": "resource-set",
+      "kind": "behavior",
+      "statement": "A Drive sweep enumerates each file row of its bound connection as one governed resource under {{disclosure.sweep.sweep-block}}.",
+      "why": "",
+      "file": "spec/60-visibility.md",
+      "line": 191
+    },
+    {
+      "id": "disclosure.drive-sweep.permission-pages",
+      "contract": "disclosure",
+      "operation": "drive-sweep",
+      "subject": "permission-pages",
+      "kind": "behavior",
+      "statement": "For each governed file, the sweep follows every `permissions.list` page under the connection credential before its grants replace prior grants.",
+      "why": "A-disclosure",
+      "file": "spec/60-visibility.md",
+      "line": 192,
+      "scenarios": [
+        "WHEN a file's permission response has a next-page token, THEN the sweep reads that page before replacing its grants."
+      ]
+    },
+    {
+      "id": "disclosure.drive-sweep.grant-mapping",
+      "contract": "disclosure",
+      "operation": "drive-sweep",
+      "subject": "grant-mapping",
+      "kind": "behavior",
+      "statement": "User, group, domain and anyone permissions map to distinct principal kinds; the mapping retains Drive permission id and role beside the source resource id.",
+      "why": "",
+      "file": "spec/60-visibility.md",
+      "line": 194
+    },
+    {
+      "id": "disclosure.drive-sweep.inherited-access",
+      "contract": "disclosure",
+      "operation": "drive-sweep",
+      "subject": "inherited-access",
+      "kind": "behavior",
+      "statement": "A shared-drive permission records its inheritance source when Drive supplies one; a direct permission and an inherited permission remain distinct grants.",
+      "why": "",
+      "file": "spec/60-visibility.md",
+      "line": 195
+    },
+    {
+      "id": "disclosure.drive-sweep.unreadable-resource",
+      "contract": "disclosure",
+      "operation": "drive-sweep",
+      "subject": "unreadable-resource",
+      "kind": "behavior",
+      "statement": "A refused or incomplete permission read marks its resource unread and advances no coverage watermark under {{disclosure.sweep.coverage-watermark}}.",
+      "why": "A-disclosure",
+      "file": "spec/60-visibility.md",
+      "line": 196,
+      "scenarios": [
+        "WHEN one file's permissions refuse, THEN no complete sweep watermark advances."
+      ]
+    },
+    {
+      "id": "disclosure.drive-sweep.identity-link",
+      "contract": "disclosure",
+      "operation": "drive-sweep",
+      "subject": "identity-link",
+      "kind": "behavior",
+      "statement": "An email or domain from Drive becomes a reachable subject only through a verified identity link under {{disclosure.reach.subject-principals}}.",
+      "why": "",
+      "file": "spec/60-visibility.md",
+      "line": 198
     },
     {
       "id": "disclosure.set-mode.check-verb",
@@ -25811,7 +26260,7 @@
       "statement": "A schedule string the grammar cannot read, including `L`, `W`, `?`, `#` and `@` macros, raises `ScheduleUnreadable` for that entry alone, naming the diagnostic; every other entry of the document arms.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 63
+      "line": 64
     },
     {
       "id": "surface.arm.unknown-trigger",
@@ -25822,7 +26271,7 @@
       "statement": "An unrecognized trigger value raises `TriggerAdapterUnknown` at startup and downgrades onto no adapter.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 65
+      "line": 66
     },
     {
       "id": "surface.arm.trigger-face-missing",
@@ -25833,7 +26282,7 @@
       "statement": "`external` selected on a deployment serving no HTTP face raises `TriggerFaceMissing` at startup.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 67
+      "line": 68
     },
     {
       "id": "surface.arm.wake-answer",
@@ -25844,7 +26293,7 @@
       "statement": "A wake answers within 25 s with what fired, what failed, what stays armed and the next due instant, naming each fire still in flight as pending.",
       "why": "because a platform request timeout otherwise ends the call before the caller learns anything",
       "file": "spec/70-control-plane.md",
-      "line": 69
+      "line": 70
     },
     {
       "id": "surface.arm.wake-pending-steps",
@@ -25855,7 +26304,7 @@
       "statement": "A wake or cycle answer naming a unit pending also names each of its landing steps and dependent jobs pending, so a job due behind a pipeline that landed during the wake reads pending until its unit ends.",
       "why": "because a caller checking one job before reading its output otherwise finds it in neither `fired` nor `pending`",
       "file": "spec/70-control-plane.md",
-      "line": 71
+      "line": 72
     },
     {
       "id": "surface.arm.tick-interval",
@@ -25866,7 +26315,7 @@
       "statement": "The in-process adapter evaluates the armed set every 500 ms.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 73
+      "line": 74
     },
     {
       "id": "surface.arm.trigger-select",
@@ -25877,7 +26326,7 @@
       "statement": "`[control] trigger` selects `in-process`, the default, or `external`, under which `pipeline serve --http <address>` answers `POST /wake` and runs no tick of its own.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 74
+      "line": 75
     },
     {
       "id": "surface.arm.grammar",
@@ -25888,7 +26337,7 @@
       "statement": "A schedule is `every <n><unit>` with unit `s`, `m`, `h` or `d`, or a UTC cron expression of five fields, minute, hour, day of month, month and day of week, each `*`, a value, range, list or `/` step.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 75
+      "line": 76
     },
     {
       "id": "surface.arm.next-fire-from-history",
@@ -25899,7 +26348,7 @@
       "statement": "An armed entry's next fire is the first instant its schedule admits after the later of its last journaled run start and its last dispatch, which the catalog records before start; an entry with neither is due when armed.",
       "why": "because a restarted daemon then keeps the cadence its run history shows instead of restarting every interval from boot",
       "file": "spec/70-control-plane.md",
-      "line": 76
+      "line": 77
     },
     {
       "id": "surface.arm.catch-up",
@@ -25910,7 +26359,7 @@
       "statement": "A daemon arming an entry whose next fire has passed fires it once, whatever count of intervals elapsed, and arms the following fire from that run.",
       "why": "because replaying each missed interval against an incremental source pulls the same delta once per interval",
       "file": "spec/70-control-plane.md",
-      "line": 78
+      "line": 79
     },
     {
       "id": "surface.arm.pulled-history",
@@ -25921,7 +26370,7 @@
       "statement": "A pipeline's last journaled run start is the latest start across this node's catalog and every run state {{store.push.run-state}} carries that records the pipeline.",
       "why": "because a cold node's empty catalog otherwise finds every scheduled entry due at once",
       "file": "spec/70-control-plane.md",
-      "line": 80
+      "line": 81
     },
     {
       "id": "surface.arm.pulled-future",
@@ -25932,7 +26381,7 @@
       "statement": "A pulled run start later than the scheduler's current instant counts as no start for {{surface.arm.pulled-history}}.",
       "why": "because one node's fast clock or one bucket writer otherwise defers every replica's cadence until that instant",
       "file": "spec/70-control-plane.md",
-      "line": 82
+      "line": 83
     },
     {
       "id": "surface.arm.unarmed-named",
@@ -25943,7 +26392,7 @@
       "statement": "An applied pipeline declaring no schedule, or held back by {{surface.arm.unreadable-schedule}}, arms no entry; serve names each such pipeline with its reason once per applied version, and `--cycle` lists them under `unarmed`.",
       "why": "because a pipeline silently left out of the armed set reads as armed until its data goes stale",
       "file": "spec/70-control-plane.md",
-      "line": 84
+      "line": 85
     },
     {
       "id": "surface.reconcile.poll-cadence",
@@ -25954,7 +26403,7 @@
       "statement": "`poll` takes a schedule string, and a `[control]` block declaring none polls every 30 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 119
+      "line": 120
     },
     {
       "id": "surface.reconcile.pointer-malformed",
@@ -25965,7 +26414,7 @@
       "statement": "A pointer body that is not wholly a version raises `ControlPointerMalformed`.",
       "why": "because an integer read out of leading bytes arms a version nobody applied",
       "file": "spec/70-control-plane.md",
-      "line": 120
+      "line": 121
     },
     {
       "id": "surface.reconcile.fail-static",
@@ -25976,7 +26425,7 @@
       "statement": "An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 122
+      "line": 123
     },
     {
       "id": "surface.reconcile.loopback-only",
@@ -25987,7 +26436,7 @@
       "statement": "A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 124
+      "line": 125
     },
     {
       "id": "surface.reconcile.pulled-control",
@@ -25998,7 +26447,7 @@
       "statement": "A reconciler adopts the project-scoped head {{store.pull.control-head}} carries, descending from its local head, only after verifying the receipt under a locally pinned issuer key and validating the snapshot against this node's declarations.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 126,
+      "line": 127,
       "scenarios": [
         "WHEN a cold node holds a signed bucket head whose snapshot validates against its declarations, THEN it installs that head and arms its schedules.",
         "WHEN a signed bucket head contains one of two locally declared pipelines, THEN the reconciler adopts that partial apply and leaves the other pipeline unarmed."
@@ -26013,7 +26462,7 @@
       "statement": "A reconciler reads pulled-control issuer pins through {{authority.verify.pin-source}} and refuses a receipt whose signer is absent from those pins.",
       "why": "because a bucket writer can sign its own unauthorized snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 128
+      "line": 129
     },
     {
       "id": "surface.reconcile.pulled-control-untrusted",
@@ -26024,7 +26473,7 @@
       "statement": "A pulled control head with an invalid signature, project, digest, predecessor chain or local validation raises `ControlSnapshotUntrusted`, names the reason and arms none of that version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 130,
+      "line": 131,
       "scenarios": [
         "WHEN a bucket writer replaces the snapshot bytes without a matching signature, THEN the node names the failed verification and arms none of that version."
       ]
@@ -26038,7 +26487,7 @@
       "statement": "A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.",
       "why": "because one layout serves a snapshot directory unchanged over loopback HTTP",
       "file": "spec/70-control-plane.md",
-      "line": 132
+      "line": 133
     },
     {
       "id": "surface.reconcile.learns-by-reading",
@@ -26049,7 +26498,7 @@
       "statement": "A daemon learns of a new snapshot only by reading its control source, on each poll and on each wake; nothing pushes a snapshot to it.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 134
+      "line": 135
     },
     {
       "id": "surface.fire.job-kind-unknown",
@@ -26060,7 +26509,7 @@
       "statement": "A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 171
+      "line": 172
     },
     {
       "id": "surface.fire.target-unbound",
@@ -26071,7 +26520,7 @@
       "statement": "A `fold` target naming no produced table, or a `build` target naming no declared `[[model]]`, raises `JobTargetUnbound` at validation.",
       "why": "P1",
       "file": "spec/70-control-plane.md",
-      "line": 173
+      "line": 174
     },
     {
       "id": "surface.fire.cycle-control-source",
@@ -26082,7 +26531,7 @@
       "statement": "A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 175
+      "line": 176
     },
     {
       "id": "surface.fire.store-driven-concurrency",
@@ -26093,7 +26542,7 @@
       "statement": "A `store-driven` block declaring no positive integer `max_in_flight` raises `JobConcurrencyUnset` at validation; no default applies.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 177
+      "line": 178
     },
     {
       "id": "surface.fire.store-driven-body",
@@ -26104,7 +26553,7 @@
       "statement": "A `store-driven` block whose `body` names no body the embedding binary registers and no delegate under {{surface.delegate.binding}} raises `JobBodyUnregistered` at validation.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 179
+      "line": 180
     },
     {
       "id": "surface.fire.scheduled-body",
@@ -26115,7 +26564,7 @@
       "statement": "A scheduled `store-driven` job runs through the cadence lease and dispatch pool under `job:<name>`, using the embedding executable's registered body or its bound delegate, and the applied snapshot's job declaration.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 181
+      "line": 182
     },
     {
       "id": "surface.fire.scheduled-history",
@@ -26126,7 +26575,7 @@
       "statement": "A scheduled `store-driven` job computes its next fire from its host execution's recorded start, including failed attempts; a restarted daemon resumes pending execution through {{run.journal.input-pin}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 183
+      "line": 184
     },
     {
       "id": "surface.fire.job-snapshot",
@@ -26137,7 +26586,7 @@
       "statement": "Import and full apply retain validated job declarations in the immutable snapshot; a pipeline-only apply preserves the snapshot's jobs, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 185
+      "line": 186
     },
     {
       "id": "surface.fire.model-snapshot",
@@ -26148,7 +26597,7 @@
       "statement": "Import and full apply retain validated model declarations with file SQL resolved inline; pipeline-only apply preserves applied models, and applied build dispatch reads that version's model, contract and tests without consulting draft definitions.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 187
+      "line": 188
     },
     {
       "id": "surface.fire.standalone-snapshot",
@@ -26159,7 +26608,7 @@
       "statement": "Import and full apply retain standalone table contracts in immutable snapshot metadata; pipeline-only apply preserves that metadata, including absent metadata.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 189
+      "line": 190
     },
     {
       "id": "surface.fire.applied-data-contract",
@@ -26170,7 +26619,7 @@
       "statement": "Applied store-driven and build jobs resolve standalone and pipeline table declarations and models from their snapshot; unapplied edits to them change neither input selection nor output landing contracts.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 191
+      "line": 192
     },
     {
       "id": "surface.fire.applied-current-authority",
@@ -26181,7 +26630,7 @@
       "statement": "Before opening an applied job execution, differing current table authority or model disclosure refuses under {{surface.apply.validation}}; current writer admission remains authoritative.",
       "why": "because a pinned read structure must not preserve authority the live declaration has changed",
       "file": "spec/70-control-plane.md",
-      "line": 193
+      "line": 194
     },
     {
       "id": "surface.fire.applied-contract-missing",
@@ -26192,7 +26641,7 @@
       "statement": "Applied jobs lacking standalone contract metadata refuse under {{surface.apply.validation}} until full apply captures those contracts; no live declaration substitutes for missing snapshot metadata.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 195
+      "line": 196
     },
     {
       "id": "surface.fire.executable-pin",
@@ -26203,7 +26652,7 @@
       "statement": "Store-driven and build executions pin table declarations, model definitions, output membership, and memory shapes and relations; changed structure meets {{run.own.pinned-plan-changed}} before replay or publication.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 197
+      "line": 198
     },
     {
       "id": "surface.fire.scheduled-build",
@@ -26214,7 +26663,7 @@
       "statement": "A scheduled `build` job dispatches the native model publisher through the cadence lease and pool under `job:<name>`; its execution records starts and outcomes for restart cadence, including failed attempts.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 199
+      "line": 200
     },
     {
       "id": "surface.fire.build-dependency",
@@ -26225,7 +26674,7 @@
       "statement": "A build job's `after` names a pipeline and inherits its dependent-run head schedule; builds follow all pipeline steps and run only after a successful unit. Jobs without `after` read already committed inputs.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 201
+      "line": 202
     },
     {
       "id": "surface.fire.build-dependency-invalid",
@@ -26236,7 +26685,7 @@
       "statement": "Import and apply refuse a job dependency naming no pipeline, combining `after` with `schedule`, or naming a kind other than `build`, under {{surface.apply.validation}}.",
       "why": "because a dependency has one native cadence and never dispatches an unsupported job graph",
       "file": "spec/70-control-plane.md",
-      "line": 203
+      "line": 204
     },
     {
       "id": "surface.fire.job-identity",
@@ -26247,7 +26696,7 @@
       "statement": "A pipeline sharing a job's `job:<name>` dispatch identity fails {{surface.apply.validation}} before a version is claimed.",
       "why": "because one exclusion key cannot dispatch two distinct operations",
       "file": "spec/70-control-plane.md",
-      "line": 205
+      "line": 206
     },
     {
       "id": "surface.fire.plan-job",
@@ -26258,7 +26707,7 @@
       "statement": "A `plan` block names a compiled plan file beside its manifest; `job fire` lowers that plan onto one execution under host scope `job:<name>`, pinned to the plan's version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 207
+      "line": 208
     },
     {
       "id": "surface.fire.cycle",
@@ -26269,7 +26718,7 @@
       "statement": "`serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 209
+      "line": 210
     },
     {
       "id": "surface.fire.cycle-exit",
@@ -26280,7 +26729,7 @@
       "statement": "`serve --cycle` exits non-zero when any unit it dispatched failed, after printing its answer; a cycle with no failed unit, or one finding the cadence lease held, exits zero.",
       "why": "because a scheduler running the cycle reads the exit status, and a zero over a failed fire reports success",
       "file": "spec/70-control-plane.md",
-      "line": 210
+      "line": 211
     },
     {
       "id": "surface.dispatch.not-a-head",
@@ -26291,7 +26740,7 @@
       "statement": "A `[[pipeline]]` block naming `after = \"<id>\"` is a landing step of that entry's dependent run; the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 217
+      "line": 218
     },
     {
       "id": "surface.dispatch.step-result",
@@ -26302,7 +26751,7 @@
       "statement": "A completion callback carries a pointer, an object-store key or a catalog row id, or the failed step's last error line, as JSON of at most 1 MiB; any other callback body raises `StepResultRefused` and records nothing.",
       "why": "because a step result rides one journal row, and bulk output belongs in the object store it points into",
       "file": "spec/70-control-plane.md",
-      "line": 219
+      "line": 220
     },
     {
       "id": "surface.dispatch.in-band-tool-error",
@@ -26313,7 +26762,7 @@
       "statement": "A step driving the engine over the tool protocol judges the tool result, not transport status: a `200` carrying a protocol error or a result flagged `isError` raises `StepToolError`.",
       "why": "P2",
       "file": "spec/70-control-plane.md",
-      "line": 221
+      "line": 222
     },
     {
       "id": "surface.dispatch.callback-skew",
@@ -26324,7 +26773,7 @@
       "statement": "The relay accepts a callback timestamp within 300 s of its own clock.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 223
+      "line": 224
     },
     {
       "id": "surface.dispatch.callback-rejected",
@@ -26335,7 +26784,7 @@
       "statement": "A heartbeat or callback whose signature fails, whose attempt is not the step's current attempt, whose timestamp falls outside {{surface.dispatch.callback-skew}}, or whose step has closed, raises `DispatchCallbackRejected` and changes no step.",
       "why": "because a partitioned worker's late result otherwise overwrites its successor's, and a captured callback replays indefinitely",
       "file": "spec/70-control-plane.md",
-      "line": 224
+      "line": 225
     },
     {
       "id": "surface.dispatch.heartbeat-beat",
@@ -26346,7 +26795,7 @@
       "statement": "A worker heartbeats every 15 s with a signed `GET` on its step's awakeable route, and posts its outcome to that route with a signed `POST`.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 226
+      "line": 227
     },
     {
       "id": "surface.dispatch.worker-target",
@@ -26357,7 +26806,7 @@
       "statement": "`[control] workers` lists worker URLs and `[control] relay` the URL whose `/awake/:token` route `serve` binds; with workers listed, each landing step posts to a worker's `POST /submit`, keyed by run, step and attempt.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 228
+      "line": 229
     },
     {
       "id": "surface.dispatch.worker-key",
@@ -26368,7 +26817,7 @@
       "statement": "Heartbeats and callbacks sign under the key `CONTEXTFUL_WORKER_KEY` holds; `serve` listing workers without a relay or without that key refuses at startup and binds nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 230
+      "line": 231
     },
     {
       "id": "surface.dispatch.submit-signed",
@@ -26379,7 +26828,7 @@
       "statement": "A worker admits a `POST /submit` only when it carries an HMAC under the worker key over its timestamp and body, within {{surface.dispatch.callback-skew}}, naming a callback under its own `[control] relay`; any other submission raises `DispatchSubmitRejected` and starts nothing.",
       "why": "because an unsigned submission lets any caller start a step and have the worker sign heartbeats and callbacks for a route of its choosing",
       "file": "spec/70-control-plane.md",
-      "line": 231
+      "line": 232
     },
     {
       "id": "surface.dispatch.submit-exhausted",
@@ -26390,7 +26839,7 @@
       "statement": "A step every listed worker refuses in turn at `POST /submit` fails its unit naming the last refusal, each worker tried once.",
       "why": "because a step bouncing between refusing workers holds its pool slot and exclusion key while never running",
       "file": "spec/70-control-plane.md",
-      "line": 233
+      "line": 234
     },
     {
       "id": "surface.dispatch.heartbeat-lapse",
@@ -26401,7 +26850,7 @@
       "statement": "A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker under the next attempt number.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 235
+      "line": 236
     },
     {
       "id": "surface.dispatch.pool-bound",
@@ -26412,7 +26861,7 @@
       "statement": "A deployment's fire pool runs at most 4 units at once, `[control] pool` replacing the bound; a due unit past the bound stays armed and reports pending.",
       "why": "because one bound per deployment caps the process's concurrent pulls, where a bound per exclusion key caps nothing as pipelines are added",
       "file": "spec/70-control-plane.md",
-      "line": 236
+      "line": 237
     },
     {
       "id": "surface.dispatch.admission-order",
@@ -26423,7 +26872,7 @@
       "statement": "Due units start by earliest next fire, then highest `[[pipeline]]` `priority`, an integer defaulting to 0, then the least recent of each unit's last run start and last dispatch, a unit with neither first, then id.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 238
+      "line": 239
     },
     {
       "id": "surface.dispatch.refill",
@@ -26434,7 +26883,7 @@
       "statement": "A wake whose fire ends before its answer admits each unit its evaluation left pending into the freed slot, through the cadence lease; a unit falling due after the evaluation waits for the next wake.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 240
+      "line": 241
     },
     {
       "id": "surface.dispatch.exclusion-key",
@@ -26445,7 +26894,7 @@
       "statement": "A unit's exclusion key is its pipeline id: a unit due while another under its key is in flight starts no second instance, and its next fire recomputes once the first ends.",
       "why": "because two fires of one pipeline race for one cursor",
       "file": "spec/70-control-plane.md",
-      "line": 242
+      "line": 243
     },
     {
       "id": "surface.dispatch.export-quiesced",
@@ -26456,7 +26905,7 @@
       "statement": "A due unit whose head or a landing step writes a member of a publication, or a relation its producer reads, starts nothing while `contextful export group` holds that publication, and stays due, reporting pending.",
       "why": "because a producer commit between an export's frontier reads raises {{run.export.group-incompatible}}, and a deferred unit costs one beat where stopping serve costs every dispatch",
       "file": "spec/70-control-plane.md",
-      "line": 244
+      "line": 245
     },
     {
       "id": "surface.dispatch.export-deferred-slot",
@@ -26467,7 +26916,7 @@
       "statement": "A deferred unit takes no pool slot and writes no dispatch record: its slot passes to the next unit in admission order, and it waits for the next beat or a wake's refill.",
       "why": "because a deferred unit holding its slot stops unrelated units for the whole export, and a recorded dispatch moves its fire past the instant it never ran",
       "file": "spec/70-control-plane.md",
-      "line": 246
+      "line": 247
     },
     {
       "id": "surface.dispatch.export-claim",
@@ -26478,7 +26927,7 @@
       "statement": "A started unit writing a publication's inputs holds them shared from its start until it ends, so an export of that publication waits for it.",
       "why": "because serve admits a unit before its child commits, so a check at admission alone misses a unit already running",
       "file": "spec/70-control-plane.md",
-      "line": 248
+      "line": 249
     },
     {
       "id": "surface.dispatch.export-claim-unread",
@@ -26489,7 +26938,7 @@
       "statement": "A unit whose publication inputs serve cannot compute claims every declared publication; a unit whose claim serve cannot take starts nothing and stays due, logging the error.",
       "why": "because an unclaimed unit starting during an export commits between the frontier reads {{run.export.group-incompatible}} rechecks",
       "file": "spec/70-control-plane.md",
-      "line": 250
+      "line": 251
     },
     {
       "id": "surface.dispatch.lease-gated",
@@ -26500,7 +26949,7 @@
       "statement": "A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease held arms nothing and, under `--cycle`, exits naming the holder.",
       "why": "because two daemons reading one snapshot otherwise fire every due unit twice",
       "file": "spec/70-control-plane.md",
-      "line": 252
+      "line": 253
     },
     {
       "id": "surface.dispatch.children-reaped",
@@ -26511,7 +26960,7 @@
       "statement": "A serve process starts each child run in its own process group; on `SIGTERM`, `SIGINT`, a `--cycle` exit or an unwind it signals each live group `SIGTERM`, `SIGKILL`s the remainder after 10 s, and exits once every child has.",
       "why": "because a child outliving its serve also outlives the cadence lease, and a second scheduler then fires the same pipeline concurrently",
       "file": "spec/70-control-plane.md",
-      "line": 254
+      "line": 255
     },
     {
       "id": "surface.dispatch.fire-credential",
@@ -26522,7 +26971,7 @@
       "statement": "Under `--issuer-key`, serve mints each store-driven or synthesize child fire one credential for `svc://job/<name>` in the project's default zone, granting {{surface.dispatch.fire-reach}}, in that child's `CONTEXTFUL_TOKEN`; the seed reaches no child argument or variable.",
       "why": "because a serve outlives any credential the ceiling admits, and a credential minted per fire narrows each child to its own job's tables",
       "file": "spec/70-control-plane.md",
-      "line": 256
+      "line": 257
     },
     {
       "id": "surface.dispatch.fire-reach",
@@ -26533,7 +26982,7 @@
       "statement": "A store-driven fire reaches `read` on its statement's relations and `write` on its `tables`; a synthesize fire reaches `read` on its source, its target and the declared entities table, and `write` on its target.",
       "why": "because a synthesize pass consolidates against live claims and resolves mentions against entities, and writes no table but its claims and their dead letters",
       "file": "spec/70-control-plane.md",
-      "line": 258
+      "line": 259
     },
     {
       "id": "surface.dispatch.fire-credential-lifetime",
@@ -26544,7 +26993,7 @@
       "statement": "A fire credential lives 600 s, or {{authority.issue.ceiling}} when lower; the child admits it once at start.",
       "why": "because a fire admits its credential before its first read, and a short lifetime bounds a leaked fire credential's exposure",
       "file": "spec/70-control-plane.md",
-      "line": 260
+      "line": 261
     },
     {
       "id": "surface.dispatch.fire-credential-pins",
@@ -26555,7 +27004,7 @@
       "statement": "Each child holding a minted fire credential also receives `CONTEXTFUL_ISSUER_PUBKEY`, the seed's public key, and `CONTEXTFUL_AUDIENCE`, the issuance policy's default audience the credential carries, replacing values serve inherited.",
       "why": "because the child admits its credential from inherited variables, and a pin or audience other than the minting one refuses every fire",
       "file": "spec/70-control-plane.md",
-      "line": 262
+      "line": 263
     },
     {
       "id": "surface.dispatch.fire-credential-inherited",
@@ -26566,7 +27015,7 @@
       "statement": "A serve holding no `--issuer-key` passes its own `CONTEXTFUL_TOKEN` to each child it starts.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 264
+      "line": 265
     },
     {
       "id": "surface.dispatch.fire-credential-missing",
@@ -26577,7 +27026,7 @@
       "statement": "A serve dispatching to child processes, whose applied snapshot schedules a store-driven or synthesize job, holding neither `--issuer-key` nor `CONTEXTFUL_TOKEN`, raises `FireCredentialMissing` at start and fires nothing.",
       "why": "because a missing credential otherwise fails every fire while the serve reports healthy",
       "file": "spec/70-control-plane.md",
-      "line": 265
+      "line": 266
     },
     {
       "id": "surface.dispatch.fire-credential-zone",
@@ -26588,7 +27037,7 @@
       "statement": "A serve under `--issuer-key`, whose applied snapshot schedules a store-driven or synthesize job, under a root whose `[project.zone]` declares no `default`, raises `FireCredentialZoneUnset` at start and fires nothing.",
       "why": "because a credential signing no zone asserts an undeclared zone, which {{authority.place.undeclared}} admits nowhere but `*`, so every fire reads no row",
       "file": "spec/70-control-plane.md",
-      "line": 267
+      "line": 268
     },
     {
       "id": "surface.delegate.binding",
@@ -26599,7 +27048,7 @@
       "statement": "`[control.delegates.<name>]` binds a delegate by `url`, a `mode` of `call` or `submit`, and under `call` a `timeout`; a `store-driven` `body = { delegate = \"<name>\" }` naming no bound delegate raises `JobDelegateUnbound` at arm or fire.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 305
+      "line": 306
     },
     {
       "id": "surface.delegate.host",
@@ -26610,7 +27059,7 @@
       "statement": "A delegate `url` is `http` to a loopback host or the `contextful.delegate` virtual host, carrying no credential; any other spelling raises `DelegateHostRefused` at startup and arms nothing.",
       "why": "because the stock container reaches a delegate only through a loopback relay or the deploy's outbound interception, and a public URL turns daemon configuration into egress",
       "file": "spec/70-control-plane.md",
-      "line": 307,
+      "line": 308,
       "scenarios": [
         "WHEN a delegate `url` names a host that is neither loopback nor the virtual host, THEN startup refuses and arms nothing."
       ]
@@ -26624,7 +27073,7 @@
       "statement": "A delegate request carries `job`, `execution_id`, `step`, `input_hash`, `idempotency_key` under {{run.journal.idempotency-key}}, `attempt`, `entity` with namespace, key and fence, `as_of`, `version` when fired from an applied snapshot, `pins`, `tables`, the input `row` and `deadline`.",
       "why": "because a delegate holds no state of its own, and a request naming its version and fence lets it refuse before a paid call",
       "file": "spec/70-control-plane.md",
-      "line": 309
+      "line": 310
     },
     {
       "id": "surface.delegate.signed",
@@ -26635,7 +27084,7 @@
       "statement": "A request is signed under the worker key over `call`, its timestamp and body, and an answer over `answer`, the request's `idempotency_key`, its timestamp and body, each as {{surface.dispatch.submit-signed}} signs a submission.",
       "why": "because an answer bound to its request cannot be replayed onto another item's call",
       "file": "spec/70-control-plane.md",
-      "line": 311
+      "line": 312
     },
     {
       "id": "surface.delegate.rejected",
@@ -26646,7 +27095,7 @@
       "statement": "An answer unsigned or skewed past {{surface.dispatch.callback-skew}} raises `DelegateAnswerRejected` and closes the attempt `Transient`; one outside {{surface.delegate.outcome}} or over {{surface.dispatch.step-result}} raises it and closes the attempt `Permanent`.",
       "why": "because an unsigned answer lets any process on the loopback land rows, and a malformed one cannot change on retry",
       "file": "spec/70-control-plane.md",
-      "line": 313
+      "line": 314
     },
     {
       "id": "surface.delegate.call-mode",
@@ -26657,7 +27106,7 @@
       "statement": "Under `call`, one request per attempt holds its connection open and the response body is the attempt's answer; a response arriving after the delegate's `timeout` closes the attempt `Transient`, and its late body records nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 315,
+      "line": 316,
       "scenarios": [
         "WHEN a delegate answers `ok` with rows for one item and the daemon restarts before that item's landing commits, THEN the resumed item lands the recorded rows and the delegate receives no second request."
       ]
@@ -26671,7 +27120,7 @@
       "statement": "A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; a terminal receipt follows a signed `permanent` answer, a `Permanent` rejection or an exhausted budget under {{run.items.retry-budget}}.",
       "why": "because a refusal before work is deployment drift an operator fixes, and a terminal receipt outlives the fix",
       "file": "spec/70-control-plane.md",
-      "line": 317
+      "line": 318
     },
     {
       "id": "surface.delegate.call-timeout",
@@ -26682,7 +27131,7 @@
       "statement": "A `call` delegate's `timeout` defaults to 300 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 319
+      "line": 320
     },
     {
       "id": "surface.delegate.call-timeout-ceiling",
@@ -26693,7 +27142,7 @@
       "statement": "A `call` `timeout` above 3600 s raises `DelegateTimeoutRefused` at validation.",
       "why": "because an item holding a `max_in_flight` slot for over an hour is a stalled delegate, not a slow one",
       "file": "spec/70-control-plane.md",
-      "line": 320
+      "line": 321
     },
     {
       "id": "surface.delegate.submit-mode",
@@ -26704,7 +27153,7 @@
       "statement": "Under `submit`, the request is a {{surface.dispatch.worker-target}} submission answered at once; the delegate heartbeats under {{surface.dispatch.heartbeat-beat}}, posts its answer to the callback, and a lapse follows {{surface.dispatch.heartbeat-lapse}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 322
+      "line": 323
     },
     {
       "id": "surface.delegate.outcome",
@@ -26715,7 +27164,7 @@
       "statement": "An answer is `ok` with rows per declared output table, `defer` with a `retry_at` instant, `transient`, or `permanent` with a reason; `ok` lands as {{run.items.completion}}, `defer` parks, and `transient` and `permanent` follow {{run.items.retry-budget}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 324
+      "line": 325
     },
     {
       "id": "surface.delegate.defer-parks",
@@ -26726,7 +27175,7 @@
       "statement": "A `defer` parks the item until its `retry_at` under {{run.items.retry-budget}}; the first fire after that instant re-admits it under {{run.items.replay}}, no run sleeps on it, and a row of a job without `isolated_items` closes `Transient` instead.",
       "why": "because a provider budget clears on the provider's clock, and a slot held through the wait starves every other entity",
       "file": "spec/70-control-plane.md",
-      "line": 326,
+      "line": 327,
       "scenarios": [
         "WHEN a delegate answers `defer` with a `retry_at` ten minutes ahead, THEN the item's failed-attempt count is unchanged and the first fire after that instant sends the request again."
       ]
@@ -26740,7 +27189,7 @@
       "statement": "The fence in {{surface.delegate.envelope}} is checked immediately before the request under {{run.items.fence}}; under `submit`, the heartbeat `GET` answers the current attempt and fence, so a delegate learns before a paid call whether it is superseded.",
       "why": "because a delegate that pays after its owner was replaced spends a call whose answer nothing records",
       "file": "spec/70-control-plane.md",
-      "line": 328
+      "line": 329
     },
     {
       "id": "surface.delegate.version",
@@ -26751,7 +27200,7 @@
       "statement": "A binding's optional `version` joins the item's owner pins as a body dependency, so a changed version opens a fresh execution identity and a pending item under the old one refuses as {{run.own.pinned-plan-changed}}.",
       "why": "because a prompt or model change inside a delegate otherwise resumes recorded work under new semantics",
       "file": "spec/70-control-plane.md",
-      "line": 330
+      "line": 331
     },
     {
       "id": "surface.delegate.clocks",
@@ -26762,7 +27211,7 @@
       "statement": "Signature timestamps on a request and an answer ride each side's system clock; the `deadline` and a `defer` wait ride the engine's instant.",
       "why": "because the engine's instant is injectable while a delegate shares only wall time, and a wait measured on two clocks never fires",
       "file": "spec/70-control-plane.md",
-      "line": 332
+      "line": 333
     },
     {
       "id": "surface.delegate.submit-relay",
@@ -26773,7 +27222,7 @@
       "statement": "A `submit` binding on a daemon declaring no `[control] relay` or holding no worker key refuses at startup, as {{surface.dispatch.worker-key}} refuses a worker list.",
       "why": "because a submit delegate posts its answer to the awakeable route the relay binds",
       "file": "spec/70-control-plane.md",
-      "line": 334
+      "line": 335
     },
     {
       "id": "surface.edit.secret-in-document",
@@ -26784,7 +27233,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 369
+      "line": 370
     },
     {
       "id": "surface.edit.connector-upload",
@@ -26795,7 +27244,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 371
+      "line": 372
     },
     {
       "id": "surface.edit.store-draft",
@@ -26806,7 +27255,7 @@
       "statement": "An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 373
+      "line": 374
     },
     {
       "id": "surface.apply.version-race",
@@ -26817,7 +27266,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 380
+      "line": 381
     },
     {
       "id": "surface.apply.validation",
@@ -26828,7 +27277,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 382
+      "line": 383
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -26839,7 +27288,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 384
+      "line": 385
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -26850,7 +27299,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 386
+      "line": 387
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -26861,7 +27310,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 388
+      "line": 389
     },
     {
       "id": "surface.apply.local-claim",
@@ -26872,7 +27321,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 390
+      "line": 391
     },
     {
       "id": "surface.apply.synced-attestation",
@@ -26883,7 +27332,7 @@
       "statement": "In a project with `[sync]`, import and apply admit an admin capability, then sign a receipt over the project, version, predecessor receipt digest and snapshot digest through {{authority.issue.signing-port}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 392
+      "line": 393
     },
     {
       "id": "surface.apply.receipt-message",
@@ -26894,7 +27343,7 @@
       "statement": "A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\\n<project>\\n<version>\\n<parent-or-minus>\\n<snapshot-sha256>\\n<signer>\\n`; its parent is `-` only for the first version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 394,
+      "line": 395,
       "scenarios": [
         "WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify."
       ]
@@ -26908,7 +27357,7 @@
       "statement": "A predecessor and the bucket head name the lowercase SHA-256 hex digest of a receipt's RFC 8785 canonical JSON bytes.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 396
+      "line": 397
     },
     {
       "id": "surface.apply.receipt-file",
@@ -26919,7 +27368,7 @@
       "statement": "A synced claim writes immutable `receipt@v<N>.json` beside its snapshot before advancing the applied pointer.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 398,
+      "line": 399,
       "scenarios": [
         "WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version."
       ]
@@ -26933,7 +27382,7 @@
       "statement": "A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 400,
+      "line": 401,
       "scenarios": [
         "WHEN a synced apply presents no admin capability, THEN no version or receipt is claimed."
       ]
@@ -26947,7 +27396,7 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; an import over a directory holding a version claims nothing, names that version and exits zero.",
       "why": "because a restart on a warm disk runs import before apply, and a refusal there stops the restart",
       "file": "spec/70-control-plane.md",
-      "line": 402,
+      "line": 403,
       "scenarios": [
         "WHEN a warm synced node restarts through pull, import, apply and push, THEN import claims nothing, apply reports the version unchanged, and the restart succeeds."
       ]
@@ -26961,7 +27410,7 @@
       "statement": "Import or apply over a snapshot directory holding no version first adopts a pulled head verified under {{surface.reconcile.issuer-pin}} against the verb's `--public-key` and meeting {{surface.apply.self-valid}}, though the declarations drop its pipelines or jobs; an import that adopts claims nothing.",
       "why": "because a replacement host claiming a fresh v1 diverges from the bucket's signed head, and the claim that follows removes what a release dropped",
       "file": "spec/70-control-plane.md",
-      "line": 404,
+      "line": 405,
       "scenarios": [
         "WHEN a cold node pulls a signed bucket head and runs import, THEN import claims nothing, and apply of one added pipeline claims the head's successor and pushes.",
         "WHEN a release changes only the schedules of pipelines a build job runs `after`, THEN a cold node adopts the old head and apply claims its successor.",
@@ -26977,7 +27426,7 @@
       "statement": "Import and full apply retain validated `[[external]]` declarations in the snapshot; a pipeline-only apply preserves them, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.",
       "why": "because Admin reads external steps from the applied version, beside the jobs {{surface.fire.job-snapshot}} retains",
       "file": "spec/70-control-plane.md",
-      "line": 406
+      "line": 407
     },
     {
       "id": "surface.apply.self-valid",
@@ -26988,7 +27437,7 @@
       "statement": "Import, apply and adoption validate a snapshot's document, build plans and each job's `after` against that snapshot's own pipelines, so apply signs no head its adoption refuses.",
       "why": "because a signed head failing its own adoption refuses every cold start until a reset",
       "file": "spec/70-control-plane.md",
-      "line": 408
+      "line": 409
     },
     {
       "id": "surface.apply.draft-claim",
@@ -26999,7 +27448,7 @@
       "statement": "An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 410
+      "line": 411
     },
     {
       "id": "surface.apply.operator-attestation",
@@ -27010,7 +27459,7 @@
       "statement": "An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.",
       "why": "because a shared store capability cannot identify the person who used the console",
       "file": "spec/70-control-plane.md",
-      "line": 412
+      "line": 413
     },
     {
       "id": "surface.apply.draft-table-contracts",
@@ -27021,7 +27470,7 @@
       "statement": "Pipeline editing preserves standalone table metadata from the draft's expected immutable version; apply regenerates that metadata and refuses an altered saved draft under {{surface.apply.validation}} before advancing the pointer.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 414
+      "line": 415
     },
     {
       "id": "surface.apply.draft-absent",
@@ -27032,7 +27481,7 @@
       "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
       "why": "because an absent draft supplies no document for the version claim",
       "file": "spec/70-control-plane.md",
-      "line": 416
+      "line": 417
     },
     {
       "id": "surface.apply.served-admin-grant",
@@ -27043,7 +27492,7 @@
       "statement": "A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.",
       "why": "because the control document arms work over every table and tenant of the store",
       "file": "spec/70-control-plane.md",
-      "line": 418
+      "line": 419
     },
     {
       "id": "surface.apply.served-malformed",
@@ -27054,7 +27503,7 @@
       "statement": "A served Admin edit or apply whose body is not a JSON object holding exactly its route's fields raises `ControlRequestMalformed`, answered `400`, and changes nothing.",
       "why": "because an absent or extra field leaves the operator's intended version or draft ambiguous",
       "file": "spec/70-control-plane.md",
-      "line": 420
+      "line": 421
     },
     {
       "id": "surface.apply.served-unavailable",
@@ -27065,7 +27514,7 @@
       "statement": "A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.",
       "why": "because a storage or owner fault message can disclose paths and endpoints to the console",
       "file": "spec/70-control-plane.md",
-      "line": 422
+      "line": 423
     },
     {
       "id": "surface.reside.region-entries",
@@ -27076,7 +27525,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 469
+      "line": 470
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -27087,7 +27536,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 470
+      "line": 471
     },
     {
       "id": "surface.reside.site-regions",
@@ -27098,7 +27547,104 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 472
+      "line": 473
+    },
+    {
+      "id": "surface.connection.routes",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "routes",
+      "kind": "behavior",
+      "statement": "`POST /connections` creates, `POST /connections/{id}/pause` pauses, and `DELETE /connections/{id}` deletes a connection outside the operator-only `/control/*` routes.",
+      "why": "",
+      "file": "spec/70-control-plane.md",
+      "line": 480
+    },
+    {
+      "id": "surface.connection.create",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "create",
+      "kind": "behavior",
+      "statement": "A served connection create binds an admitted tenant, principal, source selection, secret name and pipeline id in one versioned control claim under {{surface.apply.version-race}}.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 481
+    },
+    {
+      "id": "surface.connection.authority",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "authority",
+      "kind": "refusal",
+      "statement": "A connection mutation requires an admitted credential for its tenant and principal; a mismatch raises `ConnectionScopeDenied` before reading or changing connection state.",
+      "why": "because a caller-controlled tenant or principal could otherwise point a pipeline at another user's credential",
+      "file": "spec/70-control-plane.md",
+      "line": 483,
+      "scenarios": [
+        "WHEN a caller names another tenant's connection, THEN `ConnectionScopeDenied` changes no control version."
+      ]
+    },
+    {
+      "id": "surface.connection.idempotent-create",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "idempotent-create",
+      "kind": "refusal",
+      "statement": "Repeating create with the same connection id and declaration returns the standing version; a differing declaration raises `ConnectionIdConflict` without replacing it.",
+      "why": "because a retried consent callback must not produce a second scheduled pipeline",
+      "file": "spec/70-control-plane.md",
+      "line": 485,
+      "scenarios": [
+        "WHEN a consent callback retries the same declaration, THEN one pipeline and schedule remain."
+      ]
+    },
+    {
+      "id": "surface.connection.pause",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "pause",
+      "kind": "behavior",
+      "statement": "Pause disarms the connection's schedule and prevents new fires; an in-flight fire reaches its run cancellation boundary under {{run.cancel.two-grains}}.",
+      "why": "",
+      "file": "spec/70-control-plane.md",
+      "line": 487,
+      "scenarios": [
+        "WHEN a connection is paused before its due instant, THEN no new Drive fire starts."
+      ]
+    },
+    {
+      "id": "surface.connection.delete",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "delete",
+      "kind": "behavior",
+      "statement": "Delete first pauses the connection, revokes its credential under {{connector.principal-secrets.disconnect}}, then retires its pipeline and schedule through a versioned claim.",
+      "why": "",
+      "file": "spec/70-control-plane.md",
+      "line": 488
+    },
+    {
+      "id": "surface.connection.schedule-scale",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "schedule-scale",
+      "kind": "behavior",
+      "statement": "Connection schedules share {{surface.dispatch.pool-bound}} and {{surface.arm.next-fire-from-history}}; each connection holds one armed entry rather than one timer or thread.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 489
+    },
+    {
+      "id": "surface.connection.consent-boundary",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "consent-boundary",
+      "kind": "behavior",
+      "statement": "The calling application owns Google authorization, callback and code exchange; connection create receives only a secret name, never an OAuth code or token.",
+      "why": "",
+      "file": "spec/70-control-plane.md",
+      "line": 491
     },
     {
       "id": "surface.open-console.page-routes",
@@ -31918,7 +32464,13 @@
       "lease",
       "attach",
       "rotate",
-      "record"
+      "record",
+      "principal-secrets"
+    ],
+    "spec/42-drive-extensions.md": [
+      "drive-sheet",
+      "drive-changes",
+      "drive-domain-auth"
     ],
     "spec/50-authority.md": [
       "identify",
@@ -31946,7 +32498,8 @@
       "reach",
       "bound-staleness",
       "declare-fidelity",
-      "pack"
+      "pack",
+      "drive-sweep"
     ],
     "spec/61-disclosure.md": [
       "set-mode",
@@ -31970,7 +32523,8 @@
       "delegate",
       "edit",
       "apply",
-      "reside"
+      "reside",
+      "connection"
     ],
     "spec/71-console.md": [
       "open-console",
@@ -32049,12 +32603,16 @@
     "authority.verify": "Admission at a checkpoint: signatures, audience, timestamps, possession proof, key sets, and the admitted-authority value.",
     "connector.attach": "Host mediation of an outbound request: the transport port, the bound host, address vetting, header templates, origin pinning and URL scrubbing.",
     "connector.declare-capability": "The manifest's statement of host access and the scope probe judging a bound credential's grant.",
+    "connector.drive-changes": "The change cursor and full-walk handoff for a selected Drive corpus.",
+    "connector.drive-domain-auth": "Organization-approved Drive access and the principal whose authority each request carries.",
+    "connector.drive-sheet": "Structured capture of Google Sheets as source rows beside the existing PDF page path.",
     "connector.export": "The calls a connector offers across the boundary: the shared types, the source and destination worlds, the optional worlds, the compiled-in sibling.",
     "connector.import": "What crosses inward: the three host imports and the forwarded guest configuration table.",
     "connector.infer": "Model egress: the single endpoint, the data fence and the trust label of model output.",
     "connector.lease": "The declaration-scoped lease provider at the head of the chain: endpoint, expiry, failure classes and bootstrap.",
     "connector.meter": "Reservation against a shared vendor quota and the one pre-send hook it implements: declaration, binding, the hook's position and intent, permits, denial and the usage report.",
     "connector.package": "Distribution form, digest pinning, per-connector resource bounds and world versioning.",
+    "connector.principal-secrets": "Per-principal credential names and the adapter that serves their material.",
     "connector.record": "Optional operator metadata, provider observations, the inventory of configured bindings, and the provider attribution a run emits.",
     "connector.reference": "The credential plane, the `secret://` scheme and the template grammar.",
     "connector.resolve": "The provider port, the chain and its precedence, hydration timing, the redacting wrapper and the postures.",
@@ -32075,6 +32633,7 @@
     "disclosure.bound-cohort": "The line between a per-person table and a cohort table, and the floor a cohort read carries.",
     "disclosure.bound-staleness": "The declared age budget on mirrored authorization, the refusal past it, and the one narrowing posture.",
     "disclosure.declare-fidelity": "The fidelity level a table claims, the source family bounding the claim, and live federation under a reader's delegated credential.",
+    "disclosure.drive-sweep": "Mapping Drive file permissions into the governed source's visibility rows.",
     "disclosure.erase": "The one erasure verb: subject tombstones, the bounded provenance cascade, the restaging gate, and the tenant rewrite.",
     "disclosure.explain": "The access decision and its path, replay over a window with its coverage, and the audience report.",
     "disclosure.mirror": "The three-way conjunction, the access tables as store data, and the binding that compiles a table's semi-join.",
@@ -32160,6 +32719,7 @@
     "surface.arm": "The schedule grammar and cron dialect, the trigger adapter and its durability, the wake route, and how an entry computes its next fire.",
     "surface.brief": "The proactive greeting card: its derivation, payload, matching tiers, client-side clock and the absence it earns.",
     "surface.browse": "What a store advertises before a question: discovered chips, humanized labels, the insights panel and the file gallery.",
+    "surface.connection": "Runtime lifecycle of one tenant's external source connection and its scheduled pipeline.",
     "surface.delegate": "A delegate is deploy-bound code outside the binary that runs a store-driven item's body over one signed HTTP request, in a synchronous `call` mode or the asynchronous `submit` mode, and answers with a closed outcome vocabulary.",
     "surface.dispatch": "The bounded fire pool and its exclusion keys, the reconciler's hold on the cadence lease, step results, and the worker adapter with its attempt-fenced callback.",
     "surface.edit": "The configuration document, the records it presents read-only, the structured schedule specification, and connector configuration.",
@@ -34070,6 +34630,18 @@
       "connector.package.component-position"
     ],
     [
+      "connector.source.drive-picker-source",
+      "connector.source.drive-oauth"
+    ],
+    [
+      "connector.source.drive-picker-source",
+      "connector.source.drive-page-grain"
+    ],
+    [
+      "connector.source.drive-file-selection-invalid",
+      "connector.source.drive-file-selection-limit"
+    ],
+    [
       "connector.reference.environment-is-a-miss",
       "connector.resolve.unresolved-name"
     ],
@@ -34124,6 +34696,30 @@
     [
       "connector.record.configured-is-not-observed",
       "connector.record.provider-attribution"
+    ],
+    [
+      "connector.principal-secrets.write-serialization",
+      "connector.rotate.conditional-put"
+    ],
+    [
+      "connector.principal-secrets.lease-custody",
+      "connector.lease.lease"
+    ],
+    [
+      "connector.drive-sheet.source-name",
+      "connector.source.drive-oauth"
+    ],
+    [
+      "connector.drive-sheet.source-name",
+      "connector.source.drive-file-selection"
+    ],
+    [
+      "connector.drive-sheet.export-refusal",
+      "connector.source.drive-file-cap"
+    ],
+    [
+      "connector.drive-domain-auth.organization-export",
+      "connector.source.twin-api"
     ],
     [
       "authority.identify.malformed-value",
@@ -34368,6 +34964,18 @@
     [
       "disclosure.bound-staleness.degraded-block",
       "disclosure.bound-staleness.public-only"
+    ],
+    [
+      "disclosure.drive-sweep.resource-set",
+      "disclosure.sweep.sweep-block"
+    ],
+    [
+      "disclosure.drive-sweep.unreadable-resource",
+      "disclosure.sweep.coverage-watermark"
+    ],
+    [
+      "disclosure.drive-sweep.identity-link",
+      "disclosure.reach.subject-principals"
     ],
     [
       "disclosure.set-mode.policy-absent",
@@ -34742,6 +35350,26 @@
       "surface.apply.validation"
     ],
     [
+      "surface.connection.create",
+      "surface.apply.version-race"
+    ],
+    [
+      "surface.connection.pause",
+      "run.cancel.two-grains"
+    ],
+    [
+      "surface.connection.delete",
+      "connector.principal-secrets.disconnect"
+    ],
+    [
+      "surface.connection.schedule-scale",
+      "surface.dispatch.pool-bound"
+    ],
+    [
+      "surface.connection.schedule-scale",
+      "surface.arm.next-fire-from-history"
+    ],
+    [
       "surface.open-console.source-draft",
       "surface.open-console.engine-faces"
     ],
@@ -35042,11 +35670,13 @@
         "title": "Connectors and credentials",
         "files": [
           "spec/40-connector.md",
-          "spec/41-secrets.md"
+          "spec/41-secrets.md",
+          "spec/42-drive-extensions.md"
         ],
         "titles": [
           "Connectors and the built-in sources",
-          "Outbound credentials"
+          "Outbound credentials",
+          "Drive extensions"
         ],
         "gloss": "The component world, host-mediated capabilities, packaging and pinning, the built-in sources; credential references, hydration, redaction and rotation."
       },
@@ -36618,6 +37248,18 @@
             "gloss": "",
             "aliases": []
           },
+          "drive-changes": {
+            "gloss": "",
+            "aliases": []
+          },
+          "drive-domain-auth": {
+            "gloss": "",
+            "aliases": []
+          },
+          "drive-sheet": {
+            "gloss": "",
+            "aliases": []
+          },
           "export": {
             "gloss": "",
             "aliases": []
@@ -36639,6 +37281,10 @@
             "aliases": []
           },
           "package": {
+            "gloss": "",
+            "aliases": []
+          },
+          "principal-secrets": {
             "gloss": "",
             "aliases": []
           },
@@ -36723,6 +37369,18 @@
           "ConnectorDigestMismatch": {
             "clause": "connector.package.digest-mismatch",
             "gloss": "Resolved artifact bytes whose re-hash differs from the pin."
+          },
+          "ConnectorDriveDomainRejected": {
+            "clause": "connector.drive-domain-auth.domain-boundary",
+            "gloss": "A delegated subject lies outside the approved Workspace domain."
+          },
+          "ConnectorDriveFileRejected": {
+            "clause": "connector.source.drive-file-access",
+            "gloss": "A selected id is inaccessible or is not a file."
+          },
+          "ConnectorDriveFilesInvalid": {
+            "clause": "connector.source.drive-file-selection-invalid",
+            "gloss": "An empty, repeated or mixed individual-file selection."
           },
           "ConnectorDriveListingExceeded": {
             "clause": "connector.source.drive-list-bound",
@@ -37086,6 +37744,13 @@
             "unit": "MiB",
             "basis": "chosen",
             "gloss": "Default body bytes one drive file carries before it is skipped."
+          },
+          "connector-drive-file-selection": {
+            "clause": "connector.source.drive-file-selection-limit",
+            "value": 128,
+            "unit": "entries",
+            "basis": "chosen",
+            "gloss": "Individual selected file ids in one Drive source."
           },
           "connector-drive-roots": {
             "clause": "connector.source.drive-root-set",
@@ -37629,6 +38294,10 @@
             "aliases": []
           },
           "declare-fidelity": {
+            "gloss": "",
+            "aliases": []
+          },
+          "drive-sweep": {
             "gloss": "",
             "aliases": []
           },
@@ -40435,6 +41104,10 @@
             "gloss": "",
             "aliases": []
           },
+          "connection": {
+            "gloss": "",
+            "aliases": []
+          },
           "delegate": {
             "gloss": "",
             "aliases": []
@@ -40516,6 +41189,14 @@
           "ConfigOwnerUnconfigured": {
             "clause": "surface.apply.owner-unconfigured",
             "gloss": "A configuration owner with no storage or no credential behind it."
+          },
+          "ConnectionIdConflict": {
+            "clause": "surface.connection.idempotent-create",
+            "gloss": "A connection id already binds a different declaration."
+          },
+          "ConnectionScopeDenied": {
+            "clause": "surface.connection.authority",
+            "gloss": "A connection mutation names a tenant or principal outside the admitted credential."
           },
           "ConnectorUploadRefused": {
             "clause": "surface.edit.connector-upload",

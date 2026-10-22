@@ -326,8 +326,8 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
             };
             Ok(Checked::Http(config, binding))
         }
-        contextful_connectors::DRIVE => {
-            contextful_connectors::compiled_in(contextful_connectors::DRIVE).map_err(|why| anyhow::anyhow!("pipeline `{}`: {why}", spec.id))?;
+        contextful_connectors::DRIVE | contextful_connectors::DRIVE_PICKS => {
+            contextful_connectors::compiled_in(&spec.source.name).map_err(|why| anyhow::anyhow!("pipeline `{}`: {why}", spec.id))?;
             check_drive(spec)
         }
         contextful_connectors::object::NAME => {
@@ -513,7 +513,11 @@ fn pdf_decoder() -> Result<Option<Arc<dyn contextful_connectors::boundary::PageD
 #[cfg(feature = "drive")]
 fn check_drive(spec: &PipelineSpec) -> Result<Checked> {
     use contextful_connectors::drive::DriveConfig;
-    let config = DriveConfig::parse(&spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))?;
+    let config = if spec.source.name == contextful_connectors::DRIVE_PICKS {
+        DriveConfig::parse_picks(&spec.source.config)
+    } else {
+        DriveConfig::parse(&spec.source.config)
+    }.with_context(|| format!("pipeline `{}` source", spec.id))?;
     for t in &spec.tables {
         config.table(t.name()).with_context(|| format!("pipeline `{}`", spec.id))?;
     }

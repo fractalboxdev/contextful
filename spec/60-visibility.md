@@ -7,6 +7,7 @@ owns:
   - bound-staleness
   - declare-fidelity
   - pack
+  - drive-sweep
 ---
 
 # Source-faithful visibility
@@ -182,6 +183,24 @@ The reviewed unit landing one source: a manifest fragment plus a connector pin, 
   *A-disclosure*
 - `pack-block` — A `[pack.<name>]` block names the `tables` it lands, its `excluded` tables, one `access.<table>` mapping per mapped table, and an optional container `allowlist` of `containers` with `evaluate = "all-of"`.
 - `mapping-keys` — An access mapping holds `resource_key`, `resource_kind`, `family`, `fidelity`, `container_key`, `principal_kind` and `level`, and no other key.
+
+## drive-sweep
+
+Mapping Drive file permissions into the governed source's visibility rows.
+
+- `resource-set` — A Drive sweep enumerates each file row of its bound connection as one governed resource under {{disclosure.sweep.sweep-block}}.
+- `permission-pages` — For each governed file, the sweep follows every `permissions.list` page under the connection credential before its grants replace prior grants.
+  *A-disclosure*
+- `grant-mapping` — User, group, domain and anyone permissions map to distinct principal kinds; the mapping retains Drive permission id and role beside the source resource id.
+- `inherited-access` — A shared-drive permission records its inheritance source when Drive supplies one; a direct permission and an inherited permission remain distinct grants.
+- `unreadable-resource` — A refused or incomplete permission read marks its resource unread and advances no coverage watermark under {{disclosure.sweep.coverage-watermark}}.
+  *A-disclosure*
+- `identity-link` — An email or domain from Drive becomes a reachable subject only through a verified identity link under {{disclosure.reach.subject-principals}}.
+
+#### Scenarios
+
+- `disclosure.drive-sweep.permission-pages`: WHEN a file's permission response has a next-page token, THEN the sweep reads that page before replacing its grants.
+- `disclosure.drive-sweep.unreadable-resource`: WHEN one file's permissions refuse, THEN no complete sweep watermark advances.
 
 ## Shapes
 

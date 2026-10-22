@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 342 | 70 | 25 | 5 | 300 | 0 | 300 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 2 | 14 | 386 | 92 | 22 | 14 | 303 | 0 | 303 |
+| `connector` | 3 | 18 | 417 | 95 | 23 | 14 | 303 | 0 | 303 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
-| `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
+| `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 323 | 58 | 29 | 16 | 281 | 0 | 281 |
 | `run` | 3 | 29 | 608 | 129 | 49 | 19 | 569 | 0 | 569 |
 | `store` | 5 | 20 | 337 | 70 | 22 | 13 | 326 | 0 | 326 |
-| `surface` | 2 | 21 | 187 | 67 | 24 | 1 | 161 | 0 | 161 |
+| `surface` | 2 | 22 | 195 | 69 | 24 | 1 | 161 | 0 | 161 |
 | `topology` | 1 | 6 | 81 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 24 | 170 | 2832 | 697 | 226 | 84 | 2539 | 0 | |
+| **total** | 25 | 176 | 2877 | 702 | 227 | 84 | 2539 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
-| 4 — Ingest | 25 | 641 | 536 | passing | closed |
+| 4 — Ingest | 25 | 650 | 536 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
 | 6 — Sync and replicas | 9 | 112 | 111 | passing | closed |
 | 7 — Memory | 6 | 100 | 85 | passing | closed |
@@ -44,6 +44,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
 | 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
+| 19 — Drive connections | 1 | 8 | 0 | absent | open |
+| 20 — Drive permission custody | 2 | 11 | 0 | absent | open |
+| 21 — Sheet rows | 1 | 7 | 0 | absent | open |
+| 22 — Drive change cursor | 1 | 6 | 0 | absent | open |
+| 23 — Workspace delegation | 1 | 4 | 0 | absent | open |
 
 Unscheduled operations: 13.
 

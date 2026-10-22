@@ -8,6 +8,7 @@ reach            = {}
 bound-staleness  = {}
 declare-fidelity = {}
 pack             = {}
+drive-sweep      = {}
 set-mode         = {}
 release          = {}
 suppress         = {}

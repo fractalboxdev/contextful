@@ -232,3 +232,18 @@ Decision: `surface.dispatch.admission-order` breaks a tie on next fire by declar
 | Refill from a fire's end path between wakes | Lease safety | A start after the lease lapsed runs beside another holder's chain. |
 
 Consequences: a unit falling due after a wake's evaluation waits for the next wake; pool 1 with 20 s fires starts two units per wake; `pipeline serve --cycle` evaluates once and admits at most the pool.
+## Connections claim one version and share dispatch
+
+**Status:** accepted
+
+Context: one connection adds a pipeline and a due entry; a consent callback can retry while other connections mutate the same control document.
+
+Decision: `surface.connection.create` claims the binding through the versioned control pointer. `surface.connection.schedule-scale` shares the existing bounded dispatcher and its durable due history.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Versioned connection claim and shared dispatch *(chosen)* | — | Each connection adds a control entry and a due-history record. |
+| One scheduler thread per connection | Capacity | Thread count grows with the tenant count. |
+| Unversioned connection map | Concurrent edits | Retried callbacks overwrite a different declaration. |
+
+Consequences: the tenant route has its own authority check; the operator-only `/control/*` routes keep their Admin grant.

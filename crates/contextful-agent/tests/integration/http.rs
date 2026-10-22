@@ -181,6 +181,30 @@ fn control_refuses_a_tenant_scoped_admin_grant_over_every_table() {
     assert!(!dispatched.load(Ordering::SeqCst));
 }
 
+#[test]
+fn connection_routes_admit_tenant_credentials_outside_operator_control() {
+    let f = fixture();
+    let tenant = TenantScope { table: "research/notes".into(), value: "tenant-a".into() };
+    let token = credential_scoped(&f.signer, Action::Write, "research/notes", Some(tenant), 900, None);
+    let clock = FixedClock(at(NOW));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let handler = |request: &HttpRequest, _: &AdmittedAuthority| {
+        HttpResponse::json(200, &json!({ "route": request.target }))
+    };
+    let face = HttpFace::new(&f.face, &clock, &f.audit, admitting, Some(2)).unwrap().with_connections(&handler);
+    for (method, path) in [("POST", "/connections"), ("POST", "/connections/conn-a/pause"), ("DELETE", "/connections/conn-a")] {
+        let request = HttpRequest { method: method.into(), target: path.into(),
+            headers: vec![("Authorization".into(), format!("Bearer {token}"))], body: b"{}".to_vec() };
+        let answer = face.answer(&request);
+        assert_eq!(answer.status, 200, "{method} {path}");
+        assert_eq!(body(&answer.body)["route"], path);
+        let anonymous = HttpRequest { headers: Vec::new(), ..request };
+        assert_eq!(face.answer(&anonymous).status, 401);
+    }
+    let invalid = HttpRequest { method: "GET".into(), target: "/connections".into(), headers: vec![], body: vec![] };
+    assert_eq!(face.answer(&invalid).status, 405);
+}
+
 fn call(tool: &str, arguments: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": tool, "arguments": arguments } })
 }

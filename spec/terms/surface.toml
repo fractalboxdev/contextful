@@ -9,6 +9,7 @@ delegate       = {}
 edit           = {}
 apply          = {}
 reside         = {}
+connection     = {}
 open-console   = {}
 register-store = {}
 visualize      = {}
@@ -24,6 +25,8 @@ brief          = {}
 publish-answer = {}
 
 [error]
+ConnectionScopeDenied = { clause = "surface.connection.authority", gloss = "A connection mutation names a tenant or principal outside the admitted credential." }
+ConnectionIdConflict = { clause = "surface.connection.idempotent-create", gloss = "A connection id already binds a different declaration." }
 ConsoleRouteUngated           = { clause = "surface.open-console.ungated-route", gloss = "An anonymous hosted route serving content instead of its declared identity gate." }
 ConsolePageForbidden          = { clause = "surface.open-console.wrong-page", gloss = "A page or API call lacking verified identity and its page grant." }
 ConsoleAdminGrantMissing      = { clause = "surface.open-console.admin-grant", gloss = "An Admin edit or apply lacking a server-held admin capability." }

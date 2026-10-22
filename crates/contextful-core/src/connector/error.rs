@@ -57,6 +57,12 @@ pub enum ConnectorError {
     /// A Drive file whose version changes during metadata-only capture. (`connector.source.drive-version-consistency`)
     #[error("ConnectorDriveVersionMoved: {0}")]
     ConnectorDriveVersionMoved(String),
+    /// An empty, repeated, oversized or mixed Picker file selection. (`connector.source.drive-file-selection-invalid`)
+    #[error("ConnectorDriveFilesInvalid: {0}")]
+    ConnectorDriveFilesInvalid(String),
+    /// A selected Picker id that is inaccessible or is not a file. (`connector.source.drive-file-access`)
+    #[error("ConnectorDriveFileRejected: {0}")]
+    ConnectorDriveFileRejected(String),
     /// A forwarded guest configuration value that is not a table, over 64 KiB, or carrying a reference. (`connector.import.config-shape`)
     #[error("ConnectorConfigRejected: {0}")]
     ConnectorConfigRejected(String),

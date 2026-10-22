@@ -35,8 +35,8 @@ gloss = "The journal, cursors, retry and cancellation; the pipeline declaration 
 
 [contract.connector]
 title = "Connectors and credentials"
-files = ["spec/40-connector.md", "spec/41-secrets.md"]
-titles = ["Connectors and the built-in sources", "Outbound credentials"]
+files = ["spec/40-connector.md", "spec/41-secrets.md", "spec/42-drive-extensions.md"]
+titles = ["Connectors and the built-in sources", "Outbound credentials", "Drive extensions"]
 gloss = "The component world, host-mediated capabilities, packaging and pinning, the built-in sources; credential references, hydration, redaction and rotation."
 
 [contract.authority]

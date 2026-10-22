@@ -232,3 +232,19 @@ One Shared Drive and a bounded selected root set define the capture boundary. Va
 
 Consequences: an incomplete walk preserves earlier rows and refuses before inferring removals. A separately retained named version can verify the recorded byte digest.
 Revisit: Drive offers a verifiable export digest without reading bytes, or a tenant needs more roots than the declared ceiling.
+
+## Picker files bind selection and principal to one position
+
+**Status:** accepted
+
+Context: a Picker selection admits individual files, while folder walks and OAuth refreshes carry existing positions and credential names.
+
+Decision: `connector.source.drive-file-selection` admits one explicit file set. Its sorted ids and mode bind the position (`connector.source.drive-file-position`), while a connection binds tenant and principal at landing. Credential refresh serializes on the answering adapter's version (`connector.principal-secrets.write-serialization`).
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Explicit files and versioned credential names *(chosen)* | — | Selection changes reread retained files; one connection adds a position namespace. |
+| Treat a picked folder as access to descendants | Proven access | A selected folder may not grant its children's bytes under `drive.file`. |
+| One global refresh lock | Distributed correctness | Another process can still rotate the same credential. |
+
+Consequences: an inaccessible id refuses first capture; a later loss of access withdraws its rows. A lease endpoint can own refresh-token custody while the source mints access tokens.

@@ -213,6 +213,38 @@ fn control_apply_uses_the_host_registered_task_set() {
     assert_eq!(state["applied"], json!(2));
 }
 
+#[test]
+fn tenant_connection_routes_create_pause_and_delete_once() {
+    let (dir, public) = project();
+    let root = dir.path();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let tenant = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+        "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq",
+        "--action", "write", "--table", "research/notes", "--tenant", "research/notes=tenant-a", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let create = json!({"id":"conn-a", "tenant":"tenant-a", "principal":"user://dana@acme.example",
+        "file_ids":["doc-plan"], "refresh_secret":"drive-refresh-dana", "schedule":"every 1h"}).to_string();
+    let (status, made) = control(&addr, "POST", "/connections", Some(&tenant), &create);
+    assert_eq!(status, 201, "{made}");
+    assert_eq!(made["id"], "conn-a");
+    let (status, repeated) = control(&addr, "POST", "/connections", Some(&tenant), &create);
+    assert_eq!(status, 200, "{repeated}");
+    assert_eq!(repeated["version"], made["version"]);
+    let wrong = create.replace("tenant-a", "tenant-b");
+    let (status, denied) = control(&addr, "POST", "/connections", Some(&tenant), &wrong);
+    assert_eq!(status, 403, "{denied}");
+    assert_eq!(denied["error"]["identifier"], "ConnectionScopeDenied");
+    let changed = create.replace("doc-plan", "doc-other");
+    let (status, conflict) = control(&addr, "POST", "/connections", Some(&tenant), &changed);
+    assert_eq!(status, 409, "{conflict}");
+    assert_eq!(conflict["error"]["identifier"], "ConnectionIdConflict");
+    let (status, paused) = control(&addr, "POST", "/connections/conn-a/pause", Some(&tenant), "{}");
+    assert_eq!(status, 200, "{paused}");
+    let (status, deleted) = control(&addr, "DELETE", "/connections/conn-a", Some(&tenant), "{}");
+    assert_eq!(status, 200, "{deleted}");
+}
+
 /// A sink asserting, on each write, that the face it reports on has left warming.
 struct AfterFinish<'a>(&'a Hydration);
 

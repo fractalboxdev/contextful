@@ -2,7 +2,7 @@
 #![cfg(feature = "drive")]
 
 use crate::support::{request, resolver, Never, Request, Response, Server};
-use contextful_connectors::drive::{BodyStore, Drive, DriveConfig, DriveSource, PageDecoder};
+use contextful_connectors::drive::{BodyStore, Drive, DriveConfig, DriveScope, DriveSource, PageDecoder};
 use contextful_connectors::http::ConfigError;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Source;
@@ -178,6 +178,99 @@ fn drive_into(config: Value, decoder: Arc<dyn PageDecoder>, bodies: Arc<dyn Body
 fn sha256(bytes: &[u8]) -> String {
     use sha2::Digest;
     sha2::Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A picked file is read by id, without listing any folder, and deselection withdraws it.
+#[test]
+fn picker_file_ids_capture_and_withdraw_without_folder_listing() {
+    let fake = Fake::start();
+    fake.overlay("picks.json");
+    let mut config = fake.config(json!({"file_ids": ["doc-plan"]}));
+    config.as_object_mut().unwrap().remove("folder_id");
+    let parsed = DriveConfig::parse_picks(&config).expect("picked selection");
+    let first = Drive::new(parsed, resolver(vec![("drive-refresh", REFRESH), ("drive-client-id", "client-7.apps.example"), ("drive-client-secret", CLIENT_SECRET)]), Arc::new(InProcess), Arc::new(Held::default())).unwrap();
+    let (rows, position, _) = pull(&mut first.source("files").unwrap(), None);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["file_id"], "doc-plan");
+    assert!(fake.received("/drive/v3/files").is_empty(), "picked ids do not list folders");
+    assert_eq!(position["file_ids"], json!(["doc-plan"]));
+
+    let mut empty = fake.config(json!({"file_ids": ["sheet-budget"]}));
+    empty.as_object_mut().unwrap().remove("folder_id");
+    let second = Drive::new(DriveConfig::parse_picks(&empty).unwrap(), resolver(vec![("drive-refresh", REFRESH), ("drive-client-id", "client-7.apps.example"), ("drive-client-secret", CLIENT_SECRET)]), Arc::new(InProcess), Arc::new(Held::default())).unwrap();
+    let (rows, _, _) = pull(&mut second.source("files").unwrap(), Some(position));
+    assert_eq!(by_id(&rows, "doc-plan")["capture_status"], "removed");
+    assert_eq!(by_id(&rows, "sheet-budget")["capture_status"], "captured");
+}
+
+#[test]
+fn bound_drive_rows_and_positions_keep_connection_identity() {
+    let fake = Fake::start();
+    fake.overlay("picks.json");
+    let mut config = fake.config(json!({"file_ids": ["doc-plan"]}));
+    config.as_object_mut().unwrap().remove("folder_id");
+    let parsed = DriveConfig::parse_picks(&config).unwrap();
+    let secrets = || resolver(vec![("drive-refresh", REFRESH), ("drive-client-id", "client-7.apps.example"), ("drive-client-secret", CLIENT_SECRET)]);
+    let a = Drive::new(parsed.clone(), secrets(), Arc::new(InProcess), Arc::new(Held::default())).unwrap();
+    let b = Drive::new(parsed, secrets(), Arc::new(InProcess), Arc::new(Held::default())).unwrap();
+    let a_scope = DriveScope { connection_id: "conn-a".into(), tenant: "tenant-a".into(), principal: "user-a".into() };
+    let b_scope = DriveScope { connection_id: "conn-b".into(), tenant: "tenant-b".into(), principal: "user-b".into() };
+    let (a_rows, a_position, _) = pull(&mut a.source_bound("files", a_scope.clone()).unwrap(), None);
+    let (b_rows, b_position, _) = pull(&mut b.source_bound("files", b_scope).unwrap(), None);
+    assert_eq!(a_rows[0]["tenant"], "tenant-a");
+    assert_eq!(a_rows[0]["principal"], "user-a");
+    assert_eq!(a_rows[0]["connection_id"], "conn-a");
+    assert_eq!(b_rows[0]["tenant"], "tenant-b");
+    assert_eq!(b_rows[0]["principal"], "user-b");
+    assert_ne!(a_rows[0]["connection_id"], b_rows[0]["connection_id"]);
+    assert_ne!(a_position["connection_id"], b_position["connection_id"]);
+    assert!(a_position["files"].get("conn-a:doc-plan").is_some());
+    assert!(b_position["files"].get("conn-b:doc-plan").is_some());
+    let wrong_scope = a.source_bound("files", a_scope.clone()).unwrap().read(Some(&b_position), &Never).unwrap_err();
+    assert_eq!(wrong_scope.tag, FailureTag::Config);
+
+    let (pages, _, _) = pull(&mut a.source_bound("pages", a_scope.clone()).unwrap(), None);
+    assert!(!pages.is_empty());
+    assert!(pages.iter().all(|row| row["tenant"] == "tenant-a" && row["principal"] == "user-a" && row["connection_id"] == "conn-a"));
+
+    let (removed, _, _) = pull(&mut a.source_bound("files", a_scope).unwrap(), Some(json!({
+        "files": {"conn-a:doc-gone": {"modified": "2030-01-01T00:00:00Z", "path": "Gone", "name": "Gone", "version": 1, "resolved_root": "doc-gone", "pages": 0}},
+        "connection_id": "conn-a", "tenant": "tenant-a", "principal": "user-a", "file_ids": ["doc-gone"], "drive_id": null, "roots": [], "mode": "bytes-and-pages"
+    })));
+    assert!(removed.iter().any(|row| row["file_id"] == "doc-gone" && row["removed"] == true && row["tenant"] == "tenant-a" && row["connection_id"] == "conn-a"));
+}
+
+/// Ambiguous and oversized Picker selections refuse before any provider request.
+#[test]
+fn picker_file_ids_validate_before_requests() {
+    let fake = Fake::start();
+    for ids in [json!([]), json!(["doc-plan", "doc-plan"]), json!((0..129).map(|i| format!("id{i}")).collect::<Vec<_>>())] {
+        let mut config = fake.config(json!({"file_ids": ids}));
+        config.as_object_mut().unwrap().remove("folder_id");
+        assert!(DriveConfig::parse_picks(&config).unwrap_err().to_string().contains("ConnectorDriveFilesInvalid"));
+    }
+    assert!(fake.received("/drive/v3/files").is_empty());
+}
+
+/// A captured file whose access disappears withdraws rows; a quota refusal preserves the cursor.
+#[test]
+fn picker_access_loss_withdraws_but_quota_failure_keeps_position() {
+    let fake = Fake::start();
+    fake.overlay("picks.json");
+    let mut config = fake.config(json!({"file_ids": ["doc-plan"]}));
+    config.as_object_mut().unwrap().remove("folder_id");
+    let make = || Drive::new(DriveConfig::parse_picks(&config).unwrap(), resolver(vec![("drive-refresh", REFRESH), ("drive-client-id", "client-7.apps.example"), ("drive-client-secret", CLIENT_SECRET)]), Arc::new(InProcess), Arc::new(Held::default())).unwrap();
+    let (_, before, _) = pull(&mut make().source("files").unwrap(), None);
+
+    fake.overlay("picks-quota.json");
+    let failure = make().source("files").unwrap().pull(&request(Some(before.clone())), &Never).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::RateLimited, "{failure}");
+
+    fake.overlay("picks-revoked.json");
+    let (rows, after, _) = pull(&mut make().source("files").unwrap(), Some(before));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["capture_status"], "removed");
+    assert!(after["files"].as_object().unwrap().is_empty());
 }
 
 /// Pull `source` from `position`, answering its rows and the position after them.
