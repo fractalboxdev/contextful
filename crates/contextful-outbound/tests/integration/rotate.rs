@@ -155,6 +155,7 @@ fn a_put_losing_to_another_writer_adopts_its_version() {
     resolver.hydrate(&name("vendor-token")).unwrap();
     manager.overwrite("replica-token");
     rotator.rotate(&name("vendor-token"), refreshed("late-token", None)).unwrap();
+    assert_eq!(resolver.hydrated_version(&name("vendor-token")).as_deref(), Some("2"));
     assert_eq!(resolver.hydrate(&name("vendor-token")).unwrap().reveal(), "replica-token");
     assert_eq!(manager.stored.lock().unwrap().0, "replica-token");
 }
