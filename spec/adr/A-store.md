@@ -542,14 +542,14 @@ Revisit: cold-table first reads past the wait bound under ordinary bucket latenc
 
 ## An unpushed run is marked in the execution database
 
-On a disposable disk a run commits locally before its push reaches the bucket, so a refused or interrupted push leaves the run on a disk the next release discards. The run row lives in the execution database the profile already keeps durable: `store.drain` marks it there at the run's open, before any commit, and clears the mark once a committed push carries the run's manifest. A command pulling before its reads pushes first while a mark stands, a stopping serve pushes within a deadline, and `contextful sync status` answers a release step without the disk.
+On a disposable disk a run commits locally before its push reaches the bucket, so a refused or interrupted push leaves the run on a disk the next release discards. The run row lives in the execution database the profile already keeps durable: `store.drain` marks it there at the run's open, before any commit, and clears the mark once a committed push carries the run's manifest. A pulling command pushes first while a mark stands, a stopping serve pushes within a deadline, and `contextful sync status` answers a release step without the disk.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| A mark on the execution-database run row from open *(chosen)* | — | One filtered query per command start; a run killed before its commit turns `lost`, though its dependents never read it. |
+| A mark on the execution-database run row from open *(chosen)* | — | One query per command start; a run killed before commit turns `lost` unread. |
 | A mark written after the local commit | Kill window | A process killed between commit and mark leaves a committed run no status reports. |
-| Acknowledge the commit only after the push | Commit boundary | Owner retirement waits on the bucket, so a bucket outage fails every run and replays its recorded calls. |
+| Acknowledge the commit only after the push | Commit boundary | A bucket outage fails every run and replays its recorded calls. |
 | A marker file in the store root | Disposable disk | The marker dies with the disk it describes. |
 | A marker object in the bucket | Failure correlation | The write recording the failure goes to the bucket that refused the push. |
 
-Consequences: an empty status means no committed run is missing from the bucket; a run lost with its disk stays listed as `lost`, and only an unlost mark refuses a release. A run committing only into a table the declaration withholds carries nothing a push ships, so its mark drops at its close and a disk replacement discards it as `replicate = false` declares.
+Consequences: an empty status means no committed run a push ships is missing from the bucket; a lost run stays listed as `lost`, and only an unlost mark refuses a release. A run committing only into a `replicate = false` table drops its mark at close.

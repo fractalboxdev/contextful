@@ -5435,7 +5435,7 @@
       "operation": "drain",
       "subject": "mark",
       "kind": "behavior",
-      "statement": "Under a `postgres` or `cloudflare-d1` storage profile, a run row carries `unpushed`, naming the node, from the run's open, before its landing can commit; a run closing with no run manifest in its store drops it.",
+      "statement": "Under a `postgres` or `cloudflare-d1` storage profile, a run row carries `unpushed`, naming the node, from the run's open, before its landing can commit; a run closing with no run manifest in a table its push carries drops it.",
       "why": "A-store",
       "file": "spec/14-drain.md",
       "line": 17,
@@ -5444,15 +5444,26 @@
       ]
     },
     {
+      "id": "store.drain.record-unmarked",
+      "contract": "store",
+      "operation": "drain",
+      "subject": "record-unmarked",
+      "kind": "behavior",
+      "statement": "The store's run record holds each run row without its `unpushed` mark, which only the execution database keeps.",
+      "why": "because a rebuilt execution database restores rows from the pushed run record, and a mark there returns every pushed run as unpushed",
+      "file": "spec/14-drain.md",
+      "line": 19
+    },
+    {
       "id": "store.drain.clear",
       "contract": "store",
       "operation": "drain",
       "subject": "clear",
       "kind": "behavior",
-      "statement": "A committed push removes each mark whose run manifest the store held as the push began, and sets `lost` on each marked run whose manifest the store lacks and no live owner runs, naming those on stderr.",
+      "statement": "A committed push removes each mark whose run manifest a carried table held as it began, and sets `lost` on each marked run whose manifest the store lacks and no live owner runs, naming those on stderr.",
       "why": "because a committed push carries every run manifest the store held as it walked, and no retry restores a commit the store has lost",
       "file": "spec/14-drain.md",
-      "line": 19,
+      "line": 21,
       "scenarios": [
         "WHEN a replacement disk holding none of a marked run's files pushes, THEN the run turns `lost` and `sync status` lists it without refusing."
       ]
@@ -5466,7 +5477,7 @@
       "statement": "Under such a profile, {{store.pull.before-run}} pushes after its pull while its node holds an unlost mark whose run manifest the store holds or whose owner lease lapsed; a failed push stops the command before its first read, naming those runs.",
       "why": "A-store",
       "file": "spec/14-drain.md",
-      "line": 21,
+      "line": 23,
       "scenarios": [
         "WHEN a run's push the bucket refused is followed by a `run start` the bucket accepts, THEN that start pushes the marked run before its own run opens."
       ]
@@ -5480,7 +5491,7 @@
       "statement": "On a stop signal, `pipeline serve` declaring `push_after_run` ends its children, then pushes while its node holds a mark {{store.drain.before-read}} pushes for, for at most 15 s.",
       "why": "because a container platform kills a stopping process after its grace period, and a replaced container discards every run its last push missed",
       "file": "spec/14-drain.md",
-      "line": 23
+      "line": 25
     },
     {
       "id": "store.drain.unfinished",
@@ -5491,7 +5502,7 @@
       "statement": "A stop push failing or outrunning {{store.drain.deadline}} leaves its runs marked and names them on stderr, and `pipeline serve` exits non-zero.",
       "why": "because a release step reading a clean exit as a carried store discards the runs the push missed",
       "file": "spec/14-drain.md",
-      "line": 25,
+      "line": 27,
       "scenarios": [
         "WHEN a stopping serve's push waits on a push guard past 15 s, THEN serve exits non-zero and the run stays marked."
       ]
@@ -5505,7 +5516,7 @@
       "statement": "`contextful sync status` prints JSON holding `error` and `runs`, each marked run with its pipeline, table, node, end instant and `lost` flag; while one is not `lost`, `error` is `SyncRunsUnpushed` and it exits 3.",
       "why": "because a release step replacing a container discards each unpushed run, and an empty list then means no committed run is missing from the bucket",
       "file": "spec/14-drain.md",
-      "line": 27
+      "line": 29
     },
     {
       "id": "store.drain.status-unread",
@@ -5516,7 +5527,7 @@
       "statement": "A `sync status` whose execution database answers no read prints `runs` as null and `error` as `SyncStatusUnread` with its cause, and exits 1.",
       "why": "because a release step gating on the status tells a store holding unpushed runs from a check that read nothing",
       "file": "spec/14-drain.md",
-      "line": 29
+      "line": 31
     },
     {
       "id": "read.register.connection-views",

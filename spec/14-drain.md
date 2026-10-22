@@ -17,7 +17,7 @@ Carrying runs committed on a disposable disk to the bucket: the durable unpushed
 - `mark` — Under a `postgres` or `cloudflare-d1` storage profile, a run row carries `unpushed`, naming the node, from the run's open, before its landing can commit; a run closing with no run manifest in a table its push carries drops it.
   *A-store*
 - `record-unmarked` — The store's run record holds each run row without its `unpushed` mark, which only the execution database keeps.
-  *because a pushed run record carrying marks would restore every pushed run as unpushed into a rebuilt execution database*
+  *because a rebuilt execution database restores rows from the pushed run record, and a mark there returns every pushed run as unpushed*
 - `clear` — A committed push removes each mark whose run manifest a carried table held as it began, and sets `lost` on each marked run whose manifest the store lacks and no live owner runs, naming those on stderr.
   *because a committed push carries every run manifest the store held as it walked, and no retry restores a commit the store has lost*
 - `before-read` — Under such a profile, {{store.pull.before-run}} pushes after its pull while its node holds an unlost mark whose run manifest the store holds or whose owner lease lapsed; a failed push stops the command before its first read, naming those runs.

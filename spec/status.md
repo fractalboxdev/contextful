@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 316 | 54 | 29 | 16 | 274 | 0 | 274 |
 | `run` | 3 | 29 | 603 | 128 | 49 | 19 | 565 | 0 | 565 |
-| `store` | 4 | 19 | 329 | 68 | 21 | 12 | 318 | 0 | 318 |
+| `store` | 5 | 20 | 337 | 70 | 22 | 13 | 326 | 0 | 326 |
 | `surface` | 2 | 21 | 182 | 67 | 24 | 0 | 156 | 0 | 156 |
 | `topology` | 1 | 6 | 81 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 23 | 169 | 2807 | 690 | 225 | 82 | 2515 | 0 | |
+| **total** | 24 | 170 | 2815 | 692 | 226 | 83 | 2523 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
 | 4 — Ingest | 25 | 636 | 532 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
-| 6 — Sync and replicas | 8 | 104 | 103 | passing | closed |
+| 6 — Sync and replicas | 9 | 112 | 111 | passing | closed |
 | 7 — Memory | 6 | 93 | 78 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -2074,6 +2074,14 @@ Unscheduled operations: 13.
 | `store.declare.two-genres` | `crates/contextful-context/tests/integration/read/retrieve.rs::items_and_artifacts_of_any_kind_append_dedupe_on_content_and_carry_a_timestamp` | performed |
 | `store.declare.unkeyed-union` | `crates/contextful-context/tests/integration/declare.rs::an_unkeyed_table_reads_as_the_union_of_its_runs` | performed |
 | `store.declare.write-mode` | `crates/contextful-core/tests/integration/store/declare.rs::write_mode_is_append_by_default_or_replace` | performed |
+| `store.drain.before-read` | `crates/contextful-cli/tests/integration/sync/unpushed.rs::a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it` | performed |
+| `store.drain.clear` | `crates/contextful-cli/tests/integration/sync/unpushed.rs::a_replacement_disk_marks_a_run_no_push_carried_lost` | performed |
+| `store.drain.deadline` | `crates/contextful-cli/tests/integration/sync/unpushed.rs::a_stopping_serve_pushes_its_unpushed_run_within_its_deadline` | performed |
+| `store.drain.mark` | `crates/contextful-cli/tests/integration/sync/unpushed.rs::a_run_killed_after_its_local_commit_stays_marked_until_a_push_carries_it` | performed |
+| `store.drain.record-unmarked` | `crates/contextful-context/tests/integration/run_record.rs::a_marked_runs_phase_move_records_its_row_unmarked` | performed |
+| `store.drain.status` | `crates/contextful-cli/tests/integration/sync/unpushed.rs::a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it` | performed |
+| `store.drain.status-unread` | `crates/contextful-cli/tests/integration/sync/unpushed.rs::a_status_reaching_no_execution_database_fails_apart_from_an_unpushed_refusal` | performed |
+| `store.drain.unfinished` | `crates/contextful-cli/tests/integration/sync/unpushed.rs::a_stopping_serve_pushes_its_unpushed_run_within_its_deadline` | performed |
 | `store.emit.plan` | `crates/contextful-sync/tests/integration/generation.rs::an_emitted_plan_lists_what_the_push_commits_and_touches_no_bucket` | performed |
 | `store.emit.plan-scope` | `crates/contextful-sync/tests/integration/generation.rs::a_plan_leaves_out_keys_another_node_owns` | performed |
 | `store.encrypt.cipher` | `crates/contextful-context/tests/integration/encrypt.rs::a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_file` | performed |

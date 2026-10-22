@@ -218,7 +218,7 @@ fn a_status_reaching_no_execution_database_fails_apart_from_an_unpushed_refusal(
 
 /// A container replaced before any push carried its marked run: the next push finds no copy
 /// of the run, marks it `lost` and names it, and the status lists it without refusing.
-// spec: store.drain.clear@58e01fb6
+// spec: store.drain.clear@8cd1ca7d
 #[test]
 fn a_replacement_disk_marks_a_run_no_push_carried_lost() {
     let s3 = S3Server::start("conformance");
@@ -296,7 +296,7 @@ impl StallAfterCommit {
 /// A run killed after its local commit and before its own push, here while its execution
 /// database stops answering, still carries its mark: the status refuses on it, and the next
 /// push carries it and clears the mark.
-// spec: store.drain.mark@2e203d57
+// spec: store.drain.mark@b76d818f
 #[test]
 fn a_run_killed_after_its_local_commit_stays_marked_until_a_push_carries_it() {
     let s3 = S3Server::start("conformance");
@@ -414,7 +414,6 @@ fn bucket_holds_in(s3: &S3Server, table: &str, run: &str) -> bool {
 
 /// A run committed into a nested table name keeps its mark through a refused push, and the
 /// next start's push clears it rather than marking it lost.
-// spec: store.drain.mark@2e203d57
 #[test]
 fn a_nested_tables_refused_run_stays_marked_until_a_push_carries_it() {
     let s3 = S3Server::start("conformance");
@@ -441,7 +440,6 @@ fn a_nested_tables_refused_run_stays_marked_until_a_push_carries_it() {
 
 /// A run committing only into a table the declaration withholds from every push carries
 /// nothing a push ships, so its mark drops at its close and the status lists nothing.
-// spec: store.drain.mark@2e203d57
 #[test]
 fn a_withheld_tables_run_carries_no_mark_past_its_close() {
     let s3 = S3Server::start("conformance");
@@ -460,7 +458,6 @@ fn a_withheld_tables_run_carries_no_mark_past_its_close() {
 
 /// A received batch whose run opens and fails commits nothing, so its run drops its mark
 /// before the push, and no later push marks it lost.
-// spec: store.drain.mark@2e203d57
 #[test]
 fn a_received_run_committing_nothing_drops_its_mark() {
     let s3 = S3Server::start("conformance");
