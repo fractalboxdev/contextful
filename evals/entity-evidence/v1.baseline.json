@@ -1,0 +1,114 @@
+{
+  "benchmark": {
+    "adjudication": "synthetic-truth-v1: canonical IDs and relation tuples are authored independently of read results; temporal and policy distractors have no answer credit",
+    "corpus_sha256": "0c6639089245da15d88801068b8273b3d187053f7282d52306292f445cda112e",
+    "fixture_sha256": "8b2f4f392924cc22355ede7d0360934fbb4f9442417968718ed8d95cff27a828",
+    "license": "CC0-1.0 synthetic data",
+    "version": "entity-evidence/v1"
+  },
+  "metrics": {
+    "_run": {
+      "k": 16,
+      "tier": "deterministic",
+      "model": null,
+      "samples": 1
+    },
+    "n_cases": 72,
+    "entity_evidence.structured.entity_accuracy": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.structured.entity_accuracy.n": 72,
+    "entity_evidence.structured.eligible_claim_recall": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.structured.eligible_claim_recall.n": 32,
+    "entity_evidence.structured.path_correctness": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.structured.path_correctness.n": 72,
+    "entity_evidence.structured.citation_resolution": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.structured.citation_resolution.n": 32,
+    "entity_evidence.structured.appropriate_abstention": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.structured.appropriate_abstention.n": 72,
+    "entity_evidence.ordinary.entity_accuracy": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.ordinary.entity_accuracy.n": 72,
+    "entity_evidence.ordinary.eligible_claim_recall": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.ordinary.eligible_claim_recall.n": 32,
+    "entity_evidence.ordinary.path_correctness": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.ordinary.path_correctness.n": 72,
+    "entity_evidence.ordinary.citation_resolution": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.ordinary.citation_resolution.n": 32,
+    "entity_evidence.ordinary.appropriate_abstention": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.ordinary.appropriate_abstention.n": 72
+  },
+  "summary": {
+    "structured": {
+      "entity_accuracy": {
+        "n": 72,
+        "mean": 1.0
+      },
+      "eligible_claim_recall": {
+        "n": 32,
+        "mean": 1.0
+      },
+      "path_correctness": {
+        "n": 72,
+        "mean": 1.0
+      },
+      "citation_resolution": {
+        "n": 32,
+        "mean": 1.0
+      },
+      "appropriate_abstention": {
+        "n": 72,
+        "mean": 1.0
+      }
+    },
+    "ordinary": {
+      "entity_accuracy": {
+        "n": 72,
+        "mean": 1.0
+      },
+      "eligible_claim_recall": {
+        "n": 32,
+        "mean": 1.0
+      },
+      "path_correctness": {
+        "n": 72,
+        "mean": 1.0
+      },
+      "citation_resolution": {
+        "n": 32,
+        "mean": 1.0
+      },
+      "appropriate_abstention": {
+        "n": 72,
+        "mean": 1.0
+      }
+    }
+  }
+}

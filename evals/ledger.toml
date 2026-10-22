@@ -1421,3 +1421,93 @@ method = { test = "contextful_cli::eval::the_native_golden_set_holds_its_floors_
 target = { op = ">=", value = 0.60 }
 seed   = 0x5eed_0078
 mirrors = "assurance.evaluate.precision-floor"
+
+[entry.entity-evidence-v1-entity]
+clause = "assurance.evaluate.entity-metrics"
+metric = "entity_evidence.structured.entity_accuracy"
+tier = "gate"
+kind = "eval"
+method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
+target = { op = ">=", value = 1.0 }
+seed = 0
+
+[entry.entity-evidence-v1-claims]
+clause = "assurance.evaluate.entity-metrics"
+metric = "entity_evidence.structured.eligible_claim_recall"
+tier = "gate"
+kind = "eval"
+method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
+target = { op = ">=", value = 1.0 }
+seed = 0
+
+[entry.entity-evidence-v1-path]
+clause = "assurance.evaluate.entity-metrics"
+metric = "entity_evidence.structured.path_correctness"
+tier = "gate"
+kind = "eval"
+method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
+target = { op = ">=", value = 1.0 }
+seed = 0
+
+[entry.entity-evidence-v1-citations]
+clause = "assurance.evaluate.entity-metrics"
+metric = "entity_evidence.structured.citation_resolution"
+tier = "gate"
+kind = "eval"
+method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
+target = { op = ">=", value = 1.0 }
+seed = 0
+
+[entry.entity-evidence-v1-abstention]
+clause = "assurance.evaluate.entity-metrics"
+metric = "entity_evidence.structured.appropriate_abstention"
+tier = "gate"
+kind = "eval"
+method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
+target = { op = ">=", value = 1.0 }
+seed = 0
+
+[entry.entity-evidence-v1-ordinary-entity]
+clause = "assurance.evaluate.entity-metrics"
+metric = "entity_evidence.ordinary.entity_accuracy"
+tier = "trend"
+kind = "eval"
+method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
+direction = "higher_is_better"
+seed = 0
+
+[entry.entity-evidence-v1-ordinary-claims]
+clause = "assurance.evaluate.entity-metrics"
+metric = "entity_evidence.ordinary.eligible_claim_recall"
+tier = "trend"
+kind = "eval"
+method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
+direction = "higher_is_better"
+seed = 0
+
+[entry.entity-evidence-v1-ordinary-path]
+clause = "assurance.evaluate.entity-metrics"
+metric = "entity_evidence.ordinary.path_correctness"
+tier = "trend"
+kind = "eval"
+method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
+direction = "higher_is_better"
+seed = 0
+
+[entry.entity-evidence-v1-ordinary-citations]
+clause = "assurance.evaluate.entity-metrics"
+metric = "entity_evidence.ordinary.citation_resolution"
+tier = "trend"
+kind = "eval"
+method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
+direction = "higher_is_better"
+seed = 0
+
+[entry.entity-evidence-v1-ordinary-abstention]
+clause = "assurance.evaluate.entity-metrics"
+metric = "entity_evidence.ordinary.appropriate_abstention"
+tier = "trend"
+kind = "eval"
+method = { test = "contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements" }
+direction = "higher_is_better"
+seed = 0

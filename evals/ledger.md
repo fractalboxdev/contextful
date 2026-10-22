@@ -2,7 +2,7 @@
 
 # Target ledger
 
-157 entries: 113 gated, 30 recorded, 6 scheduled, 8 open.
+167 entries: 118 gated, 35 recorded, 6 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -47,6 +47,16 @@
 | `encrypt-declared-refuses` | `store.encrypt.key-unbound` | `encrypt.declared.opens_and_files` | gate | test `contextful_context::encrypt::a_declared_encryption_opens_no_store_and_writes_no_file` | `== 0` | gated |
 | `encrypt-no-plaintext` | `store.encrypt.cipher` | `encrypt.canary_hits` | gate | test `contextful_context::encrypt::a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload` | `== 0` | gated |
 | `engine-keeper-threads` | `run.cancel.engine-keeper` | `keeper.threads_per_engine` | gate | test `contextful_engine::execution::one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine` | `== 1` | gated |
+| `entity-evidence-v1-abstention` | `assurance.evaluate.entity-metrics` | `entity_evidence.structured.appropriate_abstention` | gate | test `contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements` | `>= 1` | gated |
+| `entity-evidence-v1-citations` | `assurance.evaluate.entity-metrics` | `entity_evidence.structured.citation_resolution` | gate | test `contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements` | `>= 1` | gated |
+| `entity-evidence-v1-claims` | `assurance.evaluate.entity-metrics` | `entity_evidence.structured.eligible_claim_recall` | gate | test `contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements` | `>= 1` | gated |
+| `entity-evidence-v1-entity` | `assurance.evaluate.entity-metrics` | `entity_evidence.structured.entity_accuracy` | gate | test `contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements` | `>= 1` | gated |
+| `entity-evidence-v1-ordinary-abstention` | `assurance.evaluate.entity-metrics` | `entity_evidence.ordinary.appropriate_abstention` | trend | test `contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements` | — | recorded |
+| `entity-evidence-v1-ordinary-citations` | `assurance.evaluate.entity-metrics` | `entity_evidence.ordinary.citation_resolution` | trend | test `contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements` | — | recorded |
+| `entity-evidence-v1-ordinary-claims` | `assurance.evaluate.entity-metrics` | `entity_evidence.ordinary.eligible_claim_recall` | trend | test `contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements` | — | recorded |
+| `entity-evidence-v1-ordinary-entity` | `assurance.evaluate.entity-metrics` | `entity_evidence.ordinary.entity_accuracy` | trend | test `contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements` | — | recorded |
+| `entity-evidence-v1-ordinary-path` | `assurance.evaluate.entity-metrics` | `entity_evidence.ordinary.path_correctness` | trend | test `contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements` | — | recorded |
+| `entity-evidence-v1-path` | `assurance.evaluate.entity-metrics` | `entity_evidence.structured.path_correctness` | gate | test `contextful_cli::entity_eval::native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements` | `>= 1` | gated |
 | `eval-absolute-floors` | `assurance.baseline.floors-are-absolute` | `floors.red_on_baseline_pass` | gate | test `contextful_eval::baseline::each_floor_reds_a_run_its_baseline_passes` | `== 4` | gated |
 | `eval-through-enforcement` | `assurance.evaluate.policy-labels` | `retrieval.hybrid.forbidden_row_rate` | gate | test `contextful_cli::eval::the_native_golden_set_holds_its_floors_and_baseline` | `== 0` | gated |
 | `exclusive-create-no-hardlink` | `store.lease.commit-log` | `lease.race_winners.max` | gate | test `contextful_fs::create::racing_creates_land_exactly_one` | `== 1` | gated |

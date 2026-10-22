@@ -45,7 +45,7 @@ const LOWER_IS_BETTER: [&str; 4] = ["forbidden_row_rate", "duplicate_row_rate", 
 const BAND_EPSILON: f64 = 1e-9;
 
 const GRAMMAR: &str = "an entry names `retrieval.<leg>.<metric>`, `edge_retrieval.<leg>.<metric>`, \
-     `judge.<dimension>`, `slices.<tag>.<metric>`, `slices.<tag>.<path>`, `latency_ms` or `n_cases`, a mean optionally suffixed `.n`";
+     `entity_evidence.<structured|ordinary>.<metric>`, `judge.<dimension>`, `slices.<tag>.<metric>`, `slices.<tag>.<path>`, `latency_ms` or `n_cases`, a mean optionally suffixed `.n`";
 
 /// Whether a figure grades higher or lower as better.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -165,6 +165,9 @@ fn parse_head(head: &str, top: bool) -> Option<MetricPath> {
         ["n_cases"] => Some(MetricPath { steps: vec!["n_cases".into()], kind: PathKind::Count }),
         ["latency_ms"] if top => Some(mean(vec!["latency_ms"])),
         ["judge", dim] if JUDGE_DIMENSIONS.contains(dim) => Some(mean(vec!["judge", dim])),
+        ["entity_evidence", arm @ ("structured" | "ordinary"), metric] if crate::entity::METRICS.contains(metric) => {
+            Some(mean(vec!["entity_evidence", arm, metric]))
+        }
         [surface @ ("retrieval" | "edge_retrieval"), leg, metric]
             if LEGS.contains(leg) && (RANKED_METRICS.contains(metric) || RELEVANCE_METRICS.contains(metric)) =>
         {
@@ -464,6 +467,11 @@ pub fn resolve(report: &Value, path: &str) -> Result<f64, EvalError> {
 /// compared, so one unresolvable entry refuses the run and yields no partial verdict.
 /// The floors gate independently of every committed value.
 pub fn gate(report: &Value, baselines: &Baselines) -> Result<Verdict, EvalError> {
+    Ok(Verdict { comparisons: comparisons(report, baselines)?, floors: floors::check(report) })
+}
+
+/// Compare every baseline entry under its recorded run stamp, without retrieval floors.
+pub fn comparisons(report: &Value, baselines: &Baselines) -> Result<Vec<Comparison>, EvalError> {
     let mismatch = |run: String| EvalError::BaselineRunStampMismatch { recorded: baselines.run.to_string(), run };
     let block = report.get(REPORT_RUN_KEY).ok_or_else(|| mismatch("a report with no run block".into()))?;
     let run = serde_json::from_value::<RunStamp>(block.clone())
@@ -489,5 +497,5 @@ pub fn gate(report: &Value, baselines: &Baselines) -> Result<Verdict, EvalError>
             outcome: compare(entry.value, current, band, direction),
         });
     }
-    Ok(Verdict { comparisons, floors: floors::check(report) })
+    Ok(comparisons)
 }

@@ -1,0 +1,2145 @@
+{
+  "version": "entity-evidence/v1",
+  "license": "CC0-1.0 synthetic data",
+  "adjudication": "synthetic-truth-v1: canonical IDs and relation tuples are authored independently of read results; temporal and policy distractors have no answer credit",
+  "corpus": "corpus",
+  "corpus_sha256": "0c6639089245da15d88801068b8273b3d187053f7282d52306292f445cda112e",
+  "entities": "memory/entities",
+  "claims": "memory/facts",
+  "evidence": "evidence/notes",
+  "k": 16,
+  "cases": [
+    {
+      "id": "amber-alias",
+      "mention": "Amber Works",
+      "question": "Amber Works location Amber Manufacturing Amber Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "alias",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-0",
+        "claims": [
+          "0-live"
+        ],
+        "path": [
+          "0-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:3"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "0-live",
+            "subject": "plant-0",
+            "predicate": "location",
+            "object": "Amber Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:3"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "amber-similar",
+      "mention": "Amber Manufacturing Labs",
+      "question": "Amber Manufacturing Labs location Amber Manufacturing Amber Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "similar-name"
+      ],
+      "expected": {
+        "entity": "labs-0",
+        "claims": [
+          "0-similar"
+        ],
+        "path": [
+          "0-similar"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:2"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "0-similar",
+            "subject": "labs-0",
+            "predicate": "location",
+            "object": "Amber Campus",
+            "citations": [
+              "evidence/notes#eval-0001:2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "amber-chain",
+      "mention": "Amber Works",
+      "question": "Amber Works supplier owner Amber Manufacturing Amber Supplier",
+      "relations": [
+        "supplier",
+        "owner"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "multi-hop"
+      ],
+      "expected": {
+        "entity": "plant-0",
+        "claims": [
+          "0-supplier",
+          "0-owner"
+        ],
+        "path": [
+          "0-supplier",
+          "0-owner"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:0",
+          "evidence/notes#eval-0001:1"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "0-supplier",
+            "subject": "plant-0",
+            "predicate": "supplier",
+            "object": "supplier-0",
+            "citations": [
+              "evidence/notes#eval-0001:0"
+            ]
+          },
+          {
+            "id": "0-owner",
+            "subject": "supplier-0",
+            "predicate": "owner",
+            "object": "owner-0",
+            "citations": [
+              "evidence/notes#eval-0001:1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "amber-canonical",
+      "mention": "Amber Manufacturing",
+      "question": "Amber Manufacturing location Amber Manufacturing Amber Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "canonical",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-0",
+        "claims": [
+          "0-live"
+        ],
+        "path": [
+          "0-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:3"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "0-live",
+            "subject": "plant-0",
+            "predicate": "location",
+            "object": "Amber Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:3"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "amber-ambiguous",
+      "mention": "Amber Group",
+      "question": "Amber Group location Amber Manufacturing Amber Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "ambiguous-alias"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "amber-contradiction",
+      "mention": "Amber Works",
+      "question": "Amber Works auditor Amber Manufacturing Amber Supplier",
+      "relations": [
+        "auditor"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "contradiction"
+      ],
+      "expected": {
+        "entity": "plant-0",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "amber-missing",
+      "mention": "Amber Works",
+      "question": "Amber Works missing Amber Manufacturing Amber Supplier",
+      "relations": [
+        "missing"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "missing-evidence"
+      ],
+      "expected": {
+        "entity": "plant-0",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "amber-absent",
+      "mention": "Amber Absent",
+      "question": "Amber Absent location Amber Manufacturing Amber Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "absent-entity"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "amber-expired-only",
+      "mention": "Amber Works",
+      "question": "Amber Works former Amber Manufacturing Amber Supplier",
+      "relations": [
+        "former"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "expired",
+        "abstention"
+      ],
+      "expected": {
+        "entity": "plant-0",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "birch-alias",
+      "mention": "Birch Works",
+      "question": "Birch Works location Birch Manufacturing Birch Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "alias",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-1",
+        "claims": [
+          "1-live"
+        ],
+        "path": [
+          "1-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:15"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "1-live",
+            "subject": "plant-1",
+            "predicate": "location",
+            "object": "Birch Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:15"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "birch-similar",
+      "mention": "Birch Manufacturing Labs",
+      "question": "Birch Manufacturing Labs location Birch Manufacturing Birch Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "similar-name"
+      ],
+      "expected": {
+        "entity": "labs-1",
+        "claims": [
+          "1-similar"
+        ],
+        "path": [
+          "1-similar"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:14"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "1-similar",
+            "subject": "labs-1",
+            "predicate": "location",
+            "object": "Birch Campus",
+            "citations": [
+              "evidence/notes#eval-0001:14"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "birch-chain",
+      "mention": "Birch Works",
+      "question": "Birch Works supplier owner Birch Manufacturing Birch Supplier",
+      "relations": [
+        "supplier",
+        "owner"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "multi-hop"
+      ],
+      "expected": {
+        "entity": "plant-1",
+        "claims": [
+          "1-supplier",
+          "1-owner"
+        ],
+        "path": [
+          "1-supplier",
+          "1-owner"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:12",
+          "evidence/notes#eval-0001:13"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "1-supplier",
+            "subject": "plant-1",
+            "predicate": "supplier",
+            "object": "supplier-1",
+            "citations": [
+              "evidence/notes#eval-0001:12"
+            ]
+          },
+          {
+            "id": "1-owner",
+            "subject": "supplier-1",
+            "predicate": "owner",
+            "object": "owner-1",
+            "citations": [
+              "evidence/notes#eval-0001:13"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "birch-canonical",
+      "mention": "Birch Manufacturing",
+      "question": "Birch Manufacturing location Birch Manufacturing Birch Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "canonical",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-1",
+        "claims": [
+          "1-live"
+        ],
+        "path": [
+          "1-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:15"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "1-live",
+            "subject": "plant-1",
+            "predicate": "location",
+            "object": "Birch Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:15"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "birch-ambiguous",
+      "mention": "Birch Group",
+      "question": "Birch Group location Birch Manufacturing Birch Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "ambiguous-alias"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "birch-contradiction",
+      "mention": "Birch Works",
+      "question": "Birch Works auditor Birch Manufacturing Birch Supplier",
+      "relations": [
+        "auditor"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "contradiction"
+      ],
+      "expected": {
+        "entity": "plant-1",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "birch-missing",
+      "mention": "Birch Works",
+      "question": "Birch Works missing Birch Manufacturing Birch Supplier",
+      "relations": [
+        "missing"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "missing-evidence"
+      ],
+      "expected": {
+        "entity": "plant-1",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "birch-absent",
+      "mention": "Birch Absent",
+      "question": "Birch Absent location Birch Manufacturing Birch Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "absent-entity"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "birch-expired-only",
+      "mention": "Birch Works",
+      "question": "Birch Works former Birch Manufacturing Birch Supplier",
+      "relations": [
+        "former"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "expired",
+        "abstention"
+      ],
+      "expected": {
+        "entity": "plant-1",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "cedar-alias",
+      "mention": "Cedar Works",
+      "question": "Cedar Works location Cedar Manufacturing Cedar Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "alias",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-2",
+        "claims": [
+          "2-live"
+        ],
+        "path": [
+          "2-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:27"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "2-live",
+            "subject": "plant-2",
+            "predicate": "location",
+            "object": "Cedar Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:27"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "cedar-similar",
+      "mention": "Cedar Manufacturing Labs",
+      "question": "Cedar Manufacturing Labs location Cedar Manufacturing Cedar Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "similar-name"
+      ],
+      "expected": {
+        "entity": "labs-2",
+        "claims": [
+          "2-similar"
+        ],
+        "path": [
+          "2-similar"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:26"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "2-similar",
+            "subject": "labs-2",
+            "predicate": "location",
+            "object": "Cedar Campus",
+            "citations": [
+              "evidence/notes#eval-0001:26"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "cedar-chain",
+      "mention": "Cedar Works",
+      "question": "Cedar Works supplier owner Cedar Manufacturing Cedar Supplier",
+      "relations": [
+        "supplier",
+        "owner"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "multi-hop"
+      ],
+      "expected": {
+        "entity": "plant-2",
+        "claims": [
+          "2-supplier",
+          "2-owner"
+        ],
+        "path": [
+          "2-supplier",
+          "2-owner"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:24",
+          "evidence/notes#eval-0001:25"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "2-supplier",
+            "subject": "plant-2",
+            "predicate": "supplier",
+            "object": "supplier-2",
+            "citations": [
+              "evidence/notes#eval-0001:24"
+            ]
+          },
+          {
+            "id": "2-owner",
+            "subject": "supplier-2",
+            "predicate": "owner",
+            "object": "owner-2",
+            "citations": [
+              "evidence/notes#eval-0001:25"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "cedar-canonical",
+      "mention": "Cedar Manufacturing",
+      "question": "Cedar Manufacturing location Cedar Manufacturing Cedar Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "canonical",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-2",
+        "claims": [
+          "2-live"
+        ],
+        "path": [
+          "2-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:27"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "2-live",
+            "subject": "plant-2",
+            "predicate": "location",
+            "object": "Cedar Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:27"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "cedar-ambiguous",
+      "mention": "Cedar Group",
+      "question": "Cedar Group location Cedar Manufacturing Cedar Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "ambiguous-alias"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "cedar-contradiction",
+      "mention": "Cedar Works",
+      "question": "Cedar Works auditor Cedar Manufacturing Cedar Supplier",
+      "relations": [
+        "auditor"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "contradiction"
+      ],
+      "expected": {
+        "entity": "plant-2",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "cedar-missing",
+      "mention": "Cedar Works",
+      "question": "Cedar Works missing Cedar Manufacturing Cedar Supplier",
+      "relations": [
+        "missing"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "missing-evidence"
+      ],
+      "expected": {
+        "entity": "plant-2",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "cedar-absent",
+      "mention": "Cedar Absent",
+      "question": "Cedar Absent location Cedar Manufacturing Cedar Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "absent-entity"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "cedar-expired-only",
+      "mention": "Cedar Works",
+      "question": "Cedar Works former Cedar Manufacturing Cedar Supplier",
+      "relations": [
+        "former"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "expired",
+        "abstention"
+      ],
+      "expected": {
+        "entity": "plant-2",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "delta-alias",
+      "mention": "Delta Works",
+      "question": "Delta Works location Delta Manufacturing Delta Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "alias",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-3",
+        "claims": [
+          "3-live"
+        ],
+        "path": [
+          "3-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:39"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "3-live",
+            "subject": "plant-3",
+            "predicate": "location",
+            "object": "Delta Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:39"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "delta-similar",
+      "mention": "Delta Manufacturing Labs",
+      "question": "Delta Manufacturing Labs location Delta Manufacturing Delta Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "similar-name"
+      ],
+      "expected": {
+        "entity": "labs-3",
+        "claims": [
+          "3-similar"
+        ],
+        "path": [
+          "3-similar"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:38"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "3-similar",
+            "subject": "labs-3",
+            "predicate": "location",
+            "object": "Delta Campus",
+            "citations": [
+              "evidence/notes#eval-0001:38"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "delta-chain",
+      "mention": "Delta Works",
+      "question": "Delta Works supplier owner Delta Manufacturing Delta Supplier",
+      "relations": [
+        "supplier",
+        "owner"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "multi-hop"
+      ],
+      "expected": {
+        "entity": "plant-3",
+        "claims": [
+          "3-supplier",
+          "3-owner"
+        ],
+        "path": [
+          "3-supplier",
+          "3-owner"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:36",
+          "evidence/notes#eval-0001:37"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "3-supplier",
+            "subject": "plant-3",
+            "predicate": "supplier",
+            "object": "supplier-3",
+            "citations": [
+              "evidence/notes#eval-0001:36"
+            ]
+          },
+          {
+            "id": "3-owner",
+            "subject": "supplier-3",
+            "predicate": "owner",
+            "object": "owner-3",
+            "citations": [
+              "evidence/notes#eval-0001:37"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "delta-canonical",
+      "mention": "Delta Manufacturing",
+      "question": "Delta Manufacturing location Delta Manufacturing Delta Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "canonical",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-3",
+        "claims": [
+          "3-live"
+        ],
+        "path": [
+          "3-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:39"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "3-live",
+            "subject": "plant-3",
+            "predicate": "location",
+            "object": "Delta Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:39"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "delta-ambiguous",
+      "mention": "Delta Group",
+      "question": "Delta Group location Delta Manufacturing Delta Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "ambiguous-alias"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "delta-contradiction",
+      "mention": "Delta Works",
+      "question": "Delta Works auditor Delta Manufacturing Delta Supplier",
+      "relations": [
+        "auditor"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "contradiction"
+      ],
+      "expected": {
+        "entity": "plant-3",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "delta-missing",
+      "mention": "Delta Works",
+      "question": "Delta Works missing Delta Manufacturing Delta Supplier",
+      "relations": [
+        "missing"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "missing-evidence"
+      ],
+      "expected": {
+        "entity": "plant-3",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "delta-absent",
+      "mention": "Delta Absent",
+      "question": "Delta Absent location Delta Manufacturing Delta Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "absent-entity"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "delta-expired-only",
+      "mention": "Delta Works",
+      "question": "Delta Works former Delta Manufacturing Delta Supplier",
+      "relations": [
+        "former"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "expired",
+        "abstention"
+      ],
+      "expected": {
+        "entity": "plant-3",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "elm-alias",
+      "mention": "Elm Works",
+      "question": "Elm Works location Elm Manufacturing Elm Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "alias",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-4",
+        "claims": [
+          "4-live"
+        ],
+        "path": [
+          "4-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:51"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "4-live",
+            "subject": "plant-4",
+            "predicate": "location",
+            "object": "Elm Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:51"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "elm-similar",
+      "mention": "Elm Manufacturing Labs",
+      "question": "Elm Manufacturing Labs location Elm Manufacturing Elm Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "similar-name"
+      ],
+      "expected": {
+        "entity": "labs-4",
+        "claims": [
+          "4-similar"
+        ],
+        "path": [
+          "4-similar"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:50"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "4-similar",
+            "subject": "labs-4",
+            "predicate": "location",
+            "object": "Elm Campus",
+            "citations": [
+              "evidence/notes#eval-0001:50"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "elm-chain",
+      "mention": "Elm Works",
+      "question": "Elm Works supplier owner Elm Manufacturing Elm Supplier",
+      "relations": [
+        "supplier",
+        "owner"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "multi-hop"
+      ],
+      "expected": {
+        "entity": "plant-4",
+        "claims": [
+          "4-supplier",
+          "4-owner"
+        ],
+        "path": [
+          "4-supplier",
+          "4-owner"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:48",
+          "evidence/notes#eval-0001:49"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "4-supplier",
+            "subject": "plant-4",
+            "predicate": "supplier",
+            "object": "supplier-4",
+            "citations": [
+              "evidence/notes#eval-0001:48"
+            ]
+          },
+          {
+            "id": "4-owner",
+            "subject": "supplier-4",
+            "predicate": "owner",
+            "object": "owner-4",
+            "citations": [
+              "evidence/notes#eval-0001:49"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "elm-canonical",
+      "mention": "Elm Manufacturing",
+      "question": "Elm Manufacturing location Elm Manufacturing Elm Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "canonical",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-4",
+        "claims": [
+          "4-live"
+        ],
+        "path": [
+          "4-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:51"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "4-live",
+            "subject": "plant-4",
+            "predicate": "location",
+            "object": "Elm Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:51"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "elm-ambiguous",
+      "mention": "Elm Group",
+      "question": "Elm Group location Elm Manufacturing Elm Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "ambiguous-alias"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "elm-contradiction",
+      "mention": "Elm Works",
+      "question": "Elm Works auditor Elm Manufacturing Elm Supplier",
+      "relations": [
+        "auditor"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "contradiction"
+      ],
+      "expected": {
+        "entity": "plant-4",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "elm-missing",
+      "mention": "Elm Works",
+      "question": "Elm Works missing Elm Manufacturing Elm Supplier",
+      "relations": [
+        "missing"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "missing-evidence"
+      ],
+      "expected": {
+        "entity": "plant-4",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "elm-absent",
+      "mention": "Elm Absent",
+      "question": "Elm Absent location Elm Manufacturing Elm Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "absent-entity"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "elm-expired-only",
+      "mention": "Elm Works",
+      "question": "Elm Works former Elm Manufacturing Elm Supplier",
+      "relations": [
+        "former"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "expired",
+        "abstention"
+      ],
+      "expected": {
+        "entity": "plant-4",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "flint-alias",
+      "mention": "Flint Works",
+      "question": "Flint Works location Flint Manufacturing Flint Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "alias",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-5",
+        "claims": [
+          "5-live"
+        ],
+        "path": [
+          "5-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:63"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "5-live",
+            "subject": "plant-5",
+            "predicate": "location",
+            "object": "Flint Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:63"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "flint-similar",
+      "mention": "Flint Manufacturing Labs",
+      "question": "Flint Manufacturing Labs location Flint Manufacturing Flint Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "similar-name"
+      ],
+      "expected": {
+        "entity": "labs-5",
+        "claims": [
+          "5-similar"
+        ],
+        "path": [
+          "5-similar"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:62"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "5-similar",
+            "subject": "labs-5",
+            "predicate": "location",
+            "object": "Flint Campus",
+            "citations": [
+              "evidence/notes#eval-0001:62"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "flint-chain",
+      "mention": "Flint Works",
+      "question": "Flint Works supplier owner Flint Manufacturing Flint Supplier",
+      "relations": [
+        "supplier",
+        "owner"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "multi-hop"
+      ],
+      "expected": {
+        "entity": "plant-5",
+        "claims": [
+          "5-supplier",
+          "5-owner"
+        ],
+        "path": [
+          "5-supplier",
+          "5-owner"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:60",
+          "evidence/notes#eval-0001:61"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "5-supplier",
+            "subject": "plant-5",
+            "predicate": "supplier",
+            "object": "supplier-5",
+            "citations": [
+              "evidence/notes#eval-0001:60"
+            ]
+          },
+          {
+            "id": "5-owner",
+            "subject": "supplier-5",
+            "predicate": "owner",
+            "object": "owner-5",
+            "citations": [
+              "evidence/notes#eval-0001:61"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "flint-canonical",
+      "mention": "Flint Manufacturing",
+      "question": "Flint Manufacturing location Flint Manufacturing Flint Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "canonical",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-5",
+        "claims": [
+          "5-live"
+        ],
+        "path": [
+          "5-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:63"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "5-live",
+            "subject": "plant-5",
+            "predicate": "location",
+            "object": "Flint Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:63"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "flint-ambiguous",
+      "mention": "Flint Group",
+      "question": "Flint Group location Flint Manufacturing Flint Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "ambiguous-alias"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "flint-contradiction",
+      "mention": "Flint Works",
+      "question": "Flint Works auditor Flint Manufacturing Flint Supplier",
+      "relations": [
+        "auditor"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "contradiction"
+      ],
+      "expected": {
+        "entity": "plant-5",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "flint-missing",
+      "mention": "Flint Works",
+      "question": "Flint Works missing Flint Manufacturing Flint Supplier",
+      "relations": [
+        "missing"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "missing-evidence"
+      ],
+      "expected": {
+        "entity": "plant-5",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "flint-absent",
+      "mention": "Flint Absent",
+      "question": "Flint Absent location Flint Manufacturing Flint Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "absent-entity"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "flint-expired-only",
+      "mention": "Flint Works",
+      "question": "Flint Works former Flint Manufacturing Flint Supplier",
+      "relations": [
+        "former"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "expired",
+        "abstention"
+      ],
+      "expected": {
+        "entity": "plant-5",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "grove-alias",
+      "mention": "Grove Works",
+      "question": "Grove Works location Grove Manufacturing Grove Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "alias",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-6",
+        "claims": [
+          "6-live"
+        ],
+        "path": [
+          "6-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:75"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "6-live",
+            "subject": "plant-6",
+            "predicate": "location",
+            "object": "Grove Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:75"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "grove-similar",
+      "mention": "Grove Manufacturing Labs",
+      "question": "Grove Manufacturing Labs location Grove Manufacturing Grove Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "similar-name"
+      ],
+      "expected": {
+        "entity": "labs-6",
+        "claims": [
+          "6-similar"
+        ],
+        "path": [
+          "6-similar"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:74"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "6-similar",
+            "subject": "labs-6",
+            "predicate": "location",
+            "object": "Grove Campus",
+            "citations": [
+              "evidence/notes#eval-0001:74"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "grove-chain",
+      "mention": "Grove Works",
+      "question": "Grove Works supplier owner Grove Manufacturing Grove Supplier",
+      "relations": [
+        "supplier",
+        "owner"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "multi-hop"
+      ],
+      "expected": {
+        "entity": "plant-6",
+        "claims": [
+          "6-supplier",
+          "6-owner"
+        ],
+        "path": [
+          "6-supplier",
+          "6-owner"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:72",
+          "evidence/notes#eval-0001:73"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "6-supplier",
+            "subject": "plant-6",
+            "predicate": "supplier",
+            "object": "supplier-6",
+            "citations": [
+              "evidence/notes#eval-0001:72"
+            ]
+          },
+          {
+            "id": "6-owner",
+            "subject": "supplier-6",
+            "predicate": "owner",
+            "object": "owner-6",
+            "citations": [
+              "evidence/notes#eval-0001:73"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "grove-canonical",
+      "mention": "Grove Manufacturing",
+      "question": "Grove Manufacturing location Grove Manufacturing Grove Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "canonical",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-6",
+        "claims": [
+          "6-live"
+        ],
+        "path": [
+          "6-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:75"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "6-live",
+            "subject": "plant-6",
+            "predicate": "location",
+            "object": "Grove Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:75"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "grove-ambiguous",
+      "mention": "Grove Group",
+      "question": "Grove Group location Grove Manufacturing Grove Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "ambiguous-alias"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "grove-contradiction",
+      "mention": "Grove Works",
+      "question": "Grove Works auditor Grove Manufacturing Grove Supplier",
+      "relations": [
+        "auditor"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "contradiction"
+      ],
+      "expected": {
+        "entity": "plant-6",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "grove-missing",
+      "mention": "Grove Works",
+      "question": "Grove Works missing Grove Manufacturing Grove Supplier",
+      "relations": [
+        "missing"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "missing-evidence"
+      ],
+      "expected": {
+        "entity": "plant-6",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "grove-absent",
+      "mention": "Grove Absent",
+      "question": "Grove Absent location Grove Manufacturing Grove Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "absent-entity"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "grove-expired-only",
+      "mention": "Grove Works",
+      "question": "Grove Works former Grove Manufacturing Grove Supplier",
+      "relations": [
+        "former"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "expired",
+        "abstention"
+      ],
+      "expected": {
+        "entity": "plant-6",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "harbour-alias",
+      "mention": "Harbour Works",
+      "question": "Harbour Works location Harbour Manufacturing Harbour Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "alias",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-7",
+        "claims": [
+          "7-live"
+        ],
+        "path": [
+          "7-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:87",
+          "evidence/notes#eval-0001:96"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "7-live",
+            "subject": "plant-7",
+            "predicate": "location",
+            "object": "Harbour Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:87",
+              "evidence/notes#eval-0001:96"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "harbour-similar",
+      "mention": "Harbour Manufacturing Labs",
+      "question": "Harbour Manufacturing Labs location Harbour Manufacturing Harbour Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "similar-name"
+      ],
+      "expected": {
+        "entity": "labs-7",
+        "claims": [
+          "7-similar"
+        ],
+        "path": [
+          "7-similar"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:86"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "7-similar",
+            "subject": "labs-7",
+            "predicate": "location",
+            "object": "Harbour Campus",
+            "citations": [
+              "evidence/notes#eval-0001:86"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "harbour-chain",
+      "mention": "Harbour Works",
+      "question": "Harbour Works supplier owner Harbour Manufacturing Harbour Supplier",
+      "relations": [
+        "supplier",
+        "owner"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "multi-hop"
+      ],
+      "expected": {
+        "entity": "plant-7",
+        "claims": [
+          "7-supplier",
+          "7-owner"
+        ],
+        "path": [
+          "7-supplier",
+          "7-owner"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:84",
+          "evidence/notes#eval-0001:85"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "7-supplier",
+            "subject": "plant-7",
+            "predicate": "supplier",
+            "object": "supplier-7",
+            "citations": [
+              "evidence/notes#eval-0001:84"
+            ]
+          },
+          {
+            "id": "7-owner",
+            "subject": "supplier-7",
+            "predicate": "owner",
+            "object": "owner-7",
+            "citations": [
+              "evidence/notes#eval-0001:85"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "harbour-canonical",
+      "mention": "Harbour Manufacturing",
+      "question": "Harbour Manufacturing location Harbour Manufacturing Harbour Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "canonical",
+        "later",
+        "expired",
+        "superseded",
+        "inaccessible"
+      ],
+      "expected": {
+        "entity": "plant-7",
+        "claims": [
+          "7-live"
+        ],
+        "path": [
+          "7-live"
+        ],
+        "citations": [
+          "evidence/notes#eval-0001:87",
+          "evidence/notes#eval-0001:96"
+        ],
+        "abstain": false,
+        "facts": [
+          {
+            "id": "7-live",
+            "subject": "plant-7",
+            "predicate": "location",
+            "object": "Harbour Harbour",
+            "citations": [
+              "evidence/notes#eval-0001:87",
+              "evidence/notes#eval-0001:96"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "harbour-ambiguous",
+      "mention": "Harbour Group",
+      "question": "Harbour Group location Harbour Manufacturing Harbour Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "ambiguous-alias"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "harbour-contradiction",
+      "mention": "Harbour Works",
+      "question": "Harbour Works auditor Harbour Manufacturing Harbour Supplier",
+      "relations": [
+        "auditor"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "contradiction"
+      ],
+      "expected": {
+        "entity": "plant-7",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "harbour-missing",
+      "mention": "Harbour Works",
+      "question": "Harbour Works missing Harbour Manufacturing Harbour Supplier",
+      "relations": [
+        "missing"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "missing-evidence"
+      ],
+      "expected": {
+        "entity": "plant-7",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "harbour-absent",
+      "mention": "Harbour Absent",
+      "question": "Harbour Absent location Harbour Manufacturing Harbour Supplier",
+      "relations": [
+        "location"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "absent-entity"
+      ],
+      "expected": {
+        "entity": null,
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    },
+    {
+      "id": "harbour-expired-only",
+      "mention": "Harbour Works",
+      "question": "Harbour Works former Harbour Manufacturing Harbour Supplier",
+      "relations": [
+        "former"
+      ],
+      "anchor": "2030-06-01T00:00:00Z",
+      "tags": [
+        "expired",
+        "abstention"
+      ],
+      "expected": {
+        "entity": "plant-7",
+        "claims": [],
+        "path": [],
+        "citations": [],
+        "abstain": true,
+        "facts": []
+      }
+    }
+  ]
+}
