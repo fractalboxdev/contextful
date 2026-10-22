@@ -79,6 +79,7 @@ fn an_upserted_row_carries_its_authoring_agent() {
     assert_eq!(rows[0]["_authored_agent"], Value::from("agent://synthesizer"));
 }
 
+// spec: read.resolve-entity.upsert-fields@e8caa54c
 /// Each field lands trimmed, and a field or alias empty after trimming lands nothing.
 #[test]
 fn an_upsert_trims_its_fields_and_refuses_an_empty_one() {
@@ -96,6 +97,7 @@ fn an_upsert_trims_its_fields_and_refuses_an_empty_one() {
     assert_eq!((&rows[0]["entity_id"], &rows[0]["kind"], &rows[0]["name"]), (&Value::from("e1"), &Value::from("org"), &Value::from("Acme")));
 }
 
+// spec: read.resolve-entity.upsert-whole-table@6c02b2e9
 /// A session whose read of the table comes back cut refuses, rather than merging and
 /// checking against a partial table.
 #[test]
@@ -111,6 +113,7 @@ fn an_upsert_over_a_truncated_read_lands_nothing() {
     }
 }
 
+// spec: read.resolve-entity.upsert-availability@ddf489e5
 /// An entities table declaring `available_time` keeps vintages, and an upsert carries no
 /// source availability instant, so it refuses.
 #[test]
@@ -132,6 +135,7 @@ fn an_upsert_into_a_second_entities_table_refuses() {
     }
 }
 
+// spec: read.resolve-entity.upsert-serial@11ad334e
 /// Concurrent upserts on one table apply one after another: no alias is lost, and two
 /// identities never both claim one mention.
 #[test]

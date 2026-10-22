@@ -263,7 +263,7 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
 - `entity-upsert` — `contextful memory entity upsert --table <entities> --id <id> --kind <kind> --name <name> [--alias <alias>]...` lands one row into the first `memory_entities` table the manifest declares, the one synthesis resolves against, under a read and a write grant on it.
   *because the claim write refuses entity rows, and an operator still names the identities mentions resolve to*
 - `upsert-fields` — An upsert trims its id, kind, name and each alias before it compares or lands them; one empty after trimming raises `MemoryEntityFieldEmpty`, and nothing lands.
-  *because a blank identity or alias matches no mention, and surrounding whitespace would land a second spelling of a held name*
+  *because a blank identity or alias matches no mention, and surrounding whitespace lands a second spelling of a held name*
 - `upsert-merge` — An upsert naming a held `entity_id` replaces its `kind` and `name`, and keeps the stored aliases followed by each given alias no stored alias matches case-folded.
   *because an alias an earlier upsert recorded keeps naming the entity for mentions already written with it*
 - `alias-conflict` — An upsert whose name or alias matches, case-folded, the name or an alias of another entity the session reads raises `MemoryEntityAliasConflict`, and nothing lands.

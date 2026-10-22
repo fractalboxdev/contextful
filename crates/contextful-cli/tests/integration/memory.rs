@@ -652,7 +652,7 @@ fn explain_cli_answers_one_card_candidates_or_the_identity_alone() {
 
 /// An entity upsert lands a canonical identity, merges aliases on its key, refuses a
 /// mention another entity owns, and a synthesis pass resolves the upserted alias.
-// spec: read.resolve-entity.entity-upsert@c75ccadb
+// spec: read.resolve-entity.entity-upsert@c497bb99
 // spec: read.resolve-entity.upsert-merge@ebeebe20
 // spec: read.resolve-entity.alias-conflict@4c7114b5
 #[test]
