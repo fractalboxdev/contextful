@@ -295,17 +295,20 @@ fn row_text(row: &Map<String, Value>, key: &[String]) -> String {
 }
 
 /// Land every table of `corpus` into `store` at `at`, embedding each row that carries no
-/// embedding, then fold each table so its declared sidecars build. Returns the corpus's
-/// size in tokens.
-fn land_corpus(corpus: &Corpus, store: &Store, embedder: &StubEmbedder, at: Instant) -> Result<u64> {
+/// embedding with `embedder` — a semantic run passes none and refuses such a row — then fold
+/// each table so its declared sidecars build. Returns the corpus's size in tokens.
+fn land_corpus(corpus: &Corpus, store: &Store, embedder: Option<&StubEmbedder>, at: Instant) -> Result<u64> {
     let (node, _) = node::resolve(store, |k| std::env::var(k).ok())?;
     let mut corpus_tokens = 0;
     for (table, path) in corpus.tables()? {
         let decl = corpus.decl(&table);
         let mut rows = read_rows(&path)?;
-        for row in &mut rows {
+        for (i, row) in rows.iter_mut().enumerate() {
             corpus_tokens += systems::tokens(&row_text(row, decl.primary_key()));
             if !row.contains_key(EMBEDDING_COLUMN) {
+                let Some(embedder) = embedder else {
+                    bail!("`{table}` row {} carries no embedding; a semantic run stubs none", i + 1);
+                };
                 let v = embedder.embed(&row_text(row, decl.primary_key()));
                 row.insert(EMBEDDING_COLUMN.into(), serde_json::to_value(v)?);
             }
@@ -370,13 +373,17 @@ fn read_case(
     corpus: &Corpus,
     case: &Case,
     k: usize,
-    embedder: &StubEmbedder,
+    embedder: Option<&StubEmbedder>,
     landed_at: Instant,
     fusion: Fusion,
 ) -> Result<CaseRead> {
     let anchor = instant("time_anchor", case.expected.time_anchor.as_deref(), landed_at)?;
     let since = case.expected.since.as_deref().map(|s| instant("since", Some(s), landed_at)).transpose()?;
-    let embedding = case.query_embedding.clone().unwrap_or_else(|| embedder.embed(&case.question));
+    let embedding = match (&case.query_embedding, embedder) {
+        (Some(embedding), _) => embedding.clone(),
+        (None, Some(embedder)) => embedder.embed(&case.question),
+        (None, None) => bail!("case `{}` carries no embedding; a semantic run stubs none", case.id),
+    };
     let prefix = case.prefix.clone().unwrap_or_default();
     let mut legs = BTreeMap::new();
     let mut reader_tokens = systems::tokens(&case.question);
@@ -508,6 +515,8 @@ fn run_cases(a: RunArgs) -> Result<()> {
     let (authority, revocation) = a.admit.admit(None, "the evaluation run")?;
     let landed_at = instant("--landed-at", a.landed_at.as_deref(), Instant::from_unix_nanos(0)?)?;
     let embedder = StubEmbedder::new(a.seed);
+    // A semantic run reads verified vectors alone; no row or question takes the stub.
+    let stub = semantic.is_none().then_some(&embedder);
     let pepper = Pepper::resolve(|k| std::env::var(k).ok());
     if let Some(signal) = pepper.signal() {
         eprintln!("{signal}");
@@ -532,7 +541,7 @@ fn run_cases(a: RunArgs) -> Result<()> {
         }
         let scratch = tempfile::tempdir()?;
         let store = Store::open(scratch.path(), SCRATCH_PROJECT)?;
-        let corpus_tokens = land_corpus(corpus, &store, &embedder, landed_at)?;
+        let corpus_tokens = land_corpus(corpus, &store, stub, landed_at)?;
         let face = Face::open(store, &corpus.manifest, pepper.clone())?;
         let s = session(&face, &authority, &revocation, a.zone.as_deref())?;
         for &i in idx {
@@ -540,7 +549,7 @@ fn run_cases(a: RunArgs) -> Result<()> {
                 continue;
             }
             let started = std::time::Instant::now();
-            let read = read_case(&face, &s, corpus, &cases[i], a.k, &embedder, landed_at, a.fusion)?;
+            let read = read_case(&face, &s, corpus, &cases[i], a.k, stub, landed_at, a.fusion)?;
             let systems = Systems {
                 tokens: read.reader_tokens,
                 latency_ms: started.elapsed().as_secs_f64() * 1000.0,
