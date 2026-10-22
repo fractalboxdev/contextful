@@ -167,7 +167,7 @@ pub fn backtest(a: BacktestArgs) -> Result<()> {
         // Each case reads its own store, so no other case's planted row reaches it.
         let scratch = tempfile::tempdir()?;
         let store = Store::open(scratch.path(), SCRATCH_PROJECT)?;
-        land_corpus(corpus, &store, &embedder, landed_at)?;
+        land_corpus(corpus, &store, Some(&embedder), landed_at)?;
         planted.insert(case.id.clone(), plant(&store, corpus, case, landed_at)?);
         let face = Face::open(store, &corpus.manifest, pepper.clone())?;
         let server = Server::new(&face, authority.clone(), &boundary, &clock, &log).map_err(anyhow::Error::msg)?.with_build(crate::build_identity());

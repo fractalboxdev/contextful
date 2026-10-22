@@ -1,0 +1,7148 @@
+{
+  "benchmark": {
+    "config": {
+      "batch_size": 1,
+      "device": "cpu",
+      "fusion": "reciprocal-rank",
+      "k": 10,
+      "max_seq_length": 128,
+      "normalize_embeddings": true,
+      "regression_tolerance": 0.02,
+      "seed": 683
+    },
+    "identity": "9b9b2021bdd0f584bb487be281162b6ef983ebbe87a4a0394e82d04d15a2e2ef",
+    "manifest": {
+      "dimension": 384,
+      "files": {
+        "config.json": "457ffd4b3301c3fd5896b8c8d74a7136c806dff293e54f749926389e6721a253",
+        "corpus/contextful.toml": "6d62b91e25fc3e56bf2a1df1c51e6d30cd05a780047cfb1b5f2ba88cfd61e419",
+        "corpus/rows/kb/semantic.jsonl": "2cde7bebce76f46fe2d8177a2190a8bcb793efe434d63fe33a7fd23ab3f6b0b8",
+        "development.jsonl": "dcb0b1e65fa945f3824e88e3d5e871b03dadf699b5dd64a880b66603d4976ae0",
+        "heldout.jsonl": "4278270db76d634f36e09fca0a8e30cfabb0ac178c9e9d27902018291bec8bb7",
+        "regenerate.py": "48d00ff9e885febd695c41a11f5b7eb4ddd1f2301f14bc58b61c3cd3b89c4fbf",
+        "requirements.txt": "42d884c1125659ab0c7eaf775ded55fe0c147473cf739ea9c02635a9e983ccbb",
+        "source.json": "001775380843f4902658241cce8656ee1a036ec7fc630a591c9613a8b56389b6"
+      },
+      "heldout": "heldout.jsonl",
+      "license": "Apache-2.0",
+      "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "model_artifacts": {
+        "1_Pooling/config.json": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23",
+        "config.json": "6300193cb75e01cf80c96decef7187dfb33094d97cc1490b7ead6ff134476e4e",
+        "config_sentence_transformers.json": "b8c64b5cece00d8424b4896ea75b512b6008576088497609dfeb6bd63e6d36b8",
+        "model.safetensors": "eaa086f0ffee582aeb45b36e34cdd1fe2d6de2bef61f8a559a1bbc9bd955917b",
+        "modules.json": "8f4b264b80206c830bebbdcae377e137925650a433b689343a63bdc9b3145460",
+        "sentence_bert_config.json": "70f4448f31320443fe3557cacea5abf2dcc4915dda8c80646bec9f3bb0aa5a1f",
+        "special_tokens_map.json": "378eb3bf733eb16e65792d7e3fda5b8a4631387ca04d2015199c4d4f22ae554d",
+        "tokenizer.json": "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8",
+        "tokenizer_config.json": "5036ea374ffedd706e3bef33e2e0d6953cb868ef8a490e76e32ba0faa37a6b9b",
+        "unigram.json": "71b44701d7efd054205115acfa6ef126c5d2f84bd3affe0c59e48163674d19a6"
+      },
+      "revision": "e8f8c211226b894fcb81acc59f3b34ba3efd5f42",
+      "version": "semantic-v1"
+    }
+  },
+  "cases": [
+    {
+      "id": "password-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "password-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "password-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "refund-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "refund-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "refund-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "battery-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-4",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-4",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-1",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "battery-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-4",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-4",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "battery-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "mfa-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-3",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-3",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "mfa-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "mfa-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "backup-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "backup-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "backup-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "transit-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "transit-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "transit-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "delivery-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "delivery-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-3",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-3",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "delivery-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "library-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "library-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "library-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "allergy-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-2",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-2",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "allergy-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-2",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-3",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-4",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-2",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-3",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-4",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "allergy-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-3",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-3",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "mfa-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "evacuation-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "evacuation-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "backup",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "evacuation-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-4",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "transit",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-4",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "irrigation-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-2",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-1",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-2",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-1",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "irrigation-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-2",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-2",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "allergy-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "irrigation-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-2",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-1",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "irrigation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-6",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "evacuation-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-10",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-7",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "battery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-2",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-1",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "train-en",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-5",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "train-ja",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-8",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "library",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "train-alias",
+      "legs": {
+        "hybrid": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ],
+        "lexical": [],
+        "vector": [
+          {
+            "in_window": true,
+            "row": {
+              "key": "train",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-9",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "refund",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "train-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-0",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "password-negative",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "distractor-11",
+              "table": "kb/semantic"
+            }
+          },
+          {
+            "in_window": true,
+            "row": {
+              "key": "delivery-negative",
+              "table": "kb/semantic"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "n_cases": 36,
+  "regressions": [],
+  "retrieval": {
+    "hybrid": {
+      "hit_rate_at_k": {
+        "interval": {
+          "hi": 1.0,
+          "level": 0.95,
+          "lo": 1.0,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "n": 36
+      },
+      "ndcg_at_k": {
+        "interval": {
+          "hi": 0.9487402435515914,
+          "level": 0.95,
+          "lo": 0.8272122796652476,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.8900417104192174,
+        "min": 0.38685280723454163,
+        "n": 36
+      },
+      "r_precision": {
+        "interval": {
+          "hi": 0.8888888888888888,
+          "level": 0.95,
+          "lo": 0.6111111111111112,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.75,
+        "min": 0.0,
+        "n": 36
+      },
+      "recall_at_k": {
+        "interval": {
+          "hi": 1.0,
+          "level": 0.95,
+          "lo": 1.0,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "n": 36
+      },
+      "reciprocal_rank": {
+        "interval": {
+          "hi": 0.9305555555555556,
+          "level": 0.95,
+          "lo": 0.7685185185185185,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.8527777777777777,
+        "min": 0.2,
+        "n": 36
+      }
+    },
+    "lexical": {
+      "hit_rate_at_k": {
+        "interval": {
+          "hi": 0.25,
+          "level": 0.95,
+          "lo": 0.027777777777777776,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.1388888888888889,
+        "min": 0.0,
+        "n": 36
+      },
+      "ndcg_at_k": {
+        "interval": {
+          "hi": 0.2470219239087326,
+          "level": 0.95,
+          "lo": 0.027777777777777776,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.12863693759920716,
+        "min": -0.0,
+        "n": 36
+      },
+      "r_precision": {
+        "interval": {
+          "hi": 0.2222222222222222,
+          "level": 0.95,
+          "lo": 0.027777777777777776,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.1111111111111111,
+        "min": 0.0,
+        "n": 36
+      },
+      "recall_at_k": {
+        "interval": {
+          "hi": 0.25,
+          "level": 0.95,
+          "lo": 0.027777777777777776,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.1388888888888889,
+        "min": 0.0,
+        "n": 36
+      },
+      "reciprocal_rank": {
+        "interval": {
+          "hi": 0.2361111111111111,
+          "level": 0.95,
+          "lo": 0.027777777777777776,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.125,
+        "min": 0.0,
+        "n": 36
+      }
+    },
+    "vector": {
+      "hit_rate_at_k": {
+        "interval": {
+          "hi": 1.0,
+          "level": 0.95,
+          "lo": 1.0,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "n": 36
+      },
+      "ndcg_at_k": {
+        "interval": {
+          "hi": 0.9829681335342928,
+          "level": 0.95,
+          "lo": 0.8907005719271572,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.9419603283755659,
+        "min": 0.38685280723454163,
+        "n": 36
+      },
+      "r_precision": {
+        "interval": {
+          "hi": 0.9722222222222222,
+          "level": 0.95,
+          "lo": 0.75,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.8611111111111112,
+        "min": 0.0,
+        "n": 36
+      },
+      "recall_at_k": {
+        "interval": {
+          "hi": 1.0,
+          "level": 0.95,
+          "lo": 1.0,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "n": 36
+      },
+      "reciprocal_rank": {
+        "interval": {
+          "hi": 0.9777777777777779,
+          "level": 0.95,
+          "lo": 0.8527777777777777,
+          "method": "case_percentile_bootstrap",
+          "resamples": 1000
+        },
+        "max": 1.0,
+        "mean": 0.9222222222222223,
+        "min": 0.2,
+        "n": 36
+      }
+    }
+  },
+  "run": {
+    "k": 10,
+    "seed": 683,
+    "tier": "semantic"
+  },
+  "slices": {
+    "alias": {
+      "n_cases": 12,
+      "retrieval": {
+        "hybrid": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 12
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.7956176024115139,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9181485467338333,
+            "min": 0.38685280723454163,
+            "n": 12
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.5833333333333334,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8333333333333334,
+            "min": 0.0,
+            "n": 12
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 12
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.7333333333333334,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8916666666666666,
+            "min": 0.2,
+            "n": 12
+          }
+        },
+        "lexical": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 0.5,
+              "level": 0.95,
+              "lo": 0.08333333333333333,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.25,
+            "min": 0.0,
+            "n": 12
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.46924414613095483,
+              "level": 0.95,
+              "lo": 0.052577479464288125,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.2192441461309548,
+            "min": -0.0,
+            "n": 12
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.4166666666666667,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.16666666666666666,
+            "min": 0.0,
+            "n": 12
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 0.5,
+              "level": 0.95,
+              "lo": 0.08333333333333333,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.25,
+            "min": 0.0,
+            "n": 12
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.4583333333333333,
+              "level": 0.95,
+              "lo": 0.041666666666666664,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.20833333333333334,
+            "min": 0.0,
+            "n": 12
+          }
+        },
+        "vector": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 12
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.8467132018086354,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9489044006028785,
+            "min": 0.38685280723454163,
+            "n": 12
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.75,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9166666666666666,
+            "min": 0.0,
+            "n": 12
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 12
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.7999999999999999,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9333333333333332,
+            "min": 0.2,
+            "n": 12
+          }
+        }
+      }
+    },
+    "cross_language": {
+      "n_cases": 15,
+      "retrieval": {
+        "hybrid": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 15
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.9507906338095277,
+              "level": 0.95,
+              "lo": 0.7698292019047774,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8682479342857221,
+            "min": 0.5,
+            "n": 15
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.8666666666666667,
+              "level": 0.95,
+              "lo": 0.4,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.6666666666666666,
+            "min": 0.0,
+            "n": 15
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 15
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.9333333333333333,
+              "level": 0.95,
+              "lo": 0.6888888888888889,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8222222222222223,
+            "min": 0.3333333333333333,
+            "n": 15
+          }
+        },
+        "lexical": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 0.0,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 0.0,
+            "mean": 0.0,
+            "min": 0.0,
+            "n": 15
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": -0.0,
+              "level": 0.95,
+              "lo": -0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": -0.0,
+            "mean": -0.0,
+            "min": -0.0,
+            "n": 15
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.0,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 0.0,
+            "mean": 0.0,
+            "min": 0.0,
+            "n": 15
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 0.0,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 0.0,
+            "mean": 0.0,
+            "min": 0.0,
+            "n": 15
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.0,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 0.0,
+            "mean": 0.0,
+            "min": 0.0,
+            "n": 15
+          }
+        },
+        "vector": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 15
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.8769765845238192,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9507906338095277,
+            "min": 0.6309297535714575,
+            "n": 15
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.6666666666666666,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8666666666666667,
+            "min": 0.0,
+            "n": 15
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 15
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.8333333333333334,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9333333333333333,
+            "min": 0.5,
+            "n": 15
+          }
+        }
+      }
+    },
+    "en": {
+      "n_cases": 24,
+      "retrieval": {
+        "hybrid": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 24
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.9484108127976215,
+              "level": 0.95,
+              "lo": 0.7777706197993105,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8658184194978714,
+            "min": 0.38685280723454163,
+            "n": 24
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.875,
+              "level": 0.95,
+              "lo": 0.5,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.7083333333333334,
+            "min": 0.0,
+            "n": 24
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 24
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.9305555555555557,
+              "level": 0.95,
+              "lo": 0.7041666666666666,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8208333333333333,
+            "min": 0.2,
+            "n": 24
+          }
+        },
+        "lexical": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 0.375,
+              "level": 0.95,
+              "lo": 0.041666666666666664,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.20833333333333334,
+            "min": 0.0,
+            "n": 24
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.34424414613095483,
+              "level": 0.95,
+              "lo": 0.041666666666666664,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.19295540639881073,
+            "min": -0.0,
+            "n": 24
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.3333333333333333,
+              "level": 0.95,
+              "lo": 0.041666666666666664,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.16666666666666666,
+            "min": 0.0,
+            "n": 24
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 0.375,
+              "level": 0.95,
+              "lo": 0.041666666666666664,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.20833333333333334,
+            "min": 0.0,
+            "n": 24
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.3333333333333333,
+              "level": 0.95,
+              "lo": 0.041666666666666664,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.1875,
+            "min": 0.0,
+            "n": 24
+          }
+        },
+        "vector": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 24
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.8720147659302655,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.943696346432394,
+            "min": 0.38685280723454163,
+            "n": 24
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.7083333333333334,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.875,
+            "min": 0.0,
+            "n": 24
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 24
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.8291666666666666,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9249999999999999,
+            "min": 0.2,
+            "n": 24
+          }
+        }
+      }
+    },
+    "hard_negative": {
+      "n_cases": 36,
+      "retrieval": {
+        "hybrid": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 36
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.9487402435515914,
+              "level": 0.95,
+              "lo": 0.8272122796652476,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8900417104192174,
+            "min": 0.38685280723454163,
+            "n": 36
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.8888888888888888,
+              "level": 0.95,
+              "lo": 0.6111111111111112,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.75,
+            "min": 0.0,
+            "n": 36
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 36
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.9305555555555556,
+              "level": 0.95,
+              "lo": 0.7685185185185185,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8527777777777777,
+            "min": 0.2,
+            "n": 36
+          }
+        },
+        "lexical": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 0.25,
+              "level": 0.95,
+              "lo": 0.027777777777777776,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.1388888888888889,
+            "min": 0.0,
+            "n": 36
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.2470219239087326,
+              "level": 0.95,
+              "lo": 0.027777777777777776,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.12863693759920716,
+            "min": -0.0,
+            "n": 36
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.2222222222222222,
+              "level": 0.95,
+              "lo": 0.027777777777777776,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.1111111111111111,
+            "min": 0.0,
+            "n": 36
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 0.25,
+              "level": 0.95,
+              "lo": 0.027777777777777776,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.1388888888888889,
+            "min": 0.0,
+            "n": 36
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.2361111111111111,
+              "level": 0.95,
+              "lo": 0.027777777777777776,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.125,
+            "min": 0.0,
+            "n": 36
+          }
+        },
+        "vector": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 36
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.9829681335342928,
+              "level": 0.95,
+              "lo": 0.8907005719271572,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9419603283755659,
+            "min": 0.38685280723454163,
+            "n": 36
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.9722222222222222,
+              "level": 0.95,
+              "lo": 0.75,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8611111111111112,
+            "min": 0.0,
+            "n": 36
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 36
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.9777777777777779,
+              "level": 0.95,
+              "lo": 0.8527777777777777,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9222222222222223,
+            "min": 0.2,
+            "n": 36
+          }
+        }
+      }
+    },
+    "heldout": {
+      "n_cases": 36,
+      "retrieval": {
+        "hybrid": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 36
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.9487402435515914,
+              "level": 0.95,
+              "lo": 0.8272122796652476,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8900417104192174,
+            "min": 0.38685280723454163,
+            "n": 36
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.8888888888888888,
+              "level": 0.95,
+              "lo": 0.6111111111111112,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.75,
+            "min": 0.0,
+            "n": 36
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 36
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.9305555555555556,
+              "level": 0.95,
+              "lo": 0.7685185185185185,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8527777777777777,
+            "min": 0.2,
+            "n": 36
+          }
+        },
+        "lexical": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 0.25,
+              "level": 0.95,
+              "lo": 0.027777777777777776,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.1388888888888889,
+            "min": 0.0,
+            "n": 36
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.2470219239087326,
+              "level": 0.95,
+              "lo": 0.027777777777777776,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.12863693759920716,
+            "min": -0.0,
+            "n": 36
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.2222222222222222,
+              "level": 0.95,
+              "lo": 0.027777777777777776,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.1111111111111111,
+            "min": 0.0,
+            "n": 36
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 0.25,
+              "level": 0.95,
+              "lo": 0.027777777777777776,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.1388888888888889,
+            "min": 0.0,
+            "n": 36
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.2361111111111111,
+              "level": 0.95,
+              "lo": 0.027777777777777776,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.125,
+            "min": 0.0,
+            "n": 36
+          }
+        },
+        "vector": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 36
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.9829681335342928,
+              "level": 0.95,
+              "lo": 0.8907005719271572,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9419603283755659,
+            "min": 0.38685280723454163,
+            "n": 36
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.9722222222222222,
+              "level": 0.95,
+              "lo": 0.75,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8611111111111112,
+            "min": 0.0,
+            "n": 36
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 36
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.9777777777777779,
+              "level": 0.95,
+              "lo": 0.8527777777777777,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9222222222222223,
+            "min": 0.2,
+            "n": 36
+          }
+        }
+      }
+    },
+    "ja": {
+      "n_cases": 12,
+      "retrieval": {
+        "hybrid": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 12
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.8462207306547741,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9384882922619097,
+            "min": 0.6309297535714575,
+            "n": 12
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.5833333333333334,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8333333333333334,
+            "min": 0.0,
+            "n": 12
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 12
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.7916666666666666,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9166666666666666,
+            "min": 0.5,
+            "n": 12
+          }
+        },
+        "lexical": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 0.0,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 0.0,
+            "mean": 0.0,
+            "min": 0.0,
+            "n": 12
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": -0.0,
+              "level": 0.95,
+              "lo": -0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": -0.0,
+            "mean": -0.0,
+            "min": -0.0,
+            "n": 12
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.0,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 0.0,
+            "mean": 0.0,
+            "min": 0.0,
+            "n": 12
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 0.0,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 0.0,
+            "mean": 0.0,
+            "min": 0.0,
+            "n": 12
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.0,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 0.0,
+            "mean": 0.0,
+            "min": 0.0,
+            "n": 12
+          }
+        },
+        "vector": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 12
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.8462207306547741,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9384882922619097,
+            "min": 0.6309297535714575,
+            "n": 12
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.5833333333333334,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8333333333333334,
+            "min": 0.0,
+            "n": 12
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 12
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 0.7916666666666666,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9166666666666666,
+            "min": 0.5,
+            "n": 12
+          }
+        }
+      }
+    },
+    "paraphrase": {
+      "n_cases": 24,
+      "retrieval": {
+        "hybrid": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 24
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.9484108127976215,
+              "level": 0.95,
+              "lo": 0.793643251190486,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8759882922619097,
+            "min": 0.5,
+            "n": 24
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.875,
+              "level": 0.95,
+              "lo": 0.5416666666666666,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.7083333333333334,
+            "min": 0.0,
+            "n": 24
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 24
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.9305555555555557,
+              "level": 0.95,
+              "lo": 0.7222222222222223,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8333333333333331,
+            "min": 0.3333333333333333,
+            "n": 24
+          }
+        },
+        "lexical": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 0.20833333333333334,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.08333333333333333,
+            "min": 0.0,
+            "n": 24
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.20833333333333334,
+              "level": 0.95,
+              "lo": -0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.08333333333333333,
+            "min": -0.0,
+            "n": 24
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.20833333333333334,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.08333333333333333,
+            "min": 0.0,
+            "n": 24
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 0.20833333333333334,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.08333333333333333,
+            "min": 0.0,
+            "n": 24
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.20833333333333334,
+              "level": 0.95,
+              "lo": 0.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.08333333333333333,
+            "min": 0.0,
+            "n": 24
+          }
+        },
+        "vector": {
+          "hit_rate_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 24
+          },
+          "ndcg_at_k": {
+            "interval": {
+              "hi": 0.9846220730654774,
+              "level": 0.95,
+              "lo": 0.8769765845238192,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9384882922619097,
+            "min": 0.6309297535714575,
+            "n": 24
+          },
+          "r_precision": {
+            "interval": {
+              "hi": 0.9583333333333334,
+              "level": 0.95,
+              "lo": 0.6666666666666666,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.8333333333333334,
+            "min": 0.0,
+            "n": 24
+          },
+          "recall_at_k": {
+            "interval": {
+              "hi": 1.0,
+              "level": 0.95,
+              "lo": 1.0,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 1.0,
+            "min": 1.0,
+            "n": 24
+          },
+          "reciprocal_rank": {
+            "interval": {
+              "hi": 0.9791666666666666,
+              "level": 0.95,
+              "lo": 0.8333333333333334,
+              "method": "case_percentile_bootstrap",
+              "resamples": 1000
+            },
+            "max": 1.0,
+            "mean": 0.9166666666666666,
+            "min": 0.5,
+            "n": 24
+          }
+        }
+      }
+    }
+  }
+}

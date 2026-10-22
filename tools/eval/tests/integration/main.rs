@@ -17,6 +17,7 @@ mod ledger;
 mod metrics;
 mod record;
 mod report;
+mod semantic;
 mod trace;
 mod trend;
 

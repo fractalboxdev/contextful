@@ -107,6 +107,12 @@ pub struct RunArgs {
     /// The case file: JSON Lines, one case per line.
     #[arg(long)]
     goldens: PathBuf,
+    /// Verified real-embedding cache; reports semantic quality separately from mechanics.
+    #[arg(long, conflicts_with_all = ["baseline", "update_baseline", "checkpoint", "trace_store", "trace_endpoint", "endpoint", "model", "seed"])]
+    semantic_manifest: Option<PathBuf>,
+    /// A semantic report over the identical versioned inputs, for per-slice regressions.
+    #[arg(long, requires = "semantic_manifest")]
+    semantic_baseline: Option<PathBuf>,
     /// The rank cut-off every at-k metric uses, and the limit each ranked call passes.
     #[arg(long, default_value_t = 10)]
     k: usize,
@@ -289,17 +295,21 @@ fn row_text(row: &Map<String, Value>, key: &[String]) -> String {
 }
 
 /// Land every table of `corpus` into `store` at `at`, embedding each row that carries no
-/// embedding, then fold each table so its declared sidecars build. Returns the corpus's
-/// size in tokens.
-fn land_corpus(corpus: &Corpus, store: &Store, embedder: &StubEmbedder, at: Instant) -> Result<u64> {
+/// embedding with `embedder` — a semantic run passes none and refuses such a row — then fold
+/// each table so its declared sidecars build. Returns the corpus's size in tokens.
+fn land_corpus(corpus: &Corpus, store: &Store, embedder: Option<&StubEmbedder>, at: Instant) -> Result<u64> {
     let (node, _) = node::resolve(store, |k| std::env::var(k).ok())?;
     let mut corpus_tokens = 0;
     for (table, path) in corpus.tables()? {
         let decl = corpus.decl(&table);
         let mut rows = read_rows(&path)?;
-        for row in &mut rows {
+        for (i, row) in rows.iter_mut().enumerate() {
             corpus_tokens += systems::tokens(&row_text(row, decl.primary_key()));
             if !row.contains_key(EMBEDDING_COLUMN) {
+                let Some(embedder) = embedder else {
+                    let reason = format!("`{table}` row {} carries no embedding; a semantic run stubs none", i + 1);
+                    return Err(EvalError::EvalSemanticInputRejected { reason }.into());
+                };
                 let v = embedder.embed(&row_text(row, decl.primary_key()));
                 row.insert(EMBEDDING_COLUMN.into(), serde_json::to_value(v)?);
             }
@@ -364,13 +374,20 @@ fn read_case(
     corpus: &Corpus,
     case: &Case,
     k: usize,
-    embedder: &StubEmbedder,
+    embedder: Option<&StubEmbedder>,
     landed_at: Instant,
     fusion: Fusion,
 ) -> Result<CaseRead> {
     let anchor = instant("time_anchor", case.expected.time_anchor.as_deref(), landed_at)?;
     let since = case.expected.since.as_deref().map(|s| instant("since", Some(s), landed_at)).transpose()?;
-    let embedding = case.query_embedding.clone().unwrap_or_else(|| embedder.embed(&case.question));
+    let embedding = match (&case.query_embedding, embedder) {
+        (Some(embedding), _) => embedding.clone(),
+        (None, Some(embedder)) => embedder.embed(&case.question),
+        (None, None) => {
+            let reason = format!("case `{}` carries no embedding; a semantic run stubs none", case.id);
+            return Err(EvalError::EvalSemanticInputRejected { reason }.into());
+        }
+    };
     let prefix = case.prefix.clone().unwrap_or_default();
     let mut legs = BTreeMap::new();
     let mut reader_tokens = systems::tokens(&case.question);
@@ -430,6 +447,13 @@ pub fn run(cmd: EvalCmd) -> Result<()> {
 }
 
 fn run_cases(a: RunArgs) -> Result<()> {
+    let semantic = a.semantic_manifest.as_ref().map(|manifest| {
+        if a.tier != RunTier::Deterministic {
+            bail!("semantic quality runs without answer judging; use the deterministic reader tier");
+        }
+        let fusion = match a.fusion { Fusion::MinMax => "min-max", Fusion::ReciprocalRank => "reciprocal-rank" };
+        contextful_eval::semantic::Benchmark::open(manifest, &a.goldens, a.k, fusion).map_err(anyhow::Error::msg)
+    }).transpose()?;
     let text = std::fs::read_to_string(&a.goldens).with_context(|| format!("reading `{}`", a.goldens.display()))?;
     let cases = case::load(&text).map_err(|e| anyhow::anyhow!("`{}`: {e}", a.goldens.display()))?;
     // The judged tier reaches the operator's endpoint; the host holds its key
@@ -495,6 +519,8 @@ fn run_cases(a: RunArgs) -> Result<()> {
     let (authority, revocation) = a.admit.admit(None, "the evaluation run")?;
     let landed_at = instant("--landed-at", a.landed_at.as_deref(), Instant::from_unix_nanos(0)?)?;
     let embedder = StubEmbedder::new(a.seed);
+    // A semantic run reads verified vectors alone; no row or question takes the stub.
+    let stub = semantic.is_none().then_some(&embedder);
     let pepper = Pepper::resolve(|k| std::env::var(k).ok());
     if let Some(signal) = pepper.signal() {
         eprintln!("{signal}");
@@ -519,7 +545,7 @@ fn run_cases(a: RunArgs) -> Result<()> {
         }
         let scratch = tempfile::tempdir()?;
         let store = Store::open(scratch.path(), SCRATCH_PROJECT)?;
-        let corpus_tokens = land_corpus(corpus, &store, &embedder, landed_at)?;
+        let corpus_tokens = land_corpus(corpus, &store, stub, landed_at)?;
         let face = Face::open(store, &corpus.manifest, pepper.clone())?;
         let s = session(&face, &authority, &revocation, a.zone.as_deref())?;
         for &i in idx {
@@ -527,7 +553,7 @@ fn run_cases(a: RunArgs) -> Result<()> {
                 continue;
             }
             let started = std::time::Instant::now();
-            let read = read_case(&face, &s, corpus, &cases[i], a.k, &embedder, landed_at, a.fusion)?;
+            let read = read_case(&face, &s, corpus, &cases[i], a.k, stub, landed_at, a.fusion)?;
             let systems = Systems {
                 tokens: read.reader_tokens,
                 latency_ms: started.elapsed().as_secs_f64() * 1000.0,
@@ -536,8 +562,10 @@ fn run_cases(a: RunArgs) -> Result<()> {
                 corpus_tokens,
                 context_window: a.context_window,
             };
-            let judged = judge::judge_case(&cases[i], &read.rows, reader.as_ref(), judge.as_ref()).map_err(anyhow::Error::msg)?;
-            let result = CaseResult { id: cases[i].id.clone(), legs: read.legs, edges: None, systems: Some(systems), judged: Some(judged) };
+            let judged = if semantic.is_some() { None } else {
+                Some(judge::judge_case(&cases[i], &read.rows, reader.as_ref(), judge.as_ref()).map_err(anyhow::Error::msg)?)
+            };
+            let result = CaseResult { id: cases[i].id.clone(), legs: read.legs, edges: None, systems: Some(systems), judged };
             if let Some(cp) = &mut checkpoint {
                 cp.append(&result)?;
             }
@@ -548,8 +576,25 @@ fn run_cases(a: RunArgs) -> Result<()> {
     let mut runs: Vec<CaseRun<'_>> = Vec::with_capacity(cases.len());
     for (case, r) in cases.iter().zip(results) {
         let r = r.expect("every case read or resumed");
-        judged.push(r.judged.with_context(|| format!("case `{}` carries no judged result; its checkpoint predates the reading stage", case.id))?);
+        if semantic.is_none() {
+            judged.push(r.judged.with_context(|| format!("case `{}` carries no judged result; its checkpoint predates the reading stage", case.id))?);
+        }
         runs.push(CaseRun { case, legs: r.legs, edges: r.edges, systems: r.systems });
+    }
+    if let Some(benchmark) = semantic {
+        let mut report = benchmark.report(&runs, benchmark.seed()).map_err(anyhow::Error::msg)?;
+        let regressions = if let Some(path) = &a.semantic_baseline {
+            let baseline = serde_json::from_slice(&std::fs::read(path)?)?;
+            benchmark.regressions(&report, &baseline).map_err(anyhow::Error::msg)?
+        } else { Vec::new() };
+        report["regressions"] = serde_json::to_value(&regressions)?;
+        let text = serde_json::to_string_pretty(&report)? + "\n";
+        match &a.report {
+            Some(path) => std::fs::write(path, text)?,
+            None => print!("{text}"),
+        }
+        if !regressions.is_empty() { bail!("semantic quality: {} overall or slice regressions", regressions.len()); }
+        return Ok(());
     }
     let mut report = report::build(&stamp, a.seed, &runs);
     report["judge"] = judge::fold(&judged, a.seed).to_json();
