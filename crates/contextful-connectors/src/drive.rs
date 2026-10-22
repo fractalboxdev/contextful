@@ -433,7 +433,7 @@ impl Drive {
             for id in ids {
                 if cancel.requested() { return Err(Failure::canceled("stopped between picked files")); }
                 let mut url = self.config.api(&format!("/drive/v3/files/{id}"));
-                url.query_pairs_mut().append_pair("fields", "id,name,mimeType,modifiedTime,version,size,md5Checksum,driveId").append_pair("supportsAllDrives", "true");
+                url.query_pairs_mut().append_pair("fields", "id,name,mimeType,modifiedTime,version,size,md5Checksum,driveId,trashed").append_pair("supportsAllDrives", "true");
                 let response = self.get(&self.api, &url)?;
                 let reason = serde_json::from_slice::<Value>(&response.body).ok().and_then(|body| {
                     body.pointer("/error/errors/0/reason").and_then(Value::as_str).map(str::to_string)
@@ -453,6 +453,14 @@ impl Drive {
                 let mime = text("mimeType").unwrap_or_default();
                 if text("id").as_deref() != Some(id) || mime == FOLDER || text("name").is_none() || text("modifiedTime").is_none() || text("version").and_then(|v| v.parse::<i64>().ok()).is_none() {
                     return Err(Failure::deterministic(FailureTag::Config, ConnectorError::ConnectorDriveFileRejected(format!("selected id `{id}` is not a readable file")).to_string()));
+                }
+                if let Some(drive) = self.config.drive_id.as_deref().filter(|d| text("driveId").as_deref() != Some(*d)) {
+                    return Err(Failure::deterministic(FailureTag::Config, ConnectorError::ConnectorDriveFileRejected(format!("selected id `{id}` is not in drive `{drive}`")).to_string()));
+                }
+                // A trashed file is withdrawn as an inaccessible one is, as the folder walk lists `trashed = false`.
+                if meta.get("trashed").and_then(Value::as_bool) == Some(true) {
+                    revoked.insert(id.clone());
+                    continue;
                 }
                 let name = text("name").unwrap();
                 entries.push(Entry { id: id.clone(), path: name.clone(), resolved_root: id.clone(), name, mime, modified: text("modifiedTime").unwrap(), version: text("version").and_then(|v| v.parse().ok()), size: text("size").and_then(|v| v.parse().ok()), md5: text("md5Checksum") });
@@ -835,8 +843,11 @@ impl DriveSource {
         let previous_mode = position.and_then(|p| p.get("mode")).and_then(Value::as_str).unwrap_or("bytes-and-pages");
         let mode_changed = previous_mode != self.drive.config.mode.as_str();
         let entries = self.drive.walk(cancel)?;
-        for id in self.drive.revoked.lock().unwrap().iter() {
-            if !before.contains_key(id) {
+        // A withdrawn id stays in the position, so a later fire neither refuses nor tombstones it again.
+        let prior_withdrawn: BTreeSet<String> = position.and_then(|p| p.get("withdrawn")).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
+        let withdrawn = self.drive.revoked.lock().unwrap().clone();
+        for id in &withdrawn {
+            if !before.contains_key(id) && !prior_withdrawn.contains(id) {
                 return Err(Failure::deterministic(FailureTag::Config, ConnectorError::ConnectorDriveFileRejected(format!("selected id `{id}` is inaccessible to this credential")).to_string()));
             }
         }
@@ -894,7 +905,10 @@ impl DriveSource {
             }
         }
         let mut next = json!({ "files": after, "drive_id": self.drive.config.drive_id, "roots": roots, "mode": self.drive.config.mode.as_str() });
-        if let Some(ids) = ids { next["file_ids"] = json!(ids); }
+        if let Some(ids) = ids {
+            next["file_ids"] = json!(ids);
+            next["withdrawn"] = json!(withdrawn);
+        }
         if let Some(scope) = &self.scope {
             next["connection_id"] = json!(scope.connection_id);
             next["tenant"] = json!(scope.tenant);

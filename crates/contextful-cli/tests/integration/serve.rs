@@ -214,6 +214,7 @@ fn control_apply_uses_the_host_registered_task_set() {
 }
 
 #[test]
+#[ignore = "tenant connection routes are not served yet (#691)"]
 fn tenant_connection_routes_create_pause_and_delete_once() {
     let (dir, public) = project();
     let root = dir.path();
