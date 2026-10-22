@@ -526,6 +526,33 @@ fn published_workflows_include_completed_local_runs_before_sync_push() {
     assert!(connectors.iter().any(|connector| connector["name"] == "http" && connector["available"] == true));
 }
 
+/// A run another node replicated after the newest local run is the published latest outcome;
+/// the local row's detail accompanies that run alone, so an older local success never masks it.
+#[test]
+fn published_run_detail_follows_the_newest_run_across_nodes() {
+    let vendor = super::pipeline::Vendor::start(|_| (200, "[{\"note_id\":\"filed\"}]".into()));
+    let (dir, public) = project();
+    let root = dir.path();
+    let pipeline = format!("[[pipeline]]\nid = \"filings-flow\"\ntables = [\"research/filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n", vendor.url("/filings"));
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    stdout(&run(root, &["pipeline", "run", "filings-flow", "--project", "research", "--run-id", "older-local-run", "--site-id", "site-a"]));
+    let store = contextful_context::Store::open(root, "research").unwrap();
+    let now = i64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()).unwrap();
+    let later = Instant::from_unix_secs(now + 3600).unwrap();
+    let mark = contextful_sync::RunMark { run_id: "newer-remote-run".into(), table: "research_filings".into(), status: contextful_core::run::record::RunStatus::Failed, started_at: later, ended_at: Some(later) };
+    let state = contextful_sync::RunState { format: contextful_sync::run_state::RUN_STATE_FORMAT, node_id: "ingest-remote".into(), runs: [("filings-flow".to_string(), mark)].into_iter().collect(), cursors: Vec::new(), control_version: None };
+    contextful_sync::run_state::record(&store, &state).unwrap();
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["runs"]["filings-flow"]["run_id"], "newer-remote-run");
+    assert_eq!(view["runs"]["filings-flow"]["status"], "failed");
+    assert!(view["run_details"]["filings-flow"].is_null(), "an older local row details no newer replicated run: {}", view["run_details"]);
+}
+
 #[test]
 fn admin_source_draft_validates_before_apply_and_observes_native_rows_from_the_claimed_document() {
     let calls = std::sync::Arc::new(AtomicU64::new(0));

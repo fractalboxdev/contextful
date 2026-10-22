@@ -6,14 +6,13 @@ contract: surface
 
 ## What it is for
 
-The console's Query page answers questions with grounded prose, widgets and sources
-({{surface.ground.sources-block}}). Its Admin page shows workflows ({{surface.visualize.workflow-canvas}}), outcomes
-and learnings, drafts ingest sources ({{surface.edit.source-draft}}) with applied-version run confirmation
-({{surface.visualize.source-run-confirmation}}), and edits the control document ({{surface.open-console.engine-faces}}). Hosted deployments gate each page
-and its API ({{surface.open-console.identity-gate}}, {{surface.open-console.page-grants}}).
+Query answers questions with grounded prose, widgets and sources
+({{surface.ground.sources-block}}). Admin shows workflows ({{surface.visualize.workflow-canvas}}), outcomes
+and learnings, drafts ingest sources ({{surface.edit.source-draft}}) confirmed per applied version
+({{surface.visualize.source-run-confirmation}}), and edits the control document ({{surface.open-console.engine-faces}}).
+Hosted deployments gate each page and its API ({{surface.open-console.identity-gate}}, {{surface.open-console.page-grants}}).
 The control plane arms work the engine names;
-Query reaches rows through governed reads under the operator's credential
-({{assurance.structure-tree.one-home}}).
+Query reaches rows through governed reads under the operator's credential ({{assurance.structure-tree.one-home}}).
 
 ```mermaid
 flowchart LR
@@ -76,8 +75,7 @@ Synced apply records an admin-attested snapshot ({{surface.apply.synced-attestat
 Each page and API route verifies the operator's identity assertion and that page's grant
 ({{surface.open-console.page-routes}}, {{surface.open-console.wrong-page}}).
 Admin edit and apply also require the server's admin capability
-({{surface.open-console.admin-grant}}). Admin canvas edits reach the reconciler's
-control document.
+({{surface.open-console.admin-grant}}).
 
 Query turns one question into one answer ({{surface.plan-turn.turn-flow}}). The server, never the client, chooses
 every capability a turn exercises: tools come from the turn's admitted packs

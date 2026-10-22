@@ -149,6 +149,8 @@ The Admin page's operational views.
   *because an older version completing after an apply proves no ingestion under the claimed source definition*
 - `first-source-run` — Admin retains the first matching table outcome, including zero-row success, beside the latest outcome, rows and actionable failure; multiple-table outcomes name the table.
   *A-surface*
+- `latest-outcome` — Admin's latest table outcome is the newest run across local and replicated run records; row count and failure accompany it only when the local record is that same run.
+  *because an older local record detailed beside a newer replicated mark displays a stale success*
 - `dataflow-edges` — The published workflow lists edges `{from, to, via}` between typed node ids: pipeline and build-job `after`, pipeline to produced table, table or model to its reading model or job, build job to model, job to written table and publication.
   *because a graph the client infers from names draws edges the store never declared*
 - `external-step` — Admin draws each `[[external]]` declaration as a node marked as run outside the engine, joined by its inputs and outputs; the engine runs, schedules and records nothing for it.
@@ -162,6 +164,8 @@ The Admin page's operational views.
 - `operational-record` — Admin's inspector, pack file surface and learnings view present the store-published operational record.
   *A-surface*
 - `listing-page` — One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve.
+
+unsettled: Does a replicated run mark carry the row count, failure kind and version-bound receipt that confirm a first run landed on another node? owner: surface affects: surface.visualize
 
 ## package
 

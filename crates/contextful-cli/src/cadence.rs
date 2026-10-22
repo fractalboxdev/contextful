@@ -291,6 +291,9 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
             run_details.insert(row.pipeline_id.clone(), row);
         }
     }
+    // A local row details the newest run alone; beside a newer mark another node replicated,
+    // the client falls through to that mark (`surface.visualize.latest-outcome`).
+    run_details.retain(|id, row| runs.get(id).is_some_and(|mark| mark.run_id == row.run_id));
     let run_view = |row: &contextful_core::run::record::RunRow| json!({
         "run_id": row.run_id, "table": row.table, "status": row.status,
         "rows": row.rows, "started_at": row.started_at, "ended_at": row.ended_at,
