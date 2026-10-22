@@ -3,7 +3,7 @@ import { CheckIcon, FileCode2Icon, LoaderIcon, SaveIcon, WorkflowIcon } from "lu
 import { post, RequestFailure, Shell, StoreSelect, TopNav, type Store } from "./shell.tsx";
 import { workflowGraph, type GraphNode, type NodeKind, type Workflows } from "./graph.ts";
 import { Badge, Button, Textarea, cn } from "./ui.tsx";
-import { appendSource, sourceOutcome, type SourceDraft } from "./sources.ts";
+import { reduceDraft, sourceOutcome, type Draft, type SourceDraft } from "./sources.ts";
 
 type Loaded<T> = { store: string; value: T } | { store: string; error: string };
 
@@ -174,7 +174,8 @@ function GraphNodeCard({ node, style }: { node: GraphNode; style: { left: number
 
 /** Save a TOML draft against the applied version, then apply that draft by its nonce. */
 function ControlDocument({ store, applied, workflows, onApplied }: { store: string; applied: number | null; workflows: Workflows | null; onApplied: () => void }) {
-  const [text, setText] = useState("");
+  const [draft, setDraft] = useState<Draft>({ text: "", pending: null });
+  const text = draft.text;
   const [nonce, setNonce] = useState<string | null>(null);
   const [result, setResult] = useState("");
   const [busy, setBusy] = useState<"edit" | "apply" | null>(null);
@@ -184,18 +185,24 @@ function ControlDocument({ store, applied, workflows, onApplied }: { store: stri
   const [source, setSource] = useState<SourceDraft>({ id: "", connector: "http", table: "", schedule: "every 1h", config: 'endpoint = "https://example.com/data"' });
 
   useEffect(() => {
-    if (!dirty && workflows?.document !== undefined) { setText(workflows.document); setBase(applied); }
+    if (!dirty && workflows?.document !== undefined) { setDraft({ text: workflows.document, pending: null }); setBase(applied); }
   }, [workflows?.document, applied, dirty]);
 
   useEffect(() => {
     if (dirty && base !== applied) { setNonce(null); setResult("The applied version changed. Reload the control document and validate your draft again."); }
   }, [applied, base, dirty]);
 
-  function change(value: string) { setText(value); setDirty(true); setNonce(null); setResult(""); setField(undefined); }
+  function change(next: Draft) { setDraft(next); setDirty(true); setNonce(null); setResult(""); setField(undefined); }
 
   function addSource() {
-    try { change(appendSource(text, source)); setResult("Source added to the draft. Validate and save before applying."); }
+    try { change(reduceDraft(draft, { type: "add", source })); setResult("Source added to the draft; form edits keep updating it. Validate and save before applying."); }
     catch (error) { setResult(error instanceof Error ? error.message : "Check the source fields."); }
+  }
+
+  /** A field edit re-renders the pending declaration in place; before an add, or after a raw edit, it changes the form alone. */
+  function editSource(next: SourceDraft) {
+    setSource(next);
+    if (draft.pending !== null) change(reduceDraft(draft, { type: "field", source: next }));
   }
 
   async function run(action: "edit" | "apply") {
@@ -241,12 +248,12 @@ function ControlDocument({ store, applied, workflows, onApplied }: { store: stri
           <input id={`source-${key}`} value={source[key]} list={key === "connector" ? "source-connectors" : undefined}
             aria-invalid={field === ({ id: "identity", connector: "source", table: "destination", schedule: "schedule" } as const)[key] || undefined}
             aria-describedby={field === ({ id: "identity", connector: "source", table: "destination", schedule: "schedule" } as const)[key] ? "result" : undefined}
-            onChange={(event) => setSource((current) => ({ ...current, [key]: event.target.value }))} className="rounded-lg border border-input bg-transparent p-2 text-sm" />
+            onChange={(event) => editSource({ ...source, [key]: event.target.value })} className="rounded-lg border border-input bg-transparent p-2 text-sm" />
         </label>)}
         <datalist id="source-connectors">{workflows?.connectors?.map((connector) => <option key={connector.name} value={connector.name}>{connector.available ? "Available" : "Unavailable in this build"}</option>)}</datalist>
         <p className="text-xs text-muted-foreground md:col-span-2">Destination: this store. Use an available native connector or a registered component reference. The store validates connector fields and table compatibility.</p>
         <label htmlFor="source-config" className="flex flex-col gap-1 text-xs md:col-span-2">Connector configuration (TOML; credential references only)
-          <Textarea id="source-config" value={source.config} aria-invalid={field === "source" || undefined} aria-describedby={field === "source" ? "result" : undefined} onChange={(event) => setSource((current) => ({ ...current, config: event.target.value }))} className="font-mono text-xs" spellCheck={false} />
+          <Textarea id="source-config" value={source.config} aria-invalid={field === "source" || undefined} aria-describedby={field === "source" ? "result" : undefined} onChange={(event) => editSource({ ...source, config: event.target.value })} className="font-mono text-xs" spellCheck={false} />
         </label>
         <Button type="button" variant="outline" onClick={addSource}>Add source to draft</Button>
       </fieldset>
@@ -262,7 +269,7 @@ function ControlDocument({ store, applied, workflows, onApplied }: { store: stri
         </p>
       </div>
       <label htmlFor="document" className="text-xs text-muted-foreground">TOML document — advanced editing</label>
-      <Textarea id="document" value={text} aria-invalid={field !== undefined || undefined} aria-describedby="result" onChange={(event) => change(event.target.value)} spellCheck={false}
+      <Textarea id="document" value={text} aria-invalid={field !== undefined || undefined} aria-describedby="result" onChange={(event) => change(reduceDraft(draft, { type: "replace", text: event.target.value }))} spellCheck={false}
         placeholder={"[pipelines.example]\nschedule = \"every 1h\""} className="min-h-48 font-mono text-xs" />
       <div className="flex items-center gap-2">
         <Button id="edit" type="button" variant="outline" disabled={busy !== null || workflows?.document === undefined || base !== applied} onClick={() => void run("edit")}>
