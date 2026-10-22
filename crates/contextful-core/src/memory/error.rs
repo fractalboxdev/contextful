@@ -18,6 +18,15 @@ pub enum MemoryError {
     /// An entity upsert names a name or alias another entity already carries. (`read.resolve-entity.alias-conflict`)
     #[error("MemoryEntityAliasConflict: {0}")]
     EntityAliasConflict(String),
+    /// An entity upsert targets a table declaring `available_time`. (`read.resolve-entity.upsert-availability`)
+    #[error("MemoryEntityAvailabilityDeclared: {0}")]
+    EntityAvailabilityDeclared(String),
+    /// An entity upsert carries an id, kind, name or alias empty after trimming. (`read.resolve-entity.upsert-fields`)
+    #[error("MemoryEntityFieldEmpty: {0}")]
+    EntityFieldEmpty(String),
+    /// An entity upsert's read of its table came back truncated. (`read.resolve-entity.upsert-whole-table`)
+    #[error("MemoryEntityTableTruncated: {0}")]
+    EntityTableTruncated(String),
     /// A mention resolves onto two identities with no separating key. (`read.resolve-entity.ambiguous-mention`)
     #[error("MemoryEntityAmbiguous: {0}")]
     EntityAmbiguous(String),
@@ -79,6 +88,9 @@ impl MemoryError {
             MemoryError::DirectWriteShapeRefused(_) => "MemoryDirectWriteShapeRefused",
             MemoryError::EdgeEndpointUnresolved(_) => "MemoryEdgeEndpointUnresolved",
             MemoryError::EntityAliasConflict(_) => "MemoryEntityAliasConflict",
+            MemoryError::EntityAvailabilityDeclared(_) => "MemoryEntityAvailabilityDeclared",
+            MemoryError::EntityFieldEmpty(_) => "MemoryEntityFieldEmpty",
+            MemoryError::EntityTableTruncated(_) => "MemoryEntityTableTruncated",
             MemoryError::EntityAmbiguous(_) => "MemoryEntityAmbiguous",
             MemoryError::EvidenceOverflow(_) => "MemoryEvidenceOverflow",
             MemoryError::ExplainNotEntities(_) => "MemoryExplainNotEntities",

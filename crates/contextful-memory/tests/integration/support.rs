@@ -106,6 +106,15 @@ impl Fixture {
 
     /// An authority whose credential signs `zone`.
     pub fn authority_in(&self, agent: &str, actions: &[Action], tables: &[&str], zone: &str) -> AdmittedAuthority {
+        self.authority_with(agent, actions, tables, zone, None)
+    }
+
+    /// An authority whose grant caps each read at `max_rows`.
+    pub fn authority_capped(&self, agent: &str, actions: &[Action], tables: &[&str], max_rows: u64) -> AdmittedAuthority {
+        self.authority_with(agent, actions, tables, "on-prem:hq", Some(max_rows))
+    }
+
+    fn authority_with(&self, agent: &str, actions: &[Action], tables: &[&str], zone: &str, max_rows: Option<u64>) -> AdmittedAuthority {
         let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
         let subject = Subject {
             on_behalf_of: Some("user://dana@acme.example".into()),
@@ -120,7 +129,7 @@ impl Fixture {
             tenant: None,
             aggregate: None,
             templates: None,
-            max_rows: None,
+            max_rows,
             max_duration_ms: None,
             max_response_bytes: None,
         };

@@ -47,8 +47,14 @@ fn an_edge_with_an_unresolved_endpoint_is_refused() {
 }
 
 #[test]
-fn an_alias_conflict_prints_its_identifier_first() {
-    let e = MemoryError::EntityAliasConflict("`Acme Corp` already names entity `e-1`".into());
-    assert_eq!(e.identifier(), "MemoryEntityAliasConflict");
-    assert!(e.to_string().starts_with("MemoryEntityAliasConflict: "), "{e}");
+fn each_entity_upsert_refusal_prints_its_identifier_first() {
+    for (e, id) in [
+        (MemoryError::EntityAliasConflict("`Acme Corp` already names entity `e-1`".into()), "MemoryEntityAliasConflict"),
+        (MemoryError::EntityAvailabilityDeclared("`memory/entities` declares `published_at`".into()), "MemoryEntityAvailabilityDeclared"),
+        (MemoryError::EntityFieldEmpty("the entity's name is empty".into()), "MemoryEntityFieldEmpty"),
+        (MemoryError::EntityTableTruncated("`memory/entities` holds more rows than one read returns".into()), "MemoryEntityTableTruncated"),
+    ] {
+        assert_eq!(e.identifier(), id);
+        assert!(e.to_string().starts_with(&format!("{id}: ")), "{e}");
+    }
 }

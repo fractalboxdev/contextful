@@ -59,6 +59,9 @@ MemoryObservationOutOfOrder   = { clause = "read.revise.observed-order", gloss =
 MemoryRecallNotClaims         = { clause = "read.recall.keyed-not-claims", gloss = "A keyed recall named a table declaring no `memory_facts` shape." }
 MemoryEntityAmbiguous         = { clause = "read.resolve-entity.ambiguous-mention", gloss = "A mention resolves onto two identities with no separating key." }
 MemoryEntityAliasConflict     = { clause = "read.resolve-entity.alias-conflict", gloss = "An entity upsert names a name or alias another entity already carries." }
+MemoryEntityFieldEmpty        = { clause = "read.resolve-entity.upsert-fields", gloss = "An entity upsert carried an id, kind, name or alias empty after trimming." }
+MemoryEntityTableTruncated    = { clause = "read.resolve-entity.upsert-whole-table", gloss = "An entity upsert's session read of its table returned truncated." }
+MemoryEntityAvailabilityDeclared = { clause = "read.resolve-entity.upsert-availability", gloss = "An entity upsert targeted a table declaring `available_time`." }
 MemoryEdgeEndpointUnresolved  = { clause = "read.resolve-entity.edge-endpoint", gloss = "A candidate edge endpoint resolves to no identity." }
 MemoryExplainNotEntities      = { clause = "read.resolve-entity.card-not-entities", gloss = "A knowledge card named a table declaring no `memory_entities` shape." }
 MemoryTraverseRelationUnwalkable = { clause = "read.traverse.walkable", gloss = "A traversal named a relation its declaration does not mark walkable." }
