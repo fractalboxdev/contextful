@@ -255,3 +255,33 @@ fn a_never_offered_stranded_group_yields_to_the_next_stage() {
     assert!(!sender.stage(&group_plan(json!("later")), &rows, "reader").unwrap());
     assert!(matches!(sender.batch(), Err(ExportError::ExportEventTooLarge(_))));
 }
+
+#[test]
+fn a_sender_resumes_after_an_acknowledged_sequence_whatever_its_batch_boundaries() {
+    use contextful_core::export::publication::publication;
+    let rows: Vec<Value> = (0..1200).map(|id| json!({"id": id})).collect();
+    let states = group_states(&rows);
+    let pending = publication(group_plan(json!("digest")), &BTreeMap::new(), &states).unwrap();
+    let group = pending.group.id.clone();
+    let sender = sender_with(&pending, &states, 0);
+    let first = sender.batch().unwrap().unwrap();
+    let through = first.events.last().unwrap().sequence;
+
+    // A sequence inside this binary's first batch, as a binary cutting shorter batches acknowledged.
+    let mut resumed = sender.clone();
+    resumed.resume(&group, through - 7).unwrap();
+    let next = resumed.batch().unwrap().unwrap();
+    assert_eq!(next.events[0].sequence, through - 6);
+    assert!(!resumed.acknowledge(&group, next.events.last().unwrap().sequence).unwrap());
+
+    // Another group, an unknown sequence or the completing one refuses.
+    assert!(sender.clone().resume("another", through).is_err());
+    assert!(sender.clone().resume(&group, u64::MAX).is_err());
+    assert!(sender.clone().resume(&group, pending.events.last().unwrap().sequence).is_err());
+
+    // A sequence already behind the outbox's own offset refuses; one past it advances.
+    let mut advanced = sender_with(&pending, &states, first.events.len());
+    assert!(advanced.clone().resume(&group, through).is_err());
+    advanced.resume(&group, through + 1).unwrap();
+    assert_eq!(advanced.batch().unwrap().unwrap().events[0].sequence, through + 2);
+}

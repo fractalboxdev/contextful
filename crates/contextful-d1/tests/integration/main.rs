@@ -31,10 +31,16 @@ struct Fixture {
 
 impl Fixture {
     fn start() -> Self {
+        Self::start_capped(None)
+    }
+
+    /// A fixture whose statement requests over `statement_bytes` lose their connection.
+    fn start_capped(statement_bytes: Option<usize>) -> Self {
         let root = tempfile::tempdir().unwrap();
         let mut process = Command::new("node")
             .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixture.mjs"))
             .arg(root.path())
+            .args(statement_bytes.map(|bytes| bytes.to_string()))
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()

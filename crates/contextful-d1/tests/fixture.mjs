@@ -4,6 +4,8 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from "
 import { join } from "node:path";
 
 const root = process.argv[2];
+// A statement request over this many bytes loses its connection unanswered.
+const statementBytes = Number(process.argv[3] ?? Infinity);
 const db = new DatabaseSync(join(root, "execution.sqlite"));
 mkdirSync(join(root, "blobs"), { recursive: true });
 
@@ -28,6 +30,10 @@ const server = createServer(async (request, response) => {
     }
     requests.total += 1;
     requests.paths[path] = (requests.paths[path] ?? 0) + 1;
+    if ((path === "/sql" || path === "/batch") && body.length > statementBytes) {
+      request.socket.destroy();
+      return;
+    }
     let value;
     if (path === "/health") {
       value = { d1: true, r2: true };

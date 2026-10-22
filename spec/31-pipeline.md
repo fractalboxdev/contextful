@@ -429,8 +429,12 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *A-run*
 - `group-d1-lease` — A `cloudflare-d1` group writer holds one durable D1 lease per publication, and every sender write predicates on that lease and the row's prior version.
   *A-run*
-- `group-d1-spill` — A `cloudflare-d1` sender row over 1 MiB holds the SHA-256 of an R2 object written before the row commits; the blob sweep keeps every object a publication row references.
-  *because D1 bounds each row's size, and an R2 object reached only through a committed row is never half visible*
+- `group-d1-spill` — A `cloudflare-d1` sender row over 64 KiB holds the SHA-256 of an R2 object written before the row commits; the blob sweep keeps every object a publication row references.
+  *because a D1 write crosses the binding once and never resends, an R2 put resends, and an object reached only through a committed row is never half visible*
+- `group-d1-acknowledge` — A `cloudflare-d1` acknowledgement short of group completion advances the sender row's version and records the group and acknowledged sequence in a row of its own, leaving the outbox body unwritten.
+  *because the outbox holds the group's delivered base and next state, so rewriting it per batch scales every acknowledgement with the published tables*
+- `group-d1-resume` — Reading a `cloudflare-d1` outbox resumes after the event carrying its recorded acknowledged sequence, whatever batch boundaries the reading binary cuts; a sequence naming no unacknowledged event of the pending group fails every read.
+  *because batch boundaries follow the reading binary's request ceiling, row cap and event encoding, which a replacement binary may change*
 - `group-d1-recovery` — After an empty-disk replacement, `contextful export group` resumes a staged or partially acknowledged `cloudflare-d1` group from D1, reoffering identical group and event identifiers before staging a later frontier.
   *A-run*
 
@@ -439,6 +443,8 @@ The outbound copy of a landed table to an operator-declared target: the export b
 - `run.export.group-stranded`: WHEN an earlier sender staged a group whose header alone exceeds the request ceiling, THEN the next `contextful export group` replaces it with a digest-headed group and delivers it.
 - `run.export.group-d1-recovery`: WHEN the container stops after D1 commits a staged group and before any delivery, THEN its replacement delivers that group's exact bytes and the receiver activates every member together.
 - `run.export.group-d1-state`: WHEN a replacement loses the acknowledgement of the group-complete batch, THEN it reoffers that batch, and the receiver's accepted group absorbs the retry without a second activation.
+- `run.export.group-d1-acknowledge`: WHEN a receiver completes a group of 880 deletes whose final acknowledgement the sender lost, THEN the replacement reoffers from the last recorded sequence, the receiver absorbs the retry, and the sender promotes the group.
+- `run.export.group-d1-resume`: WHEN a replacement whose batches end elsewhere reads an outbox acknowledged through a sequence inside its first batch, THEN it offers from the next event.
 
 unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export
 
