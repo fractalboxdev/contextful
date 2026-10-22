@@ -2,7 +2,7 @@
 #![cfg(feature = "drive")]
 
 use crate::support::{request, resolver, Never, Request, Response, Server};
-use contextful_connectors::drive::{BodyStore, Drive, DriveConfig, DriveSource, PageDecoder};
+use contextful_connectors::drive::{BodyStore, Drive, DriveConfig, DriveScope, DriveSource, PageDecoder};
 use contextful_connectors::http::ConfigError;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Source;
@@ -201,6 +201,35 @@ fn picker_file_ids_capture_and_withdraw_without_folder_listing() {
     let (rows, _, _) = pull(&mut second.source("files").unwrap(), Some(position));
     assert_eq!(by_id(&rows, "doc-plan")["capture_status"], "removed");
     assert_eq!(by_id(&rows, "sheet-budget")["capture_status"], "captured");
+}
+
+#[test]
+fn bound_drive_rows_and_positions_keep_connection_identity() {
+    let fake = Fake::start();
+    fake.overlay("picks.json");
+    let mut config = fake.config(json!({"file_ids": ["doc-plan"]}));
+    config.as_object_mut().unwrap().remove("folder_id");
+    let parsed = DriveConfig::parse_picks(&config).unwrap();
+    let secrets = || resolver(vec![("drive-refresh", REFRESH), ("drive-client-id", "client-7.apps.example"), ("drive-client-secret", CLIENT_SECRET)]);
+    let a = Drive::new(parsed.clone(), secrets(), Arc::new(InProcess), Arc::new(Held::default())).unwrap();
+    let b = Drive::new(parsed, secrets(), Arc::new(InProcess), Arc::new(Held::default())).unwrap();
+    let a_scope = DriveScope { connection_id: "conn-a".into(), tenant: "tenant-a".into(), principal: "user-a".into() };
+    let b_scope = DriveScope { connection_id: "conn-b".into(), tenant: "tenant-b".into(), principal: "user-b".into() };
+    let (a_rows, a_position, _) = pull(&mut a.source_bound("files", a_scope.clone()).unwrap(), None);
+    let (b_rows, b_position, _) = pull(&mut b.source_bound("files", b_scope).unwrap(), None);
+    assert_eq!(a_rows[0]["tenant"], "tenant-a");
+    assert_eq!(a_rows[0]["principal"], "user-a");
+    assert_eq!(a_rows[0]["connection_id"], "conn-a");
+    assert_eq!(b_rows[0]["tenant"], "tenant-b");
+    assert_eq!(b_rows[0]["principal"], "user-b");
+    assert_ne!(a_rows[0]["connection_id"], b_rows[0]["connection_id"]);
+    assert_ne!(a_position["connection_id"], b_position["connection_id"]);
+
+    let (removed, _, _) = pull(&mut a.source_bound("files", a_scope).unwrap(), Some(json!({
+        "files": {"doc-gone": {"modified": "2030-01-01T00:00:00Z", "path": "Gone", "name": "Gone", "version": 1, "resolved_root": "doc-gone", "pages": 0}},
+        "connection_id": "conn-a", "tenant": "tenant-a", "principal": "user-a", "file_ids": ["doc-gone"], "drive_id": null, "roots": [], "mode": "bytes-and-pages"
+    })));
+    assert!(removed.iter().any(|row| row["file_id"] == "doc-gone" && row["removed"] == true && row["tenant"] == "tenant-a" && row["connection_id"] == "conn-a"));
 }
 
 /// Ambiguous and oversized Picker selections refuse before any provider request.
