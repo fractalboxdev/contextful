@@ -158,3 +158,47 @@ fn canonical_claim_ids_cannot_hide_forged_relationship_tuples() {
     assert_eq!(score.eligible_claim_recall, Some(0.5));
     assert_eq!(score.path_correctness, 0.0);
 }
+
+#[test]
+fn citation_order_never_changes_a_claim_or_path_grade() {
+    let fact = Claim {
+        id: "edge-a".into(),
+        subject: "north".into(),
+        predicate: "supplier".into(),
+        object: "bridge".into(),
+        citations: vec!["notes#run:0".into(), "notes#run:1".into()],
+    };
+    let truth = Expected {
+        entity: Some("north".into()),
+        claims: vec!["edge-a".into()],
+        path: vec!["edge-a".into()],
+        citations: fact.citations.clone(),
+        abstain: false,
+        facts: vec![fact.clone()],
+    };
+    let eligible = BTreeSet::from(["notes#run:0".into(), "notes#run:1".into()]);
+    let answer = |citations: Vec<&str>| Answer {
+        entity: Some("north".into()),
+        claims: vec![Claim {
+            citations: citations.into_iter().map(String::from).collect(),
+            ..fact.clone()
+        }],
+        reason: None,
+    };
+    let ordered = entity::grade(&truth, &answer(vec!["notes#run:0", "notes#run:1"]), &eligible);
+    let reordered = entity::grade(&truth, &answer(vec!["notes#run:1", "notes#run:0"]), &eligible);
+    for scores in [&ordered, &reordered] {
+        assert_eq!(scores.eligible_claim_recall, Some(1.0));
+        assert_eq!(scores.path_correctness, 1.0);
+        assert_eq!(scores.citation_resolution, Some(1.0));
+    }
+    let subset = entity::grade(&truth, &answer(vec!["notes#run:1"]), &eligible);
+    assert_eq!(subset.eligible_claim_recall, Some(0.0));
+    assert_eq!(subset.path_correctness, 0.0);
+    assert_eq!(subset.citation_resolution, Some(1.0));
+    let mut forged = answer(vec!["notes#run:1", "notes#run:0"]);
+    forged.claims[0].object = "other".into();
+    let forged = entity::grade(&truth, &forged, &eligible);
+    assert_eq!(forged.eligible_claim_recall, Some(0.0));
+    assert_eq!(forged.path_correctness, 0.0);
+}

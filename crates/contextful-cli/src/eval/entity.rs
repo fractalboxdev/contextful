@@ -224,7 +224,7 @@ fn ordinary(
         .iter()
         .position(|c| c == "_row")
         .context("ranked evidence rows")?;
-    let mut claims = Vec::new();
+    let mut claims: Vec<Claim> = Vec::new();
     for row in &response.rows {
         let r = &row[column];
         let evidence_id = field(r, "evidence_id")?;
@@ -233,13 +233,18 @@ fn ordinary(
             .get(&evidence_id)
             .context("ranked row is outside the eligible evidence set")?
             .clone();
-        claims.push(Claim {
+        let decoded = Claim {
             id: field(r, "claim_id")?,
             subject: field(r, "subject")?,
             predicate: field(r, "predicate")?,
             object: field(r, "object")?,
             citations: vec![citation],
-        });
+        };
+        // Every ranked row decoding one tuple cites that tuple together, in rank order.
+        match claims.iter_mut().find(|c| c.same_tuple(&decoded)) {
+            Some(claim) => claim.citations.extend(decoded.citations),
+            None => claims.push(decoded),
+        }
     }
     let subjects: BTreeSet<&str> = claims.iter().map(|c| c.subject.as_str()).collect();
     let identities: Vec<resolve::Entity> = face

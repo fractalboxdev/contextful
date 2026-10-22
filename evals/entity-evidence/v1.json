@@ -3,7 +3,7 @@
   "license": "CC0-1.0 synthetic data",
   "adjudication": "synthetic-truth-v1: canonical IDs and relation tuples are authored independently of read results; temporal and policy distractors have no answer credit",
   "corpus": "corpus",
-  "corpus_sha256": "23ad2ac278f8bce2fc2fd417b5805cb47a807b0e009db49842b08d2c937988a5",
+  "corpus_sha256": "0c6639089245da15d88801068b8273b3d187053f7282d52306292f445cda112e",
   "entities": "memory/entities",
   "claims": "memory/facts",
   "evidence": "evidence/notes",
@@ -1895,7 +1895,8 @@
           "7-live"
         ],
         "citations": [
-          "evidence/notes#eval-0001:87"
+          "evidence/notes#eval-0001:87",
+          "evidence/notes#eval-0001:96"
         ],
         "abstain": false,
         "facts": [
@@ -1905,7 +1906,8 @@
             "predicate": "location",
             "object": "Harbour Harbour",
             "citations": [
-              "evidence/notes#eval-0001:87"
+              "evidence/notes#eval-0001:87",
+              "evidence/notes#eval-0001:96"
             ]
           }
         ]
@@ -2020,7 +2022,8 @@
           "7-live"
         ],
         "citations": [
-          "evidence/notes#eval-0001:87"
+          "evidence/notes#eval-0001:87",
+          "evidence/notes#eval-0001:96"
         ],
         "abstain": false,
         "facts": [
@@ -2030,7 +2033,8 @@
             "predicate": "location",
             "object": "Harbour Harbour",
             "citations": [
-              "evidence/notes#eval-0001:87"
+              "evidence/notes#eval-0001:87",
+              "evidence/notes#eval-0001:96"
             ]
           }
         ]

@@ -1,10 +1,10 @@
 {
   "benchmark": {
-    "version": "entity-evidence/v1",
-    "fixture_sha256": "bb833e04ee56a875ef0161caf3023f58d8f3a798e031f131ee6ccd749475aa5f",
-    "corpus_sha256": "23ad2ac278f8bce2fc2fd417b5805cb47a807b0e009db49842b08d2c937988a5",
     "adjudication": "synthetic-truth-v1: canonical IDs and relation tuples are authored independently of read results; temporal and policy distractors have no answer credit",
-    "license": "CC0-1.0 synthetic data"
+    "corpus_sha256": "0c6639089245da15d88801068b8273b3d187053f7282d52306292f445cda112e",
+    "fixture_sha256": "8b2f4f392924cc22355ede7d0360934fbb4f9442417968718ed8d95cff27a828",
+    "license": "CC0-1.0 synthetic data",
+    "version": "entity-evidence/v1"
   },
   "metrics": {
     "_run": {
@@ -15,48 +15,52 @@
     },
     "n_cases": 72,
     "entity_evidence.structured.entity_accuracy": {
-      "value": 1,
+      "value": 1.0,
       "band": 0
     },
     "entity_evidence.structured.entity_accuracy.n": 72,
     "entity_evidence.structured.eligible_claim_recall": {
-      "value": 1,
+      "value": 1.0,
       "band": 0
     },
     "entity_evidence.structured.eligible_claim_recall.n": 32,
     "entity_evidence.structured.path_correctness": {
-      "value": 1,
+      "value": 1.0,
       "band": 0
     },
     "entity_evidence.structured.path_correctness.n": 72,
     "entity_evidence.structured.citation_resolution": {
-      "value": 1,
+      "value": 1.0,
       "band": 0
     },
     "entity_evidence.structured.citation_resolution.n": 32,
     "entity_evidence.structured.appropriate_abstention": {
-      "value": 1,
+      "value": 1.0,
       "band": 0
     },
     "entity_evidence.structured.appropriate_abstention.n": 72,
     "entity_evidence.ordinary.entity_accuracy": {
-      "value": 0.3333333333333333,
+      "value": 1.0,
       "band": 0
     },
     "entity_evidence.ordinary.entity_accuracy.n": 72,
     "entity_evidence.ordinary.eligible_claim_recall": {
-      "value": 0.25,
+      "value": 1.0,
       "band": 0
     },
     "entity_evidence.ordinary.eligible_claim_recall.n": 32,
     "entity_evidence.ordinary.path_correctness": {
-      "value": 0.3333333333333333,
+      "value": 1.0,
       "band": 0
     },
     "entity_evidence.ordinary.path_correctness.n": 72,
-    "entity_evidence.ordinary.citation_resolution.n": 8,
+    "entity_evidence.ordinary.citation_resolution": {
+      "value": 1.0,
+      "band": 0
+    },
+    "entity_evidence.ordinary.citation_resolution.n": 32,
     "entity_evidence.ordinary.appropriate_abstention": {
-      "value": 0.6666666666666666,
+      "value": 1.0,
       "band": 0
     },
     "entity_evidence.ordinary.appropriate_abstention.n": 72
@@ -65,45 +69,45 @@
     "structured": {
       "entity_accuracy": {
         "n": 72,
-        "mean": 1
+        "mean": 1.0
       },
       "eligible_claim_recall": {
         "n": 32,
-        "mean": 1
+        "mean": 1.0
       },
       "path_correctness": {
         "n": 72,
-        "mean": 1
+        "mean": 1.0
       },
       "citation_resolution": {
         "n": 32,
-        "mean": 1
+        "mean": 1.0
       },
       "appropriate_abstention": {
         "n": 72,
-        "mean": 1
+        "mean": 1.0
       }
     },
     "ordinary": {
       "entity_accuracy": {
         "n": 72,
-        "mean": 0.3333333333333333
+        "mean": 1.0
       },
       "eligible_claim_recall": {
         "n": 32,
-        "mean": 0.25
+        "mean": 1.0
       },
       "path_correctness": {
         "n": 72,
-        "mean": 0.3333333333333333
+        "mean": 1.0
       },
       "citation_resolution": {
-        "n": 8,
-        "mean": 1
+        "n": 32,
+        "mean": 1.0
       },
       "appropriate_abstention": {
         "n": 72,
-        "mean": 0.6666666666666666
+        "mean": 1.0
       }
     }
   }
