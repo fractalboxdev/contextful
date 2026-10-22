@@ -286,6 +286,7 @@ pub struct HttpFace<'a, C> {
     tools: Tools<'a>,
     admitting: Admitting<'a, C>,
     control: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority) -> HttpResponse + Sync)>,
+    connections: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority) -> HttpResponse + Sync)>,
     ceiling: usize,
     in_flight: AtomicUsize,
     exchange: Option<&'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)>,
@@ -349,7 +350,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, receive: None, hydration: None })
+        Ok(HttpFace { tools, admitting, control: None, connections: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, receive: None, hydration: None })
     }
 
     /// Report `build` at the handshake and `/health` in place of this package's linked
@@ -362,6 +363,12 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// Attach the store's control API without adding tools to the closed read face.
     pub fn with_control(mut self, control: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority) -> HttpResponse + Sync)) -> Self {
         self.control = Some(control);
+        self
+    }
+
+    /// Attach tenant connection mutations outside the operator control namespace.
+    pub fn with_connections(mut self, connections: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority) -> HttpResponse + Sync)) -> Self {
+        self.connections = Some(connections);
         self
     }
 
@@ -553,6 +560,19 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             (MCP_PATH, _) => {
                 HttpResponse::message(405, "`/mcp` answers POST; the face holds no session and opens no server stream").with("Allow", "POST")
             }
+            (path, method) if self.connections.is_some() && connection_method(path).is_some() => {
+                let allowed = connection_method(path).expect("matched route");
+                if method != allowed {
+                    HttpResponse::message(405, format!("`{path}` answers {allowed}")).with("Allow", allowed)
+                } else {
+                    self.admitted(request, |authority, admission| {
+                        if let Err(error) = effect_boundary(authority, admission) {
+                            return unadmitted(&error);
+                        }
+                        self.connections.expect("route exists")(request, authority)
+                    })
+                }
+            }
             (WORKFLOWS_PATH, "GET") | (RECORD_PATH, "GET") | (EDIT_PATH, "POST") | (APPLY_PATH, "POST") if self.control.is_some() => self.control_request(request),
             (WORKFLOWS_PATH, _) if self.control.is_some() => HttpResponse::message(405, "`/control/workflows` answers GET").with("Allow", "GET"),
             (RECORD_PATH, _) if self.control.is_some() => HttpResponse::message(405, "`/control/record` answers GET").with("Allow", "GET"),
@@ -705,6 +725,17 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             Err(ProofRefusal::Refused(e)) => Err(unadmitted(&e)),
         }
     }
+}
+
+fn connection_method(path: &str) -> Option<&'static str> {
+    if path == "/connections" {
+        return Some("POST");
+    }
+    let rest = path.strip_prefix("/connections/")?;
+    if let Some(id) = rest.strip_suffix("/pause") {
+        return (!id.is_empty() && !id.contains('/')).then_some("POST");
+    }
+    (!rest.is_empty() && !rest.contains('/')).then_some("DELETE")
 }
 
 /// Read one request: the head, then a `Content-Length` body of at most
