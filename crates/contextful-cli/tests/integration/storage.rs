@@ -385,3 +385,77 @@ fn a_d1_coordinated_group_keeps_its_outbox_in_d1_across_an_empty_disk() {
     let _ = binding.kill();
     let _ = binding.wait();
 }
+
+/// A writer killed while its D1 publication lease runs blocks an ordinary retry; `--take-over`
+/// delivers at once and fences the killed holder's next write, a producer completion included.
+#[test]
+#[cfg(all(feature = "d1-catalog", feature = "s3-sync"))]
+fn a_take_over_retry_delivers_while_a_killed_writers_d1_lease_runs() {
+    use contextful_acceptance::http::{Response, Server};
+    use contextful_acceptance::s3::{S3Server, ACCESS_KEY, SECRET_KEY};
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let bridge = tempfile::tempdir().unwrap();
+    let mut binding = Command::new("node")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-d1/tests/fixture.mjs"))
+        .arg(bridge.path())
+        .stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
+    let mut line = String::new();
+    BufReader::new(binding.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    let d1 = format!("http://127.0.0.1:{}", line.trim());
+    let s3 = S3Server::start("conformance");
+    let receiver = Server::start(|_| Response::json(200, "{}"));
+    let store = root.join(".contextful/context/research");
+    std::fs::create_dir_all(&store).unwrap();
+    std::fs::write(store.join("config.toml"), format!("[node]\nid = 'site'\n[sync]\nendpoint = '{}'\nbucket = 'conformance'\nprefix = 'd1-takeover'\ncoordination = 'cas'\npull_before_run = true\npush_after_run = true\naccess_key_id = 'env://D1_TEST_ACCESS_KEY'\nsecret_access_key = 'env://D1_TEST_SECRET_KEY'\n", s3.endpoint)).unwrap();
+    std::fs::write(root.join("contextful.toml"), format!("authoring_posture = 'per_request'\n[[pipeline.tables]]\nname = 'events'\n[[model]]\nid = 'daily'\nsql = 'SELECT day, CAST(count(*) AS BIGINT) AS n FROM events GROUP BY day'\nunique_key = ['day']\n[model.contract]\nversion = '1.0.0'\ncolumns = [{{ name = 'day', type = 'utf8', nullable = false }}, {{ name = 'n', type = 'int64', nullable = false }}]\n[[export]]\nname = 'daily-copy'\ntable = 'daily'\nendpoint = '{}'\nformat = 'changes-v1'\nkey = ['day']\nschedule = 'every 30s'\n[[publication]]\nname = 'projection'\njob = 'daily'\nmembers = ['daily-copy']\n", receiver.url("/events"))).unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = 'contextful://acme-research'\nmax_lifetime_secs = 3600\n").unwrap();
+    std::fs::write(root.join("events.jsonl"), "{\"day\":\"d1\"}\n{\"day\":\"d2\"}\n").unwrap();
+    let run = |operation: &[&str], token: Option<&str>| {
+        let mut command = command();
+        command.args(operation).current_dir(root)
+            .env("CONTEXTFUL_STORAGE_PROFILE", "cloudflare-d1")
+            .env("CONTEXTFUL_D1_ENDPOINT", &d1)
+            .env("CONTEXTFUL_RECOVERY_ID", "generation")
+            .env("D1_TEST_ACCESS_KEY", ACCESS_KEY)
+            .env("D1_TEST_SECRET_KEY", SECRET_KEY)
+            .env_remove("CONTEXTFUL_NODE_ID");
+        if let Some(token) = token { command.env("CONTEXTFUL_TOKEN", token); }
+        command.output().unwrap()
+    };
+    let invoke = |operation: &[&str], token: Option<&str>| {
+        let out = run(operation, token);
+        assert!(out.status.success(), "{operation:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+    invoke(&["storage", "initialize", "--project", "research"], None);
+    invoke(&["context", "land", "events", "--project", "research", "--rows", "events.jsonl", "--run-id", "r1", "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"], None);
+    invoke(&["build", "daily", "--project", "research", "--site-id", "site-a", "--now", "2030-01-01T00:01:00Z"], None);
+    let public = invoke(&["token", "keygen", "--out", ".contextful/issuer.seed"], None);
+    let token = invoke(&["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://projection", "--zone", "on-prem:hq", "--table", "daily", "--ttl", "600"], None);
+    let group = ["export", "group", "projection", "--project", "research", "--public-key", &public, "--audience", "contextful://acme-research"];
+
+    // A killed writer's lease still runs for its full TTL.
+    let mut killed = contextful_d1::D1PublicationLedger::connect(&d1).unwrap();
+    killed.claim("projection", "killed-writer", 600).unwrap();
+    let completion = killed.source("projection").unwrap().unwrap();
+    let blocked = run(&group, Some(&token));
+    assert!(!blocked.status.success());
+    assert!(String::from_utf8_lossy(&blocked.stderr).contains("active durable writer"), "{}", String::from_utf8_lossy(&blocked.stderr));
+    assert!(receiver.received("/events").is_empty());
+
+    let take_over: Vec<&str> = group.iter().copied().chain(["--take-over"]).collect();
+    invoke(&take_over, Some(&token));
+    let delivered = receiver.received("/events");
+    assert_eq!(delivered.len(), 1);
+    let batch: serde_json::Value = serde_json::from_slice(&delivered[0].body).unwrap();
+    assert_eq!(batch["events"].as_array().unwrap().last().unwrap()["kind"], "group_complete");
+    let later = contextful_core::export::publication::SourcePublication { run: "later".into(), ..completion };
+    let fenced = killed.record_source("projection", &later).unwrap_err();
+    assert!(fenced.message.contains("ExecutionWriterFenced"), "{}", fenced.message);
+    let _ = binding.kill();
+    let _ = binding.wait();
+}

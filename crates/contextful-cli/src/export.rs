@@ -34,6 +34,8 @@ pub enum ExportCmd {
         #[command(flatten)] project: ProjectArgs,
         #[arg(long)] declaration: Option<PathBuf>,
         #[command(flatten)] admit: AdmitArgs,
+        /// Under `cloudflare-d1`, take the publication lease from a writer killed before its expiry.
+        #[arg(long)] take_over: bool,
     },
     /// Rebuild every member into a fresh receiver namespace without executing jobs.
     Rebuild {
@@ -98,10 +100,10 @@ fn read_cursor(store: &contextful_context::Store, path: &Path) -> Result<ExportC
 
 pub fn run(cmd: ExportCmd) -> Result<()> {
     match cmd {
-        ExportCmd::Group {name,project,declaration,admit} => publication::deliver(&name,None,&project,declaration,&admit,None),
-        ExportCmd::Rebuild {name,namespace,project,declaration,admit} => publication::deliver(&name,Some(namespace),&project,declaration,&admit,None),
+        ExportCmd::Group {name,project,declaration,admit,take_over} => publication::deliver(&name,None,&project,declaration,&admit,None,take_over),
+        ExportCmd::Rebuild {name,namespace,project,declaration,admit} => publication::deliver(&name,Some(namespace),&project,declaration,&admit,None,false),
         ExportCmd::Checkpoint {name,namespace,out,project,declaration} => publication::checkpoint(&name,&namespace,&out,&project,declaration),
-        ExportCmd::Restore {name,namespace,checkpoint,project,declaration,admit} => publication::deliver(&name,Some(namespace),&project,declaration,&admit,Some(checkpoint)),
+        ExportCmd::Restore {name,namespace,checkpoint,project,declaration,admit} => publication::deliver(&name,Some(namespace),&project,declaration,&admit,Some(checkpoint),false),
         ExportCmd::Run { name, project, declaration, admit } => run_once(&name, &project, declaration, &admit),
         ExportCmd::Watch { name, project, declaration, admit } => {
             let l = project.locate(declaration.clone())?;

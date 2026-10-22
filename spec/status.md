@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 316 | 54 | 29 | 16 | 274 | 0 | 274 |
-| `run` | 3 | 29 | 605 | 128 | 49 | 19 | 567 | 0 | 567 |
+| `run` | 3 | 29 | 606 | 128 | 49 | 19 | 568 | 0 | 568 |
 | `store` | 5 | 20 | 337 | 70 | 22 | 13 | 326 | 0 | 326 |
 | `surface` | 2 | 21 | 182 | 67 | 24 | 0 | 156 | 0 | 156 |
 | `topology` | 1 | 6 | 81 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 24 | 170 | 2817 | 692 | 226 | 83 | 2525 | 0 | |
+| **total** | 24 | 170 | 2818 | 692 | 226 | 83 | 2526 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
-| 4 — Ingest | 25 | 638 | 534 | passing | closed |
+| 4 — Ingest | 25 | 639 | 535 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
 | 6 — Sync and replicas | 9 | 112 | 111 | passing | closed |
 | 7 — Memory | 6 | 93 | 78 | passing | closed |
@@ -1602,6 +1602,7 @@ Unscheduled operations: 13.
 | `run.export.group-d1-resume` | `spec/pins.toml` | performed |
 | `run.export.group-d1-spill` | `spec/pins.toml` | performed |
 | `run.export.group-d1-state` | `spec/pins.toml` | performed |
+| `run.export.group-d1-takeover` | `spec/pins.toml` | performed |
 | `run.export.group-delivery` | `spec/pins.toml` | performed |
 | `run.export.group-identity` | `spec/pins.toml` | performed |
 | `run.export.group-incompatible` | `spec/pins.toml` | performed |

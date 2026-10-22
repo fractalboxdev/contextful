@@ -398,3 +398,28 @@ fn a_replacement_resumes_an_acknowledged_sequence_its_own_batches_never_end_at()
         assert!(refused.message.contains("ExecutionRecoveryMismatch"), "{}", refused.message);
     }
 }
+
+#[test]
+fn a_take_over_fences_a_killed_writer_before_its_lease_expires() {
+    let fixture = start();
+    let mut killed = ledger(&fixture, "container-1");
+    killed.stage(&plan("initial", None, 1), &states("one"), "reader").unwrap();
+    let offered = killed.batch("projection", "initial").unwrap().unwrap();
+
+    // The killed writer's 30 s lease still runs, so an ordinary claim refuses.
+    let mut retry = D1PublicationLedger::connect(&fixture.endpoint).unwrap();
+    let refused = retry.claim("projection", "container-2", 30).unwrap_err();
+    assert!(refused.message.contains("active durable writer"), "{}", refused.message);
+    retry.take_over("projection", "container-2", 30).unwrap();
+
+    let fenced = killed
+        .acknowledge("projection", "initial", &offered.group.id, offered.events.last().unwrap().sequence)
+        .unwrap_err();
+    assert!(fenced.message.contains("ExecutionWriterFenced"), "{}", fenced.message);
+    let mut receiver = ReceiverState::default();
+    deliver(&mut retry, &mut receiver, false);
+    assert_eq!(receiver.state, states("one"));
+    killed.release().unwrap();
+    assert_eq!(retry.active_namespace("projection").unwrap().as_deref(), Some("initial"));
+    assert!(retry.batch("projection", "initial").unwrap().is_none());
+}

@@ -435,6 +435,8 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because the outbox holds the group's delivered base and next state, so rewriting it per batch scales every acknowledgement with the published tables*
 - `group-d1-resume` — Reading a `cloudflare-d1` outbox resumes after the event carrying its recorded acknowledged sequence, whatever batch boundaries the reading binary cuts; a sequence naming no unacknowledged event of the pending group fails every read.
   *because batch boundaries follow the reading binary's request ceiling, row cap and event encoding, which a replacement binary may change*
+- `group-d1-takeover` — `contextful export group <name> --take-over` under `cloudflare-d1` takes the publication lease whatever its holder or expiry and advances its fence, so the prior holder's next write, a producer completion included, matches no lease and refuses.
+  *because a delivery killed at its caller's time bound holds the lease until expiry, and a fenced producer's build retry records its completion again*
 - `group-d1-recovery` — After an empty-disk replacement, `contextful export group` resumes a staged or partially acknowledged `cloudflare-d1` group from D1, reoffering identical group and event identifiers before staging a later frontier.
   *A-run*
 
@@ -445,6 +447,7 @@ The outbound copy of a landed table to an operator-declared target: the export b
 - `run.export.group-d1-state`: WHEN a replacement loses the acknowledgement of the group-complete batch, THEN it reoffers that batch, and the receiver's accepted group absorbs the retry without a second activation.
 - `run.export.group-d1-acknowledge`: WHEN a receiver completes a group of 880 deletes whose final acknowledgement the sender lost, THEN the replacement reoffers from the last recorded sequence, the receiver absorbs the retry, and the sender promotes the group.
 - `run.export.group-d1-resume`: WHEN a replacement whose batches end elsewhere reads an outbox acknowledged through a sequence inside its first batch, THEN it offers from the next event.
+- `run.export.group-d1-takeover`: WHEN a delivery is killed before its acknowledgement while its lease runs, THEN a retry with `--take-over` delivers at once and the killed writer's next write refuses as fenced.
 
 unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export
 

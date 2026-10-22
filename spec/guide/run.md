@@ -163,14 +163,14 @@ restarting is explicit ({{run.advance.turning-incremental-on}}).
 
 ## Where to look
 
-For downstream projections, follow {{run.export.group-block}} to the producer completion
+For downstream projections, follow {{run.export.group-block}} to producer completion
 ({{run.export.group-source}}), delivery barrier ({{run.export.group-delivery}}) and
 receiver activation ({{run.export.group-activation}}). Recovery follows
 {{run.export.group-checkpoint}} or {{run.export.group-rebuild}}; admission
 follows {{run.export.group-storage}}; Cloudflare groups follow
 {{run.export.group-d1-state}}, {{run.export.group-d1-lease}}, {{run.export.group-d1-spill}},
-{{run.export.group-d1-acknowledge}}, {{run.export.group-d1-resume}} and
-{{run.export.group-d1-recovery}}.
+{{run.export.group-d1-acknowledge}}, {{run.export.group-d1-resume}},
+{{run.export.group-d1-takeover}} and {{run.export.group-d1-recovery}}.
 
 | Question | Operation |
 | --- | --- |

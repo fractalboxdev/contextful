@@ -108,6 +108,7 @@
 "run.export.group-d1-spill" = { test = "crates/contextful-d1/tests/integration/publication.rs::a_large_sender_spills_to_r2_and_survives_the_blob_sweep" }
 "run.export.group-d1-acknowledge" = { test = "crates/contextful-d1/tests/integration/publication.rs::an_oversized_sender_acknowledges_a_group_of_deletes_through_bounded_statements" }
 "run.export.group-d1-resume" = { test = "crates/contextful-d1/tests/integration/publication.rs::a_replacement_resumes_an_acknowledged_sequence_its_own_batches_never_end_at" }
+"run.export.group-d1-takeover" = { test = "crates/contextful-cli/tests/integration/storage.rs::a_take_over_retry_delivers_while_a_killed_writers_d1_lease_runs" }
 "run.export.group-d1-recovery" = { test = "crates/contextful-d1/tests/integration/publication.rs::a_group_staged_before_a_crash_redelivers_identical_bytes_after_replacement" }
 "read.revise.served-write" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
 "read.revise.served-scope" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
@@ -221,7 +222,7 @@ connector = 303
 corpus = 80
 disclosure = 165
 read = 274
-run = 567
+run = 568
 store = 326
 surface = 156
 topology = 77
