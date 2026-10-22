@@ -32,8 +32,11 @@ pub const NAME: &str = crate::DRIVE;
 pub const TABLES: [&str; 2] = ["files", "pages"];
 /// The configuration keys the source reads (`run.declare.config-key`).
 pub const KEYS: [&str; 8] = ["folder_id", "folder_ids", "drive_id", "max_file_bytes", "mode", "oauth", "api_base", "token_url"];
+/// Configuration keys of the Picker source, with file ids in place of folder roots.
+pub const PICK_KEYS: [&str; 7] = ["file_ids", "drive_id", "max_file_bytes", "mode", "oauth", "api_base", "token_url"];
 /// Selected folder roots in one Shared Drive (`connector.source.drive-root-set`).
 pub const MAX_ROOTS: usize = 16;
+pub const MAX_PICKED_FILES: usize = 128;
 /// The keys of the `oauth` table.
 pub const OAUTH_KEYS: [&str; 3] = ["refresh_token", "client_id", "client_secret"];
 /// Bytes one file's body may carry: 64 MiB unless declared (`connector.source.drive-file-cap`).
@@ -70,6 +73,7 @@ pub struct OAuth {
 pub struct DriveConfig {
     pub folder_id: Option<String>,
     pub folder_ids: Option<Vec<String>>,
+    pub file_ids: Option<Vec<String>>,
     pub drive_id: Option<String>,
     pub max_file_bytes: u64,
     pub mode: CaptureMode,
@@ -120,6 +124,36 @@ fn pinned(key: &str, raw: &str, host: &str) -> Result<Url, ConfigError> {
 }
 
 impl DriveConfig {
+    /// Parse a Picker selection while retaining the Drive source's OAuth and capture rules.
+    pub fn parse_picks(config: &Value) -> Result<DriveConfig, ConfigError> {
+        let cfg = config.as_object().ok_or_else(|| invalid("config is an object".into()))?;
+        if cfg.contains_key("folder_id") || cfg.contains_key("folder_ids") {
+            return Err(ConnectorError::ConnectorDriveFilesInvalid("`file_ids` excludes folder roots".into()).into());
+        }
+        if let Some(key) = cfg.keys().find(|key| !PICK_KEYS.contains(&key.as_str())) {
+            return Err(RunError::PipelineUnknownConfigKey(format!("the Picker source reads no key `{key}`; it reads {}", PICK_KEYS.join(", "))).into());
+        }
+        let ids = match cfg.get("file_ids") {
+            Some(Value::Array(ids)) => ids.iter().map(|id| {
+                drive_id("file_ids entry", Some(id)).map(|id| id.expect("an entry is present"))
+            }).collect::<Result<Vec<_>, _>>()
+                .map_err(|_| ConnectorError::ConnectorDriveFilesInvalid("`file_ids` holds Drive ids of letters, digits, `-` and `_`".into()))?,
+            _ => return Err(ConnectorError::ConnectorDriveFilesInvalid("`file_ids` is an array of Drive ids".into()).into()),
+        };
+        if ids.is_empty() || ids.len() > MAX_PICKED_FILES || ids.iter().collect::<BTreeSet<_>>().len() != ids.len() {
+            return Err(ConnectorError::ConnectorDriveFilesInvalid(format!("`file_ids` holds 1 to {MAX_PICKED_FILES} distinct ids")).into());
+        }
+        let mut adapted = cfg.clone();
+        adapted.remove("file_ids");
+        adapted.insert("folder_id".into(), json!("picker-selection"));
+        let mut parsed = Self::parse(&Value::Object(adapted))?;
+        parsed.folder_id = None;
+        let mut ids = ids;
+        ids.sort();
+        parsed.file_ids = Some(ids);
+        Ok(parsed)
+    }
+
     /// Parse and check a configuration before any I/O.
     pub fn parse(config: &Value) -> Result<DriveConfig, ConfigError> {
         let cfg = config.as_object().ok_or_else(|| invalid("config is an object".into()))?;
@@ -183,7 +217,7 @@ impl DriveConfig {
         };
         let api_base = pinned("api_base", &text("api_base", API_BASE)?, API_HOST)?;
         let token_url = pinned("token_url", &text("token_url", TOKEN_URL)?, TOKEN_HOST)?;
-        Ok(DriveConfig { folder_id, folder_ids, drive_id, max_file_bytes, mode, oauth, api_base, token_url })
+        Ok(DriveConfig { folder_id, folder_ids, file_ids: None, drive_id, max_file_bytes, mode, oauth, api_base, token_url })
     }
 
     /// The references the source hydrates, for preflight.
@@ -192,6 +226,7 @@ impl DriveConfig {
     }
 
     fn roots(&self) -> Vec<String> {
+        if self.file_ids.is_some() { return Vec::new(); }
         let mut roots = self.folder_ids.clone().unwrap_or_else(|| vec![self.folder_id.clone().expect("validated single root")]);
         roots.sort();
         roots
@@ -288,6 +323,7 @@ pub struct Drive {
     token: Client,
     minted: Mutex<Option<(Arc<Hydrated>, Instant)>>,
     walked: Mutex<Option<Arc<Vec<Entry>>>>,
+    revoked: Mutex<BTreeSet<String>>,
     fetched: Mutex<BTreeMap<(String, String), Fetched>>,
 }
 
@@ -303,7 +339,7 @@ impl Drive {
         let api = client(&config.api_base)?;
         let download = client(&config.api_base)?.with_body_limit(config.max_file_bytes);
         let token = client(&config.token_url)?;
-        Ok(Arc::new(Drive { config, resolver, decoder, bodies, api, download, token, minted: Mutex::default(), walked: Mutex::default(), fetched: Mutex::default() }))
+        Ok(Arc::new(Drive { config, resolver, decoder, bodies, api, download, token, minted: Mutex::default(), walked: Mutex::default(), revoked: Mutex::default(), fetched: Mutex::default() }))
     }
 
     /// The source landing `table` from this fire.
@@ -385,6 +421,41 @@ impl Drive {
     fn walk(&self, cancel: &dyn Cancellation) -> Result<Arc<Vec<Entry>>, Failure> {
         if let Some(w) = self.walked.lock().ok().and_then(|w| w.clone()) {
             return Ok(w);
+        }
+        if let Some(ids) = &self.config.file_ids {
+            let mut entries = Vec::with_capacity(ids.len());
+            let mut revoked = BTreeSet::new();
+            for id in ids {
+                if cancel.requested() { return Err(Failure::canceled("stopped between picked files")); }
+                let mut url = self.config.api(&format!("/drive/v3/files/{id}"));
+                url.query_pairs_mut().append_pair("fields", "id,name,mimeType,modifiedTime,version,size,md5Checksum,driveId").append_pair("supportsAllDrives", "true");
+                let response = self.get(&self.api, &url)?;
+                let reason = serde_json::from_slice::<Value>(&response.body).ok().and_then(|body| {
+                    body.pointer("/error/errors/0/reason").and_then(Value::as_str).map(str::to_string)
+                });
+                if response.status == 403 && matches!(reason.as_deref(), Some("rateLimitExceeded" | "userRateLimitExceeded")) {
+                    return Err(Failure::new(FailureTag::RateLimited, format!("picked file `{id}` is rate limited")));
+                }
+                if response.status == 404 || (response.status == 403 && matches!(reason.as_deref(), Some("forbidden" | "insufficientFilePermissions"))) {
+                    revoked.insert(id.clone());
+                    continue;
+                }
+                if !(200..300).contains(&response.status) {
+                    return Err(classify(response.status, response.header("retry-after").and_then(|v| v.trim().parse().ok()), &scrub(&response.url)));
+                }
+                let meta: Value = serde_json::from_slice(&response.body).map_err(|e| Failure::new(FailureTag::Permanent, format!("picked file `{id}` answered no JSON: {e}")))?;
+                let text = |key: &str| meta.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_string);
+                let mime = text("mimeType").unwrap_or_default();
+                if text("id").as_deref() != Some(id) || mime == FOLDER || text("name").is_none() || text("modifiedTime").is_none() || text("version").and_then(|v| v.parse::<i64>().ok()).is_none() {
+                    return Err(Failure::deterministic(FailureTag::Config, ConnectorError::ConnectorDriveFileRejected(format!("selected id `{id}` is not a readable file")).to_string()));
+                }
+                let name = text("name").unwrap();
+                entries.push(Entry { id: id.clone(), path: name.clone(), resolved_root: id.clone(), name, mime, modified: text("modifiedTime").unwrap(), version: text("version").and_then(|v| v.parse().ok()), size: text("size").and_then(|v| v.parse().ok()), md5: text("md5Checksum") });
+            }
+            *self.revoked.lock().unwrap() = revoked;
+            let walked = Arc::new(entries);
+            *self.walked.lock().unwrap() = Some(walked.clone());
+            return Ok(walked);
         }
         let config_fault = |why: String| Failure::deterministic(FailureTag::Config, format!("`{NAME}` source: {why}"));
         let roots = self.config.roots();
@@ -728,10 +799,16 @@ impl DriveSource {
     pub fn read(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<Read, Failure> {
         let before = held(position);
         let roots = self.drive.config.roots();
-        let selection_changed = position.is_some_and(|p| p.get("drive_id") != Some(&json!(self.drive.config.drive_id)) || p.get("roots") != Some(&json!(roots)));
+        let ids = self.drive.config.file_ids.as_ref();
+        let selection_changed = position.is_some_and(|p| p.get("drive_id") != Some(&json!(self.drive.config.drive_id)) || if let Some(ids) = ids { p.get("file_ids") != Some(&json!(ids)) } else { p.get("roots") != Some(&json!(roots)) });
         let previous_mode = position.and_then(|p| p.get("mode")).and_then(Value::as_str).unwrap_or("bytes-and-pages");
         let mode_changed = previous_mode != self.drive.config.mode.as_str();
         let entries = self.drive.walk(cancel)?;
+        for id in self.drive.revoked.lock().unwrap().iter() {
+            if !before.contains_key(id) {
+                return Err(Failure::deterministic(FailureTag::Config, ConnectorError::ConnectorDriveFileRejected(format!("selected id `{id}` is inaccessible to this credential")).to_string()));
+            }
+        }
         let mut rows = Vec::new();
         let mut after = Map::new();
         let mut skipped = 0u64;
@@ -774,7 +851,9 @@ impl DriveSource {
                 Table::Pages => rows.extend((1..=h.pages).map(|p| Self::page_row(id, None, &h.path, p, None))),
             }
         }
-        Ok(Read { rows, position: json!({ "files": after, "drive_id": self.drive.config.drive_id, "roots": roots, "mode": self.drive.config.mode.as_str() }), skipped, snapshot_complete })
+        let mut next = json!({ "files": after, "drive_id": self.drive.config.drive_id, "roots": roots, "mode": self.drive.config.mode.as_str() });
+        if let Some(ids) = ids { next["file_ids"] = json!(ids); }
+        Ok(Read { rows, position: next, skipped, snapshot_complete })
     }
 }
 
