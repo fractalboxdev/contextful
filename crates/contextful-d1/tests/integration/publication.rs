@@ -314,3 +314,87 @@ fn the_d1_ledger_keeps_only_the_latest_completion() {
     assert!(sender.record_source("projection", &completion("run-19", "other")).is_err());
     assert_eq!(sender.source("projection").unwrap(), Some(completion("run-19", "f19")));
 }
+
+#[test]
+fn an_oversized_sender_acknowledges_a_group_of_deletes_through_bounded_statements() {
+    // Every statement request over 256 KiB loses its connection, as a large D1 write may.
+    let fixture = Fixture::start_capped(Some(256 * 1024));
+    let db = D1::connect(&fixture.endpoint).unwrap();
+    db.initialize_recovery("sample", "generation").unwrap();
+    let outbox = || {
+        db.query("SELECT body, blob FROM contextful_publication WHERE role = 'sender'", vec![])
+            .unwrap()
+            .rows
+            .remove(0)
+    };
+    let mut sender = ledger(&fixture, "container-1");
+    let mut receiver = ReceiverState::default();
+    let full = bulk(440, 512);
+    sender.stage(&plan("initial", None, 1), &full, "reader").unwrap();
+    deliver(&mut sender, &mut receiver, false);
+    assert_eq!(receiver.state, full);
+
+    // An 883-event group of 880 deletes over a sender record of over 512 KiB.
+    let empty: GroupState = [("a".into(), Default::default()), ("b".into(), Default::default())].into();
+    let base = receiver.active.as_ref().map(|g| g.id.clone());
+    sender.stage(&plan("initial", base, 2), &empty, "reader").unwrap();
+    let staged = outbox();
+    assert!(sender.checkpoint("projection", "initial").unwrap().len() > 512 * 1024);
+    let first = sender.batch("projection", "initial").unwrap().unwrap();
+    deliver(&mut sender, &mut receiver, true);
+    assert_eq!(receiver.state, empty);
+    assert_eq!(outbox(), staged, "a partial acknowledgement leaves the outbox body unwritten");
+    sender.release().unwrap();
+    drop(sender);
+
+    // The receiver completed the group; the replacement resumes from the last recorded acknowledgement.
+    let mut replacement = ledger(&fixture, "container-2");
+    let resumed = replacement.batch("projection", "initial").unwrap().unwrap();
+    assert_eq!(resumed.group.id, first.group.id);
+    assert!(resumed.events[0].sequence > first.events.last().unwrap().sequence);
+    let activated = receiver.clone();
+    deliver(&mut replacement, &mut receiver, false);
+    assert_eq!(receiver, activated);
+    assert_eq!(replacement.active("projection", "initial").unwrap().as_ref(), receiver.active.as_ref());
+    assert!(replacement.batch("projection", "initial").unwrap().is_none());
+}
+
+#[test]
+fn a_replacement_resumes_an_acknowledged_sequence_its_own_batches_never_end_at() {
+    let fixture = start();
+    let db = D1::connect(&fixture.endpoint).unwrap();
+    let mut sender = ledger(&fixture, "container-1");
+    sender.stage(&plan("initial", None, 1), &bulk(440, 512), "reader").unwrap();
+    let first = sender.batch("projection", "initial").unwrap().unwrap();
+    let through = first.events.last().unwrap().sequence;
+    sender.acknowledge("projection", "initial", &first.group.id, through).unwrap();
+    sender.release().unwrap();
+    drop(sender);
+
+    // A binary cutting shorter batches acknowledged a sequence inside this binary's first batch.
+    let record = |group: &str, through: u64| {
+        let body = json!({"group": group, "through": through}).to_string();
+        db.query(
+            "UPDATE contextful_publication SET body = ? WHERE role = 'sender-ack' AND name = 'projection' AND namespace = 'initial'",
+            vec![json!(body)],
+        )
+        .unwrap();
+    };
+    record(&first.group.id, through - 7);
+    let mut replacement = ledger(&fixture, "container-2");
+    let resumed = replacement.batch("projection", "initial").unwrap().unwrap();
+    assert_eq!(resumed.group.id, first.group.id);
+    assert_eq!(resumed.events[0].sequence, through - 6);
+    replacement
+        .acknowledge("projection", "initial", &resumed.group.id, resumed.events.last().unwrap().sequence)
+        .unwrap();
+
+    // A recorded sequence naming another group or no event of the pending group fails every read.
+    for (group, through) in [("another", through), (first.group.id.as_str(), u64::MAX)] {
+        record(group, through);
+        let refused = replacement.batch("projection", "initial").unwrap_err();
+        assert!(refused.message.contains("ExecutionRecoveryMismatch"), "{}", refused.message);
+        let refused = replacement.pending_identity("projection", "initial").unwrap_err();
+        assert!(refused.message.contains("ExecutionRecoveryMismatch"), "{}", refused.message);
+    }
+}

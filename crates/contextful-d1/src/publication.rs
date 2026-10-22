@@ -7,12 +7,13 @@ use contextful_core::export::publication::{
 };
 use contextful_core::run::{Failure, FailureTag};
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 /// mirrors: run.export.group-d1-spill
-pub const GROUP_ROW_BYTES: usize = 1024 * 1024;
+pub const GROUP_ROW_BYTES: usize = 64 * 1024;
 /// mirrors: run.export.group-storage
 pub const GROUP_STATE_BYTES: usize = 8 * 1024 * 1024;
 
@@ -46,6 +47,25 @@ struct Row<T> {
 enum Follow<'a> {
     ActiveNamespace(&'a str),
     History(&'a str, String),
+}
+
+/// The acknowledged sequence of a pending group short of completion, kept in its own row beside
+/// the outbox (`run.export.group-d1-acknowledge`).
+#[derive(Serialize, Deserialize)]
+struct Acknowledged {
+    group: String,
+    through: u64,
+}
+
+fn mismatch(detail: impl std::fmt::Display) -> Failure {
+    failure(format!("ExecutionRecoveryMismatch: the acknowledged sequence beside the outbox: {detail}"))
+}
+
+/// Advance an outbox read from its row past the acknowledged sequence recorded beside it. The
+/// offset comes from the event carrying that sequence, never from this binary's batch boundaries,
+/// and a completing acknowledgement rewrites the outbox, so a recorded sequence never completes.
+fn replay(sender: &mut GroupSender, acknowledged: &Acknowledged) -> Result<(), Failure> {
+    sender.resume(&acknowledged.group, acknowledged.through).map_err(mismatch)
 }
 
 impl D1PublicationLedger {
@@ -100,9 +120,13 @@ impl D1PublicationLedger {
             )
             .map_err(failure)?
             .rows;
-        let Some(row) = rows.first() else {
-            return Ok(Row { version: None, value: None });
-        };
+        match rows.first() {
+            Some(row) => self.decode(row),
+            None => Ok(Row { version: None, value: None }),
+        }
+    }
+
+    fn decode<T: DeserializeOwned>(&self, row: &Value) -> Result<Row<T>, Failure> {
         let version = row.get("version").and_then(Value::as_i64).ok_or_else(|| failure("missing row version"))?;
         let bytes = match row.get("blob").and_then(Value::as_str) {
             Some(digest) => self
@@ -121,8 +145,64 @@ impl D1PublicationLedger {
         Ok(Row { version: Some(version), value: Some(value) })
     }
 
+    /// The outbox row and its acknowledged sequence, read together and replayed onto the outbox.
     fn sender(&self, name: &str, namespace: &str) -> Result<Row<GroupSender>, Failure> {
-        self.load("sender", name, namespace)
+        let rows = self
+            .db
+            .query(
+                "SELECT role, version, body, blob FROM contextful_publication WHERE role IN ('sender', 'sender-ack') AND name = ? AND namespace = ?",
+                vec![json!(name), json!(namespace)],
+            )
+            .map_err(failure)?
+            .rows;
+        let mut outbox = Row { version: None, value: None };
+        let mut acknowledged = None;
+        for row in &rows {
+            match row.get("role").and_then(Value::as_str) {
+                Some("sender") => outbox = self.decode(row)?,
+                _ => acknowledged = self.decode::<Acknowledged>(row)?.value,
+            }
+        }
+        if let Some(acknowledged) = &acknowledged {
+            replay(outbox.value.as_mut().ok_or_else(|| mismatch("no outbox row"))?, acknowledged)?;
+        }
+        Ok(outbox)
+    }
+
+    fn token(lease: &Lease) -> String {
+        format!("{:x}", Sha256::digest(format!("{}:{}:{}", lease.holder, lease.fence, uuid_like())))
+    }
+
+    /// Record a partial acknowledgement: the outbox row advances its version under the lease and
+    /// its body stays unwritten (`run.export.group-d1-acknowledge`).
+    fn record_acknowledged(
+        &self,
+        name: &str,
+        namespace: &str,
+        version: i64,
+        acknowledged: &Acknowledged,
+    ) -> Result<bool, Failure> {
+        let lease = self.lease(name)?;
+        let token = Self::token(lease);
+        let mut advance = vec![json!(token), json!(name), json!(namespace), json!(version)];
+        advance.extend([json!(lease.key), json!(lease.holder), json!(lease.fence)]);
+        let body = serde_json::to_string(acknowledged).map_err(failure)?;
+        let mut record = vec![json!(name), json!(namespace), json!(body)];
+        record.extend([json!("sender"), json!(name), json!(namespace), json!(token)]);
+        let results = self
+            .db
+            .batch(&[
+                Statement {
+                    sql: &format!("UPDATE contextful_publication SET version = version + 1, token = ? WHERE role = 'sender' AND name = ? AND namespace = ? AND version = ?{LEASE}"),
+                    params: advance,
+                },
+                Statement {
+                    sql: &format!("INSERT INTO contextful_publication (role, name, namespace, version, body) SELECT 'sender-ack', ?, ?, 0, ? WHERE {WRITTEN} ON CONFLICT(role, name, namespace) DO UPDATE SET version = version + 1, body = excluded.body"),
+                    params: record,
+                },
+            ])
+            .map_err(failure)?;
+        Ok(results.first().is_some_and(|r| r.changes == 1))
     }
 
     /// Commit one row under its prior version and the writer lease; chained rows commit with it or not at all.
@@ -140,7 +220,7 @@ impl D1PublicationLedger {
                 format!("PublicationStorageUnsupported: `{name}` coordinated-group-outbox state of {} B exceeds the D1 bound of {GROUP_STATE_BYTES} B", body.len()),
             ));
         }
-        let token = format!("{:x}", Sha256::digest(format!("{}:{}:{}", lease.holder, lease.fence, uuid_like())));
+        let token = Self::token(lease);
         let (inline, blob) = if body.len() > GROUP_ROW_BYTES {
             let digest = format!("{:x}", Sha256::digest(body.as_bytes()));
             self.db.put_blob(&digest, body.as_bytes()).map_err(failure)?;
@@ -166,6 +246,12 @@ impl D1PublicationLedger {
             let mut args = vec![json!(digest)];
             args.extend(written());
             chained.push((format!("INSERT INTO contextful_blob (sha256, put_at) SELECT ?, CAST(strftime('%s','now') AS INTEGER) WHERE {WRITTEN} ON CONFLICT(sha256) DO UPDATE SET put_at = excluded.put_at"), args));
+        }
+        if role == "sender" {
+            // A rewritten outbox carries its own offset, so the sequence recorded beside it retires.
+            let mut args = vec![json!(name), json!(namespace)];
+            args.extend(written());
+            chained.push((format!("DELETE FROM contextful_publication WHERE role = 'sender-ack' AND name = ? AND namespace = ? AND {WRITTEN}"), args));
         }
         match follow {
             Some(Follow::ActiveNamespace(active)) => {
@@ -299,18 +385,34 @@ impl D1PublicationLedger {
         Ok(batch)
     }
 
-    /// A completing acknowledgement promotes state and the active namespace in one D1 batch.
+    /// A completing acknowledgement promotes state and the active namespace in one D1 batch; any
+    /// other records its sequence beside the unwritten outbox.
     pub fn acknowledge(&mut self, name: &str, namespace: &str, group: &str, through: u64) -> Result<(), Failure> {
         let key = (name.to_owned(), namespace.to_owned());
         if self.offered.get(&key) != Some(&(group.to_owned(), through)) {
             return Err(failure("PublicationIncompatible: acknowledgement differs from the offered batch"));
         }
-        self.edit(name, namespace, |sender| {
-            let completed = sender.acknowledge(group, through).map_err(failure)?;
-            Ok(((), true, completed))
-        })?;
-        self.offered.remove(&key);
-        Ok(())
+        for _ in 0..16 {
+            let row = self.sender(name, namespace)?;
+            let (Some(version), Some(mut sender)) = (row.version, row.value) else {
+                return Err(failure("PublicationIncompatible: acknowledgement names no pending batch"));
+            };
+            let written = if sender.acknowledge(group, through).map_err(failure)? {
+                let body = serde_json::to_string(&sender).map_err(failure)?;
+                self.commit(("sender", name, namespace), Some(version), &body, Some(Follow::ActiveNamespace(namespace)))?
+            } else {
+                let acknowledged = Acknowledged { group: group.to_owned(), through };
+                self.record_acknowledged(name, namespace, version, &acknowledged)?
+            };
+            if written {
+                self.offered.remove(&key);
+                return Ok(());
+            }
+        }
+        Err(Failure::new(
+            FailureTag::Transient,
+            "D1 publication state changed repeatedly or writer lease moved",
+        ))
     }
 
     pub fn checkpoint(&self, name: &str, namespace: &str) -> Result<Vec<u8>, Failure> {

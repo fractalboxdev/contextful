@@ -499,6 +499,26 @@ impl GroupSender {
         Ok(true)
     }
 
+    /// Resume the outbox after the event carrying `through`, an acknowledged sequence short of
+    /// completion, whatever batch boundaries this binary cuts (`run.export.group-d1-acknowledge`).
+    pub fn resume(&mut self, group: &str, through: u64) -> Result<(), ExportError> {
+        let pending = self
+            .pending
+            .as_ref()
+            .filter(|pending| pending.group.id == group)
+            .ok_or_else(|| invalid("acknowledged group is not the pending group"))?;
+        let position = pending
+            .events
+            .iter()
+            .position(|event| event.sequence == through)
+            .filter(|position| *position >= self.offset && position + 1 < pending.events.len())
+            .ok_or_else(|| {
+                invalid("acknowledged sequence names no unacknowledged event short of completion")
+            })?;
+        self.offset = position + 1;
+        Ok(())
+    }
+
     pub fn checkpoint(&self, name: &str, namespace: &str) -> Result<Vec<u8>, ExportError> {
         serde_json::to_vec(&(1, name, namespace, self)).map_err(|e| invalid(e.to_string()))
     }
