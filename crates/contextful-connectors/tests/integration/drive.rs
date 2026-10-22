@@ -215,6 +215,27 @@ fn picker_file_ids_validate_before_requests() {
     assert!(fake.received("/drive/v3/files").is_empty());
 }
 
+/// A captured file whose access disappears withdraws rows; a quota refusal preserves the cursor.
+#[test]
+fn picker_access_loss_withdraws_but_quota_failure_keeps_position() {
+    let fake = Fake::start();
+    fake.overlay("picks.json");
+    let mut config = fake.config(json!({"file_ids": ["doc-plan"]}));
+    config.as_object_mut().unwrap().remove("folder_id");
+    let make = || Drive::new(DriveConfig::parse_picks(&config).unwrap(), resolver(vec![("drive-refresh", REFRESH), ("drive-client-id", "client-7.apps.example"), ("drive-client-secret", CLIENT_SECRET)]), Arc::new(InProcess), Arc::new(Held::default())).unwrap();
+    let (_, before, _) = pull(&mut make().source("files").unwrap(), None);
+
+    fake.overlay("picks-quota.json");
+    let failure = make().source("files").unwrap().pull(&request(Some(before.clone())), &Never).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::RateLimited, "{failure}");
+
+    fake.overlay("picks-revoked.json");
+    let (rows, after, _) = pull(&mut make().source("files").unwrap(), Some(before));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["capture_status"], "removed");
+    assert!(after["files"].as_object().unwrap().is_empty());
+}
+
 /// Pull `source` from `position`, answering its rows and the position after them.
 fn pull(source: &mut DriveSource, position: Option<Value>) -> (Vec<serde_json::Map<String, Value>>, Value, Vec<u8>) {
     let bytes = source.pull(&request(position), &Never).unwrap();

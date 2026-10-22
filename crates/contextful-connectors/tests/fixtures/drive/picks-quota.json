@@ -1,0 +1,11 @@
+{
+  "exchanges": [
+    {
+      "method": "GET",
+      "path": "/drive/v3/files/doc-plan",
+      "query": {"fields": "id,name,mimeType,modifiedTime,version,size,md5Checksum,driveId"},
+      "status": 403,
+      "body": {"error": {"errors": [{"reason": "rateLimitExceeded"}], "code": 403}}
+    }
+  ]
+}
