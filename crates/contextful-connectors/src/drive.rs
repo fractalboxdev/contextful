@@ -344,7 +344,12 @@ impl Drive {
 
     /// The source landing `table` from this fire.
     pub fn source(self: &Arc<Drive>, table: &str) -> Result<DriveSource, ConnectorError> {
-        Ok(DriveSource { drive: self.clone(), table: self.config.table(table)? })
+        Ok(DriveSource { drive: self.clone(), table: self.config.table(table)?, scope: None })
+    }
+
+    /// Bind a source to the connection identity admitted by the serving layer.
+    pub fn source_bound(self: &Arc<Drive>, table: &str, scope: DriveScope) -> Result<DriveSource, ConnectorError> {
+        Ok(DriveSource { drive: self.clone(), table: self.config.table(table)?, scope: Some(scope) })
     }
 
     /// Header names that carried a credential, by name only.
@@ -721,6 +726,15 @@ pub struct Read {
 pub struct DriveSource {
     pub drive: Arc<Drive>,
     pub table: Table,
+    scope: Option<DriveScope>,
+}
+
+/// Identity admitted for one connection before its Drive source is constructed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DriveScope {
+    pub connection_id: String,
+    pub tenant: String,
+    pub principal: String,
 }
 
 impl DriveSource {
@@ -791,13 +805,30 @@ impl DriveSource {
             ],
             Table::Pages => &[("file_id", "utf8"), ("page", "int64"), ("version", "int64"), ("path", "utf8"), ("text", "utf8"), ("removed", "boolean")],
         };
-        spelled.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        let mut types: BTreeMap<_, _> = spelled.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        if self.scope.is_some() {
+            for column in ["connection_id", "tenant", "principal"] {
+                types.insert(column.into(), "utf8".into());
+            }
+        }
+        types
     }
 
     /// The rows of this table since `position`, the position after them, and the files they
     /// land with a `skipped` reason.
     pub fn read(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<Read, Failure> {
-        let before = held(position);
+        if let (Some(scope), Some(position)) = (&self.scope, position) {
+            if position.get("connection_id") != Some(&json!(scope.connection_id)) ||
+                position.get("tenant") != Some(&json!(scope.tenant)) ||
+                position.get("principal") != Some(&json!(scope.principal)) {
+                return Err(Failure::deterministic(FailureTag::Config, "a Drive position belongs to another connection scope"));
+            }
+        }
+        let mut before = held(position);
+        if let Some(scope) = &self.scope {
+            let prefix = format!("{}:", scope.connection_id);
+            before = before.into_iter().filter_map(|(key, value)| key.strip_prefix(&prefix).map(|id| (id.to_string(), value))).collect();
+        }
         let roots = self.drive.config.roots();
         let ids = self.drive.config.file_ids.as_ref();
         let selection_changed = position.is_some_and(|p| p.get("drive_id") != Some(&json!(self.drive.config.drive_id)) || if let Some(ids) = ids { p.get("file_ids") != Some(&json!(ids)) } else { p.get("roots") != Some(&json!(roots)) });
@@ -843,16 +874,32 @@ impl DriveSource {
                 }
                 pages = landed;
             }
-            after.insert(e.id.clone(), json!({"modified": e.modified, "path": e.path, "name": e.name, "version": e.version, "resolved_root": e.resolved_root, "pages": pages}));
+            let key = self.scope.as_ref().map_or_else(|| e.id.clone(), |scope| format!("{}:{}", scope.connection_id, e.id));
+            after.insert(key, json!({"modified": e.modified, "path": e.path, "name": e.name, "version": e.version, "resolved_root": e.resolved_root, "pages": pages}));
         }
-        for (id, h) in before.iter().filter(|(id, _)| !after.contains_key(*id)) {
+        for (id, h) in before.iter().filter(|(id, _)| {
+            let key = self.scope.as_ref().map_or_else(|| (*id).clone(), |scope| format!("{}:{id}", scope.connection_id));
+            !after.contains_key(&key)
+        }) {
             match self.table {
                 Table::Files => rows.push(Self::tombstone(id, h)),
                 Table::Pages => rows.extend((1..=h.pages).map(|p| Self::page_row(id, None, &h.path, p, None))),
             }
         }
+        if let Some(scope) = &self.scope {
+            for row in &mut rows {
+                row.insert("connection_id".into(), json!(scope.connection_id));
+                row.insert("tenant".into(), json!(scope.tenant));
+                row.insert("principal".into(), json!(scope.principal));
+            }
+        }
         let mut next = json!({ "files": after, "drive_id": self.drive.config.drive_id, "roots": roots, "mode": self.drive.config.mode.as_str() });
         if let Some(ids) = ids { next["file_ids"] = json!(ids); }
+        if let Some(scope) = &self.scope {
+            next["connection_id"] = json!(scope.connection_id);
+            next["tenant"] = json!(scope.tenant);
+            next["principal"] = json!(scope.principal);
+        }
         Ok(Read { rows, position: next, skipped, snapshot_complete })
     }
 }

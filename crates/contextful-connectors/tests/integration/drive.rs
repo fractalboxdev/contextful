@@ -224,9 +224,16 @@ fn bound_drive_rows_and_positions_keep_connection_identity() {
     assert_eq!(b_rows[0]["principal"], "user-b");
     assert_ne!(a_rows[0]["connection_id"], b_rows[0]["connection_id"]);
     assert_ne!(a_position["connection_id"], b_position["connection_id"]);
+    assert!(a_position["files"].get("conn-a:doc-plan").is_some());
+    assert!(b_position["files"].get("conn-b:doc-plan").is_some());
+    let wrong_scope = a.source_bound("files", a_scope.clone()).unwrap().read(Some(&b_position), &Never).unwrap_err();
+    assert_eq!(wrong_scope.tag, FailureTag::Config);
+
+    let (pages, _, _) = pull(&mut a.source_bound("pages", a_scope.clone()).unwrap(), None);
+    assert!(pages.iter().all(|row| row["tenant"] == "tenant-a" && row["principal"] == "user-a" && row["connection_id"] == "conn-a"));
 
     let (removed, _, _) = pull(&mut a.source_bound("files", a_scope).unwrap(), Some(json!({
-        "files": {"doc-gone": {"modified": "2030-01-01T00:00:00Z", "path": "Gone", "name": "Gone", "version": 1, "resolved_root": "doc-gone", "pages": 0}},
+        "files": {"conn-a:doc-gone": {"modified": "2030-01-01T00:00:00Z", "path": "Gone", "name": "Gone", "version": 1, "resolved_root": "doc-gone", "pages": 0}},
         "connection_id": "conn-a", "tenant": "tenant-a", "principal": "user-a", "file_ids": ["doc-gone"], "drive_id": null, "roots": [], "mode": "bytes-and-pages"
     })));
     assert!(removed.iter().any(|row| row["file_id"] == "doc-gone" && row["removed"] == true && row["tenant"] == "tenant-a" && row["connection_id"] == "conn-a"));
