@@ -230,6 +230,7 @@ fn bound_drive_rows_and_positions_keep_connection_identity() {
     assert_eq!(wrong_scope.tag, FailureTag::Config);
 
     let (pages, _, _) = pull(&mut a.source_bound("pages", a_scope.clone()).unwrap(), None);
+    assert!(!pages.is_empty());
     assert!(pages.iter().all(|row| row["tenant"] == "tenant-a" && row["principal"] == "user-a" && row["connection_id"] == "conn-a"));
 
     let (removed, _, _) = pull(&mut a.source_bound("files", a_scope).unwrap(), Some(json!({
