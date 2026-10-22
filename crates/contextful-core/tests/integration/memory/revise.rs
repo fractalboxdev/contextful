@@ -99,7 +99,7 @@ fn a_later_reaffirmation_resolves_multiple_live_objects() {
 }
 
 /// The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.
-// spec: read.revise.direct-write@b2e8a7eb
+// spec: read.revise.direct-write@523ea693
 #[test]
 fn the_direct_write_accepts_claims_alone() {
     assert_eq!(direct_write("team_memory", Shape::Facts), Ok(()));

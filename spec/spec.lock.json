@@ -8185,7 +8185,7 @@
       "operation": "revise",
       "subject": "direct-write",
       "kind": "refusal",
-      "statement": "The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.",
+      "statement": "The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through {{read.resolve-entity.entity-upsert}}.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 141
@@ -8734,6 +8734,83 @@
       "line": 261
     },
     {
+      "id": "read.resolve-entity.entity-upsert",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "entity-upsert",
+      "kind": "behavior",
+      "statement": "`contextful memory entity upsert --table <entities> --id <id> --kind <kind> --name <name> [--alias <alias>]...` lands one row into the first `memory_entities` table the manifest declares, the one synthesis resolves against, under a read and a write grant on it.",
+      "why": "because the claim write refuses entity rows, and an operator still names the identities mentions resolve to",
+      "file": "spec/21-memory.md",
+      "line": 263
+    },
+    {
+      "id": "read.resolve-entity.upsert-fields",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "upsert-fields",
+      "kind": "refusal",
+      "statement": "An upsert trims its id, kind, name and each alias before it compares or lands them; one empty after trimming raises `MemoryEntityFieldEmpty`, and nothing lands.",
+      "why": "because a blank identity or alias matches no mention, and surrounding whitespace lands a second spelling of a held name",
+      "file": "spec/21-memory.md",
+      "line": 265
+    },
+    {
+      "id": "read.resolve-entity.upsert-merge",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "upsert-merge",
+      "kind": "behavior",
+      "statement": "An upsert naming a held `entity_id` replaces its `kind` and `name`, and keeps the stored aliases followed by each given alias no stored alias matches case-folded.",
+      "why": "because an alias an earlier upsert recorded keeps naming the entity for mentions already written with it",
+      "file": "spec/21-memory.md",
+      "line": 267
+    },
+    {
+      "id": "read.resolve-entity.alias-conflict",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "alias-conflict",
+      "kind": "refusal",
+      "statement": "An upsert whose name or alias matches, case-folded, the name or an alias of another entity the session reads raises `MemoryEntityAliasConflict`, and nothing lands.",
+      "why": "because a mention two identities share resolves to neither: synthesis skips it under {{read.resolve-entity.ambiguous-mention}} and a card lists candidates under {{read.resolve-entity.card-candidates}}",
+      "file": "spec/21-memory.md",
+      "line": 269
+    },
+    {
+      "id": "read.resolve-entity.upsert-whole-table",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "upsert-whole-table",
+      "kind": "refusal",
+      "statement": "An upsert whose session read of the entities table returns truncated raises `MemoryEntityTableTruncated`, and nothing lands.",
+      "why": "because a merge over a cut read drops the held row's aliases, and a conflict check over it misses the entity that carries the mention",
+      "file": "spec/21-memory.md",
+      "line": 271
+    },
+    {
+      "id": "read.resolve-entity.upsert-serial",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "upsert-serial",
+      "kind": "behavior",
+      "statement": "An upsert holds its table's upsert lock across its read, conflict check and landing, and stamps the row after the held row's `_ingested_at`, so concurrent upserts on one table apply one after another.",
+      "why": "because two upserts merging one snapshot lose an alias, and two checking one snapshot both claim one mention",
+      "file": "spec/21-memory.md",
+      "line": 273
+    },
+    {
+      "id": "read.resolve-entity.upsert-availability",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "upsert-availability",
+      "kind": "refusal",
+      "statement": "An upsert into an entities table declaring `available_time` raises `MemoryEntityAvailabilityDeclared`, and nothing lands.",
+      "why": "because an operator's identity carries no source availability instant, and a vintage table keeps the prior row beside the one an upsert replaces",
+      "file": "spec/21-memory.md",
+      "line": 275
+    },
+    {
       "id": "read.settle.registration",
       "contract": "read",
       "operation": "settle",
@@ -8742,7 +8819,7 @@
       "statement": "A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 277
+      "line": 291
     },
     {
       "id": "read.settle.source-mismatch",
@@ -8753,7 +8830,7 @@
       "statement": "An observation naming a `metric` series other than the registration's, or carrying a verdict whose resolution source or registered series is absent or differs, raises `OutcomeSourceMismatch`, naming each source by its wire name.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 279
+      "line": 293
     },
     {
       "id": "read.settle.settling-citation",
@@ -8764,7 +8841,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 281
+      "line": 295
     },
     {
       "id": "read.settle.grace-window",
@@ -8775,7 +8852,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 283
+      "line": 297
     },
     {
       "id": "read.settle.calibration-report",
@@ -8786,7 +8863,7 @@
       "statement": "Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error over 10 equal-width bins, and the held-out score {{read.synthesize.confidence-calibration}} uses, over every fifth prediction.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 284
+      "line": 298
     },
     {
       "id": "read.settle.statement-bound",
@@ -8797,7 +8874,7 @@
       "statement": "A registration's optional `statement`, the falsifiable claim it scores, holds at most 4096 B; a longer one raises `OutcomeStatementTooLong`, and the statement takes part in {{read.settle.registration-conflict}}.",
       "why": "because a registration reads on its own only with its claim text, and an unbounded text field lets one row outweigh the table",
       "file": "spec/21-memory.md",
-      "line": 286
+      "line": 300
     },
     {
       "id": "read.settle.metric-reference",
@@ -8808,7 +8885,7 @@
       "statement": "A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against and is never looked up in the store; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.",
       "why": "because a registration precedes its series' first landing, so a store lookup refuses every prediction made before its data exists",
       "file": "spec/21-memory.md",
-      "line": 288
+      "line": 302
     },
     {
       "id": "read.settle.deadline-date",
@@ -8819,7 +8896,7 @@
       "statement": "A `deadline_at` given as a bare `YYYY-MM-DD` resolves as {{store.bound-time.instant-comparison}} resolves a date: the deadline is the next UTC midnight, so the whole named day precedes it.",
       "why": "because one date spelling then means one instant on every clock the engine compares",
       "file": "spec/21-memory.md",
-      "line": 290
+      "line": 304
     },
     {
       "id": "read.settle.predict-verb",
@@ -8830,7 +8907,7 @@
       "statement": "`contextful memory predict --into <table> --registration <json>` checks {{read.settle.registration}} and lands the registration in that `predictions` table under the admitted credential's write grant, then prints `prediction_id: <id>`.",
       "why": "because a registration nothing lands leaves its outcome no prediction to settle against",
       "file": "spec/21-memory.md",
-      "line": 292
+      "line": 306
     },
     {
       "id": "read.settle.observe-verb",
@@ -8841,7 +8918,7 @@
       "statement": "`contextful memory observe --into <table> --observation <json>` reads the prediction's stored registration through the writer's session, checks {{read.settle.source-mismatch}} and {{read.settle.settling-citation}}, lands it in that `outcomes` table, and prints its label row.",
       "why": "because a verdict is checked against the source registered before it, never one the observation asserts",
       "file": "spec/21-memory.md",
-      "line": 294
+      "line": 308
     },
     {
       "id": "read.settle.verb-attribution",
@@ -8852,7 +8929,7 @@
       "statement": "Both verbs admit a capability token as `contextful memory write` does, and each landed row carries `_authored_by` from its subject under {{store.reserve.injected}}.",
       "why": "because a settled outcome is weighed by who registered and who observed it",
       "file": "spec/21-memory.md",
-      "line": 296
+      "line": 310
     },
     {
       "id": "read.settle.prediction-unregistered",
@@ -8863,7 +8940,7 @@
       "statement": "An observation naming a `prediction_id` no row of the declared `predictions` table carries in the writer's session raises `OutcomePredictionUnregistered`, and nothing lands.",
       "why": "because a verdict with no registration has no source to check it against",
       "file": "spec/21-memory.md",
-      "line": 298
+      "line": 312
     },
     {
       "id": "read.settle.restated-landing",
@@ -8874,7 +8951,7 @@
       "statement": "A registration or observation identical to the stored row of its `prediction_id` lands nothing, and the verb succeeds with its usual output.",
       "why": "because a retried verb restates one registration, and landing it again commits a run that records nothing new",
       "file": "spec/21-memory.md",
-      "line": 300
+      "line": 314
     },
     {
       "id": "read.settle.registration-conflict",
@@ -8885,7 +8962,7 @@
       "statement": "A registration whose `prediction_id` a stored registration with any other field already holds raises `OutcomeRegistrationConflict`, and nothing lands.",
       "why": "because rewriting a registration after the fact changes the deadline or source a verdict is scored against",
       "file": "spec/21-memory.md",
-      "line": 302
+      "line": 316
     },
     {
       "id": "read.settle.outcome-settled",
@@ -8896,7 +8973,7 @@
       "statement": "An observation differing from a stored outcome of its `prediction_id` that carries a verdict raises `OutcomeAlreadySettled`; a stored outcome without a verdict is replaced.",
       "why": "because a verdict rewritten after scoring silently changes the calibration it fed",
       "file": "spec/21-memory.md",
-      "line": 304
+      "line": 318
     },
     {
       "id": "read.settle.label-join",
@@ -8907,7 +8984,7 @@
       "statement": "The label view of Shapes runs over a declared `predictions` and `outcomes` table pair as read through the reader's session.",
       "why": "because the view's grace window and self-rated filter then hold for every reader, not each reader's own join",
       "file": "spec/21-memory.md",
-      "line": 306
+      "line": 320
     },
     {
       "id": "read.settle.calibration-verb",
@@ -8918,7 +8995,7 @@
       "statement": "`contextful memory calibration --table <claims>` joins label rows carrying a verdict to that claims table on `prediction_id` equal to `claim_id`, through the caller's session, and prints {{read.settle.calibration-report}} with the count of joined predictions, as JSON under `--json`.",
       "why": "because a prediction's shape, predicate and emitted confidence are those of the claim it scores",
       "file": "spec/21-memory.md",
-      "line": 308
+      "line": 322
     },
     {
       "id": "read.traverse.call",
@@ -8929,7 +9006,7 @@
       "statement": "`memory.traverse` takes `table`, `seed`, `rel_types`, `hops`, `as_of_ingest`, `observed_at` and `available_as_of`, and returns the reached edges whose `valid_from` and `valid_to` cover `observed_at`, under one frozen anchor, as {{read.respond.one-projection}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 330
+      "line": 344
     },
     {
       "id": "read.traverse.clocks",
@@ -8940,7 +9017,7 @@
       "statement": "An absent `as_of_ingest` reads the latest committed state, an absent `observed_at` the call's instant, and an absent `hops` 1; `contextful.bounds` echoes each supplied bound as {{read.recall.keyed-clocks}} does.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 331
+      "line": 345
     },
     {
       "id": "read.traverse.cli-verb",
@@ -8951,7 +9028,7 @@
       "statement": "The `contextful memory traverse` verb passes its arguments through {{read.traverse.call}} and prints the same JSON response.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 332
+      "line": 346
     },
     {
       "id": "read.traverse.enforced-edges",
@@ -8962,7 +9039,7 @@
       "statement": "Every edge reads through the caller's enforced session, and each edge's citations pass {{read.recall.evidence-unresolved}}; an edge failing either is neither returned nor walked through.",
       "why": "because walking through a hidden edge reveals the node beyond it",
       "file": "spec/21-memory.md",
-      "line": 333
+      "line": 347
     },
     {
       "id": "read.traverse.engine",
@@ -8973,7 +9050,7 @@
       "statement": "An engine-backed walk answers through {{read.resolve-entity.graph-index}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 335
+      "line": 349
     },
     {
       "id": "read.traverse.walkable",
@@ -8984,7 +9061,7 @@
       "statement": "A `rel_types` entry whose declared relation is not walkable raises `MemoryTraverseRelationUnwalkable`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 336
+      "line": 350
     },
     {
       "id": "read.traverse.hop-bound",
@@ -8995,7 +9072,7 @@
       "statement": "A walk follows at most 3 hops; a larger `hops` raises `MemoryTraverseHopsExceeded`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 338
+      "line": 352
     },
     {
       "id": "read.traverse.fan-out",
@@ -9006,7 +9083,7 @@
       "statement": "A node expands at most 64 memory-edges, ordered by `valid_from` newest first then edge id; the rest count in `edges_omitted`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 340
+      "line": 354
     },
     {
       "id": "read.traverse.frontier-cap",
@@ -9017,7 +9094,7 @@
       "statement": "A walk stops at 512 memory-edges and counts unexpanded edges in `edges_omitted`; a non-zero `edges_omitted` marks the walk incomplete, and `truncated` stays with {{read.respond.truncation-cause}}.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 342
+      "line": 356
     },
     {
       "id": "read.traverse.omitted-readable",
@@ -9028,7 +9105,7 @@
       "statement": "`edges_omitted` counts only edges the caller's session reads.",
       "why": "because a count of hidden edges discloses their existence, as {{read.recall.suppression-count}} avoids naming claims",
       "file": "spec/21-memory.md",
-      "line": 344
+      "line": 358
     },
     {
       "id": "read.traverse.cycle",
@@ -9039,7 +9116,7 @@
       "statement": "A visited node is never expanded again; the walk proceeds breadth-first by hop.",
       "why": "because a revisited node adds no edge and a cycle otherwise exhausts {{read.traverse.frontier-cap}}",
       "file": "spec/21-memory.md",
-      "line": 346
+      "line": 360
     },
     {
       "id": "run.journal.step-output",
@@ -32965,6 +33042,10 @@
       "read.revise.unscoped-collision"
     ],
     [
+      "read.revise.direct-write",
+      "read.resolve-entity.entity-upsert"
+    ],
+    [
       "read.revise.served-dedup",
       "read.revise.dedup-key"
     ],
@@ -38146,9 +38227,25 @@
             "clause": "read.resolve-entity.edge-endpoint",
             "gloss": "A candidate edge endpoint resolves to no identity."
           },
+          "MemoryEntityAliasConflict": {
+            "clause": "read.resolve-entity.alias-conflict",
+            "gloss": "An entity upsert names a name or alias another entity already carries."
+          },
           "MemoryEntityAmbiguous": {
             "clause": "read.resolve-entity.ambiguous-mention",
             "gloss": "A mention resolves onto two identities with no separating key."
+          },
+          "MemoryEntityAvailabilityDeclared": {
+            "clause": "read.resolve-entity.upsert-availability",
+            "gloss": "An entity upsert targeted a table declaring `available_time`."
+          },
+          "MemoryEntityFieldEmpty": {
+            "clause": "read.resolve-entity.upsert-fields",
+            "gloss": "An entity upsert carried an id, kind, name or alias empty after trimming."
+          },
+          "MemoryEntityTableTruncated": {
+            "clause": "read.resolve-entity.upsert-whole-table",
+            "gloss": "An entity upsert's session read of its table returned truncated."
           },
           "MemoryEvidenceOverflow": {
             "clause": "read.recall.evidence-gate-bound",

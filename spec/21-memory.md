@@ -138,7 +138,7 @@ Supersession within one validity line, confidence decay, the direct write and it
   *A-read*
 - `supersede` — A claim of equal or higher tier retires a live prior on its subject, predicate and scope when both are open-ended or share a valid-from instant, except {{read.revise.unscoped-collision}}; the prior ends at the successor's start and names it.
   *A-read*
-- `direct-write` — The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.
+- `direct-write` — The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through {{read.resolve-entity.entity-upsert}}.
   *A-read*
 - `observed-at` — `contextful memory write --observed-at <instant>` lands the claim with `valid_from` at that instant; without it, `valid_from` is the write's own instant.
 - `dedup-key` — `--dedup-key <key>` derives `claim_id` from the key beside the subject, predicate, object and scope, and a write whose `claim_id` the table already holds lands nothing.
@@ -260,6 +260,20 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
   *because a read outside the audit chain is a read no owner can account for*
 - `card-not-entities` — A granted `table` declaring a shape other than `memory_entities`, or no memory shape, raises `MemoryExplainNotEntities`.
   *because only a `memory_entities` table carries the identity, kind and aliases a card returns*
+- `entity-upsert` — `contextful memory entity upsert --table <entities> --id <id> --kind <kind> --name <name> [--alias <alias>]...` lands one row into the first `memory_entities` table the manifest declares, the one synthesis resolves against, under a read and a write grant on it.
+  *because the claim write refuses entity rows, and an operator still names the identities mentions resolve to*
+- `upsert-fields` — An upsert trims its id, kind, name and each alias before it compares or lands them; one empty after trimming raises `MemoryEntityFieldEmpty`, and nothing lands.
+  *because a blank identity or alias matches no mention, and surrounding whitespace lands a second spelling of a held name*
+- `upsert-merge` — An upsert naming a held `entity_id` replaces its `kind` and `name`, and keeps the stored aliases followed by each given alias no stored alias matches case-folded.
+  *because an alias an earlier upsert recorded keeps naming the entity for mentions already written with it*
+- `alias-conflict` — An upsert whose name or alias matches, case-folded, the name or an alias of another entity the session reads raises `MemoryEntityAliasConflict`, and nothing lands.
+  *because a mention two identities share resolves to neither: synthesis skips it under {{read.resolve-entity.ambiguous-mention}} and a card lists candidates under {{read.resolve-entity.card-candidates}}*
+- `upsert-whole-table` — An upsert whose session read of the entities table returns truncated raises `MemoryEntityTableTruncated`, and nothing lands.
+  *because a merge over a cut read drops the held row's aliases, and a conflict check over it misses the entity that carries the mention*
+- `upsert-serial` — An upsert holds its table's upsert lock across its read, conflict check and landing, and stamps the row after the held row's `_ingested_at`, so concurrent upserts on one table apply one after another.
+  *because two upserts merging one snapshot lose an alias, and two checking one snapshot both claim one mention*
+- `upsert-availability` — An upsert into an entities table declaring `available_time` raises `MemoryEntityAvailabilityDeclared`, and nothing lands.
+  *because an operator's identity carries no source availability instant, and a vintage table keeps the prior row beside the one an upsert replaces*
 
 unsettled: Which edges carry aliases and nearness's parent closure? owner: read-path affects: read.resolve-entity
 
