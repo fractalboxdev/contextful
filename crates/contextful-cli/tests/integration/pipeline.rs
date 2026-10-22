@@ -1535,9 +1535,30 @@ impl Daemon {
 
 impl Drop for Daemon {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        stop(&mut self.child);
     }
+}
+
+/// End a serve-like `child` and every run it dispatched. `SIGTERM` lets it end its child groups
+/// within their 10 s grace; a `SIGKILL` cannot be caught and would orphan them, so it comes only
+/// after 20 s, with each child's group killed beside it.
+pub(crate) fn stop(child: &mut std::process::Child) {
+    if !matches!(child.try_wait(), Ok(None)) {
+        return;
+    }
+    let _ = Command::new("kill").args(["-TERM", &child.id().to_string()]).status();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline {
+        if !matches!(child.try_wait(), Ok(None)) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    for pid in children_of(child.id()) {
+        let _ = Command::new("kill").args(["-KILL", "--", &format!("-{pid}")]).status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// `plan` diffs desired state against the store with no side effect, `--json` emitting a structured diff; `apply`
@@ -1844,6 +1865,24 @@ fn serve_ends_every_child_it_dispatched() {
     serve_ends_its_blocked_children_on("INT");
     a_signalled_cycle_returns_only_after_its_children_exit();
     an_external_wake_ends_its_blocked_child_on_stop();
+}
+
+/// Dropping a test's `Daemon` mid-fire leaves no child run behind.
+#[test]
+fn a_dropped_daemon_leaves_no_child_run() {
+    let vendor = Silent::start();
+    let dir = blocking_project(&vendor);
+    let daemon = Daemon::start(dir.path());
+    daemon.wait_for("fire orders: started", 0);
+    let children = Strays(vendor.blocked_children(daemon.pid()));
+    drop(daemon);
+    let survivors: Vec<u32> = children.0.iter().copied().filter(|p| alive(*p)).collect();
+    if !survivors.is_empty() {
+        for pid in &survivors {
+            let _ = Command::new("kill").args(["-KILL", &pid.to_string()]).status();
+        }
+        panic!("children {survivors:?} outlived the dropped daemon");
+    }
 }
 
 fn an_external_wake_ends_its_blocked_child_on_stop() {
