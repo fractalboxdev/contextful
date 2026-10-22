@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 316 | 54 | 29 | 16 | 274 | 0 | 274 |
-| `run` | 3 | 29 | 606 | 128 | 49 | 19 | 568 | 0 | 568 |
+| `run` | 3 | 29 | 608 | 129 | 49 | 19 | 569 | 0 | 569 |
 | `store` | 5 | 20 | 337 | 70 | 22 | 13 | 326 | 0 | 326 |
-| `surface` | 2 | 21 | 182 | 67 | 24 | 0 | 156 | 0 | 156 |
+| `surface` | 2 | 21 | 187 | 67 | 24 | 1 | 161 | 0 | 161 |
 | `topology` | 1 | 6 | 81 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 24 | 170 | 2818 | 692 | 226 | 83 | 2526 | 0 | |
+| **total** | 24 | 170 | 2825 | 693 | 226 | 84 | 2532 | 0 | |
 
 Decision records: 18.
 
@@ -29,13 +29,13 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
-| 4 — Ingest | 25 | 639 | 535 | passing | closed |
+| 4 — Ingest | 25 | 641 | 536 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
 | 6 — Sync and replicas | 9 | 112 | 111 | passing | closed |
 | 7 — Memory | 6 | 93 | 78 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 112 | 99 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 117 | 104 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 67 | 55 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
@@ -1607,6 +1607,7 @@ Unscheduled operations: 13.
 | `run.export.group-identity` | `spec/pins.toml` | performed |
 | `run.export.group-incompatible` | `spec/pins.toml` | performed |
 | `run.export.group-input-digest` | `spec/pins.toml` | performed |
+| `run.export.group-quiesce` | `crates/contextful-cli/tests/integration/build.rs::a_cycle_defers_the_producer_while_its_publication_exports` | performed |
 | `run.export.group-rebuild` | `spec/pins.toml` | performed |
 | `run.export.group-request-bound` | `spec/pins.toml` | performed |
 | `run.export.group-source` | `spec/pins.toml` | performed |
@@ -2375,6 +2376,7 @@ Unscheduled operations: 13.
 | `surface.arm.unknown-trigger` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_trigger_arms_nothing` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
 | `surface.arm.wake-answer` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_answers_within_its_bound_naming_what_still_runs` | performed |
+| `surface.arm.wake-pending-steps` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_names_the_jobs_due_behind_a_landed_head_pending` | performed |
 | `surface.brief.absence-is-earned` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::brief reports derivation failure and timeout without a card` | performed |
 | `surface.brief.articles-per-subject` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::brief carries at most three articles per subject` | performed |
 | `surface.brief.card-subjects` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::brief carries at most three subjects` | performed |
@@ -2402,6 +2404,10 @@ Unscheduled operations: 13.
 | `surface.dispatch.callback-skew` | `crates/contextful-core/tests/integration/surface/worker.rs::the_relay_accepts_a_timestamp_within_the_skew` | performed |
 | `surface.dispatch.children-reaped` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_ends_every_child_it_dispatched` | performed |
 | `surface.dispatch.exclusion-key` | `crates/contextful-core/tests/integration/surface/dispatch.rs::a_key_in_flight_starts_no_second_instance` | performed |
+| `surface.dispatch.export-claim` | `crates/contextful-cli/tests/integration/build.rs::an_export_waits_for_a_running_unit_writing_its_inputs` | performed |
+| `surface.dispatch.export-claim-unread` | `crates/contextful-cli/tests/integration/build.rs::a_cycle_defers_a_unit_whose_publication_claim_fails` | performed |
+| `surface.dispatch.export-deferred-slot` | `crates/contextful-engine/tests/integration/scheduler.rs::a_deferred_unit_leaves_its_slot_and_writes_no_dispatch_record` | performed |
+| `surface.dispatch.export-quiesced` | `crates/contextful-engine/tests/integration/scheduler.rs::a_declined_claim_defers_the_unit_and_keeps_it_due` | performed |
 | `surface.dispatch.fire-credential` | `crates/contextful-cli/tests/integration/job.rs::an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables` | performed |
 | `surface.dispatch.fire-credential-inherited` | `crates/contextful-cli/tests/integration/job.rs::scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart` | performed |
 | `surface.dispatch.fire-credential-lifetime` | `crates/contextful-cli/tests/integration/job.rs::an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables` | performed |

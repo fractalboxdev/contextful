@@ -87,6 +87,80 @@ pub(crate) fn lock(located: &crate::project::Located) -> Result<FileLock> {
     )?)
 }
 
+/// Each declared publication as its name, producer job and member tables.
+pub(crate) fn families(text: &str) -> Result<Vec<(String, String, Vec<String>)>> {
+    let exports = parse_exports(text)?;
+    Ok(declarations(text)?
+        .into_iter()
+        .map(|group| {
+            let tables = group
+                .members
+                .iter()
+                .map(|name| exports.iter().find(|e| &e.name == name).expect("validated member").table.clone())
+                .collect();
+            (group.name, group.job, tables)
+        })
+        .collect())
+}
+
+/// The lock files fencing serve's dispatch over publication `name`'s inputs: an intent an
+/// export takes first, so no unit starts over them, then the inputs each started unit holds
+/// shared (`surface.dispatch.export-quiesced`, `run.export.group-quiesce`).
+fn quiesce_files(project_dir: &Path, project: &str, name: &str) -> Result<(std::fs::File, std::fs::File)> {
+    let dir = cursor_dir(project_dir, project);
+    std::fs::create_dir_all(&dir)?;
+    let open = |kind: &str| -> Result<std::fs::File> {
+        let path = dir.join(format!("publication-{name}.{kind}.lock"));
+        Ok(std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path)
+            .with_context(|| format!("opening `{}`", path.display()))?)
+    };
+    Ok((open("intent")?, open("inputs")?))
+}
+
+/// Hold publication `name`'s inputs shared for one serve unit, or `None` while an export holds
+/// or awaits them (`surface.dispatch.export-claim`).
+pub(crate) fn hold_inputs(project_dir: &Path, project: &str, name: &str) -> Result<Option<std::fs::File>> {
+    let (intent, inputs) = quiesce_files(project_dir, project, name)?;
+    for file in [&intent, &inputs] {
+        match file.try_lock_shared() {
+            Ok(()) => {}
+            Err(std::fs::TryLockError::WouldBlock) => return Ok(None),
+            Err(std::fs::TryLockError::Error(e)) => return Err(e.into()),
+        }
+    }
+    Ok(Some(inputs))
+}
+
+/// Take publication `name`'s intent, then its inputs, exclusively; both together wait at most
+/// [`QUIESCE_WAIT_SECS`] for serve's units or another export (`run.export.group-quiesce-wait`).
+fn quiesce(located: &crate::project::Located, name: &str) -> Result<(std::fs::File, std::fs::File)> {
+    let (intent, inputs) = quiesce_files(&located.project.dir, &located.project.name, name)?;
+    lock_within(&[(&intent, "dispatch intent"), (&inputs, "inputs")], std::time::Duration::from_secs(QUIESCE_WAIT_SECS))
+        .map_err(|e| anyhow::anyhow!("PublicationInputsBusy: publication `{name}`: {e}"))?;
+    Ok((intent, inputs))
+}
+
+/// Lock each file exclusively in order; every wait together ends `wait` after the first began.
+fn lock_within(files: &[(&std::fs::File, &str)], wait: std::time::Duration) -> Result<()> {
+    let deadline = std::time::Instant::now() + wait;
+    for (file, what) in files {
+        loop {
+            match file.try_lock() {
+                Ok(()) => break,
+                Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(50))
+                }
+                Err(std::fs::TryLockError::WouldBlock) => anyhow::bail!("its {what} stayed held for {} s", wait.as_secs()),
+                Err(std::fs::TryLockError::Error(e)) => return Err(e.into()),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// (`run.export.group-quiesce-wait`)
+const QUIESCE_WAIT_SECS: u64 = 300;
+
 /// The completion frontier enters the ledger only after every output closes successfully.
 pub(crate) fn record_source(
     store: &contextful_context::Store,
@@ -220,9 +294,12 @@ pub(super) fn deliver(
     supported()?;
     let located = project.locate(declaration)?;
     crate::storage::preflight(&located.project)?;
-    crate::sync::pull_before_run(&located)?;
     let text = std::fs::read_to_string(&located.declaration)?;
     let (declared, exports) = group(&text, name)?;
+    // Serve starts no unit over the publication's inputs until this export ends, and every
+    // unit already running ends before the pull (`run.export.group-quiesce`).
+    let _quiesced = quiesce(&located, name)?;
+    crate::sync::pull_before_run(&located)?;
     let _held = lock(&located)?;
     let vars: BTreeMap<String, String> = std::env::vars().collect();
     let resolver = contextful_outbound::assemble(&vars, Arc::new(SystemClock))?;
@@ -390,4 +467,28 @@ pub(super) fn checkpoint(
     let bytes = ledger(face.store(), name, false)?.checkpoint(name, namespace)?;
     face.store().metadata_files().replace(out, &bytes)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod quiesce_tests {
+    /// A wait spent on the first lock counts against the second (`run.export.group-quiesce-wait`).
+    #[test]
+    fn one_deadline_covers_every_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let open = |n: &str| std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.path().join(n)).unwrap();
+        let (first, second) = (open("first"), open("second"));
+        let (first_holder, second_holder) = (open("first"), open("second"));
+        first_holder.lock().unwrap();
+        second_holder.lock().unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            drop(first_holder);
+        });
+        let began = std::time::Instant::now();
+        let err = super::lock_within(&[(&first, "first"), (&second, "second")], std::time::Duration::from_secs(2)).unwrap_err();
+        assert!(err.to_string().contains("second"), "{err}");
+        assert!(began.elapsed() < std::time::Duration::from_millis(2900), "waited {:?}", began.elapsed());
+        release.join().unwrap();
+        drop(second_holder);
+    }
 }

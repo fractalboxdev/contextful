@@ -570,3 +570,148 @@ fn apply_leaves_an_owner_a_live_attempt_holds_and_names_the_verb() {
     let owner = machine(p).owner_at(&OwnerScope::host("job:daily-build")).unwrap().expect("the owner stays pending");
     assert_eq!(owner.execution_id, SUPERSEDED);
 }
+
+/// While `export group` awaits its receiver, a serve cycle finding the publication's producer due starts it
+/// not, reports it pending and leaves the producer frontier where the export read it; the export acknowledges
+/// its group, and the next cycle fires the producer.
+// spec: run.export.group-quiesce@86cad1d1
+#[test]
+fn a_cycle_defers_the_producer_while_its_publication_exports() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{mpsc, Arc, Mutex};
+    let armed = Arc::new(AtomicBool::new(false));
+    let (entered_tx, entered) = mpsc::channel::<()>();
+    let (release, release_rx) = mpsc::channel::<()>();
+    let (entered_tx, release_rx) = (Mutex::new(entered_tx), Mutex::new(release_rx));
+    let gate = armed.clone();
+    let receiver = contextful_acceptance::http::Server::start(move |_| {
+        if gate.swap(false, Ordering::SeqCst) {
+            entered_tx.lock().unwrap().send(()).unwrap();
+            release_rx.lock().unwrap().recv_timeout(Duration::from_secs(60)).unwrap();
+        }
+        contextful_acceptance::http::Response::json(200, "{}")
+    });
+    let (dir, public, token) = published_job(&receiver);
+    let p = dir.path();
+    std::fs::write(p.join("more.jsonl"), "{\"day\":\"d3\"}\n").unwrap();
+    stdout(&run(p, &["context", "land", "events", "--rows", "more.jsonl", "--run-id", "r2", "--site-id", "site-a", "--now", "2030-01-01T01:30:00Z"]));
+    stdout(&run(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T02:00:00Z"]));
+    let source = || contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap().source("daily-projection").unwrap().unwrap().run;
+    let read = source();
+    armed.store(true, Ordering::SeqCst);
+    let export = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["export", "group", "daily-projection", "--project", "research", "--public-key", &public, "--audience", "contextful://acme-research"])
+        .current_dir(p).env("CONTEXTFUL_TOKEN", &token).env_remove("CONTEXTFUL_NODE_ID")
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    entered.recv_timeout(Duration::from_secs(60)).expect("the export reaches its receiver");
+    let cycle = |now: &str| -> Value {
+        serde_json::from_str(&stdout(&run(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now]))).unwrap()
+    };
+    let deferred = cycle("2030-01-01T03:00:00Z");
+    assert_eq!(deferred["fired"], serde_json::json!([]), "{deferred}");
+    assert_eq!(deferred["pending"], serde_json::json!(["job:daily-build"]), "{deferred}");
+    assert_eq!(source(), read, "no producer completion lands during the export");
+    release.send(()).unwrap();
+    let out = export.wait_with_output().unwrap();
+    assert!(stdout(&out).contains("acknowledged"), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(receiver.received("/events").len(), 2);
+    let fired = cycle("2030-01-01T03:00:00Z");
+    assert_eq!(fired["fired"], serde_json::json!(["job:daily-build"]), "{fired}");
+    assert_ne!(source(), read);
+}
+
+/// While a serve cycle's unit landing a table the publication's producer reads still runs, `export group` waits
+/// for it, then acknowledges the group the unit's producer step completed.
+// spec: surface.dispatch.export-claim@dde058b0
+#[test]
+fn an_export_waits_for_a_running_unit_writing_its_inputs() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{mpsc, Arc, Mutex};
+    let armed = Arc::new(AtomicBool::new(false));
+    let (entered_tx, entered) = mpsc::channel::<()>();
+    let (release, release_rx) = mpsc::channel::<()>();
+    let (entered_tx, release_rx) = (Mutex::new(entered_tx), Mutex::new(release_rx));
+    let gate = armed.clone();
+    let feed = contextful_acceptance::http::Server::start(move |_| {
+        if gate.swap(false, Ordering::SeqCst) {
+            entered_tx.lock().unwrap().send(()).unwrap();
+            release_rx.lock().unwrap().recv_timeout(Duration::from_secs(60)).unwrap();
+        }
+        contextful_acceptance::http::Response::json(200, "[{\"day\":\"d1\"}]")
+    });
+    let receiver = contextful_acceptance::http::Server::start(|_| contextful_acceptance::http::Response::json(200, "{}"));
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path();
+    let store = p.join(".contextful/context/research");
+    std::fs::create_dir_all(&store).unwrap();
+    std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    std::fs::write(p.join("contextful.toml"), format!(
+        "site_id='site-a'\nauthoring_posture='per_request'\n[project]\nname='research'\n\
+         [[pipeline]]\nid='feed'\nschedule='every 1h'\ntables=['events']\n[pipeline.source]\nname='http'\nconfig={{ endpoint='{}' }}\n\
+         [[model]]\nid='daily'\nsql='SELECT day, CAST(count(*) AS BIGINT) AS n FROM feed_events GROUP BY day'\nunique_key=['day']\n\
+         [model.contract]\nversion='1.0.0'\ncolumns=[{{ name='day', type='utf8', nullable=false }}, {{ name='n', type='int64', nullable=false }}]\n\
+         [[job]]\nname='daily-build'\nkind='build'\ntarget='daily'\nafter='feed'\n\
+         [[export]]\nname='daily-copy'\ntable='daily'\nendpoint='{}'\nformat='changes-v1'\nkey=['day']\nschedule='every 30s'\n\
+         [[publication]]\nname='daily-projection'\njob='daily-build'\nmembers=['daily-copy']\n",
+        feed.url("/feed"), receiver.url("/events"),
+    )).unwrap();
+    std::fs::write(p.join(".contextful/issuance.toml"), "default_audience = 'contextful://acme-research'\nmax_lifetime_secs = 3600\n").unwrap();
+    stdout(&run(p, &["pipeline", "import", "--project", "research"]));
+    let cycle = |now: &str| Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "serve", "--cycle", "--project", "research", "--now", now])
+        .current_dir(p).env_remove("CONTEXTFUL_NODE_ID")
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    let first: Value = serde_json::from_str(&stdout(&cycle("2030-01-01T01:00:00Z").wait_with_output().unwrap())).unwrap();
+    assert_eq!(first["fired"], serde_json::json!(["feed"]), "{first}");
+    let public = stdout(&run(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let token = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://projection", "--zone", "on-prem:hq", "--table", "daily", "--ttl", "600"]));
+    export_group(p, &public, &token);
+    assert_eq!(receiver.received("/events").len(), 1);
+    armed.store(true, Ordering::SeqCst);
+    let running = cycle("2030-01-01T02:00:00Z");
+    entered.recv_timeout(Duration::from_secs(60)).expect("the cycle's unit reaches its source");
+    let mut export = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["export", "group", "daily-projection", "--project", "research", "--public-key", &public, "--audience", "contextful://acme-research"])
+        .current_dir(p).env("CONTEXTFUL_TOKEN", &token).env_remove("CONTEXTFUL_NODE_ID")
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+        .spawn().unwrap();
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(export.try_wait().unwrap().is_none(), "the export waits while the unit runs");
+    release.send(()).unwrap();
+    let second: Value = serde_json::from_str(&stdout(&running.wait_with_output().unwrap())).unwrap();
+    assert_eq!(second["fired"], serde_json::json!(["feed"]), "{second}");
+    let out = export.wait_with_output().unwrap();
+    assert!(stdout(&out).contains("acknowledged"), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(receiver.received("/events").len(), 2);
+}
+
+/// A serve cycle unable to take the publication's inputs claim starts the producer not: it reports it pending
+/// and leaves the producer frontier unchanged; once the claim opens, the next cycle fires it.
+// spec: surface.dispatch.export-claim-unread@f7389deb
+#[test]
+fn a_cycle_defers_a_unit_whose_publication_claim_fails() {
+    let receiver = contextful_acceptance::http::Server::start(|_| contextful_acceptance::http::Response::json(200, "{}"));
+    let (dir, _public, _token) = published_job(&receiver);
+    let p = dir.path();
+    std::fs::write(p.join("more.jsonl"), "{\"day\":\"d3\"}\n").unwrap();
+    stdout(&run(p, &["context", "land", "events", "--rows", "more.jsonl", "--run-id", "r2", "--site-id", "site-a", "--now", "2030-01-01T01:30:00Z"]));
+    let source = || contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap().source("daily-projection").unwrap().unwrap().run;
+    let read = source();
+    // A directory where the inputs lock file belongs: the claim cannot open it.
+    let lock = p.join(".contextful/exports/research/publication-daily-projection.inputs.lock");
+    let _ = std::fs::remove_file(&lock);
+    std::fs::create_dir_all(&lock).unwrap();
+    let cycle = |now: &str| -> Value {
+        serde_json::from_str(&stdout(&run(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now]))).unwrap()
+    };
+    let deferred = cycle("2030-01-01T03:00:00Z");
+    assert_eq!(deferred["fired"], serde_json::json!([]), "{deferred}");
+    assert_eq!(deferred["pending"], serde_json::json!(["job:daily-build"]), "{deferred}");
+    assert_eq!(source(), read, "no producer completion lands without its claim");
+    std::fs::remove_dir(&lock).unwrap();
+    let fired = cycle("2030-01-01T03:00:00Z");
+    assert_eq!(fired["fired"], serde_json::json!(["job:daily-build"]), "{fired}");
+    assert_ne!(source(), read);
+}

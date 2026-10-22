@@ -10,7 +10,8 @@
 //! order (`surface.dispatch.admission-order`); a wake refills each slot a fire frees with the
 //! units its beat left pending (`surface.dispatch.refill`). A head entry
 //! dispatches its dependent run's landing steps with it, and a due step starts nothing
-//! (`surface.dispatch.not-a-head`).
+//! (`surface.dispatch.not-a-head`). A unit its dispatch declines to claim starts nothing
+//! and stays due (`surface.dispatch.export-quiesced`).
 
 use contextful_core::coordinate::{Catalog, Lease, LeaseKey, CADENCE_LEASE_RENEWAL_SECS, CADENCE_LEASE_TTL_SECS};
 use contextful_core::run::own::OwnerScope;
@@ -28,6 +29,12 @@ use std::thread::JoinHandle;
 /// its failure line.
 pub trait Dispatch: Send + Sync {
     fn fire(&self, id: &str, steps: &[String], derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String>;
+
+    /// What unit `id` holds from its start until it ends, or `None` to leave it due for a
+    /// later beat (`surface.dispatch.export-quiesced`).
+    fn claim(&self, _id: &str, _steps: &[String], _version: u64) -> Option<Box<dyn Send>> {
+        Some(Box::new(()))
+    }
 }
 
 /// A landing step with a completed run outcome.
@@ -89,6 +96,8 @@ pub struct Beat {
     pub started: Vec<String>,
     pub pending: Vec<String>,
     pub held: Vec<String>,
+    /// Admitted ids the dispatch declined to claim; each stays due.
+    pub deferred: Vec<String>,
     /// Due ids that are landing steps of a dependent run, each with its refusal.
     pub refused: Vec<(String, String)>,
 }
@@ -131,7 +140,7 @@ pub struct Scheduler {
     last_dispatch: BTreeMap<String, Instant>,
     /// Entries whose catalog dispatch record this process has read since taking the lease.
     recorded: BTreeSet<String>,
-    /// Units the last beat left pending or held; a wake's refill admits only these.
+    /// Units the last beat left pending, held or deferred; a wake's refill admits only these.
     waiting: Vec<String>,
     /// The refills since the last [`Scheduler::beat`].
     refill: Refill,
@@ -311,7 +320,7 @@ impl Scheduler {
         let now = self.catalog.now()?;
         self.reap();
         let lease = self.hold_lease(now)?;
-        let mut beat = Beat { lease, started: Vec::new(), pending: Vec::new(), held: Vec::new(), refused: Vec::new() };
+        let mut beat = Beat { lease, started: Vec::new(), pending: Vec::new(), held: Vec::new(), deferred: Vec::new(), refused: Vec::new() };
         if beat.lease != LeaseState::Held {
             return Ok(beat);
         }
@@ -332,19 +341,38 @@ impl Scheduler {
             self.last_dispatch.insert(id.clone(), now);
         }
         let in_flight = self.in_flight.lock().map(|s| s.clone()).unwrap_or_default();
-        let admitted = admit(&due, &in_flight, self.pool);
-        beat.pending = admitted.pending.into_iter().map(|d| d.key).collect();
+        // Admission orders every due unit without the pool's bound; a slot goes only to a unit
+        // its dispatch claims, so a deferred unit leaves its slot to the next in order
+        // (`surface.dispatch.export-quiesced`).
+        let admitted = admit(&due, &in_flight, in_flight.len() + due.len());
+        let mut free = self.pool.saturating_sub(in_flight.len());
         beat.held = admitted.held.into_iter().map(|d| d.key).collect();
-        // Every admitted unit's dispatch record lands before any unit starts, so a failed write
-        // returns with nothing running and the waiting set unchanged. A unit failing before its
-        // run row, or a process ending mid-fire, still moves the unit's next fire past this instant.
-        for unit in &admitted.start {
-            self.record_dispatch(&unit.key)?;
-        }
-        self.waiting = beat.pending.iter().chain(&beat.held).cloned().collect();
+        let mut claimed = Vec::new();
         for unit in admitted.start {
-            self.start(unit.key.clone(), now);
-            beat.started.push(unit.key);
+            if free == 0 {
+                beat.pending.push(unit.key);
+                continue;
+            }
+            let steps = self.steps.get(&unit.key).map(Vec::as_slice).unwrap_or_default();
+            match self.dispatch.claim(&unit.key, steps, self.version) {
+                Some(claim) => {
+                    free -= 1;
+                    claimed.push((unit.key, claim));
+                }
+                None => beat.deferred.push(unit.key),
+            }
+        }
+        // Every claimed unit's dispatch record lands before any unit starts, so a failed write
+        // returns with nothing running and the waiting set unchanged. A unit failing before its
+        // run row, or a process ending mid-fire, still moves the unit's next fire past this
+        // instant; a deferred unit records nothing and stays due.
+        for (key, _) in &claimed {
+            self.record_dispatch(key)?;
+        }
+        self.waiting = beat.pending.iter().chain(&beat.held).chain(&beat.deferred).cloned().collect();
+        for (key, claim) in claimed {
+            self.start(key.clone(), now, claim);
+            beat.started.push(key);
         }
         Ok(beat)
     }
@@ -359,7 +387,7 @@ impl Scheduler {
     }
 
     /// Start the unit on its own thread.
-    fn start(&mut self, id: String, now: Instant) {
+    fn start(&mut self, id: String, now: Instant, claim: Box<dyn Send>) {
         if let Ok(mut s) = self.in_flight.lock() {
             s.insert(id.clone());
         }
@@ -369,6 +397,7 @@ impl Scheduler {
         let (dispatch, in_flight, ended, version) = (self.dispatch.clone(), self.in_flight.clone(), self.ended.clone(), self.version);
         self.handles.push(std::thread::spawn(move || {
             let result = dispatch.fire(&id, &steps, &derived_parents, version);
+            drop(claim);
             if let Ok(mut e) = ended.lock() {
                 e.push(Fired { id: id.clone(), result });
             }
@@ -422,7 +451,7 @@ impl Scheduler {
         self.ended()
     }
 
-    /// The units the last beat or refill left pending or held, as a wake reports them.
+    /// The units the last beat or refill left pending, held or deferred, as a wake reports them.
     pub fn waiting(&self) -> Vec<String> {
         self.waiting.clone()
     }
@@ -435,6 +464,17 @@ impl Scheduler {
     /// The ids of units dispatched and not yet ended, sorted.
     pub fn in_flight(&self) -> Vec<String> {
         self.in_flight.lock().map(|s| s.iter().cloned().collect()).unwrap_or_default()
+    }
+
+    /// `units` and each one's landing steps, sorted and deduplicated, so a dependent job due
+    /// behind a head that has not ended reads pending under its own id (`surface.arm.wake-pending-steps`).
+    pub fn with_steps<'a>(&self, units: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+        let mut ids: BTreeSet<String> = BTreeSet::new();
+        for unit in units {
+            ids.extend(self.steps.get(unit).into_iter().flatten().cloned());
+            ids.insert(unit.to_string());
+        }
+        ids.into_iter().collect()
     }
 
     /// Wait for every dispatched unit, answering each that ended.

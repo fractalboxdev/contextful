@@ -573,3 +573,121 @@ fn a_unit_failing_before_its_run_row_yields_the_pool_to_a_fresh_scheduler() {
     assert!(others >= 9, "{others}");
     contextful_eval::record::emit("dispatch-failing-head", others as f64, WAKES as u64, 0);
 }
+
+/// A dispatch declining to claim units while `closed` is set, and counting the claims it
+/// granted that are still held.
+struct Quiescing {
+    inner: Arc<Recording>,
+    closed: std::sync::atomic::AtomicBool,
+    held: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// One granted claim; it counts itself held until dropped.
+struct Held(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl Dispatch for Quiescing {
+    fn fire(&self, id: &str, steps: &[String], derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String> {
+        assert_eq!(self.held.load(std::sync::atomic::Ordering::SeqCst), 1, "a fire runs under its claim");
+        self.inner.fire(id, steps, derived_parents, version)
+    }
+
+    fn claim(&self, _id: &str, _steps: &[String], _version: u64) -> Option<Box<dyn Send>> {
+        if self.closed.load(std::sync::atomic::Ordering::SeqCst) {
+            return None;
+        }
+        self.held.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Some(Box::new(Held(self.held.clone())))
+    }
+}
+
+/// A due unit whose dispatch declines its claim starts nothing, reports deferred and stays due: the
+/// next beat after the claim opens starts it in the same instant, and the claim releases when it ends.
+// spec: surface.dispatch.export-quiesced@3aaeb45f
+#[test]
+fn a_declined_claim_defers_the_unit_and_keeps_it_due() {
+    let (rig, rec) = rig_with(None);
+    let held = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let dispatch = Arc::new(Quiescing { inner: rec.clone(), closed: true.into(), held: held.clone() });
+    let mut s = Scheduler::new(rig.engine.catalog.clone(), dispatch.clone() as Arc<dyn Dispatch>, "prod", "daemon-a", 4);
+    s.arm(1, vec![hourly("alpha")]).unwrap();
+    for _ in 0..2 {
+        let beat = s.beat().unwrap();
+        assert!(beat.started.is_empty());
+        assert_eq!(beat.deferred, ["alpha"]);
+    }
+    s.drain();
+    assert!(fired(&rec).is_empty());
+    assert_eq!(s.next_due().unwrap(), Some(at(T0)), "a deferred unit stays due");
+    dispatch.closed.store(false, std::sync::atomic::Ordering::SeqCst);
+    let beat = s.beat().unwrap();
+    assert_eq!(beat.started, ["alpha"]);
+    assert!(beat.deferred.is_empty());
+    s.drain();
+    assert_eq!(fired(&rec), ["alpha"]);
+    assert_eq!(held.load(std::sync::atomic::Ordering::SeqCst), 0, "the claim releases when the unit ends");
+}
+
+/// A unit still in flight names its landing steps beside its head, so a dependent job due behind a head that
+/// already landed reads pending under its own id until the unit ends.
+#[test]
+fn an_in_flight_unit_names_its_dependent_steps_pending() {
+    let (barrier, gate) = barrier();
+    let (rig, rec) = rig_with(Some(barrier));
+    let mut s = scheduler(&rig, &rec, 4);
+    let steps = [("orders".to_string(), vec!["job:orders-build".to_string()])].into();
+    s.arm_runs(1, vec![hourly("orders"), hourly("audit")], steps).unwrap();
+    assert_eq!(s.beat().unwrap().started, ["audit", "orders"]);
+    gate.entered();
+    gate.entered();
+    let in_flight = s.in_flight();
+    assert_eq!(s.with_steps(in_flight.iter().map(String::as_str)), ["audit", "job:orders-build", "orders"]);
+    gate.release();
+    gate.release();
+    s.drain();
+    assert!(s.with_steps(s.in_flight().iter().map(String::as_str)).is_empty());
+}
+
+/// A dispatch declining the claim of each unit in `declined`.
+struct Declining {
+    inner: Arc<Recording>,
+    declined: BTreeSet<String>,
+}
+
+impl Dispatch for Declining {
+    fn fire(&self, id: &str, steps: &[String], derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String> {
+        self.inner.fire(id, steps, derived_parents, version)
+    }
+
+    fn claim(&self, id: &str, _steps: &[String], _version: u64) -> Option<Box<dyn Send>> {
+        (!self.declined.contains(id)).then(|| Box::new(()) as Box<dyn Send>)
+    }
+}
+
+/// Under a pool of one, a deferred unit leaves its slot to the next unit in admission order, writes no dispatch
+/// record, and stays waiting, so a successor process still finds it due.
+// spec: surface.dispatch.export-deferred-slot@36629f03
+#[test]
+fn a_deferred_unit_leaves_its_slot_and_writes_no_dispatch_record() {
+    let (rig, rec) = rig_with(None);
+    let dispatch = Arc::new(Declining { inner: rec.clone(), declined: ["alpha".to_string()].into() });
+    let mut s = Scheduler::new(rig.engine.catalog.clone(), dispatch.clone() as Arc<dyn Dispatch>, "prod", "daemon-a", 1);
+    s.arm(1, vec![hourly("alpha"), hourly("beta")]).unwrap();
+    let beat = s.beat().unwrap();
+    assert_eq!(beat.deferred, ["alpha"]);
+    assert_eq!(beat.started, ["beta"], "the deferred unit's slot went to the next unit");
+    assert!(beat.pending.is_empty(), "{beat:?}");
+    assert_eq!(s.waiting(), ["alpha"], "a deferred unit waits for the wake's refill");
+    s.drain();
+    assert_eq!(fired(&rec), ["beta"]);
+    assert_eq!(rig.catalog().lease_row(&LeaseKey::Dispatch("alpha".into())).unwrap().expires_at, None);
+    s.release().unwrap();
+    let mut successor = Scheduler::new(rig.engine.catalog.clone(), dispatch as Arc<dyn Dispatch>, "prod", "daemon-b", 1);
+    successor.arm(1, vec![hourly("alpha")]).unwrap();
+    assert_eq!(successor.next_due().unwrap(), Some(at(T0)), "the deferred fire survives a restart");
+}
