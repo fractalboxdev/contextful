@@ -421,7 +421,7 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because a group never offered carries no delivery obligation, while a receiver may already stage an acknowledged prefix*
 - `group-quiesce` — `contextful export group <name>` first takes the publication's dispatch intent, so serve starts no unit over its inputs, then holds those inputs exclusively through its pull, read, staging and delivery.
   *because a commit during the export moves the producer frontier the export rechecks*
-- `group-quiesce-wait` — An export finding the publication's intent or inputs still held after 300 s raises `PublicationInputsBusy` before its pull, read or staging; the outbox stays unchanged.
+- `group-quiesce-wait` — An export still waiting for the publication's intent and inputs 300 s after it began waiting for either raises `PublicationInputsBusy` before its pull, read or staging; the outbox stays unchanged.
   *because a running producer ends on its own schedule, and the next attempt exports its completed frontier*
 - `group-incompatible` — Membership drift, incarnation mismatch, a changed pending read identity, an incompatible checkpoint, an incomplete producer frontier, or a predecessor/order mismatch raises `PublicationIncompatible` before delivery or activation.
   *A-run*

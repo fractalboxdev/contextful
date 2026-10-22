@@ -1393,21 +1393,28 @@ impl Dispatch for ChildDispatch {
     }
 
     /// Hold every publication whose inputs the unit writes, or defer the unit while an export
-    /// of one runs (`surface.dispatch.export-quiesced`, `surface.dispatch.export-claim`). A
-    /// declaration this cannot read claims nothing: the export's frontier recheck still refuses.
+    /// of one runs (`surface.dispatch.export-quiesced`, `surface.dispatch.export-claim`). Inputs
+    /// this cannot compute count the unit a writer of every declared publication; a claim this
+    /// cannot take defers the unit (`surface.dispatch.export-claim-unread`).
     fn claim(&self, id: &str, steps: &[String], version: u64) -> Option<Box<dyn Send>> {
         let held = (|| -> Result<Option<Vec<std::fs::File>>> {
             let located = crate::project::locate(Some(&self.project), self.declaration.clone())?;
             let unit: BTreeSet<&str> = std::iter::once(id).chain(steps.iter().map(String::as_str)).collect();
+            let claimed: Vec<String> = match publication_inputs(&located, version) {
+                Ok(inputs) => inputs.into_iter().filter(|(_, writers)| writers.iter().any(|w| unit.contains(w.as_str()))).map(|(name, _)| name).collect(),
+                Err(e) => {
+                    eprintln!("fire {id}: publication inputs unread, claiming every publication: {e:#}");
+                    let local = if located.declaration.exists() { std::fs::read_to_string(&located.declaration)? } else { String::new() };
+                    crate::export::publication::families(&local)?.into_iter().map(|(name, _, _)| name).collect()
+                }
+            };
             let mut held = Vec::new();
-            for (name, writers) in publication_inputs(&located, version)? {
-                if writers.iter().any(|w| unit.contains(w.as_str())) {
-                    match crate::export::publication::hold_inputs(&located.project.dir, &located.project.name, &name)? {
-                        Some(file) => held.push(file),
-                        None => {
-                            eprintln!("fire {id}: deferred while an export of publication `{name}` runs");
-                            return Ok(None);
-                        }
+            for name in claimed {
+                match crate::export::publication::hold_inputs(&located.project.dir, &located.project.name, &name)? {
+                    Some(file) => held.push(file),
+                    None => {
+                        eprintln!("fire {id}: deferred while an export of publication `{name}` runs");
+                        return Ok(None);
                     }
                 }
             }
@@ -1416,8 +1423,8 @@ impl Dispatch for ChildDispatch {
         match held {
             Ok(held) => held.map(|files| Box::new(files) as Box<dyn Send>),
             Err(e) => {
-                eprintln!("fire {id}: publication inputs unread: {e:#}");
-                Some(Box::new(()))
+                eprintln!("fire {id}: deferred, its publication claim failed: {e:#}");
+                None
             }
         }
     }

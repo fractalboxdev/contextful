@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 20 | 316 | 54 | 29 | 16 | 274 | 0 | 274 |
 | `run` | 3 | 29 | 608 | 129 | 49 | 19 | 569 | 0 | 569 |
 | `store` | 5 | 20 | 337 | 70 | 22 | 13 | 326 | 0 | 326 |
-| `surface` | 2 | 21 | 185 | 67 | 24 | 0 | 159 | 0 | 159 |
+| `surface` | 2 | 21 | 187 | 67 | 24 | 1 | 161 | 0 | 161 |
 | `topology` | 1 | 6 | 81 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 24 | 170 | 2823 | 693 | 226 | 83 | 2530 | 0 | |
+| **total** | 24 | 170 | 2825 | 693 | 226 | 84 | 2532 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 93 | 78 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 115 | 102 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 117 | 104 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 67 | 55 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
@@ -2405,6 +2405,8 @@ Unscheduled operations: 13.
 | `surface.dispatch.children-reaped` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_ends_every_child_it_dispatched` | performed |
 | `surface.dispatch.exclusion-key` | `crates/contextful-core/tests/integration/surface/dispatch.rs::a_key_in_flight_starts_no_second_instance` | performed |
 | `surface.dispatch.export-claim` | `crates/contextful-cli/tests/integration/build.rs::an_export_waits_for_a_running_unit_writing_its_inputs` | performed |
+| `surface.dispatch.export-claim-unread` | `crates/contextful-cli/tests/integration/build.rs::a_cycle_defers_a_unit_whose_publication_claim_fails` | performed |
+| `surface.dispatch.export-deferred-slot` | `crates/contextful-engine/tests/integration/scheduler.rs::a_deferred_unit_leaves_its_slot_and_writes_no_dispatch_record` | performed |
 | `surface.dispatch.export-quiesced` | `crates/contextful-engine/tests/integration/scheduler.rs::a_declined_claim_defers_the_unit_and_keeps_it_due` | performed |
 | `surface.dispatch.fire-credential` | `crates/contextful-cli/tests/integration/job.rs::an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables` | performed |
 | `surface.dispatch.fire-credential-inherited` | `crates/contextful-cli/tests/integration/job.rs::scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart` | performed |

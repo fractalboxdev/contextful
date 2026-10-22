@@ -131,26 +131,31 @@ pub(crate) fn hold_inputs(project_dir: &Path, project: &str, name: &str) -> Resu
     Ok(Some(inputs))
 }
 
-/// Take publication `name`'s intent, then its inputs, exclusively; each waits at most
+/// Take publication `name`'s intent, then its inputs, exclusively; both together wait at most
 /// [`QUIESCE_WAIT_SECS`] for serve's units or another export (`run.export.group-quiesce-wait`).
 fn quiesce(located: &crate::project::Located, name: &str) -> Result<(std::fs::File, std::fs::File)> {
     let (intent, inputs) = quiesce_files(&located.project.dir, &located.project.name, name)?;
-    for (file, what) in [(&intent, "dispatch intent"), (&inputs, "inputs")] {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(QUIESCE_WAIT_SECS);
+    lock_within(&[(&intent, "dispatch intent"), (&inputs, "inputs")], std::time::Duration::from_secs(QUIESCE_WAIT_SECS))
+        .map_err(|e| anyhow::anyhow!("PublicationInputsBusy: publication `{name}`: {e}"))?;
+    Ok((intent, inputs))
+}
+
+/// Lock each file exclusively in order; every wait together ends `wait` after the first began.
+fn lock_within(files: &[(&std::fs::File, &str)], wait: std::time::Duration) -> Result<()> {
+    let deadline = std::time::Instant::now() + wait;
+    for (file, what) in files {
         loop {
             match file.try_lock() {
                 Ok(()) => break,
                 Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
                     std::thread::sleep(std::time::Duration::from_millis(50))
                 }
-                Err(std::fs::TryLockError::WouldBlock) => anyhow::bail!(
-                    "PublicationInputsBusy: publication `{name}`: its {what} stayed held for {QUIESCE_WAIT_SECS} s"
-                ),
+                Err(std::fs::TryLockError::WouldBlock) => anyhow::bail!("its {what} stayed held for {} s", wait.as_secs()),
                 Err(std::fs::TryLockError::Error(e)) => return Err(e.into()),
             }
         }
     }
-    Ok((intent, inputs))
+    Ok(())
 }
 
 /// (`run.export.group-quiesce-wait`)
@@ -462,4 +467,28 @@ pub(super) fn checkpoint(
     let bytes = ledger(face.store(), name, false)?.checkpoint(name, namespace)?;
     face.store().metadata_files().replace(out, &bytes)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod quiesce_tests {
+    /// A wait spent on the first lock counts against the second (`run.export.group-quiesce-wait`).
+    #[test]
+    fn one_deadline_covers_every_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let open = |n: &str| std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.path().join(n)).unwrap();
+        let (first, second) = (open("first"), open("second"));
+        let (first_holder, second_holder) = (open("first"), open("second"));
+        first_holder.lock().unwrap();
+        second_holder.lock().unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            drop(first_holder);
+        });
+        let began = std::time::Instant::now();
+        let err = super::lock_within(&[(&first, "first"), (&second, "second")], std::time::Duration::from_secs(2)).unwrap_err();
+        assert!(err.to_string().contains("second"), "{err}");
+        assert!(began.elapsed() < std::time::Duration::from_millis(2900), "waited {:?}", began.elapsed());
+        release.join().unwrap();
+        drop(second_holder);
+    }
 }

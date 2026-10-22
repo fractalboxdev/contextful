@@ -652,3 +652,42 @@ fn an_in_flight_unit_names_its_dependent_steps_pending() {
     s.drain();
     assert!(s.with_steps(s.in_flight().iter().map(String::as_str)).is_empty());
 }
+
+/// A dispatch declining the claim of each unit in `declined`.
+struct Declining {
+    inner: Arc<Recording>,
+    declined: BTreeSet<String>,
+}
+
+impl Dispatch for Declining {
+    fn fire(&self, id: &str, steps: &[String], derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String> {
+        self.inner.fire(id, steps, derived_parents, version)
+    }
+
+    fn claim(&self, id: &str, _steps: &[String], _version: u64) -> Option<Box<dyn Send>> {
+        (!self.declined.contains(id)).then(|| Box::new(()) as Box<dyn Send>)
+    }
+}
+
+/// Under a pool of one, a deferred unit leaves its slot to the next unit in admission order, writes no dispatch
+/// record, and stays waiting, so a successor process still finds it due.
+// spec: surface.dispatch.export-deferred-slot@36629f03
+#[test]
+fn a_deferred_unit_leaves_its_slot_and_writes_no_dispatch_record() {
+    let (rig, rec) = rig_with(None);
+    let dispatch = Arc::new(Declining { inner: rec.clone(), declined: ["alpha".to_string()].into() });
+    let mut s = Scheduler::new(rig.engine.catalog.clone(), dispatch.clone() as Arc<dyn Dispatch>, "prod", "daemon-a", 1);
+    s.arm(1, vec![hourly("alpha"), hourly("beta")]).unwrap();
+    let beat = s.beat().unwrap();
+    assert_eq!(beat.deferred, ["alpha"]);
+    assert_eq!(beat.started, ["beta"], "the deferred unit's slot went to the next unit");
+    assert!(beat.pending.is_empty(), "{beat:?}");
+    assert_eq!(s.waiting(), ["alpha"], "a deferred unit waits for the wake's refill");
+    s.drain();
+    assert_eq!(fired(&rec), ["beta"]);
+    assert_eq!(rig.catalog().lease_row(&LeaseKey::Dispatch("alpha".into())).unwrap().expires_at, None);
+    s.release().unwrap();
+    let mut successor = Scheduler::new(rig.engine.catalog.clone(), dispatch as Arc<dyn Dispatch>, "prod", "daemon-b", 1);
+    successor.arm(1, vec![hourly("alpha")]).unwrap();
+    assert_eq!(successor.next_due().unwrap(), Some(at(T0)), "the deferred fire survives a restart");
+}

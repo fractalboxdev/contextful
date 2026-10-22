@@ -243,8 +243,12 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
   *because two fires of one pipeline race for one cursor*
 - `export-quiesced` — A due unit whose head or a landing step writes a member of a publication, or a relation its producer reads, starts nothing while `contextful export group` holds that publication, and stays due, reporting pending.
   *because a producer commit between an export's frontier reads raises {{run.export.group-incompatible}}, and a deferred unit costs one beat where stopping serve costs every dispatch*
+- `export-deferred-slot` — A deferred unit takes no pool slot and writes no dispatch record: its slot passes to the next unit in admission order, and it waits for the next beat or a wake's refill.
+  *because a deferred unit holding its slot stops unrelated units for the whole export, and a recorded dispatch moves its fire past the instant it never ran*
 - `export-claim` — A started unit writing a publication's inputs holds them shared from its start until it ends, so an export of that publication waits for it.
   *because serve admits a unit before its child commits, so a check at admission alone misses a unit already running*
+- `export-claim-unread` — A unit whose publication inputs serve cannot compute claims every declared publication; a unit whose claim serve cannot take starts nothing and stays due, logging the error.
+  *because an unclaimed unit starting during an export commits between the frontier reads {{run.export.group-incompatible}} rechecks*
 - `lease-gated` — A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease held arms nothing and, under `--cycle`, exits naming the holder.
   *because two daemons reading one snapshot otherwise fire every due unit twice*
 - `children-reaped` — A serve process starts each child run in its own process group; on `SIGTERM`, `SIGINT`, a `--cycle` exit or an unwind it signals each live group `SIGTERM`, `SIGKILL`s the remainder after 10 s, and exits once every child has.
@@ -291,6 +295,8 @@ sequenceDiagram
     RC->>RC: reschedule onto another matching worker, attempt n+1
   end
 ```
+
+unsettled: Does an export on one node quiesce a serve on another, given the publication's intent and inputs locks are files on the exporting node's disk? owner: pipeline affects: surface.dispatch
 
 ## delegate
 

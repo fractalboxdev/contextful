@@ -686,3 +686,32 @@ fn an_export_waits_for_a_running_unit_writing_its_inputs() {
     assert!(stdout(&out).contains("acknowledged"), "{}", String::from_utf8_lossy(&out.stdout));
     assert_eq!(receiver.received("/events").len(), 2);
 }
+
+/// A serve cycle unable to take the publication's inputs claim starts the producer not: it reports it pending
+/// and leaves the producer frontier unchanged; once the claim opens, the next cycle fires it.
+// spec: surface.dispatch.export-claim-unread@f7389deb
+#[test]
+fn a_cycle_defers_a_unit_whose_publication_claim_fails() {
+    let receiver = contextful_acceptance::http::Server::start(|_| contextful_acceptance::http::Response::json(200, "{}"));
+    let (dir, _public, _token) = published_job(&receiver);
+    let p = dir.path();
+    std::fs::write(p.join("more.jsonl"), "{\"day\":\"d3\"}\n").unwrap();
+    stdout(&run(p, &["context", "land", "events", "--rows", "more.jsonl", "--run-id", "r2", "--site-id", "site-a", "--now", "2030-01-01T01:30:00Z"]));
+    let source = || contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap().source("daily-projection").unwrap().unwrap().run;
+    let read = source();
+    // A directory where the inputs lock file belongs: the claim cannot open it.
+    let lock = p.join(".contextful/exports/research/publication-daily-projection.inputs.lock");
+    let _ = std::fs::remove_file(&lock);
+    std::fs::create_dir_all(&lock).unwrap();
+    let cycle = |now: &str| -> Value {
+        serde_json::from_str(&stdout(&run(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now]))).unwrap()
+    };
+    let deferred = cycle("2030-01-01T03:00:00Z");
+    assert_eq!(deferred["fired"], serde_json::json!([]), "{deferred}");
+    assert_eq!(deferred["pending"], serde_json::json!(["job:daily-build"]), "{deferred}");
+    assert_eq!(source(), read, "no producer completion lands without its claim");
+    std::fs::remove_dir(&lock).unwrap();
+    let fired = cycle("2030-01-01T03:00:00Z");
+    assert_eq!(fired["fired"], serde_json::json!(["job:daily-build"]), "{fired}");
+    assert_ne!(source(), read);
+}
