@@ -1686,9 +1686,17 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
         let answered = serve_cycle(&mut scheduler, &control, &l.project, &l.declaration, tasks);
         drop(reaper);
         if contextful_engine::stop::requested() {
-            crate::sync::drain(&l)?;
+            // A failed stop push reports beside the cycle's own error, never in its place.
+            match (answered, crate::sync::drain(&l)) {
+                (Err(cycle), Err(drain)) => return Err(cycle.context(format!("{drain:#}"))),
+                (Ok(_), Err(drain)) => return Err(drain),
+                (answered, Ok(())) => {
+                    answered?;
+                }
+            }
+        } else {
+            answered?;
         }
-        answered?;
         if contextful_engine::stop::requested() {
             bail!("a stop signal ended the cycle's dispatched units");
         }

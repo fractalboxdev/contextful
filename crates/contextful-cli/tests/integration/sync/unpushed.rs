@@ -69,6 +69,12 @@ impl Disk {
         std::fs::write(self.root().join("feed.toml"), "pipeline = 'feed'\ntable = 'filings'\n[connector]\nid = 'vendor'\nversion = '1'\ncommand = ['sh', 'one.sh']\n").unwrap();
     }
 
+    /// Declare the run plan's table as `table`, with `block` appended to its table block.
+    fn declare(&self, table: &str, block: &str) {
+        std::fs::write(self.root().join("contextful.toml"), format!("authoring_posture = 'per_request'\n[[pipeline.tables]]\nname = '{table}'\n{block}")).unwrap();
+        std::fs::write(self.root().join("feed.toml"), format!("pipeline = 'feed'\ntable = '{table}'\n[connector]\nid = 'vendor'\nversion = '1'\ncommand = ['sh', 'one.sh']\n")).unwrap();
+    }
+
     fn command(&self, args: &[&str]) -> Command {
         self.command_via(&self.d1, args)
     }
@@ -400,4 +406,88 @@ fn a_stopping_serve_pushes_its_unpushed_run_within_its_deadline() {
     assert!(took >= Duration::from_secs(14) && took < Duration::from_secs(40), "the stop push ends at its 15 s deadline, took {took:?}");
     assert!(!bucket_holds(&s3, "r2"));
     assert_eq!(disk.row("r2").unwrap()["unpushed"]["node"], "site");
+}
+
+fn bucket_holds_in(s3: &S3Server, table: &str, run: &str) -> bool {
+    s3.keys().iter().any(|k| k.ends_with(&format!("tables/{table}/data/runs/{run}/site/_manifest.json")))
+}
+
+/// A run committed into a nested table name keeps its mark through a refused push, and the
+/// next start's push clears it rather than marking it lost.
+// spec: store.drain.mark@2e203d57
+#[test]
+fn a_nested_tables_refused_run_stays_marked_until_a_push_carries_it() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+    disk.declare("ns/events", "");
+
+    refuse_next_push(&s3);
+    let refused = disk.start("r1");
+    assert!(!refused.status.success(), "a refused push fails its run's command");
+    assert!(disk.root().join(STORE).join("tables/ns/events/data/runs/r1/site/_manifest.json").exists(), "the run committed locally");
+    let row = disk.row("r1").unwrap();
+    assert_eq!(row["unpushed"]["node"], "site", "a nested table's committed run keeps its mark: {row}");
+
+    let next = disk.start("r2");
+    let stderr = String::from_utf8_lossy(&next.stderr);
+    assert!(next.status.success(), "{stderr}");
+    assert!(!stderr.contains("marked lost"), "{stderr}");
+    assert!(bucket_holds_in(&s3, "ns/events", "r1"));
+    assert!(disk.row("r1").unwrap().get("unpushed").is_none(), "the committed push clears the mark");
+    let (code, status, stderr) = disk.status();
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(runs(&status).is_empty(), "{status}");
+}
+
+/// A run committing only into a table the declaration withholds from every push carries
+/// nothing a push ships, so its mark drops at its close and the status lists nothing.
+// spec: store.drain.mark@2e203d57
+#[test]
+fn a_withheld_tables_run_carries_no_mark_past_its_close() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+    disk.declare("filings", "[pipeline.tables.policy.redistribution]\nreplicate = false\n");
+
+    // The push itself may refuse what the withholding leaves at the root; the mark drops first.
+    let _ = disk.start("r1");
+    assert!(disk.local_manifest("r1").exists(), "the run committed locally");
+    assert!(!bucket_holds(&s3, "r1"), "the push withholds the table");
+    assert!(disk.row("r1").unwrap().get("unpushed").is_none(), "{:?}", disk.row("r1"));
+    let (code, status, stderr) = disk.status();
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(runs(&status).is_empty(), "{status}");
+}
+
+/// A received batch whose run opens and fails commits nothing, so its run drops its mark
+/// before the push, and no later push marks it lost.
+// spec: store.drain.mark@2e203d57
+#[test]
+fn a_received_run_committing_nothing_drops_its_mark() {
+    let s3 = S3Server::start("conformance");
+    let disk = Disk::new(&s3);
+    std::fs::write(
+        disk.root().join("contextful.toml"),
+        "authoring_posture = 'per_request'\n[[pipeline]]\nid = 'otel'\ntables = ['spans']\n[pipeline.source]\nname = 'receive'\nconfig = { format = 'jsonl', max_batch_bytes = 4096, max_queue_depth = 4, key_retention_secs = 3600 }\n",
+    )
+    .unwrap();
+    let mut child = disk
+        .command(&["pipeline", "receive", "otel", "--key", "flush-1", "--project", "research", "--site-id", "site"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        let _ = child.stdin.take().unwrap().write_all(b"{\"table\":\"spans\",\"row\":{\"id\":\"s1\",\"_modality\":\"7\"}}\n");
+    }
+    let out = child.wait_with_output().unwrap();
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+
+    let db = contextful_d1::D1::connect(&disk.d1).unwrap();
+    let opened = db.query("SELECT row FROM contextful_run", vec![]).unwrap().rows;
+    assert!(!opened.is_empty(), "the batch's run opened: {}", String::from_utf8_lossy(&out.stderr));
+    let (code, status, stderr) = disk.status();
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(runs(&status).is_empty(), "{status}");
 }

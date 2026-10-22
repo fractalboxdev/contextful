@@ -409,6 +409,7 @@ impl Receiver {
         let prior: std::collections::BTreeSet<_> = if self.applied_version.is_some() {
             w.engine.catalog.runs(Some(&spec.id))?.into_iter().map(|row| row.run_id).collect()
         } else { Default::default() };
+        let mut attempted: Vec<String> = Vec::new();
         for t in &spec.tables {
             let table = spec.table_name(t.name());
             let mut pending: Vec<(usize, String)> = Vec::new();
@@ -455,6 +456,9 @@ impl Receiver {
             let mut land = |run_id: String, key: &str, keys: Option<Vec<String>>, rows: Vec<contextful_core::run::ports::Row>| -> Landing {
                 let landing = self.land_table(w, &mut dest, t.name(), &table, &artifact, &run_id, key, keys, rows);
                 opened |= landing.opened;
+                if landing.opened {
+                    attempted.push(landing.run_id.clone());
+                }
                 landing
             };
             if !grouped {
@@ -495,7 +499,9 @@ impl Receiver {
         })();
         let pending = self.queue().join(PUSH_PENDING);
         if opened || pending.exists() {
-            match crate::sync::push_after_run_within(&self.l, w.clock.now(), Some(PUSH_WAIT_SECS)) {
+            // A run that closed without committing drops its mark before the push (`store.drain.mark`).
+            let pushed = crate::sync::unmark_uncommitted(&self.l, &attempted).and_then(|()| crate::sync::push_after_run_within(&self.l, w.clock.now(), Some(PUSH_WAIT_SECS)));
+            match pushed {
                 Ok(()) => match std::fs::remove_file(&pending) {
                     Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e).with_context(|| format!("removing {}", pending.display())),
                     _ => {}

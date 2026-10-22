@@ -552,4 +552,4 @@ On a disposable disk a run commits locally before its push reaches the bucket, s
 | A marker file in the store root | Disposable disk | The marker dies with the disk it describes. |
 | A marker object in the bucket | Failure correlation | The write recording the failure goes to the bucket that refused the push. |
 
-Consequences: an empty status means no committed run is missing from the bucket; a run lost with its disk stays listed as `lost`, and only an unlost mark refuses a release.
+Consequences: an empty status means no committed run is missing from the bucket; a run lost with its disk stays listed as `lost`, and only an unlost mark refuses a release. A run committing only into a table the declaration withholds carries nothing a push ships, so its mark drops at its close and a disk replacement discards it as `replicate = false` declares.
