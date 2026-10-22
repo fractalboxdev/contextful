@@ -1,6 +1,8 @@
 #![cfg(feature = "data-plane")]
 
+use contextful_eval::entity::METRICS;
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -112,6 +114,45 @@ fn native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements()
             case["arms"]["ordinary"]["eligible_evidence"],
             case["arms"]["structured"]["eligible_evidence"]
         );
+    }
+    // The ordinary arm is a configured control: ranked retrieval scores the declared
+    // evidence text, so an answerable case resolves its exact entity, claim and path.
+    let case = |id: &str| cases.iter().find(|c| c["id"] == id).unwrap().clone();
+    let control = case("amber-alias");
+    let ordinary = &control["arms"]["ordinary"];
+    assert_eq!(ordinary["answer"]["entity"], json!("plant-0"));
+    assert_eq!(ordinary["answer"]["claims"].as_array().unwrap().len(), 1);
+    assert_eq!(ordinary["answer"]["claims"][0]["id"], json!("0-live"));
+    assert_eq!(ordinary["answer"]["reason"], Value::Null);
+    for metric in METRICS {
+        assert_eq!(ordinary["scores"][metric], json!(1.0), "{metric}");
+    }
+    // A claim with two citations earns credit from either arm in either citation order.
+    let cited = case("harbour-canonical");
+    let complete = BTreeSet::from(["evidence/notes#eval-0001:87", "evidence/notes#eval-0001:96"]);
+    for arm in ["structured", "ordinary"] {
+        let claim = &cited["arms"][arm]["answer"]["claims"][0];
+        let citations: BTreeSet<&str> = claim["citations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c.as_str().unwrap())
+            .collect();
+        assert_eq!(citations, complete, "{arm}");
+        assert_eq!(cited["arms"][arm]["scores"]["eligible_claim_recall"], json!(1.0), "{arm}");
+        assert_eq!(cited["arms"][arm]["scores"]["path_correctness"], json!(1.0), "{arm}");
+    }
+    // Both arms reproduce the committed envelope's means and sample counts exactly.
+    let envelope: Value =
+        serde_json::from_str(&std::fs::read_to_string(&baseline).unwrap()).unwrap();
+    for arm in ["structured", "ordinary"] {
+        for metric in METRICS {
+            let committed = &envelope["summary"][arm][metric];
+            let observed = &report["entity_evidence"][arm][metric];
+            assert_eq!(observed["mean"].as_f64(), committed["mean"].as_f64(), "{arm}.{metric}");
+            assert_eq!(observed["n"].as_u64(), committed["n"].as_u64(), "{arm}.{metric}");
+            assert_eq!(observed["mean"], json!(1.0), "{arm}.{metric}");
+        }
     }
     for (id, metric) in [
         ("entity-evidence-v1-entity", "entity_accuracy"),

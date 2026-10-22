@@ -14,7 +14,7 @@ pub const METRICS: [&str; 5] = [
     "appropriate_abstention",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Claim {
     pub id: String,
@@ -22,6 +22,21 @@ pub struct Claim {
     pub predicate: String,
     pub object: String,
     pub citations: Vec<String>,
+}
+
+impl Claim {
+    /// The canonical identity and relationship tuple, independent of citations.
+    pub fn same_tuple(&self, other: &Claim) -> bool {
+        self.id == other.id
+            && self.subject == other.subject
+            && self.predicate == other.predicate
+            && self.object == other.object
+    }
+
+    /// The citation set; a claim's grade never depends on citation order.
+    pub fn citation_set(&self) -> BTreeSet<&str> {
+        self.citations.iter().map(String::as_str).collect()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,8 +184,13 @@ fn bit(value: bool) -> f64 {
 }
 
 pub fn grade(expected: &Expected, answer: &Answer, eligible: &BTreeSet<String>) -> Scores {
+    // A valid claim matches an adjudicated tuple and cites its complete citation set,
+    // in any order; a proper subset of that set earns no claim or path credit.
     let valid = |c: &Claim| {
-        expected.facts.iter().any(|f| f == c)
+        expected
+            .facts
+            .iter()
+            .any(|f| f.same_tuple(c) && f.citation_set() == c.citation_set())
             && !c.citations.is_empty()
             && c.citations.iter().all(|r| eligible.contains(r))
     };

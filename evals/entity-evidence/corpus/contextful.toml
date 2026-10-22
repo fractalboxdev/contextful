@@ -2,6 +2,9 @@
 name = "evidence/notes"
 primary_key = ["evidence_id"]
 
+[pipeline.tables.retrieve]
+text = ["text"]
+
 [pipeline.tables.policy.rows]
 predicate = "owner = subject.agent"
 
