@@ -45,16 +45,34 @@ fn safe_path(path: &str) -> bool {
             .all(|c| matches!(c, Component::Normal(_)))
 }
 
+/// The one table a semantic corpus holds, as its manifest key.
+const CORPUS_TABLE: &str = "corpus/rows/kb/semantic.jsonl";
+
+/// `path`'s key in the manifest: its components under `root`, joined with `/` on every host.
+pub fn manifest_key(root: &Path, path: &Path) -> Result<String, String> {
+    Ok(path
+        .strip_prefix(root)
+        .map_err(|e| e.to_string())?
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/"))
+}
+
+/// `dimension` numbers, each finite in the single precision the store keeps, whose squared
+/// norm in that precision is finite and above zero.
 fn vector(value: &Value, dimension: usize) -> bool {
-    value.as_array().is_some_and(|v| {
-        v.len() == dimension
-            && v.iter().all(|x| x.as_f64().is_some_and(f64::is_finite))
-            && v.iter()
-                .filter_map(Value::as_f64)
-                .map(|x| x * x)
-                .sum::<f64>()
-                > 0.0
-    })
+    let Some(v) = value.as_array().filter(|v| v.len() == dimension) else {
+        return false;
+    };
+    let mut norm = 0.0f32;
+    for x in v {
+        let Some(x) = x.as_f64().map(|x| x as f32).filter(|x| x.is_finite()) else {
+            return false;
+        };
+        norm += x * x;
+    }
+    norm.is_finite() && norm > 0.0
 }
 
 impl Benchmark {
@@ -94,7 +112,7 @@ impl Benchmark {
             "config.json",
             "development.jsonl",
             "corpus/contextful.toml",
-            "corpus/rows/kb/semantic.jsonl",
+            CORPUS_TABLE,
         ] {
             if !manifest.files.contains_key(required) {
                 return Err(format!("semantic benchmark input has no hash: {required}"));
@@ -112,13 +130,10 @@ impl Benchmark {
                 if kind.is_dir() {
                     stack.push(path);
                 } else if path.extension().is_some_and(|e| e == "jsonl") {
-                    let relative = path
-                        .strip_prefix(root)
-                        .map_err(|e| e.to_string())?
-                        .to_string_lossy();
-                    if !manifest.files.contains_key(relative.as_ref()) {
+                    let relative = manifest_key(root, &path)?;
+                    if relative != CORPUS_TABLE {
                         return Err(format!(
-                            "semantic corpus contains an unpinned table: {relative}"
+                            "semantic corpus holds a table other than kb/semantic: {relative}"
                         ));
                     }
                 }
@@ -151,8 +166,7 @@ impl Benchmark {
         }
         let text = String::from_utf8(read(goldens)?).map_err(|e| e.to_string())?;
         let cases = case::load(&text).map_err(|e| e.to_string())?;
-        let rows = String::from_utf8(read(&root.join("corpus/rows/kb/semantic.jsonl"))?)
-            .map_err(|e| e.to_string())?;
+        let rows = String::from_utf8(read(&root.join(CORPUS_TABLE))?).map_err(|e| e.to_string())?;
         let mut documents = BTreeSet::new();
         for line in rows.lines() {
             let row: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
@@ -163,7 +177,7 @@ impl Benchmark {
                 || !vector(&row["embedding"], manifest.dimension)
             {
                 return Err(format!(
-                    "semantic document `{id}` has a duplicate id or missing, non-finite or wrong-dimension embedding"
+                    "semantic document `{id}` has a duplicate id or a missing, wrong-dimension, zero-norm or non-finite single-precision embedding"
                 ));
             }
         }
