@@ -484,7 +484,7 @@ Runtime lifecycle of one tenant's external source connection and its scheduled p
   *because a caller-controlled tenant or principal could otherwise point a pipeline at another user's credential*
 - `idempotent-create` — Repeating create with the same connection id and declaration returns the standing version; a differing declaration raises `ConnectionIdConflict` without replacing it.
   *because a retried consent callback must not produce a second scheduled pipeline*
-- `answer` — Create answers `201` with the claimed connection, its version and state; a repeated create, a pause and a delete answer `200`; each mutation advances the connection's version by one.
+- `answer` — Create answers `201` with the claimed connection, version and state; a repeat, pause or delete answers `200`; each claim advances the version by one, deleting an active connection claims twice, and a repeat claims nothing.
 - `malformed` — A create body outside `id`, `tenant`, `principal`, `file_ids`, `refresh_secret` and `schedule`, an unreadable schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.
   *because a connection record binds exactly the declared selection, so an unrecognised field cannot ride along into the pipeline*
 - `unknown` — A pause or delete naming no standing connection raises `ConnectionUnknown`; a deleted id stays bound to its retired record, and create refuses its reuse as {{surface.connection.idempotent-create}}.

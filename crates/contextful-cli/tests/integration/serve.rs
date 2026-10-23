@@ -284,6 +284,43 @@ fn tenant_connection_routes_create_pause_and_delete_once() {
     assert_eq!(status, 405);
 }
 
+/// Create answers `201` with the claimed connection, version and state; a repeat, pause or delete answers `200`; each
+/// claim advances the version by one, deleting an active connection claims twice, and a repeat claims nothing.
+// spec: surface.connection.answer@b9a0a1ce
+#[test]
+fn each_connection_claim_advances_one_version_and_a_repeat_claims_none() {
+    let face = ConnectionFace::start();
+    let dana = face.mint("tenant-a", DANA);
+    let create = declaration("conn-a", "tenant-a").to_string();
+    let (status, made) = face.call("POST", "/connections", &dana, &create);
+    assert_eq!((status, made["version"].clone(), made["state"].clone()), (201, json!(1), json!("active")), "{made}");
+    let (status, repeated) = face.call("POST", "/connections", &dana, &create);
+    assert_eq!((status, repeated["version"].clone()), (200, json!(1)), "a repeated create claims nothing: {repeated}");
+    // Deleting an active connection claims twice: the pause, then the retirement.
+    let (status, deleted) = face.call("DELETE", "/connections/conn-a", &dana, "{}");
+    assert_eq!((status, deleted["version"].clone(), deleted["state"].clone()), (200, json!(3), json!("deleted")), "{deleted}");
+
+    assert_eq!(face.call("POST", "/connections", &dana, &declaration("conn-b", "tenant-a").to_string()).0, 201);
+    let (status, paused) = face.call("POST", "/connections/conn-b/pause", &dana, "{}");
+    assert_eq!((status, paused["version"].clone(), paused["state"].clone()), (200, json!(2), json!("paused")), "{paused}");
+    let (status, again) = face.call("POST", "/connections/conn-b/pause", &dana, "{}");
+    assert_eq!((status, again["version"].clone()), (200, json!(2)), "a repeated pause claims nothing: {again}");
+    let (status, retired) = face.call("DELETE", "/connections/conn-b", &dana, "{}");
+    assert_eq!((status, retired["version"].clone()), (200, json!(3)), "a paused connection retires in one claim: {retired}");
+}
+
+/// A pause or delete whose path id lies outside the connection id grammar names no connection.
+#[test]
+fn a_pause_or_delete_naming_an_id_outside_the_grammar_is_unknown() {
+    let face = ConnectionFace::start();
+    let dana = face.mint("tenant-a", DANA);
+    let long = "x".repeat(65);
+    for id in ["a.b", long.as_str()] {
+        refused(&face.call("POST", &format!("/connections/{id}/pause"), &dana, "{}"), 404, "ConnectionUnknown");
+        refused(&face.call("DELETE", &format!("/connections/{id}"), &dana, "{}"), 404, "ConnectionUnknown");
+    }
+}
+
 /// A connection mutation requires an admitted write credential for its tenant and principal, checked on the request
 /// before reading and on the standing record before changing it; a mismatch raises `ConnectionScopeDenied`.
 // spec: surface.connection.authority@43697862

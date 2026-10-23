@@ -27649,7 +27649,7 @@
       "operation": "connection",
       "subject": "answer",
       "kind": "behavior",
-      "statement": "Create answers `201` with the claimed connection, its version and state; a repeated create, a pause and a delete answer `200`; each mutation advances the connection's version by one.",
+      "statement": "Create answers `201` with the claimed connection, version and state; a repeat, pause or delete answers `200`; each claim advances the version by one, deleting an active connection claims twice, and a repeat claims nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
       "line": 487

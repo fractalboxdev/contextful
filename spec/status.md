@@ -2405,7 +2405,7 @@ Unscheduled operations: 13.
 | `surface.browse.file-gallery` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a gallery preview uses context.file with the listing's snapshot bound` | performed |
 | `surface.browse.gallery-path-unlisted` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a gallery preview refuses paths absent from the governed listing` | performed |
 | `surface.browse.insights-panel` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::insights show governed table row counts` | performed |
-| `surface.connection.answer` | `spec/pins.toml` | performed |
+| `surface.connection.answer` | `crates/contextful-cli/tests/integration/serve.rs::each_connection_claim_advances_one_version_and_a_repeat_claims_none` | performed |
 | `surface.connection.authority` | `crates/contextful-cli/tests/integration/serve.rs::a_connection_outside_the_credentials_tenant_or_principal_is_denied` | performed |
 | `surface.connection.consent-boundary` | `spec/pins.toml` | performed |
 | `surface.connection.create` | `spec/pins.toml` | performed |

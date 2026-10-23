@@ -57,7 +57,6 @@
 "surface.apply.operator-attestation" = { test = "contextful_cli::serve::admin_changes_require_fresh_console_attestation_and_record_the_operator" }
 "surface.connection.routes" = { test = "contextful_cli::serve::tenant_connection_routes_create_pause_and_delete_once" }
 "surface.connection.create" = { test = "contextful_snapshot::connection::a_connection_claim_rechecks_authority_under_the_lock_and_a_refusal_writes_nothing" }
-"surface.connection.answer" = { test = "contextful_cli::serve::tenant_connection_routes_create_pause_and_delete_once" }
 "surface.connection.consent-boundary" = { test = "contextful_cli::serve::a_connection_body_outside_its_fields_or_carrying_an_oauth_code_is_malformed" }
 "store.init.store-identity" = { test = "contextful_context::init::init_persists_a_distinct_store_uuid_across_repetition_and_recreation" }
 "store.init.identity-invalid" = { test = "contextful_context::init::malformed_store_uuid_and_absent_owner_root_refuse_identity" }

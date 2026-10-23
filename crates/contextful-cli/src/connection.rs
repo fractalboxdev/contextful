@@ -142,9 +142,18 @@ pub(crate) fn served(
     if !matches!(serde_json::from_slice::<Value>(&request.body), Ok(Value::Object(fields)) if fields.is_empty()) {
         return Err(ConnectionError::Malformed("a pause or delete body is `{}`".into()));
     }
-    match rest.strip_suffix("/pause") {
-        Some(id) => pause(project, declaration, id, authority, boundary),
-        None => delete(project, declaration, rest, authority, boundary),
+    let (id, pausing) = match rest.strip_suffix("/pause") {
+        Some(id) => (id, true),
+        None => (rest, false),
+    };
+    // An id outside the record grammar names no connection, so no storage call reads it.
+    if !is_name(id, 64) {
+        return Err(ConnectionError::Unknown(format!("no standing connection `{id}`")));
+    }
+    if pausing {
+        pause(project, declaration, id, authority, boundary)
+    } else {
+        delete(project, declaration, id, authority, boundary)
     }
 }
 
