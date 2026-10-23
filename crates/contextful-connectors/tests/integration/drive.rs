@@ -371,6 +371,7 @@ fn a_withdrawn_picked_file_readable_again_is_captured_as_new() {
 
     fake.overlay("picks.json");
     let (rows, restored, _) = files(Some(still));
+    assert_eq!(rows.len(), 1, "{rows:?}");
     assert_eq!(by_id(&rows, "doc-plan")["capture_status"], "captured", "{rows:?}");
     assert!(rows.iter().all(|row| row["file_id"] != "sheet-budget"), "the retained file is not reread: {rows:?}");
     assert!(restored["files"].get("doc-plan").is_some(), "{restored}");
@@ -392,6 +393,7 @@ fn a_picked_sheet_over_drives_export_limit_is_skipped_and_never_withdrawn() {
 
     fake.overlay("picks-sheet-limit.json");
     let (rows, limited, _) = files(Some(captured));
+    assert_eq!(rows.len(), 1, "only the changed sheet lands: {rows:?}");
     let sheet = by_id(&rows, "sheet-budget");
     assert_eq!(sheet["capture_status"], "skipped", "{sheet:?}");
     assert!(sheet["skipped"].as_str().unwrap().contains("exportSizeLimitExceeded"), "{sheet:?}");
