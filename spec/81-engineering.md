@@ -226,6 +226,8 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `folded-parts` — `stages --parts` folds pins, toolchain, schema and test-first validation into `preflight`; each package group's workspace and evaluate parts into `suite.<group>`, probes into `suite.ci`; crate graph, connectors and surfaces into `perimeter`; members stay runnable alone.
   *because every dispatched part pays its own sandbox setup and compile, and parts beyond one admission window queue a second wave*
+- `fold-verdicts` — A fold runs each member after an earlier member fails, skips a member reading a failed member's output, and fails when any member fails.
+  *because one fold check replaces a check per member, and one run reports every member's verdict*
 - `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
   *A-assurance*
 - `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the required stage checks.

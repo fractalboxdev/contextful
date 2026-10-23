@@ -536,6 +536,7 @@ fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Dur
     let mut stages: Vec<String> = Vec::new();
     let mut whole: Vec<&str> = Vec::new();
     let mut narrowed: std::collections::BTreeMap<&str, Vec<String>> = Default::default();
+    let folded = named.iter().any(|name| stage::FOLDS.iter().any(|(label, _)| label == name));
     // A fold label names each of its members.
     let named: Vec<&str> = named.iter().flat_map(|name| stage::members(name)).collect();
     for name in named {
@@ -558,18 +559,33 @@ fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Dur
         selected.iter().for_each(|stage| println!("{stage}"));
         return Ok(());
     }
+    // A fold reports every member's verdict (`assurance.gate.fold-verdicts`): a failing member
+    // stops the run only outside a fold, and inside one skips the members reading its output.
+    let mut failed: Vec<&str> = Vec::new();
+    let mut first: Option<anyhow::Error> = None;
     for stage in selected {
+        if let Some((_, before, output)) = stage::READS.iter().find(|(s, before, _)| *s == stage && failed.contains(before)) {
+            eprintln!("stage `{stage}` skipped: it reads {output}, which failed stage `{before}` writes");
+            continue;
+        }
         eprintln!("--- stage {stage}");
         free_disk(&root, stage)?;
         let mut mark = stage::mark();
         let outcome = run_stage(&root, stage, narrowed.get(stage).map(Vec::as_slice), base, bound);
         stage::report(stage, &mut mark, &outcome);
-        outcome?;
+        if let Err(e) = outcome {
+            if !folded {
+                return Err(e);
+            }
+            failed.push(stage);
+            first.get_or_insert(e);
+            continue;
+        }
         // A passing stage leaves no build behind (`assurance.build.target-dir-per-stage`); a
         // failing one keeps its directory for diagnosis.
         let _ = std::fs::remove_dir_all(stage_target(&root, stage));
     }
-    Ok(())
+    first.map_or(Ok(()), Err)
 }
 
 /// One stage's work, apart from the disk precondition and its report; `only` the named parts

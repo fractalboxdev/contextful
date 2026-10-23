@@ -199,7 +199,10 @@ fn a_removed_clause_reaches_the_evaluate_stage() {
     for part in ["suite.cli", "suite.foundation", "suite.runtime", "suite.read", "suite.ci"] {
         assert!(got.iter().any(|p| p == part), "`{part}` missing: {got:?}");
     }
+    // A reworded `tagged` reaches `suite.foundation` through `demo`'s workspace part, which
+    // runs evaluate.foundation in the same check; the other suites stay unreached.
     let got = after(&[(LOCK, &lock(&["assurance.gate.tagged"]))]);
+    assert!(got.iter().any(|p| p == "suite.foundation"), "{got:?}");
     assert!(!got.iter().any(|p| ["suite.cli", "suite.runtime", "suite.read", "suite.ci"].contains(&p.as_str())), "a reworded clause keeps its ledger entry resolved: {got:?}");
 }
 

@@ -299,7 +299,7 @@ const NATIVE_ENTRY: &str = "[entry.native-golden-floor]\nclause = \"assurance.ba
 /// The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.
 // spec: assurance.gate.evaluate-stage@94fe67c3
 #[test]
-fn the_evaluate_stage_dispatches_one_part_per_package_group_each_holding_its_own_floor() {
+fn the_evaluate_stage_splits_one_part_per_package_group_each_riding_in_its_suite_and_holding_its_own_floor() {
     let r = Repo::init();
     r.write("spec/spec.lock.json", "{\"clauses\": [{\"id\": \"run.journal.entry-key\"}, {\"id\": \"assurance.baseline.native-gate\"}]}\n");
     r.write("evals/cases/native.jsonl", "{}\n");
@@ -365,4 +365,39 @@ fn the_evaluate_stage_dispatches_one_part_per_package_group_each_holding_its_own
     assert!(err.contains("evaluate: baseline verdict held for evals/cases/native.jsonl"), "a missed figure beside the native set reds its baseline: {err}");
     assert!(r.gate(&["--stage", "evaluate.runtime"]).status.success(), "the foundation miss reds the runtime part");
     assert!(!r.gate(&["--stage", "evaluate"]).status.success(), "the whole stage holds over a red part");
+}
+
+/// A fold runs each member after an earlier member fails, skips a member reading a failed member's output, and fails when any member fails.
+// spec: assurance.gate.fold-verdicts@22eb26ea
+#[test]
+fn a_fold_reports_every_member_past_a_failing_one() {
+    let r = Repo::init();
+    r.write("spec/spec.lock.json", "{\"clauses\": [{\"id\": \"run.journal.entry-key\"}]}\n");
+    r.write("crates/engine/Cargo.toml", &manifest("contextful-engine", ""));
+    r.write("crates/engine/src/lib.rs", "");
+    r.write("crates/engine/tests/integration/main.rs", "mod measured;\n");
+    // `holds` fails the workspace part; the evaluate part runs the ledger's test alone.
+    r.write(
+        "crates/engine/tests/integration/measured.rs",
+        &format!("{MEASURED}\n#[test]\nfn holds() {{\n    assert!(std::env::var_os(\"CONTEXTFUL_MEASURE_DIR\").is_some(), \"a workspace defect\");\n}}\n"),
+    );
+    r.write("evals/ledger.toml", &entry("engine-figure", "contextful_engine::measured::measured", "=="));
+    r.lock();
+    r.commit("a runtime package whose workspace suite fails");
+
+    let out = r.gate(&["--stage", "suite.runtime"]);
+    let err = stderr(&out);
+    assert!(!out.status.success(), "a fold with a failing member passes: {err}");
+    assert!(err.contains("report: stage `workspace` failed"), "{err}");
+    assert!(err.contains("--- stage evaluate") && err.contains("measure: engine-figure = 4"), "the failing workspace part hid the evaluate verdict: {err}");
+
+    // A member reading a failed member's output is skipped; the rest still run.
+    r.write("formal/protocol/lean-toolchain", "leanprover/lean4:stable\n");
+    r.commit("an inexact Lean pin fails the pins stage");
+    let out = r.gate(&["--predecessors", "--base", "HEAD", "--stage", "preflight"]);
+    let err = stderr(&out);
+    assert!(!out.status.success(), "{err}");
+    assert!(err.contains("report: stage `pins` failed"), "{err}");
+    assert!(err.contains("stage `toolchain` skipped: it reads target/gate/pins.json, which failed stage `pins` writes"), "{err}");
+    assert!(err.contains("--- stage schema") && err.contains("--- stage test-first"), "the pins failure hid the later members: {err}");
 }
