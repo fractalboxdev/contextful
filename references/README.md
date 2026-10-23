@@ -54,3 +54,4 @@ names it by title.
 | [specification-practice.md](./specification-practice.md) | Decision records, requirement syntax and quality, spec-to-test traceability | `corpus.rationale`, `corpus.address`, `corpus.anatomy`, `corpus.state`, `corpus.reference` |
 | [specification-readability.md](./specification-readability.md) | Readable specifications with addressed, test-linked sentences; rendered views, guide layers, one-page cards | `corpus.anatomy`, `corpus.guide`, `corpus.render` |
 | [diagrams.md](./diagrams.md) | Flowchart, sequence and state diagram notation; the cognitive limits behind label and size bounds | `corpus.diagram` |
+| [deployment-runtimes.md](./deployment-runtimes.md) | Linux containers, macOS virtualization, port publishing and CPU architecture | `topology.deploy`, `topology.package` |

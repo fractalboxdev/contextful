@@ -2,23 +2,25 @@
 # `topology.deploy.parity` compares every other target's parts against this one.
 
 provider = "local"
-title    = "macOS (reference)"
-serves   = "The reference output, development, and air-gapped single-node deployments."
+title    = "Linux (reference)"
+serves   = "Self-hosted Linux servers, development, and air-gapped single-node deployments."
 primitives = ["process", "filesystem"]
 
 runtime = '''
-The `contextful-full` macOS executable runs natively on Apple Silicon or Intel. A long-lived `contextful pipeline serve` process owns the scheduler and launches the same executable as `contextful pipeline run` or `contextful job fire` children. A separate `contextful serve --http <host:port> --issuer-key <key>` process answers MCP and HTTP requests; its issuer key and project declaration are operator inputs.
+The `contextful-full` Linux executable runs natively on x86-64 or ARM64, using the corresponding `x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl` release artifact. A long-lived `contextful pipeline serve` process owns the scheduler and launches the same executable as `contextful pipeline run` or `contextful job fire` children. A separate `contextful serve` process answers MCP and HTTP requests. A service manager such as systemd supervises these processes with the same project working directory and configured environment.
 
 Wasmtime executes WebAssembly component connectors inside a run child; its Tokio runtime is embedded there. DuckDB executes SQL inside the process serving reads. SQLite is an embedded library for execution state, with files such as `machine.sqlite`; Parquet parts, manifests and control snapshots live under the project's configured filesystem root. These libraries have no separate service process.
 
 The optional operator console is a separate Node.js 22 process, `node apps/console/dist/server.js --http <host:port>`, and reaches the Rust HTTP server through its configured store endpoint. The browser executes the React client. The local target uses the filesystem receive spool; bucket sync adds an explicitly configured S3-compatible endpoint.
+
+The repository's Dockerfile packages the Linux executable in a shell-free, non-root image with `/data` as its project volume. Separate scheduler and HTTP containers share that persistent volume. On macOS, a Darwin executable runs the same process layout directly; Docker runs the Linux image inside a Linux VM. The topology's macOS sections give both execution paths.
 '''
 
 diagram = '''
 flowchart LR
   CALLER(["browser or MCP client"]):::muted
   SOURCE(["source endpoint"]):::muted
-  subgraph ACCOUNT["macOS host"]
+  subgraph ACCOUNT["Linux host"]
     subgraph CONSOLE["optional Node.js 22 process"]
       UI["console server"]:::accent
     end
