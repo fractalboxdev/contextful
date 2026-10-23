@@ -69,7 +69,7 @@ fn the_shard_map_runs_each_cli_test_once_and_a_test_it_lacks_in_the_least_loaded
     for pair in shards.windows(2) {
         assert!(position(&parts, &pair[0]) < position(&parts, &pair[1]), "{parts:?}");
     }
-    assert!(position(&parts, &shards[n - 1]) < position(&parts, "workspace.cli-formal"), "{parts:?}");
+    assert!(position(&parts, &shards[n - 1]) < position(&parts, "suite.cli"), "the differential suite's check follows the shards: {parts:?}");
 
     // The map lacks `ordinary_10` and `ordinary_11` and names `gone::away`, which is no test.
     // `ordinary_10` shares a group with `ordinary_09`, so it runs in that test's shard;
@@ -273,7 +273,8 @@ fn the_features_stage_dispatches_one_part_per_featured_package() {
 const MEASURED: &str = r#"
 #[test]
 fn measured() {
-    let dir = std::path::PathBuf::from(std::env::var_os("CONTEXTFUL_MEASURE_DIR").expect("a measure run"));
+    // A workspace run measures nothing; the evaluate stage sets the directory.
+    let Some(dir) = std::env::var_os("CONTEXTFUL_MEASURE_DIR").map(std::path::PathBuf::from) else { return };
     let id = env!("CARGO_PKG_NAME").trim_start_matches("contextful-").to_string() + "-figure";
     let record = format!("{{\"id\": \"{id}\", \"value\": 4, \"n\": 1, \"seed\": 7, \"run\": {{\"processor\": \"t\", \"nproc\": 1, \"memory_limit\": null}}}}");
     std::fs::write(dir.join(format!("{id}.json")), record).unwrap();
@@ -298,7 +299,7 @@ const NATIVE_ENTRY: &str = "[entry.native-golden-floor]\nclause = \"assurance.ba
 /// The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.
 // spec: assurance.gate.evaluate-stage@94fe67c3
 #[test]
-fn the_evaluate_stage_dispatches_one_part_per_package_group_each_holding_its_own_floor() {
+fn the_evaluate_stage_splits_one_part_per_package_group_each_riding_in_its_suite_and_holding_its_own_floor() {
     let r = Repo::init();
     r.write("spec/spec.lock.json", "{\"clauses\": [{\"id\": \"run.journal.entry-key\"}, {\"id\": \"assurance.baseline.native-gate\"}]}\n");
     r.write("evals/cases/native.jsonl", "{}\n");
@@ -312,14 +313,25 @@ fn the_evaluate_stage_dispatches_one_part_per_package_group_each_holding_its_own
     r.lock();
     r.commit("a foundation entry and a runtime entry");
 
+    // Each package group's evaluate part rides in that group's suite check, after its
+    // workspace part.
     let parts = listed(&r);
-    let groups: Vec<String> = ["foundation", "runtime", "read", "cli", "ci", "probe"].iter().map(|g| format!("evaluate.{g}")).collect();
+    let suites: Vec<String> = ["cli", "foundation", "runtime", "read", "ci"].iter().map(|g| format!("suite.{g}")).collect();
     assert!(parts.contains(&"acceptance".to_string()), "{parts:?}");
-    assert!(!parts.iter().any(|p| p == "evaluate"), "the evaluate stage still runs as one part: {parts:?}");
-    assert!(position(&parts, "acceptance") < position(&parts, &groups[0]), "{parts:?}");
-    for pair in groups.windows(2) {
+    assert!(!parts.iter().any(|p| p == "evaluate" || p.starts_with("evaluate.")), "an evaluate part runs as its own check: {parts:?}");
+    for pair in suites.windows(2) {
         assert!(position(&parts, &pair[0]) < position(&parts, &pair[1]), "{parts:?}");
     }
+    assert!(position(&parts, &suites[4]) < position(&parts, "acceptance"), "{parts:?}");
+
+    let out = r.gate(&["--stage", "suite.runtime"]);
+    let err = stderr(&out);
+    assert!(out.status.success(), "{err}");
+    assert!(err.contains("--- stage workspace") && err.contains("--- stage evaluate"), "{err}");
+    assert!(err.contains("measure: engine-figure = 4") && !err.contains("demo-figure"), "the runtime suite measured beyond its group: {err}");
+    let out = r.gate(&["--stage", "suite.ci"]);
+    assert!(out.status.success(), "the ci suite with no entry fails: {}", stderr(&out));
+    assert!(!stderr(&out).contains("-figure"), "{}", stderr(&out));
 
     let out = r.gate(&["--stage", "evaluate.runtime"]);
     let err = stderr(&out);
@@ -353,4 +365,39 @@ fn the_evaluate_stage_dispatches_one_part_per_package_group_each_holding_its_own
     assert!(err.contains("evaluate: baseline verdict held for evals/cases/native.jsonl"), "a missed figure beside the native set reds its baseline: {err}");
     assert!(r.gate(&["--stage", "evaluate.runtime"]).status.success(), "the foundation miss reds the runtime part");
     assert!(!r.gate(&["--stage", "evaluate"]).status.success(), "the whole stage holds over a red part");
+}
+
+/// A fold runs each member after an earlier member fails, skips a member reading a failed member's output, and fails when any member fails.
+// spec: assurance.gate.fold-verdicts@22eb26ea
+#[test]
+fn a_fold_reports_every_member_past_a_failing_one() {
+    let r = Repo::init();
+    r.write("spec/spec.lock.json", "{\"clauses\": [{\"id\": \"run.journal.entry-key\"}]}\n");
+    r.write("crates/engine/Cargo.toml", &manifest("contextful-engine", ""));
+    r.write("crates/engine/src/lib.rs", "");
+    r.write("crates/engine/tests/integration/main.rs", "mod measured;\n");
+    // `holds` fails the workspace part; the evaluate part runs the ledger's test alone.
+    r.write(
+        "crates/engine/tests/integration/measured.rs",
+        &format!("{MEASURED}\n#[test]\nfn holds() {{\n    assert!(std::env::var_os(\"CONTEXTFUL_MEASURE_DIR\").is_some(), \"a workspace defect\");\n}}\n"),
+    );
+    r.write("evals/ledger.toml", &entry("engine-figure", "contextful_engine::measured::measured", "=="));
+    r.lock();
+    r.commit("a runtime package whose workspace suite fails");
+
+    let out = r.gate(&["--stage", "suite.runtime"]);
+    let err = stderr(&out);
+    assert!(!out.status.success(), "a fold with a failing member passes: {err}");
+    assert!(err.contains("report: stage `workspace` failed"), "{err}");
+    assert!(err.contains("--- stage evaluate") && err.contains("measure: engine-figure = 4"), "the failing workspace part hid the evaluate verdict: {err}");
+
+    // A member reading a failed member's output is skipped; the rest still run.
+    r.write("formal/protocol/lean-toolchain", "leanprover/lean4:stable\n");
+    r.commit("an inexact Lean pin fails the pins stage");
+    let out = r.gate(&["--predecessors", "--base", "HEAD", "--stage", "preflight"]);
+    let err = stderr(&out);
+    assert!(!out.status.success(), "{err}");
+    assert!(err.contains("report: stage `pins` failed"), "{err}");
+    assert!(err.contains("stage `toolchain` skipped: it reads target/gate/pins.json, which failed stage `pins` writes"), "{err}");
+    assert!(err.contains("--- stage schema") && err.contains("--- stage test-first"), "the pins failure hid the later members: {err}");
 }

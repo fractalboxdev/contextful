@@ -9,7 +9,8 @@ use std::process::Command;
 const LOCK: &str = "spec/spec.lock.json";
 const PINS: &str = "spec/pins.toml";
 
-/// The parts every listing holds (`assurance.gate.affected-parts`).
+/// The parts every listing holds (`assurance.gate.affected-parts`), all three in the
+/// preflight fold.
 const ALWAYS: [&str; 3] = ["pins", "toolchain", "schema"];
 
 /// A required part, or every part sharing a prefix.
@@ -98,7 +99,8 @@ pub(crate) fn select(root: &Path, base: &str, required: Vec<String>) -> Result<V
             None => return Ok(required),
         }
     }
-    Ok(required.into_iter().filter(|p| matches.iter().any(|m| m.hits(p))).collect())
+    // A fold is reached when any of its members is.
+    Ok(required.into_iter().filter(|p| crate::stage::members(p).iter().any(|member| matches.iter().any(|m| m.hits(member)))).collect())
 }
 
 /// What a changed path outside `spec/` and `references/` reaches

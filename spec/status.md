@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 342 | 70 | 25 | 5 | 300 | 0 | 300 |
+| `assurance` | 3 | 18 | 344 | 70 | 25 | 5 | 302 | 0 | 302 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 3 | 18 | 417 | 95 | 23 | 14 | 305 | 0 | 305 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 5 | 20 | 337 | 70 | 22 | 13 | 326 | 0 | 326 |
 | `surface` | 2 | 22 | 195 | 69 | 24 | 1 | 161 | 0 | 161 |
 | `topology` | 1 | 6 | 81 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 25 | 176 | 2877 | 702 | 227 | 84 | 2541 | 0 | |
+| **total** | 25 | 176 | 2879 | 702 | 227 | 84 | 2543 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 67 | 55 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 185 | 150 | passing | closed |
+| 14 — Assurance | 7 | 187 | 152 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
@@ -231,7 +231,9 @@ Unscheduled operations: 13.
 | `assurance.gate.deny-list` | `tools/ci/tests/integration/deny.rs::a_deny_list_drifting_from_the_refusals_is_refused` | performed |
 | `assurance.gate.deny-profile-graph` | `tools/ci/tests/integration/deny.rs::a_profile_graph_is_the_binary_under_its_feature_alone` | performed |
 | `assurance.gate.dependency-deny` | `tools/ci/tests/integration/deny.rs::the_crate_graph_stage_runs_cargo_deny_over_each_profile` | performed |
-| `assurance.gate.evaluate-stage` | `tools/ci/tests/integration/split_parts.rs::the_evaluate_stage_dispatches_one_part_per_package_group_each_holding_its_own_floor` | performed |
+| `assurance.gate.evaluate-stage` | `tools/ci/tests/integration/split_parts.rs::the_evaluate_stage_splits_one_part_per_package_group_each_riding_in_its_suite_and_holding_its_own_floor` | performed |
+| `assurance.gate.fold-verdicts` | `tools/ci/tests/integration/split_parts.rs::a_fold_reports_every_member_past_a_failing_one` | performed |
+| `assurance.gate.folded-parts` | `tools/ci/tests/integration/workflow.rs::folded_parts_run_every_stage_part_once_in_run_order` | performed |
 | `assurance.gate.footprint` | `tools/ci/tests/integration/image.rs::this_repository_profiles_hold_to_their_footprint_budgets` | performed |
 | `assurance.gate.footprint-exceeded` | `tools/ci/tests/integration/image.rs::an_artifact_over_budget_or_linking_beyond_the_c_library_is_refused` | performed |
 | `assurance.gate.formal-stage` | `tools/ci/tests/integration/stages.rs::the_formal_stage_runs_the_audit_the_differential_and_the_protocol_check` | performed |

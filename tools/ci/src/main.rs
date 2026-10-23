@@ -78,8 +78,8 @@ struct Cli {
 enum Cmd {
     /// Run every stage in order, or the named stages.
     Gate {
-        /// A stage, or a part `<stage>.<part>` of a split stage, as `contextful-ci stages
-        /// --parts` prints it; repeatable. Defaults to every stage. A subset runs in run order.
+        /// A stage, a part `<stage>.<part>` of a split stage, or a fold label, as
+        /// `contextful-ci stages --parts` prints it; repeatable. Defaults to every stage. A subset runs in run order.
         #[arg(long = "stage")]
         stages: Vec<String>,
         /// Also run every stage whose output a selected stage reads.
@@ -114,6 +114,10 @@ enum Cmd {
         /// Print the selected stage names as a JSON array for a workflow matrix.
         #[arg(long)]
         json: bool,
+        /// Print each fold label and the stage parts it runs, one fold per line
+        /// (`assurance.gate.folded-parts`).
+        #[arg(long, conflicts_with_all = ["parts", "json"])]
+        folds: bool,
     },
     /// Hold every key in a git-tracked `.env*` file to ciphertext under a scope comment.
     Secrets,
@@ -326,7 +330,11 @@ fn refuse(code: &'static str, message: String) -> anyhow::Error {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.cmd {
-        Cmd::Stages { parts, base, affected, tier, json } => {
+        Cmd::Stages { folds: true, .. } => {
+            stage::FOLDS.iter().for_each(|(label, members)| println!("{label} {}", members.join(" ")));
+            Ok(())
+        }
+        Cmd::Stages { parts, base, affected, tier, json, .. } => {
             let listed = if parts {
                 repo_root().and_then(|root| {
                     let required: Vec<String> = dispatched(&root, base.as_deref())?.into_iter().filter(|p| stage::in_tier(p, &tier)).collect();
@@ -508,7 +516,7 @@ fn parts(root: &Path, stage: &str, base: Option<&str>) -> Result<Vec<String>> {
 }
 
 /// What FlareDispatch dispatches, in run order: each stage, a split stage as
-/// `<stage>.<part>` per part.
+/// `<stage>.<part>` per part, and each fold's members as its one label.
 fn dispatched(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
     let mut out = Vec::new();
     for stage in STAGES {
@@ -518,7 +526,7 @@ fn dispatched(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
             out.push(stage.to_string());
         }
     }
-    Ok(out)
+    Ok(stage::fold(out))
 }
 
 fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Duration) -> Result<()> {
@@ -528,8 +536,11 @@ fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Dur
     let mut stages: Vec<String> = Vec::new();
     let mut whole: Vec<&str> = Vec::new();
     let mut narrowed: std::collections::BTreeMap<&str, Vec<String>> = Default::default();
+    let folded = named.iter().any(|name| stage::FOLDS.iter().any(|(label, _)| label == name));
+    // A fold label names each of its members.
+    let named: Vec<&str> = named.iter().flat_map(|name| stage::members(name)).collect();
     for name in named {
-        let (stage, part) = name.split_once('.').map_or((name.as_str(), None), |(s, p)| (s, Some(p)));
+        let (stage, part) = name.split_once('.').map_or((name, None), |(s, p)| (s, Some(p)));
         let Some(stage) = STAGES.iter().copied().find(|s| *s == stage) else {
             bail!("no stage `{stage}`; the stages are {}", STAGES.join(", "));
         };
@@ -548,18 +559,33 @@ fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Dur
         selected.iter().for_each(|stage| println!("{stage}"));
         return Ok(());
     }
+    // A fold reports every member's verdict (`assurance.gate.fold-verdicts`): a failing member
+    // stops the run only outside a fold, and inside one skips the members reading its output.
+    let mut failed: Vec<&str> = Vec::new();
+    let mut first: Option<anyhow::Error> = None;
     for stage in selected {
+        if let Some((_, before, output)) = stage::READS.iter().find(|(s, before, _)| *s == stage && failed.contains(before)) {
+            eprintln!("stage `{stage}` skipped: it reads {output}, which failed stage `{before}` writes");
+            continue;
+        }
         eprintln!("--- stage {stage}");
         free_disk(&root, stage)?;
         let mut mark = stage::mark();
         let outcome = run_stage(&root, stage, narrowed.get(stage).map(Vec::as_slice), base, bound);
         stage::report(stage, &mut mark, &outcome);
-        outcome?;
+        if let Err(e) = outcome {
+            if !folded {
+                return Err(e);
+            }
+            failed.push(stage);
+            first.get_or_insert(e);
+            continue;
+        }
         // A passing stage leaves no build behind (`assurance.build.target-dir-per-stage`); a
         // failing one keeps its directory for diagnosis.
         let _ = std::fs::remove_dir_all(stage_target(&root, stage));
     }
-    Ok(())
+    first.map_or(Ok(()), Err)
 }
 
 /// One stage's work, apart from the disk precondition and its report; `only` the named parts
