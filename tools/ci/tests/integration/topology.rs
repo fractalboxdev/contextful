@@ -1302,7 +1302,7 @@ fn each_deployment_shape_reaches_its_catalog_backend_and_the_full_profile_links_
         let target: toml::Value = toml::from_str(&std::fs::read_to_string(repo_root().join(format!("spec/targets/{provider}.toml"))).unwrap()).unwrap();
         target["shape"].as_array().unwrap().iter().map(|s| (s["kind"].as_str().unwrap().to_string(), s["roles"]["catalog"].as_str().unwrap().to_string())).collect()
     };
-    for (provider, backend) in [("local", "local catalog file, one process"), ("aws", "Postgres via pg-catalog")] {
+    for (provider, backend) in [("local", "local catalog file"), ("aws", "Postgres via pg-catalog")] {
         let shapes = catalog(provider);
         assert!(!shapes.is_empty(), "`{provider}` declares no shape");
         for (kind, role) in &shapes {
