@@ -90,7 +90,8 @@ test-first to one comparison ({{assurance.test.comparison-base}},
 {{assurance.test.merge-source}}, {{assurance.test.base-evidence}}), parts to
 timings, owned processes and tiers ({{assurance.gate.stage-timings}},
 {{assurance.gate.part-budget}}, {{assurance.gate.build-admission}},
-{{assurance.gate.timeout-cleanup}}, {{assurance.gate.nightly-tier}}).
+{{assurance.gate.timeout-cleanup}}, {{assurance.gate.nightly-tier}}), and folds
+short parts into one check each ({{assurance.gate.folded-parts}}).
 
 One ledger keys each tracked target to its clause ({{assurance.measure.ledger}}): a
 gate-tier count reds the evaluate stage ({{assurance.measure.count-first}}), and timings

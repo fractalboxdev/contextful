@@ -92,7 +92,7 @@ fn required(r: &Repo, base: &str) -> Vec<String> {
     parts
 }
 
-/// The listing is a run-order subsequence of both tiers holding pins, toolchain and schema.
+/// The listing is a run-order subsequence of both tiers holding the preflight part.
 fn assert_subset(r: &Repo, base: &str, got: &[String]) {
     let all = required(r, base);
     let mut at = 0;
@@ -100,9 +100,7 @@ fn assert_subset(r: &Repo, base: &str, got: &[String]) {
         let found = all[at..].iter().position(|p| p == part).unwrap_or_else(|| panic!("`{part}` is out of the required set or out of order: {got:?} of {all:?}"));
         at += found + 1;
     }
-    for part in ["pins", "toolchain", "schema"] {
-        assert!(got.iter().any(|p| p == part), "`{part}` missing: {got:?}");
-    }
+    assert!(got.iter().any(|p| p == "preflight"), "`preflight` missing: {got:?}");
 }
 
 /// The listing after one commit writing `files` onto the fixture, checked as a subset.
@@ -121,7 +119,7 @@ fn after(files: &[(&str, &str)]) -> Vec<String> {
 // spec: assurance.gate.affected-surfaces@9b5f23f1
 #[test]
 fn a_typescript_change_reaches_the_surfaces_acceptance_and_crate_graph_parts() {
-    let want = ["pins", "toolchain", "schema", "acceptance", "crate-graph", "surfaces"];
+    let want = ["preflight", "acceptance", "perimeter"];
     assert_eq!(after(&[("apps/web/src/index.ts", "export const x = 1;\n")]), want);
     assert_eq!(after(&[("packages/kit/src/index.ts", "export const y = 2;\n")]), want);
     assert_eq!(after(&[("apps/console/package.json", "{}\n")]), want);
@@ -131,32 +129,32 @@ fn a_typescript_change_reaches_the_surfaces_acceptance_and_crate_graph_parts() {
 // spec: assurance.gate.affected-spec@a5da2e1a
 #[test]
 fn a_spec_change_reaches_validation_and_the_parts_running_each_changed_clause_pin() {
-    assert_eq!(after(&[("references/gate.md", "# Gate practice\n")]), ["pins", "toolchain", "schema", "test-first.validate"]);
-    assert_eq!(after(&[("spec/guide/gate.md", "# The gate\n")]), ["pins", "toolchain", "schema", "test-first.validate", "workspace.foundation"]);
+    assert_eq!(after(&[("references/gate.md", "# Gate practice\n")]), ["preflight"]);
+    assert_eq!(after(&[("spec/guide/gate.md", "# The gate\n")]), ["preflight", "suite.foundation"]);
 
     // A reworded clause pinned by a tag in `demo`'s test reaches the parts running `demo`.
     assert_eq!(
         after(&[(LOCK, &lock(&["assurance.gate.tagged"]))]),
-        ["pins", "toolchain", "schema", "test-first.validate", "workspace.compile", "workspace.foundation"]
+        ["preflight", "workspace.compile", "suite.foundation"]
     );
 
     // A clause pinned in `spec/pins.toml` to the binary's test reaches every binary part.
     let got = after(&[(LOCK, &lock(&["assurance.gate.listed"]))]);
-    for part in ["workspace.compile", "workspace.cli-1", "workspace.cli-4", "workspace.cli-formal", "features.binary-extra", "features.formal-extra"] {
+    for part in ["workspace.compile", "workspace.cli-1", "workspace.cli-4", "suite.cli", "features.binary-extra", "features.formal-extra"] {
         assert!(got.iter().any(|p| p == part), "`{part}` missing: {got:?}");
     }
-    assert!(!got.iter().any(|p| p == "surfaces" || p == "formal" || p == "connectors"), "{got:?}");
+    assert!(!got.iter().any(|p| p == "perimeter" || p == "formal"), "{got:?}");
 
     // A clause a Lean theorem pins, under `formal/` or outside it, reaches the formal parts.
     for id in ["assurance.gate.proved", "assurance.gate.modelled"] {
         let got = after(&[(LOCK, &lock(&[id]))]);
-        assert!(got.iter().any(|p| p == "formal") && got.iter().any(|p| p == "workspace.cli-formal"), "{id}: {got:?}");
+        assert!(got.iter().any(|p| p == "formal") && got.iter().any(|p| p == "suite.cli"), "{id}: {got:?}");
         assert!(!got.iter().any(|p| p == "workspace.cli-1"), "{id}: {got:?}");
     }
 
     // A changed `spec/pins.toml` entry reaches the parts running the test it now names.
     let got = after(&[("spec/pins.toml", "[pin]\n\"assurance.gate.listed\" = { test = \"crates/demo/tests/integration/double.rs::doubles\" }\n")]);
-    for part in ["workspace.foundation", "workspace.cli-1"] {
+    for part in ["suite.foundation", "workspace.cli-1"] {
         assert!(got.iter().any(|p| p == part), "`{part}` missing, the old and new pins both reach: {got:?}");
     }
 }
@@ -167,15 +165,15 @@ fn a_spec_change_reaches_validation_and_the_parts_running_each_changed_clause_pi
 fn a_changed_clause_reaches_the_parts_running_its_package() {
     assert_eq!(
         after(&[(LOCK, &lock(&["assurance.gate.connected"]))]),
-        ["pins", "toolchain", "schema", "test-first.validate", "workspace.compile", "workspace.foundation", "workspace.runtime", "connectors", "features.connectors"]
+        ["preflight", "workspace.compile", "suite.foundation", "suite.runtime", "perimeter", "features.connectors"]
     );
     assert_eq!(
         after(&[(LOCK, &lock(&["assurance.gate.accepted"]))]),
-        ["pins", "toolchain", "schema", "test-first.validate", "workspace.foundation", "acceptance"]
+        ["preflight", "suite.foundation", "acceptance"]
     );
     assert_eq!(
         after(&[(LOCK, &lock(&["assurance.gate.surfaced"]))]),
-        ["pins", "toolchain", "schema", "test-first.validate", "workspace.foundation", "surfaces"]
+        ["preflight", "suite.foundation", "perimeter"]
     );
 }
 
@@ -184,9 +182,9 @@ fn a_changed_clause_reaches_the_parts_running_its_package() {
 #[test]
 fn a_spec_file_a_stage_reads_reaches_that_stage() {
     fn with(extra: &'static str) -> Vec<&'static str> {
-        vec!["pins", "toolchain", "schema", "test-first.validate", "workspace.foundation", extra]
+        vec!["preflight", "suite.foundation", extra]
     }
-    let topology = with("crate-graph");
+    let topology = with("perimeter");
     assert_eq!(after(&[("spec/01-topology.md", "# Topology\n")]), topology);
     assert_eq!(after(&[("spec/capabilities.toml", "[capability]\n")]), topology);
     assert_eq!(after(&[("spec/adr/A-assurance.md", "# A-assurance\n")]), with("formal"));
@@ -198,11 +196,11 @@ fn a_spec_file_a_stage_reads_reaches_that_stage() {
 #[test]
 fn a_removed_clause_reaches_the_evaluate_stage() {
     let got = after(&[(LOCK, &lock_with(&[], &["assurance.gate.tagged"]))]);
-    for part in ["evaluate.foundation", "evaluate.runtime", "evaluate.read", "evaluate.cli", "evaluate.ci", "evaluate.probe"] {
+    for part in ["suite.cli", "suite.foundation", "suite.runtime", "suite.read", "suite.ci"] {
         assert!(got.iter().any(|p| p == part), "`{part}` missing: {got:?}");
     }
     let got = after(&[(LOCK, &lock(&["assurance.gate.tagged"]))]);
-    assert!(!got.iter().any(|p| p.starts_with("evaluate.")), "a reworded clause keeps its ledger entry resolved: {got:?}");
+    assert!(!got.iter().any(|p| ["suite.cli", "suite.runtime", "suite.read", "suite.ci"].contains(&p.as_str())), "a reworded clause keeps its ledger entry resolved: {got:?}");
 }
 
 /// A change under `formal/` other than a `lean-toolchain` file reaches the formal and evaluate stages, the foundation, CLI and CLI differential workspace parts, and every feature part.
@@ -213,9 +211,7 @@ fn a_formal_change_reaches_every_part_reading_the_lean_tree() {
     assert_eq!(
         got,
         [
-            "pins",
-            "toolchain",
-            "schema",
+            "preflight",
             "workspace.cli-1",
             "workspace.cli-2",
             "workspace.cli-3",
@@ -224,14 +220,11 @@ fn a_formal_change_reaches_every_part_reading_the_lean_tree() {
             "workspace.cli-6",
             "workspace.cli-7",
             "workspace.cli-8",
-            "workspace.cli-formal",
-            "workspace.foundation",
-            "evaluate.foundation",
-            "evaluate.runtime",
-            "evaluate.read",
-            "evaluate.cli",
-            "evaluate.ci",
-            "evaluate.probe",
+            "suite.cli",
+            "suite.foundation",
+            "suite.runtime",
+            "suite.read",
+            "suite.ci",
             "features.connectors",
             "features.binary-none",
             "features.formal-none",
@@ -315,8 +308,8 @@ fn affected_requires_a_base() {
     assert!(!o.status.success(), "{}", String::from_utf8_lossy(&o.stdout));
 }
 
-/// `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including pins, toolchain and schema.
-// spec: assurance.gate.affected-parts@ce736da3
+/// `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including `preflight`.
+// spec: assurance.gate.affected-parts@554ac0f6
 #[test]
 fn affected_measures_from_the_merge_base() {
     let (r, base) = fixture();
@@ -329,11 +322,11 @@ fn affected_measures_from_the_merge_base() {
     r.git(&["checkout", "-q", "topic"]);
     assert_ne!(main, base);
     // The base gained a source change after the branch; the listing measures the branch alone.
-    assert_eq!(affected(&r, &main), ["pins", "toolchain", "schema", "test-first.validate"]);
+    assert_eq!(affected(&r, &main), ["preflight"]);
     let nightly = listed(&r, &["stages", "--parts", "--tier", "nightly", "--base", &main, "--affected"]);
     assert!(nightly.is_empty(), "prose reaches no nightly part: {nightly:?}");
 
-    // An empty diff lists the three parts every listing holds.
+    // An empty diff lists the preflight part every listing holds.
     let (r, base) = fixture();
-    assert_eq!(affected(&r, &base), ["pins", "toolchain", "schema"]);
+    assert_eq!(affected(&r, &base), ["preflight"]);
 }

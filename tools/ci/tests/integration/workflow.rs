@@ -75,17 +75,76 @@ fn the_committed_cli_shard_map_holds_every_shard_of_several_tests_within_budget(
     assert!(printed.iter().all(|line| !line.starts_with("cli-") || !line.contains(" 0 test(s)")), "a shard runs no mapped test: {printed:?}");
 }
 
+/// Each fold label `stages --folds` prints, mapped to the stage parts it runs.
+fn folds() -> std::collections::BTreeMap<String, Vec<String>> {
+    listed(&["stages", "--folds"])
+        .iter()
+        .map(|line| {
+            let mut words = line.split_whitespace().map(str::to_string);
+            (words.next().unwrap(), words.collect())
+        })
+        .collect()
+}
+
+/// The stage parts the required checks run, each fold expanded to its members.
+fn unfolded(required: &[String]) -> Vec<String> {
+    let folds = folds();
+    required.iter().flat_map(|part| folds.get(part).cloned().unwrap_or_else(|| vec![part.clone()])).collect()
+}
+
 #[test]
 fn every_gate_stage_has_a_dispatchable_part() {
     let required = listed(&["stages", "--parts"]);
-    assert_eq!(required.len(), 28, "the remote gate expects one required check per part: {required:?}");
+    assert_eq!(required.len(), 17, "the remote gate expects one required check per part: {required:?}");
     assert!(required.iter().any(|part| part == "workspace.cli-1"), "the CLI suite has no separate remote check: {required:?}");
-    let mut parts = required.clone();
+    let mut parts = unfolded(&required);
+    assert_eq!(parts.len(), 28, "a fold dropped or added a stage part: {parts:?}");
     parts.extend(listed(&["stages", "--parts", "--tier", "nightly"]));
     for stage in listed(&["stages"]) {
         let covered = parts.iter().any(|part| part == &stage || part.strip_prefix(stage.as_str()).is_some_and(|suffix| suffix.starts_with('.')));
         assert!(covered, "stage `{stage}` has no dispatchable part: {parts:?}");
     }
+}
+
+/// `stages --parts` folds pins, toolchain, schema and test-first validation into `preflight`; each package group's workspace and evaluate parts into `suite.<group>`, probes into `suite.ci`; crate graph, connectors and surfaces into `perimeter`; members stay runnable alone.
+// spec: assurance.gate.folded-parts@6e10266d
+#[test]
+fn folded_parts_run_every_stage_part_once_in_run_order() {
+    let folds = folds();
+    let expect = |label: &str, members: &[&str]| assert_eq!(folds.get(label).map(Vec::as_slice), Some(&members.iter().map(|m| m.to_string()).collect::<Vec<_>>()[..]), "{folds:?}");
+    expect("preflight", &["pins", "toolchain", "schema", "test-first.validate"]);
+    expect("suite.cli", &["workspace.cli-formal", "evaluate.cli"]);
+    expect("suite.foundation", &["workspace.foundation", "evaluate.foundation"]);
+    expect("suite.runtime", &["workspace.runtime", "evaluate.runtime"]);
+    expect("suite.read", &["workspace.read", "evaluate.read"]);
+    expect("suite.ci", &["workspace.ci", "evaluate.ci", "evaluate.probe"]);
+    expect("perimeter", &["crate-graph", "connectors", "surfaces"]);
+    assert_eq!(folds.len(), 7, "{folds:?}");
+
+    let required = listed(&["stages", "--parts"]);
+    let parts = unfolded(&required);
+    let mut once = parts.clone();
+    once.sort();
+    once.dedup();
+    assert_eq!(once.len(), parts.len(), "a stage part runs in two checks: {parts:?}");
+    for label in folds.keys() {
+        assert!(required.contains(label), "fold `{label}` is no required check: {required:?}");
+    }
+    for member in folds.values().flatten() {
+        assert!(!required.contains(member), "`{member}` runs both alone and folded: {required:?}");
+    }
+    // The members keep run order across the required list.
+    let stages = listed(&["stages"]);
+    let rank = |part: &String| stages.iter().position(|s| part.split('.').next() == Some(s.as_str())).unwrap();
+    assert!(folds.values().all(|m| m.is_sorted_by_key(rank)), "{folds:?}");
+
+    // A fold label selects every member's stage, the predecessors toolchain reads among them.
+    let plan = listed(&["gate", "--plan", "--predecessors", "--base", "HEAD", "--stage", "preflight"]);
+    assert_eq!(plan, ["pins", "toolchain", "schema", "test-first"]);
+    assert_eq!(listed(&["gate", "--plan", "--base", "HEAD", "--stage", "suite.ci"]), ["workspace", "evaluate"]);
+    assert_eq!(listed(&["gate", "--plan", "--base", "HEAD", "--stage", "perimeter"]), ["crate-graph", "connectors", "surfaces"]);
+    // Each member stays runnable by its own name.
+    assert_eq!(listed(&["gate", "--plan", "--base", "HEAD", "--stage", "evaluate.probe"]), ["evaluate"]);
 }
 
 /// `contextful-ci stages --parts --tier nightly` prints the features, formal and budget parts in run order; `stages --parts` prints the remaining parts, the required pull-request checks, and `gate --stage` runs a part of either tier.

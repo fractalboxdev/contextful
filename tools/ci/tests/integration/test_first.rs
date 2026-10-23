@@ -123,7 +123,7 @@ fn each_changed_test_package_has_its_own_dispatch_part() {
     let listed = r.run_ci(&["stages", "--parts", "--base", &base, "--json"]);
     assert!(listed.status.success(), "{}", stderr(&listed));
     let stages: Vec<String> = serde_json::from_slice(&listed.stdout).unwrap();
-    assert!(stages.contains(&"test-first.validate".to_string()), "{stages:?}");
+    assert!(stages.contains(&"preflight".to_string()) && !stages.contains(&"test-first.validate".to_string()), "validation runs in the preflight check: {stages:?}");
     assert!(stages.contains(&"test-first.demo".to_string()), "{stages:?}");
     assert!(stages.contains(&"test-first.other".to_string()), "{stages:?}");
     assert!(!stages.contains(&"test-first".to_string()), "{stages:?}");

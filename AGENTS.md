@@ -121,19 +121,22 @@ The gate measures commits, so commit before running it.
 
 The FlareDispatch GitHub App dispatches `contextful-ci gate` from same-repository
 pull-request heads. Its `contextful-gate` run publishes the
-`flare-dispatch/contextful-gate` parent, 28 static child check-runs, and one
-test-first child per changed source package:
-`flare-dispatch/check:<stage>` for each of `pins`, `toolchain`, `schema`,
-`workspace`, `acceptance`, `evaluate`, `crate-graph`, `connectors` and `surfaces`.
-The test-first, workspace and evaluate stages dispatch one check per part,
-`flare-dispatch/check:test-first.validate`, `flare-dispatch/check:test-first.<package>`,
-`flare-dispatch/check:workspace.<part>` and `flare-dispatch/check:evaluate.<group>`, so
-each fits the sandbox's wall clock;
+`flare-dispatch/contextful-gate` parent, 17 static child check-runs, and one
+test-first child per changed source package, each `flare-dispatch/check:<part>`:
+`preflight` (pins, toolchain, schema and `test-first.validate`), `workspace.compile`,
+`workspace.cli-1` to `workspace.cli-8`, one `suite.<group>` per package group running
+its `workspace.<group>` then `evaluate.<group>` part (`suite.cli` pairs
+`workspace.cli-formal` with `evaluate.cli`, `suite.ci` adds `evaluate.probe`),
+`acceptance`, `perimeter` (crate-graph, connectors and surfaces), and
+`test-first.<package>`. A fold pays one sandbox setup for its members, and the CLI
+shards stay apart because a pair of them exceeds the part deadline cold;
+`contextful-ci stages --folds` prints each fold's members (`assurance.gate.folded-parts`).
 `contextful-ci stages --parts --base <rev>` prints the required list, and
-`--stage <stage>.<part>` runs one part. A selected subset runs in that order and refuses a
+`--stage <part>` runs one part, a fold label or any member by its own name. A selected
+subset runs in run order and refuses a
 stage whose predecessor's output is absent; `--predecessors` runs those too. A local run and
-the remote check invoke the identical command. `contextful-ci`'s suite asserts 28
-static required parts.
+the remote check invoke the identical command. `contextful-ci`'s suite asserts 17
+static required parts covering 28 stage parts.
 
 The nightly tier holds the `features`, `formal` and `budget` stages:
 `contextful-ci stages --parts --tier nightly` prints their 22 parts,
@@ -150,9 +153,9 @@ branch and attaches its report to `refs/notes/measures`. A `v*` tag starts
 `contextful-release`, with `contextful-release-cell` for the ten cells in
 `contextful-ci release --plan`, `contextful-release-formula` for formulae and
 SHA256SUMS, and three independently tagged container images. The disabled
-ruleset proposal under `.github/rulesets/` lists the parent and all 28 static children.
+ruleset proposal under `.github/rulesets/` lists the parent and all 17 static children.
 
-The CLI differential module runs in `workspace.cli-formal` and `features.formal-<set>`;
+The CLI differential module runs in `workspace.cli-formal` (inside `suite.cli`) and `features.formal-<set>`;
 `workspace.cli-1` to `workspace.cli-8` and `features.binary-<set>` run the remaining CLI tests;
 the eight `workspace.cli-<k>` shards follow the duration-balanced map in
 `tools/ci/cli-shards.toml`; an unmapped test runs with its group, else in the least-loaded

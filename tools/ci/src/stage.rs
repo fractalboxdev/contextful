@@ -33,8 +33,41 @@ pub const STAGES: [&str; 13] = [
 /// required pull-request checks.
 pub const NIGHTLY: [&str; 3] = ["features", "formal", "budget"];
 
-/// Whether a part `<stage>` or `<stage>.<part>` belongs to the named tier, `pr` or `nightly`.
+/// The dispatched checks that each run several stage parts (`assurance.gate.folded-parts`):
+/// a label and its members in run order. Every other part dispatches as itself, and each
+/// member stays runnable by its own name.
+pub const FOLDS: [(&str, &[&str]); 7] = [
+    ("preflight", &["pins", "toolchain", "schema", "test-first.validate"]),
+    ("suite.cli", &["workspace.cli-formal", "evaluate.cli"]),
+    ("suite.foundation", &["workspace.foundation", "evaluate.foundation"]),
+    ("suite.runtime", &["workspace.runtime", "evaluate.runtime"]),
+    ("suite.read", &["workspace.read", "evaluate.read"]),
+    ("suite.ci", &["workspace.ci", "evaluate.ci", "evaluate.probe"]),
+    ("perimeter", &["crate-graph", "connectors", "surfaces"]),
+];
+
+/// The stage parts a dispatched `part` runs: a fold's members, else the part itself.
+pub fn members(part: &str) -> Vec<&str> {
+    FOLDS.iter().find(|(label, _)| *label == part).map_or_else(|| vec![part], |(_, members)| members.to_vec())
+}
+
+/// `parts` in run order with each fold's members replaced by its label, at its first
+/// member's place.
+pub fn fold(parts: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for part in parts {
+        let label = FOLDS.iter().find(|(_, members)| members.contains(&part.as_str())).map_or(part, |(label, _)| label.to_string());
+        if !out.contains(&label) {
+            out.push(label);
+        }
+    }
+    out
+}
+
+/// Whether a part `<stage>`, `<stage>.<part>` or a fold label belongs to the named tier,
+/// `pr` or `nightly`.
 pub fn in_tier(part: &str, tier: &str) -> bool {
+    let part = members(part)[0];
     let stage = part.split_once('.').map_or(part, |(stage, _)| stage);
     NIGHTLY.contains(&stage) == (tier == "nightly")
 }

@@ -15,10 +15,7 @@
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
           { "context": "flare-dispatch/contextful-gate" },
-          { "context": "flare-dispatch/check:pins" },
-          { "context": "flare-dispatch/check:toolchain" },
-          { "context": "flare-dispatch/check:schema" },
-          { "context": "flare-dispatch/check:test-first.validate" },
+          { "context": "flare-dispatch/check:preflight" },
           { "context": "flare-dispatch/check:workspace.compile" },
           { "context": "flare-dispatch/check:workspace.cli-1" },
           { "context": "flare-dispatch/check:workspace.cli-2" },
@@ -28,21 +25,13 @@
           { "context": "flare-dispatch/check:workspace.cli-6" },
           { "context": "flare-dispatch/check:workspace.cli-7" },
           { "context": "flare-dispatch/check:workspace.cli-8" },
-          { "context": "flare-dispatch/check:workspace.cli-formal" },
-          { "context": "flare-dispatch/check:workspace.foundation" },
-          { "context": "flare-dispatch/check:workspace.runtime" },
-          { "context": "flare-dispatch/check:workspace.read" },
-          { "context": "flare-dispatch/check:workspace.ci" },
+          { "context": "flare-dispatch/check:suite.cli" },
+          { "context": "flare-dispatch/check:suite.foundation" },
+          { "context": "flare-dispatch/check:suite.runtime" },
+          { "context": "flare-dispatch/check:suite.read" },
+          { "context": "flare-dispatch/check:suite.ci" },
           { "context": "flare-dispatch/check:acceptance" },
-          { "context": "flare-dispatch/check:evaluate.foundation" },
-          { "context": "flare-dispatch/check:evaluate.runtime" },
-          { "context": "flare-dispatch/check:evaluate.read" },
-          { "context": "flare-dispatch/check:evaluate.cli" },
-          { "context": "flare-dispatch/check:evaluate.ci" },
-          { "context": "flare-dispatch/check:evaluate.probe" },
-          { "context": "flare-dispatch/check:crate-graph" },
-          { "context": "flare-dispatch/check:connectors" },
-          { "context": "flare-dispatch/check:surfaces" }
+          { "context": "flare-dispatch/check:perimeter" }
         ]
       }
     }
