@@ -1,10 +1,54 @@
-# Target profile — the local reference target. Every role collapses into one process;
+# Target profile — the local reference target. Native processes share local files;
 # `topology.deploy.parity` compares every other target's parts against this one.
 
 provider = "local"
-title    = "Local (reference)"
+title    = "macOS (reference)"
 serves   = "The reference output, development, and air-gapped single-node deployments."
 primitives = ["process", "filesystem"]
+
+runtime = '''
+The `contextful-full` macOS executable runs natively on Apple Silicon or Intel. A long-lived `contextful pipeline serve` process owns the scheduler and launches the same executable as `contextful pipeline run` or `contextful job fire` children. A separate `contextful serve --http <host:port> --issuer-key <key>` process answers MCP and HTTP requests; its issuer key and project declaration are operator inputs.
+
+Wasmtime executes WebAssembly component connectors inside a run child; its Tokio runtime is embedded there. DuckDB executes SQL inside the process serving reads. SQLite is an embedded library for execution state, with files such as `machine.sqlite`; Parquet parts, manifests and control snapshots live under the project's configured filesystem root. These libraries have no separate service process.
+
+The optional operator console is a separate Node.js 22 process, `node apps/console/dist/server.js --http <host:port>`, and reaches the Rust HTTP server through its configured store endpoint. The browser executes the React client. The local target uses the filesystem receive spool; bucket sync adds an explicitly configured S3-compatible endpoint.
+'''
+
+diagram = '''
+flowchart LR
+  CALLER(["browser or MCP client"]):::muted
+  SOURCE(["source endpoint"]):::muted
+  subgraph ACCOUNT["macOS host"]
+    subgraph CONSOLE["optional Node.js 22 process"]
+      UI["console server"]:::accent
+    end
+    subgraph HTTP["contextful serve process"]
+      FACE["MCP and HTTP handlers"]:::accent
+      SQL["DuckDB library"]:::accent
+    end
+    subgraph SCHED["contextful pipeline serve process"]
+      TIMER["Rust scheduler"]:::accent
+    end
+    subgraph CHILD["contextful run or fire child"]
+      NATIVE["native connector"]:::accent
+      WASM["Wasmtime component host"]:::accent
+    end
+    STATE[("SQLite execution files")]:::store
+    FILES[("Parquet and manifest files")]:::store
+  end
+  CALLER -- "HTTP console" --> UI
+  UI -- "HTTP store endpoint" --> FACE
+  CALLER -- "MCP Streamable HTTP" --> FACE
+  FACE -- "SQL" --> SQL
+  SQL -- "read snapshot" --> FILES
+  TIMER -- "spawn run or fire" --> CHILD
+  NATIVE -- "mediated HTTP" --> SOURCE
+  WASM -- "mediated HTTP" --> SOURCE
+  NATIVE -- "commit parts" --> FILES
+  WASM -- "commit parts" --> FILES
+  TIMER -- "lease and cadence" --> STATE
+  CHILD -- "journal and cursor" --> STATE
+'''
 
 [[shape]]
 name     = "process"
@@ -18,9 +62,9 @@ uses     = ["process", "filesystem"]
 cron_tick    = "in-process scheduler"
 reconciler   = "in-process reconcile loop"
 orchestrator = "engine journal in the catalog"
-catalog      = "local catalog file, one process"
+catalog      = "local catalog file with embedded SQLite execution stores"
 object_store = "local filesystem under ./.contextful/, optional S3-compatible sync"
-query_face   = "contextful serve, in process"
-compute      = "in-process component host"
+query_face   = "native contextful serve process with embedded DuckDB"
+compute      = "native contextful pipeline run or job fire child; embedded Wasmtime for components"
 secrets      = "environment and configured secret providers"
 realtime     = "in-process WebSocket"

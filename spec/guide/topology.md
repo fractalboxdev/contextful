@@ -12,7 +12,7 @@ contract: topology
 
 One Cargo workspace compiles the whole engine ({{topology.compose.workspace}}), split into two halves. The read path owns data at rest and its retrieval ({{topology.compose.read-path}}); the run path owns execution, meaning the journal, the scheduler, cursor commit and every connector, and owns no store ({{topology.compose.run-path}}).
 
-The halves meet at exactly three crossings: the connector interface world, the columnar-part-plus-manifest layout, and the capability-token format ({{topology.compose.three-crossings}}). Picture two countries with three border posts. Each post runs under its own versioned treaty that both sides test against ({{topology.compose.crossing-version}}), and a graph test patrols the fence for any dependency that skips a post ({{topology.compose.undeclared-crossing}}). Because the run path hands over nothing but files and a manifest, a build without it still serves everything a daemon wrote ({{topology.compose.run-path-droppable}}).
+The halves meet at exactly three crossings: the connector interface world, the columnar-part-plus-manifest layout, and the capability-token format ({{topology.compose.three-crossings}}). Each crossing has a version and conformance suite ({{topology.compose.crossing-version}}), and the dependency graph rejects a path around it ({{topology.compose.undeclared-crossing}}). A build without the run path serves the files and manifests a daemon wrote ({{topology.compose.run-path-droppable}}).
 
 Enforcement is part of the type system, not a layer an operator switches on. Every function returning a stored row takes the enforcement stack's admission value as a parameter, so a bypass fails to compile ({{topology.compose.mediation}}). Model access leaves through one OpenAI-compatible endpoint ({{topology.compose.inference-egress}}), and the engine calls no one home ({{topology.compose.local-first}}).
 
@@ -24,37 +24,43 @@ Coordination rests on one linearizable conditional write ({{topology.coordinate.
 
 ## Worked example
 
-A team runs `contextful-full` on one server with a local catalog file ({{topology.coordinate.backends}}) and serves readers from a function-class provider.
+A macOS `contextful-full` writer uses local execution files ({{topology.coordinate.backends}}), syncs its corpus to R2, and serves a Linux Container replica behind a Cloudflare routing Worker. The [runtime maps](../targets.md) place each target's processes and libraries.
+
+The writer's Wasmtime host produces files; the replica's DuckDB library reads their synchronized copy.
 
 ```mermaid
 flowchart LR
-  CALLER(["caller"])
-  BUCKET[("bucket")]
-
-  subgraph SERVER["one server running contextful-full"]
-    TICK["cadence tick"]
-    STEP["journaled connector step"]
-    STORE[("store")]
+  CALLER(["MCP or HTTP client"]):::muted
+  subgraph SERVER["macOS writer processes"]
+    TICK["pipeline serve scheduler"]:::accent
+    subgraph CHILD["contextful pipeline run child"]
+      STEP["Wasmtime component host"]:::accent
+    end
+    STORE[("Parquet and manifest files")]:::store
   end
-
-  subgraph PROV["function-class provider"]
-    HOP["routing hop"]
-    RET["retrieval container"]
-    EDGE["contextful-edge"]
+  subgraph PROV["Cloudflare"]
+    HOP["routing Worker"]:::accent
+    BUCKET[("R2 corpus bucket")]:::store
+    subgraph RET["Linux Container running contextful-edge"]
+      FACE["Rust HTTP handlers"]:::accent
+      SQL["DuckDB library"]:::accent
+      COPY[("local snapshot files")]:::store
+    end
   end
-
-  TICK -- "due connector" --> STEP
+  TICK -- "spawn child" --> STEP
   STEP -- "parts + manifest" --> STORE
   STORE -- "push" --> BUCKET
-  BUCKET -- "pull" --> EDGE
-  CALLER -- "query + credential" --> HOP -- "same credential" --> RET
-  RET -- "reads snapshot" --> EDGE
+  BUCKET -- "S3 API hydration" --> COPY
+  CALLER -- "query + credential" --> HOP
+  HOP -- "HTTP + same credential" --> FACE
+  FACE -- "admit query" --> SQL
+  SQL -- "scan snapshot" --> COPY
 ```
 
 - The cadence tick fires. The reconciler holds the deployment's cadence lease and renews it on a fixed interval ({{topology.coordinate.cadence-lease-renewal}}). The fallback cron takes that same lease before firing, so its fire holds the current fence ({{topology.coordinate.cadence-fallback}}).
 - The run path invokes a component connector as a journaled step; it runs because the full profile links a component host ({{topology.package.component-host}}).
 - Rows cross to the read path as parts plus a manifest, and the cursor advances by one compare-and-swap on its stored version ({{topology.coordinate.cursor-cas}}).
-- The store pushes to the bucket. The function-class provider hosts the edge profile alone ({{topology.package.edge-eligibility}}), which pulls the same parts and serves read-only SQL.
+- The store pushes to R2. The replica pulls the same parts and serves read-only SQL ({{topology.package.edge-profile}}); a function-class target selects this profile alone ({{topology.package.edge-eligibility}}).
 - A pipeline fired on the edge deployment refuses by name, since the replica links no run path ({{topology.package.capability-absent}}); without a component host, a component connector refuses and no native source substitutes ({{topology.package.host-missing}}). A target capping per-invocation wall clock also excludes first-time backfills ({{topology.deploy.wall-clock-cap}}).
 - `contextful-ci deploy probe` requests the replica's hostname anonymously, exiting nonzero if the answer falls outside the declared gate ({{topology.publish-hostname.posture-mismatch}}). A caller's request then passes the routing hop to a retrieval container, which reaches readiness before its hydration finishes ({{topology.publish-hostname.container-readiness}}).
 

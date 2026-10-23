@@ -5,7 +5,7 @@ import { companions, descriptionOf, titleOf } from "../../lib/nav";
 
 export async function getStaticPaths() {
   const entries = await getCollection("spec");
-  return entries.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+  return entries.filter((entry) => entry.id !== "targets").map((entry) => ({ params: { id: entry.id }, props: { entry } }));
 }
 
 const { entry } = Astro.props;

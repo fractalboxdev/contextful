@@ -29,6 +29,7 @@ export const routeFor = (absPath) => {
   const rel = relative(SPEC_DIR, absPath).split(sep).join("/");
   if (rel.startsWith("..") || !rel.endsWith(".md")) return undefined;
   const stem = rel.slice(0, -3);
+  if (stem === "targets") return "/spec/01-topology/#deployment-targets";
   if (!stem.includes("/")) return `/spec/${stem}/`;
   const [dir, name, ...rest] = stem.split("/");
   if (rest.length === 0 && ["adr", "guide", "cards"].includes(dir)) return `/${dir}/${name}/`;

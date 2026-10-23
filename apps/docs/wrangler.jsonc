@@ -1,5 +1,5 @@
 // The docs site is static: the Worker serves `dist/` through Workers Static Assets
-// and runs no script. Diagrams draw in the reader's browser, so the build is plain Node.
+// and runs no script. The Node.js build renders diagrams to inline SVG.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "contextful-docs",

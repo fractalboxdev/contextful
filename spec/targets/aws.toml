@@ -7,6 +7,36 @@ title    = "AWS"
 serves   = "VPC-bound and regulated deployments, and teams already operating on AWS."
 primitives = ["functions", "containers", "workflows", "scheduler", "managed-postgres", "object-store", "queue", "secret-store"]
 
+runtime = '''
+The `lambda-fargate` target runs reconciliation in Lambda, dispatches ECS tasks through Step Functions, and hosts the native Linux `contextful-full` executable in Fargate containers. The query process embeds DuckDB; component execution embeds Wasmtime. RDS Postgres supplies the shared catalog and S3 holds corpus objects. The `fargate-daemon` alternative keeps scheduling and reconciliation in the native daemon.
+'''
+
+diagram = '''
+flowchart LR
+  CALLER(["MCP or HTTP client"]):::muted
+  subgraph ACCOUNT["AWS target"]
+    TICK["EventBridge Scheduler"]:::accent
+    REC["Lambda reconciler"]:::accent
+    ORCH["Step Functions"]:::accent
+    ALB["Application Load Balancer"]:::accent
+    subgraph TASK["Fargate Linux tasks"]
+      QUERY["contextful serve process"]:::accent
+      RUN["contextful execution process"]:::accent
+    end
+    CAT[("RDS Postgres")]:::store
+    OBJ[("S3 corpus bucket")]:::store
+  end
+  TICK -- "due tick" --> REC
+  REC -- "start execution" --> ORCH
+  ORCH -- "ECS RunTask" --> RUN
+  CALLER -- "HTTPS" --> ALB
+  ALB -- "HTTP store request" --> QUERY
+  QUERY -- "read snapshot" --> OBJ
+  QUERY -- "catalog read" --> CAT
+  RUN -- "conditional write" --> CAT
+  RUN -- "publish parts" --> OBJ
+'''
+
 [[shape]]
 name     = "lambda-fargate"
 default  = true

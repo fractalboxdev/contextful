@@ -17,39 +17,10 @@ the crossings, the profiles, where a build is deployed, how a published hostname
 its posture, the single-writer operations and the catalog that serializes them, and where
 the engine ends and an application begins.
 
-The system: the parties outside it, the components on each half, and the three crossings
-joining them.
-
-```mermaid
-flowchart LR
-  SRC[("sources")]
-  BUCKET[("object storage")]
-  CALLER(["agent"])
-  MODEL(["inference endpoint"])
-
-  subgraph RUNP["run path"]
-    JOURNAL[("run journal")] -- "dispatch step" --> HOST["component host"]
-  end
-
-  subgraph CROSS["the three crossings"]
-    X1["connector interface"]
-    X2["manifest wire format"]
-    X3["capability token"]
-  end
-
-  subgraph READP["read path"]
-    PARTS[("parts and manifests")] -- "rebuild" --> CAT["catalog"] -- "snapshot rows" --> ENF["enforcement stack"] -- "admitted rows" --> FACE["query face"]
-  end
-
-  SRC -- "pull" --> HOST
-  X1 -- "connector calls" --> HOST
-  HOST -- "land" --> X2 -- "commit" --> PARTS
-  X3 -- "presented grants" --> ENF
-  PARTS -- "push" --> BUCKET
-  BUCKET -- "pull" --> PARTS
-  CALLER -- "query" --> FACE
-  FACE -- "inference egress" --> MODEL
-```
+For executable names, embedded libraries and storage placement, follow the runtime maps
+for [macOS](./targets.md#macos-reference), [Cloudflare](./targets.md#cloudflare) and
+[AWS](./targets.md#aws). The deployment tables and diagrams appear together on this page;
+`read path` and `run path` below name code boundaries rather than operating-system processes.
 
 ## compose
 
@@ -142,36 +113,9 @@ The domain crate, dependency direction, and the three build profiles with what e
 - `interchange-whole` — The edge profile links the columnar interchange crates whole, as the full profile does; no slimmed interchange build exists.
   *because a slimmed build forks the format code an edge replica reads with from the code the full profile writes with*
 
-Profiles, the domain crate they share, and the dependency edges the gates raise on.
-
-```mermaid
-flowchart TD
-  CLI["contextful binary"]
-  CORE["contextful-core"]
-  ADAPT["adapter crates"]
-  COMP["component connector"]
-
-  subgraph EDGE["contextful-edge read replica"]
-    SYNC["bucket sync"]
-    READ["read face"]
-  end
-  subgraph FULL["contextful-full daemon"]
-    ENGINE["engine"]
-    HOST["component host"]
-  end
-  subgraph CTRL["contextful-control plane"]
-    CRDT["CRDT library"]
-  end
-
-  CLI -- "build-time feature bundle" --> EDGE & FULL & CTRL
-  EDGE & FULL & CTRL -- "depends on" --> CORE
-  ADAPT -- "implements ports" --> CORE
-  CORE -. "TopologyDependencyInversion" .-x ADAPT
-  EDGE -. "ProfileDependencyLeak" .-x CRDT
-  FULL -. "ProfileDependencyLeak" .-x CRDT
-  EDGE -. "ProfileCapabilityAbsent" .-x COMP
-  HOST -- "runs" --> COMP
-```
+Each profile selects the capabilities of one `contextful` executable at compilation.
+The runtime maps below place that executable inside a macOS process or a Linux container;
+the build-profile names do not imply separate Worker services.
 
 unsettled: Does the edge profile pull native connectors through an execution core that links no scheduler? owner: topology affects: topology.package
 
@@ -187,37 +131,10 @@ One declaration across providers, deployment roles, self-hosted shapes, the refe
 - `parity-divergence` — A byte difference from the reference output raises `ParityDivergence`, naming the target, the table and the first differing part.
   *A-topology*
 
-One declaration, a target profile per provider, the two roles, and the parity check
-against the reference target. Each provider's shapes are data under `spec/targets/`, checked by
-`corpus.targets`; [`targets.md`](./targets.md) renders each as a role table and a diagram.
-
-```mermaid
-flowchart LR
-  DECL["declaration"]
-  REFUSED(["refused"])
-
-  subgraph TP["target profile"]
-    CP["control-plane target"]
-    WK["worker target"]
-    FN["function-class target"]
-  end
-
-  subgraph SELF["self-hosted"]
-    REF["reference target"]
-    CMD["stateless command"]
-    DMN["daemon"]
-    CLU["daemon cluster"]
-  end
-
-  DECL -- "managed shapes" --> TP
-  DECL -- "self-hosted shapes" --> SELF
-  CP -- "dispatch" --> WK
-  WK -- "report" --> CP
-  FN -- "execution runs on" --> WK
-  CP -- "compare bytes after soak" --> REF
-  TP -. "TargetShapeUnsupported" .-> REFUSED
-  REF -. "ParityDivergence" .-> REFUSED
-```
+Each provider's shapes are data under `spec/targets/`, checked by `corpus.targets`.
+The generated [deployment targets](./targets.md) section supplies the runtime placement,
+process boundaries and role tables. Native libraries sit inside process containers in
+the diagrams; provider products such as D1 and R2 sit outside the Linux Container.
 
 unsettled: Which role hosts heavy compute on a provider exposing neither a container primitive nor a long-running function? owner: topology affects: topology.deploy
 

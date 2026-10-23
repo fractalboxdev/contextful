@@ -4,6 +4,23 @@ use crate::{codes, Scratch};
 
 const CF: &str = "spec/targets/cloudflare.toml";
 
+#[test]
+fn provider_runtime_diagrams_and_notes_come_from_the_target_file() {
+    let s = Scratch::copy();
+    let mut target: toml::Value = s.read(CF).parse().unwrap();
+    let diagram = "flowchart LR\n  CLIENT([\"caller\"]) -- \"HTTPS\" --> ROUTER[\"routing Worker\"]\n";
+    target.as_table_mut().unwrap().insert("diagram".into(), toml::Value::String(diagram.into()));
+    target.as_table_mut().unwrap().insert("runtime".into(), toml::Value::String("The routing Worker executes TypeScript in a V8 isolate.".into()));
+    s.write(CF, &toml::to_string(&target).unwrap());
+    assert!(s.cmd(&["state"]).status.success());
+    let page = s.read("spec/targets.md");
+    let cloudflare = page.split("## Cloudflare\n").nth(1).unwrap().split("\n## ").next().unwrap();
+    assert!(cloudflare.contains(diagram), "the provider diagram retains the execution boundary: {cloudflare}");
+    assert!(cloudflare.contains("The routing Worker executes TypeScript in a V8 isolate."), "{cloudflare}");
+    assert!(!cloudflare.contains("COMP[\"heavy compute\"]"), "the custom diagram replaces the generic role diagram: {cloudflare}");
+    assert!(cloudflare.contains("| heavy compute |"), "the role table remains generated: {cloudflare}");
+}
+
 fn drop_line(s: &Scratch, rel: &str, prefix: &str) {
     let text = s.read(rel);
     let line = text.lines().find(|l| l.trim_start().starts_with(prefix)).unwrap_or_else(|| panic!("no `{prefix}` in {rel}")).to_string();
@@ -101,7 +118,7 @@ fn the_targets_page_is_rendered_from_the_files() {
     assert_eq!(page.matches("```mermaid").count(), 3, "one diagram per provider:\n{page}");
     // the deploying account and its planes are containers; the caller stands outside them
     assert_eq!(page.matches("  subgraph ACCOUNT[").count(), 3, "{page}");
-    assert!(page.contains("    subgraph CONTROL[\"control plane\"]"), "{page}");
+    assert!(page.contains("    subgraph WORKERS[\"Workers V8 isolates\"]"), "{page}");
     assert!(page.find("CALLER([").unwrap() < page.find("subgraph ACCOUNT[").unwrap(), "{page}");
 
     let cf = s.read(CF).replace("Workflows", "Queues");
@@ -111,16 +128,14 @@ fn the_targets_page_is_rendered_from_the_files() {
 }
 
 #[test]
-fn the_default_shape_diagram_draws_one_role_per_node() {
+fn the_default_shape_diagrams_name_provider_runtimes_and_processes() {
     let s = Scratch::copy();
     assert!(s.cmd(&["state"]).status.success());
     let page = s.read("spec/targets.md");
-    let mut fences = page.split("```mermaid\n").skip(1).map(|b| b.split("```").next().unwrap());
-    let aws = fences.next().unwrap();
-    assert!(!aws.contains("<br/>") && !aws.contains('·'), "{aws}");
-    assert!(aws.contains("ORCH[\"durable orchestrator\"]") && aws.contains("CAT[(\"single-writer catalog\")]") && aws.contains("QF[\"hot-path query face\"]"), "{aws}");
-    // the primitive filling each role lives in the table above the diagram
-    assert!(!aws.contains("Step Functions"), "{aws}");
+    for label in ["Fargate Linux tasks", "Step Functions", "Workers V8 isolates", "Linux Container running contextful-full", "macOS host", "contextful pipeline serve process", "Wasmtime component host", "DuckDB library"] {
+        assert!(page.contains(label), "missing runtime or process {label}: {page}");
+    }
+    assert!(!page.contains("COMP[\"heavy compute\"]"), "{page}");
 }
 
 #[test]
