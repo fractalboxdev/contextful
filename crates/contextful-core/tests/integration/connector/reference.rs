@@ -6,9 +6,9 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-/// `secret://<name>` carries a logical name matching `[a-z0-9-]+` of at most 128 chars. A reference is never a
-/// storage path, a file name or a key identifier.
-// spec: connector.reference.reference-scheme@c250c1a5
+/// `secret://<name>` carries a logical name matching `[a-z0-9-]+` of at most 128 chars. A reference names no storage
+/// path, file name or key identifier.
+// spec: connector.reference.reference-scheme@bb971269
 #[test]
 fn a_reference_is_a_lowercase_logical_name_of_at_most_128_chars() {
     assert_eq!(NAME_MAX, 128);
@@ -61,9 +61,9 @@ fn no_parse_refusal_repeats_the_text_it_refused() {
     assert!(!e.contains("Sk-Live-Token"), "{e}");
 }
 
-/// An unclosed, empty or nested placeholder raises `SecretMalformedTemplate` while the declaration is read, ahead
-/// of any text leaving the process.
-// spec: connector.reference.malformed-placeholder@7e945f39
+/// When reading a declaration, the parser raises `SecretMalformedTemplate` for an unclosed, empty or nested
+/// placeholder, before any text leaves the process.
+// spec: connector.reference.malformed-placeholder@5d9b251c
 #[test]
 fn an_unclosed_empty_or_nested_placeholder_is_malformed() {
     for value in ["Bearer ${secret://vendor-token", "Bearer ${}", "Bearer ${ }", "${secret://${secret://inner}}"] {
@@ -142,7 +142,7 @@ fn freed_zeroed(h: Hydrated) -> bool {
 }
 
 /// The wrapper zeroes its bytes when dropped.
-// spec: connector.resolve.wiped-on-drop@e8f5671c
+// spec: connector.resolve.wiped-on-drop@ade03a44
 #[test]
 fn a_hydrated_value_zeroes_its_bytes_on_drop() {
     trait AmbiguousIfClone<A> {}

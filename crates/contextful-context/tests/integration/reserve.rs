@@ -14,8 +14,10 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 #[cfg(feature = "read")]
-/// The engine injects `_ingested_at` as a non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_batch_seq` as int32 where a batch scope exists, `_site_id`, and `_authored_by` where an authenticated subject authorized the write, replacing any producer value.
-// spec: store.reserve.injected@a7ade4f8
+/// The engine injects `_ingested_at` as non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id` and `_site_id`. Injection
+/// adds int32 `_batch_seq` within a batch scope and `_authored_by` for writes authorized by an authenticated subject.
+/// Injected values replace producer values.
+// spec: store.reserve.injected@1efd85ab
 #[test]
 fn the_engine_injects_provenance_and_replaces_producer_values() {
     let f = Fixture::new();
@@ -45,8 +47,9 @@ fn the_engine_injects_provenance_and_replaces_producer_values() {
 }
 
 #[cfg(feature = "read")]
-/// The engine injects `_taint`, a label under {{connector.infer.provenance-order}}, on each row a model's output lands as, replacing any producer value; a row no model produced omits it.
-// spec: store.reserve.taint@bdb810ae
+/// On each row from model output, the engine injects `_taint` under {{connector.infer.provenance-order}}, replacing
+/// any producer value. Rows without model output omit `_taint`.
+// spec: store.reserve.taint@c48e7e7b
 #[test]
 fn a_model_output_row_carries_the_engine_taint_and_no_other_row_does() {
     let f = Fixture::new();
@@ -183,9 +186,9 @@ fn injected_columns_stay_non_null_in_the_merged_schema() {
 }
 
 #[cfg(feature = "read")]
-/// The engine injects `_commit_seq`, a non-null int64 its commit assigns above every value the table holds; a run
-/// committing after a read carries a value above every row that read returned, whatever its `_ingested_at`.
-// spec: store.reserve.commit-seq@4bd29584
+/// The engine injects non-null int64 `_commit_seq`, assigned above every value held by the table. A run committing
+/// after a read carries a value above every returned row, regardless of `_ingested_at`.
+// spec: store.reserve.commit-seq@dd6b2f34
 #[test]
 fn a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp() {
     let f = Fixture::new();
@@ -216,9 +219,9 @@ fn a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp(
 }
 
 #[cfg(feature = "read")]
-/// A commit's manifest waits until every lower `_commit_seq` value of its table published or its landing ended, so
-/// the readable runs of a table always hold a prefix of its commit sequence.
-// spec: store.reserve.commit-order@43e8dcb2
+/// A commit publishes its manifest after every lower `_commit_seq` in the table publishes or ends landing. Readable
+/// runs therefore form a prefix of the table's commit sequence.
+// spec: store.reserve.commit-order@1d4d650c
 #[test]
 fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
     let f = Fixture::new();
@@ -260,7 +263,7 @@ fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
 /// A commit holds its table's commit lock to assign `_commit_seq` and to write its manifest, and writes its parts
 /// outside it: a landing behind a reserved, unpublished lower value writes its parts with the lock free, publishes
 /// once that value's holder ends, and the abandoned value stays a gap.
-// spec: store.reserve.commit-lock-span@731c4c40
+// spec: store.reserve.commit-lock-span@24556a88
 #[test]
 fn a_landing_writes_its_parts_outside_the_commit_lock_and_publishes_in_sequence_order() {
     let f = Fixture::new();
@@ -289,9 +292,9 @@ fn a_landing_writes_its_parts_outside_the_commit_lock_and_publishes_in_sequence_
 }
 
 #[cfg(feature = "read")]
-/// A commit assigns one above the greatest of the node's counter, every run manifest's `commit_seq` and the current
-/// snapshot's, so a store restored by a pull, or holding no counter, never reissues a value.
-// spec: store.reserve.commit-seq-seed@2a3baa75
+/// A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot. A
+/// pulled store or store without a counter therefore reuses no value.
+// spec: store.reserve.commit-seq-seed@d0cea012
 #[test]
 fn a_store_holding_no_counter_continues_above_the_values_its_manifests_record() {
     let f = Fixture::new();
@@ -320,8 +323,9 @@ fn a_store_holding_no_counter_continues_above_the_values_its_manifests_record() 
     assert_eq!(seqs(&f), [(s("run-1"), 1), (s("run-2"), 2), (s("run-3"), 3), (s("run-4"), 4)]);
 }
 
-/// A commit rewrites its table's counter `data/.commit_seq` as JSON naming `format_version` and `commit_seq`, so a build reading a bare integer refuses the table before writing a part; a newer major refuses as {{store.lay-out.format-newer}}.
-// spec: store.reserve.commit-marker@f72455a4
+/// A commit rewrites `data/.commit_seq` as JSON with `format_version` and `commit_seq`. Builds reading a bare integer
+/// refuse the table before writing a part. A newer major refuses under {{store.lay-out.format-newer}}.
+// spec: store.reserve.commit-marker@5ca79404
 #[test]
 fn a_reserving_commit_marks_its_counter_so_a_writer_of_the_bare_integer_refuses_the_table() {
     use contextful_core::store::lay_out::FormatVersion;

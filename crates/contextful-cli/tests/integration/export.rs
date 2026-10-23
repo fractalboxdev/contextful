@@ -601,9 +601,9 @@ fn an_export_run_delivers_the_rows_its_cursor_has_not_passed() {
     assert_eq!(span_ids(&got[1]), ids("b", 2));
 }
 
-/// Export reads the rows past its cursor in `_commit_seq`, then `_row_seq`, order and never by `_ingested_at`, so
-/// {{store.reserve.commit-seq}} keeps a run committing late from being skipped.
-// spec: run.export.commit-order@0cfa5bc8
+/// Export reads rows past its cursor ordered by `_commit_seq`, then `_row_seq`. Export does not order by
+/// `_ingested_at`; {{store.reserve.commit-seq}} keeps late-committing runs eligible.
+// spec: run.export.commit-order@74fb517e
 #[test]
 fn a_run_committing_after_the_cursor_under_an_earlier_stamp_is_delivered() {
     let collector = Collector::start();
@@ -710,9 +710,9 @@ fn rows_without_a_commit_sequence_refuse_the_export() {
     assert!(!p.join(".contextful/exports/research/spans-mirror.json").exists());
 }
 
-/// A batch leaves as one OTLP/HTTP JSON `POST` through the mediated client, its allowlist the endpoint's host alone,
-/// each header hydrated as {{connector.resolve.hydration-is-just-in-time}} states.
-// spec: run.export.delivery@51449bb8
+/// The exporter sends each batch as one OTLP/HTTP JSON `POST` through the mediated client. The allowlist contains only
+/// the endpoint host. Each header follows {{connector.resolve.hydration-is-just-in-time}}.
+// spec: run.export.delivery@f964bfd5
 #[test]
 fn a_batch_leaves_through_the_mediated_client_with_its_header_hydrated() {
     let collector = Collector::start();
@@ -733,9 +733,9 @@ fn a_batch_leaves_through_the_mediated_client_with_its_header_hydrated() {
     assert!(refused.contains("SecretCleartextEndpoint"), "{refused}");
 }
 
-/// A header reference no adapter answers refuses at preflight as {{connector.resolve.unresolved-name}}, before any
-/// row is read.
-// spec: run.export.secret-preflight@bc303782
+/// If no adapter resolves a header reference, the exporter refuses at preflight as {{connector.resolve.unresolved-
+/// name}} before reading any row.
+// spec: run.export.secret-preflight@bf535c57
 #[test]
 fn an_unresolved_header_reference_refuses_before_any_request() {
     let collector = Collector::start();

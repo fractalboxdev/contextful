@@ -185,10 +185,9 @@ fn drive<S: Substrate<Error = EngineError>>(substrate: &S, resolve: &dyn Fn(&str
     (id, row.status)
 }
 
-/// The run-path substrate is one interface: open or resume an execution under a scope for a content-hashed plan
-/// reference, record a step output, commit a cursor, suspend on an awakeable with a timeout, attach a retry
-/// schedule, describe capabilities.
-// spec: run.journal.substrate-port@a41ec362
+/// One execution interface provides: open or resume under a scope and content-hashed plan reference; record step
+/// output; commit a cursor; suspend on an awakeable with timeout; attach a retry schedule; describe capabilities.
+// spec: run.journal.substrate-port@4565423d
 #[test]
 fn the_substrate_port_opens_steps_suspends_commits_and_closes_an_execution() {
     let rig = Rig::new();
@@ -287,9 +286,9 @@ fn every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row() {
     assert_eq!(rig.catalog().owner_at(&chunk).unwrap().unwrap().execution_id, "x-chunk", "a finishing table releases no chunk");
 }
 
-/// Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before
-/// any half-finished work.
-// spec: run.journal.unwired-capability@aa634203
+/// Requesting a capability absent from the running profile raises `CapabilityUnwired` at the first request, before any
+/// partial work.
+// spec: run.journal.unwired-capability@f93b650a
 #[test]
 fn suspending_on_an_engine_without_an_awakeable_store_is_refused_at_the_first_reach() {
     let rig = Rig::new();
@@ -411,9 +410,9 @@ fn one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine() {
     assert_eq!(engine.keeper.threads(), 1);
 }
 
-/// Two escape hatches exist and no third: `journal.unsafe(label, effect)` for an idempotent read, and a source
-/// declaring that it journals no pull. Each carries its idempotency argument at a greppable call site.
-// spec: run.journal.escape-hatch@273348e9
+/// Journaling permits only two exceptions: `journal.unsafe(label, effect)` for an idempotent read, and a source
+/// declaring no pull journaling. Each exception states its idempotency argument at a searchable call site.
+// spec: run.journal.escape-hatch@fe842a9f
 #[test]
 fn an_unsafe_read_reruns_on_every_replay_and_each_hatch_states_its_argument() {
     let rig = Rig::new();

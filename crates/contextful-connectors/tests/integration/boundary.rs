@@ -18,9 +18,9 @@ fn every_decode_child_receives_the_declared_bounds() {
     assert_eq!(MEMORY_BYTES, worker.memory_bytes);
 }
 
-/// A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it
-/// killable.
-// spec: run.land.parse-boundary@29514269
+/// A decoder subject to process failure runs outside the serving process. The serving process bounds the decoder's
+/// wall clock and memory and supports terminating the decoder.
+// spec: run.land.parse-boundary@1f45c20a
 #[test]
 fn a_decode_runs_in_a_child_the_parent_kills_at_its_deadline() {
     // The child reads its input and answers on standard output.

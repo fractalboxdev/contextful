@@ -393,8 +393,10 @@ fn as_of_on_every_read_tool_returns_the_pre_fold_row() {
     assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
 }
 
-/// Every read tool but `memory.recall`, `memory.explain` and `context.subscribe`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
-// spec: read.register.bound-arguments@93f37041
+/// Except `memory.recall`, `memory.explain` and `context.subscribe`, read tools, including templates, accept `as_of`
+/// and `valid_as_of` and echo {{store.bound-time.echo}}. {{store.bound-time.valid-as-of}} applies only to tables the
+/// read touches.
+// spec: read.register.bound-arguments@7f49c507
 #[test]
 fn valid_as_of_wraps_only_the_tables_a_read_touches() {
     let f = bounded();
@@ -562,8 +564,9 @@ fn a_sessions_snapshot_id_survives_a_later_commit() {
     assert_ne!(f.face.snapshot_ids(&newer, ["research/notes"]).unwrap(), before);
 }
 
-/// Every read tool {{read.register.bound-arguments}} names also admits `available_as_of` and echoes it under {{store.available-time.bound-echo}}; {{store.available-time.available-as-of}} wraps only the tables the read touches.
-// spec: read.register.available-bound-argument@8d2ed6a1
+/// Tools under {{read.register.bound-arguments}} also accept `available_as_of` and echo {{store.available-time.bound-
+/// echo}}. {{store.available-time.available-as-of}} applies only to tables the read touches.
+// spec: read.register.available-bound-argument@c5a90a2e
 #[test]
 fn available_as_of_wraps_only_the_tables_a_read_touches() {
     let f = available();
@@ -650,8 +653,10 @@ fn a_listing_ignores_available_as_of() {
     assert_eq!(tables["result"]["structuredContent"]["tables"].as_array().unwrap().len(), 2, "{tables}");
 }
 
-/// Under a credential carrying a horizon, every read tool but `context.subscribe`, which {{read.subscribe.horizon-refusal}} refuses, reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.
-// spec: read.horizon.inherited-bound@5177ce81
+/// Under a horizon, read tools default absent `available_as_of` to that horizon, cap {{read.as-of-join.horizon-caps-
+/// row}} and echo {{store.available-time.bound-echo}}. `context.subscribe` instead raises {{read.subscribe.horizon-
+/// refusal}}.
+// spec: read.horizon.inherited-bound@193228d6
 #[test]
 fn every_read_tool_called_unbounded_reads_at_the_horizon() {
     let f = available_under(Some("2030-06-01T00:00:00Z"));
@@ -708,8 +713,9 @@ fn a_call_reaching_past_the_horizon_is_refused_naming_its_argument() {
     assert_eq!(rows(&as_of), &json!([["acme-q1"]]));
 }
 
-/// Under a horizon, {{read.recall.keyed}} defaults an absent `observed_at` to the horizon and reads a claims table at `available_as_of` equal to it, so a table declaring no availability time refuses as {{store.available-time.undeclared}}.
-// spec: read.horizon.recall-horizon@d4fc8ee7
+/// Under a horizon, {{read.recall.keyed}} defaults absent `observed_at` to that horizon and reads claims at the same
+/// `available_as_of`. A table without declared availability time raises {{store.available-time.undeclared}}.
+// spec: read.horizon.recall-horizon@3a7fcf9c
 #[test]
 fn recall_under_a_horizon_reads_the_claims_table_at_it() {
     let f = fixture_bounded(CLAIMS, Some("2030-02-01T00:00:00Z"), seed_claims);
@@ -766,8 +772,9 @@ fn as_of_join() -> Fixture {
 
 const JOINED: &str = r#"SELECT t.trade_id, m.ticker FROM "research/trades" t ASOF JOIN "research/master" m ON t.sec_id = m.sec_id AND t.traded_at >= m.available_at ORDER BY t.trade_id"#;
 
-/// An `ASOF JOIN` matches each driving row, per equality key, to the right relation's row whose declared availability instant is the latest at or before the driving instant its inequality names, its valid-time `from` within `max_age` when given.
-// spec: read.as-of-join.per-row-bound@11522cb8
+/// Per equality key, `ASOF JOIN` selects the right row with latest declared availability at or before the driving
+/// instant named by the inequality. If given, `max_age` bounds that row's valid-time `from`.
+// spec: read.as-of-join.per-row-bound@960717c2
 #[test]
 fn an_as_of_join_matches_each_row_to_the_right_row_available_at_its_instant() {
     let f = as_of_join();
@@ -862,7 +869,7 @@ fn entities() -> Fixture {
 /// about it, lists candidates for an ambiguous reference, and returns the identity alone
 /// where the credential reads no claims table, naming that table in neither the card nor
 /// its read entry.
-// spec: read.resolve-entity.card-authorization@0744c41a
+// spec: read.resolve-entity.card-authorization@0c7d2ce7
 #[test]
 fn memory_explain_answers_the_knowledge_card_over_the_tool_protocol() {
     let f = entities();
@@ -963,8 +970,9 @@ fn the_recall_block_rides_a_ranked_read_exactly_when_a_claim_arm_runs() {
     }
 }
 
-/// Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face.
-// spec: read.respond.internals-opt-in@82ae2a18
+/// With `internals: true`, every read tool and HTTP response includes a separate object containing executed SQL,
+/// engine name, applied limit, row count and elapsed milliseconds. Otherwise, the response omits that object.
+// spec: read.respond.internals-opt-in@57e54f84
 #[test]
 fn every_read_tool_returns_internals_only_on_request() {
     let f = entities();
@@ -1033,8 +1041,10 @@ fn memory_recall_answers_keyed_over_the_tool_protocol() {
     assert_eq!(notes["result"]["structuredContent"]["error"]["identifier"], json!("MemoryRecallNotClaims"), "{notes}");
 }
 
-/// A `memory.recall` read, a `memory.explain` read carrying claims, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
-// spec: read.recall.usage-ledger@db5cd279
+/// `memory.recall`, `memory.explain` responses carrying claims, and `corpus.retrieve` responses containing
+/// `memory_facts` record returned claim ids as `contextful.memory.claims`. The read entry includes caller credential,
+/// subject and read instant.
+// spec: read.recall.usage-ledger@33f616ee
 #[test]
 fn memory_reads_record_the_claim_ids_they_returned() {
     let f = entities();
@@ -1138,8 +1148,10 @@ fn listed(with_salaries: bool) -> Fixture {
     })
 }
 
-/// `tables` intersects `prefix`: an arm runs for each session relation matching both. A listed name outside the session's relations raises `RetrieveTableUnavailable` naming every such name in list order, identically for an absent and an ungranted table, keeping {{authority.filter-rows.default-deny}}.
-// spec: read.retrieve.table-list@cf0610ab
+/// Retrieval queries session relations matching both `tables` and `prefix`. Names outside the session raise
+/// `RetrieveTableUnavailable`, listing every unavailable name in input order. Absent and ungranted tables receive
+/// identical errors under {{authority.filter-rows.default-deny}}.
+// spec: read.retrieve.table-list@0d1594eb
 #[test]
 fn corpus_retrieve_reads_only_the_listed_tables() {
     let f = listed(true);

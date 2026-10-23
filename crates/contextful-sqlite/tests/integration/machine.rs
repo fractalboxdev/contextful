@@ -28,7 +28,7 @@ fn sealed_catalog(dir: &tempfile::TempDir, clock: &SetClock, key: u8) -> Machine
     .unwrap()
 }
 
-// spec: store.encrypt.machine-catalog-sealing@9040e746
+// spec: store.encrypt.machine-catalog-sealing@27a003bc
 #[test]
 fn sealed_machine_catalog_persists_lease_cursor_and_run_without_plaintext() {
     let dir = tempfile::tempdir().unwrap();
@@ -572,7 +572,7 @@ fn scheduled_host_starts_survive_restart_without_output_runs() {
 
 /// History reads through a window, newest first; the catalog applies the bound in its `WHERE` over an indexed
 /// start column and the ceiling as its `LIMIT`, and a catalog predating the column gains it filled.
-// spec: run.record.history-window@75b26b5a
+// spec: run.record.history-window@e6ca4aff
 #[test]
 fn history_selects_its_window_over_an_indexed_start_column() {
     use contextful_core::run::record::Window as History;

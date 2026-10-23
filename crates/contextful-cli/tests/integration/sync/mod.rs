@@ -232,9 +232,9 @@ fn mcp_query(dir: &Path) -> Output {
     child.wait_with_output().unwrap()
 }
 
-/// With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the
-/// bucket into the store before their first read, and a failed pull stops the command.
-// spec: store.pull.before-run@e77004a1
+/// With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every bucket table before
+/// their first read. A failed pull stops the command.
+// spec: store.pull.before-run@d42e1584
 #[test]
 fn a_cold_node_pulls_the_bucket_before_its_run_reads() {
     let bucket = tempfile::tempdir().unwrap();
@@ -401,7 +401,7 @@ fn a_cold_http_server_pulls_before_it_answers(bucket: &Path) {
 
 /// A replica's `sync pull` reads `replicate = false` from a `pipelines/` file as from the
 /// declaration: a refresh naming the table refuses, and an unscoped one leaves it behind.
-// spec: store.declare.declaration-set@14e776d1
+// spec: store.declare.declaration-set@5b567103
 #[test]
 fn a_pipeline_file_keeps_a_replicate_off_table_off_the_pull() {
     let bucket = tempfile::tempdir().unwrap();

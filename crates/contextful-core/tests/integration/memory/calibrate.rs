@@ -17,8 +17,9 @@ fn close(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-9
 }
 
-/// A model-emitted confidence is labelled `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score; a validated map supplies the reported calibrated confidence.
-// spec: read.synthesize.confidence-calibration@dc3aeac9
+/// Model-emitted confidence carries `uncalibrated` until a shape-and-predicate isotonic map trained on settled
+/// outcomes lowers held-out Brier score. A validated map supplies the reported calibrated confidence.
+// spec: read.synthesize.confidence-calibration@e38e008b
 #[test]
 fn emitted_confidence_stays_uncalibrated_until_a_held_out_map_validates() {
     let mut samples = overconfident("ships", 40);
@@ -40,8 +41,10 @@ fn emitted_confidence_stays_uncalibrated_until_a_held_out_map_validates() {
     assert_eq!(sparse.confidence(Shape::Facts, "ships", 0.9), Confidence::Uncalibrated(0.9));
 }
 
-/// Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error over 10 equal-width bins, and the held-out score {{read.synthesize.confidence-calibration}} uses, over every fifth prediction.
-// spec: read.settle.calibration-report@3163c17f
+/// Calibration reports group settled predictions by shape and predicate. Each group reports sample count, Brier score,
+/// expected calibration error over 10 equal-width bins, and {{read.synthesize.confidence-calibration}}'s held-out
+/// score over every fifth prediction.
+// spec: read.settle.calibration-report@b04ea5a6
 #[test]
 fn the_report_names_count_brier_ece_and_held_out_score_per_shape_and_predicate() {
     assert_eq!((ECE_BINS, HOLD_OUT_EVERY), (10, 5));

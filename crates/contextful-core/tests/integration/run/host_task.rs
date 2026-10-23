@@ -91,8 +91,9 @@ fn decl(name: &str, pk: &[&str]) -> TableDecl {
     }
 }
 
-/// An embedding binary registers each compiled derive task under a name before build, and configuration names that symbol, never a command; a name repeating a built-in or registered task raises `DeriveTaskNameTaken`.
-// spec: run.bind.host-task@7cdec6b7
+/// An embedding binary registers each compiled derive task by name before build. Configuration selects that registered
+/// name without supplying a command. A duplicate built-in or registered task name raises `DeriveTaskNameTaken`.
+// spec: run.bind.host-task@bf2d17d0
 #[test]
 fn a_registered_task_resolves_by_name_and_a_taken_name_refuses() {
     let mut t = tasks("1");

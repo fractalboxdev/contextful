@@ -191,7 +191,7 @@ fn sha256(bytes: &[u8]) -> String {
 
 /// An object a decoder cannot read, or one past {{connector.source.object-expansion}}'s ceiling, lands no rows and one
 /// {{run.land.dead-letter}} row; the rest of the read lands.
-// spec: connector.source.object-unreadable@2c509939
+// spec: connector.source.object-unreadable@c5767ace
 #[test]
 fn an_unreadable_object_lands_a_dead_letter_and_the_rest_of_the_read_lands() {
     let bad = b"{\"n\":2}\n[3]\n";
@@ -273,7 +273,7 @@ fn an_unchanged_etag_lands_nothing_and_a_new_object_lands_alone() {
 
 /// `access_key_id` and `secret_access_key` each hold one `secret://<name>` reference,
 /// declared together; a literal in either is refused at parse.
-// spec: connector.source.object-credentials@12d6f5bc
+// spec: connector.source.object-credentials@6e3fed56
 #[test]
 fn a_literal_credential_is_refused_and_a_reference_parses() {
     let ok = ObjectConfig::parse(&json!({
@@ -296,7 +296,7 @@ fn a_literal_credential_is_refused_and_a_reference_parses() {
 
 /// A signing source never addresses a cleartext endpoint off loopback; an unsigned one may,
 /// carrying no capability to leak.
-// spec: connector.source.object-cleartext@31d9b13c
+// spec: connector.source.object-cleartext@80d4cece
 #[test]
 fn a_signing_source_refuses_a_cleartext_endpoint_off_loopback() {
     let signed = json!({
@@ -418,7 +418,7 @@ fn a_two_member_archive_refuses_without_member_and_lands_the_named_one() {
 /// `delimiter` names one field delimiter character, `,` by default, and a tab is admitted;
 /// against a non-delimited format it raises `ConnectorFormatKeyRejected` at build, and a
 /// quote, a line break or a longer value refuses as invalid configuration.
-// spec: connector.source.delimiter@53446c41
+// spec: connector.source.delimiter@6321ed6c
 #[test]
 fn delimited_keys_refuse_against_another_format_and_a_malformed_delimiter_refuses() {
     let bucket = MemBucket::with(&[("k.csv", b"a\tb,c\n1\t2,3\n")]);
@@ -593,7 +593,7 @@ fn each_unreadable_object_in_a_prefix_lands_one_dead_letter_naming_it() {
 /// A prefix read whose declaration no object can satisfy refuses whole, naming the error, and lands neither rows nor
 /// dead letters: an archive lacking the declared `member`, archives of several members and no `member`, and a first
 /// record off `columns`. A corrupt object beside them still dead-letters.
-// spec: connector.source.configuration-fault@3ee6ceee
+// spec: connector.source.configuration-fault@d2488000
 #[test]
 fn a_prefix_read_refuses_whole_on_a_configuration_fault_and_dead_letters_a_corrupt_object() {
     let one = zipped(&[("a.csv", b"1\t2\t3\n")]);

@@ -45,9 +45,9 @@ fn a_minted_token_persists_a_pending_row_and_resumes_on_post() {
     assert_eq!(r.awaited("x-1", &a.token, at("2030-01-01T00:02:00Z")).unwrap(), Awaited::Resumed(b"approved".to_vec()));
 }
 
-/// A resume payload is recorded as the awaited step's output under key `sha256("awakeable:" + token)`, so a run
-/// that resumes and then crashes reads it back without suspending again.
-// spec: run.suspend.resume-is-a-step-output@fdd69cd4
+/// The journal records a resume payload as the awaited step's output under key `sha256("awakeable:" + token)`. A run
+/// that resumes and then crashes reads the payload back without suspending again.
+// spec: run.suspend.resume-is-a-step-output@a86f089f
 #[test]
 fn a_resumed_run_reads_its_payload_back_from_the_journal() {
     let dir = tempfile::tempdir().unwrap();

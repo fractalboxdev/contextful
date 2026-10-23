@@ -54,8 +54,9 @@ fn card(r: &Reads, session: &Session, reference: &str) -> Value {
     r.face.explain(session, &request).unwrap()
 }
 
-/// `memory.explain` takes `table`, `reference` and an optional `claims` table, resolves `reference` against the names and aliases of `table`, and returns that identity's `entity_id`, `kind`, `name` and `aliases`.
-// spec: read.resolve-entity.knowledge-card@c823b26f
+/// `memory.explain` accepts `table`, `reference` and an optional `claims` table. The tool resolves `reference` against
+/// `table`'s names and aliases and returns the identity's `entity_id`, `kind`, `name` and `aliases`.
+// spec: read.resolve-entity.knowledge-card@7bd8c1bc
 #[test]
 fn an_alias_in_another_script_resolves_to_one_card() {
     let r = fixture();
@@ -94,8 +95,9 @@ fn a_card_carries_the_live_claims_keyed_by_its_id_or_canonical_name() {
     assert!(gated["claims"]["rows"].as_array().unwrap().is_empty(), "{gated}");
 }
 
-/// A `reference` matching two or more identities with no exact canonical name separating them returns their `entity_id`s as candidates and no identity; a `reference` matching none returns an empty card.
-// spec: read.resolve-entity.card-candidates@f82234fc
+/// If `reference` matches multiple identities without an exact canonical-name match distinguishing one, the card
+/// returns candidate `entity_id`s and no identity. With no matches, the card is empty.
+// spec: read.resolve-entity.card-candidates@4e846bb9
 #[test]
 fn an_ambiguous_reference_returns_candidates_and_an_unknown_one_an_empty_card() {
     let r = fixture();

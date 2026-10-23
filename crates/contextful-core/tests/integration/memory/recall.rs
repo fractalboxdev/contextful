@@ -33,8 +33,9 @@ fn unresolvable_evidence_suppresses_the_claim() {
     assert_eq!(admitted, 0, "{outcomes:?}");
 }
 
-/// A claim naming more than 256 entries of evidence serves its first 256 in cited table, run and sequence order, and reports the count of the rest in its `evidence_omitted` field.
-// spec: read.recall.evidence-references@4cf54486
+/// For claims citing more than 256 entries of evidence, recall returns the first 256 in cited table, run and sequence
+/// order. `evidence_omitted` reports the remaining count.
+// spec: read.recall.evidence-references@74eb3869
 #[test]
 fn recall_caps_evidence_at_256_and_counts_omitted() {
     assert_eq!(EVIDENCE_REFERENCES, 256);
@@ -62,8 +63,9 @@ fn recall_gates_omitted_entries() {
     assert!(matches!(admit(Some(&refs(300, "research/notes")), &[], |r| if r.seq == 280 { EvidenceRead::Stale } else { EvidenceRead::Readable }), Ok(a) if a.grounding == Grounding::Stale));
 }
 
-/// A claim naming more than 4096 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.
-// spec: read.recall.evidence-gate-bound@a016c179
+/// Recall suppresses a claim with more than 4096 entries of evidence as unresolved and raises
+/// `MemoryEvidenceOverflow`.
+// spec: read.recall.evidence-gate-bound@dd1350b0
 #[test]
 fn recall_suppresses_claim_over_4096_entries() {
     assert_eq!(EVIDENCE_GATE, 4096);

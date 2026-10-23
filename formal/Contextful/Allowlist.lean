@@ -53,7 +53,7 @@ theorem Entry.subsumes_sound (p c : Entry) (host : Name)
       exact decide_eq_true ⟨hp.trans hh.1, Nat.lt_of_le_of_lt hp.length_le hh.2⟩
 
 /-- Successful syntactic inclusion preserves every permitted host. -/
--- spec: connector.widen.host-inclusion@f6a2edfe
+-- spec: connector.widen.host-inclusion@60a01aa0
 theorem allowlist_includedIn_sound (candidate predecessor : List Entry)
     (included : includedIn candidate predecessor = true) (host : Name)
     (admitted : permits candidate host = true) : permits predecessor host = true := by

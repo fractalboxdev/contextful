@@ -701,9 +701,9 @@ fn csv_incremental_clock_rejects_variable_width_on_first_fire() {
     assert!(stderr(&out).contains("ConnectorClockColumnRejected"), "{}", stderr(&out));
 }
 
-/// Startup reads `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml`
-/// and `pipelines/*.json`; specifications are collected by `id`.
-// spec: run.declare.manifest-file@4779cc3b
+/// Startup reads project config and inline `[[pipeline]]` blocks from `contextful.toml`, then reads `pipelines/*.toml`
+/// and `pipelines/*.json`. Startup collects specifications by `id`.
+// spec: run.declare.manifest-file@3151dd13
 #[test]
 fn specifications_come_from_the_project_manifest_then_the_pipelines_directory() {
     let dir = project(&format!(
@@ -828,9 +828,9 @@ fn a_fire_tallies_fetched_kept_and_filtered_rows_and_failed_tables() {
     assert!(out.contains("tally: fetched 3 · kept 2 · skipped 0 · failed 0 · dropped_low_quality 1"), "{out}");
 }
 
-/// `on_table_error` is abort, the default, halting the fire at the first failing table, or continue, landing
-/// every other table and reporting the failed run ids through {{run.declare.table-error-exit}}.
-// spec: run.declare.table-error@86b78a63
+/// `on_table_error = abort`, the default, halts the fire at the first failing table. `continue` lands every other
+/// table and reports failed run ids through {{run.declare.table-error-exit}}.
+// spec: run.declare.table-error@db1c70ed
 #[test]
 fn abort_halts_at_the_first_failure_and_continue_runs_the_rest() {
     let serve = |t: &str| if t.starts_with("/v1/bad") { (404, "{}".to_string()) } else { (200, "[{\"id\":\"g\"}]".to_string()) };
@@ -969,9 +969,9 @@ const FOLD_ITEMS: &str = "\n[[job]]\nname = \"fold-items\"\nschedule = \"0 3 * *
 
 const KEYED_ITEMS: &str = "[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\norder_by = \"updated_at\"\n";
 
-/// `pipeline validate` warns on stderr, naming the table, where a table declares `primary_key` and no job
-/// meeting {{store.declare.fold-job}} covers it; the warning alone fails nothing.
-// spec: store.declare.fold-coverage@99fcbb4e
+/// If a table declares `primary_key` without coverage under {{store.declare.fold-job}}, `pipeline validate` warns on
+/// stderr and names the table. The warning alone causes no failure.
+// spec: store.declare.fold-coverage@91a4a92a
 #[test]
 fn a_keyed_table_no_fold_job_covers_warns_and_validates() {
     let keyed = pipeline("orders", "https://api.vendor.example/v1", "", KEYED_ITEMS);
@@ -1217,9 +1217,9 @@ fn plan_reports_external_additions_input_changes_and_removals() {
     assert!(text().contains("+ external:handoff"));
 }
 
-/// Applying a manifest fires nothing of itself; a second `apply` over unchanged sources is a no-op modulo
+/// Applying a manifest triggers no run by itself. Repeating `apply` over unchanged sources performs no work except for
 /// elapsed schedules.
-// spec: run.declare.apply-fires-nothing@89dd7f54
+// spec: run.declare.apply-fires-nothing@0b8cde08
 #[test]
 fn apply_fires_nothing_and_a_second_apply_is_a_no_op() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
@@ -1239,9 +1239,10 @@ fn apply_fires_nothing_and_a_second_apply_is_a_no_op() {
     assert_eq!(history(dir.path()).len(), 1);
 }
 
-/// A `[node]` block in a manifest, and so in every control-plane snapshot, raises `StoreNodeIdShared` ahead of
-/// {{run.model.top-level-block}}, naming the file and the store root's `config.toml` as the node id's home.
-// spec: store.lay-out.node-id-shared@31344a91
+/// A `[node]` block in a manifest, including control-plane snapshots, raises `StoreNodeIdShared` before
+/// {{run.model.top-level-block}}. The error names the file and identifies the store root's `config.toml` as the node
+/// id's home.
+// spec: store.lay-out.node-id-shared@a7be9547
 #[test]
 fn a_node_id_in_a_control_plane_document_is_refused() {
     let orders = scheduled("orders", "https://api.vendor.example/v1", "every 1h");
@@ -1561,9 +1562,9 @@ pub(crate) fn stop(child: &mut std::process::Child) {
     let _ = child.wait();
 }
 
-/// `plan` diffs desired state against the store with no side effect, `--json` emitting a structured diff; `apply`
-/// converges every pipeline or one; `run` fires one pipeline once; `serve` reconciles continuously.
-// spec: run.declare.lifecycle-verbs@c2262175
+/// `plan` compares desired state with the store without side effects; `--json` emits a structured diff. `apply`
+/// reconciles one or all pipelines. `run` fires one pipeline once. `serve` reconciles continuously.
+// spec: run.declare.lifecycle-verbs@c902593d
 #[test]
 fn serve_reconciles_continuously_and_rearms_each_applied_version() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
@@ -2484,8 +2485,10 @@ fn a_native_pipeline_lands_nested_json_as_one_table_of_nested_columns() {
 
 }
 
-/// `native` keeps nesting up to the sink's capability and explodes the rest with {{run.record.schema-diff-home}}; `relational` flattens structs into parent-child column names and shreds lists into child tables joined by a foreign key.
-// spec: run.normalize.mode@3d26d022
+/// `native` keeps nesting the sink supports and expands unsupported nesting with {{run.record.schema-diff-home}}.
+/// `relational` flattens structs into parent-child column names and converts lists into child tables joined by a
+/// foreign key.
+// spec: run.normalize.mode@5118476c
 #[test]
 fn a_relational_pipeline_shreds_lists_into_indexed_child_rows() {
     let vendor = Vendor::start(|_| (200, SPANS.to_string()));
@@ -3028,8 +3031,10 @@ fn append_retires_no_key_and_replace_lands_the_whole_current_state() {
     assert_eq!(land("write_mode = \"replace\""), serde_json::json!([["b", "2"]]), "the replacing run is the whole state");
 }
 
-/// `incremental = "<field>"` names the stream clock on the pipeline. Declared, the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}; undeclared, it refetches in full.
-// spec: run.declare.incremental-field@6f26f764
+/// `incremental = "<field>"` names the pipeline's stream clock. With this declaration, the source reports a
+/// `monotonic` cursor committing {{run.advance.watermark-shape}}. Without this declaration, the source refetches in
+/// full.
+// spec: run.declare.incremental-field@295113e3
 #[test]
 fn a_declared_clock_resumes_past_its_watermark_and_an_undeclared_one_refetches_in_full() {
     let body = r#"[{"id":"a","at":5},{"id":"b","at":9}]"#;

@@ -103,8 +103,9 @@ fn spans() -> Value {
     ])
 }
 
-/// A list is a JSON array, and a struct or a map a JSON object keyed by field name or key text, each item, field or value encoded as its own cell.
-// spec: read.respond.nested-values@5aa9305f
+/// Lists encode as JSON arrays. Structs and maps encode as JSON objects keyed by field name or key text. Each item,
+/// field or value uses cell encoding.
+// spec: read.respond.nested-values@d876afd0
 #[test]
 fn a_nested_column_lands_folds_and_reads_back_as_it_arrived() {
     let mut r = nested_reads();

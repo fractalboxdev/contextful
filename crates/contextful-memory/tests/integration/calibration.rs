@@ -58,8 +58,10 @@ fn recall(f: &Fixture, who: &AdmittedAuthority) -> Vec<(Value, Value, Value)> {
     rows
 }
 
-/// Each keyed claim carries `confidence_label`, `calibrated` or `uncalibrated` under {{read.synthesize.confidence-calibration}}, fitted on its table's declared `labels` table joined `prediction_id` to `claim_id`, read through the caller's session.
-// spec: read.recall.confidence-label@1d497777
+/// Each keyed claim's `confidence_label` is `calibrated` or `uncalibrated` under {{read.synthesize.confidence-
+/// calibration}}. Fitting uses the declared `labels` table, joining `prediction_id` to `claim_id` through the caller's
+/// session.
+// spec: read.recall.confidence-label@9d8864be
 #[test]
 fn recall_labels_confidence_from_the_declared_outcome_table() {
     let f = labelled();

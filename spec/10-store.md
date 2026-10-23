@@ -20,13 +20,12 @@ owns:
 
 # The store and its sync
 
-The store is the canonical corpus: Parquet a reader opens without the engine, JSON
-manifests indexing it, one pointer object per table naming the current snapshot, and two
-local SQLite catalogs. An S3-compatible bucket mirrors the tree key for key. Every other
-contract reaches rows through the shapes this file fixes.
+The store holds canonical Parquet data, JSON manifests and a pointer to each table's current snapshot.
+Readers open the Parquet files without the engine. Two local SQLite catalogs cache metadata and hold machine state.
+An S3-compatible bucket mirrors the directory tree key for key.
+Implementers use this contract to store rows, publish snapshots and sync files between machines.
 
-The store's canonical objects, its two catalogs, the bucket mirror, and the contracts
-writing into it and reading from it.
+The diagram shows canonical files, local catalogs, bucket sync and the components that write or read rows.
 
 ```mermaid
 flowchart LR
@@ -34,13 +33,13 @@ flowchart LR
     LAND["pipeline landing"]
   end
   subgraph READC["read"]
-    QFACE["query face"]
+    QFACE["query server"]
   end
   subgraph AUTHC["authority"]
-    ENF["enforcement stack"]
+    ENF["access controls"]
   end
   subgraph TOPO["topology"]
-    COORD["coordination port"]
+    COORD["Catalog trait"]
   end
   subgraph ROOT["store root"]
     RUNS[("run parts")]
@@ -75,64 +74,64 @@ flowchart LR
 
 ## lay-out
 
-The directory tree, run and snapshot manifests, the table pointer, the two catalogs, and node identity.
+Store directories, run and snapshot manifests, table pointers, local catalogs and node identifiers.
 
-- `components` — A store holds Parquet table data, JSON run and snapshot manifests, one pointer object per table, landed blobs, and two SQLite catalogs, `derived.sqlite` and `machine.sqlite`. Parquet, manifests and pointers are canonical.
+- `components` — A store holds Parquet table data, JSON run and snapshot manifests, one pointer object per table, landed blobs, and SQLite catalogs `derived.sqlite` and `machine.sqlite`. Parquet, manifests and pointers are canonical.
   *because a catalog that is both a rebuildable cache and a commit point resurrects half-published snapshots on rebuild*
 - `store-root` — A project's store sits at `.contextful/context/<project>/`, holding both catalogs, `config.toml`, `cursors/` and one `tables/<t>/` directory per table.
 - `table-directory` — A table directory holds `schema.json`, `_pointer.json`, `data/snapshots/<id>/`, `data/runs/<run-id>/<node-id>/` and `requests/`.
-- `snapshot-id` — A snapshot id is `snapshot-` followed by a nanosecond value zero-padded to 20 chars, equal to the greater of the commit instant and the previous id plus one.
+- `snapshot-id` — A snapshot id is `snapshot-` followed by a nanosecond value zero-padded to 20 chars. The value is the greater of the commit instant and the previous id plus one.
   *because a wall clock that steps backwards breaks lexical order equalling commit order*
 - `part-name` — A data file is `part-<ordinal>.parquet`, the ordinal zero-padded to five digits and unique within its directory.
-- `staging` — A fold in flight writes under `data/snapshots/<id>.staging/`, and no file list resolves inside it.
-- `run-manifest` — A run commits by conditionally creating `_manifest.json` in its node directory, holding a `lay_out::RunManifest` whose `node_id` equals the enclosing segment.
-- `run-replay` — A landing of an unlogged run already committed on its node, with the position its manifest holds and rows rebuilding its parts column for column, writes nothing and answers the committed manifest as a replay.
+- `staging` — A running fold writes under `data/snapshots/<id>.staging/`. File lists exclude that directory.
+- `run-manifest` — A run commits by conditionally creating `_manifest.json` in its node directory. The file holds a `lay_out::RunManifest` whose `node_id` equals the directory's node segment.
+- `run-replay` — Repeating an unlogged run already committed on its node writes nothing when the position matches its manifest and rows reconstruct its parts column for column. The landing returns the committed manifest as a replay.
   *because a retry after a lost acknowledgement cannot tell whether its first landing committed*
-- `run-conflict` — Any other landing of a run id already committed on its node raises `StoreRunConflict` and changes nothing.
+- `run-conflict` — Any other landing using a run id already committed on its node raises `StoreRunConflict` and changes nothing.
   *because a logged run's readability rides a commit-log entry a replay cannot vouch for, and other rows under one id are another run*
-- `run-id-shape` — A run id holds at most 128 chars of letters, digits, dot, underscore and hyphen; a landing or request-ledger append naming another refuses before writing any file.
+- `run-id-shape` — A run id holds at most 128 chars: letters, digits, dot, underscore and hyphen. Landing and request-ledger append reject other run ids before writing any file.
   *because a run id is interpolated into run directories and request-ledger filenames*
-- `uncommitted-run` — A node directory holding no `_manifest.json` is in flight and its parts join no file list; a leased pipeline's run also waits for its commit-log entry.
+- `uncommitted-run` — A node directory without `_manifest.json` holds an uncommitted run. File lists exclude its parts. A leased pipeline's run also waits for its commit-log entry.
   *P4*
-- `cursor-in-commit` — A pipeline's committed position is the cursor inside its newest commit: the newest commit-log entry for a leased pipeline, the highest run-manifest cursor otherwise. `machine.sqlite` caches it.
+- `cursor-in-commit` — A pipeline's committed position is its newest commit-log cursor when leased, or its highest run-manifest cursor otherwise. `machine.sqlite` caches that position.
   *because a position committed apart from its rows re-lands the batch after a crash between the two writes*
 - `snapshot-manifest` — A snapshot's `_manifest.json` holds a `lay_out::SnapshotManifest`, and each entry of `parts` and `indexes` carries its `key_version`.
-- `ancestors` — A snapshot's `_manifest.json` carries `ancestors`: its parent, then the parent's `ancestors`, at most 256 entries; a root carries none, and a parent without `ancestors` leaves the field absent.
+- `ancestors` — A snapshot's `_manifest.json` records `ancestors`: its parent followed by the parent's `ancestors`, at most 256 entries. A root records none. If the parent lacks `ancestors`, the child omits the field.
   *because retention collects superseded snapshot directories, and a push decides a pointer's descent from the snapshot's own manifest*
-- `unrecognised-index-entry` — An `indexes` entry whose kind or fields this build does not read parses as unrecognised: the manifest stays readable, the entry answers no probe, and a rewrite keeps it byte for byte.
+- `unrecognised-index-entry` — An `indexes` entry with an unsupported kind or fields parses as unrecognised. The manifest remains readable, probes ignore the entry, and rewrites preserve the entry byte for byte.
   *because a sidecar a newer builder records must neither refuse the table's reads nor vanish when an older build rewrites the manifest*
-- `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and the fence that published it. A snapshot is readable only when the pointer or a chain of `parent` links from it reaches it.
+- `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and publishing fence. Readers access only snapshots reachable from the pointer directly or through `parent` links.
   *A-store*
 - `manifest-default` — A field added to a manifest carries a default value.
-- `format-version` — A run or snapshot manifest carries `format_version` as `<major>.<minor>`: `2.0` on a snapshot manifest carrying a part or segment by reference, `1.0` otherwise; one without it reads as `1.0`, and a newer minor parses as this build's.
+- `format-version` — Run and snapshot manifests carry `format_version` as `<major>.<minor>`. Snapshots referencing parts or segments use `2.0`; other manifests use `1.0`. An absent version reads as `1.0`. Readers parse newer minor versions as their own.
   *A-store*
-- `format-newer` — A run or snapshot manifest whose `format_version` major exceeds this build's raises `StoreManifestFormatNewer`, naming the file and both versions, and the table answers no read until a newer build reads it.
+- `format-newer` — A run or snapshot manifest with a newer `format_version` major raises `StoreManifestFormatNewer`, naming the file and both versions. The table refuses reads until a newer build reads the manifest.
   *A-store*
-- `format-migrate` — A build reading major `2` reads a `1.x` snapshot manifest as one holding each part in its own directory, counting rows from footers; its next pass carries those parts by reference under `2.0`, rewriting no manifest in place.
+- `format-migrate` — A major-`2` reader treats a `1.x` snapshot manifest as holding each part in its own directory, counting rows from footers. The next pass references those parts under `2.0`, without rewriting any manifest in place.
   *A-store*
-- `manifest-unreadable` — A run manifest or a reachable snapshot manifest that fails to parse raises `StoreManifestUnreadable`, naming the table and the file, and the table answers no read until it parses.
+- `manifest-unreadable` — If a run manifest or reachable snapshot manifest fails to parse, the store raises `StoreManifestUnreadable`, naming the table and file. The table refuses reads until the manifest parses.
   *P4*
 - `schema-file` — A table's schema is `schema.json` in Arrow JSON form; each arriving batch's schema merges into it and the merged result replaces it.
-- `immutable-files` — A run file is written once and never edited, a snapshot directory is immutable, and a fold writes a new snapshot.
-- `landed-blob` — A body a source lands by reference is the file `blobs/<sha256>` under the store root, named by the SHA-256 of its bytes and written whole through a rename before the run naming it commits.
+- `immutable-files` — The store writes each run file once without editing the file. Snapshot directories are immutable. A fold writes a separate snapshot.
+- `landed-blob` — A source body landed by reference occupies `blobs/<sha256>` under the store root, named by its bytes' SHA-256. The store writes the complete file through a rename before the referencing run commits.
   *because a row names the bytes it came from, and a committed row naming no stored body answers for content nobody can retrieve*
-- `derived-catalog` — `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from the pointers, the manifests they reach, every committed run manifest and every `schema.json`. It is never synced and commits nothing.
+- `derived-catalog` — `derived.sqlite` is a cache. `contextful context rebuild-catalog` reconstructs the cache from pointers, reachable manifests, every committed run manifest and every `schema.json`. Sync excludes the cache, which commits nothing.
   *A-store*
-- `machine-catalog` — `machine.sqlite` holds one machine's journal, cursor cache, lease rows and run-row cache. It is never synced or replaced by a pull; a rebuild refills it from {{run.record.reserved-table}} only while it holds no run row, and rebuilds nothing else.
+- `machine-catalog` — `machine.sqlite` holds the machine's journal, cursor cache, leases and run-row cache. Sync excludes the database; pull preserves it. Rebuild refills run rows from {{run.record.reserved-table}} only when no run row exists, and rebuilds nothing else.
   *because run rows alone have a durable copy in the store, and a catalog already holding runs is a live machine's cache, which a refill rewrites*
-- `catalog-ports` — The store reaches `machine.sqlite` through {{topology.coordinate.catalog-port}} and `derived.sqlite` through the `DerivedCatalog` port, both traits in `contextful-core`; `contextful-sqlite` implements both, and a host implements either over its own connection.
+- `catalog-ports` — The store accesses `machine.sqlite` through {{topology.coordinate.catalog-port}} and `derived.sqlite` through `DerivedCatalog`. Both traits reside in `contextful-core`; `contextful-sqlite` implements both. A host implements either trait over its own connection.
   *A-store*
-- `unknown-table` — A table name no `schema.json` in the tree declares raises `StoreUnknownTable`, never an empty result.
+- `unknown-table` — A table name absent from every `schema.json` in the tree raises `StoreUnknownTable` rather than returning an empty result.
   *P1*
-- `node-segment` — The `<node-id>` run-path segment and the node id in a ledger filename keep two machines writing one logical run id in disjoint files.
+- `node-segment` — The `<node-id>` segment in run directories and ledger filenames separates files from two machines writing the same logical run id.
 - `node-id-order` — A process resolves its node id once: `CONTEXTFUL_NODE_ID`, then `[node] id`, then {{store.lay-out.node-id-project}}.
-- `node-id-project` — A project's default node id is `node-<8 hex>` of SHA-256 over the host id and the absolute store root, so two checkouts of one project on one host write as distinct nodes.
+- `node-id-project` — A project's default node id is `node-<8 hex>` from SHA-256 over the host id and absolute store root. Two checkouts of one project on one host therefore write as distinct nodes.
   *because a pull treats every key under its own node id as already held, skipping another checkout's run parts of the same project*
 - `node-id-state-path` — The host id, a random `node-<8 hex>` generated once, persists under `$CONTEXTFUL_STATE_DIR`, else `$XDG_STATE_HOME/contextful`, else the platform user-state directory, outside the store root.
   *because a copied store carrying its identity makes two machines one holder*
 - `node-id-shape` — A node id longer than 64 chars or outside `^[A-Za-z0-9._-]+$` raises `StoreNodeIdInvalid` at process start, before any path, key or lease carries it.
   *P3*
-- `node-id-shared` — A `[node]` block in a manifest, and so in every control-plane snapshot, raises `StoreNodeIdShared` ahead of {{run.model.top-level-block}}, naming the file and the store root's `config.toml` as the node id's home.
+- `node-id-shared` — A `[node]` block in a manifest, including control-plane snapshots, raises `StoreNodeIdShared` before {{run.model.top-level-block}}. The error names the file and identifies the store root's `config.toml` as the node id's home.
   *because a control-plane snapshot applies to every machine reconciling it, making one id many holders*
 - `node-id-local` — A machine with no writable state directory takes the reserved node id `local`.
 
@@ -140,53 +139,53 @@ unsettled: Does a store re-bind the node id it last derived, so runs landed befo
 
 ## init
 
-A project's declaration file: what `contextful init` writes, what a repeated init does, and how a command given no `--project` finds its project from the working directory.
+Project initialization, repeated initialization and project discovery when a command omits `--project`.
 
 - `declaration-file` — `contextful init <name>` writes `contextful.toml` in the working directory declaring `[project]` with `name = "<name>"`, and creates the store root {{store.lay-out.store-root}} beside it.
 - `store-identity` — An initialized store holds one synced, canonical version-4 UUID in `store-id`; repeated init and clones keep it, while a recreated root receives a new UUID.
   *A-store*
 - `identity-invalid` — A malformed `store-id`, or an owner mint naming no initialized store root, raises `StoreIdentityInvalid`.
   *because an ambiguous or absent UUID cannot bind an owner credential*
-- `name-shape` — A project name that is not `/`-separated segments of `[A-Za-z0-9._-]`, or that holds a `.` or `..` segment, raises `StoreProjectNameInvalid` before any file is read or written.
+- `name-shape` — Project names use `/`-separated segments of `[A-Za-z0-9._-]`, excluding `.` and `..` segments. Other names raise `StoreProjectNameInvalid` before any file read or write.
   *because the name is interpolated into every project path, and a traversing segment places a store outside its project*
-- `repeat` — An init against a `contextful.toml` already declaring the same `[project] name` rewrites nothing but a posture {{store.init.posture}} and a missing {{store.init.store-identity}}, preserves existing store content, and succeeds.
+- `repeat` — If `contextful.toml` declares the same `[project] name`, init succeeds and preserves store content. Init rewrites only the posture under {{store.init.posture}} and a missing {{store.init.store-identity}}.
   *because a repeated init converges on the state the first one wrote, so scripts and onboarding run it unconditionally*
 - `adopt` — An init against a `contextful.toml` declaring no `project` key appends the `[project]` table and keeps every existing byte of the file.
-- `posture` — `contextful init <name> --authoring-posture <posture>` prepends a top-level `authoring_posture = "<posture>"` {{authority.issue.posture-key}} to a `contextful.toml` declaring none, keeping every other byte; a declared posture stands, and an init without the flag writes none.
+- `posture` — `contextful init <name> --authoring-posture <posture>` prepends top-level `authoring_posture = "<posture>"` under {{authority.issue.posture-key}} when `contextful.toml` declares none, preserving every other byte. Init preserves a declared posture. Without the flag, init writes no posture.
   *because the posture decides whether a write without a credential lands, so no default chooses it for the operator*
-- `name-conflict` — An init against a `contextful.toml` whose `project` key declares another name, or no string `name`, raises `StoreProjectConflict`, naming the declared name when one exists and the init's name, and writes nothing.
+- `name-conflict` — If `contextful.toml`'s `project` declares another name or lacks a string `name`, init raises `StoreProjectConflict` and writes nothing. The error names the requested name and the declared name when present.
   *because renaming a project orphans its store root, which an overwrite hides*
-- `discovery` — A command given no `--project` reads the nearest `contextful.toml` in the working directory or an ancestor, takes its `[project] name` as the project, and bases every project path on that file's directory.
+- `discovery` — Without `--project`, a command reads the nearest `contextful.toml` in the working directory or an ancestor. The command uses that file's `[project] name` and bases every project path on the file's directory.
 - `explicit-project` — A command given `--project` bases every project path on the working directory and runs no discovery.
 - `project-paths` — The project paths are the store root, the run state `.contextful/run/<project>/` and the memory pass state `.contextful/memory/<project>/`.
 - `default-declaration` — A command given no `--declaration` reads the discovered `contextful.toml`, or `contextful.toml` in the working directory under `--project`.
-- `declaration-base` — Under a located project, a relative path its declaration names — a derive binding's `media_root`, a path-form `command[0]` — resolves against the directory its project paths are based on, never the working directory.
+- `declaration-base` — For a located project, relative declaration paths resolve against the project's base directory rather than the working directory. These paths include a derive binding's `media_root` and path-form `command[0]`.
   *because one pipeline otherwise reads different media or programs depending on the subdirectory it fires from*
-- `undiscovered` — A command given no `--project` whose working directory and ancestors hold no `contextful.toml`, or whose nearest one declares no `[project] name`, raises `StoreProjectUndiscovered`, naming the starting directory.
+- `undiscovered` — Without `--project`, a command raises `StoreProjectUndiscovered` when the working directory and ancestors lack `contextful.toml` or the nearest file lacks `[project] name`. The error names the starting directory.
   *because a store opened at a guessed root splits one project's rows across two trees*
 
 #### Scenarios
 
 - `store.init.repeat`: WHEN `contextful init research` runs twice in one directory, THEN the second run succeeds and `contextful.toml` holds the bytes the first wrote.
-- `store.init.name-conflict`: WHEN `contextful init archive` runs beside a `contextful.toml` naming `research`, THEN it raises `StoreProjectConflict` and the file is unchanged.
+- `store.init.name-conflict`: WHEN `contextful init archive` runs beside a `contextful.toml` naming `research`, THEN the command raises `StoreProjectConflict` and preserves the file.
 - `store.init.declaration-base`: WHEN `contextful pipeline run` fires in `notes/` below a `contextful.toml` binding `media_root = "media"`, THEN media resolves under `media/` beside that file, not `notes/media/`.
 - `store.init.posture`: WHEN `contextful init research` runs without `--authoring-posture`, THEN a following `contextful context land` raises `AuthoringPostureUndeclared`, and after `contextful init research --authoring-posture per_request` the same land commits.
 - `store.init.discovery`: WHEN `contextful context land` runs in `notes/` below a directory where `contextful init research --authoring-posture per_request` ran, THEN the run commits under that directory's `.contextful/context/research/`.
 
 ## declare
 
-A table's declaration block: its key, ordering column and write mode, and what a read returns for a withdrawn row.
+Table declarations, primary keys, row ordering, write modes and replacement behavior.
 
-- `table-block` — A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `bloom_filter`, `retain_runs`, `retain_rows`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries`, `content_hash_column`, `result_cache` and `private`; an unset key is absent from the canonical serialization.
+- `table-block` — Table keys: `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `bloom_filter`, `retain_runs`, `retain_rows`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries`, `content_hash_column`, `result_cache` and `private`. Canonical serialization omits unset keys.
 - `erasure-metadata` — An erasure declaration names `erasure_key`, incoming `referenced_by` table/column edges, and `on_erase = "survive"` for retained citing rows; absent fields remain absent in canonical serialization.
   *A-disclosure*
-- `retain-rows` — `retain_rows = { column = "<name>", age = "<n>d" }` accepts `_ingested_at` or a declared Timestamp column; another column or null value raises `StoreRetentionColumnInvalid` before landing, and malformed age refuses the declaration.
+- `retain-rows` — `retain_rows = { column = "<name>", age = "<n>d" }` accepts `_ingested_at` or a declared Timestamp column. Another column or null value raises `StoreRetentionColumnInvalid` before landing. A malformed age refuses the declaration.
   *because a sender's clock cannot control the injected arrival time, and a nullable retention clock leaves a row with no expiry*
-- `column-types` — `columns` maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it; every landing into the table, a pipeline run included, lands that column in the declared type.
+- `column-types` — `columns` maps column names to type spellings under {{store.reconcile.typed-landing}}. Every landing into the table, including pipeline runs, uses the declared type for that column.
   *because a JSON value alone cannot say it carries bytes or a vector*
-- `two-genres` — A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the engine does not enumerate. Both append, dedupe on content and carry a timestamp.
+- `two-genres` — A table holds connector items or synthesized artifacts. Artifact kinds use an open string without an engine-defined enumeration. Both items and artifacts append, deduplicate on content and carry a timestamp.
 - `unkeyed-union` — A table declaring no `primary_key` reads as the byte-identical union of its visible committed runs, selected under {{store.declare.replace-frontier}} when replacing.
-- `dedup-view` — A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
+- `dedup-view` — A keyed table reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1`. The source unions the current snapshot, if present, with committed runs omitted by that snapshot.
   *because a keyed table read as a union before its first fold inflates every aggregate silently*
 - `order-by-default` — `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.
 - `order-by-unknown` — An `order_by` naming a column neither declared nor injected raises `StoreOrderByUnknownColumn` at validation, before the first batch.
@@ -197,17 +196,17 @@ A table's declaration block: its key, ordering column and write mode, and what a
   *A-store*
 - `write-mode` — `write_mode` is `append`, the default, keeping the last write per key and retiring no key, or `replace`.
 - `replace-frontier` — Under `replace`, a read covers the newest run carrying the source's complete state plus every run committed after it.
-- `replace-retains` — A replacing run leaves the runs it displaced on disk until `retain_runs` passes, writes no erasure receipt and walks no lineage.
+- `replace-retains` — A replacing run keeps displaced runs on disk until `retain_runs` expires. The replacing run writes no erasure receipt and traverses no lineage.
 - `empty-run` — A run landing zero rows commits a manifest with no parts; without {{store.declare.empty-replacement}} it replaces nothing. A table with no rows registers as a zero-row relation over its declared and injected columns.
-- `empty-replacement` — A complete zero-row `replace` run marks its manifest as a replacement frontier; current reads cover no earlier files, while bounded reads before its commit retain earlier rows within retention.
+- `empty-replacement` — A complete zero-row `replace` run marks its manifest as a replacement frontier. Current reads exclude earlier files; bounded reads before that commit retain earlier rows within retention.
   *A-store*
 - `empty-frontier-preserved` — Sync push, sync pull and fold preserve an empty replacement frontier without writing a data row.
   *A-store*
-- `fold-job` — An enabled compaction job covering a table is a `[[job]]` block of kind `fold` carrying a `schedule`, whose `enabled` is absent or true and whose `target` is absent or names the table's destination name.
+- `fold-job` — A compaction job covers a table when its `[[job]]` block has kind `fold` and a `schedule`. The job's `enabled` is absent or true; its `target` is absent or names the table's destination name.
   *A-store*
-- `fold-coverage` — `pipeline validate` warns on stderr, naming the table, where a table declares `primary_key` and no job meeting {{store.declare.fold-job}} covers it; the warning alone fails nothing.
+- `fold-coverage` — If a table declares `primary_key` without coverage under {{store.declare.fold-job}}, `pipeline validate` warns on stderr and names the table. The warning alone causes no failure.
   *A-store*
-- `declaration-set` — A project's table blocks are the declaration's and those of every `pipelines/*.toml` and `pipelines/*.json` beside it — a `[pipeline]` table's as named, each specification's under {{run.declare.table-name}}. The read face and every `sync` verb read this set.
+- `declaration-set` — The project's tables combine its declaration with adjacent `pipelines/*.toml` and `pipelines/*.json`: `[pipeline]` tables as named, specification tables under {{run.declare.table-name}}. Queries and every `sync` verb use this declaration set.
   *because a key or `replicate` declared only where `pipeline run` reads it leaves reads, pulls and folds treating the table as unkeyed and replicated*
 - `read-side-keys` — A declaration key changes what a read returns and rewrites no committed part; a key added after rows land applies from the next read.
 
@@ -215,49 +214,49 @@ unsettled: What retires a key a source stops serving under `append`, given the s
 
 ## reserve
 
-The column and table namespaces the engine holds, the provenance columns it injects, and the request ledger.
+Reserved column and table names, injected provenance columns and request ledgers.
 
 - `underscore-namespace` — Column names beginning `_` belong to the engine; the injected set and the reserved optional set are its whole content.
-- `injected` — The engine injects `_ingested_at` as a non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_batch_seq` as int32 where a batch scope exists, `_site_id`, and `_authored_by` where an authenticated subject authorized the write, replacing any producer value.
+- `injected` — The engine injects `_ingested_at` as non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id` and `_site_id`. Injection adds int32 `_batch_seq` within a batch scope and `_authored_by` for writes authorized by an authenticated subject. Injected values replace producer values.
   *because a string instant does not sort by time once fractions or offsets appear*
 - `authored-agent` — Where an authenticated subject carrying an agent member authorized the write, the engine injects `_authored_agent`, that agent, beside `_authored_by`, replacing any producer value.
   *because a `[[principal]]` names an agent as well as the person it acts for, and {{authority.place.per-principal}} matches either*
 - `row-seq` — The engine injects `_row_seq`, a non-null int64 numbering a run's rows from 0 in batch order, replacing any producer value.
   *because a run's rows share `_ingested_at` and `_run_id`, and keeping the last write per key needs an order among them*
-- `commit-seq` — The engine injects `_commit_seq`, a non-null int64 its commit assigns above every value the table holds; a run committing after a read carries a value above every row that read returned, whatever its `_ingested_at`.
+- `commit-seq` — The engine injects non-null int64 `_commit_seq`, assigned above every value held by the table. A run committing after a read carries a value above every returned row, regardless of `_ingested_at`.
   *A-topology*
-- `commit-order` — A commit's manifest waits until every lower `_commit_seq` value of its table published or its landing ended, so the readable runs of a table always hold a prefix of its commit sequence.
+- `commit-order` — A commit publishes its manifest after every lower `_commit_seq` in the table publishes or ends landing. Readable runs therefore form a prefix of the table's commit sequence.
   *A-topology*
-- `commit-lock-span` — A commit holds its table's commit lock to assign `_commit_seq` and to write its manifest, and writes its parts outside the lock unless the table keeps vintage history.
+- `commit-lock-span` — A commit holds its table's commit lock while assigning `_commit_seq` and writing its manifest. The commit writes parts outside the lock, except when the table keeps vintage history.
   *A-topology*
 - `commit-wait` — A commit waits at most 30 s for its table's commit lock or for a lower value's publication, then raises `StoreCommitLockTimeout`, a transient failure.
   *A-topology*
-- `commit-marker` — A commit rewrites its table's counter `data/.commit_seq` as JSON naming `format_version` and `commit_seq`, so a build reading a bare integer refuses the table before writing a part; a newer major refuses as {{store.lay-out.format-newer}}.
+- `commit-marker` — A commit rewrites `data/.commit_seq` as JSON with `format_version` and `commit_seq`. Builds reading a bare integer refuse the table before writing a part. A newer major refuses under {{store.lay-out.format-newer}}.
   *A-topology*
-- `commit-seq-seed` — A commit assigns one above the greatest of the node's counter, every run manifest's `commit_seq` and the current snapshot's, so a store restored by a pull, or holding no counter, never reissues a value.
+- `commit-seq-seed` — A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot. A pulled store or store without a counter therefore reuses no value.
   *A-topology*
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
-- `taint` — The engine injects `_taint`, a label under {{connector.infer.provenance-order}}, on each row a model's output lands as, replacing any producer value; a row no model produced omits it.
+- `taint` — On each row from model output, the engine injects `_taint` under {{connector.infer.provenance-order}}, replacing any producer value. Rows without model output omit `_taint`.
   *because a label a producer sets is one injected text can forge*
-- `pass` — The engine injects `_pass` on each claim a synthesis batch lands, `glean` under {{read.synthesize.gleaning}} and `first` otherwise, replacing any producer value; a row no synthesis pass produced omits it.
+- `pass` — For each synthesized claim, the engine injects `_pass`: `glean` under {{read.synthesize.gleaning}}, `first` otherwise. Injection replaces any producer value. Rows without synthesis omit `_pass`.
   *because a reader telling a gleaned claim from a first-pass one must not trust a label the model could emit*
 - `optional` — A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
 - `modality` — `_modality` takes one of text, image, audio, structured or mixed; another value fails validation of its batch.
 - `lang-and-provenance` — `_lang` carries a BCP-47 tag; `_provenance` carries the evidence rows the row derives from, addressed by the identity the source table keys on.
 - `prompt-hash` — `_prompt_hash` is `sha256:<hex>` over the prompt template, not the rendered prompt.
-- `edge-validity` — A `memory_edges` row carries `valid_from`, `valid_to` and `superseded_by`; a producer's `valid_from` stands, an absent one takes the row's declared availability instant, else its commit instant, and only {{read.revise.edge-supersede}} writes the other two.
+- `edge-validity` — `memory_edges` rows carry `valid_from`, `valid_to` and `superseded_by`. A producer's `valid_from` stands; an absent value takes declared availability time, else commit time. Only {{read.revise.edge-supersede}} writes `valid_to` and `superseded_by`.
   *A-read*
 - `column-name` — A producer column inside the `_` namespace and outside the optional set raises `StoreReservedColumnName` at reconciliation, before any Parquet.
   *P1*
-- `table-namespaces` — The engine reserves three table namespaces: `_runs`, the durable run record, `_items`, the item record of {{run.items.outcome-record}}, and `_visibility`, under which {{disclosure.mirror.grants-table}} lands each source's mirrored access tables.
-- `table-name` — A pipeline declaring a table inside a reserved namespace raises `StoreReservedTableName` when its manifest is assembled, naming the reservation.
+- `table-namespaces` — The engine reserves three table namespaces. `_runs` holds the durable run record; `_items` holds item records under {{run.items.outcome-record}}. `_visibility` holds each source's mirrored access tables under {{disclosure.mirror.grants-table}}.
+- `table-name` — When assembling a manifest, the engine raises `StoreReservedTableName` for a pipeline table inside a reserved namespace, naming the reservation.
   *P1*
-- `ledger-suffix` — A table name ending in `__requests` is reserved to request-ledger relations and refuses as {{store.reserve.table-name}}.
+- `ledger-suffix` — The engine reserves table names ending in `__requests` for request-ledger relations. Other declarations using that suffix refuse under {{store.reserve.table-name}}.
 - `ledger-path` — A run's request ledger is `requests/<run-id>.<node-id>.parquet`, disjoint per run and per writing node.
-- `ledger-append` — Appends to one run's ledger file serialize under a lock on it, and an append returns once its rows and the rename are synced to disk.
+- `ledger-append` — An append locks its run's ledger file to serialize writes. The append returns after syncing its rows and the rename to disk.
 - `ledger-fold` — Each fold pass merges a table's committed ledger files into `requests/folded-<snapshot-id>.parquet`, and a replica carries ledgers with their table.
   *because one ledger file per run per node per table grows listing and diff cost without bound*
-- `ledger-retention` — A ledger row is collected 365 d after its run committed.
+- `ledger-retention` — Collection removes a ledger row 365 d after its run committed.
 
 unsettled: Does a replica merging another node's runs renumber `_commit_seq`, or does an export cursor hold one position per writing node? owner: store affects: store.reserve
 
@@ -265,36 +264,36 @@ unsettled: Does a fold backfill `_commit_seq` onto parts landed without the colu
 
 ## reconcile
 
-Schema evolution across a table's file set: the type lattice, additive columns, and what a scan may invent.
+Schema reconciliation across table files, type promotion, added columns and scan behavior.
 
-- `explicit-file-list` — Every read hands `read_parquet` an explicit sorted file list resolved from the pointer and the manifests, never a glob; a stray file joins nothing.
-- `union-by-name` — Every read passes `union_by_name=true`; a column resolves to the common supertype of the files carrying it, and the generated relation casts no column but a vector, per {{store.reconcile.half-width}}.
+- `explicit-file-list` — Every read passes `read_parquet` an explicit sorted file list resolved from the pointer and manifests. Reads use no glob and exclude stray files.
+- `union-by-name` — Every read passes `union_by_name=true`. Columns resolve to the common supertype across files carrying each column. The generated relation casts only vectors under {{store.reconcile.half-width}}.
 - `lattice` — The type lattice holds one promotion, `Int64` with `Float64` to `Float64`; a JSON type absorbs `Utf8`.
   *A-store*
 - `incompatible` — Any other pair of types observed for one column raises `StoreSchemaIncompatible` at the write, naming the column, the stored type and the arriving type.
   *A-store*
 - `float-loss` — An `Int64` value above 9007199254740992 loses precision once a `Float64` batch lands on its column.
-- `binary-and-vector` — The lattice holds `Binary`, `FixedSizeBinary(n)` and a `FixedSizeList` of `Float32` or `Float16` at dimension n; none takes a promotion, so a width, item or dimension change meets {{store.reconcile.incompatible}}.
+- `binary-and-vector` — The lattice includes `Binary`, `FixedSizeBinary(n)` and dimension-n `FixedSizeList` of `Float32` or `Float16`. These types have no promotion. Width, item or dimension changes meet {{store.reconcile.incompatible}}.
   *A-store*
-- `typed-landing` — A producer declares these types; a JSON batch carries bytes as padded base64 and a vector as a number array of its dimension, and any other value meets {{store.reconcile.incompatible}}.
+- `typed-landing` — A producer declares these types. JSON batches carry bytes as padded base64 and vectors as number arrays matching the declared dimension. Other values meet {{store.reconcile.incompatible}}.
   *A-store*
-- `nested-lattice` — A struct gains fields additively, a file without a field reading it as null; list items and map values reconcile by {{store.reconcile.lattice}}; a kind change, scalar against nested or list against map, meets {{store.reconcile.incompatible}} naming the column path.
+- `nested-lattice` — Structs gain fields; files lacking a field read null. List items and map values reconcile under {{store.reconcile.lattice}}. Kind changes, including scalar against nested or list against map, meet {{store.reconcile.incompatible}}, naming the column path.
   *A-store*
-- `variant` — A declared `variant` column stores each string, Int64, Float64, boolean or padded-base64 bytes value in one Struct with `kind` and a matching field; scalar or tagged input lands losslessly, and conflicting non-null fields meet {{store.reconcile.incompatible}}.
+- `variant` — A `variant` column stores string, Int64, Float64, boolean or padded-base64 bytes values in one Struct with `kind` and a matching field. Scalar or tagged inputs land losslessly. Conflicting non-null fields meet {{store.reconcile.incompatible}}.
   *A-store*
-- `nested-landing` — A producer or declaration types a column `struct<…>`, `list<…>` or `map<utf8, …>`; a JSON batch carries a struct and a map as an object and a list as an array, a struct key naming no field meeting {{store.reconcile.incompatible}}.
+- `nested-landing` — Producers or declarations type columns `struct<…>`, `list<…>` or `map<utf8, …>`. JSON batches represent structs and maps as objects, lists as arrays. A struct key absent from its fields meets {{store.reconcile.incompatible}}.
   *A-store*
-- `stored-type` — A column `schema.json` holds as a binary, vector or nested type lands a later undeclared JSON value in that type, so a run after the first needs no declaration.
+- `stored-type` — When `schema.json` records a binary, vector or nested type, later undeclared JSON values land in that type. Runs after the first require no declaration.
   *A-store*
 - `half-width` — A `Float16` vector stores each element at half width in Parquet. The engine reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension through one relation cast.
   *A-store*
-- `key-widening` — A primary-key column takes no `Float64` promotion: the widening batch raises `StoreKeyWidened` before any Parquet, as does a fold meeting a key already reconciled to `Float64`.
+- `key-widening` — Primary-key columns take no `Float64` promotion. A widening batch raises `StoreKeyWidened` before any Parquet. A fold encountering a key already reconciled to `Float64` raises the same error.
   *A-store*
 - `additive` — An unseen column joins the merged schema, and files written before it read it as null.
-- `no-invented-column` — A scan invents no column: an ordering column absent from every file enters through a zero-row branch, and a column added after a table's first rows projects as a literal null.
+- `no-invented-column` — Scans invent no columns. An ordering column absent from every file enters through a zero-row branch. A column added after the table's first rows projects as literal null.
 - `first-sight` — A destination creates a table on the first schema it sees and merges each later schema into `schema.json`.
 - `fold-never-narrows` — A fold backfills nulls and widens types, a struct's fields included; it narrows no type and drops no column or field.
-- `no-history` — Reconciliation keeps the current shape alone; a past widening is attributed from the run files.
+- `no-history` — Reconciliation stores only the current schema. Run files identify past type widenings.
 - `reserved-set-versioned` — Adding an injected column advances the semantics version, whose fingerprint recipe names the column.
 
 unsettled: What dimension caps a fixed-size vector column, given the engine bounds an `ARRAY` width? owner: store affects: store.reconcile
@@ -303,42 +302,42 @@ unsettled: Do the linked DuckDB and parquet releases read and write Parquet `VAR
 
 ## fold
 
-Compaction: pass order, triggers, retention, the compaction lease, and the pointer commit that makes a snapshot readable.
+Compaction steps, triggers, retention, leases and snapshot publication through a pointer update.
 
-- `pass` — A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet and every declared sidecar into staging, then commits by {{store.fold.pointer-commit}}.
-- `carry-by-reference` — An append table's pass writes its unfolded runs' rows as one delta part per partition they reach, rewrites only a part a delta row replaces or retention trims, and carries every other part by reference to its origin snapshot.
+- `pass` — A pass selects committed runs omitted by the current snapshot, deduplicates by key or unions, reconciles schemas, sorts by `cluster_by`, then partitions. The pass stages Parquet and every declared sidecar, then commits through {{store.fold.pointer-commit}}.
+- `carry-by-reference` — For append tables, a pass writes unfolded rows as one delta part per affected partition. The pass rewrites only parts affected by replacement or retention, referencing every other part in its origin snapshot.
   *A-store*
-- `tiered-merge` — Within each partition a pass writes into, 4 parts of one size tier, a tier holding row counts between consecutive powers of that number, merge into one part, repeating until no tier holds 4 parts.
+- `tiered-merge` — In each written partition, a size tier spans row counts between consecutive powers of 4. The pass merges 4 parts from one tier into one part, repeating until every tier holds fewer than 4 parts.
   *A-store*
-- `bounded-memory` — A carrying pass building no sidecar in full holds its delta and one record batch per part it reads or merges, so its peak memory follows the rows landed, not the rows held.
+- `bounded-memory` — A carrying pass without a full sidecar build holds its delta and one record batch per part read or merged. Peak memory therefore scales with landed rows rather than stored rows.
   *because a pass inline with a landing that decodes the whole table grows with history until it exhausts the landing process's memory*
-- `valid-time-line` — A keyed table declaring `valid_time` partitions on the key together with the valid-time line and keeps one row per line.
-- `includes-runs` — A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.
+- `valid-time-line` — A keyed table declaring `valid_time` partitions on both the key and valid-time line. The table keeps one row per line.
+- `includes-runs` — A snapshot's `includes_runs` names each folded run as `<run-id>/<node-id>`, matching the run directory. Reads include runs committed after the snapshot.
 - `triggers` — A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.
-- `declared-trigger` — A table declaring `fold_max_unfolded_runs`, a positive integer, fires its pass at that many unfolded runs in place of {{store.fold.triggers}}'s run count; zero refuses the declaration at parse.
-- `session-trigger` — A landing session counts its table's unfolded runs at open and per commit, recounting when another writer commits or folds, and runs a pass before the land returns once the table's trigger fires.
+- `declared-trigger` — A positive `fold_max_unfolded_runs` sets the table's unfolded-run trigger count instead of {{store.fold.triggers}}'s count. Parsing rejects a declaration with zero.
+- `session-trigger` — A landing session counts unfolded table runs at open and each commit, recounting after another writer commits or folds. If the table's trigger fires, the session runs a pass before landing returns.
   *because a trigger read only by a scheduled job lets a continuous writer accrue thousands of unfolded runs between passes*
-- `retention` — `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.
-- `reference-retention` — Collection keeps each part and sidecar segment a retained snapshot carries by reference, removing the rest of the collected snapshot's directory, manifest included, until no retained snapshot names them.
+- `retention` — `retain_runs` defaults to 7 d. Collection removes folded runs, superseded snapshots and their sidecars once older than the window.
+- `reference-retention` — Collection keeps parts and sidecar segments referenced by retained snapshots until no retained snapshot names those files. Collection removes the rest of the collected snapshot's directory, including its manifest.
   *A-store*
-- `cached-inputs` — Under {{store.pull.lazy-parts}}, a fold fetches its input parts through {{store.pull.part-cache}}; inputs larger than the cache raise `FoldInputsExceedCache`, naming both byte counts, and the pass publishes nothing.
+- `cached-inputs` — Under {{store.pull.lazy-parts}}, a fold fetches input parts through {{store.pull.part-cache}}. If inputs exceed the cache size, the fold raises `FoldInputsExceedCache`, names both byte counts and publishes nothing.
   *A-store*
-- `row-retention` — A fold removes expired rows from its snapshot and sidecars after keyed winner selection and derived supersession; unkeyed partitions whose footer maximum precedes the cutoff skip row reads, and idle passes publish on expiry under {{store.declare.retain-rows}}.
+- `row-retention` — After keyed winner selection and derived supersession, a fold removes expired snapshot and sidecar rows. Unkeyed partitions with footer maximum before the cutoff skip row reads. Idle passes publish on expiry under {{store.declare.retain-rows}}.
   *because a time partition follows the sender's clock while the retention clock follows arrival*
-- `row-retention-report` — A pass reports the row-age cutoff, expired row count, dropped partition count and directories collected per table; `collect` returns the removed directory paths.
+- `row-retention-report` — For each table, a pass reports the row-age cutoff, expired row count, dropped partition count and collected directories. `collect` returns the removed directory paths.
   *because an operator needs evidence of both logical expiry and physical collection*
-- `result` — A pass reports each table on one line: folded, `indexes-built` naming each sidecar it built with no run folded, nothing-landed once no run waits and every declared sidecar is current, or failed; a nothing-landed table does not stop the pass.
-- `collection-failed` — A collection that fails reports its failure: beside `folded` when the pass published, since the snapshot stays published, and as `failed` otherwise; either way the command exits non-zero.
+- `result` — A pass reports folded, `indexes-built`, nothing-landed or failed on one line per table. `indexes-built` names sidecars built without folding runs. Nothing-landed means no pending runs and every declared sidecar current; the pass continues.
+- `collection-failed` — A collection failure reports beside `folded` if the pass published; the snapshot stays published. Otherwise the pass reports `failed`. Both cases exit non-zero.
 - `unknown-table` — A pass naming a table no `schema.json` declares halts the command with {{store.lay-out.unknown-table}}.
   *P1*
 - `compaction-lease` — A pass holds the table's compaction lease and stamps its fence into the snapshot manifest and the pointer.
   *A-store*
-- `pointer-commit` — A pass publishes by replacing `_pointer.json` conditioned on the ETag it read at pass start, with `If-Match` on an object store and a version-checked rename on a filesystem.
+- `pointer-commit` — A pass publishes by replacing `_pointer.json` conditioned on the ETag read at pass start. Object stores use `If-Match`; filesystems use a version-checked rename.
   *A-store*
 - `partial-snapshot` — A reader observes a snapshot and every declared sidecar together or neither; a commit exposing one without the other raises `StorePartialSnapshot`.
   *P4*
-- `lost-pointer` — A pass whose pointer replace loses its condition publishes nothing, and its staged snapshot is collected.
-- `staging-collected` — A staging directory, and a snapshot directory no pointer chain reaches, are collected by the next pass and read by nobody.
+- `lost-pointer` — If a pointer replacement loses its condition, the pass publishes nothing. Collection removes the staged snapshot.
+- `staging-collected` — The next pass collects staging directories and snapshot directories unreachable through any pointer chain. Reads exclude these directories.
 - `non-blocking` — A statement running during a pass reads the snapshot the pointer named when it started; statements starting after the commit read the new one.
 - `supersedes` — A new snapshot supersedes the previous one without deleting it, and a bounded read reaches the older one until retention collects it.
 
@@ -374,90 +373,90 @@ sequenceDiagram
 
 ## index
 
-Sidecar index kinds and identity, clustering, partitioning and the tenant partition.
+Sidecar index types, identifiers and builds; row clustering, partitions and tenant identifiers.
 
-- `kinds` — Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW vector graph, a positional full-text index, and opt-in per-column bloom filters.
-- `bloom-parts` — In a project binding no encryption key, a column a table names in `bloom_filter` carries a bloom filter, sized for that part's rows, in every part a run lands or a fold writes; an erasure rewrite carries none.
+- `kinds` — Five index kinds exist: Parquet footer zone maps, sorted-Parquet sparse-map primary-key lookups, HNSW vector graphs, positional full-text indexes and opt-in per-column bloom filters.
+- `bloom-parts` — Without a project encryption key, every landed or folded part carries bloom filters on columns named in `bloom_filter`. Each filter's size follows the part's row count. Erasure rewrites carry none.
   *A-store*
-- `bloom-vintage-key` — In a project binding no encryption key, every part a run lands or a fold writes of a vintage table carries a bloom filter on each primary-key column, whether or not `bloom_filter` names it.
+- `bloom-vintage-key` — Without a project encryption key, every landed or folded vintage-table part carries a bloom filter on each primary-key column. These filters apply regardless of `bloom_filter` declarations.
   *because writers landing interleaved keys write parts whose key bounds overlap, and only a key filter keeps {{store.available-time.vintage-scope}} from decoding another writer's rows*
 - `bloom-encrypted` — A project binding an encryption key writes no bloom filter in any part, whatever its tables name in `bloom_filter`.
   *because Parquet modular encryption leaves a bloom filter in plaintext, where it answers key membership without the key*
-- `declaration` — A sidecar is declared per table under `indexes` with a kind, a `column`, an `id_column` and builder parameters; the `vector` kind takes `model`, `dim`, the `cosine` metric, `m` and `ef_construction`, the `fulltext` kind a `tokenizer`.
-- `id-column` — A sidecar's `id_column` defaults to a single-column primary key on a table declaring no `valid_time`, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.
+- `declaration` — Each table declares sidecars under `indexes` with kind, `column`, `id_column` and builder parameters. The `vector` kind takes `model`, `dim`, metric `cosine`, `m` and `ef_construction`. The `fulltext` kind takes `tokenizer`.
+- `id-column` — Without `valid_time`, a sidecar's `id_column` defaults to the table's single-column primary key. All sidecars of a table share `id_column`; keyed, composite-key and unkeyed tables each use one.
   *A-store*
-- `id-column-unresolved` — A declaration naming no `id_column` on a table without a single-column primary key or declaring `valid_time`, one naming a valid-time table's single key, or two sidecars naming different ones, raises `StoreIndexIdColumnUnresolved` at manifest validation.
+- `id-column-unresolved` — Manifest validation raises `StoreIndexIdColumnUnresolved` for missing `id_column` without a single-column primary key or with `valid_time`. Naming a valid-time table's single key, or different `id_column` values across sidecars, raises the same error.
   *A-store*
-- `id-unique` — A fold meeting one `id_column` value on two rows of the snapshot it stages raises `StoreIndexIdNotUnique`, naming the table, the column and the value, and publishes nothing.
+- `id-unique` — If two staged snapshot rows share an `id_column` value, fold raises `StoreIndexIdNotUnique`, naming the table, column and value. The fold publishes nothing.
   *A-store*
 - `paths` — A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `indexes/fts-<col>-<tokenizer>/`, inside the snapshot directory it indexes.
 - `path-collision` — Two sidecar declarations of one table resolving to one path under {{store.index.paths}} raise `StoreIndexPathCollision`, naming both, at manifest validation and before the fold builds either.
   *because a second build overwrites the first sidecar's files, and the manifest then records an entry no reader opens*
 - `identity` — A sidecar's identity is its one path under {{store.index.paths}}; `derived.sqlite` records the builder and builder version of each sidecar a reachable snapshot holds.
   *A-store*
-- `rebuild` — A pass over a table whose current sidecar records another builder or builder version than this build's rebuilds it in full into a new snapshot of unchanged rows; readers keep the prior snapshot until the pointer moves.
+- `rebuild` — If a current sidecar's builder or builder version differs from this build's, a pass rebuilds the sidecar in full. The pass preserves rows in a separate snapshot. Readers keep the prior snapshot until pointer publication.
   *A-store*
-- `declared-unbuilt` — A pass over a table whose current snapshot lacks a declared sidecar, or holds it under another `id_column` or builder parameters, builds it over that snapshot's rows into a new snapshot, though no run landed.
+- `declared-unbuilt` — If the current snapshot lacks a declared sidecar or records different `id_column` or builder parameters, a pass builds the sidecar over those rows. The pass publishes a separate snapshot even without a landed run.
   *because an index declared over rows already landed otherwise waits for a landing the store may never receive*
-- `graph-format` — The vector graph's byte layout is no committed format: a reader opens a sidecar only under its own builder and builder version, and any other meets {{read.retrieve.sidecar-falls-back}}.
+- `graph-format` — The vector graph's byte layout has no format compatibility guarantee. A reader opens a sidecar only when builder and builder version match its own; mismatches follow {{read.retrieve.sidecar-falls-back}}.
   *A-store*
-- `graph-extensions` — A vector or full-text entry records `extensions`, the passes since its last full build that extended it by a segment; a pass finding 16 extensions rebuilds it in full and records 0.
+- `graph-extensions` — A vector or full-text entry records `extensions`, counting segment-adding passes since its last full build. A pass finding 16 extensions rebuilds the sidecar in full and records 0.
   *A-store*
-- `sidecar-segments` — A pass whose delta replaces and removes no stored row extends each current sidecar by a segment over the delta, carrying earlier segments by reference; a probe reads every segment, scoring full text over their summed statistics.
+- `sidecar-segments` — If the delta replaces and removes no stored row, a pass adds a delta segment to each current sidecar, referencing earlier segments. Probes read every segment and score full text using their summed statistics.
   *A-store*
-- `filter-copies` — A sidecar copies no row value besides its `id_column` and indexed column, save the tenant column, zone label and availability instant a filtered traversal reads; every other filter applies at {{store.index.candidate-ids}}.
+- `filter-copies` — A sidecar copies only `id_column`, the indexed column, and the tenant column, zone label and availability instant needed for filtered traversal. Every other filter applies at {{store.index.candidate-ids}}.
   *A-store*
-- `not-in-file-set` — `indexes/` joins no table's file set; a snapshot reader lists only the parts its manifest names.
+- `not-in-file-set` — Table file sets exclude `indexes/`. A snapshot reader lists only parts named by the snapshot manifest.
 - `dies-with-snapshot` — Collecting a snapshot collects its sidecars in the same step, save a segment {{store.fold.reference-retention}} keeps.
-- `candidate-ids` — A sidecar yields candidate `id_column` values, not rows; they re-join through the enforced relation on that column before a top-K is final.
+- `candidate-ids` — A sidecar returns only candidate `id_column` values. Before finalizing top-K, retrieval joins those identifiers on that column through the relation protected by access controls.
   *P5*
-- `vector-by-fold` — The fold builds each declared vector sidecar over the staged rows holding a non-null identifier and a non-zero vector, from the declared model where the table carries `embedding_model`, and records its entry in the snapshot manifest.
+- `vector-by-fold` — Fold builds each declared vector sidecar from staged rows with non-null identifiers and non-zero vectors. Where `embedding_model` exists, fold selects only rows from the declared model. Fold records the sidecar in the snapshot manifest.
   *A-store*
-- `graph` — A vector sidecar is an HNSW graph over unit-length `Float32` vectors whose layers draw from a seed of the snapshot id and column, so one staged row set builds one byte-identical graph.
+- `graph` — A vector sidecar is an HNSW graph over unit-length `Float32` vectors. Layers use a seed from the snapshot id and column. The same staged row set therefore produces a byte-identical graph.
   *because a rebuilt sidecar then differs from its predecessor only where the rows do, and a recall figure replays from its snapshot*
-- `fulltext-by-fold` — The fold builds each declared full-text sidecar over the staged rows whose identifier is non-null and whose text yields a term, and records its entry in the snapshot manifest.
+- `fulltext-by-fold` — Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term. Fold records the sidecar in the snapshot manifest.
   *A-store*
-- `postings` — Each full-text segment is one file holding a sorted term dictionary and, per term, the rows and positions it occurs at, which a reader binary-searches in mapped or decrypted bytes.
+- `postings` — Each full-text segment is one file with a sorted term dictionary and each term's row identifiers and positions. Readers binary-search the mapped or decrypted bytes.
   *because one layout then serves a mapped plaintext file and a decrypted sealed one, and a probe reads only its own terms' postings*
-- `tokenizer` — A `tokenizer` is `unicode`, the default, indexing each lowercased alphanumeric run as one term, or `cjk`, which indexes each Han, Kana or Hangul stretch of a run as overlapping character bigrams.
+- `tokenizer` — The default `unicode` tokenizer indexes each lowercased alphanumeric run as one term. The `cjk` tokenizer indexes each Han, Kana or Hangul stretch within a run as overlapping character bigrams.
   *because an unspaced script puts no boundary inside a sentence, so a word within one is never a whole term*
-- `column-absent` — An index over a column, or naming an `id_column`, the reconciled schema lacks raises `StoreIndexColumnAbsent` at the fold, before the pass that builds it stages anything.
+- `column-absent` — If the reconciled schema lacks an index's column or `id_column`, fold raises `StoreIndexColumnAbsent` before staging anything for that build.
   *because an index over a missing column builds empty and reads as no match*
-- `column-type` — An `id_column` typed other than text or integer, a vector sidecar's column other than a vector of its `dim`, or a full-text sidecar's other than text raises `StoreIndexColumnType` at manifest validation where `columns` types it, else before any row lands.
+- `column-type` — Invalid types raise `StoreIndexColumnType`: `id_column` other than text or integer; vector-sidecar columns other than vectors of `dim`; fulltext columns other than text. Checks occur at manifest validation when `columns` declares types, otherwise before landing rows.
   *because a builder reading another width, or an identifier the re-join casts differently, indexes rows no reader finds*
-- `clustering` — `cluster_by` sorts rows within a file lexicographically over its columns in declared order; zone maps then skip row groups with no manifest entry and no sidecar.
-- `partitioning` — Partitioning is off unless `partition_by` declares it.
+- `clustering` — `cluster_by` sorts file rows lexicographically by columns in declared order. Zone maps then skip row groups with no manifest entry and no sidecar.
+- `partitioning` — A table uses partitioning only when the table declares `partition_by`.
 - `partition-type` — A `partition_by` column typed binary or vector raises `StorePartitionColumnType` at validation, before any Parquet.
   *because bytes name no directory that keeps two distinct values apart*
 - `partition-warnings` — Planning warns, naming the column, where a partition specification projects more than 1000 partitions or a median partition below 16 MiB.
 - `tenant-outermost` — A multi-tenant table carries the tenant identifier as its outermost partition column.
   *because a dropped tenant predicate then reads nothing instead of every tenant*
-- `tenant-verbatim` — Land checks a tenant value against no canonical form; it is written and compared byte for byte, with no trimming, case folding or Unicode normalization, and a percent-escaped directory name is representation alone.
+- `tenant-verbatim` — Landing applies no canonical form to tenant values. Writes and comparisons preserve bytes without trimming, case folding or Unicode normalization. Percent-escaping changes only the directory-name representation.
   *A-store*
 
 ## encrypt
 
-At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and node run-state files, with key derivation and forward key rotation.
+At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and node run-state files; key derivation and rotation.
 
-- `key-binding` — At-rest encryption is per project, off unless `[encryption] key_source` names `env:<NAME>` or a key-management service.
+- `key-binding` — A project enables at-rest encryption by binding `[encryption] key_source` to `env:<NAME>` or a key-management service. Without that binding, encryption is off.
 - `key-unbound` — A `key_source` naming a binding the process lacks raises `StoreEncryptionKeyUnbound` at startup, with no cleartext fallback.
   *P3*
-- `cipher` — Parquet, footers included, encrypts through Parquet modular encryption; every sidecar and ledger file encrypts with AES-256-GCM under a per-file data key wrapped by the project key.
+- `cipher` — Parquet modular encryption encrypts Parquet files, including footers. Every sidecar and ledger file uses AES-256-GCM with a per-file data key wrapped by the project key.
   *because a cleartext vector graph admits nearest-neighbour search over the embedding space*
-- `metadata-envelope` — With a bound key, schema, manifest, pointer, counter and commit-log files hold their canonical JSON or text inside an authenticated versioned envelope; without encryption they retain their canonical bytes.
+- `metadata-envelope` — With a bound key, schema, manifest, pointer, counter and commit-log files enclose canonical JSON or text in an authenticated versioned envelope. Without encryption, these files retain their canonical bytes.
   *A-store*
-- `run-state-envelope` — With a bound key, a node's synced run-state JSON holds its canonical bytes inside an authenticated envelope, and a reader refuses a file sealed under another key.
+- `run-state-envelope` — With a bound key, a node's synced run-state JSON encloses canonical bytes in an authenticated envelope. Readers refuse files sealed under another key.
   *A-store*
-- `machine-catalog-sealing` — A bound `machine.sqlite` holds an authenticated SQLite snapshot; each catalog transaction reads it into process memory under a file lock and seals committed bytes before releasing the lock.
+- `machine-catalog-sealing` — A bound `machine.sqlite` holds an authenticated SQLite snapshot. Each catalog transaction locks the file, reads the snapshot into process memory and seals committed bytes before releasing the lock.
   *A-store*
 - `password-kdf` — A password-derived project key uses Argon2id with 64 MiB memory, 3 iterations and 4 lanes.
 - `transport-separate` — At-rest encryption covers files and TLS covers bucket transport; a cleartext endpoint carries no encrypted-at-rest claim.
 - `redacted-index` — An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.
   *A-authority*
 - `at-rest-scope` — A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material.
-- `sidecar-reader` — In an unencrypted project a reader memory-maps a sidecar read-only; in an encrypted one it decrypts each sealed sidecar file into anonymous process memory and writes no cleartext to disk.
+- `sidecar-reader` — For unencrypted projects, readers memory-map sidecars read-only. For encrypted projects, readers decrypt each sealed sidecar file into anonymous process memory without writing cleartext to disk.
   *A-store*
-- `rotation` — Rotation writes forward: new files take the new key version, published files keep theirs until collected, and a key version retires once no retained file names it.
+- `rotation` — After rotation, writes use the rotated key version. Published files keep their key versions until collection. A key version retires when no retained file names that version.
 
 unsettled: How long does a sidecar decrypted into process memory stay resident across reads, and what evicts it? owner: store affects: store.encrypt
 
@@ -465,40 +464,40 @@ unsettled: What reseals a part carried by reference under a retiring key version
 
 ## endpoint
 
-Opening a store's bucket: the endpoint schemes, the transport, request addressing and signing, credentials, and what a backend's answers mean.
+Bucket endpoint schemes, transport, request addressing and signing, credentials and backend response handling.
 
-- `schemes` — `[sync] endpoint` opens `file://<directory>` as a filesystem bucket, `s3://<region>` as that region's AWS S3 endpoint, `r2://<account-id>` as that account's R2 endpoint at region `auto`, and `https://<host>` at `[sync] region`, default `us-east-1`.
+- `schemes` — `[sync] endpoint` maps `file://<directory>` to a filesystem bucket and `s3://<region>` to regional AWS S3. `r2://<account-id>` selects that account's R2 endpoint at region `auto`. `https://<host>` uses `[sync] region`, default `us-east-1`.
 - `unsupported-scheme` — Any other scheme, or an S3 or R2 endpoint in a build without the `s3-sync` feature, raises `SyncEndpointUnsupported`, naming the endpoint.
   *because a bucket the binary cannot reach refuses when it opens, before a push uploads anything*
 - `plaintext` — An `http://` endpoint opens on a loopback host alone; any other host raises `SyncEndpointInsecure`, naming it.
   *because objects and signed requests crossing a network in plaintext are readable and replayable by anyone on the path*
-- `addressing` — An S3 or R2 bucket addresses each object path-style, `<endpoint>/<bucket>/<key>` with every key segment percent-encoded, and signs every request with AWS Signature Version 4 for service `s3` at the endpoint's region.
+- `addressing` — S3 and R2 use path-style `<endpoint>/<bucket>/<key>`, percent-encoding every key segment. Every request uses AWS Signature Version 4 for service `s3` at the endpoint's region.
 - `credentials` — `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each bind `secret://<name>`, hydrated as {{connector.reference.whole-value-reference}}, or `env://NAME`, read whole from the process environment, as the bucket opens.
-- `credential-unbound` — An S3 or R2 endpoint whose `[sync]` omits `access_key_id` or `secret_access_key`, binds a credential key to anything but a reference, or names an unset variable raises `SyncCredentialUnbound`, naming the key.
+- `credential-unbound` — S3 or R2 raises `SyncCredentialUnbound` when `[sync]` omits `access_key_id` or `secret_access_key`, supplies a non-reference credential, or names an unset variable. The error names the key.
   *because a literal key in `config.toml` sits in plaintext on every disk and backup holding the store root*
-- `conditional-answers` — A `412` or `409`, or a `404` naming `NoSuchKey` to an `If-Match` put, answers a failed condition; a `501` answers an unsupported method and a `403` a forbidden credential, both read by {{store.probe.inconclusive}}.
-- `missing-bucket` — A `404` naming any code but `NoSuchKey`, `NoSuchBucket` among them, answers no absent object and no failed condition: the get, put, delete or list fails as transport, naming the code.
+- `conditional-answers` — A `412` or `409` means a failed condition; a `404` naming `NoSuchKey` does so for an `If-Match` put. `501` means an unsupported method; `403` means forbidden credentials. Both follow {{store.probe.inconclusive}}.
+- `missing-bucket` — A `404` naming a code other than `NoSuchKey`, including `NoSuchBucket`, indicates neither an absent object nor a failed condition. The get, put, delete or list fails as transport and names the code.
   *because a mistyped or deleted bucket otherwise reads as an empty bucket, a free lease or a lost compare-and-set*
-- `transport` — An S3 get, head, list page, delete or unconditional put left without a whole answer resends within 3 attempts, each connecting within 5 s and answered within 2 s, then 4 s, then 10 s; a conditional put goes once.
+- `transport` — An incomplete S3 get, head, list page, delete or unconditional put retries within 3 attempts. Connections allow 5 s; responses allow 2 s, 4 s, then 10 s. Conditional puts attempt once.
   *because a resent conditional put whose lost answer applied reads its own write back as a failed condition, and a stalled small request otherwise holds a pull for 10 s*
-- `throttled` — A `429` or `503` answer to any S3 request, or a `500` to any but a conditional put, resends within 5 attempts, each after a uniform draw below a ceiling doubling from 100 ms to 5 s.
+- `throttled` — S3 requests retry within 5 attempts after `429` or `503`, or `500` except on conditional puts. Each retry waits a uniform draw below a ceiling doubling from 100 ms to 5 s.
   *because a throttled request never applied, a conditional put answered `500` may have, and jitter spreads clients throttled together*
-- `unavailable` — A request left unanswered within {{store.endpoint.transport}}, or answered `429` or `5xx` past {{store.endpoint.throttled}}, fails as unavailable, naming the request, and says nothing of what the bucket holds.
-- `list-pages` — A list follows each continuation token until the backend reports the listing complete, and returns every key under the prefix sorted.
+- `unavailable` — A request unanswered within {{store.endpoint.transport}}, or returning `429` or `5xx` beyond {{store.endpoint.throttled}}, fails as unavailable. The failure names the request without claiming what the bucket holds.
+- `list-pages` — A list follows continuation tokens until the backend reports completion. The list returns every key under the prefix in sorted order.
 
 unsettled: Does an S3 bucket whose `[sync]` binds no key sign with the instance or container role's credentials? owner: store affects: store.endpoint
 
 ## emit
 
-Planning a push from the store alone: the manifest a push commits, computed from local files without reading or writing the bucket.
+Push planning from local files without reading or writing the bucket.
 
-- `plan` — `contextful sync manifest --emit` prints, as a bucket manifest in JSON, each key a push of the store commits with its sha256, size and owner, and reads and writes no bucket object.
+- `plan` — `contextful sync manifest --emit` prints a JSON bucket manifest listing each key a push commits, with sha256, size and owner. The command neither reads nor writes bucket objects.
   *because a pre-push check and a dry run need the commit's content without a credential or a network*
 - `plan-scope` — The plan lists every key {{store.push.wire-format}} uploads and each `schema.json` at its local digest; a key another node owns stays out.
 
 ## push
 
-Uploading the store to a bucket: the wire format, the bucket manifest, prefix confinement and the manifest write that commits it.
+Uploading local files, constraining bucket prefixes and committing the bucket manifest.
 
 - `prefix-escape` — A key resolving outside the prefix raises `SyncPrefixEscape`, naming the key and the prefix.
   *P3*
@@ -506,53 +505,53 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *P3*
 - `prefix-overspecified` — Declaring `prefix` and `prefix_from` together raises `SyncPrefixOverspecified`.
   *P3*
-- `in-flight` — A push of one store waits for the push guard another push on the machine holds, up to `[sync] push_wait_secs`, defaulting to 300 s, then raises `SyncPushInFlight`, naming the holder.
+- `in-flight` — A push waits for another local push to release the store's push guard, up to `[sync] push_wait_secs`, default 300 s. On timeout, the push raises `SyncPushInFlight`, naming the holder.
   *because units of one serve share a store root, and a refused push fails a fire whose runs already committed*
-- `wire-format` — A push uploads each file it owns, or no node owns, whose digest the bucket lacks under `<prefix>/<project>/<path>` by a conditional put; machine catalogs, `config.toml`, locks and staging directories stay local, and table pointers travel by {{store.push.pointer-carry}}.
+- `wire-format` — A push conditionally uploads files whose digests the bucket lacks, under `<prefix>/<project>/<path>`. Eligible files belong to the pushing node or no node. Machine catalogs, `config.toml`, locks and staging directories stay local. Table pointers follow {{store.push.pointer-carry}}.
 - `schema-cas` — A table's `schema.json` commits by merging into the bucket's copy through the one-promotion lattice and replacing it on the ETag read; no copy overwrites another.
   *because two nodes landing different columns into one table both keep them*
-- `manifest-commit` — A push commits when the bucket manifest, `<prefix>/manifest.json` listing each key's sha256, size and owner, replaces the copy it read under `If-Match` on that copy's ETag.
+- `manifest-commit` — A push commits by replacing `<prefix>/manifest.json` under `If-Match` on the ETag read for that copy. This bucket manifest lists each key's sha256, size and owner.
   *A-store*
 - `manifest-format` — The bucket manifest and every generation manifest carry `format`, `1` for this layout; a manifest without `format` reads as `1`.
-- `format-unsupported` — A bucket or generation manifest whose `format` exceeds 1 raises `SyncManifestFormatUnsupported`, naming the key and its format, before the push commits or the pull writes a file.
+- `format-unsupported` — A bucket or generation manifest with `format` above 1 raises `SyncManifestFormatUnsupported`, naming the key and format. Refusal precedes the push commit or any pull file write.
   *because a reader rewriting a manifest it parses only in part drops the fields a newer writer added*
-- `generation` — Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under `If-None-Match`.
+- `generation` — Each manifest commit records `generation` under {{store.push.generation-floor}} and the project's table pointers read before the commit. The push then creates `<prefix>/manifests/gen-<N>.json` with the committed bytes under `If-None-Match`.
   *because a restore or a pre-push gate names one committed state, and the live manifest and pointers move on*
-- `commit-stamp` — Each manifest commit records `committed_at`, the push's instant, and `committed_by`, the pushing node id; a plan carries neither.
+- `commit-stamp` — Each manifest commit records `committed_at`, the push instant, and `committed_by`, the pushing node id. A plan records neither field.
 - `generation-floor` — A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.
   *because a format-1 writer predating the field drops `generation`, and reusing a taken number collides with its immutable copy*
-- `generation-probe` — A push reading a manifest at generation G lists `gen-<G>.json` and each later generation's key alone, stopping at the first absent one; only a manifest without `generation` lists `manifests/` whole.
+- `generation-probe` — For manifest generation G, push lists `gen-<G>.json` and each later generation's key individually until the first absent key. Only a manifest without `generation` causes a complete `manifests/` listing.
   *because the prefix gains one copy per commit and is never pruned, so a whole listing grows every commit round*
 - `generation-heal` — Before each manifest commit, a push finding no `gen-<N>.json` for the generation of the manifest it read creates it from the bytes it read.
   *because a commit of N+1 landing while `gen-<N>.json` is absent leaves a gap no later push sees*
 - `generation-conflict` — A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after its manifest commit applied.
   *because the immutable copy keeps the first commit, and a push reporting success names a state `pull --generation` does not restore*
-- `run-state` — `sync push` and `sync manifest --emit` first write the node's run state to `nodes/<node-id>/run-state.json`: each pipeline's newest run and each cursor row with its commit marker.
+- `run-state` — `sync push` and `sync manifest --emit` first write `nodes/<node-id>/run-state.json`. This node run-state file records each pipeline's newest run and each cursor row with its commit marker.
   *because run history and cursors live outside the store root, and a node starting cold otherwise sees neither*
-- `run-state-upload` — A push uploads its node's run state whatever digest the bucket manifest lists for it.
+- `run-state-upload` — A push uploads its node's run state regardless of the digest listed in the bucket manifest.
   *because the run state rewrites one key in place, and an interrupted push leaves an object its listed digest no longer describes*
-- `control-version` — `sync push` and `sync manifest --emit` record the default local applied control version in each node's run state; a replica uses it only as a verification input.
+- `control-version` — `sync push` and `sync manifest --emit` record the default local applied control version in each node's run state. Replicas use this version only for verification.
   *because a cold node needs the version a writer applied, while an unverified snapshot must not arm work*
-- `run-state-format` — A run state carries `format`, `1` for this layout; one whose `format` exceeds 1 contributes no run or cursor to a reader.
-- `control-artifact` — A push uploads each immutable applied control snapshot and its {{surface.apply.synced-attestation}} receipt under `<project>/control/`, then commits their digests and the project-scoped head in the bucket manifest.
+- `run-state-format` — A run state records `format`, `1` for this layout. Readers take no run or cursor from run states whose `format` exceeds 1.
+- `control-artifact` — A push uploads each immutable applied control snapshot and its {{surface.apply.synced-attestation}} receipt under `<project>/control/`. The push then commits their digests and project-scoped head in the bucket manifest.
   *A-surface*
 - `control-diverged` — A push whose signed control head does not descend from the bucket head raises `SyncControlDiverged`, names both heads and leaves the bucket head unchanged.
   *A-surface*
-- `upload-digest` — A push lists in its manifest commit the sha256 of the bytes each upload sent, whatever digest its plan read, and drops that file's digest record when the two differ.
+- `upload-digest` — A manifest commit records the sha256 of uploaded bytes, regardless of the plan's digest. If those digests differ, push removes the file's digest record.
   *because a file rewritten after the plan otherwise lists a digest no bucket object carries*
 - `transfer-width` — A push keeps up to {{store.pull.transfer-width}} uploads in flight, and commits the bucket manifest only after every upload it started has returned.
   *because the manifest lists an object only once the bucket holds it*
-- `pointer-carry` — After its manifest commit, a push publishes each local table pointer whose snapshot is whole and whose {{store.lay-out.ancestors}} name the bucket pointer's, or the bucket pointer names none, by a conditional put keeping the bucket's fence.
+- `pointer-carry` — After committing the manifest, push conditionally publishes local table pointers with complete snapshots, keeping the bucket's fence. Publication requires {{store.lay-out.ancestors}} to name the bucket pointer's snapshot, or the bucket pointer to name none.
   *because a snapshot a local fold or a build publishes reads on no other node until its pointer reaches the bucket*
 - `pointer-leased` — A push publishes no pointer for a table whose compaction lease a holder keeps unexpired; that holder publishes under its fence.
   *because the holder publishes under the fence its acquisition raised, and a publish beside it races that commit*
-- `pointer-fenced` — A local pointer carrying a fence below the bucket pointer's stays local, and the push reports it as a warning beside its commit.
+- `pointer-fenced` — If a local pointer's fence is below the bucket pointer's fence, the push keeps the pointer local and reports a warning beside its commit.
   *A-store*
-- `pointer-unrooted` — A local pointer whose snapshot's ancestry ends at a collected manifest before reaching the bucket pointer's snapshot or a root stays local, and the push reports it as a warning beside its commit.
+- `pointer-unrooted` — If snapshot ancestry ends at a collected manifest before reaching the bucket pointer's snapshot or a root, push keeps the pointer local. Push reports a warning beside its commit.
   *because a publish over a snapshot it may not descend from drops rows the bucket reaches, and a silent keep leaves every other node reading the older snapshot*
-- `pointer-recommit` — A push whose pointer publish the bucket took commits the manifest again, so a generation names a carried pointer only once the bucket's pointer holds it.
+- `pointer-recommit` — After the bucket accepts a published pointer, the push commits the manifest again. A generation therefore names a carried pointer only after the bucket pointer holds that value.
   *because a generation naming a pointer the bucket never held restores a state no node read*
-- `stranded` — A push names on stderr, per owning node, each local key another node owns that the committed bucket manifest neither lists nor tombstones, with the `CONTEXTFUL_NODE_ID` that pushes it.
+- `stranded` — Push reports local keys owned by other nodes that the committed bucket manifest neither lists nor tombstones. Stderr groups keys by owner and names the `CONTEXTFUL_NODE_ID` required to push each group.
   *because a moved store root re-derives the node id, and runs landed under the old one otherwise stay local without a message*
 - `after-run` — With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, and a failed push fails the command.
   *because a push spends bucket writes and network on every fire, and an operator syncing on a schedule pays nothing for an undeclared key*
@@ -592,57 +591,57 @@ unsettled: Which pointer does the bucket keep when a local fold's snapshot desce
 
 ## pull
 
-Fetching a bucket into a store: the digest diff, the parallel download, and the pointer written last.
+Downloading bucket files, verifying digests, advancing table pointers and restoring named generations.
 
-- `digest-mismatch` — A downloaded object, other than a run state per {{store.pull.run-state-torn}}, whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.
+- `digest-mismatch` — If a downloaded object's digest differs from its manifest entry, pull discards the object and raises `SyncObjectDigestMismatch`. Run states follow {{store.pull.run-state-torn}} instead.
   *P4*
-- `run-state-torn` — A downloaded `nodes/<node-id>/run-state.json` whose digest differs from its entry is discarded with a warning naming the key, and the pull continues without it.
+- `run-state-torn` — If a downloaded `nodes/<node-id>/run-state.json` differs from its listed digest, pull discards the file and warns with the key. Pull continues without that file.
   *because a push writes its run state before its manifest commit, and an interrupted push otherwise refuses every later pull of the bucket*
 - `identity-conflict` — A pull into a store holding a different {{store.init.store-identity}} raises `StoreIdentityConflict` before downloading files.
   *because importing another UUID lets that store's owner credential read local rows*
 - `convergence` — When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts.
 - `unconverged` — Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer.
   *P4*
-- `unconverged-resume` — A pull refused by {{store.pull.unconverged}} keeps each object it verified, so the next `sync pull` downloads only the keys still differing; no pull retries past its attempts.
+- `unconverged-resume` — A pull refused under {{store.pull.unconverged}} preserves verified objects. The next `sync pull` downloads only keys whose digests still differ. Pull does not exceed its retry attempts.
   *A-store*
-- `transfer-width` — A pull keeps up to `[sync] transfers` requests in flight while it downloads objects, default 16 requests and never below 1, and writes each object it verified before any refusal returns.
+- `transfer-width` — A pull downloads objects with up to `[sync] transfers` concurrent requests, default 16 requests with a minimum of 1. Before returning any refusal, the pull writes every object already verified.
   *because one request per round trip makes a cold store's boot grow with its object count rather than its bytes*
-- `digest-record` — A pull and a push take a local file's sha256 from the machine-local digest record when the file's size, modification time, change time and inode match the record's, and hash the file otherwise.
+- `digest-record` — Pull and push reuse a local file's machine-local sha256 record when size, modification time, change time and inode match the record. Otherwise, pull and push hash the file.
   *because rehashing every held file on each pull and push grows with the store, and setting a modification time moves the change time*
-- `pointer-last` — A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader meets a pointer ahead of its data.
+- `pointer-last` — A pull writes a table's pointer only after every Parquet part in the named snapshot exists locally. Readers therefore encounter no pointer before its data.
   *A-store*
-- `tombstone-applied` — A pull deletes the local copy of each key a tombstone names and no entry lists; a key holding no local copy is neither verified nor reported.
+- `tombstone-applied` — Pull deletes local keys named by tombstones and absent from entries. For a key without a local copy, pull performs no verification and reports nothing.
   *because a deletion that never reaches a consumer resurrects once its tombstone ages out*
-- `cold-own-keys` — A pull into a store holding no `nodes/<node-id>/run-state.json` of its own node downloads that node's keys it lacks, so a replacement host reusing the node id tombstones none of them.
+- `cold-own-keys` — If the store lacks its own `nodes/<node-id>/run-state.json`, pull downloads missing keys owned by that node. A replacement host reusing the node id therefore tombstones none of those keys.
   *because a replacement host otherwise reads none of its node's run history, and its push lists none of it as held*
-- `pointer-advance` — A pull advances a local pointer only to a bucket pointer carrying a higher fence, or the same fence and a later snapshot, and verifies every advancing table before writing any pointer.
+- `pointer-advance` — Pull advances pointers only to a higher fence, or the same fence with a later snapshot. Pull verifies every advancing table before writing any pointer.
   *A-store*
 - `schema-merge` — A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.
   *because rows landed locally carry columns the bucket's copy may lack*
-- `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the bucket into the store before their first read, and a failed pull stops the command.
+- `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every bucket table before their first read. A failed pull stops the command.
   *because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs*
-- `lazy-parts` — Under `[sync] lazy_parts = true`, a pull downloads every listed key but a table's Parquet data parts, and the store fetches each part whole when a read or fold first needs it, verified per {{store.pull.digest-mismatch}}.
+- `lazy-parts` — With `[sync] lazy_parts = true`, pull downloads all listed keys except table Parquet data parts. On first read or fold use, the store fetches each complete part and verifies the digest under {{store.pull.digest-mismatch}}.
   *A-store*
-- `part-cache` — `[sync] part_cache_bytes`, default 8 GiB, bounds the fetched parts held locally; past it, the least recently read one that no statement or fold holds leaves the disk.
+- `part-cache` — `[sync] part_cache_bytes`, default 8 GiB, bounds locally fetched parts. Above that bound, the cache deletes the least recently read part that no statement or fold holds.
   *A-store*
-- `part-accounting` — Each verified lazy download counts once toward {{store.pull.part-cache}} as it reaches disk, through sibling fetch failures; reopening adopts receipt-listed parts when the cache index is missing, without bucket reads or receipt-free tree scans.
+- `part-accounting` — Each verified lazy download counts once toward {{store.pull.part-cache}} upon reaching disk, despite other fetch failures. If the cache index is missing, reopening adopts receipt-listed parts without bucket reads or receipt-free tree scans.
   *because a partial acquisition and a lost index leave completed downloads subject to eviction*
-- `part-collected` — A part {{store.pull.lazy-parts}} needs that the bucket no longer holds raises `SyncPartCollected`, naming the part and its snapshot, and the next pull advances the pointer past it.
+- `part-collected` — If the bucket lacks a part required by {{store.pull.lazy-parts}}, the store raises `SyncPartCollected`, naming the part and snapshot. The next pull advances the pointer past that snapshot.
   *because retention collects a superseded snapshot's parts while a container still holding its pointer reads them*
-- `generation` — `contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads each listed key in scope at its listed digest, and writes exactly that generation's pointers, whatever their fence.
-- `generation-list` — `contextful sync generations` lists each `gen-<N>.json` the bucket holds, ascending, with its `committed_at`, `committed_by` and the project's entry and tombstone counts, printing `-` for a stamp the manifest lacks.
+- `generation` — `contextful sync pull --generation <N>` reads `gen-<N>.json` instead of the bucket manifest. The pull downloads listed keys in scope at their listed digests and writes exactly that generation's pointers regardless of fence.
+- `generation-list` — `contextful sync generations` lists bucket `gen-<N>.json` files in ascending order. Each entry includes `committed_at`, `committed_by`, and the project's entry and tombstone counts. Missing stamps print as `-`.
   *because choosing a generation to restore needs the last commit before an unwanted tombstone, and generation numbers alone carry no time*
 - `generation-absent` — A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.
   *because a restore falling back to another generation reads a state nobody named*
-- `generation-diverged` — A generation pull into a store holding a syncable file in scope that the generation does not list raises `SyncGenerationDiverged`, naming the file, and writes nothing.
+- `generation-diverged` — If a local syncable file in scope is absent from the generation, generation pull raises `SyncGenerationDiverged` and names the file. The pull writes nothing.
   *because a kept unlisted run adds rows the generation never held, and deleting it loses unpushed work*
-- `generation-schema` — A generation pull takes each `schema.json` as the bucket holds it, merged per {{store.pull.schema-merge}}, never refusing on its generation digest.
+- `generation-schema` — A generation pull takes the bucket's current `schema.json` and merges under {{store.pull.schema-merge}}. A differing generation digest causes no refusal.
   *because the lattice keeps every column an earlier generation carried, and the merged copy replaces the old one in the bucket*
-- `generation-run-state` — A generation pull holds no `nodes/<node-id>/run-state.json` to {{store.pull.generation-diverged}}: one the generation does not list stays as it is, and any other unlisted file under `nodes/` meets that refusal.
+- `generation-run-state` — Generation pull exempts `nodes/<node-id>/run-state.json` from {{store.pull.generation-diverged}}, preserving run-state files absent from the generation. Other unlisted files under `nodes/` meet that refusal.
   *because a run state summarizes history outside the store root, and a restore predating it otherwise refuses every node that pushed since*
-- `run-state-cursor` — A run opening where a pulled run state records a commit marker for its pipeline and table newer than every local one resumes from that marker's cursor.
+- `run-state-cursor` — At run open, a run resumes from a pulled run state's cursor when its pipeline and table commit marker is newer than every local marker.
   *because a collected run takes its manifest's cursor out of the bucket, and a cold node otherwise re-reads the source from its start*
-- `control-head` — A pull downloads the bucket manifest's project-scoped control head, its snapshot and receipt ancestry under their listed digests, leaving the local applied pointer untouched for {{surface.reconcile.pulled-control}}.
+- `control-head` — Pull downloads the bucket manifest's project-scoped control head, snapshot and receipt ancestry at their listed digests. The local applied pointer stays unchanged for {{surface.reconcile.pulled-control}}.
   *A-surface*
 
 unsettled: Under {{store.pull.lazy-parts}} a pointer lands before its parts are home: does {{store.pull.pointer-last}} hold the snapshot manifest and its listed digests alone, and does {{store.pull.before-run}} end once every table's metadata is home? owner: store affects: store.pull
@@ -679,25 +678,25 @@ sequenceDiagram
 
 ## probe
 
-Measuring a backend's conditional-write behavior with a live sentinel, and the coordination mode that outcome resolves.
+Testing conditional writes with a sentinel object and selecting the backend's coordination mode.
 
 - `inconclusive` — An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated.
   *A-store*
 - `unproven` — Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push.
   *A-store*
-- `sentinel` — The probe creates a sentinel under `_contextful/cas-probe/` and demonstrates `cas` when a second create and a stale `If-Match` both fail and a current `If-Match` replaces it, deleting the sentinel after.
-- `network-volume` — A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves `single-writer` without the sentinel, naming the mount type, and a declared `cas` there meets {{store.probe.unproven}}.
+- `sentinel` — The probe creates a sentinel under `_contextful/cas-probe/`. The probe demonstrates `cas` when a second create and stale `If-Match` fail, while a current `If-Match` replaces the sentinel. The probe then deletes the sentinel.
+- `network-volume` — For filesystem buckets, mount types outside apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs and overlay resolve `single-writer` without a sentinel. The result names the mount type. A declared `cas` there meets {{store.probe.unproven}}.
   *because the bucket's advisory lock is not a guarantee across the clients of a network share, and a sentinel run from one client cannot observe another*
 
 ## merge
 
-Reconciling one bucket manifest between writers: per-entry ownership, tombstones, the rebase loop and the consumer-facing section.
+Merging bucket manifests across writers, verifying tombstones and retrying conditional manifest commits.
 
 - `tombstone-owner` — A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.
   *A-store*
-- `tombstone-signed` — A push signs each tombstone it writes with its node's issuer key, recording `signer` and `signature` over the key, owner and `deleted_at`; a node holding no issuer key writes it unsigned.
+- `tombstone-signed` — Push signs each tombstone with the node's issuer key, recording `signer` and `signature` over the key, owner and `deleted_at`. A node without an issuer key writes unsigned tombstones.
   *A-store*
-- `tombstone-unverified` — A tombstone unsigned, failing its signature, or signed by a key the key-set ledger does not record as verifying at its `deleted_at` raises `SyncTombstoneUnverified`; a merge keeps the entry it names and a pull deletes nothing.
+- `tombstone-unverified` — Unsigned tombstones, invalid signatures, or keys absent from the key-set ledger's verifying set at `deleted_at` raise `SyncTombstoneUnverified`. Merge preserves the named entry; pull deletes nothing.
   *A-store*
 - `tombstone-ttl` — A tombstone leaves the manifest 30 d after its `deleted_at`.
 - `retries` — `[sync] push_retries` bounds consecutive re-commit rounds whose re-read manifest carries no newer generation than the round before, defaulting to 5 attempts.
@@ -706,30 +705,30 @@ Reconciling one bucket manifest between writers: per-entry ownership, tombstones
   *A-store*
 - `exhausted` — Exhausting {{store.merge.retries}} or {{store.merge.round-ceiling}} raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.
   *A-store*
-- `cursor-recency` — Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit.
+- `cursor-recency` — Resolving a cursor by last-write time raises `SyncCursorConflict`. A cursor resolves through its commit.
   *A-run*
-- `scoped-union` — A merge takes each local entry this writer owns or no node owns, and every other remote entry; a remote entry it owns leaves with a tombstone only where {{store.merge.held-record}} lists it and the store no longer holds it.
+- `scoped-union` — A merge takes local entries owned by this writer or unowned, and all other remote entries. It tombstones a writer-owned remote entry only when {{store.merge.held-record}} lists the key and the store lacks the file.
   *A-store*
-- `held-record` — A push records in `.sync-held.json`, under its node id, each owned key the store holds, adding them before its commit and replacing the node's keys after; a pull holding the push guard adds each such key the bucket manifest lists.
+- `held-record` — Push records locally held owned keys under its node id in `.sync-held.json`: adding before commit, replacing that node's keys after. Pull holding the push guard adds each such key listed in the bucket manifest.
   *A-store*
-- `held-absent` — A store whose `.sync-held.json` names no keys for its node reads as holding every remote key that node owns when an earlier push left its `.push.lock`, and none otherwise.
+- `held-absent` — If `.sync-held.json` lists no keys for the node, a surviving `.push.lock` means the store holds every remote node-owned key. Without that lock, the store holds none.
   *A-store*
 - `held-unreadable` — An unreadable `.sync-held.json` raises `SyncHeldRecordUnreadable` without granting deletion authority or replacing the record.
   *because corruption establishes no ownership and a replacement discards other nodes' entries*
-- `ownership` — A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.
+- `ownership` — A key names its owner through the node in its run directory, request-ledger filename, commit-log directory or run-state directory. Every other key is unowned and propagates no deletion.
   *A-store*
 
 ## lease
 
-Single-writer exclusion over a pipeline or a table's compaction: two implementations, the fence, and the commit log carrying the cursor.
+Exclusive pipeline and compaction leases, fencing values and cursor commits in the commit log.
 
-- `ttl` — A lease is granted for 10 min.
+- `ttl` — A lease grants ownership for 10 min.
 - `renewal` — A holder renews every 200 s by `If-Match` replace on the ETag it holds.
 - `clock-skew` — Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.
   *because correctness rests on the fence, and the skew bound only sets how early a holder stops committing*
-- `held` — A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick.
+- `held` — If a run finds an unexpired lease, the engine raises `LeaseHeld`, names the holder and expiry, and skips the run. The engine retries the run at the next reconciliation tick.
   *A-store*
-- `stale-fence` — A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises `LeaseFenced`, and the run or snapshot it carried stays unreadable.
+- `stale-fence` — If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.
   *A-store*
 - `not-held` — Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.
   *A-store*
@@ -737,13 +736,13 @@ Single-writer exclusion over a pipeline or a table's compaction: two implementat
   *A-run*
 - `local-node` — A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.
   *P3*
-- `acquire` — Acquisition creates the lease object under `If-None-Match`, or replaces an expired or released one under `If-Match` on its ETag, the fence one past the object's.
+- `acquire` — Acquisition creates the lease object under `If-None-Match` or replaces an expired or released object under `If-Match` on its ETag. The acquired fence is one above the object's fence.
   *A-store*
 - `pointer-fence` — Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.
   *A-store*
-- `network-volume` — Taking a compaction lease on a bucket {{store.probe.network-volume}} resolves to `single-writer` meets {{store.probe.unproven}} naming the mount type, and writes no lease object and no pointer fence.
+- `network-volume` — A compaction lease on a bucket resolving `single-writer` under {{store.probe.network-volume}} meets {{store.probe.unproven}}, naming the mount type. Acquisition writes no lease object or pointer fence.
   *because a conditional put holding on one machine only lets two machines each take the lease*
-- `commit-log` — Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`, and an acquisition creates one carrying its fence; a manifest marked `logged` is readable once that log records it.
+- `commit-log` — Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`. Acquisition creates an entry carrying its fence. A manifest marked `logged` becomes readable when that log records the manifest.
   *A-store*
 
 ```mermaid
@@ -759,8 +758,7 @@ stateDiagram-v2
 
 ## Shapes
 
-Each example names the `contextful_core::store` type it serializes, and reads into that
-type and writes back unchanged.
+Each example names the `contextful_core::store` type it serializes. Each example parses into that type and writes back unchanged.
 
 The store tree and its bucket mirror, drawn by `lay_out::TableLayout`:
 

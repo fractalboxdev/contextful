@@ -8,8 +8,9 @@ use contextful_core::store::lay_out::{
 use contextful_core::store::index::IndexEntry;
 use contextful_core::store::StoreError;
 
-/// A snapshot id is `snapshot-` followed by a nanosecond value zero-padded to 20 chars, equal to the greater of the commit instant and the previous id plus one.
-// spec: store.lay-out.snapshot-id@37b97c00
+/// A snapshot id is `snapshot-` followed by a nanosecond value zero-padded to 20 chars. The value is the greater of
+/// the commit instant and the previous id plus one.
+// spec: store.lay-out.snapshot-id@85e07203
 #[test]
 fn snapshot_id_is_the_greater_of_the_commit_instant_and_the_previous_plus_one() {
     let first = SnapshotId::next(at("2025-03-15T16:00:00Z"), None);
@@ -91,9 +92,9 @@ fn the_snapshot_manifest_and_pointer_decode_in_their_documented_shape() {
     assert_eq!(ptr.snapshot_id, snap.snapshot_id);
 }
 
-/// A snapshot's `_manifest.json` carries `ancestors`: its parent, then the parent's `ancestors`, at most 256 entries; a
-/// root carries none, and a parent without `ancestors` leaves the field absent.
-// spec: store.lay-out.ancestors@24f6ae22
+/// A snapshot's `_manifest.json` records `ancestors`: its parent followed by the parent's `ancestors`, at most 256
+/// entries. A root records none. If the parent lacks `ancestors`, the child omits the field.
+// spec: store.lay-out.ancestors@36db6b28
 #[test]
 fn a_snapshot_records_its_ancestors_nearest_first_up_to_the_bound() {
     assert_eq!(SNAPSHOT_ANCESTORS_MAX, 256);

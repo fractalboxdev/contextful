@@ -74,7 +74,7 @@ fn keys(v: &Value) -> Vec<&str> {
 }
 
 /// `contextful query --json <sql>` prints the one projection for a statement over no store.
-// spec: read.query.operator-verb@50c0b158
+// spec: read.query.operator-verb@df031ce6
 #[test]
 fn a_statement_prints_the_one_projection() {
     let dir = tempfile::tempdir().unwrap();
@@ -83,7 +83,7 @@ fn a_statement_prints_the_one_projection() {
 }
 
 /// The command line and the tool protocol serialize one projection for the same statement.
-// spec: read.respond.one-projection@2ab01c50
+// spec: read.respond.one-projection@048a0e38
 #[test]
 fn the_command_line_and_the_tool_protocol_print_one_projection() {
     let p = project();
@@ -97,7 +97,7 @@ fn the_command_line_and_the_tool_protocol_print_one_projection() {
 }
 
 /// Operator text runs raw: a table function the guard refuses to a token caller runs here.
-// spec: read.guard.statement-provenance@a99896a0
+// spec: read.guard.statement-provenance@7ff3ca1f
 #[test]
 fn operator_text_runs_raw_where_token_text_is_gated() {
     let p = project();
@@ -116,7 +116,7 @@ fn operator_text_runs_raw_where_token_text_is_gated() {
 }
 
 /// `--project` registers every table under its bare name; a quiet table reads as zero rows.
-// spec: read.query.project-relations@858767b4
+// spec: read.query.project-relations@dcc1f8fd
 #[test]
 fn a_project_registers_every_table_under_its_bare_name() {
     let p = project();
@@ -128,7 +128,7 @@ fn a_project_registers_every_table_under_its_bare_name() {
 }
 
 /// Under `--incognito`, or a project whose `[project.zone]` sets `incognito_default = true`, each relation passes the zone step at `local:device`: an excluded table yields no row, an excluded column arrives null, and the restriction block reports both.
-// spec: read.query.incognito@6d3aade8
+// spec: read.query.incognito@d48879c5
 #[test]
 fn an_incognito_query_passes_the_zone_step_at_local_device() {
     let p = project();
@@ -189,7 +189,7 @@ fn the_verb_prints_only_the_json_projection() {
 }
 
 /// `--limit` bounds delivered rows and sets `truncated` from the over-fetched probe row.
-// spec: read.query.limit-truncates@f575d33b
+// spec: read.query.limit-truncates@3d382ada
 #[test]
 fn a_limit_truncates_exactly() {
     let dir = tempfile::tempdir().unwrap();

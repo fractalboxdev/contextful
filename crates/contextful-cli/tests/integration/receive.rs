@@ -137,7 +137,7 @@ fn a_delivered_credential_lands_masked_and_no_stored_byte_holds_it() {
 }
 
 /// A body past `max_batch_bytes` raises `ReceiveBatchTooLarge`, non-retryable, and no table lands.
-// spec: run.land.receive-batch-too-large@6de6256c
+// spec: run.land.receive-batch-too-large@9abc18fd
 #[test]
 fn a_body_one_byte_past_the_bound_lands_nothing() {
     let body = line("spans", serde_json::json!({ "id": "s1" }));
@@ -154,7 +154,7 @@ fn a_body_one_byte_past_the_bound_lands_nothing() {
 
 /// A batch arriving while every queue slot of its pipeline is held raises `ReceiveBackpressure`, retryable, before
 /// reading its body, and its answer carries a 1 s retry interval.
-// spec: run.land.receive-backpressure@92c0c916
+// spec: run.land.receive-backpressure@8d2851fd
 // spec: run.land.receive-retry-after@7811fd03
 #[test]
 fn a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second() {
@@ -185,7 +185,7 @@ fn a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second() {
 
 /// One group of a pipeline's batches lands at a time: a batch whose body arrived waits while another holds the land
 /// lock, and commits once it is released.
-// spec: run.land.receive-queue@b983066a
+// spec: run.land.receive-queue@d3411dcd
 #[test]
 fn a_batch_waits_for_the_land_lock_another_batch_holds() {
     let dir = receiving(4096, 2);
@@ -287,7 +287,7 @@ fn a_scheduled_receive_pipeline_fails_validation() {
 
 /// A batch key replays only within the source's `key_retention_secs` of its first attempt; a later batch under it
 /// raises `ReceiveBatchKeyExpired`, non-retryable, and no row lands.
-// spec: run.land.receive-key-expired@89a7069a
+// spec: run.land.receive-key-expired@6726571a
 #[test]
 fn a_resend_past_the_key_retention_window_is_refused_and_lands_nothing() {
     let dir = receiving(4096, 2);
@@ -310,7 +310,7 @@ fn a_resend_past_the_key_retention_window_is_refused_and_lands_nothing() {
 
 /// A credential lacking `write` over one declared table of the pipeline raises `ReceiveWriteNotGranted` before the
 /// body is read: the receiver exits while its stdin stays open, and no table lands.
-// spec: run.land.receive-write-not-granted@51a4ea13
+// spec: run.land.receive-write-not-granted@c593ffde
 #[test]
 fn a_token_without_write_on_one_table_is_refused_before_the_body_is_read() {
     let dir = receiving(4096, 2);

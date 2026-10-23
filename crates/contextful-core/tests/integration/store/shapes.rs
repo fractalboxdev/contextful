@@ -167,8 +167,9 @@ fn the_table_layout_draws_every_path_of_the_tree() {
     assert_eq!(t.staging(id), format!("tables/<t>/data/snapshots/{id}.staging"));
 }
 
-/// An `indexes` entry whose kind or fields this build does not read parses as unrecognised: the manifest stays readable, the entry answers no probe, and a rewrite keeps it byte for byte.
-// spec: store.lay-out.unrecognised-index-entry@0fb5a1dc
+/// An `indexes` entry with an unsupported kind or fields parses as unrecognised. The manifest remains readable, probes
+/// ignore the entry, and rewrites preserve the entry byte for byte.
+// spec: store.lay-out.unrecognised-index-entry@15e40712
 #[test]
 fn snapshot_index_entries_are_typed_and_an_unrecognised_entry_survives() {
     let v = serde_json::json!({

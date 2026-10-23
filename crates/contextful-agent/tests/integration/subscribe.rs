@@ -23,7 +23,7 @@ fn runs(page: &Value) -> Vec<&str> {
 
 /// `context.subscribe` answers one page: the notifications the replay from `after` sends,
 /// and `after`, each table's last delivered position, which the next call passes back.
-// spec: read.subscribe.tool-poll@a3ad75d5
+// spec: read.subscribe.tool-poll@5bb10a39
 #[test]
 fn a_subscription_pages_committed_runs_from_the_returned_position() {
     let f = fixture();
@@ -82,7 +82,7 @@ fn a_subscription_under_a_horizon_is_refused() {
 
 /// A subscription naming a table outside the credential's grant refuses as an unknown
 /// relation, whether or not the table exists, and sends no notification of a granted one.
-// spec: read.subscribe.ungranted-table@406cac71
+// spec: read.subscribe.ungranted-table@4cb423cb
 #[test]
 fn a_subscription_to_an_ungranted_table_is_refused() {
     let f = fixture();

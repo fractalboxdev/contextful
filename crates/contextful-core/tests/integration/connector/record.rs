@@ -82,7 +82,7 @@ fn a_record_names_each_consuming_surface_and_its_binding() {
 }
 
 /// Grants an operator has not established are unknown.
-// spec: connector.record.unverified-scope-is-marked@1652f6ce
+// spec: connector.record.unverified-scope-is-marked@e40c1694
 #[test]
 fn an_absent_grants_key_reads_as_unknown() {
     let r = read_records(FILE, &manifest("[secret.vendor-token]\ndescription = \"key\"\n"), &bound(&["vendor-token"])).unwrap().remove("vendor-token").unwrap();
@@ -92,7 +92,7 @@ fn an_absent_grants_key_reads_as_unknown() {
 
 /// A misspelled name, an unknown key, a mistyped value and a credential-shaped string each
 /// refuse, naming the file, the name and the key path, never the value.
-// spec: connector.record.record-rejected@eb295f64
+// spec: connector.record.record-rejected@fbb486c1
 #[test]
 fn a_record_describing_nothing_or_holding_a_bad_key_is_refused_without_its_value() {
     let sentinel = "sentinel-value-0042";
@@ -118,7 +118,7 @@ fn a_record_describing_nothing_or_holding_a_bad_key_is_refused_without_its_value
 }
 
 /// A committed record holds descriptive metadata only, and no value is needed to record a binding.
-// spec: connector.record.metadata-storage@f43dea8c
+// spec: connector.record.metadata-storage@7b04d3a2
 #[test]
 fn a_record_holds_metadata_and_never_a_value() {
     for key in ["value", "ciphertext", "secret"] {
@@ -146,7 +146,7 @@ description = "describes secret://not-a-binding"
 }
 
 /// Days remaining is computed for a dated expiry alone; an absent expiry is unknown.
-// spec: connector.record.expiry-unknown@75b358a1
+// spec: connector.record.expiry-unknown@ebf0bf9b
 #[test]
 fn an_absent_expiry_is_unknown_and_carries_no_days_remaining() {
     let row = inventory_row("vendor-token", vec!["env".into()], None, Vec::new(), None, at(NOW));

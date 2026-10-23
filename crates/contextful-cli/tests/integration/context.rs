@@ -58,8 +58,10 @@ fn a_retried_land_acknowledges_the_replay_and_refuses_other_rows() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("StoreRunConflict"), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
-/// A pass reports each table on one line: folded, `indexes-built` naming each sidecar it built with no run folded, nothing-landed once no run waits and every declared sidecar is current, or failed; a nothing-landed table does not stop the pass.
-// spec: store.fold.result@440444a7
+/// A pass reports folded, `indexes-built`, nothing-landed or failed on one line per table. `indexes-built` names
+/// sidecars built without folding runs. Nothing-landed means no pending runs and every declared sidecar current; the
+/// pass continues.
+// spec: store.fold.result@67b753db
 #[test]
 fn a_scheduled_pass_reports_every_table_and_continues_past_nothing_landed() {
     let p = project();
@@ -218,8 +220,9 @@ fn scan_prints_files_relation_and_bounds() {
     assert!(unbounded.get("contextful.bounds").is_none());
 }
 
-/// Operator-surface table metadata carries column count and backing file list; a row count is an ordinary count query, never a stored field.
-// spec: read.respond.operator-metadata@e74a259a
+/// Operator table metadata includes column count and backing files. A row count comes from a count query rather than a
+/// stored field.
+// spec: read.respond.operator-metadata@f8f7293e
 #[test]
 fn scan_reports_the_column_count_and_files_but_no_row_count() {
     let p = project();
@@ -237,8 +240,9 @@ fn scan_reports_the_column_count_and_files_but_no_row_count() {
     assert!(fields.keys().all(|k| !k.contains("row")), "{v}");
 }
 
-/// `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from the pointers, the manifests they reach, every committed run manifest and every `schema.json`. It is never synced and commits nothing.
-// spec: store.lay-out.derived-catalog@da56c778
+/// `derived.sqlite` is a cache. `contextful context rebuild-catalog` reconstructs the cache from pointers, reachable
+/// manifests, every committed run manifest and every `schema.json`. Sync excludes the cache, which commits nothing.
+// spec: store.lay-out.derived-catalog@710435ba
 #[test]
 fn rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree() {
     use contextful_core::store::catalog::{DerivedCatalog, DerivedRows};
@@ -304,8 +308,9 @@ fn subscribed(lines: &str) -> Vec<String> {
         .collect()
 }
 
-/// `contextful context subscribe <table>... [--after <table>=<run-id>/<node-id>] [--follow]` prints one JSON notification per line; without `--follow` it ends once the replay is sent.
-// spec: read.subscribe.operator-verb@6e2840be
+/// `contextful context subscribe <table>... [--after <table>=<run-id>/<node-id>] [--follow]` prints one JSON
+/// notification per line. Without `--follow`, the command ends after sending the replay.
+// spec: read.subscribe.operator-verb@ce9326a2
 #[test]
 fn subscribe_prints_the_replay_after_a_position_and_ends() {
     let p = project();
@@ -325,8 +330,9 @@ fn subscribe_prints_the_replay_after_a_position_and_ends() {
     assert!(stderr.contains("SubscriptionPositionUnavailable") && stderr.contains("run-1/ingest-a"), "{stderr}");
 }
 
-/// A subscription reads run manifests and commit logs on disk, never the {{run.project.emission-never-blocks}} channel, so a run one process commits reaches a subscriber in another.
-// spec: read.subscribe.durable-source@a8b2ce59
+/// Subscriptions read on-disk run manifests and commit logs rather than the {{run.project.emission-never-blocks}}
+/// channel. Subscribers receive runs committed by other processes.
+// spec: read.subscribe.durable-source@d1bd5c8d
 #[test]
 fn a_following_subscriber_receives_a_run_another_process_lands() {
     use std::io::{BufRead, BufReader};

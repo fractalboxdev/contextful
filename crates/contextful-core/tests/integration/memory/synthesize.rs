@@ -9,8 +9,9 @@ fn valid() -> String {
     .to_string()
 }
 
-/// A schema-invalid response is re-prompted with its validation feedback, at most 3 attempts per batch in total.
-// spec: read.synthesize.extract-attempts@6dfacc5d
+/// For a schema-invalid response, the synthesis pass retries extraction with validation feedback. Each batch receives
+/// at most 3 attempts in total.
+// spec: read.synthesize.extract-attempts@99043d60
 #[test]
 fn an_invalid_response_is_retried_with_feedback_three_attempts_in_all() {
     assert_eq!(EXTRACT_ATTEMPTS, 3);

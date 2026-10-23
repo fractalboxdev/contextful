@@ -52,8 +52,10 @@ fn serve(dir: &Path, args: &[&str], token: Option<&str>, input: &[Value]) -> Out
     child.wait_with_output().unwrap()
 }
 
-/// The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads.
-// spec: read.embed.build-identity@df3e317e
+/// The handshake reports linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`,
+/// `wasm`) and interfaces (`http`, `eval`, `otlp`). These names derive from the same feature declarations as version
+/// output.
+// spec: read.embed.build-identity@70b84b1a
 #[test]
 fn the_handshake_reports_what_this_build_links() {
     let (dir, public, token) = project();

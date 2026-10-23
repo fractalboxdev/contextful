@@ -24,7 +24,7 @@ fn expected() -> BTreeMap<String, String> {
 
 /// A run's commit-phase row, and its row on the failure arm, carry `credential_providers`,
 /// names only; a row recorded without the field decodes as empty.
-// spec: connector.record.provider-attribution@f8f3a804
+// spec: connector.record.provider-attribution@0438e9fa
 #[test]
 fn the_closing_row_maps_each_hydrated_name_to_its_answering_adapter() {
     let rig = Rig::new();

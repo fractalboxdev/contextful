@@ -68,9 +68,9 @@ fn bytes_that_do_not_hash_to_the_pin_are_refused() {
     }
 }
 
-/// Two switches require a pin on a local artifact, composed by disjunction: the store-wide key
-/// `[connector] require_pin` in the store's `config.toml`, and the connector manifest's `require_wasm_pin`.
-// spec: connector.package.pin-requirement@3a652d24
+/// Either of two switches requires a local artifact pin: store-wide `[connector] require_pin` in the store's
+/// `config.toml`, or `require_wasm_pin` in the connector manifest.
+// spec: connector.package.pin-requirement@b01298d4
 #[test]
 fn either_switch_requires_a_local_pin() {
     let local = Artifact::parse("connectors/vendor.wasm", None).unwrap();

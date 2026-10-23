@@ -82,9 +82,9 @@ fn a_command_that_is_no_executable_file_refuses() {
     }
 }
 
-/// A path-form `command[0]` without `sha256` raises `DeriveUnpinnedPath`, quoting the digest just computed; a
-/// bare search-path name carries none.
-// spec: run.exec.unpinned-path@75300ef2
+/// A path-form `command[0]` without `sha256` raises `DeriveUnpinnedPath`, quoting the computed digest. A bare search-
+/// path name carries no digest.
+// spec: run.exec.unpinned-path@a57efe0c
 #[test]
 fn a_path_form_command_without_a_digest_refuses_quoting_it() {
     let dir = tempfile::tempdir().unwrap();
@@ -136,8 +136,8 @@ fn the_chain_runs_1800_s_by_default_and_the_declared_bound_otherwise() {
     assert_eq!(chain(dir.path(), "[derive.reader]\ntimeout_secs = 7\n[derive.reader.engine]\ncommand = [\"cat\"]\n").unwrap().deadline.as_secs(), 7);
 }
 
-/// A chain outrunning its deadline raises `DeriveStepTimeout`, naming the running step.
-// spec: run.exec.deadline-elapsed@f4347448
+/// If a chain exceeds its deadline, the executor raises `DeriveStepTimeout`, naming the running step.
+// spec: run.exec.deadline-elapsed@dd81df20
 #[test]
 fn a_chain_outrunning_its_deadline_refuses_naming_the_step() {
     let dir = tempfile::tempdir().unwrap();
@@ -159,9 +159,9 @@ fn a_step_captures_8_mib_by_default_and_the_declared_bound_otherwise() {
     assert_eq!(chain(dir.path(), "[derive.reader]\nmax_output_bytes = 512\n[derive.reader.engine]\ncommand = [\"cat\"]\n").unwrap().max_output, 512);
 }
 
-/// Output past the bound is counted and discarded, never buffered; crossing it kills the step and raises
-/// `DeriveOutputCap` with the byte count, draining continuing so the child never blocks.
-// spec: run.exec.output-cap@004fc225
+/// The executor counts and discards output past the bound without buffering. Crossing the bound kills the step and
+/// raises `DeriveOutputCap` with the byte count. The executor continues draining so the child does not block.
+// spec: run.exec.output-cap@b69487d9
 #[test]
 fn output_past_the_bound_stops_the_step_with_the_byte_count() {
     let dir = tempfile::tempdir().unwrap();
@@ -331,7 +331,7 @@ fn a_link_preview_refuses_non_http_schemes_and_address_literals_before_a_socket(
 
 // spec: run.fetch.redirect-chain@d274af14
 // spec: run.fetch.charset@71537e22
-// spec: run.fetch.not-utf8@bcfcbecf
+// spec: run.fetch.not-utf8@f7995519
 #[test]
 fn a_link_preview_bounds_redirects_and_refuses_non_utf8_documents() {
     let site = Server::start(|r| {
@@ -542,7 +542,7 @@ fn a_preprocess_step_runs_only_while_its_condition_holds() {
 
 /// A local media value resolves, canonicalized, under the binding's `media_root`, the working directory by
 /// default; a path escaping it raises `DeriveMediaOutsideRoot`, failing that unit alone.
-// spec: run.bind.media-root@8ff61916
+// spec: run.bind.media-root@ddd16c7d
 #[test]
 fn media_outside_the_root_fails_that_unit_alone() {
     let top = tempfile::tempdir().unwrap();
@@ -591,9 +591,9 @@ fn a_stopped_chain_lands_no_row_and_the_pull_ends_canceled() {
     assert!(started.elapsed().as_secs() < 10);
 }
 
-/// Each spawn re-reads its step's binary and runs it only while those bytes match the digest resolved at run
-/// start, else {{run.exec.digest-mismatch}}.
-// spec: run.exec.verified-spawn@f4827a6e
+/// Before each spawn, the executor re-reads the step's binary and compares its bytes with the digest resolved at run
+/// start. A mismatch follows {{run.exec.digest-mismatch}}; matching bytes permit execution.
+// spec: run.exec.verified-spawn@afe9debc
 #[test]
 fn a_binary_replaced_after_resolution_never_runs() {
     let dir = tempfile::tempdir().unwrap();
@@ -828,9 +828,9 @@ impl TableReader for Counted {
     }
 }
 
-/// A parent table holding at most 1000000 rows is selected by an in-memory scan; a larger one streams through the
-/// read engine in batches, so selection holds one batch in memory.
-// spec: run.select.parent-scan@0dc2f678
+/// The derive source scans parent tables of at most 1000000 rows in memory. For larger tables, the source streams
+/// through the read engine in batches, holding one batch in memory.
+// spec: run.select.parent-scan@f8394c85
 #[test]
 fn a_parent_table_past_a_million_rows_streams_in_batches() {
     let dir = tempfile::tempdir().unwrap();
@@ -976,9 +976,9 @@ impl TableReader for Landing {
     }
 }
 
-/// A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each
-/// joined table read once after selection and before the first unit derives, so a row landing later is absent.
-// spec: run.select.unit-parents@c80f668d
+/// A host task reads each joined table once after selection and before processing its first unit. Each unit carries
+/// every row whose join-column value equals that unit's key. Rows landed after that read are absent.
+// spec: run.select.unit-parents@905c5cc0
 #[test]
 fn a_host_unit_carries_its_joined_rows_read_once_before_it_derives() {
     use contextful_connectors::derive::HostDerive;

@@ -106,7 +106,7 @@ fn independently_admitted_equivalent_sessions_reuse_the_native_connection() {
     assert_eq!(empty.rows, [Vec::<Value>::new()]);
 }
 
-// spec: read.respond.engine-composed-ceiling@dfaf65de
+// spec: read.respond.engine-composed-ceiling@4ba35425
 #[test]
 fn engine_composed_rows_past_the_face_ceiling_arrive_complete_without_a_declared_ceiling() {
     let r = Reads::new();

@@ -117,8 +117,9 @@ fn describe_reports_declared_hints_on_existing_columns_only() {
     assert!(columns.iter().find(|c| c["name"] == "title").unwrap().get("hint").is_none());
 }
 
-/// A session's connection issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}, once per connection; statements reuse it under {{read.cache.session-pool}}. No view directory exists on disk.
-// spec: read.register.connection-views@502d9fca
+/// Each session connection creates or replaces one view per manifest table, scanning {{store.reconcile.explicit-file-
+/// list}}. Statements reuse these views under {{read.cache.session-pool}}. No view directory exists on disk.
+// spec: read.register.connection-views@5da43eae
 #[test]
 fn a_session_connection_registers_views_over_the_current_file_lists() {
     let r = Reads::new();
@@ -133,8 +134,9 @@ fn a_session_connection_registers_views_over_the_current_file_lists() {
     assert_eq!(ids, [json!("v1"), json!("v2")]);
 }
 
-/// The executor is an embedded columnar SQL engine, linked into every profile that serves reads, reading Parquet natively in standard SQL. An external process reads the same files with the engine uninstalled.
-// spec: read.register.engine@54a1a0b1
+/// Every profile serving reads links an embedded columnar SQL engine that reads Parquet with standard SQL. External
+/// processes read the same files without that embedded engine.
+// spec: read.register.engine@f0b7d667
 #[test]
 fn the_embedded_engine_reads_the_parquet_an_external_reader_opens() {
     let r = Reads::new();
@@ -147,8 +149,9 @@ fn the_embedded_engine_reads_the_parquet_an_external_reader_opens() {
     assert_eq!(reader.metadata().file_metadata().num_rows(), 1);
 }
 
-/// A quiet table registers as {{store.declare.empty-run}}. A read of it returns an empty result, never a missing-relation fault.
-// spec: read.register.quiet-table@ba45ce66
+/// A quiet table registers as {{store.declare.empty-run}}. Reading that table returns an empty result rather than a
+/// missing-relation fault.
+// spec: read.register.quiet-table@96ae2cbe
 #[test]
 fn a_quiet_table_reads_empty() {
     let r = Reads::new();
@@ -161,8 +164,9 @@ fn a_quiet_table_reads_empty() {
     assert!(s.reads("research/quiet") && s.reads("research/notes"));
 }
 
-/// A bare table name in any read — a caller statement, a template body, a ranking arm, a file preview — resolves to the caller's registered relation, which carries the caller's restriction.
-// spec: read.register.bare-name@e78fb8b8
+/// In caller statements, templates, ranking queries and file previews, a bare table name resolves to the caller's
+/// registered relation. That relation carries the caller's restriction.
+// spec: read.register.bare-name@87c1aba1
 #[test]
 fn every_bare_name_resolves_to_the_callers_relation() {
     let r = Reads::new();
@@ -191,7 +195,7 @@ fn every_bare_name_resolves_to_the_callers_relation() {
     assert_eq!(previewed, acme);
 }
 
-// spec: store.bound-time.beneath-enforcement@7d056563
+// spec: store.bound-time.beneath-enforcement@d2c06cd4
 #[test]
 fn historical_retrieval_keeps_row_and_column_enforcement() {
     let r = Reads::new();
@@ -332,8 +336,9 @@ fn the_published_limit_is_the_applied_one() {
     assert_eq!((vendor_rows.rows.len(), vendor_rows.truncated), (4, false));
 }
 
-/// A per-table row ceiling published as `limits.max_rows` bounds rows delivered, applied at execution with an over-fetch of 1 rows. It bounds no work performed.
-// spec: read.respond.row-ceiling@fa929ed9
+/// The executor applies each table's `limits.max_rows` to delivered rows. Truncation detection uses an extra-row probe
+/// (1 rows). This ceiling limits no work performed.
+// spec: read.respond.row-ceiling@075cab9f
 #[test]
 fn the_row_ceiling_bounds_delivery_with_one_probe_row() {
     let r = Reads::new();
@@ -365,8 +370,9 @@ fn a_capped_template_reads_one_probe_row_for_truncation() {
     assert_eq!((exact.rows.len(), exact.truncated), (3, false));
 }
 
-/// Every read on every face, `corpus.retrieve` included, delivers at most 10000 rows: the face ceiling is always a component of {{authority.grant.row-ceiling}}, declared or not, and bounds the candidate window.
-// spec: read.respond.face-ceiling@2dfe8ba4
+/// Every read interface, including `corpus.retrieve`, delivers at most 10000 rows. This ceiling contributes to
+/// {{authority.grant.row-ceiling}} without requiring a declaration and bounds the candidate window.
+// spec: read.respond.face-ceiling@4c83debc
 #[test]
 fn the_face_ceiling_bounds_every_read() {
     let r = Reads::new();
@@ -496,9 +502,9 @@ fn a_tenant_scoped_read_naming_the_ledger_is_refused() {
     assert!(message.contains("`research/contacts`") && message.contains("row policy"), "{message}");
 }
 
-/// Appends to one run's ledger file serialize under a lock on it, and an append returns once its rows and the
-/// rename are synced to disk.
-// spec: store.reserve.ledger-append@a90828c9
+/// An append locks its run's ledger file to serialize writes. The append returns after syncing its rows and the rename
+/// to disk.
+// spec: store.reserve.ledger-append@befb2af2
 #[test]
 fn concurrent_flushes_of_one_run_keep_every_row() {
     let r = Reads::new();
@@ -552,8 +558,9 @@ fn reference_is_a_bounded_read_tool_over_registered_relations() {
     assert!(tool["inputSchema"]["properties"].get("max_response_bytes").is_some());
 }
 
-/// The `available_as_of` bound applies beneath enforcement as {{store.bound-time.beneath-enforcement}} applies the other two, narrowing what enforcement admits and widening nothing.
-// spec: store.available-time.beneath-enforcement@bd0782cd
+/// `available_as_of` applies before access controls under {{store.bound-time.beneath-enforcement}}, like the other two
+/// bounds. The bound only narrows the rows access controls admit.
+// spec: store.available-time.beneath-enforcement@8520183c
 #[test]
 fn an_availability_bound_narrows_the_tenant_restricted_rows() {
     const FILINGS: &str = "\n[[pipeline.tables]]\nname = \"research/filings\"\nprimary_key = [\"filing_id\"]\npartition_by = [\"tenant\"]\ncontent_hash_column = \"digest\"\n\n[pipeline.tables.policy.columns]\nanalyst = { strategy = \"drop\" }\n\n[pipeline.tables.available_time]\ncolumn = \"accepted_at\"\n";

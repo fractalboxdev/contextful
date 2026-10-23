@@ -47,9 +47,9 @@ fn mints(server: &Server) -> usize {
     server.received("/leases").len()
 }
 
-/// For a declared name the lease provider answers and no adapter behind it is reached; a shadowing adapter raises
-/// under {{connector.resolve.shadowed-name}}.
-// spec: connector.lease.head-of-chain@dccd7e48
+/// For a declared name, the resolver uses the lease provider without falling back to later adapters. A shadowing
+/// adapter raises under {{connector.resolve.shadowed-name}}.
+// spec: connector.lease.head-of-chain@73c31c7e
 #[test]
 fn the_lease_provider_answers_a_declared_name_ahead_of_every_adapter() {
     let _env = proxy_env();
@@ -99,9 +99,9 @@ fn the_lease_backend_with_no_scope_refuses_at_assembly() {
     assert_eq!(mints(&server), 0);
 }
 
-/// A lease is material plus one expiry, held as a pair in memory for the run, evicted at expiry, and written to
-/// no file, journal entry or audit record.
-// spec: connector.lease.lease@cde859ef
+/// The resolver holds a leased credential and its expiry together in memory for the run. The resolver evicts both at
+/// expiry. Neither enters a file, journal entry or audit record.
+// spec: connector.lease.lease@7dda27b9
 #[test]
 fn a_lease_is_evicted_at_its_expiry_and_reminted() {
     let _env = proxy_env();
@@ -121,9 +121,8 @@ fn a_lease_is_evicted_at_its_expiry_and_reminted() {
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), before.len());
 }
 
-/// A leased name's cache entry is bounded by the tighter of {{connector.resolve.cache-ttl}} and the lease's own
-/// expiry.
-// spec: connector.lease.cache-window@695b6b2e
+/// A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the lease's own expiry.
+// spec: connector.lease.cache-window@7c82033c
 #[test]
 fn a_leased_entry_retires_by_the_tighter_bound() {
     let _env = proxy_env();
@@ -156,9 +155,9 @@ fn a_mint_is_a_bearer_post_naming_the_scope() {
     assert_eq!(serde_json::from_slice::<serde_json::Value>(&req.body).unwrap(), serde_json::json!({ "scope": "orders.read" }));
 }
 
-/// A `404` raises `SecretLeaseScopeUnknown` as a configuration fault; a declared name never falls through to a
-/// stored credential.
-// spec: connector.lease.unknown-scope@ac4f5fbf
+/// A `404` raises `SecretLeaseScopeUnknown` as a configuration fault. The resolver does not fall back to a stored
+/// credential for a declared name.
+// spec: connector.lease.unknown-scope@30f46caf
 #[test]
 fn an_unknown_scope_is_a_configuration_fault_with_no_fallthrough() {
     let _env = proxy_env();

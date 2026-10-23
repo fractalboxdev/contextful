@@ -13,8 +13,10 @@ fn available(s: &str) -> Bounds {
     Bounds { available_as_of: Some(Bound::parse(s).unwrap()), ..Bounds::default() }
 }
 
-/// `[pipeline.tables.available_time]` declares `column`, the `timestamptz` instant a value became available from its source, and optional `zone`, UTC by default; landing preserves that instant, never an engine stamp, and availability bounds compare that column alone.
-// spec: store.available-time.declaration@05062acd
+/// `[pipeline.tables.available_time]` declares `column`, the source availability instant as `timestamptz`, and
+/// optional `zone`, default UTC. Landing preserves the source instant without substituting an engine timestamp.
+/// Availability bounds compare only that column.
+// spec: store.available-time.declaration@6592814b
 #[test]
 fn an_available_time_block_declares_its_column_and_zone() {
     let t = TableDecl::parse_pipeline(EARNINGS).unwrap().remove(0);
@@ -80,8 +82,9 @@ fn available_as_of_on_a_table_declaring_no_availability_time_is_refused() {
     }
 }
 
-/// A template parameter named `available_as_of` refuses the manifest as {{read.guard.template-reserved-parameter}} refuses the other reserved names; that name carries the read's availability bound on every template tool.
-// spec: read.guard.available-reserved-parameter@0d3143ac
+/// Manifest validation rejects `available_as_of` template parameters under {{read.guard.template-reserved-parameter}}.
+/// Every template tool reserves that name for the availability bound.
+// spec: read.guard.available-reserved-parameter@53359317
 #[test]
 fn a_template_parameter_named_available_as_of_refuses_the_manifest() {
     let manifest = "[[query_templates]]\nid = \"x\"\nsql = \"SELECT 1 WHERE ? IS NOT NULL\"\nparameters = [\"available_as_of:timestamp\"]\n";

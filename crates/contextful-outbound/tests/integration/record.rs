@@ -50,7 +50,7 @@ impl Observe for Denying {
 /// An observe half answers presence, version, creation and expiry, or unavailable with a
 /// reason, and holds no hydrated value; the lease provider's would mint, so it answers
 /// unsupported and the mint endpoint sees 0 requests.
-// spec: connector.record.observe-port@8be52414
+// spec: connector.record.observe-port@03ffce2a
 #[test]
 fn observe_halves_answer_metadata_and_never_hydrate() {
     let _env = proxy_env();
@@ -86,7 +86,7 @@ fn observe_halves_answer_metadata_and_never_hydrate() {
 /// An unsupported or denied read appears as unavailable with its reason; the row keeps the
 /// operator's expiry under `operator` and adds none for the unavailable adapters, and no
 /// value is minted or hydrated to obtain metadata.
-// spec: connector.record.observation-unavailable@59a169eb
+// spec: connector.record.observation-unavailable@7c026d42
 #[test]
 fn an_unavailable_read_reports_its_reason_and_no_operator_assertion_replaces_it() {
     let _env = proxy_env();

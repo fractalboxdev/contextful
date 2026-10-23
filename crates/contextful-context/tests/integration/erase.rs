@@ -801,8 +801,9 @@ fn normal_publication_waits_for_the_erasure_frontier_before_mutating_working_fil
     assert_eq!(contextful_context::rows::table_rows(&fixture.store, &table, &["id"]).unwrap().len(), 2);
 }
 
-/// An admitted reference recorded in the independently verified cumulative erasure index returns `available: false` with `reason: erased`; an absent reference outside that index returns `reason: missing` and exposes no source payload.
-// spec: read.reference.erased-verdict@b3af4c7f
+/// An admitted reference in the independently verified cumulative erasure index returns `available: false` and
+/// `reason: erased`. An absent reference outside that index returns `reason: missing` without source payload.
+// spec: read.reference.erased-verdict@9b6893f5
 #[test]
 #[cfg(feature = "read")]
 fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {

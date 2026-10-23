@@ -143,8 +143,9 @@ fn a_dedup_key_seeds_the_claim_id_and_a_retry_lands_nothing() {
     );
 }
 
-/// A direct write whose `valid_from` precedes the `valid_from` of an unsuperseded claim of its subject, predicate and scope with another object raises `MemoryObservationOutOfOrder`, and nothing lands.
-// spec: read.revise.observed-order@abfadc9e
+/// For matching subject, predicate and scope with a different object, a write whose `valid_from` precedes an
+/// unsuperseded claim's `valid_from` raises `MemoryObservationOutOfOrder`. The write stores nothing.
+// spec: read.revise.observed-order@0759389a
 #[test]
 fn an_observation_before_a_live_contradicting_prior_refuses() {
     use contextful_memory::write::write_observed;
@@ -172,7 +173,7 @@ fn an_observation_before_a_live_contradicting_prior_refuses() {
 }
 
 /// Equal-instant, unscoped direct contradictions keep both claims live and record their ids.
-// spec: read.revise.unscoped-collision@e2109b5f
+// spec: read.revise.unscoped-collision@f1df92d2
 #[test]
 fn unscoped_writers_at_one_instant_record_a_conflict_without_retirement() {
     use contextful_context::read::ReadOptions;

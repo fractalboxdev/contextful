@@ -21,8 +21,9 @@ fn the_knowledge_card_belongs_to_the_closed_read_tool_set() {
     assert!(refused.to_string().starts_with("MemoryExplainNotEntities: "));
 }
 
-/// A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.
-// spec: read.embed.required-face@2167a7a9
+/// Before the first read, the server rejects a client's `require: [...]` with `RequiredFaceAbsent` for any unreported
+/// name. An engine reporting no set satisfies no requirement.
+// spec: read.embed.required-face@c2228ef5
 #[test]
 fn a_requirement_outside_the_reported_set_is_refused() {
     let id = BuildIdentity { backends: strings(&["duckdb", "fts"]), connectors: Vec::new(), faces: Vec::new() };

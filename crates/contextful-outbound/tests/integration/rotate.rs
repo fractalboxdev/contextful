@@ -147,7 +147,7 @@ fn a_refused_put_fails_closed_and_the_refreshed_token_is_never_served() {
 }
 
 /// A put losing to another writer re-hydrates that writer's version and raises nothing.
-// spec: connector.rotate.conditional-put@ce267ffb
+// spec: connector.rotate.conditional-put@3eec24df
 #[test]
 fn a_put_losing_to_another_writer_adopts_its_version() {
     let manager = Manager::new("old-token");
@@ -188,7 +188,7 @@ fn a_rotation_keeps_the_name_and_the_template() {
 }
 
 /// The logical name joins the attribution, the cache entry and the put target.
-// spec: connector.reference.name-is-the-join@8181f5b7
+// spec: connector.reference.name-is-the-join@5780e1ab
 #[test]
 fn the_logical_name_joins_attribution_cache_and_put() {
     let manager = Manager::new("old-token");
@@ -200,7 +200,7 @@ fn the_logical_name_joins_attribution_cache_and_put() {
 }
 
 /// A development secret has no write half; an operator re-enters it by re-pointing the reference.
-// spec: connector.rotate.operator-entered@ae126285
+// spec: connector.rotate.operator-entered@e366a2eb
 #[test]
 fn an_environment_secret_turns_over_only_by_re_entry() {
     let a = assemble_all(&[("VENDOR_TOKEN".to_string(), "first".to_string())].into(), Arc::new(SetClock::new())).unwrap();
@@ -211,7 +211,7 @@ fn an_environment_secret_turns_over_only_by_re_entry() {
 }
 
 /// A leased credential re-mints with no write-back; a failed re-mint leaves no credential.
-// spec: connector.rotate.leased-credential@b6bafd09
+// spec: connector.rotate.leased-credential@90197a3f
 #[test]
 fn a_lease_re_mints_without_write_back_and_a_failed_mint_leaves_nothing() {
     let _env = proxy_env();

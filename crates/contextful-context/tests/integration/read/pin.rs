@@ -94,8 +94,9 @@ fn a_pinned_table_reads_its_build_and_an_unnamed_one_the_latest() {
     assert!(!paths.iter().any(|f| f.contains(&second.build_id)), "{paths:?}");
 }
 
-/// A table `pin` maps to `null` resolves as an unnamed table, and a pin map differing from another only by such entries is the same map.
-// spec: read.resolve-pin.null-pin@1fbd8509
+/// A `pin` entry with value `null` resolves as an unnamed table. Pin maps differing only in null entries are
+/// equivalent.
+// spec: read.resolve-pin.null-pin@8b3fcfb9
 #[test]
 fn a_null_pin_reads_the_latest_build_under_the_unpinned_key() {
     let p = Pinned::new();
@@ -170,7 +171,7 @@ fn a_pin_and_as_of_resolve_to_the_earlier_bound() {
 }
 
 /// A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not and zero rows included; the watermark names, per input table, the snapshot id and the committed runs it omits.
-// spec: read.resolve-pin.resolved-echo@a32f9823
+// spec: read.resolve-pin.resolved-echo@6245e541
 #[test]
 fn every_response_touching_a_published_model_echoes_its_build() {
     let p = Pinned::new();
@@ -249,8 +250,9 @@ version = "2.0.0"
 columns = [{ name = "day", type = "utf8", nullable = false }, { name = "n", type = "utf8", nullable = false }, { name = "label", type = "utf8", nullable = false }]
 "#;
 
-/// A pinned table registers under the columns its build's parts carry, so a later build's contract neither adds, drops nor retypes a column of the pinned read or its description.
-// spec: read.resolve-pin.pinned-schema@b2d5b4e5
+/// A pinned table registers the columns stored in that build's parts. Later builds neither add, remove nor retype
+/// columns in the pinned read or description.
+// spec: read.resolve-pin.pinned-schema@d75f6763
 #[test]
 fn a_pinned_build_reads_under_its_own_schema() {
     let p = Pinned::new();
@@ -279,8 +281,9 @@ fn a_pinned_build_reads_under_its_own_schema() {
     assert_ne!(old["schema_fingerprint"], new["schema_fingerprint"]);
 }
 
-/// A pin on a table the session registers no relation for, absent or outside the grants, refuses as {{read.resolve-pin.unknown-build}} on a table publishing no build, in one text for both.
-// spec: read.resolve-pin.unregistered-pin@57efc6bb
+/// Pins on absent or ungranted tables raise {{read.resolve-pin.unknown-build}} as for a table publishing no build.
+/// Both cases return identical text.
+// spec: read.resolve-pin.unregistered-pin@0697320a
 #[test]
 fn a_pin_on_a_table_outside_the_session_refuses() {
     let p = Pinned::new();
@@ -318,8 +321,9 @@ name = "lab/events"
 column = "at"
 "#;
 
-/// Under a horizon, a model table resolves to the newest build whose horizon, recorded under {{run.model.build-horizon}}, is at or before the credential's; a table holding none raises `ReadNoBuildWithinHorizon`, naming the table.
-// spec: read.horizon.build-resolution@40edc7e6
+/// Under a horizon, model tables select the newest build whose {{run.model.build-horizon}} is at or before the
+/// credential's horizon. If none qualifies, resolution raises `ReadNoBuildWithinHorizon`, naming the table.
+// spec: read.horizon.build-resolution@a19ee969
 #[test]
 fn a_model_table_under_a_horizon_reads_its_newest_build_within_it() {
     use contextful_context::build::{build, BuildRequest};

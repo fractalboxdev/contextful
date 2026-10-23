@@ -61,8 +61,9 @@ fn write(f: &Fixture, who: &AdmittedAuthority, claim: CandidateClaim) -> Result<
     write_claim(&f.face, who, "memory/facts", claim, &NodeId::parse("memory-a").unwrap(), at("2030-01-11T00:00:00Z"), &super::synthesize::admit)
 }
 
-/// The write landing a claim stamps each citation into a keyed table with a pepper-keyed digest of the cited row's key; recall resolves a citation whose row no longer reads through the digest's live version.
-// spec: read.recall.evidence-key@020c59aa
+/// Claim writes stamp each citation to a keyed table with a pepper-keyed digest of the cited row's key. If that row is
+/// unreadable, recall resolves the digest's live version.
+// spec: read.recall.evidence-key@715fe638
 #[test]
 fn a_fold_superseding_the_cited_version_keeps_the_claim() {
     let f = Fixture::new();
@@ -145,7 +146,7 @@ fn a_synthesized_claim_survives_the_fold_of_its_cited_version() {
 }
 
 /// A direct write citing a keyed table's row that reads through the writer's session but is not its key's live version raises `MemoryCitationNotLive`, and nothing lands.
-// spec: read.revise.citation-live@c5f90564
+// spec: read.revise.citation-live@1f3da4df
 #[test]
 fn a_write_citing_a_superseded_version_refuses() {
     let f = Fixture::new();
@@ -208,8 +209,9 @@ fn a_memory_reader_reads_no_source_key_value() {
     assert_eq!(served(&recall_of(&f, &reader(&f), "acct-secret-123")), (1, json!(0)), "the digest resolves the citation");
 }
 
-/// A citation whose key column reads masked or nulled by zone in the writer's session carries no digest; a masked or nulled column outside the key leaves the digest stamped.
-// spec: read.recall.evidence-key-masked@04c7f215
+/// If the writer's session masks or zone-nulls a cited key column, the citation carries no digest. Masked or nulled
+/// non-key columns leave the digest intact.
+// spec: read.recall.evidence-key-masked@c4c9e17a
 #[test]
 fn a_writer_zone_nulling_a_non_key_column_still_stamps_the_key() {
     let f = Fixture::new();
@@ -230,8 +232,9 @@ fn a_writer_zone_nulling_a_non_key_column_still_stamps_the_key() {
     assert_eq!(served(&recall_of(&f, &reader(&f), "p-1")), (1, json!(0)));
 }
 
-/// A claim served through its key digest while its cited run and sequence no longer read counts under `stale` in the `contextful.recall` block, which names no claim.
-// spec: read.recall.evidence-stale@96c0b504
+/// Recall counts a served claim under `stale` in `contextful.recall` if the key digest resolves while the cited run
+/// and sequence are unreadable. The block names no claim.
+// spec: read.recall.evidence-stale@64c68317
 #[test]
 fn a_claim_served_past_its_cited_version_counts_stale() {
     let f = Fixture::new();

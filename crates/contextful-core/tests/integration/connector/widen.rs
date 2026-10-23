@@ -38,7 +38,7 @@ fn widening_witness_replays_against_both_allowlists() {
 }
 
 /// The executable reference imports the proved model, sharing its decision definitions.
-// spec: connector.widen.host-inclusion@f6a2edfe
+// spec: connector.widen.host-inclusion@60a01aa0
 // spec: connector.widen.host-witness@e13c9fd4
 #[test]
 fn generated_hosts_agree_with_the_proved_model() {

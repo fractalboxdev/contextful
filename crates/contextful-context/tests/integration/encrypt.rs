@@ -202,8 +202,9 @@ fn tree(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
     out
 }
 
-/// In an unencrypted project a reader memory-maps a sidecar read-only; in an encrypted one it decrypts each sealed sidecar file into anonymous process memory and writes no cleartext to disk.
-// spec: store.encrypt.sidecar-reader@70509f80
+/// For unencrypted projects, readers memory-map sidecars read-only. For encrypted projects, readers decrypt each
+/// sealed sidecar file into anonymous process memory without writing cleartext to disk.
+// spec: store.encrypt.sidecar-reader@e36492a8
 #[test]
 fn a_plaintext_sidecar_is_mapped_and_a_sealed_one_opens_into_memory_alone() {
     use arrow_array::builder::{FixedSizeListBuilder, Float32Builder};
@@ -635,7 +636,7 @@ fn a_bound_store_seals_its_request_ledger() {
 
 /// A bound store writes Parquet under an encrypted footer and seals each sidecar and ledger file
 /// under its own data key, opened by the project key alone.
-// spec: store.encrypt.cipher@64698cff
+// spec: store.encrypt.cipher@1c8139d4
 #[test]
 fn a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_file() {
     use contextful_context::encrypt::AesGcmFileCipher;

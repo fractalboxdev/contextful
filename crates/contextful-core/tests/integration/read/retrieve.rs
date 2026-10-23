@@ -13,8 +13,9 @@ use contextful_core::read::tokens::{
     RELEVANCE_FLOOR_NARROW, RELEVANCE_FLOOR_SPLIT, RELEVANCE_FLOOR_WIDE, TOKEN_LENGTH_FLOOR,
 };
 
-/// The query text is lowercased and split on non-alphanumeric characters. Stop tokens drop, non-ASCII runs of two or more characters stay, and survivors deduplicate in order.
-// spec: read.retrieve.content-tokens@94355737
+/// The tokenizer lowercases query text and splits at non-alphanumeric characters. The tokenizer removes stop tokens,
+/// keeps non-ASCII runs of two or more characters, and deduplicates tokens in order.
+// spec: read.retrieve.content-tokens@4da2cae8
 #[test]
 fn content_tokens_are_lowercased_split_stopped_and_deduplicated() {
     assert_eq!(content_tokens("What did Solar-Battery STORAGE cost, and the solar?"), strings(&["solar", "battery", "storage", "cost"]));
@@ -82,8 +83,9 @@ fn the_relevance_floor_admits_null_scores_and_positive_vectors() {
     assert!(passes_floor(floor, None, None));
 }
 
-/// A table with no scored text column scores lexically null, never zero, and its rows enter by vector score alone.
-// spec: read.retrieve.text-free-table-scores-null@4339b83d
+/// A table without scored text columns has a null lexical score rather than zero. Only vector scores admit that
+/// table's rows.
+// spec: read.retrieve.text-free-table-scores-null@1247e597
 #[test]
 fn a_row_with_no_snippet_scores_null_and_passes_the_floor() {
     let tokens = content_tokens("solar battery storage");
@@ -233,8 +235,9 @@ fn a_filter_is_bounded_in_conditions_entries_and_bytes() {
     assert!(budget_refused(Filter::parse(None, Some(&big_kinds))));
 }
 
-/// A filter value is a string, a number or a boolean, and a membership list is non-empty; a null, a nested object or list, or an empty list is a malformed condition.
-// spec: read.retrieve.filter-values@d09f9733
+/// Filter values are strings, numbers or booleans; membership lists contain at least one value. Nulls, nested objects,
+/// nested lists and empty lists are malformed conditions.
+// spec: read.retrieve.filter-values@f8bde1f0
 #[test]
 fn filter_values_are_scalars_and_lists_are_non_empty() {
     let f = Filter::parse(Some(&json!({ "a": "x", "b": 3, "c": 1.5, "d": true, "e": ["p", 2] })), None).unwrap();

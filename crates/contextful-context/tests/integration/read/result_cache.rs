@@ -145,8 +145,9 @@ fn principals(r: &Reads) -> Vec<(&'static str, AdmittedAuthority)> {
     ]
 }
 
-/// A cached result keys on the token's id, revocation epoch, grants and subject, the session zone and incognito state, each touched relation and the files it reads, the bounds, the statement, its parameter values and the applied row ceiling.
-// spec: read.cache.result-key@3ed2080d
+/// Result keys include token id, revocation epoch, grants, subject, session zone and incognito state. Keys also
+/// include touched relations and files, bounds, statement, parameter values and applied row ceiling.
+// spec: read.cache.result-key@1dbde396
 #[test]
 fn one_credential_id_under_another_principal_misses() {
     let (r, face) = dash(Some(1 << 20));
@@ -166,8 +167,9 @@ fn one_credential_id_under_another_principal_misses() {
     }
 }
 
-/// A statement's result caches only when every table it touches declares `result_cache`, a time to live, and none declares `private = true`; an entry expires at the least time to live among them.
-// spec: read.cache.cache-is-opt-in@617f0496
+/// Results enter the cache only if every touched table declares `result_cache` with a time to live and none declares
+/// `private = true`. Entries expire at the shortest declared time to live.
+// spec: read.cache.cache-is-opt-in@e9bc11e7
 #[test]
 fn only_opted_in_tables_that_are_not_private_cache_and_entries_expire() {
     let (r, face) = dash(Some(1 << 20));
@@ -206,8 +208,9 @@ fn only_opted_in_tables_that_are_not_private_cache_and_entries_expire() {
     assert_eq!((counts(&face).hits, counts(&face).misses), (2, 3), "the one-second entry expired; the ten-minute one holds");
 }
 
-/// A commit, fold or request-ledger append on a touched table moves its read frontier, the snapshot and runs its relation reads, so an entry filled before it stops matching. A statement in flight during a fold reads {{store.fold.non-blocking}}.
-// spec: read.cache.frontier-invalidates@c049fa30
+/// Commits, folds and request-ledger appends change a touched table's read frontier: its snapshot and runs. Earlier
+/// cache entries stop matching. Statements executing during a fold read under {{store.fold.non-blocking}}.
+// spec: read.cache.frontier-invalidates@74d842fa
 #[test]
 fn a_landed_run_or_ledger_append_misses_and_reads_the_new_state() {
     let (r, face) = dash(Some(1 << 20));
@@ -250,8 +253,9 @@ fn a_landed_run_or_ledger_append_misses_and_reads_the_new_state() {
     assert_eq!((counts(&face).hits, counts(&face).misses), (1, 5));
 }
 
-/// The result cache holds at most the byte budget its process declares, the least recently used entry evicted first; a face declaring no budget caches nothing.
-// spec: read.cache.budget@a9635453
+/// The result cache stays within its process's declared byte budget and evicts the least recently used entry first.
+/// Without a declared budget, the server caches nothing.
+// spec: read.cache.budget@8c405de3
 #[test]
 fn filling_past_the_budget_evicts_the_least_recently_used() {
     let by_id = r#"SELECT event_id FROM "dash/events" WHERE event_id = $id"#;
@@ -287,8 +291,9 @@ fn filling_past_the_budget_evicts_the_least_recently_used() {
     assert_eq!((counts(&tiny).hits, counts(&tiny).entries, counts(&tiny).resident_bytes), (0, 0, 0));
 }
 
-/// A hit returns the response byte-identical to the miss that filled it, restriction block included; under `internals: true` the internals object carries `cache` as `hit` or `miss`.
-// spec: read.cache.hit-identical@c4287616
+/// Cache hits return responses byte-identical to the original miss, including the restriction block. With `internals:
+/// true`, diagnostic metadata reports `cache` as `hit` or `miss`.
+// spec: read.cache.hit-identical@20661b35
 #[test]
 fn a_hit_is_byte_identical_to_the_miss_and_internals_name_it() {
     let (r, face) = dash(Some(1 << 20));
@@ -327,8 +332,9 @@ allow = ["public-cloud:*"]
     assert_eq!((counts(&face).hits, counts(&face).misses), (1, 1));
 }
 
-/// A statement calling a function the engine marks other than consistent across queries, such as `now()`, `current_timestamp` or `random()`, or a macro reaching one, executes uncached.
-// spec: read.cache.volatile-bypasses@44a762e3
+/// Statements execute uncached if they call functions the engine marks inconsistent across queries, including `now()`,
+/// `current_timestamp` and `random()`. Macros calling these functions also bypass caching.
+// spec: read.cache.volatile-bypasses@9e8b8135
 #[test]
 fn a_statement_calling_a_volatile_function_executes_each_time() {
     let (r, face) = dash(Some(1 << 20));

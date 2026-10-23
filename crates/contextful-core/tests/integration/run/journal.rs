@@ -27,9 +27,9 @@ fn the_idempotency_key_derives_from_the_entry_key_alone() {
     assert_eq!(awakeable_key("tok"), sha256_hex(b"awakeable:tok"));
 }
 
-/// A value of 1 MiB or smaller is stored inline in its row as bytes; a larger value lands in a content-addressed
-/// blob named by its sha256, and the row holds the reference.
-// spec: run.journal.inline-cutoff@eccb9c26
+/// The journal stores values of 1 MiB or smaller inline as row bytes. For larger values, the journal stores a content-
+/// addressed blob named by its sha256 and a reference in the row.
+// spec: run.journal.inline-cutoff@212f3e5a
 #[test]
 fn values_up_to_1_mib_are_inline_and_larger_ones_are_blobs() {
     assert_eq!(INLINE_CUTOFF_BYTES, 1024 * 1024);

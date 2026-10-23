@@ -106,9 +106,9 @@ fn fan_out_bodies_run_under_labels_scoped_to_their_parallel_node() {
     assert!(row.failed_branches.is_empty(), "a failed run lists no partial branch");
 }
 
-/// A `branch` node records, once, its predicate node's output trimmed of surrounding whitespace as the arm label,
-/// so every replay takes the arm the first attempt took; the other arms' nodes are skipped.
-// spec: run.compile.branch-arm@8d16672f
+/// A `branch` node records its predicate node's output once, trimming surrounding whitespace to produce the arm label.
+/// Every replay selects that recorded arm and skips the other arms' nodes.
+// spec: run.compile.branch-arm@80f2d1dc
 #[test]
 fn a_branch_records_its_arm_and_a_resume_takes_the_same_one() {
     let rig = Rig::new();

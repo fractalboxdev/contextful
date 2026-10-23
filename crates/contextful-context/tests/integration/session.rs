@@ -103,8 +103,9 @@ fn a_session_folds_six_hours_after_the_previous_pass() {
     assert_eq!(session.unfolded(), 1);
 }
 
-/// A landing session counts its table's unfolded runs at open and per commit, recounting when another writer commits or folds, and runs a pass before the land returns once the table's trigger fires.
-// spec: store.fold.session-trigger@605f05d6
+/// A landing session counts unfolded table runs at open and each commit, recounting after another writer commits or
+/// folds. If the table's trigger fires, the session runs a pass before landing returns.
+// spec: store.fold.session-trigger@89c3d163
 #[test]
 fn a_session_counts_runs_another_writer_commits_or_folds() {
     let f = Fixture::new();
@@ -149,7 +150,7 @@ fn a_session_land_runs_its_precommit_check() {
 }
 
 /// A table declaring `fold_max_unfolded_runs`, a positive integer, fires its pass at that many unfolded runs in place of the 50-run count; zero refuses the declaration at parse.
-// spec: store.fold.declared-trigger@9f908b42
+// spec: store.fold.declared-trigger@ee856898
 #[test]
 fn a_scheduled_pass_fires_at_the_declared_run_count() {
     let f = Fixture::new();

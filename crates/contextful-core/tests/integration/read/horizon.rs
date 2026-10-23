@@ -86,8 +86,9 @@ impl contextful_core::read::embed::Embedder for Checkpoint {
     }
 }
 
-/// Under a horizon, an embedder declaring a checkpoint family embeds with its newest checkpoint whose post-training cutoff, as {{connector.infer.cutoffs}} records it, precedes the horizon, and the response names that checkpoint.
-// spec: read.horizon.embedder-route@1be3056f
+/// Under a horizon, an embedder declaring a checkpoint family selects its newest checkpoint whose
+/// {{connector.infer.cutoffs}} post-training cutoff precedes that horizon. The response names the selected checkpoint.
+// spec: read.horizon.embedder-route@7c33aa07
 #[test]
 fn an_embedder_family_routes_to_its_newest_checkpoint_before_the_horizon() {
     use contextful_core::connector::model_ref::{Cutoff, ModelRef};

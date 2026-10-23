@@ -22,9 +22,9 @@ fn open(server: &S3Server) -> S3Bucket {
     S3Bucket::open(&server.endpoint, "us-east-1", BUCKET, credentials(SECRET_KEY)).unwrap()
 }
 
-/// An S3 or R2 bucket addresses each object path-style, `<endpoint>/<bucket>/<key>` with every key segment
-/// percent-encoded, and signs every request with AWS Signature Version 4 for service `s3` at the endpoint's region.
-// spec: store.endpoint.addressing@ec631d9a
+/// S3 and R2 use path-style `<endpoint>/<bucket>/<key>`, percent-encoding every key segment. Every request uses AWS
+/// Signature Version 4 for service `s3` at the endpoint's region.
+// spec: store.endpoint.addressing@bab3ffaf
 #[test]
 fn an_s3_bucket_signs_and_addresses_every_request() {
     let server = S3Server::start(BUCKET);
@@ -49,7 +49,7 @@ fn an_s3_bucket_signs_and_addresses_every_request() {
 
 /// A `412` or `409`, or a `404` naming `NoSuchKey` to an `If-Match` put, answers a failed condition; a `501` answers an unsupported
 /// method and a `403` a forbidden credential, both read by `store.probe.inconclusive`.
-// spec: store.endpoint.conditional-answers@4c5e3b70
+// spec: store.endpoint.conditional-answers@365fc82b
 #[test]
 fn backend_answers_map_to_failed_conditions_and_refusals() {
     let server = S3Server::start(BUCKET);
@@ -77,9 +77,9 @@ fn backend_answers_map_to_failed_conditions_and_refusals() {
     }
 }
 
-/// A `404` naming any code but `NoSuchKey`, `NoSuchBucket` among them, answers no absent object and no failed
-/// condition: the get, put, delete or list fails as transport, naming the code.
-// spec: store.endpoint.missing-bucket@7e8b0846
+/// A `404` naming a code other than `NoSuchKey`, including `NoSuchBucket`, indicates neither an absent object nor a
+/// failed condition. The get, put, delete or list fails as transport and names the code.
+// spec: store.endpoint.missing-bucket@195b4b39
 #[test]
 fn a_missing_bucket_answers_no_absent_object() {
     let server = S3Server::start(BUCKET);
@@ -100,9 +100,9 @@ fn a_missing_bucket_answers_no_absent_object() {
     assert!(server.keys().is_empty());
 }
 
-/// A list follows each continuation token until the backend reports the listing complete, and returns every key
-/// under the prefix sorted.
-// spec: store.endpoint.list-pages@4b694af7
+/// A list follows continuation tokens until the backend reports completion. The list returns every key under the
+/// prefix in sorted order.
+// spec: store.endpoint.list-pages@39735d29
 #[test]
 fn a_list_follows_every_continuation_token() {
     let server = S3Server::start_paged(BUCKET, 2);
@@ -325,7 +325,7 @@ mod transport {
 
     /// A `429` or `503` answers a request the backend never applied, so any request resends
     /// after a backoff; a `500` resends every request but a conditional put.
-    // spec: store.endpoint.throttled@2640d68f
+    // spec: store.endpoint.throttled@af670397
     #[test]
     fn a_throttled_answer_resends_after_backoff_and_a_failed_conditional_put_goes_once() {
         let endpoint = Endpoint::start(vec![Answer::Status(503, SLOW_DOWN), Answer::Status(429, TOO_MANY), Answer::Status(500, INTERNAL), Answer::Status(200, "x")]);

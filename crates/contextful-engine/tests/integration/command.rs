@@ -48,9 +48,9 @@ fn a_pull_reads_its_request_from_the_environment_and_its_answer_from_stdout() {
     assert!(f.message.contains("boom"), "{}", f.message);
 }
 
-/// A stop signals a running subprocess chain's process group, and the record is written `canceled` only after the
-/// group is reaped.
-// spec: run.cancel.child-reaped@8c92882f
+/// A stop signals a running subprocess chain's process group. The engine records `canceled` only after reaping the
+/// group.
+// spec: run.cancel.child-reaped@abce7054
 #[test]
 fn a_stop_signals_and_reaps_the_whole_process_group() {
     let dir = tempfile::tempdir().unwrap();

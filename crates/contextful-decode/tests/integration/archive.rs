@@ -19,7 +19,7 @@ pub(crate) fn archive(members: &[(&str, &[u8])]) -> Vec<u8> {
 
 /// An archive decodes its single member, or the member `member` names; several members without `member`, or a named
 /// member the archive lacks, is a configuration fault, and a body that is not an archive unreadable input.
-// spec: connector.source.zip-member@ba43b67c
+// spec: connector.source.zip-member@9bf45d70
 #[test]
 fn an_archive_lands_its_single_or_named_member_and_refuses_an_ambiguous_or_absent_one() {
     let one = archive(&[("20250101000000.export.CSV", b"1\tUSA\n")]);

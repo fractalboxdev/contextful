@@ -36,8 +36,9 @@ fn ranking_fuses_a_cosine_leg_and_a_bm25_leg() {
     assert!((fused[2] - 0.6).abs() < 1e-9);
 }
 
-/// Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · rrf(bm25)`, weights 60 percent and 40 percent, `rrf` scoring BM25 rank `r` as `61 / (60 + r)`. A document absent from a leg scores zero; ties break by identifier.
-// spec: read.rank.fusion@8bba92dc
+/// Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · rrf(bm25)`. Weights are 60 percent and 40 percent. `rrf`
+/// maps BM25 rank `r` to `61 / (60 + r)`. Absent documents score zero per leg; identifiers break ties.
+// spec: read.rank.fusion@894fab72
 #[test]
 fn fusion_weights_clamps_and_breaks_ties_by_identifier() {
     use contextful_core::read::rank::{reciprocal_rank, Fusion, RECIPROCAL_RANK_K};
@@ -61,8 +62,9 @@ fn fusion_weights_clamps_and_breaks_ties_by_identifier() {
     assert_eq!(ids(&c), ["a", "b"]);
 }
 
-/// The BM25 leg ranks a disjunction of should-clauses; a document matching no term is absent. An empty query, candidate set or result yields an empty ranking that falls back to recency order.
-// spec: read.rank.lexical-leg-matches-only@34426892
+/// BM25 ranks documents matching at least one should-clause. Documents matching no term are absent. An empty query,
+/// candidate set or result produces an empty ranking and uses recency order.
+// spec: read.rank.lexical-leg-matches-only@00e8dabd
 #[test]
 fn the_lexical_leg_holds_matching_documents_alone() {
     let index = LexicalIndex::build(&[Some("solar prices"), Some("storage plans"), Some("hiring")]);

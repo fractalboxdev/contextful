@@ -16,11 +16,11 @@ owns:
 
 # Pipelines and the write path
 
-A pipeline declares desired state over one source and the tables it lands. This file holds
-that declaration, the plan it compiles to, the stages a batch passes between a source and a
-committed run, and what a published table carries. `land` is the one statement of stage order.
+A pipeline declares a source and the tables that receive its rows. Implementers use this
+contract to compile declarations, process batches and publish tables. `land` defines the
+processing order from source pull to commit.
 
-From declaration to a published table, and the contracts each step meets:
+The compiler produces a plan; the runner processes source batches and publishes committed tables:
 
 ```mermaid
 flowchart LR
@@ -53,12 +53,12 @@ flowchart LR
 
 ## declare
 
-The pipeline specification, its serializations, manifest discovery, the content hash, table entries and lifecycle verbs.
+Pipeline declarations: fields, manifest loading, content hashes, table names and lifecycle commands.
 
 - `pipeline-spec` — A specification carries `id`, `source` and `tables`, plus the optional `destination`, `schedule`, `incremental`, `transforms`, `redaction`, `normalize`, `backfill`, `seed`, `queries` and `on_table_error`.
 - `serialization` — TOML and JSON deserialize into one `PipelineSpec`; the JSON Schema derived from it is the contract, and `contextful schema export` writes it to `.contextful/schema/pipeline.json`.
-- `source-block` — A `source` is a connector name beside a free-form JSON config object; a `destination` carries the same two fields and defaults to the store.
-- `manifest-file` — Startup reads `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml` and `pipelines/*.json`; specifications are collected by `id`.
+- `source-block` — A `source` contains a connector name and free-form JSON config object. A `destination` contains the same two fields and defaults to the store.
+- `manifest-file` — Startup reads project config and inline `[[pipeline]]` blocks from `contextful.toml`, then reads `pipelines/*.toml` and `pipelines/*.json`. Startup collects specifications by `id`.
 - `manifest-missing` — `pipeline validate` reading no manifest file raises `PipelineManifestMissing`, naming the declaration path.
   *because a validation over a mistyped path otherwise checks nothing and exits zero*
 - `duplicate-id` — One `id` declared twice raises `PipelineDuplicateId`, naming each file and the line its declaration starts on.
@@ -67,7 +67,7 @@ The pipeline specification, its serializations, manifest discovery, the content 
   *because a partly read manifest runs a pipeline its author did not write*
 - `content-hash` — `content_hash` is the sha256 of the specification's RFC 8785 canonical JSON with every optional field at its default elided, so an explicit default hashes as its absence.
   *because a replay pin that moves on a no-op edit strands pending work*
-- `table-name` — A destination table is named `<pipeline id>_<table name>`, each non-alphanumeric character folded to `_` and each ASCII uppercase letter lowered.
+- `table-name` — The engine names destination tables `<pipeline id>_<table name>`, replacing each non-alphanumeric character with `_` and lowercasing each ASCII uppercase letter.
 - `table-name-collision` — Two tables whose destination names fold to one spelling, or one whose name is another's `<name>_dead_letter`, within one pipeline or across pipelines, raise `PipelineTableNameCollision` at validation, naming both declarations.
   *because two tables folding to one name land in one store table and interleave their rows*
 - `unbound-table-name` — A job target or model reference naming a destination table in a spelling the fold does not produce raises `PipelineUnboundTableName`, printing the expected spelling.
@@ -79,14 +79,14 @@ The pipeline specification, its serializations, manifest discovery, the content 
   *P1*
 - `config-key` — A source config key outside the set that source enumerates raises `PipelineUnknownConfigKey` before any I/O, naming the key and the accepted keys; request headers and the forwarded guest table are exempt.
   *P1*
-- `lifecycle-verbs` — `plan` diffs desired state against the store with no side effect, `--json` emitting a structured diff; `apply` converges every pipeline or one; `run` fires one pipeline once; `serve` reconciles continuously.
+- `lifecycle-verbs` — `plan` compares desired state with the store without side effects; `--json` emits a structured diff. `apply` reconciles one or all pipelines. `run` fires one pipeline once. `serve` reconciles continuously.
 - `plan-externals` — `plan` reports added, removed, changed and unchanged external steps against the applied snapshot in text and under `externals` in `--json`, with the same change fields as other declaration kinds.
   *because external-only edits affect the applied snapshot and need a visible diff*
-- `apply-fires-nothing` — Applying a manifest fires nothing of itself; a second `apply` over unchanged sources is a no-op modulo elapsed schedules.
-- `table-error` — `on_table_error` is abort, the default, halting the fire at the first failing table, or continue, landing every other table and reporting the failed run ids through {{run.declare.table-error-exit}}.
+- `apply-fires-nothing` — Applying a manifest triggers no run by itself. Repeating `apply` over unchanged sources performs no work except for elapsed schedules.
+- `table-error` — `on_table_error = abort`, the default, halts the fire at the first failing table. `continue` lands every other table and reports failed run ids through {{run.declare.table-error-exit}}.
 - `table-error-exit` — Under continue, `run` exits non-zero naming the failed runs, and a scheduled fire appends its failure count to its log line.
 - `chunked-load` — `on_table_error` governs the single-pass live pull alone; a seed or backfill chunk plan halts the fire on failure under either setting.
-- `incremental-field` — `incremental = "<field>"` names the stream clock on the pipeline. Declared, the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}; undeclared, it refetches in full.
+- `incremental-field` — `incremental = "<field>"` names the pipeline's stream clock. With this declaration, the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}. Without this declaration, the source refetches in full.
 - `incremental-pointer` — An `incremental` value opening with `/` is an RFC 6901 pointer read from each fetched row, so a nested clock such as `/commit/committer/date` orders the stream and names its watermark.
 
 unsettled: What retires a key a source stops serving under `append`: a run declaring itself complete state, or a per-connector delete signal? owner: pipeline affects: run.declare
@@ -95,13 +95,13 @@ unsettled: Does `on_table_error` take a per-table override, and a cap on failed 
 
 ## compile
 
-The plan a specification becomes at build time: node kinds, version and schema.
+The compiler converts a pipeline specification into a versioned plan with a shared schema.
 
-- `authoring-surface` — The authoring surface runs at build time only and emits a content-hashed plan; nothing from it executes where the engine serves, and no build profile embeds a scripting runtime.
+- `authoring-surface` — Authoring code runs only at build time and emits a content-hashed plan. No authoring code executes in the serving environment. No build profile embeds a scripting runtime.
   *A-run*
 - `plan-node` — A plan is a flat node list with predecessor edges: `step` (connector, optional retry), `sleep` (duration string), `awaitEvent` (optional timeout), `branch` (predicate, label-to-node-id map), `parallel` (node ids) and `join` (parallel node id, `allow_partial`).
 - `plan-version` — A plan's version is the leading 16 chars of the sha256 over the RFC 8785 canonical JSON of its `{id, nodes}`.
-- `plan-schema` — The plan type is defined once in a schema library; its JSON Schema is the contract every language binds to, and the run path deserializes plan JSON against it.
+- `plan-schema` — One schema library defines the plan type. Every language binds to its JSON Schema. The execution engine deserializes plan JSON against that schema.
 - `inline-step-body` — A `step` body other than a connector reference raises `PipelineInlineStepBody`.
   *A-run*
 - `control-flow` — A data-dependent conditional or loop in a workflow body raises `PipelineUndeclaredControlFlow`; branching travels as `branch` and fan-out as `parallel`.
@@ -111,12 +111,12 @@ The plan a specification becomes at build time: node kinds, version and schema.
 - `lowering` — A plan lowers node by node onto {{run.journal.substrate-port}}.
 - `unjoined-parallel` — A `parallel` node no `join` node names, or a node other than its join reading it or one of its bodies, raises `PipelineParallelUnjoined` at compile.
   *because an output read around its join reaches a partial result no run record marks as partial*
-- `branch-arm` — A `branch` node records, once, its predicate node's output trimmed of surrounding whitespace as the arm label, so every replay takes the arm the first attempt took; the other arms' nodes are skipped.
+- `branch-arm` — A `branch` node records its predicate node's output once, trimming surrounding whitespace to produce the arm label. Every replay selects that recorded arm and skips the other arms' nodes.
 - `branch-scope` — Each body of a `parallel` node runs under step labels prefixed by the parallel node's id, and its outcome reaches only the join, as {{run.journal.fan-out-join}} states.
 
 ## transform
 
-The declarative chain that rewrites a batch in place.
+The engine applies declared transforms in order to rewrite a batch in place.
 
 - `chain` — The chain is an ordered list of `select`, `rename`, `cast`, `extract` and a single-column `filter`, declared once per pipeline and bound to the root table.
 - `arity` — A chain operation emitting more rows than it consumed raises `PipelineTransformArity`.
@@ -136,11 +136,11 @@ unsettled: Does the chain grow past these five operations, or does richer work s
 
 ## normalize
 
-Canonical nested form, late relational shredding, injected identity columns and recursion depth.
+The engine normalizes nested data, assigns identity columns and converts nesting to relational tables where the sink requires it.
 
 - `host-stage` — Type inference over deferred-typing JSON, struct flattening, list-to-child extraction and id assignment run in engine code; no connector reimplements them and no dataframe library participates.
-- `normalized-form` — The canonical form is nested Arrow structs and lists; relational shredding is a late projection at the sink, so a source landing in two sinks normalizes once.
-- `mode` — `native` keeps nesting up to the sink's capability and explodes the rest with {{run.record.schema-diff-home}}; `relational` flattens structs into parent-child column names and shreds lists into child tables joined by a foreign key.
+- `normalized-form` — The canonical form uses nested Arrow structs and lists. The sink projects this form into relational tables late, so a source landing in two sinks normalizes once.
+- `mode` — `native` keeps nesting the sink supports and expands unsupported nesting with {{run.record.schema-diff-home}}. `relational` flattens structs into parent-child column names and converts lists into child tables joined by a foreign key.
 - `mode-resolution` — Mode resolves per stream per sink: explicit declaration, then sink capability, then `native`.
 - `mode-unknown` — A mode outside the two raises `PipelineNormalizeModeUnknown`, printing both spellings.
   *A-run*
@@ -160,7 +160,7 @@ Canonical nested form, late relational shredding, injected identity columns and 
 
 ## guard-secrets
 
-The write-time mask over credential-shaped spans in pulled batches, their dead letters and registered body results.
+The secret guard masks credential-shaped text in pulled batches, dead letters and registered body results before storage.
 
 - `placement` — The secret guard runs at the one pull path streaming and backfill share, ahead of the recorded pull and the land path, so a replay reintroduces no credential.
 - `matchers` — Matchers are linear-time, regex-free forward scans, each anchored on a literal prefix; the credential catalogue lives in code under a precision and recall fixture test.
@@ -186,14 +186,14 @@ The write-time mask over credential-shaped spans in pulled batches, their dead l
 
 ## land
 
-The stage order from pull to commit, the one destination, the ingest tally and containment of unreadable input.
+The engine processes batches from pull to commit, records ingest counts and isolates decoder failures.
 
 - `stage-order` — A batch passes pull, the secret guard, the recorded pull, normalize, the transform chain, write-path redaction, shredding and batch write; the run then commits rows and position together through {{run.advance.commit-with-rows}}.
 - `unknown-destination` — The local context store is the only destination, and synthesized artifacts write back through it; any other `destination` raises `PipelineUnknownDestination` at assembly, before any row moves.
   *A-topology*
 - `no-host-arm` — The destination world declares no host arm, so a guest supplies no destination.
   *A-topology*
-- `batch-write` — A landing table is created on first sight of its schema, {{store.reconcile.first-sight}}; each batch is written durably in its own call, optionally carrying its ordinal as the join key onto the run's request ledger.
+- `batch-write` — The store creates a landing table on first schema observation, {{store.reconcile.first-sight}}. The store writes each batch durably in a separate call. A batch may carry its ordinal for joining the run's request ledger.
 - `typed-pull` — A pull's `types` object maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it, and the run commit lands that column in it; an unreadable spelling fails the pull as {{store.reconcile.incompatible}}.
 - `late-type` — A pull declaring a type for a column an earlier staged batch of its run carried undeclared raises `PipelineTypeDeclaredLate`, deterministic, naming the column; the run commits nothing and retires its owner.
   *because that batch's part already holds the column in its inferred type, and a staged part is immutable*
@@ -215,9 +215,9 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a sender retrying after a lost answer must not duplicate committed tables*
 - `receive-resume` — A table under a batch key whose run did not commit resumes the key's pending owner, recorded pull included, and no other key's.
   *because a sender retrying after a lost answer must not lose uncommitted tables*
-- `receive-batch-too-large` — A body past the source's `max_batch_bytes` raises `ReceiveBatchTooLarge`, non-retryable; the reader stops one byte past the bound and no table lands.
+- `receive-batch-too-large` — A body exceeding the source's `max_batch_bytes` raises non-retryable `ReceiveBatchTooLarge`. The reader stops one byte past the bound. No table lands.
   *because an unbounded body is an unbounded allocation the sender controls*
-- `receive-queue` — Up to `max_queue_depth` batches of one pipeline hold a queue slot, waiting or landing, from before the body is read until the answer, and one group of them lands at a time.
+- `receive-queue` — Up to `max_queue_depth` batches per pipeline hold queue slots while waiting or landing. Each batch holds its slot before body reading until the answer. One group lands at a time.
   *because concurrent senders share each table's single-writer cursor lease*
 - `receive-spool` — A batch decodes and validates alone, so a malformed body answers alone, then spools, synced, to its pipeline's queue before waiting for the land lock; a leader lands every spooled batch, a dead receiver's included.
   *because a batch whose receiver died must land without its sender, and one malformed body must fail no other batch*
@@ -231,23 +231,23 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because one malformed body must fail no other batch, and a sender honoring a non-retryable answer drops its rows*
 - `receive-wait` — A spooled batch that neither holds the land lock nor joins a group within the wait of {{store.reserve.commit-wait}} withdraws its spool and answers as {{run.land.receive-backpressure}}.
   *because a batch no group takes must free its queue slot and tell its sender to resend*
-- `receive-backpressure` — A batch arriving while every queue slot of its pipeline is held raises `ReceiveBackpressure`, retryable, before reading its body.
+- `receive-backpressure` — If batches hold every pipeline queue slot, the receiver raises retryable `ReceiveBackpressure` before reading the arriving batch's body.
   *because a sender told to wait sheds load the receiver cannot absorb*
 - `receive-retry-after` — A {{run.land.receive-backpressure}} answer carries a retry interval of 1 s.
 - `receive-push-wait` — A delivered batch's `pull_before_run` and `push_after_run` wait at most 30 s for {{store.push.in-flight}}'s push guard, then answer retryable; a resend under the key pushes its committed tables.
   *because a sender's request outlives no 300 s wait, and a freed queue slot serves the next batch sooner*
-- `receive-write-not-granted` — A credential lacking `write` over any declared table of a `receive` pipeline raises `ReceiveWriteNotGranted` before the body is read, and no table lands.
+- `receive-write-not-granted` — If a credential lacks `write` over any declared table of a `receive` pipeline, the receiver raises `ReceiveWriteNotGranted` before reading the body. No table lands.
   *because a sender whose grant falls short learns it before spending the transfer*
-- `receive-key-expired` — A batch key replays or resumes only within the source's `key_retention_secs` of its first attempt; a later batch under it raises `ReceiveBatchKeyExpired`, non-retryable, before the body is read, and no table lands.
+- `receive-key-expired` — A batch key replays or resumes only within the source's `key_retention_secs` of its first attempt. After that window, the receiver raises non-retryable `ReceiveBatchKeyExpired` before reading the body. No table lands.
   *A-run*
 - `receive-endpoint` — `POST /receive/:pipeline` on the served face takes the batch key in the `Contextful-Batch-Key` header, admits the credential before reading the body, and answers `200` with the {{run.land.receive-ack}} answer.
   *because a sender refused for its credential or grant must not have spent the transfer*
-- `receive-key-missing` — A delivery naming no batch key raises `ReceiveBatchKeyMissing`, non-retryable, before the body is read, and no table lands.
+- `receive-key-missing` — If a delivery names no batch key, the receiver raises non-retryable `ReceiveBatchKeyMissing` before reading the body. No table lands.
   *because a batch without a key can neither replay nor resume under {{run.land.receive-batch-key}}*
-- `receive-pipeline-unknown` — A delivery to a pipeline id that no declaration names, or whose source is not `receive`, raises `ReceivePipelineUnknown` before the body is read, and no table lands.
+- `receive-pipeline-unknown` — If a delivery names an undeclared pipeline or a pipeline whose source is not `receive`, the receiver raises `ReceivePipelineUnknown` before reading the body. No table lands.
   *because a sender's misaddressed batch must not land in another pipeline's tables*
 - `receive-endpoint-status` — The receive route answers `400` for {{run.land.receive-key-missing}}, `404` for {{run.land.receive-pipeline-unknown}}, `403` for {{run.land.receive-write-not-granted}}, `413` for {{run.land.receive-batch-too-large}}, `410` for {{run.land.receive-key-expired}}, `503` with `Retry-After` for {{run.land.receive-backpressure}}, {{run.land.receive-push-wait}} or a retryable failed table, and `422` otherwise.
-- `receive-queued` — Under {{topology.compose.queue-extension}}, a request asking for a queued answer gets `202` with its batch key once admitted and queued; a `202` is custody, never {{run.land.receive-ack}}'s success.
+- `receive-queued` — Under {{topology.compose.queue-extension}}, a request asking for a queued answer receives `202` with its batch key after admission and queuing. `202` acknowledges queue custody, without claiming {{run.land.receive-ack}}'s success.
   *because a sender must not read a queued batch as committed when a later landing can still refuse it*
 - `receive-queued-admission` — A queued delivery passes every check {{run.land.receive-endpoint}} runs before reading a body, and a refused delivery queues nothing.
   *because a revoked or under-granted sender must learn its refusal before handing over custody*
@@ -255,7 +255,7 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a sender holding only a queued receipt reads success or refusal from one place*
 - `receive-queued-window` — A queued batch's key window opens when it queues; a consumer reaching it past {{run.land.receive-key-expired}}'s window records that refusal as its outcome and lands nothing.
   *because a batch delayed in the queue must end typed rather than land after its replay guarantee lapsed*
-- `receive-queued-spill` — A body past the queue's message cap is written to the bucket under its batch key before its message queues, and deleted once its outcome records.
+- `receive-queued-spill` — If a body exceeds the queue's message cap, the receiver writes the body to the bucket under its batch key before queuing. The body is deleted after its outcome records.
   *because a queue message carries a reference when a body under `max_batch_bytes` still exceeds the provider's cap*
 - `object-arrival-wake` — An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.
   *because a notification is a hint a provider may repeat, reorder or drop, and the held position already decides what lands*
@@ -273,9 +273,9 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because two shapes committing into one table mix their schemas*
 - `partial-parse` — A reader stopping partway through a multi-part input raises `PipelinePartialParse` over the whole input and lands none of its parts.
   *A-connector*
-- `parse-boundary` — A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it killable.
+- `parse-boundary` — A decoder subject to process failure runs outside the serving process. The serving process bounds the decoder's wall clock and memory and supports terminating the decoder.
   *A-connector*
-- `parse-child` — Each input whose decoder can die runs in its own child process; that process decodes no second input.
+- `parse-child` — Each input whose decoder is subject to process failure runs in a separate child process. That process decodes no second input.
   *A-run*
 - `parse-deadline` — A decode runs for at most 60 s from child spawn; expiry kills its process group and raises {{run.land.parse-crashed}}.
   *A-run*
@@ -285,7 +285,7 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *A-connector*
 - `table-failed` — A table whose pull fails raises `PipelineTableFailed` carrying the table, the error kind and the run id; the fire then follows `on_table_error`.
   *because a failure is answerable by name only when it carries its table and run*
-- `observed-schema` — Planning fetches no source schema; each observed batch is typed when staged under {{run.own.stage-schema}}, including validation against declared columns.
+- `observed-schema` — Planning fetches no source schema. Staging assigns each observed batch's types under {{run.own.stage-schema}} and validates the batch against declared columns.
   *A-run*
 
 ```mermaid
@@ -336,15 +336,15 @@ unsettled: Does a dead group's first attempt that never committed close, once a 
 
 ## export
 
-The outbound copy of a landed table to an operator-declared target: the export block, the post-commit read, the delivery batch, the cursor and at-least-once delivery.
+An export reads committed table rows and delivers them to an operator-declared target with at-least-once delivery.
 
 - `export-block` — An OTLP `[[export]]` block declares `name`, one landed `table`, an HTTP `endpoint`, `signal = "logs"` and optional `headers`; `contextful export run <name>` delivers every row its cursor has not passed.
   *A-topology*
-- `signal-unknown` — A `signal` other than `logs` raises `ExportSignalUnknown` before any row is read.
+- `signal-unknown` — If `signal` is not `logs`, the exporter raises `ExportSignalUnknown` before reading any row.
   *because the one built-in arm maps a row onto a log record, and a span or metric needs a column mapping no block declares*
 - `post-commit-read` — Export reads committed runs only, through the read face under the admitted credential, so its grants, row policy and masks hold; no landing waits on an export.
   *A-topology*
-- `commit-order` — Export reads the rows past its cursor in `_commit_seq`, then `_row_seq`, order and never by `_ingested_at`, so {{store.reserve.commit-seq}} keeps a run committing late from being skipped.
+- `commit-order` — Export reads rows past its cursor ordered by `_commit_seq`, then `_row_seq`. Export does not order by `_ingested_at`; {{store.reserve.commit-seq}} keeps late-committing runs eligible.
   *A-topology*
 - `commit-seq-missing` — A table holding rows whose `_commit_seq` is null, from parts landed without the column, raises `ExportCommitSeqMissing` naming the export and the row count, before any batch leaves.
   *because a null never passes a cursor, and a row an export skips in silence is a row its mirror loses*
@@ -352,9 +352,9 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because a batch that size sits below the face row ceiling and the request limits common collectors apply*
 - `log-record` — Each row becomes one OTLP log record: `timeUnixNano` from `_ingested_at`, each non-null column outside the `_` namespace an attribute, beside `contextful.table`, `contextful.run_id`, `contextful.commit_seq` and `contextful.row_seq`.
   *because the attributes a target deduplicates on travel with the record, and the engine's own columns stay its own*
-- `delivery` — A batch leaves as one OTLP/HTTP JSON `POST` through the mediated client, its allowlist the endpoint's host alone, each header hydrated as {{connector.resolve.hydration-is-just-in-time}} states.
+- `delivery` — The exporter sends each batch as one OTLP/HTTP JSON `POST` through the mediated client. The allowlist contains only the endpoint host. Each header follows {{connector.resolve.hydration-is-just-in-time}}.
   *A-topology*
-- `secret-preflight` — A header reference no adapter answers refuses at preflight as {{connector.resolve.unresolved-name}}, before any row is read.
+- `secret-preflight` — If no adapter resolves a header reference, the exporter refuses at preflight as {{connector.resolve.unresolved-name}} before reading any row.
   *because a target the export cannot authenticate to is known before a batch is built*
 - `cursor-after-ack` — The cursor, the last delivered `_commit_seq` and `_row_seq`, commits only after the target answers 2xx for the batch.
   *because an unacknowledged batch remains eligible for delivery after a restart*
@@ -375,7 +375,7 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because a consumer needs stable row identity and a delivery cadence*
 - `typed-state` — A typed export compares the latest stable committed table read through {{run.export.post-commit-read}} with its last acknowledged state; commits between reads coalesce into one publication.
   *because a scheduled state export promises the observed frontier rather than every intermediate write*
-- `typed-view-recheck` — A typed export re-reads its admitted table even when the source commit frontier is unchanged, and stages a publication when its key, schema, policy or visible state changes.
+- `typed-view-recheck` — A typed export re-reads its admitted table even without a source commit frontier change. The exporter stages a publication when its key, schema, policy or visible state changes.
   *because a commit hash alone cannot identify the view delivered to a consumer*
 - `typed-publication-id` — A typed publication identifier covers the source frontier, read identity and visible keyed state, so distinct delivered views carry distinct identifiers without requiring another source commit.
   *because a receiver must not mistake a changed view for a retry of the prior publication*
@@ -395,7 +395,7 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because delivery resumes without another operator invocation*
 - `typed-byte-limit` — One typed JSON request holds at most 65536 B.
   *because a row-count bound alone admits an unbounded request body*
-- `typed-event-too-large` — A typed event unable to fit one request raises `ExportEventTooLarge`; watch stops rather than retrying that event.
+- `typed-event-too-large` — If a typed event exceeds one request's capacity, the exporter raises `ExportEventTooLarge`. Watch stops without retrying that event.
   *because an unchanged oversized event cannot make progress on retry*
 - `group-block` — A local `[[publication]]` declares `name`, producer `job` and typed export `members`; members cover every producer output exactly once and share one destination and header binding.
   *A-run*
@@ -460,7 +460,7 @@ unsettled: Does a local-profile sender whose disk a replacement emptied continue
 
 ## backfill
 
-Phases, chunk plans, fenced chunk leases and the rewind window.
+The scheduler loads history through chunk plans with fenced leases and supports rewinding a declared range.
 
 - `phase` — The catalog records one phase per pipeline: `planning` computes the chunk plan with nothing fetched, `seeding` loads consumer-held history, `backfilling` runs chunks across ticks, `streaming` pulls the incremental delta.
 - `chunk-plan` — Plan shape follows cursor kind: `monotonic` plans independent time-window or id-range chunks, `opaque-token` one sequential chunk walked in order, `snapshot-id` version ranges sequential per stream and parallel across streams.
@@ -471,7 +471,7 @@ Phases, chunk plans, fenced chunk leases and the rewind window.
   *because an unquantified lease cannot be tested against a paused worker*
 - `fenced-commit` — A chunk commits in one catalog update conditioned on `attempt = :mine AND status != 'done'`; an update matching no row leaves that worker's files uncommitted.
   *because an expired holder otherwise commits over its successor*
-- `commit-signal` — The catalog row, not directory presence, is the commit signal; files under a path with no done row are collected by a retention window.
+- `commit-signal` — The catalog row signals commit; directory presence does not. Retention collects files under paths without a done row according to a retention window.
 - `attempt-isolation` — An expired lease lets a second worker claim the chunk, increment the attempt and write under its own path.
 - `tick` — While a pipeline backfills, a tick dispatches up to the per-tick chunk cap or no-ops when the queue is full; the declared cadence resumes once the position catches up.
 - `block` — `[pipeline.backfill]` declares `max_chunks`, the bound on a plan's chunk count; `chunk_size`, one clock-ranged chunk's width in cursor units; and `start_from`, the floor, default zero.
@@ -495,7 +495,7 @@ unsettled: What is the per-tick chunk cap, and how long does the retention windo
 
 ## seed
 
-The bulk-load source mode, its ceiling, its scope and the parity it guarantees.
+A seed source bulk-loads history below a declared ordering ceiling before live ingestion.
 
 - `block` — `[pipeline.seed]` attaches a bulk-load source with a ceiling `below` expressed on the seeded table's `order_by` scale.
 - `one-land-path` — Seeded rows travel {{run.land.stage-order}} unchanged; attribution survives only in the load id and a run recorded under the `seeding` phase.
@@ -504,7 +504,7 @@ The bulk-load source mode, its ceiling, its scope and the parity it guarantees.
   *A-run*
 - `ceiling-breached` — A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped.
   *A-run*
-- `ceiling-point` — The ceiling is evaluated on the root batch after normalize and the chain, before the write.
+- `ceiling-point` — The engine evaluates the ceiling on the root batch after normalization and the transform chain, before writing.
 - `ceiling-unevaluable` — A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`; a text stamp orders only when `Z`-suffixed at the ceiling's fractional width.
   *A-run*
 - `scope` — Seed chunk and cursor state live under a `<table>#seed` scope apart from the live pipeline's.
@@ -521,7 +521,7 @@ The bulk-load source mode, its ceiling, its scope and the parity it guarantees.
 
 ## model
 
-The `[[model]]` block: a table defined by SQL over store tables, its contract, freshness and tests, and the `build` verbs that materialize, publish and hold it.
+The engine builds model tables from SQL over store tables, validates contracts and tests, and records freshness and holds.
 
 - `model-block` — A `[[model]]` block carries `id`, {{run.model.statement-source}}, optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]`, `[[model.test]]`, {{disclosure.release.model-policy}} and {{disclosure.set-mode.opt-out-record}}; an unknown key refuses as {{run.declare.spec-invalid}}.
   *A-run*
@@ -530,14 +530,14 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
 - `top-level-block` — A manifest's top-level key outside the set the engine enumerates raises `PipelineUnknownBlock`, naming the key, the file and the accepted set.
   *because a misspelled block parses as nothing, and its declaration silently never runs*
 - `model-id` — A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.
-- `sql` — The selected model statement is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through its last published table.
+- `sql` — A model statement is one read-only `SELECT` over store tables. The engine admits the statement under {{read.guard.whole-tree-walk}} before reading any row. A model reads another model's last published table.
 - `validate-statements` — `pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to {{run.model.restricted-input}}, and raises the error the build raises.
 - `validate-undeclared` — `pipeline validate` names on stderr each relation a model's `sql` or test reads that no manifest table, pipeline destination or model declares, and still validates the model; `build` resolves that relation against the store.
   *because a table landed without a manifest declaration is a legal input, while a misspelled name otherwise surfaces only at `build`*
 - `restricted-input` — A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
   *because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader*
 - `materialized` — `materialized` is `table`, the default: each build replaces the model's rows whole.
-- `unique-key` — `unique_key` is the model's grain; a build whose rows repeat one grain value, or hold a null in a grain column, refuses as {{run.publish.contract-mismatch}}.
+- `unique-key` — `unique_key` defines the model's row identity. A build with duplicate key values or a null in a key column refuses as {{run.publish.contract-mismatch}}.
 - `contract-block` — `[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a `name`, a `type` spelled as {{store.reconcile.typed-landing}} reads it, and `nullable`, default true.
 - `contract-required` — A model whose `publish` is true, the default, and which declares no `[model.contract]` raises `ModelContractUndeclared` at validation.
   *because a published table without a declared contract has no identity a reader can pin against*
@@ -559,7 +559,7 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
   *because a build of a misspelled id otherwise reports nothing to do*
 - `build-frontier` — `build` reads each input at its committed frontier and fires no pipeline; a build ordered after a landing is a `build` job naming that pipeline in `after`, under {{surface.fire.build-dependency}}.
   *because `after` already orders builds behind pipelines, and a verb firing sources needs their credentials and quota, and repeats paid calls on every retry*
-- `model-cycle` — A model whose `sql` reaches its own id through one or more other models raises `ModelCycle` at `pipeline validate`, import, apply and `build`, before any store is read, naming every model on the cycle.
+- `model-cycle` — If a model's `sql` reaches its own id through one or more other models, `pipeline validate`, import, apply and `build` raise `ModelCycle`. The engine names every model on the cycle and reads no store.
   *because no member of a cycle has a first build, and once one exists each build folds in the other's previous output*
 - `build-id` — A build's id is the snapshot id it publishes.
   *A-run*
@@ -593,16 +593,16 @@ unsettled: Does a model over a restricted table declare its own policy, or inher
 
 ## publish
 
-A published table's contract identity, build, freshness and holds, committed with its snapshot manifest.
+Published tables: contract identity, snapshot publication, build history, freshness and collection holds.
 
-- `manifest-commit` — A published table's contract identity, freshness and current build ride the snapshot manifest commit that publishes its data; no separate file is authoritative for any of them.
+- `manifest-commit` — The snapshot manifest commit publishes a table's data, contract identity, freshness and current build together. No separate file is authoritative for these values.
   *because separately written artifacts make a torn publication representable*
 - `contract-identity` — A published table's identity is `contract_version` beside `schema_fingerprint`, taken over the declared columns, their types and the grain.
 - `contract-mismatch` — A materialization whose columns, types or grain miss the declared contract raises `PipelineContractMismatch`, naming the column and the expectation.
   *P4*
 - `staging` — A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.
   *P4*
-- `history-logs` — `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests and build-attempt records; a log disagreeing with a source record is regenerated from it.
+- `history-logs` — `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` contain append-only history derived from committed manifests and build-attempt records. If a log disagrees with a source record, the engine regenerates the log from that record.
 - `build-entry` — A build entry carries build id, start and completion instants, a status of published, refused, partial or failed, the contract identity, and the partition values it left unfilled.
 - `failed-attempt` — A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.
   *because a process killed before publication cannot write its own failure, while its attempt record and released lock survive*
@@ -622,7 +622,7 @@ A published table's contract identity, build, freshness and holds, committed wit
 - `hold` — A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
 - `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` follows {{run.model.watermark}}.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
-- `disclosure-digest` — A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.
+- `disclosure-digest` — A build records a digest over its table's declared `class`, `policy` and `visibility`, sorting set-valued fields. The manifest and build log carry the digest. Any declaration sets `withheld_cells`.
 
 ```mermaid
 flowchart LR

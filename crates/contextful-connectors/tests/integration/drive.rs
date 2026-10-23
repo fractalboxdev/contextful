@@ -281,9 +281,10 @@ fn picks(fake: &Fake, extra: Value) -> Arc<Drive> {
     Drive::new(DriveConfig::parse_picks(&config).unwrap(), secrets, Arc::new(InProcess), Arc::new(Held::default())).unwrap()
 }
 
-/// A captured file that becomes inaccessible or trashed under a valid credential lands tombstones for its file and
-/// pages once and enters the position's withdrawn set; an authentication or transient failure advances no position.
-// spec: connector.drive-picks.file-revoked@3fdaae9f
+/// When a captured file becomes inaccessible or trashed under a valid credential, the source tombstones its file and
+/// pages once. The position adds its id to the withdrawn set. Authentication and transient failures advance no
+/// position.
+// spec: connector.drive-picks.file-revoked@e6f2309c
 #[test]
 fn a_revoked_picked_file_stays_withdrawn_across_later_fires() {
     let fake = Fake::start();
@@ -326,10 +327,10 @@ fn a_trashed_picked_file_lands_its_tombstone_once() {
     assert!(rows.is_empty(), "{rows:?}");
 }
 
-/// The source validates every selected file through the bound credential; a never-captured inaccessible or trashed
-/// id, a non-file id, or a file outside a configured `drive_id` raises `ConnectorDriveFileRejected` without landing
-/// rows or advancing position.
-// spec: connector.drive-picks.file-access@6fdba5f1
+/// The source validates each selected file with the bound credential. An uncaptured inaccessible or trashed id, non-
+/// file id, or file outside configured `drive_id` raises `ConnectorDriveFileRejected` without landing rows or
+/// advancing position.
+// spec: connector.drive-picks.file-access@91e250b4
 #[test]
 fn a_picked_file_never_captured_or_outside_the_drive_is_rejected() {
     let fake = Fake::start();
@@ -350,9 +351,9 @@ fn a_picked_file_never_captured_or_outside_the_drive_is_rejected() {
     rejected(picks(&fake, json!({"file_ids": ["doc-plan"]})), None, "doc-plan");
 }
 
-/// A withdrawn id stays selected without refusing later fires: a fire still finding it inaccessible lands nothing for
-/// it, and a fire reading it again captures it as a new file and drops it from the withdrawn set.
-// spec: connector.drive-picks.file-withdrawn@ecdba17c
+/// A withdrawn id stays selected without refusing later fires. A fire finding the file inaccessible stores nothing for
+/// that file. When access returns, the source captures the file as new and removes its id from the withdrawn set.
+// spec: connector.drive-picks.file-withdrawn@9b3380cc
 #[test]
 fn a_withdrawn_picked_file_readable_again_is_captured_as_new() {
     let fake = Fake::start();
@@ -378,10 +379,10 @@ fn a_withdrawn_picked_file_readable_again_is_captured_as_new() {
     assert_eq!(restored["withdrawn"], json!([]), "{restored}");
 }
 
-/// A picked file whose export Drive answers `403 exportSizeLimitExceeded` lands under
-/// {{connector.source.drive-export-limit}}, not as revoked: its id stays out of the withdrawn set and its `files` row
-/// lands no tombstone.
-// spec: connector.drive-picks.export-limit@14f5f0fa
+/// If Drive answers a picked file's export with `403 exportSizeLimitExceeded`, the source applies
+/// {{connector.source.drive-export-limit}}. The file id stays outside the withdrawn set, and its `files` row receives
+/// no tombstone.
+// spec: connector.drive-picks.export-limit@a2aa7ce7
 #[test]
 fn a_picked_sheet_over_drives_export_limit_is_skipped_and_never_withdrawn() {
     let fake = Fake::start();
@@ -474,7 +475,7 @@ fn selected_drive_roots_reject_ambiguous_or_unbounded_configuration() {
 }
 
 /// An outside-drive selected root refuses before any selected folder is listed.
-// spec: connector.source.drive-root-validation@8a0c59bf
+// spec: connector.source.drive-root-validation@f6f4eb8e
 #[test]
 fn every_selected_root_is_checked_before_listing() {
     let fake = Fake::start();
@@ -490,7 +491,7 @@ fn every_selected_root_is_checked_before_listing() {
 
 /// Overlapping selected roots land each file once and resolve it to the least selected root id.
 // spec: connector.source.drive-root-walk@a69f82be
-// spec: connector.source.drive-overlap@ec0c9d7d
+// spec: connector.source.drive-overlap@a4514f5f
 #[test]
 fn overlapping_selected_roots_deduplicate_files_and_resolve_paths() {
     let fake = Fake::start();
@@ -689,10 +690,9 @@ fn held_version_and_resolved_root_trigger_reread() {
     assert_eq!(rows[0]["resolved_root"], "root-f");
 }
 
-/// The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder,
-/// within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is
-/// followed.
-// spec: connector.source.drive-walk@60209b54
+/// The drive source walks `folder_id` breadth-first through `files.list`, paging each folder within `drive_id` when
+/// declared. The source lists each folder once, sorts children by name and id, and follows no shortcut.
+// spec: connector.source.drive-walk@3bbef638
 #[test]
 fn a_three_level_tree_lands_one_row_per_file_with_its_path_from_the_root() {
     let fake = Fake::start();
@@ -819,9 +819,9 @@ fn a_doc_a_sheet_and_a_deck_land_as_their_pdf_pages() {
     assert_eq!(fake.received("/drive/v3/files").len(), 4);
 }
 
-/// A file over `max_file_bytes`, 64 MiB by default, lands its file row with a `skipped` reason naming the cap
-/// and no pages. No byte past the cap is read, and the read continues.
-// spec: connector.source.drive-file-cap@358a2c15
+/// For a file over `max_file_bytes`, 64 MiB by default, the source stores a file row with a `skipped` reason naming
+/// the cap, without pages. The source reads no bytes past the cap and continues.
+// spec: connector.source.drive-file-cap@c23e9df5
 #[test]
 fn a_file_over_the_cap_is_skipped_by_name_and_the_read_succeeds() {
     let fake = Fake::start();
@@ -922,9 +922,9 @@ fn a_rotated_drive_bearer_serves_the_rest_of_the_fire() {
     assert!(fake.received("/drive/v3/files").iter().any(|request| request.header("authorization") == Some(&format!("Bearer {ACCESS}"))));
 }
 
-/// `oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}`
-/// reference and nothing else, checked before any request.
-// spec: connector.source.drive-oauth-shape@a500c256
+/// Before any request, the source checks that `oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each
+/// hold exactly one `${secret://<name>}` reference and nothing else.
+// spec: connector.source.drive-oauth-shape@33c26236
 #[test]
 fn each_oauth_value_is_one_reference() {
     let fake = Fake::start();

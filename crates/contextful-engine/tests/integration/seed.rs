@@ -116,8 +116,8 @@ fn a_stamp_reaching_the_ceiling_fails_its_chunk_and_lands_nothing() {
     assert!(rig.engine.seeding().state(PIPELINE, TABLE).unwrap().fingerprint.is_none(), "a failed chunk commits no seed");
 }
 
-/// The ceiling is evaluated on the root batch after normalize and the chain, before the write.
-// spec: run.seed.ceiling-point@00cd2763
+/// The engine evaluates the ceiling on the root batch after normalization and the transform chain, before writing.
+// spec: run.seed.ceiling-point@f03adbd4
 #[test]
 fn the_ceiling_reads_the_batch_the_chain_answers() {
     let rig = Rig::new();

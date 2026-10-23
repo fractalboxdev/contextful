@@ -62,9 +62,9 @@ fn a_probe_endpoint_carrying_userinfo_is_refused() {
     assert!(ScopeProbe::new("api.vendor.example/v1/identity", "X-Granted-Scopes", &["reports.read"]).is_err());
 }
 
-/// A scope probe declaring a scopes header that is empty or not an HTTP field-name token raises
+/// A scope probe declaring an empty scopes header or a header outside HTTP field-name token syntax raises
 /// `ConnectorScopeProbeRejected`.
-// spec: connector.declare-capability.probe-shape@521ccc45
+// spec: connector.declare-capability.probe-shape@ba0801d5
 #[test]
 fn a_scopes_header_that_is_no_field_name_refuses_at_declaration() {
     for header in ["", "   ", "X Granted", "X-Granted:", "X-Granted\u{e9}", "(scopes)"] {

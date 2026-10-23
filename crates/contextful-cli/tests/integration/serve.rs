@@ -1735,8 +1735,8 @@ fn a_served_stop_authorizes_against_the_recorded_pipeline_not_the_request() {
     assert_eq!((status, &absent), (403, &answer), "an unrecorded run refuses as an uncovered one");
 }
 
-/// A subscription is read-only; a stop travels as an authenticated route.
-// spec: run.project.read-only-socket@1a1d5f50
+/// A subscription permits reads only. Stop requests use an authenticated route.
+// spec: run.project.read-only-socket@193da0d1
 #[test]
 fn the_served_run_stream_carries_the_snapshot_and_takes_no_stop() {
     let (dir, public) = project();
@@ -1920,7 +1920,7 @@ fn the_receive_route_admits_before_the_body_and_answers_after_both_tables_commit
 }
 
 /// A delivery without a batch key answers `400` before its body is read, and no table lands.
-// spec: run.land.receive-key-missing@5071178c
+// spec: run.land.receive-key-missing@262167c8
 #[test]
 fn the_receive_route_refuses_a_delivery_without_a_batch_key() {
     let (dir, public) = receiving_face();
@@ -1936,7 +1936,7 @@ fn the_receive_route_refuses_a_delivery_without_a_batch_key() {
 
 /// A delivery to an undeclared pipeline id, or to a pipeline whose source is not `receive`, answers `404` before
 /// its body is read.
-// spec: run.land.receive-pipeline-unknown@6a44cff6
+// spec: run.land.receive-pipeline-unknown@ba54fb00
 #[test]
 fn the_receive_route_answers_404_for_a_pipeline_that_receives_nothing() {
     let (dir, public) = receiving_face();

@@ -139,7 +139,7 @@ fn a_direct_write_lands_a_claim_and_refuses_another_shape() {
 }
 
 /// A relation rename replaces the type of each stored edge under its existing key.
-// spec: read.declare.reserved-relations@d88f3e8f
+// spec: read.declare.reserved-relations@b16ea1e8
 #[test]
 fn relation_rename_rewrites_stored_edges_before_the_old_name_is_removed() {
     let (dir, public, token) = project();
@@ -168,7 +168,7 @@ fn relation_rename_rewrites_stored_edges_before_the_old_name_is_removed() {
     assert_eq!(rows["rows"], json!([["e1", "tracks"], ["e2", "tracks"]]));
 }
 
-// spec: read.recall.cli-verb@5b079311
+// spec: read.recall.cli-verb@4aef14d8
 #[test]
 fn recall_cli_answers_historical_and_current_claims_as_json() {
     let (dir, public, token) = project();
@@ -293,8 +293,9 @@ fn a_signed_read_over_an_unanchored_chain_refuses_and_unsigned_reads_go_on() {
     assert_eq!(entries(), 3);
 }
 
-/// A claims table synthesizes when `contextful memory synthesize` runs; a `[[job]]` of kind `synthesize` targeting it with a `schedule` replaces that default, and each fire still advances only through {{read.synthesize.pass-cursor}}.
-// spec: read.synthesize.cadence@cf3ba0f2
+/// By default, `contextful memory synthesize` starts synthesis. A scheduled `[[job]]` of kind `synthesize` targeting
+/// the claims table replaces that default. Each execution advances only through {{read.synthesize.pass-cursor}}.
+// spec: read.synthesize.cadence@381c8db9
 #[test]
 fn a_scheduled_synthesize_job_replaces_the_operator_triggered_pass() {
     let (dir, public, token) = project();
@@ -455,8 +456,10 @@ impl Settling {
     }
 }
 
-/// `contextful memory predict --into <table> --registration <json>` checks {{read.settle.registration}} and lands the registration in that `predictions` table under the admitted credential's write grant, then prints `prediction_id: <id>`.
-// spec: read.settle.predict-verb@df18be6f
+/// `contextful memory predict --into <table> --registration <json>` validates {{read.settle.registration}}. Under the
+/// admitted credential's write grant, the command stores the registration in that `predictions` table and prints
+/// `prediction_id: <id>`.
+// spec: read.settle.predict-verb@3150c7b9
 #[test]
 fn predict_lands_a_registration_and_prints_its_id() {
     let s = Settling::new();
@@ -507,8 +510,10 @@ fn predict_lands_a_registration_and_prints_its_id() {
     assert!(stderr.contains("`metric`") && !stderr.contains("Metric"), "wire names only: {stderr}");
 }
 
-/// `contextful memory observe --into <table> --observation <json>` reads the prediction's stored registration through the writer's session, checks {{read.settle.source-mismatch}} and {{read.settle.settling-citation}}, lands it in that `outcomes` table, and prints its label row.
-// spec: read.settle.observe-verb@6cb371e1
+/// `contextful memory observe --into <table> --observation <json>` reads the stored prediction registration through
+/// the writer's session. After checking {{read.settle.source-mismatch}} and {{read.settle.settling-citation}}, the
+/// command stores the observation in that `outcomes` table and prints its label row.
+// spec: read.settle.observe-verb@6e8cdc66
 #[test]
 fn observe_checks_against_the_stored_registration_and_prints_the_label_row() {
     let s = Settling::new();
@@ -549,8 +554,10 @@ fn settlement_rows_carry_the_token_subject() {
     }
 }
 
-/// `contextful memory calibration --table <claims>` joins label rows carrying a verdict to that claims table on `prediction_id` equal to `claim_id`, through the caller's session, and prints {{read.settle.calibration-report}} with the count of joined predictions, as JSON under `--json`.
-// spec: read.settle.calibration-verb@a972ef09
+/// `contextful memory calibration --table <claims>` joins verdict-bearing labels to claims by `prediction_id =
+/// claim_id` through the caller's session. The command prints {{read.settle.calibration-report}} with joined-
+/// prediction count, using JSON under `--json`.
+// spec: read.settle.calibration-verb@e7165367
 #[test]
 fn calibration_reports_the_settled_claims_of_a_table() {
     let s = Settling::new();
@@ -575,7 +582,7 @@ fn calibration_reports_the_settled_claims_of_a_table() {
 /// the live claims about its identity, synthesized and written alike, lists the candidates
 /// an ambiguous alias matches, and returns the identity alone to a credential holding no
 /// grant on the claims table, appending the read entry the tool call appends.
-// spec: read.resolve-entity.card-cli-verb@2e9d0411
+// spec: read.resolve-entity.card-cli-verb@b416ffbf
 #[test]
 fn explain_cli_answers_one_card_candidates_or_the_identity_alone() {
     let (dir, public, token) = project();
@@ -652,8 +659,8 @@ fn explain_cli_answers_one_card_candidates_or_the_identity_alone() {
 
 /// An entity upsert lands a canonical identity, merges aliases on its key, refuses a
 /// mention another entity owns, and a synthesis pass resolves the upserted alias.
-// spec: read.resolve-entity.entity-upsert@c497bb99
-// spec: read.resolve-entity.upsert-merge@ebeebe20
+// spec: read.resolve-entity.entity-upsert@5aeb908f
+// spec: read.resolve-entity.upsert-merge@f43da41c
 // spec: read.resolve-entity.alias-conflict@4c7114b5
 #[test]
 fn an_entity_upsert_lands_merges_aliases_and_refuses_a_taken_mention() {

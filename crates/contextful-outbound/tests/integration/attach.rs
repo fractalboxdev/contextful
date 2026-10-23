@@ -50,9 +50,9 @@ fn a_request_to_an_uncovered_host_fails_before_any_socket() {
     assert_eq!(ok.status, 200);
 }
 
-/// Every source, credential-bearing or not, follows a hop only when it keeps the configured host and port on the
-/// same or a stronger transport; cleartext to TLS at that host and port is followed.
-// spec: connector.attach.redirect-pinning@b54ab05f
+/// With or without credentials, a source follows a hop only with the configured host and port on the same or stronger
+/// transport. Sources follow cleartext-to-TLS hops at that host and port.
+// spec: connector.attach.redirect-pinning@291717e2
 #[test]
 fn a_hop_is_followed_only_within_the_configured_origin() {
     let _env = proxy_env();
@@ -108,8 +108,8 @@ fn a_hop_off_the_origin_or_down_to_cleartext_is_refused() {
     assert!(f.message.starts_with("SecretRedirectOffOrigin"), "{f}");
 }
 
-/// The origin answering the request whose body lands equals the configured host and port.
-// spec: connector.attach.landed-origin@342100c9
+/// The source stores response bodies only from the configured host and port.
+// spec: connector.attach.landed-origin@d2917eb9
 #[test]
 fn the_body_that_lands_comes_from_the_configured_origin() {
     let _env = proxy_env();
@@ -120,9 +120,9 @@ fn the_body_that_lands_comes_from_the_configured_origin() {
     assert_eq!((resp.url.host_str(), resp.url.port()), (configured.host_str(), configured.port()));
 }
 
-/// A header hydrated from a reference is marked sensitive, and sending it to a cleartext endpoint raises
-/// `SecretCleartextEndpoint`, IPv4 and IPv6 loopback exempt.
-// spec: connector.attach.cleartext-endpoint@88b2d8b0
+/// The host marks a reference-hydrated header sensitive. Sending the header to a cleartext endpoint raises
+/// `SecretCleartextEndpoint`, except on IPv4 or IPv6 loopback.
+// spec: connector.attach.cleartext-endpoint@f5ec9ea1
 #[test]
 fn a_credential_never_travels_in_cleartext_outside_loopback() {
     let _env = proxy_env();
@@ -173,9 +173,9 @@ fn no_request_carries_a_referer() {
     assert!(seen.iter().all(|r| r.header("referer").is_none()), "{seen:?}");
 }
 
-/// A URL reaching an error message, a log line or a landed column carries scheme, host, port and path; query,
-/// fragment and userinfo are dropped.
-// spec: connector.attach.url-scrubbing@543ce135
+/// Before a URL enters an error message, log line or stored column, the host removes query, fragment and userinfo.
+/// Scheme, host, port and path remain.
+// spec: connector.attach.url-scrubbing@87fb8699
 #[test]
 fn a_failed_requests_message_carries_no_query_or_fragment() {
     let _env = proxy_env();

@@ -64,7 +64,7 @@ fn expensive_statement() -> String {
     format!("WITH work AS MATERIALIZED ({rows}) SELECT sum(random()) FROM work t0, work t1, work t2, work t3")
 }
 
-// spec: read.respond.duration-ceiling@cfa152d7
+// spec: read.respond.duration-ceiling@26e61046
 // spec: authority.grant.duration-ceiling@e1d352e3
 #[test]
 fn a_duration_ceiling_interrupts_one_statement_and_the_next_read_answers() {
@@ -150,7 +150,7 @@ fn unrelated_read_grants_do_not_set_row_duration_or_byte_ceilings() {
     assert_eq!(answer(byte_grant), [json!("v1")]);
 }
 
-// spec: read.respond.byte-ceiling@72418c75
+// spec: read.respond.byte-ceiling@8e3e70d3
 // spec: read.respond.truncation-cause@38517ea2
 #[test]
 fn a_byte_ceiling_preserves_whole_rows_and_names_the_cut() {
@@ -179,7 +179,7 @@ fn a_byte_ceiling_preserves_whole_rows_and_names_the_cut() {
     assert_eq!(row_cut.to_json()["contextful.truncation"], json!({ "by": "rows", "ceiling": 1, "source": "request" }));
 }
 
-// spec: read.respond.truncation-tie@9027666a
+// spec: read.respond.truncation-tie@5a3b862a
 #[test]
 fn a_byte_cut_wins_when_a_row_ceiling_cuts_the_same_next_row() {
     let r = Reads::new();
@@ -218,8 +218,10 @@ fn a_byte_cut_reports_the_delivered_row_count_in_internals() {
     assert_eq!(cut.to_json()["contextful.internals"]["row_count"], json!(1));
 }
 
-/// The restriction block carries the session zone, the incognito flag and one entry per touched relation the zone excludes or column-masks: `table`, `excluded`, `rows_dropped` and `columns_masked`. A read withholding no touched relation omits the block.
-// spec: read.respond.restriction-block@ccb9c983
+/// The restriction block includes session zone, incognito flag and an entry per touched relation excluded or column-
+/// masked by zone: `table`, `excluded`, `rows_dropped`, `columns_masked`. Reads withholding no touched relation omit
+/// the block.
+// spec: read.respond.restriction-block@226d3b2a
 // spec: authority.place.envelope@6377ef1d
 #[test]
 fn a_zone_excluded_relation_is_named_beside_its_empty_rows() {
@@ -391,8 +393,9 @@ fn a_result_carries_provenance_columns_and_no_store_path() {
     }
 }
 
-/// A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback, never from a ranked top score.
-// spec: read.respond.coverage-is-a-count@d2e4c0ac
+/// A claim of missing corpus coverage requires a table count after the full-scan fallback, without recency truncation.
+/// The highest ranked score supplies no coverage conclusion.
+// spec: read.respond.coverage-is-a-count@62fe6570
 #[test]
 fn coverage_counts_the_whole_table_past_the_ranked_window() {
     let r = Reads::new();
@@ -410,8 +413,9 @@ fn coverage_counts_the_whole_table_past_the_ranked_window() {
     assert_eq!(column(&subject, "n"), [json!("1")]);
 }
 
-/// A cross-table join runs as one `context.query` statement over registered relations, or through a published model the describe payload lists; no tool joins on a caller's behalf.
-// spec: read.register.join-route@a388d840
+/// Cross-table joins use one `context.query` statement over registered relations or a published model listed by
+/// describe. No tool constructs joins for callers.
+// spec: read.register.join-route@eb6c9e11
 #[test]
 fn a_join_is_one_statement_over_registered_relations() {
     let r = Reads::new();

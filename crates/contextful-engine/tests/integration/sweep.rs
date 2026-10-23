@@ -198,8 +198,9 @@ fn a_fresh_origin_reads_every_table_at_the_sweeps_as_of() {
     assert!(asked.iter().all(|a| a.1 == T0 && a.2.is_none()), "{asked:?}");
 }
 
-/// A sweep runs every origin it declares, however many have passed, and {{surface.arm.catch-up}} collapses none; a failed origin of a `carried` sweep leaves every later origin unopened.
-// spec: run.sweep.no-collapse@bfbf849d
+/// A sweep runs every declared origin, regardless of elapsed time. {{surface.arm.catch-up}} collapses no origin. A
+/// failed origin in a `carried` sweep prevents every later origin from opening.
+// spec: run.sweep.no-collapse@9a700bee
 #[test]
 fn every_origin_runs_and_a_failed_carried_origin_stops_the_rest() {
     let failing = Echo { fails_at: Some("2029-11-23T00:00:00.000000000Z".into()), ..Echo::default() };

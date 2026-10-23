@@ -22,7 +22,7 @@ const NOW: &str = "2030-01-01T01:00:00Z";
 const PART_A: &str = "team/research/tables/filings/data/runs/run-1/ingest-a/part-00000.parquet";
 
 /// A cold pull stages the listed control ancestry and leaves the local applied pointer absent.
-// spec: store.pull.control-head@26468ef2
+// spec: store.pull.control-head@2c1e3b51
 #[test]
 fn a_cold_pull_stages_only_the_reachable_control_head_without_applying_it() {
     let dir = tempfile::tempdir().unwrap();
@@ -188,7 +188,7 @@ fn a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it() {
 }
 
 /// A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.
-// spec: store.pull.digest-mismatch@e4fabb02
+// spec: store.pull.digest-mismatch@9b767ebe
 #[test]
 fn an_object_whose_digest_differs_from_its_entry_is_refused_and_discarded() {
     let (dir, b, _a) = pushed();
@@ -244,9 +244,9 @@ fn a_key_that_keeps_moving_refuses_and_writes_no_pointer() {
     assert!(!c.root().join("tables/filings/_pointer.json").exists());
 }
 
-/// A pull refused by {{store.pull.unconverged}} keeps each object it verified, so the next `sync pull` downloads
-/// only the keys still differing; no pull retries past its attempts.
-// spec: store.pull.unconverged-resume@ef4ad40e
+/// A pull refused under {{store.pull.unconverged}} preserves verified objects. The next `sync pull` downloads only
+/// keys whose digests still differ. Pull does not exceed its retry attempts.
+// spec: store.pull.unconverged-resume@5551311b
 #[test]
 fn an_exhausted_pull_keeps_what_it_verified_and_the_next_fetches_only_the_rest() {
     let (_dir, b, a) = pushed();
@@ -288,9 +288,9 @@ fn an_exhausted_pull_keeps_what_it_verified_and_the_next_fetches_only_the_rest()
     assert_eq!(report.pointers, ["research/tables/filings/_pointer.json"]);
 }
 
-/// A replica's pull writes `replica.json` beside `derived.sqlite`, naming per table each snapshot it holds with
-/// that snapshot's parts and sidecar paths present on disk; no push carries it.
-// spec: store.replicate.descriptor@a083a2e5
+/// A replica's pull writes `replica.json` beside `derived.sqlite`. For each table, the file names every locally held
+/// snapshot whose parts and sidecar paths exist on disk. Push excludes this file.
+// spec: store.replicate.descriptor@2c05e409
 #[test]
 fn a_replica_pull_writes_its_descriptor_beside_the_catalog() {
     use contextful_context::replica::{read, DESCRIPTOR_FILE};
@@ -325,9 +325,9 @@ fn a_replica_pull_writes_its_descriptor_beside_the_catalog() {
     assert!(!m.entries.keys().any(|k| k.ends_with(DESCRIPTOR_FILE)));
 }
 
-/// A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader
-/// meets a pointer ahead of its data.
-// spec: store.pull.pointer-last@d68b649f
+/// A pull writes a table's pointer only after every Parquet part in the named snapshot exists locally. Readers
+/// therefore encounter no pointer before its data.
+// spec: store.pull.pointer-last@fba21a30
 #[test]
 fn a_pointer_is_written_only_once_its_snapshot_is_home() {
     let (_dir, b, a) = pushed();
@@ -438,9 +438,9 @@ fn a_replica_refuses_a_write_verb_naming_the_canonical_store() {
     assert_eq!(files(&r).len(), 1);
 }
 
-/// A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves
-/// that snapshot unpublished.
-// spec: store.replicate.partial-parquet@8dc55930
+/// If a replica lacks any of a snapshot's Parquet files, refresh raises `ReplicaPartialParquet` and leaves that
+/// snapshot unpublished.
+// spec: store.replicate.partial-parquet@d6294216
 #[test]
 fn a_replica_missing_a_snapshot_part_refuses_and_leaves_it_unpublished() {
     let (_dir, b, a) = pushed();
@@ -506,9 +506,9 @@ fn a_pass_merges_committed_ledgers_and_a_replica_carries_the_merge() {
     assert_eq!(calls, ["run-1/c1", "run-1/c2", "run-9/c9"]);
 }
 
-/// A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the
-/// proxying face.
-// spec: store.replicate.sensitive-refused@e105ab21
+/// A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`. The consumer reads that table through
+/// the query proxy.
+// spec: store.replicate.sensitive-refused@08d7fe33
 #[test]
 fn a_refresh_requesting_a_replicate_off_table_refuses() {
     let (_dir, b, _a) = pushed();
@@ -703,7 +703,7 @@ fn a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot() {
 
 /// A store holding no run state of its own node pulls that node's keys it lacks, so a replacement
 /// host reusing the node id tombstones none of them; a store that pushed keeps its own deletions.
-// spec: store.pull.cold-own-keys@503cc5c7
+// spec: store.pull.cold-own-keys@99a09a32
 #[test]
 fn a_cold_store_pulls_its_own_node_keys_and_its_push_tombstones_none() {
     let dir = tempfile::tempdir().unwrap();
@@ -748,8 +748,8 @@ fn a_tombstone_for_a_key_never_held_raises_nothing_on_pull() {
 
 /// A run state overwritten in place by a push that never committed is discarded with a warning, the pull
 /// lands every other key, and the node's next push lists its fresh run state.
-// spec: store.pull.run-state-torn@f0e7f46d
-// spec: store.push.run-state-upload@f31449b9
+// spec: store.pull.run-state-torn@11be58f4
+// spec: store.push.run-state-upload@fd166b5f
 #[test]
 fn a_run_state_torn_by_an_uncommitted_push_is_discarded_and_the_next_push_heals_it() {
     let dir = tempfile::tempdir().unwrap();
@@ -1002,7 +1002,7 @@ const COLD_PULL_SEED: u64 = 0x5eed_0643;
 
 /// A cold pull over a bucket holding each request for 2 ms keeps 16 fetches in flight and
 /// lands every object; it reads each object once.
-// spec: store.pull.transfer-width@b7f9010a
+// spec: store.pull.transfer-width@2e1da2f4
 #[test]
 fn a_cold_pull_keeps_sixteen_fetches_in_flight_and_reads_each_object_once() {
     let dir = tempfile::tempdir().unwrap();
@@ -1050,7 +1050,7 @@ fn a_refused_concurrent_pull_keeps_each_object_it_verified() {
 
 /// A pull reads no local file whose size, modification time, change time and inode match its
 /// digest record, and a rewrite restoring the size and modification time still re-downloads.
-// spec: store.pull.digest-record@4a0497aa
+// spec: store.pull.digest-record@5274f961
 #[test]
 fn a_pull_takes_a_matching_files_digest_from_its_record() {
     let dir = tempfile::tempdir().unwrap();

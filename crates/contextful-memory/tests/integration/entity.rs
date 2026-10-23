@@ -79,7 +79,7 @@ fn an_upserted_row_carries_its_authoring_agent() {
     assert_eq!(rows[0]["_authored_agent"], Value::from("agent://synthesizer"));
 }
 
-// spec: read.resolve-entity.upsert-fields@e8caa54c
+// spec: read.resolve-entity.upsert-fields@91026184
 /// Each field lands trimmed, and a field or alias empty after trimming lands nothing.
 #[test]
 fn an_upsert_trims_its_fields_and_refuses_an_empty_one() {
@@ -135,7 +135,7 @@ fn an_upsert_into_a_second_entities_table_refuses() {
     }
 }
 
-// spec: read.resolve-entity.upsert-serial@11ad334e
+// spec: read.resolve-entity.upsert-serial@d68c4163
 /// Concurrent upserts on one table apply one after another: no alias is lost, and two
 /// identities never both claim one mention.
 #[test]

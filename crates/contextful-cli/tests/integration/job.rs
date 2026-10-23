@@ -724,9 +724,9 @@ fn recorded(dir: &Path, run_id: &str) -> serde_json::Value {
     runs.iter().find(|r| r["run_id"] == run_id).unwrap_or_else(|| panic!("no run `{run_id}` in {history}")).clone()
 }
 
-/// Fan-out bodies rejoin only at an explicit join node; a join reached by a failed branch fails the run unless it
-/// declares `allow_partial`, which records each failed branch's label and failure tag on the run record.
-// spec: run.journal.fan-out-join@ca72f881
+/// Parallel branches rejoin only at an explicit join node. A failed branch reaching the join fails the run. With
+/// `allow_partial`, the join instead records each failed branch's label and failure tag on the run record.
+// spec: run.journal.fan-out-join@d9f77d0c
 #[test]
 fn a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch() {
     let dir = tempfile::tempdir().unwrap();
@@ -761,9 +761,9 @@ fn a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch
     assert!(row.get("failed_branches").is_none(), "a failed run records no partial result: {row}");
 }
 
-/// The authoring surface runs at build time only and emits a content-hashed plan; nothing from it executes where the
-/// engine serves, and no build profile embeds a scripting runtime.
-// spec: run.compile.authoring-surface@9426a5eb
+/// Authoring code runs only at build time and emits a content-hashed plan. No authoring code executes in the serving
+/// environment. No build profile embeds a scripting runtime.
+// spec: run.compile.authoring-surface@840a89bf
 #[test]
 fn a_plan_compiles_at_validate_to_a_content_hashed_version_and_no_profile_links_a_script_runtime() {
     let dir = tempfile::tempdir().unwrap();

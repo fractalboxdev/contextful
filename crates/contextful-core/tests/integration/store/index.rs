@@ -32,8 +32,9 @@ const VECTOR: &str = "[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \
 
 const FULLTEXT: &str = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";
 
-/// A sidecar is declared per table under `indexes` with a kind, a `column`, an `id_column` and builder parameters; the `vector` kind takes `model`, `dim`, the `cosine` metric, `m` and `ef_construction`, the `fulltext` kind a `tokenizer`.
-// spec: store.index.declaration@bffdbef1
+/// Each table declares sidecars under `indexes` with kind, `column`, `id_column` and builder parameters. The `vector`
+/// kind takes `model`, `dim`, metric `cosine`, `m` and `ef_construction`. The `fulltext` kind takes `tokenizer`.
+// spec: store.index.declaration@c6c47fb8
 #[test]
 fn each_sidecar_kind_declares_its_column_identifier_and_builder_parameters() {
     let t = table(
@@ -74,8 +75,9 @@ fn each_sidecar_kind_declares_its_column_identifier_and_builder_parameters() {
     assert!(plain.indexes().is_empty() && !plain.canonical().contains("indexes"));
 }
 
-/// A sidecar's `id_column` defaults to a single-column primary key on a table declaring no `valid_time`, and every sidecar of a table shares it, so keyed, composite-key and unkeyed tables each take one.
-// spec: store.index.id-column@7ca40f13
+/// Without `valid_time`, a sidecar's `id_column` defaults to the table's single-column primary key. All sidecars of a
+/// table share `id_column`; keyed, composite-key and unkeyed tables each use one.
+// spec: store.index.id-column@c54eba92
 #[test]
 fn the_identifier_defaults_to_a_single_key_and_serves_every_table_shape() {
     let keyed = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));
@@ -98,8 +100,10 @@ fn the_identifier_defaults_to_a_single_key_and_serves_every_table_shape() {
     assert_eq!(lined.id_column().unwrap(), Some("rate_id"));
 }
 
-/// A declaration naming no `id_column` on a table without a single-column primary key or declaring `valid_time`, one naming a valid-time table's single key, or two sidecars naming different ones, raises `StoreIndexIdColumnUnresolved` at manifest validation.
-// spec: store.index.id-column-unresolved@0ec32ff9
+/// Manifest validation raises `StoreIndexIdColumnUnresolved` for missing `id_column` without a single-column primary
+/// key or with `valid_time`. Naming a valid-time table's single key, or different `id_column` values across sidecars,
+/// raises the same error.
+// spec: store.index.id-column-unresolved@9d6edc49
 #[test]
 fn a_sidecar_without_one_shared_identifier_is_refused() {
     let s = schema(&[("doc", ColumnType::Utf8), ("page", ColumnType::Int64), ("embedding", ColumnType::FixedSizeList(FloatItem::Float32, 4))]);
@@ -131,8 +135,9 @@ fn a_sidecar_without_one_shared_identifier_is_refused() {
     named.validate_indexes(&s).unwrap();
 }
 
-/// An index over a column, or naming an `id_column`, the reconciled schema lacks raises `StoreIndexColumnAbsent` at the fold, before the pass that builds it stages anything.
-// spec: store.index.column-absent@0d83310b
+/// If the reconciled schema lacks an index's column or `id_column`, fold raises `StoreIndexColumnAbsent` before
+/// staging anything for that build.
+// spec: store.index.column-absent@61790b93
 #[test]
 fn an_index_or_identifier_the_schema_lacks_is_refused() {
     let t = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));
@@ -144,8 +149,10 @@ fn an_index_or_identifier_the_schema_lacks_is_refused() {
     assert!(matches!(named.validate_indexes(&whole), Err(StoreError::StoreIndexColumnAbsent(m)) if m.contains("digest")));
 }
 
-/// An `id_column` typed other than text or integer, a vector sidecar's column other than a vector of its `dim`, or a full-text sidecar's other than text raises `StoreIndexColumnType` at manifest validation where `columns` types it, else before any row lands.
-// spec: store.index.column-type@5a53304a
+/// Invalid types raise `StoreIndexColumnType`: `id_column` other than text or integer; vector-sidecar columns other
+/// than vectors of `dim`; fulltext columns other than text. Checks occur at manifest validation when `columns`
+/// declares types, otherwise before landing rows.
+// spec: store.index.column-type@00b4001c
 #[test]
 fn a_vector_of_another_width_or_an_unreadable_identifier_is_refused() {
     let t = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));
@@ -193,8 +200,9 @@ fn a_vector_of_another_width_or_an_unreadable_identifier_is_refused() {
     assert!(matches!(f.validate_indexes(&absent), Err(StoreError::StoreIndexColumnAbsent(m)) if m.contains("body")));
 }
 
-/// A `tokenizer` is `unicode`, the default, indexing each lowercased alphanumeric run as one term, or `cjk`, which indexes each Han, Kana or Hangul stretch of a run as overlapping character bigrams.
-// spec: store.index.tokenizer@8d0fa491
+/// The default `unicode` tokenizer indexes each lowercased alphanumeric run as one term. The `cjk` tokenizer indexes
+/// each Han, Kana or Hangul stretch within a run as overlapping character bigrams.
+// spec: store.index.tokenizer@6fd1dc85
 #[test]
 fn the_cjk_tokenizer_indexes_unspaced_stretches_as_bigrams() {
     let strings = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();

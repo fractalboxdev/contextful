@@ -114,9 +114,9 @@ fn the_walk_follows_no_symbolic_link() {
     assert_eq!(declined, json!({}), "a link is not declined, it is never reached");
 }
 
-/// The `file` source walks `root`, resolved against the project directory, into one `documents` table: `.md` and
-/// `.markdown` as notes, `.txt` as plain text and `.pdf` as PDF pages. Any other extension is declined unopened.
-// spec: connector.source.file-source@35ae5d21
+/// The `file` source resolves `root` against the project directory and walks into one `documents` table: `.md` and
+/// `.markdown` notes, `.txt` plain text, `.pdf` pages. The source declines other extensions without opening them.
+// spec: connector.source.file-source@f0be2754
 #[test]
 fn notes_text_and_pdfs_land_and_every_other_extension_is_declined_by_extension() {
     let dir = tempfile::tempdir().unwrap();
@@ -173,9 +173,9 @@ fn an_unchanged_file_poll_does_not_claim_an_empty_snapshot() {
     assert_eq!(second["snapshot_complete"], json!(false));
 }
 
-/// A root-relative path is read when it matches an `include` glob, or none is declared, and matches no `exclude`
-/// glob. `*` and `?` match within one segment; a `**` segment matches any number.
-// spec: connector.source.file-globs@7c0ba4a7
+/// The source reads a root-relative path if no `exclude` glob matches and either an `include` glob matches or none is
+/// declared. `*` and `?` match within one segment; a `**` segment matches any number.
+// spec: connector.source.file-globs@3dc0bcc0
 #[test]
 fn include_and_exclude_globs_select_root_relative_paths() {
     let dir = tempfile::tempdir().unwrap();
@@ -469,8 +469,8 @@ fn a_rename_onto_the_same_slug_keeps_the_renamed_rows() {
     assert_eq!(after["files"].as_object().unwrap().keys().collect::<Vec<_>>(), ["a.md", "my-report.txt"]);
 }
 
-/// A file over 64 MiB is declined, and none of it past the leading bytes announcing its format is read.
-// spec: connector.source.file-cap@cac3db47
+/// The source declines a file over 64 MiB without reading past the leading bytes identifying its format.
+// spec: connector.source.file-cap@317bd772
 #[test]
 fn a_file_over_the_cap_is_declined_unread() {
     assert_eq!(MAX_FILE_BYTES, 64 * 1024 * 1024);
@@ -575,7 +575,7 @@ fn a_folder_read_dead_letters_an_input_fault_and_refuses_whole_on_a_configuratio
 /// A file a decoder cannot read lands no rows and one {{run.land.dead-letter}} row, keeps its earlier rows, and the
 /// read continues. The position holds it at its digest until it changes or `replay_dead_letters` reads it, and a
 /// folder with nothing readable refuses whole.
-// spec: connector.source.file-unreadable@8882711d
+// spec: connector.source.file-unreadable@1df19360
 #[test]
 fn an_unreadable_file_lands_a_dead_letter_keeps_its_earlier_rows_and_the_read_continues() {
     let dir = tempfile::tempdir().unwrap();

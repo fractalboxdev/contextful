@@ -134,9 +134,9 @@ fn a_send_uses_its_remaining_body_and_time_budget_on_every_mediated_hop() {
     assert!(limits[1].1 <= limits[0].1, "redirects spend the same call deadline");
 }
 
-/// The mediated client reaches the network only through a transport port. Its send half connects to an address the
-/// client vetted, follows no redirect, and applies the client's proxy choice, timeout and body ceiling.
-// spec: connector.attach.transport-port@1e0d1dbd
+/// The mediated client reaches the network only through a transport interface. The send method connects to a vetted
+/// address, follows no redirect, and applies the client's proxy choice, timeout and body ceiling.
+// spec: connector.attach.transport-port@2493d0c0
 #[test]
 fn the_send_half_receives_only_vetted_addresses_and_follows_no_redirect() {
     let events = Arc::default();
@@ -194,7 +194,7 @@ fn one_lookup_per_hop_and_the_connect_takes_its_answer() {
 
 /// Name resolution runs through the port's resolve half, after the pre-send hook admits the hop; the client vets
 /// each address it answers.
-// spec: connector.attach.resolve-half@df0b14b9
+// spec: connector.attach.resolve-half@77758c95
 #[test]
 fn resolution_follows_the_hook_and_runs_through_the_port() {
     let events: Arc<Mutex<Vec<String>>> = Arc::default();
@@ -234,9 +234,9 @@ fn the_hook_sees_each_hops_intent_after_the_allowlist() {
     assert_eq!(hook.intents.lock().unwrap().len(), before, "no intent reached the hook");
 }
 
-/// A hook refusing an intent raises `ConnectorEgressRefused` naming the host and the hook's reason. No name is
-/// resolved, and the retry schedule never retries it.
-// spec: connector.meter.hook-refusal@82c6892f
+/// A hook refusing an intent raises `ConnectorEgressRefused`, naming the host and reason. The host resolves no name,
+/// and the retry schedule does not retry the request.
+// spec: connector.meter.hook-refusal@e1c354b1
 #[test]
 fn a_refused_intent_resolves_no_name_and_is_never_retried() {
     let events: Arc<Mutex<Vec<String>>> = Arc::default();
@@ -252,8 +252,9 @@ fn a_refused_intent_resolves_no_name_and_is_never_retried() {
     assert!(matches!(decide(&schedule, "fetch", 1, &f, 7), Decision::Fail { consumed_attempt: false, .. }));
 }
 
-/// A hop made under a credential carrying a horizon passes a pre-send hook refusing every host but the configured model endpoint, as {{connector.meter.hook-refusal}} with reason `horizon`.
-// spec: read.horizon.egress-hook@b4c7a2cb
+/// Under a horizon, a pre-send hook rejects requests to every host except the configured model endpoint. Rejection
+/// follows {{connector.meter.hook-refusal}} with reason `horizon`.
+// spec: read.horizon.egress-hook@4fcef638
 #[test]
 fn a_hop_under_a_horizon_reaches_the_model_endpoint_alone() {
     let events: Arc<Mutex<Vec<String>>> = Arc::default();

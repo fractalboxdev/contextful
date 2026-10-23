@@ -73,8 +73,9 @@ fn recalled(f: &Fixture, subject: &str) -> (Value, Value, Value) {
     (row[col("object")].clone(), row[col("valid_from")].clone(), row[col("valid_to")].clone())
 }
 
-/// Claims retain their recorded validity until explicit expiry or erasure; a claims table declaring `decay_half_life` halves a claim's ranked score per half-life since its `valid_from`, never deleting a claim or changing its validity.
-// spec: read.revise.retention-default@3b870a73
+/// Claims retain recorded validity until explicit expiry or erasure. With `decay_half_life`, ranked scores decrease by
+/// half per half-life since `valid_from`. Score decay neither deletes claims nor changes validity.
+// spec: read.revise.retention-default@d36d5340
 #[test]
 fn decay_reorders_ranking_only_where_a_half_life_is_declared() {
     let hard = store(None);

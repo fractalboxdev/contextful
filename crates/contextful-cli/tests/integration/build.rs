@@ -194,7 +194,7 @@ fn cycle_refused(out: &Output) {
     assert!(stderr.contains("ModelCycle") && stderr.contains("`a`, `b`"), "{stderr}");
 }
 
-// spec: run.model.model-cycle@470bd0b1
+// spec: run.model.model-cycle@31a50a17
 #[test]
 fn validate_apply_and_build_refuse_a_two_model_cycle() {
     let dir = project();
@@ -531,7 +531,7 @@ fn a_rewound_plan_phase_interruption_leaves_the_job_fireable_after_a_declaration
 
 /// `pipeline apply` retires a job's pending owner whose declared plan reference the applied snapshot no longer
 /// produces, recording the snapshot version, so the next scheduled fire plans fresh and completes.
-// spec: run.own.apply-retires-superseded@54f03a5c
+// spec: run.own.apply-retires-superseded@ecdb4cdb
 #[test]
 fn applying_a_changed_declaration_retires_a_plan_phase_interruption() {
     let receiver = contextful_acceptance::http::Server::start(|_| contextful_acceptance::http::Response::json(200, "{}"));
