@@ -38,9 +38,9 @@ fn nonce(n: u8) -> String {
     format!("{n:032x}")
 }
 
-/// The control profile's team state is the configuration — its ingest sources, models and access policy — held as one
-/// `loro` document whose replicas merge concurrent edits; that document is the edit-time copy of what apply claims.
-// spec: topology.package.control-team-state@deeaf2ad
+/// The control profile stores ingest source, model and access-policy configuration in one `loro` document. Replicas
+/// merge concurrent edits. Apply uses this document as the editable configuration.
+// spec: topology.package.control-team-state@eb0fb5a7
 #[test]
 fn replicas_of_the_configuration_document_merge_concurrent_edits() {
     let alice = ConfigDoc::new(1).unwrap();
@@ -64,10 +64,9 @@ fn replicas_of_the_configuration_document_merge_concurrent_edits() {
     assert_eq!(snaps.read(v).unwrap(), document, "apply claims the document the replicas hold");
 }
 
-/// Apply materializes canonical TOML: every table's keys in byte order, tables after the values they nest in, quoting
-/// and spacing the format-preserving editor chooses, and every comment kept; canonicalizing canonical text changes no
-/// byte.
-// spec: topology.package.canonical-toml@3cb3e90d
+/// Apply sorts each table's keys by byte order and places nested tables after values. The format-preserving editor
+/// chooses quoting and spacing, preserving comments. Applying canonicalization to canonical text changes no byte.
+// spec: topology.package.canonical-toml@3dd10a27
 #[test]
 fn apply_claims_canonical_toml_with_every_comment_kept() {
     let messy = "\

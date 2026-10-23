@@ -1078,9 +1078,9 @@ fn a_component_connector_is_refused_on_a_build_without_a_component_host() {
     assert!(rig.catalog().run("run-1").unwrap().is_none());
 }
 
-/// A component connector runs where a component host is linked: the full profile and the container or worker shapes
-/// built from it.
-// spec: topology.package.component-host@ea74ba9e
+/// Builds that link a component host run component connectors: the full profile and container or worker deployments
+/// built from that profile.
+// spec: topology.package.component-host@cb1c5d44
 #[test]
 fn a_component_connector_runs_on_an_engine_wiring_its_world() {
     let mut rig = Rig::new();

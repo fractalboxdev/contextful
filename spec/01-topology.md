@@ -11,60 +11,60 @@ owns:
 
 # System topology
 
-The engine is two halves of one workspace — the read path and the run path — joined by
-three crossings and compiled into three build profiles. This contract fixes the halves,
-the crossings, the profiles, where a build is deployed, how a published hostname declares
-its posture, the single-writer operations and the catalog that serializes them, and where
-the engine ends and an application begins.
+Contextful runs connectors, stores Parquet files and serves queries under access controls.
+Operators use this page to choose a binary and deployment. Implementers use the component,
+dependency and coordination requirements below.
 
-For executable names, embedded libraries and storage placement, follow the runtime maps
-for [Linux](./targets.md#linux-reference), [Cloudflare](./targets.md#cloudflare) and
-[AWS](./targets.md#aws), with macOS paths [without Docker](#macos-without-docker) and [with Docker](#macos-with-docker). The deployment tables and diagrams appear together on this page;
-`read path` and `run path` below name code boundaries rather than operating-system processes.
+Deployment instructions name the executables, embedded libraries and storage services:
+
+- [Linux](./targets.md#linux-reference): native processes or Linux containers.
+- macOS: [native processes](#macos-without-docker) or [Docker containers](#macos-with-docker).
+- [Cloudflare](./targets.md#cloudflare): Workers, Linux Containers, D1 and R2.
+- [AWS](./targets.md#aws): Lambda, Fargate, Postgres and S3.
 
 ## compose
 
-The two halves of the engine, the three crossings between them, complete mediation, and the properties holding across both halves.
+Execution, storage, queries, access controls and the contracts these components share.
 
-- `workspace` — One Cargo workspace compiles both halves. Neither half ships as its own binary, package scope or release; "read path" and "run path" name a boundary, not a product.
-- `read-path` — The read path holds data at rest and its retrieval: the context store, the catalog, query and ranking, memory queries, bucket sync, and the capability check a record passes before it lands.
-- `run-path` — The run path holds execution: the journal, the scheduler, cursor commit, awakeables, and every connector invoked as a journaled step. It owns no store and no ranking.
-- `three-crossings` — Exactly three contracts cross between the halves: the connector interface world, the columnar-part-plus-manifest layout, and the capability-token format. No general internal call surface joins the halves.
+- `workspace` — One Cargo workspace compiles execution, storage and query code. These components share one binary, package scope and release.
+- `read-path` — Storage and query code manages the context store, catalog, queries, ranking, memory queries and bucket sync. A capability check admits each record before storage.
+- `run-path` — Execution code manages the journal, scheduler, cursor commits, awakeables and journaled connector steps. Execution code owns no store or ranking.
+- `three-crossings` — Execution, storage and query code share exactly three contracts: the connector interface world, columnar-part-plus-manifest layout and capability-token format. No general internal API connects these components.
   *A-topology*
-- `crossing-version` — Each crossing carries its own version and a conformance suite both sides run. A member added to a crossing passes a security review before admission.
-- `undeclared-crossing` — A run-path crate reaches a read-path crate only through a crate carrying one of the three crossings; {{assurance.gate.crate-graph}} checks every edge.
+- `crossing-version` — Each shared contract has a version. Execution, storage and query code run its conformance suite. Adding a contract member requires a security review.
+- `undeclared-crossing` — An execution crate depends on storage or query crates only through crates implementing the three shared contracts. {{assurance.gate.crate-graph}} checks each dependency.
   *A-topology*
-- `run-path-droppable` — A build linking no execution core, scheduler or component host serves reads of data a full daemon produced, over the identical part-and-manifest layout and connector contract.
+- `run-path-droppable` — A build without the execution engine, scheduler or component host reads data written by a full-profile build. Both builds use the same part-and-manifest layout and connector contract.
 - `cli-binary` — The runtime ships one command binary, `contextful`, and one package scope, `@contextful/*`; release assurance follows {{assurance.consumer.suite}}. The smallest deployable build is a profile, not a crate.
-- `mediation` — Every function returning or releasing a stored row takes the enforcement stack's admission value as a parameter ({{assurance.gate.row-token}}), so a row path that skips enforcement does not type-check. No operator switch disables mediation.
+- `mediation` — Each function returning or releasing stored rows requires an access-control admission value ({{assurance.gate.row-token}}). A call omitting that value fails to compile. Access controls have no disable option.
   *A-topology*
-- `enforcement-span` — The enforcement stack spans both halves: capability allowlists and the journal on the run path; the statement guard, visibility semi-join, row and column restriction, masking and the audit chain on the read path.
-- `semantic-layer` — Enforcement interprets no content. Retrieval, memory synthesis, the operator console and inference placement interpret content and reach enforcement through the three crossings alone.
-- `one-tree` — Laptop through cluster runs from one source tree. A single-node or edge deployment runs no external queue, cache or coordination process; a multi-node deployment adds one shared database.
-- `queue-extension` — A target profile declaring a `queue` role carries `receive` batches, object-arrival keys and post-commit wake-ups on that managed queue behind the `Queue` port; a profile declaring none uses the local spool. Only the engine writes the store.
+- `enforcement-span` — Execution enforces capability allowlists and records journal entries. Storage and queries enforce statement guards, visibility semi-joins, row and column restrictions, masking and the audit chain.
+- `semantic-layer` — Access controls do not interpret content. Retrieval, memory synthesis, the operator console and inference placement interpret content and access enforcement through the three shared contracts alone.
+- `one-tree` — Local and clustered deployments use one source tree. Single-node and edge deployments use no external queue, cache or coordination process. Multi-node deployments add one shared database.
+- `queue-extension` — With a `queue` role, the target carries `receive` batches, object-arrival keys and post-commit wake-ups through the `Queue` port. Without that role, the target uses the local spool. Only the engine writes the store.
   *A-topology*
 - `connector-pillar` — A connector is an interface world run in a sandboxed component host that mediates every capability. A native connector, the first-party path for stateful sources, satisfies the same schema, record and cursor contract.
 - `open-store` — Table data sits in columnar parts with a JSON manifest and a rebuildable catalog on plain object storage, readable by standard SQL tooling. No proprietary container or opaque blob holds table data.
 - `inference-egress` — Model access leaves the process through one operator-configured endpoint speaking OpenAI-compatible HTTP. The one provider-shaped step serializes a tool's parameter schema into the provider's envelope.
   *A-topology*
-- `vendor-sdk` — The dependency audit raises `VendorSdkLinked`, naming the crate and the dependency, for a crate declaring a model-vendor SDK or a second outbound path to a model.
+- `vendor-sdk` — A model-vendor SDK or second outbound model path raises `VendorSdkLinked` in the dependency audit. The error names the crate and dependency.
   *A-topology*
 - `local-first` — Pipelines need no network beyond their sources, and bucket sync is opt-in per deployment. The engine makes no control-plane callback, no license check, and sends no telemetry to its authors.
 - `script-runtime` — A JavaScript runtime linked into any profile raises `ScriptRuntimeLinked`. The authoring surface is a build-time compiler emitting a serialized, content-hashed plan.
   *A-run*
-- `memory-substrate` — Synthesized memory's episode, fact, entity and preference tables are ordinary store tables, and its synthesis pipeline is an ordinary run-path workflow on the same journal, cursor and retry machinery.
-- `two-spines` — The run record answers what happened on the write side and the request ledger on the read side. No third surface merges them.
+- `memory-substrate` — Synthesized memory uses ordinary store tables for episodes, facts, entities and preferences. The synthesis pipeline runs as an ordinary execution workflow using the same journal, cursor and retry machinery.
+- `two-spines` — The run record describes writes. The request ledger describes reads. No third interface combines these records.
 
 ## package
 
-The domain crate, dependency direction, and the three build profiles with what each links.
+Rust package dependencies and the capabilities each compiled binary includes.
 
 - `crate-map` — Twenty crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
-- `crate-map-drift` — A `crates/` package absent from the crate tree under `## Shapes`, or a {{topology.package.crate-map}} count differing from that tree's entries, raises `CrateMapDrift`, naming the package or both counts.
+- `crate-map-drift` — An unmapped `crates/` package or {{topology.package.crate-map}} count differing from the `## Shapes` tree raises `CrateMapDrift`. The error names the package or both counts.
   *because a package added without a map entry otherwise passes every other gate*
 - `domain-crate` — `contextful-core` holds the pure domain types and the port traits every adapter implements, performs no I/O, and links into every profile.
   *A-topology*
-- `domain-impurity` — `contextful-core` declaring an async runtime, a component host, an HTTP client or a columnar-format implementation raises `DomainCrateImpurity`, naming the dependency and the feature that pulled it.
+- `domain-impurity` — An async runtime, component host, HTTP client or columnar-format implementation in `contextful-core` raises `DomainCrateImpurity`. The error names the dependency and enabling feature.
   *A-topology*
 - `dependency-direction` — A dependency edge from `contextful-core` toward an adapter crate raises `TopologyDependencyInversion`, naming both crates and the manifest line.
   *A-topology*
@@ -72,33 +72,33 @@ The domain crate, dependency direction, and the three build profiles with what e
   *A-topology*
 - `fixed-at-build` — No run-time detection widens a running binary into another profile's feature set. Build, release and automation tooling links into no profile.
   *A-topology*
-- `profile-leak` — A profile resolving a package outside its role raises `ProfileRoleLeak`, naming the profile and the path: a component host, the run path or the evaluation runner in `contextful-edge` or `contextful-control`; the SQL engine in `contextful-control`; build tooling anywhere.
+- `profile-leak` — A dependency outside a profile's role raises `ProfileRoleLeak`, naming the profile and dependency path. Disallowed dependencies include component hosts, execution or evaluation in edge/control; SQL in control; build tooling in any profile.
   *A-topology*
-- `capability-absent` — A subcommand reaching a capability its build's profile does not link raises `ProfileCapabilityAbsent`, naming the subcommand and the profile, and acts on nothing; a name no profile defines is a usage error.
+- `capability-absent` — A subcommand requiring an unlinked capability raises `ProfileCapabilityAbsent`, naming the subcommand and profile. The command performs no action. A subcommand absent from every profile is a usage error.
   *A-topology*
-- `version-profile` — `contextful --version` prints the workspace version and the profile bundle the build selected, `development` for a build selecting none.
-- `edge-profile` — `contextful-edge` is the read replica: it syncs parts and manifests from a bucket and serves a read-only SQL replica. It links no scheduler, run path, script runtime or component host.
+- `version-profile` — `contextful --version` prints the workspace version and selected build profile. A build selecting no profile prints `development` as its profile.
+- `edge-profile` — `contextful-edge` syncs parts and manifests from a bucket and serves read-only SQL queries. This profile links no scheduler, execution engine, script runtime or component host.
 - `edge-eligibility` — The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.
-- `full-profile` — `contextful-full` is the daemon: the durable-execution core, the in-process scheduler, the component host, the SQL query face, transforms, the full-text and vector sidecars and the tool server.
-- `control-profile` — `contextful-control` is the self-hosted control plane: team state, the edit-time configuration document and identity. It materializes canonical TOML on apply and is the one profile linking the CRDT library.
+- `full-profile` — `contextful-full` includes the execution engine, in-process scheduler, component host, SQL queries, transforms, full-text and vector sidecars, and tool server.
+- `control-profile` — `contextful-control` provides self-hosted team configuration and operator identity. Apply produces canonical TOML. This profile alone links the CRDT library.
   *A-topology*
-- `control-team-state` — The control profile's team state is the configuration — its ingest sources, models and access policy — held as one `loro` document whose replicas merge concurrent edits; that document is the edit-time copy of what apply claims.
+- `control-team-state` — The control profile stores ingest source, model and access-policy configuration in one `loro` document. Replicas merge concurrent edits. Apply uses this document as the editable configuration.
   *A-topology*
 - `control-identity` — The control profile identifies an operator by {{surface.apply.operator-attestation}} alone, refusing an apply without one, and keeps no account store.
   *because the console already signs every Admin mutation, and a second account concept is a second identity to provision and revoke*
-- `canonical-toml` — Apply materializes canonical TOML: every table's keys in byte order, tables after the values they nest in, quoting and spacing the format-preserving editor chooses, and every comment kept; canonicalizing canonical text changes no byte.
+- `canonical-toml` — Apply sorts each table's keys by byte order and places nested tables after values. The format-preserving editor chooses quoting and spacing, preserving comments. Applying canonicalization to canonical text changes no byte.
   *because equal configurations then claim identical bytes, and a comment is the operator's record of why a value holds*
 - `apply-home` — `contextful-snapshot` is the one home of the snapshot directory {{surface.apply.local-claim}} claims into; `contextful-engine` and `contextful-control` both call it, and it links no run-path package.
   *A-topology*
-- `component-host` — A component connector runs where a component host is linked: the full profile and the container or worker shapes built from it.
+- `component-host` — Builds that link a component host run component connectors: the full profile and container or worker deployments built from that profile.
   *A-topology*
-- `host-missing` — Dispatching a component connector on a profile with no component host raises `ComponentHostMissing`, naming the connector and the profile, with no fallback to a similarly named native source.
+- `host-missing` — Dispatching a component connector without a component host raises `ComponentHostMissing`, naming the connector and profile. No similarly named native source substitutes.
   *A-topology*
 - `crdt-leak` — The CRDT library in the resolved dependency graph of the edge or full profile raises `ProfileDependencyLeak`, naming the profile and the path that pulled it. A daemon or replica reads materialized text.
   *A-topology*
-- `store-write-engine-free` — `contextful-context` resolved without its `read` feature, on any target, and reaching `duckdb`, `libduckdb-sys`, `libsqlite3-sys`, an async runtime or an HTTP or TLS stack through a normal dependency raises `StoreWriteLinksEngine`, naming the package and path.
+- `store-write-engine-free` — Without `read`, `contextful-context` excludes `duckdb`, `libduckdb-sys`, `libsqlite3-sys`, async runtimes, HTTP and TLS from normal dependencies on every target. A dependency reaching these raises `StoreWriteLinksEngine`, naming the package and path.
   *because a host that lands, folds or scans a store serves no read and opens no connection, so an engine, runtime or network stack is code it never calls*
-- `transport-optional` — `contextful-outbound` resolved without its `transport-ureq` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl` through a normal dependency raises `TransportStackLinked`, naming the path that pulled it.
+- `transport-optional` — Without `transport-ureq`, `contextful-outbound` excludes `ureq`, `hyper`, `reqwest`, `rustls` and `curl` from normal dependencies. A dependency reaching these raises `TransportStackLinked`, naming the dependency path.
   *A-connector*
 - `decode-network-free` — `contextful-decode` reaching `contextful-outbound`, `ureq`, `hyper`, `reqwest`, `rustls`, `curl` or `tokio` through a normal dependency raises `DecodeLinksNetwork`, naming the path that pulled it.
   *A-connector*
@@ -106,7 +106,7 @@ The domain crate, dependency direction, and the three build profiles with what e
   *because an embedder admitting credentials with no identity provider then links no RSA code, and `rsa` carries a timing advisory with no patched release*
 - `sqlite-adapter` — `contextful-sqlite` alone declares the SQLite binding as a normal dependency and enables no link feature itself; only `contextful-cli` turns on its `bundled` feature. Any other normal-dependency declaration or enablement raises `SqliteLinkForced`, naming the manifest line.
   *A-store*
-- `s3-sync-optional` — `contextful-sync` resolved without its `s3-sync` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl` through a normal dependency raises `SyncStackLinked`, naming the path that pulled it.
+- `s3-sync-optional` — Without `s3-sync`, `contextful-sync` excludes `ureq`, `hyper`, `reqwest`, `rustls` and `curl` from normal dependencies. A dependency reaching these raises `SyncStackLinked`, naming the dependency path.
   *because a host syncing through a filesystem bucket, or embedding the sync package without a bucket, links no network stack*
 - `store-sqlite-free` — `contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, on any target, raises `StoreLinksSqlite`, naming the path that pulled it.
   *A-store*
@@ -114,27 +114,25 @@ The domain crate, dependency direction, and the three build profiles with what e
   *because a slimmed build forks the format code an edge replica reads with from the code the full profile writes with*
 
 Each profile selects the capabilities of one `contextful` executable at compilation.
-The runtime maps below place that executable inside a macOS process or a Linux container;
-the build-profile names do not imply separate Worker services.
+Deployment diagrams show where that executable runs: directly on Linux or macOS, or inside a Linux container.
 
 unsettled: Does the edge profile pull native connectors through an execution core that links no scheduler? owner: topology affects: topology.package
 
 ## deploy
 
-One declaration across providers, deployment roles, self-hosted shapes, the reference target and output parity.
+Deployment configurations, provider services and comparison against the reference deployment.
 
 - `unsupported-shape` — A target profile claiming a shape its provider does not provide raises `TargetShapeUnsupported`, naming the shape and the missing primitive.
   *A-topology*
 - `wall-clock-cap` — A target capping per-invocation wall clock at 15 min hosts neither a first-time backfill nor a component connector, and its target profile records both exclusions.
-- `parity` — One declaration run on every control-plane target produces byte-identical table parts, compared against the reference target inside each target's object store after a 24 h soak.
+- `parity` — One declaration produces byte-identical table parts on every control-plane target. The parity check compares each target's object-store parts with the reference parts after a 24 h soak.
   *A-topology*
 - `parity-divergence` — A byte difference from the reference output raises `ParityDivergence`, naming the target, the table and the first differing part.
   *A-topology*
 
-Each provider's shapes are data under `spec/targets/`, checked by `corpus.targets`.
-The generated [deployment targets](./targets.md) section supplies the runtime placement,
-process boundaries and role tables. Native libraries sit inside process containers in
-the diagrams; provider products such as D1 and R2 sit outside the Linux Container.
+Provider configurations live under `spec/targets/`; `corpus.targets` checks those files.
+The generated [deployment tables and diagrams](./targets.md) identify processes, embedded
+libraries and provider services. Diagram groups distinguish process, container and operating-system boundaries.
 
 ### Native Linux deployment
 
@@ -176,7 +174,7 @@ cargo install --locked --path crates/contextful-cli \
 ```
 
 The project's two startup commands above run directly as macOS processes. Wasmtime,
-Tokio, DuckDB and SQLite stay embedded in those processes; launchd can supervise them.
+Tokio, DuckDB and SQLite stay embedded in those processes. For managed startup, launchd supervises the scheduler and HTTP server.
 Project state sits on the Mac's filesystem. This path uses the Darwin binary and a native
 Rust/C++ build toolchain, with no Linux VM or Docker daemon. The optional Node.js console
 uses `http://127.0.0.1:8080` as its configured store endpoint.
@@ -227,8 +225,8 @@ docker run --rm --init --name contextful-http \
 
 The container listens on `0.0.0.0:8080`; Docker publishes it at `127.0.0.1:8080` on
 macOS. `/data` persists in the host project directory when `--rm` removes a container.
-A Docker named volume is another persistent project location when configuration and
-keys are provisioned into it; both containers mount that same volume. A project uses one
+A Docker named volume stores project state when the operator copies configuration and
+keys into that volume. Both containers mount the same volume. A project uses one
 writer mode at a time: switching between native and Docker stops its scheduler and run
 children before reusing the directory.
 
@@ -271,23 +269,23 @@ unsettled: Which role hosts heavy compute on a provider exposing neither a conta
 
 ## publish-hostname
 
-A published hostname's descriptor, gate and posture probe, and the two hops a published store answers through.
+Hostname access policies, deployment checks and requests through the routing service to the query container.
 
-- `posture-mismatch` — A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and `contextful-ci deploy probe` exits nonzero.
+- `posture-mismatch` — An unreachable hostname or response outside its declared access policy raises `HostnamePostureMismatch`, naming the hostname, policy and observed response. `contextful-ci deploy probe` exits nonzero.
   *A-topology*
-- `probe-table` — A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before any hostname is probed, naming the hostname and the side missing it.
+- `probe-table` — Before probing hostnames, the deploy tool compares descriptor and probe-table entries. An entry missing from either set raises `ProbeTableDrift`, naming the hostname and missing side.
   *A-topology*
-- `empty-probe` — An absent descriptor directory, an absent probe table, or a descriptor set naming no hostname raises `ProbeSetEmpty`, naming the path; a passing probe has checked at least one hostname.
+- `empty-probe` — An absent descriptor directory, absent probe table or empty hostname set raises `ProbeSetEmpty`, naming the path. A passing probe checks at least one hostname.
   *because a probe that checks nothing and exits zero reads as a proven posture to the pipeline that invoked it.*
-- `unknown-field` — A descriptor decodes with excess properties refused; an unmodelled key raises `DescriptorUnknownField`, naming the key and the contract version.
+- `unknown-field` — An unmodelled descriptor property raises `DescriptorUnknownField`, naming the key and contract version. The decoder rejects the descriptor.
   *P1*
 - `unconfigured-gateway` — A routing hop with no store configuration answers `503` on every route and raises `GatewayUnconfigured`.
   *P3*
-- `issuer-key` — The engine's HTTP face refuses to start without a verification key that resolves and parses, raising `IssuerKeyUnusable` and naming the input; no generated key substitutes.
+- `issuer-key` — The HTTP server requires a verification key that resolves and parses. An unusable key raises `IssuerKeyUnusable`, naming the input, and prevents startup. The server generates no replacement key.
   *P3*
 - `container-readiness` — A retrieval container reaches readiness within 8 s of a cold start, before its snapshot-set hydration completes.
 
-The deploy-time posture probe, then a request through the two hops.
+The deployment tool checks anonymous access. A caller then sends a request through the router to the query container.
 
 ```mermaid
 sequenceDiagram
@@ -325,13 +323,13 @@ sequenceDiagram
 
 ## coordinate
 
-The conditional-write primitive, every single-writer operation, lease rows with their fence, and the catalog backends.
+Conditional metadata updates, writer leases and the databases that store coordination state.
 
 - `primitive` — Coordination rests on one property: a linearizable conditional write. No component depends on a stronger one, and the tree ships no consensus implementation or external coordination service.
   *A-store*
-- `inventory` — The single-writer operations are the lease row, the cursor compare-and-swap, {{store.fold.pointer-commit}}, a lease acquisition, a leased pipeline's commit-log entry, the bucket manifest commit and a configuration apply's version claim. No other operation needs a single writer.
+- `inventory` — Single-writer operations comprise lease-row updates, cursor compare-and-swap, {{store.fold.pointer-commit}}, lease acquisition, leased pipeline commit-log entries, bucket manifest commits and configuration version claims. No other operation needs a single writer.
   *A-store*
-- `lease-row` — A lease row is keyed by a pipeline, a source partition, a table's compaction or a deployment's cadence, and carries a holder, an expiry instant and a fence taken by one conditional update.
+- `lease-row` — A lease key names a pipeline, source partition, table compaction or deployment cadence. One conditional update assigns the row's holder, expiry instant and fence.
   *A-store*
 - `catalog-clock` — The catalog evaluates a lease row's expiry against its own clock, never a caller-supplied instant.
   *A-store*
@@ -341,26 +339,26 @@ The conditional-write primitive, every single-writer operation, lease rows with 
   *A-store*
 - `cursor-cas` — A cursor compare-and-swap is one conditional update predicated on the stored version, read back by its affected-row count.
   *A-store*
-- `cadence-lease-ttl` — A cadence lease is granted for 90 s.
+- `cadence-lease-ttl` — The catalog grants a cadence lease for 90 s.
   *A-store*
 - `cadence-lease-renewal` — The reconciler renews a cadence lease every 30 s while its applied document schedules a dispatchable unit.
   *A-store*
 - `cadence-fallback` — A deployment's fallback cron fires only after taking the cadence lease itself, so one fire holds the current fence.
   *A-store*
-- `catalog-port` — Every catalog backend is reached through the `Catalog` port, and code above the port names no backend. Swapping a backend is a wiring change in `contextful-cli`.
+- `catalog-port` — Engine code accesses catalog backends through the `Catalog` trait without naming a backend. `contextful-cli` selects the backend through dependency injection.
   *A-store*
-- `backends` — Single-node self-hosting uses a local catalog file; clusters use Postgres via `pg-catalog`; managed edge uses per-object SQLite; Cloudflare execution uses D1 via `d1-catalog`.
-  *A-store*
-- `catalog-url` — A build linking `pg-catalog` given `CONTEXTFUL_CATALOG_URL` opens the Postgres catalog it names in place of the local catalog file; a build without `pg-catalog` given it raises {{topology.package.capability-absent}}.
+- `backends` — Single-node self-hosting uses a local catalog file. Clusters use Postgres through `pg-catalog`. Cloudflare execution uses D1 through `d1-catalog`.
+  *A-store, A-topology*
+- `catalog-url` — With `pg-catalog`, `CONTEXTFUL_CATALOG_URL` selects the named Postgres catalog instead of the local file. Without `pg-catalog`, setting this variable raises {{topology.package.capability-absent}}.
   *because a daemon falling back to its own file while its peers share the database holds leases no peer sees*
-- `postgres-transport` — PostgreSQL connections beyond loopback or Unix sockets require TLS with WebPKI roots and hostname verification; disabling TLS there raises `DatabaseTransportUnprotected` before DNS resolution, and a preferred TLS mode permits no plaintext fallback there.
+- `postgres-transport` — Beyond loopback or Unix sockets, PostgreSQL requires TLS with WebPKI roots and hostname verification. Disabling TLS there raises `DatabaseTransportUnprotected` before DNS resolution. Preferred TLS mode permits no plaintext fallback there.
   *because remote execution state and database credentials cross an untrusted network boundary*
 - `weak-backend` — A catalog backend whose conditional update is not linearizable refuses at open with {{surface.apply.weak-conditional-backend}}.
   *A-store*
 - `cluster-availability` — Cluster availability is the shared database's availability. The engine adds no replication and no failover protocol between daemons.
 - `air-gap` — Single-node and edge deployments reach no process outside themselves for coordination, and run air-gapped with only their sources reachable.
 - `no-clustered-catalog` — Clustered availability behind the `Catalog` port comes from Postgres alone; the tree ships no self-contained clustered catalog.
-  *because a clustered catalog of its own rebuilds the replication Postgres provides, for the few operators who refuse to run Postgres*
+  *because a separate clustered catalog duplicates Postgres replication*
 
 Every single-writer operation reduces to one linearizable conditional write behind the
 `Catalog` port.
@@ -382,7 +380,6 @@ flowchart LR
   subgraph BACKENDS["catalog backends"]
     LOCAL[("local catalog file")]
     PG[("Postgres via pg-catalog")]
-    SQLITE[("per-object SQLite")]
     D1[("D1")]
   end
   NOOPEN(["refused open"])
@@ -395,7 +392,6 @@ flowchart LR
   CW -- "yes" --> SHAPE
   SHAPE -- "single node" --> LOCAL
   SHAPE -- "self-hosted cluster" --> PG
-  SHAPE -- "managed edge" --> SQLITE
   SHAPE -- "Cloudflare container" --> D1
   PTR -. "stale fence: LeaseFenced" .-> FENCED
 ```
@@ -405,9 +401,9 @@ unsettled: Does an encrypted store seal its rows in the Postgres catalog, or kee
 
 ## bound-application
 
-Where the engine's contracts end, what an application owns, and the surfaces a consumer reaches.
+Responsibilities of the engine and applications that use the engine.
 
-- `domain-neutral` — The engine processes declared data, schemas, policies, time bounds and capabilities; domain meanings, business rules and sector-specific metrics belong to consumer configuration, connectors, components or explicitly selected evaluation profiles.
+- `domain-neutral` — The engine processes declared data, schemas, policies, time bounds and capabilities. Consumer configuration, connectors, components or explicitly selected evaluation profiles supply domain meanings, business rules and sector-specific metrics.
   *A-topology*
 - `restated-case` — A case with neither a generated artifact nor a callable route stays with the application, which restates the engine rule at its site under {{assurance.structure-tree.mirror-exemption}}.
   *because a restatement naming its clause id surfaces when the rule changes, and an adapter for one case costs more than it guards*

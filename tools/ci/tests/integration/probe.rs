@@ -77,8 +77,9 @@ fn stdout(o: &Output) -> String {
     String::from_utf8_lossy(&o.stdout).to_string()
 }
 
-/// A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and `contextful-ci deploy probe` exits nonzero.
-// spec: topology.publish-hostname.posture-mismatch@d9cacd58
+/// An unreachable hostname or response outside its declared access policy raises `HostnamePostureMismatch`, naming the
+/// hostname, policy and observed response. `contextful-ci deploy probe` exits nonzero.
+// spec: topology.publish-hostname.posture-mismatch@0ed69e37
 #[test]
 fn an_answer_outside_the_declared_gate_or_an_unreachable_hostname_fails_the_probe() {
     let r = Repo::init();
@@ -124,8 +125,9 @@ fn each_gate_passes_on_its_answer_to_an_anonymous_get() {
     assert!(!head.contains("authorization:") && !head.contains("cookie:"), "{head}");
 }
 
-/// A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before any hostname is probed, naming the hostname and the side missing it.
-// spec: topology.publish-hostname.probe-table@854eff22
+/// Before probing hostnames, the deploy tool compares descriptor and probe-table entries. An entry missing from either
+/// set raises `ProbeTableDrift`, naming the hostname and missing side.
+// spec: topology.publish-hostname.probe-table@9280a4d0
 #[test]
 fn a_probe_table_and_descriptor_set_that_differ_are_refused_before_any_probe() {
     let r = Repo::init();
@@ -147,8 +149,9 @@ fn a_probe_table_and_descriptor_set_that_differ_are_refused_before_any_probe() {
     assert!(open.requests().is_empty(), "a host was probed past the drift: {:?}", open.requests());
 }
 
-/// A descriptor decodes with excess properties refused; an unmodelled key raises `DescriptorUnknownField`, naming the key and the contract version.
-// spec: topology.publish-hostname.unknown-field@9c2bdaa6
+/// An unmodelled descriptor property raises `DescriptorUnknownField`, naming the key and contract version. The decoder
+/// rejects the descriptor.
+// spec: topology.publish-hostname.unknown-field@7794c02e
 #[test]
 fn a_descriptor_carrying_an_unmodelled_key_is_refused() {
     let r = Repo::init();
@@ -163,8 +166,9 @@ fn a_descriptor_carrying_an_unmodelled_key_is_refused() {
     assert!(open.requests().is_empty());
 }
 
-/// An absent descriptor directory, an absent probe table, or a descriptor set naming no hostname raises `ProbeSetEmpty`, naming the path; a passing probe has checked at least one hostname.
-// spec: topology.publish-hostname.empty-probe@7cfbada0
+/// An absent descriptor directory, absent probe table or empty hostname set raises `ProbeSetEmpty`, naming the path. A
+/// passing probe checks at least one hostname.
+// spec: topology.publish-hostname.empty-probe@6c0359db
 #[test]
 fn a_probe_with_nothing_to_check_is_refused() {
     let r = Repo::init();

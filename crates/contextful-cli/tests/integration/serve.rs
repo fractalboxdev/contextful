@@ -1308,7 +1308,7 @@ fn served_exchange_mints_a_reader_credential_for_the_read_face() {
 }
 
 /// The network transport refuses to start without its audience, its ceiling, or an issuer key that resolves and parses.
-// spec: topology.publish-hostname.issuer-key@a7736a7f
+// spec: topology.publish-hostname.issuer-key@9b2ac860
 #[test]
 fn serve_refuses_to_start_without_its_declarations_or_an_issuer_key() {
     let (dir, public) = project();

@@ -2,6 +2,19 @@
 
 **Status:** accepted
 
+## Cloudflare execution metadata uses D1
+
+Cloudflare declares one deployment configuration, `worker-container-d1`. D1 stores execution metadata; R2 stores execution blobs and corpus objects. Durable Objects manage Container lifecycle and WebSocket connections.
+
+The deciding criterion is one metadata backend across deployment configuration, the execution binding and its conformance suite. A separate Durable Object SQLite catalog requires another backend integration and test matrix.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| D1 metadata with R2 objects *(chosen)* | — | Metadata operations cross the private Worker binding. |
+| D1 and Durable Object SQLite deployment variants | Backend consistency | Two catalog integrations and conformance paths require maintenance. |
+
+The Container still requires Durable Objects for lifecycle management; D1 replaces only the alternate catalog role.
+
 ## One inference egress and one destination; no vendor SDK, no sink plugin
 
 `connector.infer` sends model access through one operator-configured endpoint speaking OpenAI-compatible HTTP; no model-vendor SDK links into any crate, a provider swap is a URL edit, and the host owns credential, rate limit and per-call span. `run.land` resolves the local store and refuses any other destination name at assembly; a synthesized artifact writes back through the same destination and becomes queryable corpus. The destination interface has no host arm, so a guest cannot supply one.
@@ -27,7 +40,7 @@ Three profiles, `contextful-edge`, `contextful-full` and `contextful-control`, c
 | One binary with run-time feature detection | Footprint | Every heavy dependency links into the replica. |
 | Dynamically loaded plugins | Portability | Static musl targets, the edge deployment shape, load no plugins. |
 | Degrade to a partial answer | Honesty of the outcome | A lexical-only ranking or an empty result reads as complete. |
-| Separate repositories per artifact | Versioning | The shared domain and its crossings version across repositories. |
+| Separate repositories per artifact | Versioning | Shared types and contracts version across repositories. |
 
 Consequences: the dependency audit refuses a control-only library in another profile's resolved graph.
 
@@ -46,11 +59,11 @@ Consequences: a change to the version claim lands once and both callers take it.
 
 ## The engine and its consumers meet only at public surfaces
 
-`topology.compose` admits exactly three crossings between read path and run path: the connector interface world, the columnar-part-plus-manifest layout, and capability tokens, each versioned with a conformance suite both sides run. `topology.bound-application.domain-neutral` places industry meanings, business rules and scoring in consumer-declared configuration, connectors, components or selected evaluation profiles. Consumers name vocabulary in per-store lexicons; a behavior becomes shared once a second application needs it. Additional distribution features use public surfaces, with no license check on a data-plane capability.
+`topology.compose` connects execution, storage and queries through three shared contracts: the connector interface world, columnar-part-plus-manifest layout and capability-token format. Each contract has a version and conformance tests. `topology.bound-application.domain-neutral` places industry meanings, business rules and scoring in consumer-declared configuration, connectors, components or selected evaluation profiles. Consumers name vocabulary in per-store lexicons; a behavior becomes shared once a second application needs it. Additional distribution features use public surfaces, with no license check on a data-plane capability.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Three versioned crossings; domain-neutral engine; public surfaces only *(chosen)* | — | A fourth crossing is a design question; each consumer supplies its domain meanings and waits for any public surface it needs. |
+| Three versioned contracts; domain-neutral engine; public surfaces only *(chosen)* | — | An additional shared contract requires review; each consumer supplies its domain meanings and waits for any public surface it needs. |
 | A general internal RPC surface | Review surface | Every call is a place a capability can enter. |
 | Direct dependencies from read path onto run path | Composability | The run path stops being droppable and the edge profile is lost. |
 | A privileged internal API for one consumer | Wholeness | Other consumers receive a subset of the engine. |
@@ -98,14 +111,14 @@ Consequences: descriptors change by pull request and the gate reviews them. Acce
 | A pure centre of types and ports, all edges inward *(chosen)* | — | Adapters restate small conversions; a port change touches every adapter in one commit. |
 | A centre carrying its own runtime and format implementation | Footprint | The replica and control plane link a runtime and format neither uses. |
 | A shared utility crate both directions depend on | Direction reportability | A cycle re-enters legally at every hop, with no single offending edge. |
-| Ports beside their adapters, no centre | Neutral home | The error enum crossing both halves has nowhere to live. |
+| Ports beside their adapters, no centre | Neutral home | The error enum shared by execution, storage and queries has nowhere to live. |
 
 Consequences: a new target is an adapter crate behind existing ports.
 Revisit: two adapters convert the same shape differently; a port change deferred more than once; the edge profile's budget no longer the binding constraint.
 
 ## Every access to data traverses the enforcement stack, and no configuration disables it
 
-Complete mediation is a property of the composition, not a setting: a bypassing path returns plausible rows with masking unapplied and no audit entry. `topology.compose` makes every function returning or releasing a stored row take the enforcement stack's admission value, so a skipping path does not type-check; `assurance.gate` raises `CrateGraphViolation` when a run-path crate reaches read-path crates outside the crossings. No flag, environment variable or build feature turns the stack off.
+Each function returning or releasing stored rows requires an access-control admission value. Omitting the value fails compilation. Without this check, a function could return rows without masking or an audit entry. `assurance.gate` raises `CrateGraphViolation` when an execution crate reaches storage or query crates outside the shared contracts. No flag, environment variable or build feature disables access controls.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
