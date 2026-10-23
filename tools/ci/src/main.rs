@@ -3,6 +3,7 @@
 
 mod affected;
 mod capability;
+mod compile;
 mod deny;
 mod egress;
 mod e2e;
@@ -94,6 +95,10 @@ enum Cmd {
         /// Overrides the wall clock of one test-first execution against the base.
         #[arg(long, hide = true, default_value_t = BASE_RUN_BOUND_SECS)]
         base_bound_secs: u64,
+        /// Run each selected part's `cargo test` invocations with `--no-run` and nothing else
+        /// (`assurance.gate.compile-only`).
+        #[arg(long)]
+        compile_only: bool,
     },
     /// Print the stage names, one per line, in run order.
     Stages {
@@ -109,8 +114,8 @@ enum Cmd {
         affected: bool,
         /// The tier whose parts to print: `pr`, the required pull-request checks, or
         /// `nightly`, the features, formal and budget parts.
-        #[arg(long, requires = "parts", default_value = "pr", value_parser = ["pr", "nightly"])]
-        tier: String,
+        #[arg(long, requires = "parts", value_parser = ["pr", "nightly"])]
+        tier: Option<String>,
         /// Print the selected stage names as a JSON array for a workflow matrix.
         #[arg(long)]
         json: bool,
@@ -118,6 +123,10 @@ enum Cmd {
         /// (`assurance.gate.folded-parts`).
         #[arg(long, conflicts_with_all = ["parts", "json"])]
         folds: bool,
+        /// Print the first part of each distinct compile signature, across both tiers unless
+        /// `--tier` names one (`assurance.gate.compile-groups`).
+        #[arg(long, requires = "parts", conflicts_with = "affected")]
+        compile_groups: bool,
     },
     /// Hold every key in a git-tracked `.env*` file to ciphertext under a scope comment.
     Secrets,
@@ -334,7 +343,14 @@ fn main() {
             stage::FOLDS.iter().for_each(|(label, members)| println!("{label} {}", members.join(" ")));
             Ok(())
         }
+        Cmd::Stages { parts: true, base, tier, json, compile_groups: true, .. } => repo_root().and_then(|root| {
+            let parts = unfolded(&root, base.as_deref())?.into_iter().filter(|p| tier.as_deref().is_none_or(|t| stage::in_tier(p, t))).collect();
+            let groups = compile::groups(&root, parts)?;
+            if json { println!("{}", serde_json::to_string(&groups)?); } else { groups.iter().for_each(|g| println!("{g}")); }
+            Ok(())
+        }),
         Cmd::Stages { parts, base, affected, tier, json, .. } => {
+            let tier = tier.unwrap_or_else(|| "pr".into());
             let listed = if parts {
                 repo_root().and_then(|root| {
                     let required: Vec<String> = dispatched(&root, base.as_deref())?.into_iter().filter(|p| stage::in_tier(p, &tier)).collect();
@@ -351,7 +367,9 @@ fn main() {
                 Ok(())
             })
         }
-        Cmd::Gate { stages, predecessors, plan, base, base_bound_secs } => gate(&stages, predecessors, plan, &base, Duration::from_secs(base_bound_secs)),
+        Cmd::Gate { stages, predecessors, plan, base, base_bound_secs, compile_only } => {
+            gate(&stages, predecessors, plan, &base, Duration::from_secs(base_bound_secs), compile_only)
+        }
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
@@ -518,6 +536,11 @@ fn parts(root: &Path, stage: &str, base: Option<&str>) -> Result<Vec<String>> {
 /// What FlareDispatch dispatches, in run order: each stage, a split stage as
 /// `<stage>.<part>` per part, and each fold's members as its one label.
 fn dispatched(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
+    Ok(stage::fold(unfolded(root, base)?))
+}
+
+/// [`dispatched`] before folding: each stage, a split stage as `<stage>.<part>` per part.
+fn unfolded(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
     let mut out = Vec::new();
     for stage in STAGES {
         if SPLIT.contains(&stage) {
@@ -526,10 +549,10 @@ fn dispatched(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
             out.push(stage.to_string());
         }
     }
-    Ok(stage::fold(out))
+    Ok(out)
 }
 
-fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Duration) -> Result<()> {
+fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Duration, compile_only: bool) -> Result<()> {
     let root = repo_root()?;
     // A named part selects its stage and narrows it to the named parts; a stage named whole
     // runs whole.
@@ -571,7 +594,8 @@ fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Dur
         eprintln!("--- stage {stage}");
         free_disk(&root, stage)?;
         let mut mark = stage::mark();
-        let outcome = run_stage(&root, stage, narrowed.get(stage).map(Vec::as_slice), base, bound);
+        let only = narrowed.get(stage).map(Vec::as_slice);
+        let outcome = if compile_only { compile::run(&root, stage, only) } else { run_stage(&root, stage, only, base, bound) };
         stage::report(stage, &mut mark, &outcome);
         if let Err(e) = outcome {
             if !folded {
@@ -741,46 +765,51 @@ fn workspace_part(package: &str) -> &'static str {
 }
 
 fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
-    if let Some(only) = only {
-        let shards: Vec<usize> = (1..=shards::SHARDS).filter(|k| only.iter().any(|part| *part == format!("cli-{k}"))).collect();
-        let formal = only.iter().any(|part| part == "cli-formal");
-        if only.iter().any(|part| part == "compile") {
-            let mut args = vec!["test", "--workspace"];
-            if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
-                args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
-            }
-            args.push("--no-run");
-            run_staged(root, "workspace", &args)?;
-        }
-        let packages: Vec<String> = workspace_packages(root)?
-            .into_iter()
-            .filter(|package| package == topology::BINARY && (formal || !shards.is_empty()) || only.iter().any(|part| part == workspace_part(package)))
-            .collect();
-        let other: Vec<&String> = packages.iter().filter(|package| package.as_str() != topology::BINARY).collect();
-        if !other.is_empty() {
-            let mut args = vec!["test"];
-            for package in other {
-                args.extend(["--package", package.as_str()]);
-            }
-            run_staged(root, "workspace", &args)?;
-        }
-        if packages.iter().any(|package| package == topology::BINARY) {
-            if formal {
-                let mut args = vec!["test", "--package", topology::BINARY];
-                cli_partition(&mut args, false, true);
-                run_staged(root, "workspace", &args)?;
-            }
-            for k in shards {
-                cli_shard(root, k)?;
-            }
-        }
-        return Ok(());
+    let (runs, shards) = workspace_runs(root, only)?;
+    for args in &runs {
+        run_staged(root, "workspace", &args.iter().map(String::as_str).collect::<Vec<_>>())?;
     }
-    let mut args = vec!["test", "--workspace"];
+    for k in shards {
+        cli_shard(root, k)?;
+    }
+    Ok(())
+}
+
+/// The cargo invocations the workspace stage, or its `only` parts, runs in order, and the
+/// CLI shards it runs after them.
+fn workspace_runs(root: &Path, only: Option<&[String]>) -> Result<(Vec<Vec<String>>, Vec<usize>)> {
+    let owned = |args: &[&str]| args.iter().map(|a| a.to_string()).collect::<Vec<String>>();
+    let mut whole = vec!["test", "--workspace"];
     if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
-        args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
+        whole.extend(["--exclude", ACCEPTANCE_PACKAGE]);
     }
-    run_staged(root, "workspace", &args)
+    let Some(only) = only else { return Ok((vec![owned(&whole)], Vec::new())) };
+    let mut runs = Vec::new();
+    let shards: Vec<usize> = (1..=shards::SHARDS).filter(|k| only.iter().any(|part| *part == format!("cli-{k}"))).collect();
+    let formal = only.iter().any(|part| part == "cli-formal");
+    if only.iter().any(|part| part == "compile") {
+        whole.push("--no-run");
+        runs.push(owned(&whole));
+    }
+    let packages: Vec<String> = workspace_packages(root)?
+        .into_iter()
+        .filter(|package| package == topology::BINARY && (formal || !shards.is_empty()) || only.iter().any(|part| part == workspace_part(package)))
+        .collect();
+    let other: Vec<&String> = packages.iter().filter(|package| package.as_str() != topology::BINARY).collect();
+    if !other.is_empty() {
+        let mut args = vec!["test".to_string()];
+        for package in other {
+            args.extend(["--package".to_string(), package.clone()]);
+        }
+        runs.push(args);
+    }
+    let binary = packages.iter().any(|package| package == topology::BINARY);
+    if binary && formal {
+        let mut args = vec!["test", "--package", topology::BINARY];
+        cli_partition(&mut args, false, true);
+        runs.push(owned(&args));
+    }
+    Ok((runs, if binary { shards } else { Vec::new() }))
 }
 
 /// The libtest name filter selecting the differential CLI tests: a substring match, so it
@@ -794,8 +823,9 @@ const DIFFERENTIAL_FILTER: &str = "differential::";
 /// unit tests and the doctests, which no test listing reaches.
 fn cli_shard(root: &Path, k: usize) -> Result<()> {
     let binary = topology::BINARY;
-    let listing = ["test", "--package", binary, "--test", "integration", "--", "--list", "--format", "terse"];
-    let out = Command::new("cargo").args(listing).env("CARGO_TARGET_DIR", stage_target(root, "workspace")).current_dir(root).output()?;
+    let mut listing = CLI_INTEGRATION.to_vec();
+    listing.extend(["--", "--list", "--format", "terse"]);
+    let out = Command::new("cargo").args(&listing).env("CARGO_TARGET_DIR", stage_target(root, "workspace")).current_dir(root).output()?;
     if !out.status.success() {
         return Err(exited_output(&format!("cargo {}", listing.join(" ")), &out));
     }
@@ -818,14 +848,7 @@ fn cli_shard(root: &Path, k: usize) -> Result<()> {
     }
     if k == fallback {
         let kinds = target_kinds(root, binary)?;
-        let mut units = vec!["test", "--package", binary];
-        if kinds.iter().any(|kind| kind == "lib") {
-            units.push("--lib");
-        }
-        if kinds.iter().any(|kind| kind == "bin") {
-            units.push("--bins");
-        }
-        if units.len() > 3 {
+        if let Some(units) = cli_units(&kinds) {
             run_staged(root, "workspace", &units)?;
         }
         if kinds.iter().any(|kind| kind == "lib") {
@@ -836,9 +859,26 @@ fn cli_shard(root: &Path, k: usize) -> Result<()> {
     if names.is_empty() {
         return Ok(());
     }
-    let mut args = vec!["test", "--package", binary, "--test", "integration", "--", "--exact"];
+    let mut args = CLI_INTEGRATION.to_vec();
+    args.extend(["--", "--exact"]);
     args.extend(names.iter().map(String::as_str));
     run_staged(root, "workspace", &args)
+}
+
+/// The cargo arguments a CLI shard lists and runs its integration tests with.
+const CLI_INTEGRATION: [&str; 5] = ["test", "--package", topology::BINARY, "--test", "integration"];
+
+/// The invocation running the CLI's library and binary unit tests, given its target
+/// `kinds`; `None` when it declares neither.
+fn cli_units(kinds: &[String]) -> Option<Vec<&'static str>> {
+    let mut units = vec!["test", "--package", topology::BINARY];
+    if kinds.iter().any(|kind| kind == "lib") {
+        units.push("--lib");
+    }
+    if kinds.iter().any(|kind| kind == "bin") {
+        units.push("--bins");
+    }
+    (units.len() > 3).then_some(units)
 }
 
 /// The target kinds `package` declares, from `cargo metadata`.
@@ -893,31 +933,36 @@ fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
         eprintln!("features: no workspace package declares a feature");
     }
     let target = stage_target(root, "features");
-    for package in &featured {
+    for (shown, args) in feature_runs(&featured, only) {
+        eprintln!("features: {shown}");
+        let status = Command::new("cargo").args(&args).env("CARGO_TARGET_DIR", &target).current_dir(root).status()?;
+        if !status.success() {
+            return Err(exited(format!("cargo test -p {shown}"), status));
+        }
+    }
+    let _ = std::fs::remove_dir_all(&target);
+    Ok(())
+}
+
+/// Each run the features stage, or its `only` parts, makes over `featured`: the package and
+/// feature set as shown, and the cargo arguments.
+fn feature_runs(featured: &[Featured], only: Option<&[String]>) -> Vec<(String, Vec<String>)> {
+    let mut out = Vec::new();
+    for package in featured {
         let name = &package.name;
         let binary = name == topology::BINARY;
         for (label, combination) in package.runs() {
             let ordinary = only.is_none_or(|o| o.iter().any(|p| if binary { p.strip_prefix("binary-") == Some(label.as_str()) } else { p == short(name) }));
             let formal = binary && only.is_none_or(|o| o.iter().any(|p| p.strip_prefix("formal-") == Some(label.as_str())));
             if !ordinary && !formal { continue; }
-            let shown = combination.join(" ");
-            eprintln!("features: {name} {shown}");
+            let shown = format!("{name} {}", combination.join(" "));
             let mut partition = Vec::new();
             if binary { cli_partition(&mut partition, ordinary, formal); }
-            let status = Command::new("cargo")
-                .args(["test", "-p", name])
-                .args(&combination)
-                .args(&partition)
-                .env("CARGO_TARGET_DIR", &target)
-                .current_dir(root)
-                .status()?;
-            if !status.success() {
-                return Err(exited(format!("cargo test -p {name} {shown}"), status));
-            }
+            let args = ["test", "-p", name].into_iter().map(str::to_string).chain(combination).chain(partition.into_iter().map(str::to_string)).collect();
+            out.push((shown, args));
         }
     }
-    let _ = std::fs::remove_dir_all(&target);
-    Ok(())
+    out
 }
 
 // ---------------------------------------------------------------- lean
@@ -1165,8 +1210,11 @@ fn acceptance(root: &Path) -> Result<()> {
             }
         }
     }
-    run_staged(root, "acceptance", &["test", "-p", ACCEPTANCE_PACKAGE])
+    run_staged(root, "acceptance", &ACCEPTANCE_RUN)
 }
+
+/// The acceptance stage's cargo invocation.
+const ACCEPTANCE_RUN: [&str; 3] = ["test", "-p", ACCEPTANCE_PACKAGE];
 
 /// A workspace member declaring a feature other than `default`.
 struct Featured {

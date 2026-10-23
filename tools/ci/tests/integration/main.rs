@@ -7,6 +7,7 @@ mod allowlist;
 mod artifact;
 mod automate;
 mod capability;
+mod compile_only;
 mod cli_parts;
 mod dependency_versions;
 mod deny;
