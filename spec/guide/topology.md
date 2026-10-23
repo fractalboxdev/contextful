@@ -24,14 +24,14 @@ Coordination rests on one linearizable conditional write ({{topology.coordinate.
 
 ## Worked example
 
-A macOS `contextful-full` writer uses local execution files ({{topology.coordinate.backends}}), syncs its corpus to R2, and serves a Linux Container replica behind a Cloudflare routing Worker. The [runtime maps](../targets.md) place each target's processes and libraries.
+A Linux `contextful-full` writer uses local execution files ({{topology.coordinate.backends}}), syncs its corpus to R2, and serves a Linux Container replica behind a Cloudflare routing Worker. The [runtime maps](../targets.md) cover Linux and both macOS execution paths.
 
 The writer's Wasmtime host produces files; the replica's DuckDB library reads their synchronized copy.
 
 ```mermaid
 flowchart LR
   CALLER(["MCP or HTTP client"]):::muted
-  subgraph SERVER["macOS writer processes"]
+  subgraph SERVER["Linux writer processes"]
     TICK["pipeline serve scheduler"]:::accent
     subgraph CHILD["contextful pipeline run child"]
       STEP["Wasmtime component host"]:::accent

@@ -22,7 +22,8 @@ test("topology contains generated provider tables inside the deployment section"
   assert.ok(code.indexOf('id="deployment-targets"') < code.indexOf('id="publish-hostname"'));
   assert.equal((code.match(/<h1\b/g) ?? []).length, 1);
   assert.equal((code.match(/<table>/g) ?? []).length, 3);
-  assert.ok(code.includes('<h3 id="macos-reference"'));
+  assert.ok(code.includes('<h3 id="linux-reference"'));
+  assert.ok(code.includes('id="macos-reference"'));
   assert.ok(code.includes('id="topology.deploy.unsupported-shape"'));
 });
 

@@ -1483,7 +1483,7 @@
       "statement": "A probe answer outside its descriptor's gate, or an unreachable hostname, raises `HostnamePostureMismatch` with the hostname, the declared gate and the observed response, and `contextful-ci deploy probe` exits nonzero.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 145
+      "line": 276
     },
     {
       "id": "topology.publish-hostname.probe-table",
@@ -1494,7 +1494,7 @@
       "statement": "A probe table entry absent from the descriptor set, or a descriptor with no probe entry, raises `ProbeTableDrift` before any hostname is probed, naming the hostname and the side missing it.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 147
+      "line": 278
     },
     {
       "id": "topology.publish-hostname.empty-probe",
@@ -1505,7 +1505,7 @@
       "statement": "An absent descriptor directory, an absent probe table, or a descriptor set naming no hostname raises `ProbeSetEmpty`, naming the path; a passing probe has checked at least one hostname.",
       "why": "because a probe that checks nothing and exits zero reads as a proven posture to the pipeline that invoked it.",
       "file": "spec/01-topology.md",
-      "line": 149
+      "line": 280
     },
     {
       "id": "topology.publish-hostname.unknown-field",
@@ -1516,7 +1516,7 @@
       "statement": "A descriptor decodes with excess properties refused; an unmodelled key raises `DescriptorUnknownField`, naming the key and the contract version.",
       "why": "P1",
       "file": "spec/01-topology.md",
-      "line": 151
+      "line": 282
     },
     {
       "id": "topology.publish-hostname.unconfigured-gateway",
@@ -1527,7 +1527,7 @@
       "statement": "A routing hop with no store configuration answers `503` on every route and raises `GatewayUnconfigured`.",
       "why": "P3",
       "file": "spec/01-topology.md",
-      "line": 153
+      "line": 284
     },
     {
       "id": "topology.publish-hostname.issuer-key",
@@ -1538,7 +1538,7 @@
       "statement": "The engine's HTTP face refuses to start without a verification key that resolves and parses, raising `IssuerKeyUnusable` and naming the input; no generated key substitutes.",
       "why": "P3",
       "file": "spec/01-topology.md",
-      "line": 155
+      "line": 286
     },
     {
       "id": "topology.publish-hostname.container-readiness",
@@ -1549,7 +1549,7 @@
       "statement": "A retrieval container reaches readiness within 8 s of a cold start, before its snapshot-set hydration completes.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 157
+      "line": 288
     },
     {
       "id": "topology.coordinate.primitive",
@@ -1560,7 +1560,7 @@
       "statement": "Coordination rests on one property: a linearizable conditional write. No component depends on a stronger one, and the tree ships no consensus implementation or external coordination service.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 199
+      "line": 330
     },
     {
       "id": "topology.coordinate.inventory",
@@ -1571,7 +1571,7 @@
       "statement": "The single-writer operations are the lease row, the cursor compare-and-swap, {{store.fold.pointer-commit}}, a lease acquisition, a leased pipeline's commit-log entry, the bucket manifest commit and a configuration apply's version claim. No other operation needs a single writer.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 201
+      "line": 332
     },
     {
       "id": "topology.coordinate.lease-row",
@@ -1582,7 +1582,7 @@
       "statement": "A lease row is keyed by a pipeline, a source partition, a table's compaction or a deployment's cadence, and carries a holder, an expiry instant and a fence taken by one conditional update.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 203
+      "line": 334
     },
     {
       "id": "topology.coordinate.catalog-clock",
@@ -1593,7 +1593,7 @@
       "statement": "The catalog evaluates a lease row's expiry against its own clock, never a caller-supplied instant.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 205
+      "line": 336
     },
     {
       "id": "topology.coordinate.fence-advances",
@@ -1604,7 +1604,7 @@
       "statement": "Each acquisition of a lease row increments its fence, and release keeps the fence, so the fence never repeats for a key.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 207
+      "line": 338
     },
     {
       "id": "topology.coordinate.fenced-commit",
@@ -1615,7 +1615,7 @@
       "statement": "A commit under a lease is a conditional write predicated on the holder's fence; a predicate matching nothing is {{store.lease.stale-fence}}.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 209
+      "line": 340
     },
     {
       "id": "topology.coordinate.cursor-cas",
@@ -1626,7 +1626,7 @@
       "statement": "A cursor compare-and-swap is one conditional update predicated on the stored version, read back by its affected-row count.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 211
+      "line": 342
     },
     {
       "id": "topology.coordinate.cadence-lease-ttl",
@@ -1637,7 +1637,7 @@
       "statement": "A cadence lease is granted for 90 s.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 213
+      "line": 344
     },
     {
       "id": "topology.coordinate.cadence-lease-renewal",
@@ -1648,7 +1648,7 @@
       "statement": "The reconciler renews a cadence lease every 30 s while its applied document schedules a dispatchable unit.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 215
+      "line": 346
     },
     {
       "id": "topology.coordinate.cadence-fallback",
@@ -1659,7 +1659,7 @@
       "statement": "A deployment's fallback cron fires only after taking the cadence lease itself, so one fire holds the current fence.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 217
+      "line": 348
     },
     {
       "id": "topology.coordinate.catalog-port",
@@ -1670,7 +1670,7 @@
       "statement": "Every catalog backend is reached through the `Catalog` port, and code above the port names no backend. Swapping a backend is a wiring change in `contextful-cli`.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 219
+      "line": 350
     },
     {
       "id": "topology.coordinate.backends",
@@ -1681,7 +1681,7 @@
       "statement": "Single-node self-hosting uses a local catalog file; clusters use Postgres via `pg-catalog`; managed edge uses per-object SQLite; Cloudflare execution uses D1 via `d1-catalog`.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 221
+      "line": 352
     },
     {
       "id": "topology.coordinate.catalog-url",
@@ -1692,7 +1692,7 @@
       "statement": "A build linking `pg-catalog` given `CONTEXTFUL_CATALOG_URL` opens the Postgres catalog it names in place of the local catalog file; a build without `pg-catalog` given it raises {{topology.package.capability-absent}}.",
       "why": "because a daemon falling back to its own file while its peers share the database holds leases no peer sees",
       "file": "spec/01-topology.md",
-      "line": 223
+      "line": 354
     },
     {
       "id": "topology.coordinate.postgres-transport",
@@ -1703,7 +1703,7 @@
       "statement": "PostgreSQL connections beyond loopback or Unix sockets require TLS with WebPKI roots and hostname verification; disabling TLS there raises `DatabaseTransportUnprotected` before DNS resolution, and a preferred TLS mode permits no plaintext fallback there.",
       "why": "because remote execution state and database credentials cross an untrusted network boundary",
       "file": "spec/01-topology.md",
-      "line": 225
+      "line": 356
     },
     {
       "id": "topology.coordinate.weak-backend",
@@ -1714,7 +1714,7 @@
       "statement": "A catalog backend whose conditional update is not linearizable refuses at open with {{surface.apply.weak-conditional-backend}}.",
       "why": "A-store",
       "file": "spec/01-topology.md",
-      "line": 227
+      "line": 358
     },
     {
       "id": "topology.coordinate.cluster-availability",
@@ -1725,7 +1725,7 @@
       "statement": "Cluster availability is the shared database's availability. The engine adds no replication and no failover protocol between daemons.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 229
+      "line": 360
     },
     {
       "id": "topology.coordinate.air-gap",
@@ -1736,7 +1736,7 @@
       "statement": "Single-node and edge deployments reach no process outside themselves for coordination, and run air-gapped with only their sources reachable.",
       "why": "",
       "file": "spec/01-topology.md",
-      "line": 230
+      "line": 361
     },
     {
       "id": "topology.coordinate.no-clustered-catalog",
@@ -1747,7 +1747,7 @@
       "statement": "Clustered availability behind the `Catalog` port comes from Postgres alone; the tree ships no self-contained clustered catalog.",
       "why": "because a clustered catalog of its own rebuilds the replication Postgres provides, for the few operators who refuse to run Postgres",
       "file": "spec/01-topology.md",
-      "line": 231
+      "line": 362
     },
     {
       "id": "topology.bound-application.domain-neutral",
@@ -1758,7 +1758,7 @@
       "statement": "The engine processes declared data, schemas, policies, time bounds and capabilities; domain meanings, business rules and sector-specific metrics belong to consumer configuration, connectors, components or explicitly selected evaluation profiles.",
       "why": "A-topology",
       "file": "spec/01-topology.md",
-      "line": 279
+      "line": 410
     },
     {
       "id": "topology.bound-application.restated-case",
@@ -1769,7 +1769,7 @@
       "statement": "A case with neither a generated artifact nor a callable route stays with the application, which restates the engine rule at its site under {{assurance.structure-tree.mirror-exemption}}.",
       "why": "because a restatement naming its clause id surfaces when the rule changes, and an adapter for one case costs more than it guards",
       "file": "spec/01-topology.md",
-      "line": 281
+      "line": 412
     },
     {
       "id": "store.lay-out.components",

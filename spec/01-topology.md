@@ -18,8 +18,8 @@ its posture, the single-writer operations and the catalog that serializes them, 
 the engine ends and an application begins.
 
 For executable names, embedded libraries and storage placement, follow the runtime maps
-for [macOS](./targets.md#macos-reference), [Cloudflare](./targets.md#cloudflare) and
-[AWS](./targets.md#aws). The deployment tables and diagrams appear together on this page;
+for [Linux](./targets.md#linux-reference), [Cloudflare](./targets.md#cloudflare) and
+[AWS](./targets.md#aws), with macOS paths [without Docker](#macos-without-docker) and [with Docker](#macos-with-docker). The deployment tables and diagrams appear together on this page;
 `read path` and `run path` below name code boundaries rather than operating-system processes.
 
 ## compose
@@ -135,6 +135,137 @@ Each provider's shapes are data under `spec/targets/`, checked by `corpus.target
 The generated [deployment targets](./targets.md) section supplies the runtime placement,
 process boundaries and role tables. Native libraries sit inside process containers in
 the diagrams; provider products such as D1 and R2 sit outside the Linux Container.
+
+### Native Linux deployment
+
+The Linux reference map below places the scheduler, its run children, HTTP server and
+embedded libraries on one host. Each service uses the same project directory, including
+`contextful.toml`, applied control snapshots, execution files and corpus files. The
+directory persists across process restarts; the optional console has its own Node.js
+process and configured Rust HTTP endpoint.
+
+The examples assume an existing project with an applied snapshot, readable `issuer.key`,
+independently configured issuer public-key pins, and the source credentials its declaration
+names. The scheduler and HTTP server inherit that environment. `contextful-local` is the
+example token audience; `4` is the example HTTP concurrency setting. From that project's
+directory, two terminals or two service-manager units run:
+
+```sh
+contextful pipeline serve --issuer-key issuer.key
+```
+
+```sh
+contextful serve --http 127.0.0.1:8080 --issuer-key issuer.key \
+  --audience contextful-local --max-in-flight 4
+```
+
+Linux Docker Engine also runs the image and container commands below, sharing the host's
+Linux kernel. Docker Desktop on macOS adds the Linux VM shown in the Docker map.
+
+### macOS without Docker
+
+<a id="macos-reference"></a>
+
+Apple Silicon uses the `aarch64-apple-darwin` executable; Intel uses
+`x86_64-apple-darwin`. From the repository root, a native source installation selects
+the full profile:
+
+```sh
+cargo install --locked --path crates/contextful-cli \
+  --no-default-features --features contextful-full
+```
+
+The project's two startup commands above run directly as macOS processes. Wasmtime,
+Tokio, DuckDB and SQLite stay embedded in those processes; launchd can supervise them.
+Project state sits on the Mac's filesystem. This path uses the Darwin binary and a native
+Rust/C++ build toolchain, with no Linux VM or Docker daemon. The optional Node.js console
+uses `http://127.0.0.1:8080` as its configured store endpoint.
+
+### macOS with Docker
+
+Docker Desktop supplies a Linux VM; its Docker Engine runs the same Linux image a Linux
+server uses. The Rust processes and embedded libraries run inside containers in that VM.
+The browser and optional native Node.js console reach a published localhost port.
+
+The image build runs from the repository root. Apple Silicon selects ARM64 explicitly:
+
+```sh
+docker build --platform linux/arm64 --build-arg PLATFORM=linux/arm64 \
+  --build-arg RUST_TARGET=aarch64-unknown-linux-musl -t contextful:local .
+```
+
+Intel Macs select AMD64; this also selects an emulated AMD64 build on Apple Silicon:
+
+```sh
+docker build --platform linux/amd64 --build-arg PLATFORM=linux/amd64 \
+  --build-arg RUST_TARGET=x86_64-unknown-linux-musl -t contextful:local .
+```
+
+The Dockerfile's `PLATFORM` and `RUST_TARGET` arguments select matching builder and
+executable architectures. `--platform` alone leaves the Dockerfile's AMD64 defaults in
+place. Emulation adds translation cost; an ARM64 image matches an Apple Silicon Linux VM.
+
+From the existing project directory, these commands use a shared bind mount at `/data`.
+`runtime.env` supplies the configured public-key pins and source credentials through
+Docker's `--env-file`; the issuer seed stays in `issuer.key`. The invoking non-root user's
+UID and GID keep writes owned by the project owner. Each terminal runs one container:
+
+```sh
+docker run --rm --init --name contextful-scheduler \
+  --user "$(id -u):$(id -g)" --env-file runtime.env \
+  --mount "type=bind,src=$PWD,dst=/data" \
+  contextful:local pipeline serve --issuer-key /data/issuer.key
+```
+
+```sh
+docker run --rm --init --name contextful-http \
+  --user "$(id -u):$(id -g)" --env-file runtime.env \
+  --mount "type=bind,src=$PWD,dst=/data" -p 127.0.0.1:8080:8080 \
+  contextful:local serve --http 0.0.0.0:8080 --issuer-key /data/issuer.key \
+  --audience contextful-local --max-in-flight 4
+```
+
+The container listens on `0.0.0.0:8080`; Docker publishes it at `127.0.0.1:8080` on
+macOS. `/data` persists in the host project directory when `--rm` removes a container.
+A Docker named volume is another persistent project location when configuration and
+keys are provisioned into it; both containers mount that same volume. A project uses one
+writer mode at a time: switching between native and Docker stops its scheduler and run
+children before reusing the directory.
+
+Declared file and component paths resolve inside the container; files outside `/data`
+need an explicit mount. A source or model endpoint running on the Mac uses
+`host.docker.internal` from Docker Desktop containers. Container `localhost` names the
+container itself; the native console uses the published Mac loopback port.
+
+The Linux VM contains the containers; the project directory remains on macOS through
+Docker's file sharing.
+
+```mermaid
+flowchart LR
+  subgraph MAC["macOS host"]
+    CLIENT(["MCP or HTTP client"]):::muted
+    PROJECT[("persistent project directory")]:::store
+  end
+  subgraph VM["Docker Desktop Linux VM"]
+    subgraph HTTP["contextful HTTP container"]
+      FACE["Rust HTTP handlers"]:::accent
+      SQL["DuckDB library"]:::accent
+    end
+    subgraph SCHED["contextful scheduler container"]
+      TIMER["Rust scheduler"]:::accent
+      CHILD["Rust run dispatcher"]:::accent
+      WASM["Wasmtime component host"]:::accent
+    end
+  end
+  CLIENT -- "localhost published port" --> FACE
+  FACE -- "admit query" --> SQL
+  SQL -- "read /data snapshot" --> PROJECT
+  TIMER -- "spawn run or fire" --> CHILD
+  CHILD -- "component invocation" --> WASM
+  TIMER -- "lease through /data" --> PROJECT
+  CHILD -- "journal through /data" --> PROJECT
+  WASM -- "commit through /data" --> PROJECT
+```
 
 unsettled: Which role hosts heavy compute on a provider exposing neither a container primitive nor a long-running function? owner: topology affects: topology.deploy
 

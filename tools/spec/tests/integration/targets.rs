@@ -132,7 +132,7 @@ fn the_default_shape_diagrams_name_provider_runtimes_and_processes() {
     let s = Scratch::copy();
     assert!(s.cmd(&["state"]).status.success());
     let page = s.read("spec/targets.md");
-    for label in ["Fargate Linux tasks", "Step Functions", "Workers V8 isolates", "Linux Container running contextful-full", "macOS host", "contextful pipeline serve process", "Wasmtime component host", "DuckDB library"] {
+    for label in ["Fargate Linux tasks", "Step Functions", "Workers V8 isolates", "Linux Container running contextful-full", "Linux host", "contextful pipeline serve process", "Wasmtime component host", "DuckDB library"] {
         assert!(page.contains(label), "missing runtime or process {label}: {page}");
     }
     assert!(!page.contains("COMP[\"heavy compute\"]"), "{page}");
