@@ -316,7 +316,8 @@ fn measure(root: &Path, tiers: &[Tier], keep: &dyn Fn(&Entry) -> bool) -> Result
 fn run_test(root: &Path, path: &str, records: &Path) -> Result<()> {
     let (package, name) = ledger::test_target(path).context("an unresolvable test path")?;
     let status = Command::new("cargo")
-        .args(["test", "-q", "-p", &package, "--test", "integration", "--", "--exact", &name])
+        .args(test_args(&package))
+        .args(["--", "--exact", &name])
         .env("CARGO_TARGET_DIR", crate::build_target(root, "evaluate"))
         .env(MEASURE_DIR_VAR, records)
         .current_dir(root)
@@ -325,6 +326,11 @@ fn run_test(root: &Path, path: &str, records: &Path) -> Result<()> {
         return Err(crate::exited(format!("cargo test -p {package} --test integration -- --exact {name}"), status));
     }
     Ok(())
+}
+
+/// The cargo arguments running `package`'s integration tests, before the test filter.
+fn test_args(package: &str) -> Vec<String> {
+    ["test", "-q", "-p", package, "--test", "integration"].into_iter().map(str::to_string).collect()
 }
 
 /// Run one probe binary in its own process, collecting records into `records`.
@@ -581,12 +587,33 @@ fn evaluate_part(entry: &Entry) -> Option<&'static str> {
     }
 }
 
+/// Whether the `only` parts, every part when none is named, measure `entry`.
+fn kept(entry: &Entry, only: Option<&[String]>) -> bool {
+    only.is_none_or(|parts| evaluate_part(entry).is_none_or(|part| parts.iter().any(|p| p == part)))
+}
+
+/// The distinct `cargo test` invocations the evaluate stage's `only` parts run, in run
+/// order: one per package a runnable gate-tier test entry names.
+pub fn test_runs(root: &Path, only: Option<&[String]>) -> Result<Vec<Vec<String>>> {
+    let Some(l) = resolved(root)? else { return Ok(Vec::new()) };
+    let mut out: Vec<Vec<String>> = Vec::new();
+    for (_, e) in l.runnable(Tier::Gate).filter(|(_, e)| kept(e, only)) {
+        if let Some(Method::Test(t)) = e.method() {
+            let args = test_args(&ledger::test_target(t).context("an unresolvable test path")?.0);
+            if !out.contains(&args) {
+                out.push(args);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The evaluate stage (`assurance.gate.evaluate-stage`): every gate-tier entry of the
 /// `only` parts, every part when none is named, the native case set among them, then the
 /// floor and baseline verdicts over those entries and the build directory reclaimed. A
 /// tree carrying the native case set with no gate-tier entry running it fails every part.
 pub fn evaluate(root: &Path, only: Option<&[String]>) -> Result<()> {
-    let keep = |e: &Entry| only.is_none_or(|parts| evaluate_part(e).is_none_or(|part| parts.iter().any(|p| p == part)));
+    let keep = |e: &Entry| kept(e, only);
     let ledger = load(root)?;
     let carried = ledger.as_ref().is_some_and(|l| l.entry.values().any(|e| e.tier == Tier::Gate && e.clause == NATIVE_GATE && matches!(e.method(), Some(Method::Test(_)))));
     if root.join(NATIVE_CASES).is_file() && !carried {

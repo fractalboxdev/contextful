@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 344 | 70 | 25 | 5 | 302 | 0 | 302 |
+| `assurance` | 3 | 18 | 346 | 70 | 25 | 5 | 304 | 0 | 304 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 3 | 19 | 420 | 95 | 23 | 14 | 307 | 0 | 307 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 5 | 20 | 337 | 70 | 22 | 13 | 326 | 0 | 326 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
 | `topology` | 1 | 6 | 81 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 25 | 177 | 2885 | 704 | 227 | 85 | 2553 | 0 | |
+| **total** | 25 | 177 | 2887 | 704 | 227 | 85 | 2555 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 67 | 55 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 187 | 152 | passing | closed |
+| 14 — Assurance | 7 | 189 | 154 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
@@ -227,6 +227,8 @@ Unscheduled operations: 13.
 | `assurance.gate.affected-unplaced` | `tools/ci/tests/integration/affected.rs::a_pin_the_listing_cannot_place_reaches_every_required_part` | performed |
 | `assurance.gate.budget-stage` | `tools/ci/tests/integration/image.rs::the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_none` | performed |
 | `assurance.gate.cli-shard-map` | `tools/ci/tests/integration/split_parts.rs::the_shard_map_runs_each_cli_test_once_and_a_test_it_lacks_in_the_least_loaded_shard` | performed |
+| `assurance.gate.compile-groups` | `tools/ci/tests/integration/compile_only.rs::the_compile_groups_name_one_part_per_distinct_signature` | performed |
+| `assurance.gate.compile-only` | `tools/ci/tests/integration/compile_only.rs::a_compile_only_part_repeats_the_parts_cargo_invocations_with_no_run` | performed |
 | `assurance.gate.crate-graph` | `tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing` | performed |
 | `assurance.gate.deny-list` | `tools/ci/tests/integration/deny.rs::a_deny_list_drifting_from_the_refusals_is_refused` | performed |
 | `assurance.gate.deny-profile-graph` | `tools/ci/tests/integration/deny.rs::a_profile_graph_is_the_binary_under_its_feature_alone` | performed |
