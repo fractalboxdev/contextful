@@ -33,8 +33,9 @@ fn without_the_lexical_backend_a_ranked_read_answers_by_token_fallback() {
     assert!(n4 < n1, "{order:?}");
 }
 
-/// A snippet concatenates up to three text columns, drawn from `retrieve.text` where declared: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.
-// spec: read.retrieve.snippet@45e7c4c4
+/// A snippet concatenates up to three text columns, using `retrieve.text` when declared. Label-priority columns, such
+/// as title, summary, description and thesis, come first; prose-worthy columns follow in schema order.
+// spec: read.retrieve.snippet@95800340
 #[test]
 fn a_snippet_leads_with_label_columns() {
     let r = Reads::new();
@@ -47,8 +48,8 @@ fn a_snippet_leads_with_label_columns() {
     assert_eq!(column(&vendor, "_snippet"), [json!("Solar battery storage feed — quoted")]);
 }
 
-/// Content hashes, URLs, identifiers and instant-valued columns never qualify for a snippet.
-// spec: read.retrieve.identifiers-never-snippet@ff991c2b
+/// Snippets exclude content hashes, URLs, identifiers and instant-valued columns.
+// spec: read.retrieve.identifiers-never-snippet@996b5a4b
 #[test]
 fn identifier_columns_never_enter_a_snippet() {
     let r = Reads::new();
@@ -137,8 +138,9 @@ fn optional_provenance_columns_surface_in_ranked_rows() {
     }
 }
 
-/// Match counts ride outside the internals opt-in, reporting how many rows the ranker scored as matching in the same call.
-// spec: read.respond.match-count@d3df9689
+/// Match counts report the number of matching rows scored by the ranker in that call. These counts require no
+/// diagnostic metadata.
+// spec: read.respond.match-count@7fa20f30
 #[test]
 fn the_block_reports_how_many_rows_matched() {
     let r = Reads::new();
@@ -175,8 +177,8 @@ fn a_byte_cut_updates_the_retrieval_counts() {
     assert_eq!(block["in_window"], json!(flags));
 }
 
-/// The lexical engine's own float score never crosses to a caller.
-// spec: read.rank.internal-score-stays-internal@8a3741ac
+/// Responses omit the lexical engine's internal floating-point score.
+// spec: read.rank.internal-score-stays-internal@9e24d7a7
 #[test]
 fn only_the_integer_score_crosses() {
     let r = Reads::new();
@@ -192,8 +194,9 @@ fn only_the_integer_score_crosses() {
     }
 }
 
-/// The retrieval block is omitted from every non-ranked statement and from a build with no ranker, and an absent block differs from one reporting zero matches.
-// spec: read.rank.absent-block@886f6327
+/// Non-ranked statements and builds without a ranker omit the retrieval block. An absent block differs from a block
+/// reporting zero matches.
+// spec: read.rank.absent-block@3476fe6f
 #[test]
 fn a_statement_carries_no_retrieval_block() {
     let r = Reads::new();
@@ -377,8 +380,9 @@ fn crowded_reads(crowd: usize) -> Reads {
     r
 }
 
-/// Where the rows a reader can see under-fill the requested limit, the probe doubles its size and probes again, for at most 4 rounds, then answers and reports the under-fill in the retrieval block.
-// spec: read.retrieve.adaptive-over-fetch@5399f76a
+/// The probe runs at most 4 rounds in total, doubling its size while readable rows fall below the requested limit. The
+/// retrieval block reports any remaining shortfall.
+// spec: read.retrieve.adaptive-over-fetch@aa7ac22c
 #[test]
 fn an_under_filled_probe_doubles_until_the_reader_sees_its_rows() {
     let question = |table: &str| RetrieveRequest { query_embedding: Some(vec![0.0, 0.0, 1.0]), limit: Some(5), ..ask(table, "") };
@@ -410,8 +414,9 @@ fn sidecar_dirs(r: &Reads, table: &str) -> (std::path::PathBuf, std::path::PathB
     (dir.clone(), dir.join(path))
 }
 
-/// A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.
-// spec: store.replicate.missing-index@63b045c5
+/// If a query requires a sidecar or partition absent from the replica, the query raises `ReplicaMissingIndex`, naming
+/// the refresh that supplies it.
+// spec: store.replicate.missing-index@2de576ee
 #[test]
 fn a_replica_lacking_a_needed_sidecar_or_part_refuses_naming_the_refresh() {
     use contextful_core::store::StoreError;
@@ -459,8 +464,9 @@ fn a_replica_lacking_a_needed_sidecar_or_part_refuses_naming_the_refresh() {
     assert!(m.contains("part `part-00000.parquet`") && m.contains("--table lab/plain"), "{m}");
 }
 
-/// Each sidecar arm, vector over a query embedding and full-text over the content tokens, adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.
-// spec: read.retrieve.sidecar-generates-candidates@f6d3b339
+/// Vector probes use query embeddings; full-text probes use content tokens. Each probe adds its top results to the
+/// recency window and rejoins through {{authority.compose.vector-arm}}. Per-row scores equal exact-scan scores.
+// spec: read.retrieve.sidecar-generates-candidates@14783fe4
 #[test]
 fn the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores() {
     let r = sidecar_reads("");
@@ -486,8 +492,9 @@ fn the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores() {
     assert!(accelerated.blocks["contextful.retrieval"]["candidates_prefloor"].as_u64().unwrap() > 200);
 }
 
-/// Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.
-// spec: read.rank.widened-window-statistics@3374cd12
+/// Lexical term statistics use the widened candidate window. Accelerated retrieval may therefore order rows
+/// differently from the exact scan.
+// spec: read.rank.widened-window-statistics@7988e9ea
 #[cfg(feature = "fts")]
 #[test]
 fn sidecar_widening_changes_the_bm25_order_of_shared_rows() {
@@ -510,8 +517,9 @@ fn sidecar_widening_changes_the_bm25_order_of_shared_rows() {
     assert!(accelerated.blocks["contextful.retrieval"]["candidates_prefloor"].as_u64().unwrap() > 200);
 }
 
-/// For one reader the accelerated arm returns a superset of the exact path's rows. Two readers with one query on one snapshot can recall different rows.
-// spec: read.retrieve.gain-never-loss@5f8f34b1
+/// For each reader, accelerated retrieval returns a superset of the exact scan's rows. Different readers querying one
+/// snapshot may receive different rows.
+// spec: read.retrieve.gain-never-loss@35463480
 #[test]
 fn the_accelerated_arm_returns_every_exact_row_and_readers_can_differ() {
     let r = sidecar_reads("[pipeline.tables.policy.rows]\npredicate = \"owner = subject.agent\"\n");
@@ -528,8 +536,9 @@ fn the_accelerated_arm_returns_every_exact_row_and_readers_can_differ() {
     assert_eq!(theirs, ["p000"]);
 }
 
-/// A sidecar yields candidate `id_column` values, not rows; they re-join through the enforced relation on that column before a top-K is final.
-// spec: store.index.candidate-ids@0d53be8f
+/// A sidecar returns only candidate `id_column` values. Before finalizing top-K, retrieval joins those identifiers on
+/// that column through the relation protected by access controls.
+// spec: store.index.candidate-ids@8f2ca2c8
 // spec: authority.compose.vector-arm@d98fead5
 #[test]
 fn sidecar_candidates_are_identifier_values_rejoined_through_the_relation() {
@@ -544,8 +553,9 @@ fn sidecar_candidates_are_identifier_values_rejoined_through_the_relation() {
     assert!(!ids(&ranked, "passage_id").contains(&"p000".to_string()));
 }
 
-/// Any sidecar precondition failure — no snapshot, no matching sidecar, a masked or zone-withheld identifier or indexed column, a classed text column, a dimension or manifest mismatch, an unreadable dump — falls back to the exact scan.
-// spec: read.retrieve.sidecar-falls-back@d9f25051
+/// Retrieval uses an exact scan for missing snapshots, missing matching sidecars, masked or zone-withheld identifiers
+/// or indexed columns, classed text columns, dimension or manifest mismatches, or unreadable dumps.
+// spec: read.retrieve.sidecar-falls-back@a332f8fc
 #[test]
 fn every_failed_precondition_falls_back_to_the_exact_scan() {
     use contextful_context::vector::Fallback;
@@ -590,7 +600,7 @@ fn every_failed_precondition_falls_back_to_the_exact_scan() {
 }
 
 /// A vector sidecar past 64 MiB of resident bytes stays unloaded and the arm takes the exact scan: a sealed sidecar's stored vectors, or a mapped plaintext one's 4 B probe mark per graph node.
-// spec: read.retrieve.sidecar-size-cap@6eca0df3
+// spec: read.retrieve.sidecar-size-cap@d6a99b1b
 #[test]
 fn a_sidecar_past_64_mib_of_resident_bytes_stays_unloaded() {
     use arrow_array::builder::{FixedSizeListBuilder, Float32Builder};
@@ -758,8 +768,9 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
     v
 }
 
-/// `filter` maps each caller-named column to a value, an equality, or a value list, a membership, and a row matches every condition. A table lacking a named column drops its arm, never emitting it unfiltered.
-// spec: read.retrieve.unsatisfiable-arm-drops@b3c9aa26
+/// In `filter`, a scalar tests column equality; a value list tests membership. Rows match every condition. A table
+/// lacking a named column contributes no rows, including unfiltered rows.
+// spec: read.retrieve.unsatisfiable-arm-drops@0c4102b7
 #[test]
 fn a_filter_binds_named_columns_and_a_table_lacking_one_drops_its_arm() {
     let r = Reads::new();
@@ -792,8 +803,9 @@ fn a_filter_binds_named_columns_and_a_table_lacking_one_drops_its_arm() {
     assert_eq!(ids(&r.face.retrieve(&s, &request, Bounds::default()).unwrap(), "passage_id")[0], "p000");
 }
 
-/// `kinds` lists artifact kind strings and joins the filter as one membership condition on the `kind` column, so a table without that column drops its arm by {{read.retrieve.unsatisfiable-arm-drops}}.
-// spec: read.retrieve.kinds@4b91a583
+/// `kinds` lists artifact kind strings as one membership condition on `kind`. A table without that column contributes
+/// no rows under {{read.retrieve.unsatisfiable-arm-drops}}.
+// spec: read.retrieve.kinds@38c4ec3d
 #[test]
 fn kinds_keep_listed_artifact_kinds_and_drop_tables_without_one() {
     let manifest = format!("{MANIFEST}\n[[pipeline.tables]]\nname = \"research/briefs\"\n");
@@ -824,8 +836,9 @@ fn kinds_keep_listed_artifact_kinds_and_drop_tables_without_one() {
     assert_eq!(sorted(ids(&both, "brief_id")), ["b2", "b3"]);
 }
 
-/// The budget is checked over the whole filter ahead of building any arm; an oversized or malformed condition raises `FilterBudgetExceeded` for the whole read.
-// spec: read.retrieve.filter-budget-refusal@89916c4f
+/// Before building per-table queries, retrieval checks the entire filter's budget. An oversized or malformed condition
+/// raises `FilterBudgetExceeded` for the whole read.
+// spec: read.retrieve.filter-budget-refusal@2b36e010
 #[test]
 fn an_oversized_or_malformed_filter_refuses_the_whole_read() {
     let r = Reads::new();
@@ -927,8 +940,10 @@ fn duplicate_row_rate(ranked: &Response) -> f64 {
     }
 }
 
-/// A ranked read keeps per `(table, row key)` only the newest ingestion, and no older copy when the newest misses the relevance floor. The row key is the declared content-hash column, else null, never a digest over projected values.
-// spec: read.retrieve.row-key-dedup@77ce4ce8
+/// Ranked reads keep only the newest ingestion per `(table, row key)`. If that version misses the relevance floor, no
+/// older copy substitutes. The key uses the declared content-hash column, otherwise null; projected values supply no
+/// digest.
+// spec: read.retrieve.row-key-dedup@890f8bd4
 #[test]
 fn a_ranked_read_keeps_the_newest_row_per_content_hash() {
     let r = dupe_reads();
@@ -955,9 +970,9 @@ fn a_ranked_read_keeps_the_newest_row_per_content_hash() {
     assert_eq!(ids(&grid, "passage_id"), ["r5"]);
 }
 
-/// A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the
-/// engine does not enumerate. Both append, dedupe on content and carry a timestamp.
-// spec: store.declare.two-genres@982edc5a
+/// A table holds connector items or synthesized artifacts. Artifact kinds use an open string without an engine-defined
+/// enumeration. Both items and artifacts append, deduplicate on content and carry a timestamp.
+// spec: store.declare.two-genres@0f3c14cf
 #[test]
 fn items_and_artifacts_of_any_kind_append_dedupe_on_content_and_carry_a_timestamp() {
     let genres = "\n[[pipeline.tables]]\nname = \"genre/items\"\ncontent_hash_column = \"digest\"\n\n[[pipeline.tables]]\nname = \"genre/artifacts\"\ncontent_hash_column = \"digest\"\n";
@@ -1002,8 +1017,10 @@ fn items_and_artifacts_of_any_kind_append_dedupe_on_content_and_carry_a_timestam
     }
 }
 
-/// Beyond {{store.declare.table-block}}, a table block may declare `retrieve.text`, a list of columns; lexical scoring and {{read.retrieve.relevance-floor}} read exactly those text columns less any the session classes or masks, and an undeclared table its snippet columns.
-// spec: read.retrieve.scored-text@818d6dba
+/// Under {{store.declare.table-block}}, `retrieve.text` optionally lists columns for lexical scoring and
+/// {{read.retrieve.relevance-floor}}, excluding session-classed or masked columns. Without `retrieve.text`, scoring
+/// uses the table's snippet columns.
+// spec: read.retrieve.scored-text@21936cd4
 #[test]
 fn a_declared_text_list_is_what_a_ranked_read_scores() {
     let press = "\n[[pipeline.tables]]\nname = \"press/declared\"\nretrieve = { text = [\"title\", \"summary\", \"transcript\"] }\n\n[[pipeline.tables]]\nname = \"press/undeclared\"\n";
@@ -1076,8 +1093,9 @@ fn the_row_key_stays_out_of_the_projection() {
     assert_eq!(keys(&ranked).into_iter().collect::<Vec<_>>(), [vec!["body_hash".to_string(), "passage_id".into(), "title".into()]]);
 }
 
-/// A content-hash column the session masks by `drop`, `truncate`, `bucket`, `range` or any combine keys every row null; one masked by `hash` or `tokenize` alone keys by its digest.
-// spec: read.retrieve.row-key-under-mask@47dfc71e
+/// For content-hash columns masked by `drop`, `truncate`, `bucket`, `range` or any combine, every row key is null.
+/// Masking by `hash` or `tokenize` alone uses the digest as key.
+// spec: read.retrieve.row-key-under-mask@40b244d4
 #[test]
 fn a_lossy_mask_on_the_row_key_keeps_every_row() {
     let r = dupe_reads();

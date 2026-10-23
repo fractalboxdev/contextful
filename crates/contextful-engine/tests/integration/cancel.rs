@@ -39,9 +39,9 @@ impl Source for StopsItself {
     }
 }
 
-/// A stop is written onto the run row as a requested-at instant, a scope and an optional reason; the catalog is
-/// the only channel.
-// spec: run.cancel.catalog-channel@de98c78d
+/// The catalog stores each stop request on the run row: requested-at instant, scope and optional reason. The catalog
+/// is the only stop-request channel.
+// spec: run.cancel.catalog-channel@d013180c
 #[test]
 fn a_stop_is_a_mark_on_the_run_row() {
     let rig = Rig::new();
@@ -120,9 +120,9 @@ fn a_stop_matches_only_in_flight_runs() {
     assert!(c.run("run-done").unwrap().unwrap().stop.is_none());
 }
 
-/// The token is fed by one catalog read before the run's first await and then one every 500 ms, the cancellation
-/// arm evaluated ahead of the work arm.
-// spec: run.cancel.poll-interval@248eef1d
+/// The engine updates the token from one catalog read before the run's first await, then every 500 ms. Each await
+/// evaluates cancellation before work.
+// spec: run.cancel.poll-interval@646cfdc1
 #[test]
 fn the_token_reads_the_catalog_before_the_first_await_and_every_500_ms() {
     assert_eq!(Cadence::default().poll, Duration::from_millis(500));
@@ -441,9 +441,9 @@ fn a_dropped_registration_ends_the_keeper_thread_at_once() {
     }
 }
 
-/// A table run's own stop does not cut landing; bytes already home finish landing and record the unfulfilled stop.
-/// Prepared body outputs additionally require {{run.own.body-parent}}.
-// spec: run.cancel.land-path-uncut@cbd2730d
+/// A table run's own stop does not interrupt landing. The engine finishes landing bytes already received and records
+/// the unfulfilled stop. Prepared body outputs additionally require {{run.own.body-parent}}.
+// spec: run.cancel.land-path-uncut@60a68b7c
 #[test]
 fn a_stop_arriving_once_the_last_batch_is_home_lets_it_land_and_records_the_stop() {
     let rig = Rig::new();

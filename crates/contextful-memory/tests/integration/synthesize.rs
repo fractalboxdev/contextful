@@ -43,8 +43,9 @@ fn prompt(inference: &Scripted, call: usize) -> String {
     inference.sent.lock().unwrap()[call].iter().map(|m| m.content.clone()).collect::<Vec<_>>().join("\n")
 }
 
-/// A pass reads the source's committed rows its cursor has not recorded, through the writing credential's own session, in batches under {{read.synthesize.prompt-bound}}, recording each batch once its claims commit.
-// spec: read.synthesize.pass-cursor@2f9ea6e2
+/// Through the writing credential's session, synthesis reads committed source rows absent from its cursor, in batches
+/// under {{read.synthesize.prompt-bound}}. The cursor records each batch after its claims commit.
+// spec: read.synthesize.pass-cursor@537ad157
 #[test]
 fn a_pass_reads_the_runs_past_its_cursor() {
     let f = Fixture::new();
@@ -176,8 +177,9 @@ fn recall(f: &Fixture, who: &AdmittedAuthority) -> contextful_core::read::respon
     f.face.retrieve(&s, &request, Bounds::default()).unwrap()
 }
 
-/// A `corpus.retrieve` arm over a `memory_facts` table serves only live claims — no `superseded_by`, and a `valid_to` null or past the read's anchor — whose evidence passes the gate.
-// spec: read.recall.ranked-arm@2e91118b
+/// For `memory_facts`, `corpus.retrieve` returns only claims without `superseded_by` and with `valid_to` null or after
+/// the read's anchor. Each claim's evidence passes the evidence check.
+// spec: read.recall.ranked-arm@5d5b5bb8
 #[test]
 fn a_ranked_arm_over_claims_serves_live_claims_alone() {
     let f = Fixture::new();
@@ -327,8 +329,9 @@ fn a_landing_rereads_the_writers_authority() {
     assert!(facts(&f, &writer, r#"SELECT * FROM "memory/facts""#).1.is_empty());
 }
 
-/// A row is fenced at 16384 chars under {{connector.infer.value-cap}}; a truncated row still reaches the model, its batch commits and advances the cursor, and the pass report counts it in `truncated`.
-// spec: read.synthesize.row-cap@bd014561
+/// Synthesis fences each row at 16384 chars under {{connector.infer.value-cap}}. Truncated rows reach the model; their
+/// batch commits and advances the cursor. The pass report counts these rows in `truncated`.
+// spec: read.synthesize.row-cap@d745ca5d
 #[test]
 fn a_row_over_the_cap_reaches_the_model_truncated_and_counted() {
     use contextful_core::connector::infer::TRUNCATION_MARK;

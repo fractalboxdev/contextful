@@ -31,8 +31,9 @@ fn as_of_returns_the_same_rows_before_and_after_a_fold() {
 }
 
 #[cfg(feature = "read")]
-/// `valid_as_of` wraps the same inner source with `from <= valid_as_of AND (to IS NULL OR to > valid_as_of)` over the declared pair.
-// spec: store.bound-time.valid-as-of@79fe2747
+/// `valid_as_of` filters the same inner source with `from <= valid_as_of AND (to IS NULL OR to > valid_as_of)` over
+/// the declared pair.
+// spec: store.bound-time.valid-as-of@9da75784
 #[test]
 fn valid_as_of_selects_the_rows_valid_at_the_instant() {
     let f = Fixture::new();
@@ -53,8 +54,8 @@ fn valid_as_of_selects_the_rows_valid_at_the_instant() {
 }
 
 #[cfg(feature = "read")]
-/// Over an unkeyed table a valid-time bound returns every version whose interval covers the instant.
-// spec: store.bound-time.covering-versions@a39e0fdc
+/// For an unkeyed table, a valid-time bound returns every version whose interval contains the requested instant.
+// spec: store.bound-time.covering-versions@0b8db9e2
 #[test]
 fn an_unkeyed_table_returns_every_covering_version() {
     let f = Fixture::new();
@@ -91,8 +92,9 @@ fn a_from_only_declaration_reads_each_row_valid_from_its_instant_onward() {
 }
 
 #[cfg(feature = "read")]
-/// A key valid over several intervals holds one row per interval: a keyed table declaring `valid_time` dedupes on its primary key and `from`, so a fold keeps every interval.
-// spec: store.bound-time.interval-rows@8705c4e1
+/// A keyed table declaring `valid_time` stores one row per key and valid-time interval. The table deduplicates on its
+/// primary key and `from`, so a fold keeps every interval.
+// spec: store.bound-time.interval-rows@948c8598
 #[test]
 fn a_keyed_valid_time_read_reaches_the_version_valid_then() {
     let f = Fixture::new();

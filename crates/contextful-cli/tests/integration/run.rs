@@ -345,9 +345,9 @@ fn history_exports_a_header_then_one_run_per_line() {
     assert_eq!(lines[1], listing["runs"][0]);
 }
 
-/// The export answers with 500 rows by default and clamps at 5000 rows, each pipeline's window taking the full
-/// ceiling before the merged result is clipped once.
-// spec: run.record.export-ceiling@81c87e7e
+/// The export returns 500 rows by default and clamps at 5000 rows. Each pipeline's window takes the full ceiling; the
+/// export clips the merged result once.
+// spec: run.record.export-ceiling@de41796b
 #[test]
 fn each_pipeline_takes_the_full_ceiling_and_the_merge_clips_once() {
     use contextful_core::run::record::export_ceiling;
@@ -807,9 +807,9 @@ fn each_built_in_source_journals_unless_the_one_constant_lists_it_and_an_empty_p
     assert_eq!(labels, ["pull-0"], "journaling defaults on, and the empty pull-1 records nothing");
 }
 
-/// Journal rows, execution owners and awakeables live in the host's own stores, never in the derived catalog; a
-/// catalog rebuild leaves them untouched and reconstructs none from the file tree.
-// spec: run.journal.machine-state@8ebd0d74
+/// The host's own stores hold journal rows, execution owners and awakeables. The derived catalog holds none. A catalog
+/// rebuild changes none and reconstructs none from the file tree.
+// spec: run.journal.machine-state@3f4b83db
 #[test]
 fn a_catalog_rebuild_leaves_the_journal_owner_and_awakeables_untouched() {
     use contextful_core::coordinate::Catalog;

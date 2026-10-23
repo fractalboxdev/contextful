@@ -69,8 +69,9 @@ fn column(r: &Response, name: &str) -> Vec<Value> {
     r.rows.iter().map(|row| row[i].clone()).collect()
 }
 
-/// `memory.recall` takes `table`, `subject`, `observed_at`, `as_of_ingest` and `limit`, and returns the claims whose `subject` equals `subject` exactly and whose `valid_from` and `valid_to` cover `observed_at` as {{store.bound-time.valid-as-of}} does.
-// spec: read.recall.keyed@d58fdab3
+/// `memory.recall` accepts `table`, `subject`, `observed_at`, `as_of_ingest` and `limit`. Returned claims match
+/// `subject` exactly, with `valid_from` and `valid_to` covering `observed_at` under {{store.bound-time.valid-as-of}}.
+// spec: read.recall.keyed@688e1e1a
 #[test]
 fn a_keyed_recall_returns_the_subjects_claims_valid_at_the_observed_instant() {
     let f = Fixture::new();
@@ -87,8 +88,10 @@ fn a_keyed_recall_returns_the_subjects_claims_valid_at_the_observed_instant() {
     assert_eq!(objects("acme labs", "2030-02-01T00:00:00Z"), [json!("Kim")]);
 }
 
-/// `as_of_ingest` bounds the read as {{store.bound-time.as-of}} does; absent, the read takes the latest committed state, and an absent `observed_at` the call's instant. `contextful.bounds` echoes each supplied bound under its argument name, with a per-name `inclusive` map.
-// spec: read.recall.keyed-clocks@edef8aaa
+/// `as_of_ingest` bounds reads under {{store.bound-time.as-of}}; without that argument, reads use the latest committed
+/// state. Missing `observed_at` defaults to the call's instant. `contextful.bounds` echoes supplied bounds by argument
+/// name with a per-name `inclusive` map.
+// spec: read.recall.keyed-clocks@128e88ee
 #[test]
 fn as_of_ingest_reads_what_was_known_then() {
     let f = Fixture::new();
@@ -128,8 +131,9 @@ fn as_of_ingest_reads_what_was_known_then() {
     assert!(!now.blocks.contains_key("contextful.bounds"), "{:?}", now.blocks);
 }
 
-/// A claim a successor retired still answers an `observed_at` inside its validity; the keyed read filters on validity alone, never on `superseded_by`.
-// spec: read.recall.keyed-history@6a407cb7
+/// Keyed recall returns a replaced claim for `observed_at` within that claim's validity interval. The query filters by
+/// validity alone, excluding `superseded_by` from filtering.
+// spec: read.recall.keyed-history@316910d3
 #[test]
 fn a_retired_claim_answers_inside_its_interval() {
     let f = Fixture::new();
@@ -215,8 +219,9 @@ fn the_ranked_arm_projects_evidence_omitted() {
     assert!(notes.iter().all(Value::is_null), "{notes:?}");
 }
 
-/// The keyed read gates claims in order and stops once it keeps one claim past the row ceiling, so the suppression count covers the claims gated before that stop.
-// spec: read.recall.keyed-window@fccd87ec
+/// Keyed recall checks claims in order and stops after retaining one claim beyond the row ceiling. The suppression
+/// count covers claims checked before that stop.
+// spec: read.recall.keyed-window@5c5d64e8
 #[test]
 fn the_keyed_read_stops_gating_one_claim_past_the_ceiling() {
     let f = Fixture::new();

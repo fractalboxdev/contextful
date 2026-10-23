@@ -39,9 +39,9 @@ fn land(f: &Fixture, run: &str, minute: u32) {
     f.land(&decl("name = \"events\""), run, json!([{ "id": run }]), &format!("2030-01-01T00:{minute:02}:00Z")).unwrap();
 }
 
-/// A run notifies only once {{store.lay-out.uncommitted-run}} no longer holds it: a run with
-/// no manifest, or a logged run absent from its node's commit log, never notifies.
-// spec: read.subscribe.after-commit@2f9d9cce
+/// Subscriptions notify only runs committed under {{store.lay-out.uncommitted-run}}. Runs without manifests and logged
+/// runs absent from their node's commit log produce no notification.
+// spec: read.subscribe.after-commit@28d2b2d5
 #[test]
 fn a_logged_run_absent_from_its_commit_log_never_notifies() {
     let f = Fixture::new();
@@ -81,10 +81,9 @@ fn a_read_at_the_notified_frontier_covers_the_run() {
     }
 }
 
-/// `after` maps a table to a `<run-id>/<node-id>` position; the subscription replays every
-/// later committed run of that table once, then continues live, a fold between leaving the
-/// replay unchanged.
-// spec: read.subscribe.resume@1360c755
+/// `after` maps tables to `<run-id>/<node-id>` positions. Subscriptions replay each table's later committed runs once,
+/// then continue live. An intervening fold leaves the replay unchanged.
+// spec: read.subscribe.resume@00899018
 #[test]
 fn resuming_replays_later_runs_once_across_a_fold_then_continues_live() {
     let f = Fixture::new();

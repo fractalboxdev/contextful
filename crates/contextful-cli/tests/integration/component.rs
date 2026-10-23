@@ -327,9 +327,10 @@ fn a_guest_reaches_only_its_allowlist_and_the_host_attaches_its_credential() {
     assert_eq!(vendor.requests().len(), 1);
 }
 
-/// `pipeline validate` loads a local component artifact from the directory `pipeline run` resolves it against and runs
-/// discovery, so a missing export or a world mismatch fails before any run; a remote artifact is checked without I/O.
-// spec: connector.package.component-validate@3132dafd
+/// `pipeline validate` resolves a local component artifact against the same directory as `pipeline run`, then loads it
+/// and runs discovery. Missing exports or world mismatches fail before runs. Validation checks remote artifacts
+/// without I/O.
+// spec: connector.package.component-validate@a1f17288
 #[test]
 fn validate_loads_a_local_component_and_runs_discovery() {
     let pin = digest(PROBE);
@@ -411,7 +412,7 @@ fn malformed_oci_reference_is_refused_without_a_request() {
     refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorOciReferenceInvalid");
 }
 
-// spec: connector.package.remote-fetch-failure@d8121ea0
+// spec: connector.package.remote-fetch-failure@d47fe085
 #[test]
 fn remote_fetch_failure_writes_no_run_row() {
     let pin = digest(PROBE);
@@ -498,7 +499,7 @@ fn the_manifest_pin_admits_the_local_artifact_and_a_disagreeing_source_pin_refus
 
 /// A connector reaching for access its manifest does not list fails to load, raising `ConnectorUndeclaredAccess` naming
 /// that access.
-// spec: connector.declare-capability.declared-grant@08a2d774
+// spec: connector.declare-capability.declared-grant@12a3e445
 // spec: connector.declare-capability.undeclared-access@5d9044eb
 #[test]
 fn a_wall_clock_import_without_the_clock_grant_fails_to_load() {

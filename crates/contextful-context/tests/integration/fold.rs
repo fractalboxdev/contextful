@@ -17,8 +17,10 @@ fn staged(f: &Fixture, d: &contextful_core::store::declare::TableDecl, now: &str
 }
 
 #[cfg(feature = "read")]
-/// A pass selects the committed runs the current snapshot omits, dedupes by key or unions, reconciles the schema, sorts by `cluster_by`, partitions, writes Parquet and every declared sidecar into staging, then commits by {{store.fold.pointer-commit}}.
-// spec: store.fold.pass@65833c40
+/// A pass selects committed runs omitted by the current snapshot, deduplicates by key or unions, reconciles schemas,
+/// sorts by `cluster_by`, then partitions. The pass stages Parquet and every declared sidecar, then commits through
+/// {{store.fold.pointer-commit}}.
+// spec: store.fold.pass@45c0ee2c
 #[test]
 fn a_pass_folds_the_omitted_runs_into_one_snapshot() {
     let f = Fixture::new();
@@ -43,8 +45,9 @@ fn a_pass_folds_the_omitted_runs_into_one_snapshot() {
 }
 
 #[cfg(feature = "read")]
-/// A keyed table declaring `valid_time` partitions on the key together with the valid-time line and keeps one row per line.
-// spec: store.fold.valid-time-line@4db5edf4
+/// A keyed table declaring `valid_time` partitions on both the key and valid-time line. The table keeps one row per
+/// line.
+// spec: store.fold.valid-time-line@756e6279
 #[test]
 fn a_valid_time_table_keeps_one_row_per_key_and_line() {
     let f = Fixture::new();
@@ -60,8 +63,9 @@ fn a_valid_time_table_keeps_one_row_per_key_and_line() {
 }
 
 #[cfg(feature = "read")]
-/// A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.
-// spec: store.fold.includes-runs@f8549a98
+/// A snapshot's `includes_runs` names each folded run as `<run-id>/<node-id>`, matching the run directory. Reads
+/// include runs committed after the snapshot.
+// spec: store.fold.includes-runs@e5eeacf3
 #[test]
 fn a_snapshot_names_the_runs_it_folded() {
     let f = Fixture::new();
@@ -79,8 +83,9 @@ fn a_snapshot_names_the_runs_it_folded() {
 }
 
 #[cfg(feature = "read")]
-/// `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.
-// spec: store.fold.retention@b5065918
+/// `retain_runs` defaults to 7 d. Collection removes folded runs, superseded snapshots and their sidecars once older
+/// than the window.
+// spec: store.fold.retention@1f612a0d
 #[test]
 fn folded_runs_and_superseded_snapshots_are_collected_after_seven_days() {
     let f = Fixture::new();
@@ -136,8 +141,9 @@ fn a_pass_over_an_unknown_table_halts() {
     assert!(matches!(err.store(), Some(StoreError::StoreUnknownTable(_))), "{err}");
 }
 
-/// A pass publishes by replacing `_pointer.json` conditioned on the ETag it read at pass start, with `If-Match` on an object store and a version-checked rename on a filesystem.
-// spec: store.fold.pointer-commit@1a70277c
+/// A pass publishes by replacing `_pointer.json` conditioned on the ETag read at pass start. Object stores use `If-
+/// Match`; filesystems use a version-checked rename.
+// spec: store.fold.pointer-commit@404387b7
 #[test]
 fn the_pointer_replace_is_conditioned_on_the_etag_read_at_pass_start() {
     let f = Fixture::new();
@@ -244,8 +250,8 @@ fn a_snapshot_missing_a_file_it_names_is_not_published() {
     assert!(f.store.pointer("events").unwrap().is_none());
 }
 
-/// A pass whose pointer replace loses its condition publishes nothing, and its staged snapshot is collected.
-// spec: store.fold.lost-pointer@f40f34ab
+/// If a pointer replacement loses its condition, the pass publishes nothing. Collection removes the staged snapshot.
+// spec: store.fold.lost-pointer@e9fa3f89
 #[test]
 fn a_pass_losing_the_pointer_publishes_nothing() {
     let f = Fixture::new();
@@ -271,8 +277,9 @@ fn a_pass_losing_the_pointer_publishes_nothing() {
     assert!(!loser.exists());
 }
 
-/// A staging directory, and a snapshot directory no pointer chain reaches, are collected by the next pass and read by nobody.
-// spec: store.fold.staging-collected@7f61f813
+/// The next pass collects staging directories and snapshot directories unreachable through any pointer chain. Reads
+/// exclude these directories.
+// spec: store.fold.staging-collected@8832e10f
 #[test]
 fn the_next_pass_collects_staging_and_unreachable_snapshots() {
     let f = Fixture::new();
@@ -366,8 +373,9 @@ fn an_idle_table_still_collects_what_retention_allows() {
 }
 
 #[cfg(feature = "read")]
-/// A collection that fails reports its failure: beside `folded` when the pass published, since the snapshot stays published, and as `failed` otherwise; either way the command exits non-zero.
-// spec: store.fold.collection-failed@6ed6a40e
+/// A collection failure reports beside `folded` if the pass published; the snapshot stays published. Otherwise the
+/// pass reports `failed`. Both cases exit non-zero.
+// spec: store.fold.collection-failed@0dc2145e
 #[test]
 fn a_failed_collection_does_not_unpublish_the_snapshot() {
     let f = Fixture::new();

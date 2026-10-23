@@ -90,8 +90,9 @@ fn refused(r: Result<Built, ReadFault>, error: &str) -> String {
     e
 }
 
-/// A published table's contract identity, freshness and current build ride the snapshot manifest commit that publishes its data; no separate file is authoritative for any of them.
-// spec: run.publish.manifest-commit@27d757e1
+/// The snapshot manifest commit publishes a table's data, contract identity, freshness and current build together. No
+/// separate file is authoritative for these values.
+// spec: run.publish.manifest-commit@222ca604
 #[test]
 fn a_build_publishes_its_section_in_the_snapshot_manifest_the_pointer_names() {
     let p = Project::new();
@@ -143,8 +144,9 @@ fn rows_missing_the_contract_are_refused_naming_the_column() {
     assert!(e.contains("`day`") && e.contains("non-null"), "{e}");
 }
 
-/// `unique_key` is the model's grain; a build whose rows repeat one grain value, or hold a null in a grain column, refuses as {{run.publish.contract-mismatch}}.
-// spec: run.model.unique-key@1c96b64b
+/// `unique_key` defines the model's row identity. A build with duplicate key values or a null in a key column refuses
+/// as {{run.publish.contract-mismatch}}.
+// spec: run.model.unique-key@b5e84bb5
 #[test]
 fn rows_repeating_the_grain_are_refused() {
     let p = Project::new();
@@ -205,7 +207,7 @@ fn a_test_reads_the_staged_rows_beside_the_store_tables() {
 }
 
 /// The selected statement is one read-only SELECT over store tables.
-// spec: run.model.sql@4c7d6e3d
+// spec: run.model.sql@fe4f6b92
 #[test]
 fn model_sql_is_admitted_over_store_tables() {
     let p = Project::new();
@@ -632,8 +634,9 @@ fn a_missing_build_log_is_recovered_before_retention_collects_its_manifests() {
         "committed manifests establish success before collection");
 }
 
-/// A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.
-// spec: run.publish.disclosure-digest@fea4a83b
+/// A build records a digest over its table's declared `class`, `policy` and `visibility`, sorting set-valued fields.
+/// The manifest and build log carry the digest. Any declaration sets `withheld_cells`.
+// spec: run.publish.disclosure-digest@ac1b7368
 #[test]
 fn the_disclosure_digest_covers_the_policy_the_model_table_reads_under() {
     let p = Project::new();

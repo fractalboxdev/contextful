@@ -890,9 +890,9 @@ fn a_run_commits_its_parts_at_the_instant_after_its_last_pull() {
     assert!(sink.discarded.is_empty(), "a committed run discards nothing");
 }
 
-/// A table's new position rides the run commit marker, {{store.lay-out.run-manifest}}, that publishes the rows
-/// behind it; the catalog cursor is a cache of the newest committed marker.
-// spec: run.advance.commit-with-rows@52d475b5
+/// A table's run commit marker, {{store.lay-out.run-manifest}}, publishes its rows and new position together. The
+/// catalog cursor caches the newest committed marker.
+// spec: run.advance.commit-with-rows@b17f4622
 #[test]
 fn the_position_commits_with_the_rows_and_the_catalog_caches_it() {
     let rig = Rig::new();
@@ -1036,9 +1036,9 @@ impl Source for Probe {
     }
 }
 
-/// A row is written at run open, before the first pull, so a zero-row `success`, a `failed` row carrying its
-/// error kind, and no row at all read apart.
-// spec: run.record.row-at-open@d1330544
+/// The engine writes a run row at open, before the first pull. Readers distinguish zero-row `success`, `failed` with
+/// an error kind, and no run row.
+// spec: run.record.row-at-open@bf58c8f7
 #[test]
 fn the_row_exists_before_the_first_pull() {
     for fail in [None, Some(Failure::new(FailureTag::AuthExpired, "token expired"))] {
@@ -1055,8 +1055,8 @@ fn the_row_exists_before_the_first_pull() {
     }
 }
 
-/// Row and byte counts are measured at the destination, not at the source.
-// spec: run.record.counts-at-destination@b1a2ff7c
+/// The engine measures row and byte counts at the destination rather than at the source.
+// spec: run.record.counts-at-destination@a65efad9
 #[test]
 fn counts_come_from_the_destination() {
     let rig = Rig::new();
@@ -1078,9 +1078,9 @@ fn a_component_connector_is_refused_on_a_build_without_a_component_host() {
     assert!(rig.catalog().run("run-1").unwrap().is_none());
 }
 
-/// A component connector runs where a component host is linked: the full profile and the container or worker shapes
-/// built from it.
-// spec: topology.package.component-host@ea74ba9e
+/// Builds that link a component host run component connectors: the full profile and container or worker deployments
+/// built from that profile.
+// spec: topology.package.component-host@cb1c5d44
 #[test]
 fn a_component_connector_runs_on_an_engine_wiring_its_world() {
     let mut rig = Rig::new();
@@ -1474,7 +1474,7 @@ fn a_position_round_trips_untouched_and_each_table_keeps_its_own() {
 
 /// A delivered batch runs under the owner scope its batch key fixes: a resend under the key resumes that owner's
 /// recorded pull, and another key's batch runs under a fresh execution that leaves it pending.
-// spec: connector.source.receive-recorded@99489281
+// spec: connector.source.receive-recorded@dd100cb0
 #[test]
 fn a_receive_batch_key_resumes_its_own_owner_and_no_other_keys() {
     use contextful_core::run::own::OwnerScope;

@@ -100,8 +100,8 @@ fn an_export_block_names_its_table_endpoint_signal_and_header_templates() {
     assert!(bad_name.to_string().contains("`../escape`"), "{bad_name}");
 }
 
-/// A `signal` other than `logs` raises `ExportSignalUnknown` before any row is read.
-// spec: run.export.signal-unknown@ca031f70
+/// If `signal` is not `logs`, the exporter raises `ExportSignalUnknown` before reading any row.
+// spec: run.export.signal-unknown@b7256307
 #[test]
 fn a_signal_other_than_logs_is_refused() {
     for signal in ["traces", "metrics", "Logs"] {

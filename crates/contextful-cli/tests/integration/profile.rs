@@ -20,9 +20,9 @@ fn selected() -> &'static str {
     }
 }
 
-/// `contextful --version` prints the workspace version and the profile bundle the build selected, `development` for a
-/// build selecting none.
-// spec: topology.package.version-profile@d7e96b60
+/// `contextful --version` prints the workspace version and selected build profile. A build selecting no profile prints
+/// `development` as its profile.
+// spec: topology.package.version-profile@298a99f0
 #[test]
 fn the_version_names_the_workspace_version_and_the_profile() {
     let dir = tempfile::tempdir().unwrap();
@@ -61,9 +61,9 @@ fn unlinked() -> &'static [&'static [&'static str]] {
     }
 }
 
-/// A subcommand reaching a capability its build's profile does not link raises `ProfileCapabilityAbsent`, naming
-/// the subcommand and the profile, and acts on nothing; a name no profile defines is a usage error.
-// spec: topology.package.capability-absent@f3e98eb1
+/// A subcommand requiring an unlinked capability raises `ProfileCapabilityAbsent`, naming the subcommand and profile.
+/// The command performs no action. A subcommand absent from every profile is a usage error.
+// spec: topology.package.capability-absent@cc1336c3
 #[cfg(not(feature = "data-plane"))]
 #[test]
 fn a_data_plane_subcommand_on_a_build_without_it_is_refused_by_name() {

@@ -83,7 +83,7 @@ fn minted() -> Vec<(String, Arc<dyn Hydrate>)> {
 
 /// Material enters the process per request, while the request is built: a session holds no hydrated value between
 /// requests, so each request carries what the provider answers at that moment.
-// spec: connector.attach.per-request-hydration@ce689d99
+// spec: connector.attach.per-request-hydration@93cdb614
 #[test]
 fn a_hydrated_header_renders_afresh_for_each_request() {
     let server = Server::start(|_| Response::text(200, "ok"));

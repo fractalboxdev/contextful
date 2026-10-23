@@ -12,12 +12,11 @@ owns:
 
 # The derive tier
 
-Deferred per-row work over rows that already landed. One unit of media becomes many citable
-passages; one landed link becomes a document's head facts and the pictures it advertises.
-The tier reads the store, calls an engine the operator defined, and appends its answer to a
-table of its own through the ordinary write path.
+Derive tasks process committed rows and append results through the ordinary write path.
+Implementers use this contract for task selection, engine bindings and output rows. Media
+tasks produce citable passages; link tasks extract document head fields and advertised images.
 
-The derive tier between two tables, and the contracts it reaches through:
+Derive tasks read parent rows, invoke an engine and write output rows:
 
 ```mermaid
 flowchart LR
@@ -48,18 +47,18 @@ flowchart LR
 
 ## select
 
-The derive source: its configuration, the outstanding set recomputed each tick, eligibility and a run's budget.
+The derive source selects eligible parent rows each tick and limits each run's work.
 
-- `required-key` — An absent or blank `source_table` or `parent_id_column`, or an absent or blank `engine` or `media_column` behind a built-in task, raises `DeriveConfigKeyMissing`, naming the key and the pipeline.
+- `required-key` — Missing or blank `source_table` or `parent_id_column` raises `DeriveConfigKeyMissing`, naming the key and pipeline. For built-in tasks, missing or blank `engine` or `media_column` raises the same error.
   *A-run*
 - `no-store-root` — A source built without a store root or without its pipeline id raises `DeriveNoStoreRoot`, naming which is absent.
   *A-run*
 - `foreign-output-table` — The anti-join's pipeline id comes from the build alone; a config key naming another pipeline's output raises `DeriveForeignOutputTable`.
   *A-run*
 - `rows-per-run` — `max_rows_per_run` truncates the outstanding list after the anti-join, at 25 rows by default; zero or below resolves to that default.
-- `attempts-per-unit` — `max_attempts` allows 3 attempts per unit by default, and a non-positive spelling means the same figure.
+- `attempts-per-unit` — `max_attempts` defaults to 3 attempts per unit. A non-positive value selects that default.
 - `seconds-per-run` — `max_seconds_per_run` bounds the serial unit loop at 300 s by default for `link_preview` and carries no default for `transcribe`.
-- `incomplete-unit` — A parent row whose key or media column is null, empty or whitespace raises `DeriveUnitIncomplete`; the row is skipped and counted on the run record.
+- `incomplete-unit` — If a parent row's key or media column is null, empty or whitespace, the derive source raises `DeriveUnitIncomplete`. The derive source skips the row and counts the row on the run record.
   *P4*
 - `journaled-pull` — A derive pipeline configured to journal its pulls raises `DeriveJournaledPull`.
   *A-authority*
@@ -69,13 +68,13 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-connector*
 - `anti-join` — Each tick recomputes the outstanding set: every parent row holding neither a passage nor a settled marker under its current {{run.emit.derivation-key}} in the pipeline's own output table, or, for a host task, its marker table.
   *A-run*
-- `unit-parents` — A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each joined table read once after selection and before the first unit derives, so a row landing later is absent.
+- `unit-parents` — A host task reads each joined table once after selection and before processing its first unit. Each unit carries every row whose join-column value equals that unit's key. Rows landed after that read are absent.
   *A-run*
-- `join-keyed` — A joined table declaring `primary_key` reads through {{store.declare.dedup-view}}, so a unit joins one survivor per key and never a superseded version.
+- `join-keyed` — A task reads joined tables declaring `primary_key` through {{store.declare.dedup-view}}. Each unit joins one surviving row per key, excluding superseded versions.
   *because a raw file read hands a re-landed row in both versions, and the admitted read hands one*
 - `join-absent` — A joined table the store holds no schema for fails the tick with a `Config` failure, settling no unit, so the next tick selects every unit again.
   *because an absent table read as empty settles each unit `ok` on a partial join that the anti-join never revisits*
-- `latest-marker` — A unit's standing under a key is its latest marker under that key by `_ingested_at`, `_run_id` and `_row_seq`, never its highest attempt count.
+- `latest-marker` — A unit's state under a key comes from its latest marker ordered by `_ingested_at`, `_run_id` and `_row_seq`. The highest attempt count does not determine that state.
   *because an `empty` marker records 1 attempt, so ranking by count lets an older retry revive a settled unit*
 - `key-change` — Rows under the current key landed before the unit's latest `ok` or `empty` landing under another key count for nothing, so a key changed and changed back derives the unit again.
   *A-run*
@@ -89,7 +88,7 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-run*
 - `derive-after-conflict` — A derive child whose `after` names a pipeline other than its source-table parent raises `DeriveAfterConflict` and arms none.
   *A-run*
-- `parent-scan` — A parent table holding at most 1000000 rows is selected by an in-memory scan; a larger one streams through the read engine in batches, so selection holds one batch in memory.
+- `parent-scan` — The derive source scans parent tables of at most 1000000 rows in memory. For larger tables, the source streams through the read engine in batches, holding one batch in memory.
   *A-run*
 - `dry-run` — `pipeline run --dry-run` on a derive pipeline prints its eligible, already-derived and outstanding unit counts from one selection, calling no engine and landing no row.
   *A-run*
@@ -102,7 +101,7 @@ unsettled: Does a host task joining another derive pipeline's output table run a
 
 #### Scenarios
 
-- `run.select.derive-order`: WHEN a scheduled child is declared before its parent and reads the parent's output, THEN the parent's tick lands its new row before the child reads it.
+- `run.select.derive-order`: WHEN configuration declares a scheduled child before its parent and the child reads the parent's output, THEN the parent's tick lands its new row before the child reads it.
 - `run.select.derive-cycle`: WHEN two derive pipelines read each other's output tables, THEN the build raises `DeriveCycle` naming both; a self-reference names itself.
 - `run.select.derive-failed-parent`: WHEN a parent fails after earlier rows committed, THEN its child reads those committed rows in the same tick.
 - `run.select.parent-outcome`: WHEN the parent process fails to start, THEN its derived child does not start in that unit.
@@ -110,7 +109,7 @@ unsettled: Does a host task joining another derive pipeline's output table run a
 
 ## bind
 
-Where a derive engine's definition lives, the port every engine implements, and the values an engine returns.
+Engine bindings select registered tasks, configure engine interfaces and constrain media access and returned values.
 
 - `unbound-engine` — An engine with no `[derive.<name>]` block raises `DeriveEngineUnbound`, naming the pipeline, the engine, the file to edit and every bound engine.
   *A-run*
@@ -118,7 +117,7 @@ Where a derive engine's definition lives, the port every engine implements, and 
   *A-run*
 - `unknown-task` — `task` names `transcribe`, the default, `link_preview`, or a task the embedding binary registered; any other value raises `DeriveUnknownTask`, listing the built-in and registered names.
   *A-run*
-- `host-task` — An embedding binary registers each compiled derive task under a name before build, and configuration names that symbol, never a command; a name repeating a built-in or registered task raises `DeriveTaskNameTaken`.
+- `host-task` — An embedding binary registers each compiled derive task by name before build. Configuration selects that registered name without supplying a command. A duplicate built-in or registered task name raises `DeriveTaskNameTaken`.
   *A-run*
 - `join-repeated` — A host task whose joins name one table twice raises `DeriveJoinRepeated` at registration.
   *because a unit holds one joined list per table, so the second join's rows replace the first's*
@@ -130,12 +129,12 @@ Where a derive engine's definition lives, the port every engine implements, and 
   *A-run*
 - `media-unreadable` — A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing that unit alone.
   *A-run*
-- `media-root` — A local media value resolves, canonicalized, under the binding's `media_root` ({{store.init.declaration-base}}), that base itself by default; a path escaping it raises `DeriveMediaOutsideRoot`, failing that unit alone.
+- `media-root` — The engine canonicalizes local media paths under the binding's `media_root` ({{store.init.declaration-base}}), defaulting to that declaration base. A path outside the root raises `DeriveMediaOutsideRoot` and fails only that unit.
   *because a parent row is third-party data, and an unconfined path reads any file the machine's user can*
 - `confidence-range` — A `confidence` outside `0.0..=1.0` after adapter normalization raises `DeriveConfidenceOutOfRange` and lands null.
   *A-run*
 - `upstream-excerpt` — An `Upstream` excerpt holds at most 4 KiB and no request body.
-- `engine-unavailable` — `EngineUnavailable` from a transcriber ends the run; from a `LinkReader` it raises `DeriveLinkEngineUnavailable` and costs that one unit.
+- `engine-unavailable` — If a transcriber returns `EngineUnavailable`, the run ends. If a `LinkReader` returns `EngineUnavailable`, the derive source raises `DeriveLinkEngineUnavailable` and fails only that unit.
   *P6*
 - `advisory-zone` — A row zone taken from the binding's advisory `zone` key raises `DeriveAdvisoryZone`.
   *A-run*
@@ -146,9 +145,9 @@ unsettled: Does a host task declaring no model reach refuse a socket it opens, a
 
 ## exec
 
-Operator-declared argv chains against local binaries: resolution, pinning, environment, bounds and identity.
+The executor runs operator-declared argument arrays as local processes with pinned binaries, restricted environments and bounded runtime and output.
 
-- `shell-command` — `command` is an argument array run with no shell; a `command` given as one string raises `DeriveShellCommand`.
+- `shell-command` — The executor runs `command` as an argument array without a shell. A string-valued `command` raises `DeriveShellCommand`.
   *A-run*
 - `env-name` — An allowlist name that is not ASCII alphanumeric or underscore, or that leads with a digit, raises `DeriveEnvNameInvalid`.
   *A-run*
@@ -158,15 +157,15 @@ Operator-declared argv chains against local binaries: resolution, pinning, envir
 - `step-error-excerpt` — A failing step's error text carries at most 4 KiB of its standard error.
 - `non-zero-exit` — A step exiting non-zero raises `DeriveStepExit` carrying its bounded error text into the run audit.
   *A-run*
-- `deadline-elapsed` — A chain outrunning its deadline raises `DeriveStepTimeout`, naming the running step.
+- `deadline-elapsed` — If a chain exceeds its deadline, the executor raises `DeriveStepTimeout`, naming the running step.
   *A-run*
-- `output-cap` — Output past the bound is counted and discarded, never buffered; crossing it kills the step and raises `DeriveOutputCap` with the byte count, draining continuing so the child never blocks.
+- `output-cap` — The executor counts and discards output past the bound without buffering. Crossing the bound kills the step and raises `DeriveOutputCap` with the byte count. The executor continues draining so the child does not block.
   *A-run*
 - `silent-step` — A preprocess step exiting zero without writing its output file raises `DeriveStepProducedNothing`.
   *A-run*
 - `missing-binary` — A `command[0]` that is not an executable file on this machine raises `DeriveBinaryMissing`, naming the binary and the step.
   *A-connector*
-- `unpinned-path` — A path-form `command[0]` without `sha256` raises `DeriveUnpinnedPath`, quoting the digest just computed; a bare search-path name carries none.
+- `unpinned-path` — A path-form `command[0]` without `sha256` raises `DeriveUnpinnedPath`, quoting the computed digest. A bare search-path name carries no digest.
   *A-connector*
 - `digest-mismatch` — A pinned file whose bytes differ from its recorded digest raises `DeriveDigestMismatch`.
   *A-connector*
@@ -174,7 +173,7 @@ Operator-declared argv chains against local binaries: resolution, pinning, envir
   *A-run*
 - `step-condition` — A preprocess step runs only while its `when` holds: `media_is_url` for an `http` or `https` input, `engine_requires_pcm16_wav` for an input other than 16-bit PCM WAV; another name raises `DeriveStepConditionUnknown`.
   *because a misspelled condition otherwise skips or runs its step silently*
-- `verified-spawn` — Each spawn re-reads its step's binary and runs it only while those bytes match the digest resolved at run start, else {{run.exec.digest-mismatch}}.
+- `verified-spawn` — Before each spawn, the executor re-reads the step's binary and compares its bytes with the digest resolved at run start. A mismatch follows {{run.exec.digest-mismatch}}; matching bytes permit execution.
 - `engine-id` — An `exec` engine id reads `exec:<name>@<prefix>`, the prefix being 12 chars of lowercase hex over every step's binary digest and arguments.
 - `vendor-deadline` — A vendor engine, a binding naming an `endpoint_host`, holds `request_timeout_secs` as its engine step's deadline, clipped to the time {{run.exec.chain-deadline}} leaves, so a stalled vendor fails its unit before the chain elapses.
   *because a chain deadline alone lets one stalled vendor call spend the unit's whole budget with no step to name*
@@ -201,7 +200,7 @@ sequenceDiagram
 
 ## fetch
 
-Following a link a third party wrote: host and address guards, redirects, the head scanner and the picture probe.
+The fetch driver follows third-party links with host and address checks, bounded redirects, document head scanning and image probes.
 
 - `scheme` — An address whose scheme is neither `http` nor `https` raises `DeriveSchemeUnsupported` before any socket opens.
   *A-connector*
@@ -216,7 +215,7 @@ Following a link a third party wrote: host and address guards, redirects, the he
 - `retry-after-default` — A `429` without a usable `Retry-After` maps to `RateLimited` carrying 60 s.
 - `charset` — A declared character set other than UTF-8 raises `DeriveCharsetUnsupported`, naming the value.
   *A-connector*
-- `not-utf8` — A document declaring no character set and failing UTF-8 validation raises `DeriveBytesNotUtf8`; a character split at the byte bound is tolerated.
+- `not-utf8` — If a document declares no character set and fails UTF-8 validation, the fetch driver raises `DeriveBytesNotUtf8`. The validator tolerates a character split at the byte bound.
   *A-connector*
 - `head-rows` — A link preview lands one passage for non-empty head title or description and one passage per distinct advertised head image, each carrying the scrubbed page URL and each image its probe status.
   *because the head and its image claims remain separately citable, including an image whose probe fails*
@@ -245,7 +244,7 @@ flowchart LR
 
 ## emit
 
-The derived row and marker, the unit status, attempt accounting, citation keys and row provenance.
+Derive tasks emit content rows and completion markers with status, attempt counts, citation keys and provenance.
 
 - `failure-off-table` — Per-unit failure state recorded outside the output table raises `DeriveFailureOffTable`.
   *A-run*
@@ -262,7 +261,7 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
   *because a re-derived unit otherwise lands its new passages over the originals, or beside them with no key telling them apart*
 - `derivation-key` — Every passage and marker row carries `derivation_key`: lowercase hex SHA-256 over the engine id, the binding less its bounds and `zone`, the output table's declared columns, and the parent row's id, media value and `derivation_key`.
   *A-run*
-- `stale-supersedes` — A unit's rows landed under another key before its latest `ok` or `empty` landing are superseded: each answers until that landing, and the next fold drops it and rebuilds the table's sidecars without it.
+- `stale-supersedes` — A unit's latest `ok` or `empty` landing supersedes rows landed earlier under another key. Those rows answer until that landing. The next fold drops the superseded rows and rebuilds the table's sidecars without them.
   *A-run*
 - `task-version` — A host task's `derivation_key` hashes its registered name, its `task_version` and the parent row's id, declared columns and `derivation_key`, so raising the version re-selects every settled unit.
   *A-run*
@@ -299,9 +298,9 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
 
 ## parse-cues
 
-Reading a caption document into passages: one grammar, defect accounting, coalescing and rolling display.
+The caption parser reads SubRip and WebVTT through one grammar and groups cues into bounded passages.
 
-- `backward-cue` — A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped.
+- `backward-cue` — If a block starts before the last accepted block, the caption parser raises `DeriveCueOutOfOrder` and drops the block.
   *P4*
 - `passage-chars` — A passage stays open while it holds fewer than 600 chars.
 - `passage-span` — A passage stays open while it spans less than 60 s.
@@ -311,14 +310,14 @@ Reading a caption document into passages: one grammar, defect accounting, coales
 
 ## test-engine
 
-Building one derive engine outside a pipeline and running it against one file.
+The test-engine command builds one derive engine outside a pipeline and runs that engine against one file.
 
 - `unsupported-driver` — A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`.
   *because the verb drives a transcriber over media, and a link engine takes no media*
 
 ## Shapes
 
-The machine half of two bindings, at the top level of `contextful.toml`:
+Two engine bindings at the top level of `contextful.toml`:
 
 ```toml
 [derive.local-asr]

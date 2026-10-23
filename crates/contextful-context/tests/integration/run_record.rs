@@ -334,7 +334,7 @@ fn a_marking_catalog_marks_a_run_unpushed_at_its_open() {
 
 /// A marked run's move to its commit phase appends a run-record row without the mark the
 /// execution database holds, so no push carries a mark into the bucket.
-// spec: store.drain.record-unmarked@a72db422
+// spec: store.drain.record-unmarked@bd4810c6
 #[test]
 fn a_marked_runs_phase_move_records_its_row_unmarked() {
     let f = Fixture::new();

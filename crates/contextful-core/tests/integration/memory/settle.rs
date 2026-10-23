@@ -35,8 +35,10 @@ fn obs(verdict: Option<bool>, source: Option<&str>, citation: Option<&str>) -> O
     }
 }
 
-/// A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.
-// spec: read.settle.registration@c2997af9
+/// A registration requires one form (relative horizon, absolute deadline, open watch) and one source (`metric`,
+/// `adjudicator`, `manual`). Only `metric` requires and permits a comparator. Invalid registrations raise
+/// `OutcomeRegistrationInvalid`.
+// spec: read.settle.registration@41e85113
 #[test]
 fn a_registration_names_one_form_one_source_and_a_metric_comparator() {
     assert_eq!(Registration::check(raw(Some("manual"), None)).unwrap().form, Form::Deadline(at("2030-02-01T00:00:00Z")));
@@ -53,8 +55,9 @@ fn a_registration_names_one_form_one_source_and_a_metric_comparator() {
     invalid(raw(Some("manual"), Some("x > 1")));
 }
 
-/// An observation naming a `metric` series other than the registration's, or carrying a verdict whose resolution source or registered series is absent or differs, raises `OutcomeSourceMismatch`, naming each source by its wire name.
-// spec: read.settle.source-mismatch@464b854b
+/// An observation raises `OutcomeSourceMismatch` if its `metric` series differs from registration, or its verdict's
+/// resolution source or registered series is missing or differs. The error names each source by wire name.
+// spec: read.settle.source-mismatch@d9eb6925
 #[test]
 fn a_verdict_from_another_source_is_refused() {
     let reg = Registration::check(raw(Some("metric"), Some("revenue >= 1e6"))).unwrap();
@@ -90,8 +93,9 @@ fn a_verdict_from_another_source_is_refused() {
     }
 }
 
-/// A registration's optional `statement`, the falsifiable claim it scores, holds at most 4096 B; a longer one raises `OutcomeStatementTooLong`, and the statement takes part in {{read.settle.registration-conflict}}.
-// spec: read.settle.statement-bound@0a5e2164
+/// A registration's optional `statement` holds the falsifiable claim and participates in {{read.settle.registration-
+/// conflict}}. Text exceeding 4096 B raises `OutcomeStatementTooLong`.
+// spec: read.settle.statement-bound@096504b1
 #[test]
 fn a_statement_over_the_bound_is_refused() {
     use contextful_core::memory::settle::STATEMENT_MAX_BYTES;
@@ -104,8 +108,9 @@ fn a_statement_over_the_bound_is_refused() {
     assert_ne!(checked, Registration::check(with(11)).unwrap(), "a changed statement is a changed registration");
 }
 
-/// A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against and is never looked up in the store; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.
-// spec: read.settle.metric-reference@dbd54df2
+/// Optional `metric` uses `<table>:<series_id>` with non-empty parts and names the series without a store lookup.
+/// Malformed references or references under a source other than `metric` raise `OutcomeMetricReferenceInvalid`.
+// spec: read.settle.metric-reference@5d766424
 #[test]
 fn a_metric_reference_names_a_table_and_series_under_a_metric_source() {
     let with = |metric: &str, source: &str, comparator: Option<&str>| RawRegistration { metric: Some(metric.into()), ..raw(Some(source), comparator) };
@@ -116,8 +121,9 @@ fn a_metric_reference_names_a_table_and_series_under_a_metric_source() {
     assert!(matches!(Registration::check(with("metrics/revenue:acme-q3", "manual", None)), Err(MemoryError::OutcomeMetricReferenceInvalid(_))));
 }
 
-/// A `deadline_at` given as a bare `YYYY-MM-DD` resolves as {{store.bound-time.instant-comparison}} resolves a date: the deadline is the next UTC midnight, so the whole named day precedes it.
-// spec: read.settle.deadline-date@81a7c3f4
+/// A bare `YYYY-MM-DD` in `deadline_at` resolves under {{store.bound-time.instant-comparison}} to the next UTC
+/// midnight. The entire named day precedes the deadline.
+// spec: read.settle.deadline-date@e45bf67e
 #[test]
 fn a_bare_date_deadline_runs_through_the_named_day() {
     let parse = |deadline: &str| -> RawRegistration {
@@ -134,8 +140,9 @@ fn a_bare_date_deadline_runs_through_the_named_day() {
     assert!(malformed.is_err());
 }
 
-/// An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.
-// spec: read.settle.settling-citation@294fdd07
+/// An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises
+/// `OutcomeCitationMissing`. The label view includes the citation.
+// spec: read.settle.settling-citation@91eab50e
 #[test]
 fn a_judged_verdict_carries_a_web_citation() {
     for source in ["adjudicator", "manual"] {

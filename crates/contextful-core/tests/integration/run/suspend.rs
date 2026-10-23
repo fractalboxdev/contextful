@@ -24,9 +24,9 @@ fn the_deadline_is_creation_plus_ttl_from_caller_instants() {
     assert_eq!(past.evaluate(at("1990-01-01T00:00:59Z")), AwakeableState::Pending);
 }
 
-/// Expiry is evaluated against an injected instant; a suspension past its deadline becomes `timed_out` and stays
-/// so under any later instant.
-// spec: run.suspend.timeout-is-sticky@648c4a2c
+/// The engine evaluates expiry against an injected instant. A suspension past its deadline becomes `timed_out` and
+/// keeps that state under any later instant.
+// spec: run.suspend.timeout-is-sticky@9ecdd955
 #[test]
 fn a_timeout_sticks_under_any_later_instant() {
     let mut a = minted();

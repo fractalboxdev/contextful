@@ -87,7 +87,7 @@ fn two_nodes_landing_different_columns_both_keep_them() {
 }
 
 /// A pull deletes the local copy of each key a tombstone names and no entry lists.
-// spec: store.pull.tombstone-applied@d6590f7d
+// spec: store.pull.tombstone-applied@9891718f
 #[test]
 fn a_pull_deletes_the_copy_a_tombstone_names() {
     let dir = tempfile::tempdir().unwrap();
@@ -129,8 +129,9 @@ fn unhex(text: &str) -> Vec<u8> {
     (0..text.len()).step_by(2).map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap()).collect()
 }
 
-/// A push signs each tombstone it writes with its node's issuer key, recording `signer` and `signature` over the key, owner and `deleted_at`; a node holding no issuer key writes it unsigned.
-// spec: store.merge.tombstone-signed@72655178
+/// Push signs each tombstone with the node's issuer key, recording `signer` and `signature` over the key, owner and
+/// `deleted_at`. A node without an issuer key writes unsigned tombstones.
+// spec: store.merge.tombstone-signed@a459a5a5
 #[test]
 fn a_push_signs_each_tombstone_with_its_issuer_key() {
     use contextful_policy::issue::SignerKey;
@@ -161,8 +162,9 @@ fn a_push_signs_each_tombstone_with_its_issuer_key() {
     assert_eq!((t.signer.as_deref(), t.signature.as_deref()), (None, None));
 }
 
-/// A tombstone unsigned, failing its signature, or signed by a key the key-set ledger does not record as verifying at its `deleted_at` raises `SyncTombstoneUnverified`; a merge keeps the entry it names and a pull deletes nothing.
-// spec: store.merge.tombstone-unverified@48537fa8
+/// Unsigned tombstones, invalid signatures, or keys absent from the key-set ledger's verifying set at `deleted_at`
+/// raise `SyncTombstoneUnverified`. Merge preserves the named entry; pull deletes nothing.
+// spec: store.merge.tombstone-unverified@fab14869
 #[test]
 fn an_unverified_tombstone_deletes_nothing() {
     use contextful_core::revoke::KeySetLedger;
@@ -226,9 +228,9 @@ fn publish(n: &crate::support::Node, table: &str, now: &str) -> String {
     snapshot_id
 }
 
-/// A pull advances a local pointer only to a bucket pointer carrying a higher fence, or the same fence and a
-/// later snapshot, and verifies every advancing table before writing any pointer.
-// spec: store.pull.pointer-advance@09aca335
+/// Pull advances pointers only to a higher fence, or the same fence with a later snapshot. Pull verifies every
+/// advancing table before writing any pointer.
+// spec: store.pull.pointer-advance@286cc4cd
 #[test]
 fn a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies() {
     let dir = tempfile::tempdir().unwrap();

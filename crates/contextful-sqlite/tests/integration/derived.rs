@@ -92,8 +92,10 @@ fn an_ephemeral_derived_catalog_keeps_schema_canaries_off_disk() {
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 }
 
-/// The store reaches `machine.sqlite` through {{topology.coordinate.catalog-port}} and `derived.sqlite` through the `DerivedCatalog` port, both traits in `contextful-core`; `contextful-sqlite` implements both, and a host implements either over its own connection.
-// spec: store.lay-out.catalog-ports@99e29e98
+/// The store accesses `machine.sqlite` through {{topology.coordinate.catalog-port}} and `derived.sqlite` through
+/// `DerivedCatalog`. Both traits reside in `contextful-core`; `contextful-sqlite` implements both. A host implements
+/// either trait over its own connection.
+// spec: store.lay-out.catalog-ports@b13d07ba
 #[test]
 fn both_catalogs_are_reached_through_the_core_ports() {
     let dir = tempfile::tempdir().unwrap();

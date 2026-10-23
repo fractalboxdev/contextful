@@ -80,8 +80,8 @@ fn a_pass_merges_committed_ledgers_into_one_file_named_by_its_snapshot() {
     assert_eq!(calls(&f, "filings"), [pair("run-1", "c1"), pair("run-1", "c2"), pair("run-2", "c3"), pair("run-9", "c9")]);
 }
 
-/// A ledger row is collected 365 d after its run committed.
-// spec: store.reserve.ledger-retention@7271f9e0
+/// Collection removes a ledger row 365 d after its run committed.
+// spec: store.reserve.ledger-retention@379e743c
 #[test]
 fn a_ledger_row_is_collected_365_days_after_its_run_committed() {
     assert_eq!(contextful_core::store::reserve::LEDGER_RETENTION_SECS, 365 * 24 * 60 * 60);

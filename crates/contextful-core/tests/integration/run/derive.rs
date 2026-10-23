@@ -75,9 +75,9 @@ fn unit(key: &str, media: &str, prior_attempts: i64) -> Unit {
     Unit { key: key.into(), media: media.into(), prior_attempts, derivation_key: k(key, media) }
 }
 
-/// An absent or blank `source_table` or `parent_id_column`, or an absent or blank `engine` or `media_column`
-/// behind a built-in task, raises `DeriveConfigKeyMissing`, naming the key and the pipeline.
-// spec: run.select.required-key@abb2e19c
+/// Missing or blank `source_table` or `parent_id_column` raises `DeriveConfigKeyMissing`, naming the key and pipeline.
+/// For built-in tasks, missing or blank `engine` or `media_column` raises the same error.
+// spec: run.select.required-key@ac24e9b5
 #[test]
 fn a_missing_or_blank_required_key_refuses() {
     // A host task binds no engine and reads no media column; it still names its source.
@@ -132,8 +132,8 @@ fn a_run_takes_25_units_by_default_after_the_anti_join() {
     assert_eq!(keys, ["b", "c"]);
 }
 
-/// `max_attempts` allows 3 attempts per unit by default, and a non-positive spelling means the same figure.
-// spec: run.select.attempts-per-unit@2f2b9bb1
+/// `max_attempts` defaults to 3 attempts per unit. A non-positive value selects that default.
+// spec: run.select.attempts-per-unit@3c9f9992
 #[test]
 fn a_unit_receives_3_attempts_by_default() {
     assert_eq!(ATTEMPTS_PER_UNIT, 3);
@@ -231,9 +231,9 @@ fn the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker() {
     assert!(matches!(&sel.incomplete[..], [RunError::DeriveUnitIncomplete(_)]));
 }
 
-/// A unit's standing under a key is its latest marker under that key by `_ingested_at`, `_run_id` and `_row_seq`,
-/// never its highest attempt count.
-// spec: run.select.latest-marker@08e93879
+/// A unit's state under a key comes from its latest marker ordered by `_ingested_at`, `_run_id` and `_row_seq`. The
+/// highest attempt count does not determine that state.
+// spec: run.select.latest-marker@13a8db08
 #[test]
 fn a_units_latest_marker_decides_its_standing() {
     let c = cfg(base()).unwrap();
@@ -348,8 +348,9 @@ fn a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts() {
     assert!(bind("doc-text", &link, &valid, "m").is_ok());
 }
 
-/// `command` is an argument array run with no shell; a `command` given as one string raises `DeriveShellCommand`.
-// spec: run.exec.shell-command@6891fe11
+/// The executor runs `command` as an argument array without a shell. A string-valued `command` raises
+/// `DeriveShellCommand`.
+// spec: run.exec.shell-command@96a79818
 #[test]
 fn a_command_given_as_one_string_refuses() {
     let b = bindings("[derive.reader.engine]\ncommand = \"cat {input} | tr a-z A-Z\"\n").unwrap();
@@ -515,8 +516,9 @@ fn subrip_and_webvtt_read_through_one_grammar() {
     assert_eq!(a.cues[0], Cue { start_ms: 1000, end_ms: 2500, text: "Hello there".into() });
 }
 
-/// A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped.
-// spec: run.parse-cues.backward-cue@b045bd85
+/// If a block starts before the last accepted block, the caption parser raises `DeriveCueOutOfOrder` and drops the
+/// block.
+// spec: run.parse-cues.backward-cue@5b5920a4
 #[test]
 fn a_block_starting_before_the_last_accepted_one_is_dropped() {
     let doc = "1\n00:00:05,000 --> 00:00:06,000\nlater\n\n2\n00:00:01,000 --> 00:00:02,000\nearlier\n\n3\n00:00:07,000 --> 00:00:08,000\nlast\n";
@@ -778,9 +780,9 @@ fn an_upstream_excerpt_holds_4_kib_of_the_response() {
     assert_eq!(short.to_string(), "upstream answered 500: overloaded");
 }
 
-/// `EngineUnavailable` from a transcriber ends the run; from a `LinkReader` it raises `DeriveLinkEngineUnavailable`
-/// and costs that one unit.
-// spec: run.bind.engine-unavailable@9b776229
+/// If a transcriber returns `EngineUnavailable`, the run ends. If a `LinkReader` returns `EngineUnavailable`, the
+/// derive source raises `DeriveLinkEngineUnavailable` and fails only that unit.
+// spec: run.bind.engine-unavailable@89844ce6
 #[test]
 fn an_unavailable_transcriber_ends_the_run_and_an_unavailable_link_reader_costs_one_unit() {
     use contextful_core::run::derive::engine::{settle, EngineError, Port, Settled, Upstream};

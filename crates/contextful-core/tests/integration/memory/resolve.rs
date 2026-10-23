@@ -15,8 +15,9 @@ fn entities() -> Vec<Entity> {
     ]
 }
 
-/// A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim.
-// spec: read.resolve-entity.ambiguous-mention@7f7ee2ca
+/// If a mention matches two canonical identities with no deterministic distinguishing key, resolution records an
+/// ambiguous skip, raises `MemoryEntityAmbiguous` and dead-letters the candidate claim.
+// spec: read.resolve-entity.ambiguous-mention@f0e8f9dc
 #[test]
 fn a_mention_two_identities_share_is_ambiguous() {
     let e = entities();
@@ -31,8 +32,9 @@ fn a_mention_two_identities_share_is_ambiguous() {
     }
 }
 
-/// A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.
-// spec: read.resolve-entity.edge-endpoint@7554e147
+/// If a candidate edge's source or target resolves to no identity, resolution dead-letters the edge and raises
+/// `MemoryEdgeEndpointUnresolved`.
+// spec: read.resolve-entity.edge-endpoint@c9eeb28a
 #[test]
 fn an_edge_with_an_unresolved_endpoint_is_refused() {
     let d = MemoryDeclarations::default();

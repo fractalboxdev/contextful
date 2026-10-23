@@ -54,8 +54,9 @@ fn any_other_pair_is_incompatible() {
     }
 }
 
-/// A primary-key column takes no `Float64` promotion: the widening batch raises `StoreKeyWidened` before any Parquet, as does a fold meeting a key already reconciled to `Float64`.
-// spec: store.reconcile.key-widening@216c675b
+/// Primary-key columns take no `Float64` promotion. A widening batch raises `StoreKeyWidened` before any Parquet. A
+/// fold encountering a key already reconciled to `Float64` raises the same error.
+// spec: store.reconcile.key-widening@0175ec69
 #[test]
 fn a_key_column_takes_no_float_promotion() {
     let key = ["id".to_string()];
@@ -81,8 +82,8 @@ fn an_unseen_column_joins_nullable() {
     assert!(merged.get("pages").unwrap().nullable);
 }
 
-/// Reconciliation keeps the current shape alone; a past widening is attributed from the run files.
-// spec: store.reconcile.no-history@e477f7b7
+/// Reconciliation stores only the current schema. Run files identify past type widenings.
+// spec: store.reconcile.no-history@6124e952
 #[test]
 fn the_schema_document_keeps_the_current_shape_alone() {
     let merged = s(&[("n", Int64)]).merge(&s(&[("n", Float64)]), &[]).unwrap();
@@ -103,8 +104,9 @@ fn the_arrow_json_form_round_trips_every_type() {
     assert_eq!(Schema::from_arrow_json(&doc).unwrap(), all);
 }
 
-/// The lattice holds `Binary`, `FixedSizeBinary(n)` and a `FixedSizeList` of `Float32` or `Float16` at dimension n; none takes a promotion, so a width, item or dimension change meets {{store.reconcile.incompatible}}.
-// spec: store.reconcile.binary-and-vector@bf9db2d8
+/// The lattice includes `Binary`, `FixedSizeBinary(n)` and dimension-n `FixedSizeList` of `Float32` or `Float16`.
+/// These types have no promotion. Width, item or dimension changes meet {{store.reconcile.incompatible}}.
+// spec: store.reconcile.binary-and-vector@98dd8e75
 #[test]
 fn binary_and_vector_types_take_no_promotion() {
     let typed = [Binary, FixedSizeBinary(16), FixedSizeBinary(32), FixedSizeList(FloatItem::Float32, 4), FixedSizeList(FloatItem::Float16, 4), FixedSizeList(FloatItem::Float32, 8)];
@@ -187,8 +189,10 @@ fn events() -> ColumnType {
     ]))
 }
 
-/// A struct gains fields additively, a file without a field reading it as null; list items and map values reconcile by {{store.reconcile.lattice}}; a kind change, scalar against nested or list against map, meets {{store.reconcile.incompatible}} naming the column path.
-// spec: store.reconcile.nested-lattice@34116ab1
+/// Structs gain fields; files lacking a field read null. List items and map values reconcile under
+/// {{store.reconcile.lattice}}. Kind changes, including scalar against nested or list against map, meet
+/// {{store.reconcile.incompatible}}, naming the column path.
+// spec: store.reconcile.nested-lattice@7dad50f0
 #[test]
 fn nested_types_reconcile_field_by_field() {
     // A struct gains the arriving side's fields after its own, at any depth.

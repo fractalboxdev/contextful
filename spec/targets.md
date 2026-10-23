@@ -54,30 +54,30 @@ flowchart LR
 
 ## Cloudflare
 
-Edge-first deployments on native object storage with near-zero idle cost.
+Cloudflare deployments with a Linux Container, D1 execution metadata and R2 objects.
 
-The default `worker-container-d1` target places TypeScript routing and reconciliation in Workers' V8 isolates, with Cron Triggers and Workflows as the scheduling and orchestration services. A Durable Object controls a Linux Container's lifecycle. Inside that Container, the native `contextful-full` executable runs the Rust engine, embedded DuckDB and embedded Wasmtime; Workers and Workflows reach it across a request boundary.
+Cloudflare uses one deployment configuration, `worker-container-d1`. TypeScript routing and reconciliation run in Workers' V8 isolates. Cron Triggers schedule work; Workflows coordinates execution. A Durable Object controls the Linux Container's lifecycle. The Container runs the native `contextful-full` executable with embedded DuckDB and Wasmtime. Workers and Workflows call the Container through requests.
 
-The Rust processes use `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1`. Requests to the private `contextful.d1` outbound host reach a Worker binding handler, which accesses D1 for execution metadata and an R2 bucket for execution blobs. Corpus parts and manifests occupy a separate R2 bucket through its S3-compatible API; Container files form a replaceable local working copy. The `worker-container` alternative assigns the catalog role to Durable Object SQLite instead of D1.
+The Rust processes use `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1`. Requests to the private `contextful.d1` host call a Worker binding handler. The handler reads and writes execution metadata in D1 and execution blobs in R2. A separate R2 bucket stores corpus parts and manifests through its S3-compatible API. Files inside the Container are a replaceable working copy.
 
-Cloudflare Queues carries receive batches and object-arrival notifications; the Rust engine remains the store writer. A separate Durable Object owns the hibernating WebSocket projection. Workers Secrets supply credentials to the configured bindings. The optional Node.js console server requires its own Node-capable host; its React assets alone form a static browser preview.
+Cloudflare Queues carries receive batches and object-arrival notifications. The Rust engine writes the store. A separate Durable Object manages hibernating WebSocket connections for run updates. Workers Secrets supplies credentials to configured bindings. The optional console server runs on a Node.js host. The React assets provide a static browser preview without that server.
 
-The execution binding example under `apps/cloudflare-execution/` exposes authenticated `POST /conformance`: its Container runs `contextful-conformance`, which drives the packaged Linux `contextful` binary. That example's endpoint is a conformance harness, distinct from the target's query and orchestration routes. Clause implementation evidence lives in `status.md`.
+The example under `apps/cloudflare-execution/` exposes authenticated `POST /conformance`. Its Container runs `contextful-conformance` against the packaged Linux `contextful` binary. This endpoint tests execution storage; it serves no query or orchestration routes. `status.md` records clause implementation evidence.
 
-| Role | `worker-container` | `worker-container-d1` (default) |
-| --- | --- | --- |
-| cron tick | Cron Trigger | Cron Trigger |
-| reconciler | Worker | Worker |
-| durable orchestrator | Workflows | Workflows |
-| single-writer catalog | Durable Object SQLite, one object per store | D1 through a private Worker outbound binding |
-| object store | R2 | R2 |
-| hot-path query face | Worker router → warm contextful-full Container | Worker router → warm contextful-full Container |
-| heavy compute | Container | Container with cloudflare-d1 storage profile |
-| secrets | Workers Secrets | Workers Secrets |
-| realtime run projection | Durable Object with a hibernating WebSocket | Durable Object with a hibernating WebSocket |
-| queue | Cloudflare Queues with a pull consumer; R2 event notifications for object arrival | Cloudflare Queues with a pull consumer; R2 event notifications for object arrival |
-| kind · profiles | orchestrated · full | orchestrated · full |
-| wall-clock cap · excluded | none · nothing | none · nothing |
+| Role | `worker-container-d1` (default) |
+| --- | --- |
+| cron tick | Cron Trigger |
+| reconciler | Worker |
+| durable orchestrator | Workflows |
+| single-writer catalog | D1 through a private Worker outbound binding |
+| object store | R2 |
+| hot-path query face | Worker router → warm contextful-full Container |
+| heavy compute | Container with cloudflare-d1 storage profile |
+| secrets | Workers Secrets |
+| realtime run projection | Durable Object with a hibernating WebSocket |
+| queue | Cloudflare Queues with a pull consumer; R2 event notifications for object arrival |
+| kind · profiles | orchestrated · full |
+| wall-clock cap · excluded | none · nothing |
 
 The `worker-container-d1` runtime and process boundaries:
 

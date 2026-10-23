@@ -183,7 +183,7 @@ fn expansion_template_accepts_boolean_scalar_columns() {
 }
 
 /// A row below the watermark costs no follow-up request.
-// spec: connector.source.expansion-order@7ae580fa
+// spec: connector.source.expansion-order@563bc38e
 #[test]
 fn expansion_runs_after_the_watermark_filter() {
     let vendor = Server::start(|r| match r.path() {
@@ -497,8 +497,8 @@ fn a_repeated_token_is_a_page_loop() {
     assert_eq!(vendor.received("/v1").len(), 3, "the loop is caught at the first repeat");
 }
 
-/// A vendor-supplied next link is judged as a hop under {{connector.attach.weakened-hop}}.
-// spec: connector.source.next-link-origin@e4dc93c0
+/// The host checks a vendor-supplied next link as a hop under {{connector.attach.weakened-hop}}.
+// spec: connector.source.next-link-origin@71fc065d
 #[test]
 fn a_next_link_off_the_configured_origin_fails_the_read() {
     let elsewhere = Server::start(|_| Response::json(200, "{\"data\":[{\"id\":\"stolen\"}]}"));
@@ -557,9 +557,9 @@ fn a_table_pattern_binds_each_segment_percent_encoded() {
     }
 }
 
-/// A source binding any credential carries one non-wildcard host, checked at validation and at session open; a
-/// wildcard entry, or an endpoint host a table name binds, beside a bound credential raises `SecretWildcardHost`.
-// spec: connector.attach.bound-host@a014ba6b
+/// A credential-bound source declares one non-wildcard host, checked at validation and session open. A wildcard entry
+/// or table-bound endpoint host beside a bound credential raises `SecretWildcardHost`.
+// spec: connector.attach.bound-host@4be84178
 #[test]
 fn a_credentialed_endpoint_host_is_never_bound_from_a_table_name() {
     let auth = json!({"Authorization": "Bearer ${secret://vendor-token}"});
@@ -1166,7 +1166,7 @@ fn a_fingerprint_is_one_head_spelling_the_validators_and_reads_no_body() {
 
 /// An HTTP body decompresses under a declared `compression` alone: a zip of CSV files lands
 /// the named member, and the same archive undeclared reaches the decoder as served.
-// spec: connector.source.http-compression@e2bacb72
+// spec: connector.source.http-compression@15cf9ead
 #[test]
 fn an_http_zip_body_lands_its_named_member_under_declared_compression() {
     let archive = crate::object::zipped(&[("summary.csv", b"code;name\nE1;one\n"), ("detail.csv", b"code;name\nE2;two\n")]);

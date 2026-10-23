@@ -83,8 +83,10 @@ fn describe_reports_the_declared_fulltext_index() {
     assert_eq!(described["indexes"], json!([{"kind": "fulltext", "column": "body", "tokenizer": "cjk"}]));
 }
 
-/// A full-text probe ranks the whole snapshot by BM25 over one should-clause per content token; a token the sidecar's tokenizer splits into several terms matches them at consecutive positions, and an ASCII word token matches its plural as {{read.retrieve.script-split-matching}} does.
-// spec: read.retrieve.fulltext-probe@c8bb146b
+/// Full-text probes rank the entire snapshot by BM25 with one should-clause per content token. Tokens split by the
+/// sidecar tokenizer match resulting terms at consecutive positions. ASCII word tokens match plurals under
+/// {{read.retrieve.script-split-matching}}.
+// spec: read.retrieve.fulltext-probe@9656cf0e
 #[cfg(feature = "fts")]
 #[test]
 fn a_probe_matches_unspaced_phrases_and_plurals_across_the_snapshot() {
@@ -112,8 +114,9 @@ fn a_probe_matches_unspaced_phrases_and_plurals_across_the_snapshot() {
     assert_eq!(either.len(), 2, "{either:?}");
 }
 
-/// A table whose declared `retrieve.text` leaves no column runs no full-text probe, and under a query holding a content token its rows enter only by a positive vector score.
-// spec: read.retrieve.empty-scored-text@4e37b8a9
+/// If declared `retrieve.text` leaves no column, retrieval skips that table's full-text probe. For queries containing
+/// a content token, only positive vector scores admit its rows.
+// spec: read.retrieve.empty-scored-text@251216a2
 #[test]
 fn an_empty_declared_text_list_adds_no_lexical_candidate() {
     let indexed = "name = \"lab/text\"\nprimary_key = [\"passage_id\"]\n";
@@ -202,8 +205,9 @@ fn a_read_without_its_full_text_sidecar_ranks_the_window_unchanged() {
     assert_eq!(fresh.face.fulltext_candidates(&fs_, "lab/text", &tokens, 10).unwrap().1, ["p00000"]);
 }
 
-/// An opened full-text sidecar is cached on a fingerprint of its table, snapshot, path and key version in a FIFO of 64 entries, so a repeated read opens nothing and a new snapshot opens afresh.
-// spec: read.rank.lexical-index-cache@c69b917a
+/// The opened full-text sidecar cache holds at most 64 entries in FIFO order, keyed by table, snapshot, path and key-
+/// version fingerprint. Repeated reads reuse sidecars; a different snapshot requires opening another.
+// spec: read.rank.lexical-index-cache@86227973
 #[cfg(feature = "fts")]
 #[test]
 fn an_opened_sidecar_serves_repeated_reads_until_a_new_snapshot() {
@@ -242,8 +246,9 @@ fn an_opened_sidecar_serves_repeated_reads_until_a_new_snapshot() {
     assert_eq!((cache.len(), cache.counts()), (64, (1, 67)));
 }
 
-/// Under a horizon, a sidecar probe yields only entries available at or before it, and full-text scoring takes document count, average length and document frequency from those entries alone.
-// spec: read.horizon.rank-statistics@127bf860
+/// Under a horizon, sidecar probes return only entries available at or before that horizon. Full-text scoring derives
+/// document count, average length and document frequency solely from those entries.
+// spec: read.horizon.rank-statistics@d8bf6998
 #[test]
 fn a_ranking_under_a_horizon_scores_only_rows_available_by_it() {
     use contextful_context::fulltext::FulltextSidecar;
@@ -324,8 +329,9 @@ fn ids_of(r: &Response, key: &str) -> Vec<String> {
     ids
 }
 
-/// A pass over a table whose current snapshot lacks a declared sidecar, or holds it under another `id_column` or builder parameters, builds it over that snapshot's rows into a new snapshot, though no run landed.
-// spec: store.index.declared-unbuilt@8a1b8472
+/// If the current snapshot lacks a declared sidecar or records different `id_column` or builder parameters, a pass
+/// builds the sidecar over those rows. The pass publishes a separate snapshot even without a landed run.
+// spec: store.index.declared-unbuilt@da66ffcb
 #[test]
 fn a_pass_builds_a_sidecar_declared_over_rows_already_landed() {
     use contextful_core::store::fold::FoldOutcome;

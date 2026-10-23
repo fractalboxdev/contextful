@@ -53,8 +53,9 @@ fn reader(f: &Fixture) -> AdmittedAuthority {
     f.authority("agent://research-loop", &[Action::Read], &["research/*", "memory/*"])
 }
 
-/// An artifact's ownership answer returns the target of every `owned_by` edge from it visible to the caller, newest `_ingested_at` first, with principal id breaking equal-instant ties.
-// spec: read.resolve-entity.ownership-answer@cef62f8d
+/// Ownership queries return targets of every caller-visible `owned_by` edge from the artifact. Results sort by newest
+/// `_ingested_at`, then principal id for equal timestamps.
+// spec: read.resolve-entity.ownership-answer@dcd95f8f
 #[test]
 fn an_ownership_answer_returns_every_attached_principal_newest_first() {
     let f = fixture();
@@ -65,8 +66,9 @@ fn an_ownership_answer_returns_every_attached_principal_newest_first() {
     assert_eq!(owned[2].attached_at, at("2030-01-01T00:00:00Z"));
 }
 
-/// An external graph engine is a derived index of admitted memory edges; an entity or ownership answer resolves through the store's enforced rows at the read frontier.
-// spec: read.resolve-entity.graph-index@41df09f1
+/// External graph engines index admitted memory edges as derived data. Entity and ownership answers resolve through
+/// access-controlled store rows at the read frontier.
+// spec: read.resolve-entity.graph-index@532f9a2c
 #[test]
 fn an_ownership_answer_reads_enforced_rows_at_the_frontier() {
     let f = fixture();

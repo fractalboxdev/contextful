@@ -52,8 +52,9 @@ fn predictions_and_outcomes_are_shapes_keyed_on_the_prediction() {
     assert!(contextful_core::memory::settle::LABEL_VIEW.contains("o.observed_at"));
 }
 
-/// A candidate edge whose `rel_type` falls outside the union lands in the dead-letter table and raises `MemoryUndeclaredRelation`; no row is written under the unknown type.
-// spec: read.declare.undeclared-relation@101bc556
+/// For a `rel_type` outside the allowed union, synthesis writes the candidate edge to the dead-letter table and raises
+/// `MemoryUndeclaredRelation`. No row uses the unknown type.
+// spec: read.declare.undeclared-relation@c778fa66
 #[test]
 fn an_edge_outside_the_relation_union_is_refused() {
     let d = MemoryDeclarations::parse(&manifest("memory_edges", r#"["edge_id", "rel_type", "source_id", "target_id", "evidence"]"#)).unwrap();

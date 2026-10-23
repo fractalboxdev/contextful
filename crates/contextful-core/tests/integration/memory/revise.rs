@@ -25,8 +25,9 @@ fn claim(object: &str, tier: Tier, from: &str) -> Claim {
     }
 }
 
-/// `tier` is stamped from the write path and grounding, never the payload: a synthesis pass stamps `derived`, a direct write `curated`, a fetched result `researched`, and mixed grounding takes the lowest.
-// spec: read.revise.tier@008ddbaa
+/// The writer assigns `tier` from write method and grounding, excluding payload values: synthesis uses `derived`,
+/// direct writes use `curated`, fetched results use `researched`. Mixed grounding takes the lowest tier.
+// spec: read.revise.tier@785cc084
 #[test]
 fn tier_follows_the_write_path_and_the_lowest_grounding() {
     assert_eq!(tier(WritePath::Synthesis, &[Grounding::Landed]), Tier::Derived);
@@ -37,7 +38,7 @@ fn tier_follows_the_write_path_and_the_lowest_grounding() {
 }
 
 /// A higher-standing successor ends the prior's interval and names its successor.
-// spec: read.revise.supersede@5e9c89cf
+// spec: read.revise.supersede@58ee53b6
 #[test]
 fn an_equal_or_higher_claim_retires_its_prior_on_one_line() {
     let dana = claim("Dana", Tier::Derived, "2030-01-01T00:00:00Z");

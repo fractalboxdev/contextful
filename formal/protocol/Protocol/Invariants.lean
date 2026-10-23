@@ -306,7 +306,7 @@ theorem fences_only_increase :
 
 /-- No commit lands carrying a fence below the highest granted: every write a step of a
 reachable state lands carries a fence at least the lease object's. -/
--- spec: store.lease.stale-fence@5ca608ca
+-- spec: store.lease.stale-fence@ec8153dd
 -- spec: store.lease.pointer-fence@037c9e49
 theorem no_commit_below_granted :
     ∀ {s : State}, Reachable s → ∀ (st : Step) (t : Target) (f : Nat),

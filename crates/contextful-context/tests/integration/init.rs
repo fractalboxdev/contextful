@@ -60,7 +60,7 @@ fn malformed_store_uuid_and_absent_owner_root_refuse_identity() {
 }
 
 /// A project name that is not path-safe segments raises `StoreProjectNameInvalid` before any file is read or written.
-// spec: store.init.name-shape@93c80b33
+// spec: store.init.name-shape@403dc5ee
 #[test]
 fn a_traversing_or_unsafe_name_refuses_before_any_write() {
     for bad in ["", "..", "a/../b", "a b", "/abs", "x/", "caf\u{e9}"] {
@@ -77,7 +77,7 @@ fn a_traversing_or_unsafe_name_refuses_before_any_write() {
 }
 
 /// An init against the same declaration preserves its existing store content and UUID.
-// spec: store.init.repeat@6387e88e
+// spec: store.init.repeat@b82805b3
 #[test]
 fn a_repeated_init_rewrites_nothing() {
     let dir = tempfile::tempdir().unwrap();
@@ -110,7 +110,7 @@ fn an_init_adopts_an_existing_declaration() {
 }
 
 /// An init against a `contextful.toml` declaring another name, or no string name, raises `StoreProjectConflict`, naming the declared name when one exists and the init's name, and writes nothing.
-// spec: store.init.name-conflict@6f87ee7d
+// spec: store.init.name-conflict@39fe9c8b
 #[test]
 fn an_init_naming_another_project_refuses() {
     let cases = [("[project]\nname = \"research\"\n", Some("`research`")), ("[project]\nowner = \"ops\"\n", None), ("project = \"research\"\n", None)];
@@ -133,7 +133,7 @@ fn an_init_naming_another_project_refuses() {
 }
 
 /// A command given no `--project` reads the nearest `contextful.toml` in the working directory or an ancestor and bases every project path on its directory.
-// spec: store.init.discovery@7bd9957a
+// spec: store.init.discovery@c798bf23
 #[test]
 fn discovery_takes_the_nearest_declaration_upward() {
     let dir = tempfile::tempdir().unwrap();
@@ -153,7 +153,7 @@ fn discovery_takes_the_nearest_declaration_upward() {
 }
 
 /// A working directory whose ancestors hold no `contextful.toml`, or whose nearest one names no project, raises `StoreProjectUndiscovered`.
-// spec: store.init.undiscovered@73f2ca58
+// spec: store.init.undiscovered@246681e3
 #[test]
 fn discovery_without_a_named_declaration_refuses() {
     let dir = tempfile::tempdir().unwrap();

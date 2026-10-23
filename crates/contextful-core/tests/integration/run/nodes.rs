@@ -149,9 +149,9 @@ fn kind_constants(schema: &Value, out: &mut Vec<String>) {
     }
 }
 
-/// The plan type is defined once in a schema library; its JSON Schema is the contract every language binds to, and
-/// the run path deserializes plan JSON against it.
-// spec: run.compile.plan-schema@db8d70e3
+/// One schema library defines the plan type. Every language binds to its JSON Schema. The execution engine
+/// deserializes plan JSON against that schema.
+// spec: run.compile.plan-schema@3c5593da
 #[cfg(feature = "schema")]
 #[test]
 fn the_plan_json_schema_derives_from_the_types_compile_deserializes() {

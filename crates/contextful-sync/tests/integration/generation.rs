@@ -25,9 +25,9 @@ fn at_generation(n: u64) -> PullScope {
     PullScope { generation: Some(n), ..PullScope::default() }
 }
 
-/// `contextful sync manifest --emit` prints, as a bucket manifest in JSON, each key a push of the store commits
-/// with its sha256, size and owner, and reads and writes no bucket object.
-// spec: store.emit.plan@5b7ae685
+/// `contextful sync manifest --emit` prints a JSON bucket manifest listing each key a push commits, with sha256, size
+/// and owner. The command neither reads nor writes bucket objects.
+// spec: store.emit.plan@f42f7aac
 #[test]
 fn an_emitted_plan_lists_what_the_push_commits_and_touches_no_bucket() {
     let dir = tempfile::tempdir().unwrap();
@@ -84,9 +84,9 @@ fn a_manifest_without_a_format_reads_as_format_one() {
     assert_eq!(generation["format"], json!(1));
 }
 
-/// A bucket or generation manifest whose `format` exceeds 1 raises `SyncManifestFormatUnsupported`, naming the key
-/// and its format, before the push commits or the pull writes a file.
-// spec: store.push.format-unsupported@fdaa8fb0
+/// A bucket or generation manifest with `format` above 1 raises `SyncManifestFormatUnsupported`, naming the key and
+/// format. Refusal precedes the push commit or any pull file write.
+// spec: store.push.format-unsupported@697c61a3
 #[test]
 fn a_manifest_of_a_newer_format_refuses_push_and_pull() {
     let dir = tempfile::tempdir().unwrap();
@@ -108,10 +108,10 @@ fn a_manifest_of_a_newer_format_refuses_push_and_pull() {
     assert!(!c.root().join("tables/filings").exists(), "the pull writes no file");
 }
 
-/// Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as
-/// read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under
-/// `If-None-Match`.
-// spec: store.push.generation@083ca1fc
+/// Each manifest commit records `generation` under {{store.push.generation-floor}} and the project's table pointers
+/// read before the commit. The push then creates `<prefix>/manifests/gen-<N>.json` with the committed bytes under `If-
+/// None-Match`.
+// spec: store.push.generation@17461e96
 #[test]
 fn each_push_commits_the_next_generation_and_writes_it_immutably() {
     let dir = tempfile::tempdir().unwrap();
@@ -251,9 +251,9 @@ fn a_missing_generation_is_written_by_the_next_push() {
     assert!(b.get(&format!("team/{}", generation_key(2))).unwrap().is_some());
 }
 
-/// `contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads each
-/// listed key in scope at its listed digest, and writes exactly that generation's pointers, whatever their fence.
-// spec: store.pull.generation@22b2d58b
+/// `contextful sync pull --generation <N>` reads `gen-<N>.json` instead of the bucket manifest. The pull downloads
+/// listed keys in scope at their listed digests and writes exactly that generation's pointers regardless of fence.
+// spec: store.pull.generation@5c8c8c34
 #[test]
 fn a_generation_pull_restores_exactly_that_generation() {
     let dir = tempfile::tempdir().unwrap();
@@ -311,9 +311,9 @@ fn a_generation_the_bucket_lacks_refuses() {
     assert!(!c.root().join("tables").exists());
 }
 
-/// A generation pull into a store holding a syncable file in scope that the generation does not list raises
-/// `SyncGenerationDiverged`, naming the file, and writes nothing.
-// spec: store.pull.generation-diverged@a5ed5f76
+/// If a local syncable file in scope is absent from the generation, generation pull raises `SyncGenerationDiverged`
+/// and names the file. The pull writes nothing.
+// spec: store.pull.generation-diverged@1cfb49fe
 #[test]
 fn a_generation_pull_into_a_store_holding_unlisted_files_refuses() {
     let dir = tempfile::tempdir().unwrap();
@@ -330,9 +330,9 @@ fn a_generation_pull_into_a_store_holding_unlisted_files_refuses() {
     assert!(!c.root().join("tables/filings/data/runs/run-1").exists(), "the refused pull downloads nothing");
 }
 
-/// A generation pull takes each `schema.json` as the bucket holds it, merged per {{store.pull.schema-merge}},
-/// never refusing on its generation digest.
-// spec: store.pull.generation-schema@9647c1d8
+/// A generation pull takes the bucket's current `schema.json` and merges under {{store.pull.schema-merge}}. A
+/// differing generation digest causes no refusal.
+// spec: store.pull.generation-schema@4c26ee71
 #[test]
 fn a_generation_pull_takes_the_current_schema() {
     let dir = tempfile::tempdir().unwrap();
@@ -352,7 +352,7 @@ fn a_generation_pull_takes_the_current_schema() {
 /// A push reading a manifest at generation G lists `gen-<G>.json` and each later generation's key alone, stopping at
 /// the first absent one, and lists `manifests/` whole only for a manifest without `generation`. Over 1000 generations,
 /// one push of one round records the keys it listed under `manifests/`.
-// spec: store.push.generation-probe@860d9f56
+// spec: store.push.generation-probe@34cf89f8
 #[test]
 fn a_commit_round_counts_the_generation_keys_it_lists() {
     const GENERATIONS: u64 = 1000;

@@ -31,8 +31,9 @@ fn a_landing_and_a_fold_write_the_table_directory() {
     assert!(f.store.root().ends_with(".contextful/context/research"));
 }
 
-/// A run commits by conditionally creating `_manifest.json` in its node directory, holding a `lay_out::RunManifest` whose `node_id` equals the enclosing segment.
-// spec: store.lay-out.run-manifest@0afb7e8e
+/// A run commits by conditionally creating `_manifest.json` in its node directory. The file holds a
+/// `lay_out::RunManifest` whose `node_id` equals the directory's node segment.
+// spec: store.lay-out.run-manifest@bcfd7131
 #[test]
 fn a_run_commits_by_creating_its_manifest_once() {
     let f = Fixture::new();
@@ -74,7 +75,7 @@ fn tree(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
 }
 
 /// A landing of an unlogged run already committed on its node, carrying equal rows and position, writes nothing and answers the committed manifest as a replay.
-// spec: store.lay-out.run-replay@be05ec54
+// spec: store.lay-out.run-replay@f662c92b
 #[cfg(feature = "read")]
 #[test]
 fn a_relanded_run_with_equal_rows_answers_the_committed_manifest() {
@@ -91,8 +92,8 @@ fn a_relanded_run_with_equal_rows_answers_the_committed_manifest() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), vec![vec![s("2")]]);
 }
 
-/// Any other landing of a run id already committed on its node raises `StoreRunConflict` and changes nothing.
-// spec: store.lay-out.run-conflict@b9255d81
+/// Any other landing using a run id already committed on its node raises `StoreRunConflict` and changes nothing.
+// spec: store.lay-out.run-conflict@338cb448
 #[test]
 fn a_relanded_run_with_other_rows_or_a_logged_position_conflicts() {
     use contextful_context::land::{land_batches, Batch, Position, RunContext};
@@ -131,8 +132,9 @@ fn a_relanded_run_with_other_rows_or_a_logged_position_conflicts() {
 }
 
 #[cfg(feature = "read")]
-/// A node directory holding no `_manifest.json` is in flight and its parts join no file list; a leased pipeline's run also waits for its commit-log entry.
-// spec: store.lay-out.uncommitted-run@4dc939ec
+/// A node directory without `_manifest.json` holds an uncommitted run. File lists exclude its parts. A leased
+/// pipeline's run also waits for its commit-log entry.
+// spec: store.lay-out.uncommitted-run@d9615bd8
 #[test]
 fn a_run_without_its_manifest_joins_no_file_list() {
     let f = Fixture::new();
@@ -147,8 +149,8 @@ fn a_run_without_its_manifest_joins_no_file_list() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t"), [[s("a")]]);
 }
 
-/// A fold in flight writes under `data/snapshots/<id>.staging/`, and no file list resolves inside it.
-// spec: store.lay-out.staging@86b15bd9
+/// A running fold writes under `data/snapshots/<id>.staging/`. File lists exclude that directory.
+// spec: store.lay-out.staging@4c066d40
 #[test]
 fn a_staged_snapshot_joins_no_file_list() {
     let f = Fixture::new();
@@ -161,8 +163,9 @@ fn a_staged_snapshot_joins_no_file_list() {
     assert_eq!(files, ["tables/filings/data/runs/run-1/ingest-a/part-00000.parquet"]);
 }
 
-/// `tables/<t>/_pointer.json` names the table's current snapshot and the fence that published it. A snapshot is readable only when the pointer or a chain of `parent` links from it reaches it.
-// spec: store.lay-out.table-pointer@800a0cf4
+/// `tables/<t>/_pointer.json` names the table's current snapshot and publishing fence. Readers access only snapshots
+/// reachable from the pointer directly or through `parent` links.
+// spec: store.lay-out.table-pointer@bf454085
 #[test]
 fn only_the_pointer_chain_makes_a_snapshot_readable() {
     let f = Fixture::new();
@@ -190,8 +193,9 @@ fn only_the_pointer_chain_makes_a_snapshot_readable() {
     assert_eq!(files, ["tables/filings/data/runs/run-1/ingest-a/part-00000.parquet"]);
 }
 
-/// A run manifest or a reachable snapshot manifest that fails to parse raises `StoreManifestUnreadable`, naming the table and the file, and the table answers no read until it parses.
-// spec: store.lay-out.manifest-unreadable@90d0d3f5
+/// If a run manifest or reachable snapshot manifest fails to parse, the store raises `StoreManifestUnreadable`, naming
+/// the table and file. The table refuses reads until the manifest parses.
+// spec: store.lay-out.manifest-unreadable@d66f1454
 #[test]
 fn an_unparseable_manifest_refuses_the_table_until_it_parses() {
     let f = Fixture::new();
@@ -235,8 +239,10 @@ fn format_of(path: &std::path::Path) -> serde_json::Value {
     serde_json::from_slice::<serde_json::Value>(&fs::read(path).unwrap()).unwrap()["format_version"].clone()
 }
 
-/// A run or snapshot manifest carries `format_version` as `<major>.<minor>`: `2.0` on a snapshot manifest carrying a part or segment by reference, `1.0` otherwise; one without it reads as `1.0`, and a newer minor parses as this build's.
-// spec: store.lay-out.format-version@8d7aab3a
+/// Run and snapshot manifests carry `format_version` as `<major>.<minor>`. Snapshots referencing parts or segments use
+/// `2.0`; other manifests use `1.0`. An absent version reads as `1.0`. Readers parse newer minor versions as their
+/// own.
+// spec: store.lay-out.format-version@103f377a
 #[test]
 fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     let f = Fixture::new();
@@ -269,8 +275,9 @@ fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     assert_eq!(f.scan(&d, Bounds::default()).unwrap().files.len(), 2);
 }
 
-/// A run or snapshot manifest whose `format_version` major exceeds this build's raises `StoreManifestFormatNewer`, naming the file and both versions, and the table answers no read until a newer build reads it.
-// spec: store.lay-out.format-newer@db746a2b
+/// A run or snapshot manifest with a newer `format_version` major raises `StoreManifestFormatNewer`, naming the file
+/// and both versions. The table refuses reads until a newer build reads the manifest.
+// spec: store.lay-out.format-newer@1e4b3249
 #[test]
 fn a_newer_major_refuses_the_table_naming_the_file_and_both_versions() {
     let f = Fixture::new();
@@ -303,8 +310,9 @@ fn a_newer_major_refuses_the_table_naming_the_file_and_both_versions() {
     }
 }
 
-/// A build reading major `2` reads a `1.x` snapshot manifest as one holding each part in its own directory, counting rows from footers; its next pass carries those parts by reference under `2.0`, rewriting no manifest in place.
-// spec: store.lay-out.format-migrate@4697163e
+/// A major-`2` reader treats a `1.x` snapshot manifest as holding each part in its own directory, counting rows from
+/// footers. The next pass references those parts under `2.0`, without rewriting any manifest in place.
+// spec: store.lay-out.format-migrate@1d30ef3a
 #[test]
 fn a_one_point_x_snapshot_reads_whole_and_its_next_pass_carries_it() {
     let f = Fixture::new();
@@ -365,8 +373,9 @@ fn each_batch_merges_into_schema_json() {
     );
 }
 
-/// A run file is written once and never edited, a snapshot directory is immutable, and a fold writes a new snapshot.
-// spec: store.lay-out.immutable-files@bc233544
+/// The store writes each run file once without editing the file. Snapshot directories are immutable. A fold writes a
+/// separate snapshot.
+// spec: store.lay-out.immutable-files@d00d0818
 #[test]
 fn a_fold_writes_a_new_snapshot_and_edits_nothing_published() {
     let f = Fixture::new();
@@ -388,8 +397,9 @@ fn a_fold_writes_a_new_snapshot_and_edits_nothing_published() {
     assert_eq!(fs::read(&run_part).unwrap(), run_bytes);
 }
 
-/// A table name no `schema.json` in the tree declares raises `StoreUnknownTable`, never an empty result.
-// spec: store.lay-out.unknown-table@68360e2d
+/// A table name absent from every `schema.json` in the tree raises `StoreUnknownTable` rather than returning an empty
+/// result.
+// spec: store.lay-out.unknown-table@8bd6cf2b
 #[test]
 fn a_table_no_schema_declares_is_unknown() {
     let f = Fixture::new();
@@ -408,8 +418,9 @@ fn a_table_no_schema_declares_is_unknown() {
 }
 
 #[cfg(feature = "read")]
-/// The `<node-id>` run-path segment and the node id in a ledger filename keep two machines writing one logical run id in disjoint files.
-// spec: store.lay-out.node-segment@8cdda228
+/// The `<node-id>` segment in run directories and ledger filenames separates files from two machines writing the same
+/// logical run id.
+// spec: store.lay-out.node-segment@ecd8b42a
 #[test]
 fn two_nodes_writing_one_run_id_land_in_disjoint_files() {
     let f = Fixture::new();
@@ -597,8 +608,9 @@ fn a_table_name_colliding_with_the_table_layout_refuses() {
     assert!(f.store.table_dir("a/database").is_ok());
 }
 
-/// A body a source lands by reference is the file `blobs/<sha256>` under the store root, named by the SHA-256 of its bytes and written whole through a rename before the run naming it commits.
-// spec: store.lay-out.landed-blob@17566f61
+/// A source body landed by reference occupies `blobs/<sha256>` under the store root, named by its bytes' SHA-256. The
+/// store writes the complete file through a rename before the referencing run commits.
+// spec: store.lay-out.landed-blob@0ac30e74
 #[test]
 fn a_landed_body_is_one_file_under_blobs_named_by_its_digest() {
     use sha2::Digest;
@@ -620,9 +632,9 @@ fn a_landed_body_is_one_file_under_blobs_named_by_its_digest() {
     assert!(!f.store.blob_path(&wrong).exists());
 }
 
-/// A run id holds at most 128 chars of letters, digits, dot, underscore and hyphen; a landing or request-ledger
-/// append naming another refuses before writing any file.
-// spec: store.lay-out.run-id-shape@9e4b9fd2
+/// A run id holds at most 128 chars: letters, digits, dot, underscore and hyphen. Landing and request-ledger append
+/// reject other run ids before writing any file.
+// spec: store.lay-out.run-id-shape@ca1019a4
 #[test]
 fn a_run_id_past_128_chars_lands_nothing() {
     use contextful_context::ledger::append;

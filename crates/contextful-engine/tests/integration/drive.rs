@@ -187,9 +187,9 @@ fn the_input_is_read_once_and_recorded_as_the_first_step() {
     assert_eq!(endpoint.served().len(), 3);
 }
 
-/// A resume iterates the recorded input and never re-reads the statement, so a row landed after the pinned `as_of`,
-/// or folded since, never enters the input set.
-// spec: run.journal.input-replay@8e916a02
+/// A resumed run iterates recorded input without re-reading the statement. Rows landed after the pinned `as_of`, or
+/// folded since, do not enter the input set.
+// spec: run.journal.input-replay@6315f300
 #[test]
 fn a_resume_iterates_the_recorded_rows_whatever_the_store_holds_since() {
     let rig = Rig::new();

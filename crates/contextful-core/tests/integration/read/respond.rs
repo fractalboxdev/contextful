@@ -30,8 +30,9 @@ fn cells_encode_by_their_sql_type() {
     assert_eq!(Cell::Boolean(false).to_json(), json!(false));
 }
 
-/// Binary is padded base64, and a fixed-size float array, a vector column included, is a JSON array holding each element as a float cell.
-// spec: read.respond.bytes-and-vectors@59c872e7
+/// The serializer encodes binary as padded base64. Fixed-size float arrays, including vector columns, become JSON
+/// arrays whose elements use float-cell encoding.
+// spec: read.respond.bytes-and-vectors@4e9179c0
 #[test]
 fn bytes_are_base64_and_vectors_are_number_arrays() {
     assert_eq!(Cell::Blob(vec![0xAA, 0x01]).to_json(), json!("qgE="));
@@ -42,8 +43,9 @@ fn bytes_are_base64_and_vectors_are_number_arrays() {
     assert_eq!(Cell::Vector(vec![f64::NAN, f64::INFINITY]).to_json(), json!(["NaN", "inf"]));
 }
 
-/// A column's JSON encoding follows its SQL type alone: integers of 32 bits or fewer, finite floats and decimals of 15 digits or fewer are numbers; wider integers and decimals are exact decimal strings.
-// spec: read.respond.wide-number-shape@71ca709f
+/// SQL type alone determines JSON encoding. Integers up to 32 bits, finite floats and decimals up to 15 digits encode
+/// as numbers. Wider integers and decimals encode as exact decimal strings.
+// spec: read.respond.wide-number-shape@37b2d5f0
 #[test]
 fn wide_numbers_are_exact_strings_whatever_their_value() {
     assert_eq!(Cell::Integer { value: 1299, bits: 32 }.to_json(), json!(1299));
@@ -58,8 +60,8 @@ fn wide_numbers_are_exact_strings_whatever_their_value() {
     assert_eq!(Cell::Decimal { value: 7, width: 18, scale: 0 }.to_json(), json!("7"));
 }
 
-/// No separate type list rides the envelope; a cell's JSON type is the declaration.
-// spec: read.respond.type-is-the-cell@90d506a7
+/// The response carries no separate type list. Each cell's JSON type declares its type.
+// spec: read.respond.type-is-the-cell@e09f4168
 #[test]
 fn the_envelope_carries_no_type_list() {
     let r = Response::cut(vec!["order_id".into(), "total_cents".into()], vec![vec![json!("A-1"), json!("1299")]], None);
@@ -69,7 +71,7 @@ fn the_envelope_carries_no_type_list() {
 }
 
 /// `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.
-// spec: read.respond.truncation-is-exact@3ebf2e57
+// spec: read.respond.truncation-is-exact@bcd5248f
 #[test]
 fn truncation_follows_the_probe_row() {
     assert_eq!(ROW_CEILING_OVERFETCH, 1);

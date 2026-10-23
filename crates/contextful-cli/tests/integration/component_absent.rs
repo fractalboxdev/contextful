@@ -3,9 +3,9 @@
 
 use std::process::Command;
 
-/// Dispatching a component connector on a profile with no component host raises `ComponentHostMissing`, naming the
-/// connector and the profile, with no fallback to a similarly named native source.
-// spec: topology.package.host-missing@788dbe3c
+/// Dispatching a component connector without a component host raises `ComponentHostMissing`, naming the connector and
+/// profile. No similarly named native source substitutes.
+// spec: topology.package.host-missing@c7556be0
 #[test]
 fn a_component_source_is_refused_by_name_on_a_build_without_the_host() {
     let dir = tempfile::tempdir().unwrap();

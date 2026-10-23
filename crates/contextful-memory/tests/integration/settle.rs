@@ -161,8 +161,9 @@ fn a_reused_prediction_id_with_other_fields_refuses() {
     assert_eq!(raw_rows(&f, "SELECT resolution_source FROM \"memory/predictions\""), json!([["adjudicator"]]));
 }
 
-/// An observation differing from a stored outcome of its `prediction_id` that carries a verdict raises `OutcomeAlreadySettled`; a stored outcome without a verdict is replaced.
-// spec: read.settle.outcome-settled@557a58ab
+/// If an observation differs from a stored verdict-bearing outcome for its `prediction_id`, the write raises
+/// `OutcomeAlreadySettled`. Observations replace stored outcomes without verdicts.
+// spec: read.settle.outcome-settled@1eaf1bda
 #[test]
 fn a_settled_verdict_is_not_rewritten_but_an_open_outcome_is_replaced() {
     let f = settling();

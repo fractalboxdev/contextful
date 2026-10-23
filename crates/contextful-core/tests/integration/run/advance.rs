@@ -23,9 +23,9 @@ fn three_kinds_and_an_undeclared_one_reads_opaque_token() {
     assert!(CursorKind::OpaqueToken.single_writer() && CursorKind::SnapshotId.single_writer());
 }
 
-/// A watermark position serializes as `{"field": "<name>", "at": <value>}`, naming the column it was measured
-/// against.
-// spec: run.advance.watermark-shape@b6edb281
+/// A watermark position serializes as `{"field": "<name>", "at": <value>}`. `field` names the column whose values
+/// determine the watermark.
+// spec: run.advance.watermark-shape@190f3311
 #[test]
 fn a_watermark_names_its_field() {
     assert_eq!(watermark("updated_at", json!("2030-01-01T00:00:00Z")), json!({"field": "updated_at", "at": "2030-01-01T00:00:00Z"}));
@@ -46,9 +46,9 @@ fn a_position_measured_on_another_field_is_refused() {
     assert_eq!(open_watermark(None, "updated_at").unwrap(), None);
 }
 
-/// The frontier counts every fetched row, landed or not. A committed position moves forward or holds; an empty or
-/// older window never rewinds it.
-// spec: run.advance.frontier@6949bad8
+/// The frontier counts every fetched row, landed or not. A committed position advances or stays unchanged. An empty or
+/// older window does not rewind the position.
+// spec: run.advance.frontier@504124d1
 #[test]
 fn the_position_moves_forward_or_holds() {
     let f = frontier("updated_at", &rows(&[json!(3), json!(9), json!(5)])).unwrap();

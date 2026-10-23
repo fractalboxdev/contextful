@@ -17,9 +17,9 @@ fn vars(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
     pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
 
-/// One port answers a reference with material. Every backend is an adapter behind it, and
-/// `CONTEXTFUL_SECRETS_BACKEND` selects the adapters the chain assembles.
-// spec: connector.resolve.provider-port@3090f72d
+/// One provider interface resolves a reference to credential material. Each backend implements this interface as an
+/// adapter. `CONTEXTFUL_SECRETS_BACKEND` selects the adapters in the chain.
+// spec: connector.resolve.provider-port@acb93111
 #[test]
 fn the_backend_variable_selects_the_adapters() {
     let clock = SetClock::new();
@@ -40,9 +40,9 @@ fn the_backend_variable_selects_the_adapters() {
     }
 }
 
-/// Hydration stops at the earliest adapter answering the name, and later adapters are not consulted for that
-/// reference during the run.
-// spec: connector.resolve.first-hit-wins@39c91a7f
+/// Hydration uses the first adapter answering the name. The resolver consults no later adapter for that reference
+/// during the run.
+// spec: connector.resolve.first-hit-wins@36d1169c
 #[test]
 fn the_earliest_answer_serves_and_later_adapters_are_left_alone() {
     let clock = SetClock::new();
@@ -75,9 +75,9 @@ fn a_name_two_adapters_answer_is_refused_at_first_hydration() {
     assert!(!f.message.contains("`a`") && !f.message.contains("`b`"));
 }
 
-/// Every hydrated value, a pure-literal template included, rides a wrapper whose debug and display forms print a
-/// fixed sentinel. The bytes are revealed only where the host writes the request.
-// spec: connector.resolve.redacting-wrapper@49916b92
+/// Every hydrated value, including a pure-literal template, uses a wrapper whose debug and display forms print a fixed
+/// sentinel. The host reveals bytes only when writing the request.
+// spec: connector.resolve.redacting-wrapper@d3b96574
 #[test]
 fn a_hydrated_value_prints_as_the_sentinel() {
     let clock = SetClock::new();
@@ -91,9 +91,9 @@ fn a_hydrated_value_prints_as_the_sentinel() {
     assert_eq!(r.render(&Template::parse("Bearer ${secret://vendor-token}").unwrap()).unwrap().reveal(), "Bearer s3cr3t-value");
 }
 
-/// One resolver with its own cache is built per source, and concurrent first hydrations of one name collapse
-/// under a single-flight gate.
-// spec: connector.resolve.resolver-per-source@14d0bf74
+/// Each source has one resolver and its own cache. The resolver combines concurrent first hydrations of one name into
+/// one lookup.
+// spec: connector.resolve.resolver-per-source@9f5423ee
 #[test]
 fn concurrent_first_hydrations_make_one_call_and_resolvers_share_no_cache() {
     let clock = SetClock::new();
@@ -176,9 +176,9 @@ fn an_active_resolver_releases_other_expired_credentials() {
     assert!(retired.upgrade().is_none(), "an unrelated expired credential remained in the active resolver");
 }
 
-/// A reference no assembled adapter answers raises `SecretUnresolvedReference` naming it, at preflight where the
-/// binding is static and at the call otherwise.
-// spec: connector.resolve.unresolved-name@01714613
+/// If no assembled adapter answers a reference, the resolver raises `SecretUnresolvedReference`, naming the reference.
+/// The error occurs at preflight for static bindings and at the call otherwise.
+// spec: connector.resolve.unresolved-name@b7bc2a10
 #[test]
 fn an_unanswered_reference_refuses_at_preflight_and_at_the_call() {
     let clock = SetClock::new();
@@ -191,9 +191,9 @@ fn an_unanswered_reference_refuses_at_preflight_and_at_the_call() {
     assert!(r.preflight([&Template::parse("Bearer ${secret://other}").unwrap()]).is_ok());
 }
 
-/// Template hydration treats the process-environment adapter as a miss and continues down the chain; a name
-/// nothing answers falls to {{connector.resolve.unresolved-name}}.
-// spec: connector.reference.environment-is-a-miss@b7558178
+/// Template hydration skips the process-environment adapter and continues through the chain. If no adapter answers,
+/// the resolver applies {{connector.resolve.unresolved-name}}.
+// spec: connector.reference.environment-is-a-miss@34f4a4c8
 #[test]
 fn the_environment_answers_no_template() {
     let clock = SetClock::new();
@@ -210,7 +210,7 @@ fn the_environment_answers_no_template() {
 
 /// A `secret://<name>` bound whole, outside any template, hydrates through every assembled adapter, the process
 /// environment included, under `connector.resolve.first-hit-wins` and `connector.resolve.shadowed-name`.
-// spec: connector.reference.whole-value-reference@6d0cffce
+// spec: connector.reference.whole-value-reference@d27530a0
 #[test]
 fn a_whole_value_reference_consults_the_environment() {
     let clock = SetClock::new();

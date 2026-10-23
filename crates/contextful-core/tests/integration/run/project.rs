@@ -210,8 +210,9 @@ fn a_step_output_is_a_reference_and_a_byte_count() {
     assert!(serde_json::from_value::<OutputRef>(inline).is_err());
 }
 
-/// Snapshot broadcasts coalesce to at most one per 100 ms, keeping only the latest; a terminal transition flushes immediately. The clock is injected.
-// spec: run.project.coalescing@0e147155
+/// The hub coalesces snapshot broadcasts to at most one per 100 ms, keeping only the latest. A terminal transition
+/// flushes immediately. The hub uses an injected clock.
+// spec: run.project.coalescing@6fdbc2b2
 #[test]
 fn broadcasts_coalesce_per_window_and_a_terminal_flushes_at_once() {
     assert_eq!(COALESCE_WINDOW_MS, 100);

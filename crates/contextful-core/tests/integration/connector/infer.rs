@@ -96,8 +96,8 @@ fn the_token_is_content_bound_not_a_constant() {
     assert_ne!(fence_token(&items, CAP), fence_token(&shifted, CAP));
 }
 
-/// Control characters other than newline and tab are stripped from a fenced value.
-// spec: connector.infer.fenced-value-hygiene@e30a0f88
+/// Fencing removes control characters other than newline and tab from a value.
+// spec: connector.infer.fenced-value-hygiene@19d27deb
 #[test]
 fn control_characters_are_stripped_and_newlines_survive() {
     let payload = "before\u{0}\u{7}\u{1b}[2Kafter\r\nsecond\tcol\u{7f}";
@@ -127,9 +127,9 @@ fn an_over_long_value_is_capped_and_marked() {
     assert!(!truncates("a\u{0}b", 2), "stripped characters count toward no cap");
 }
 
-/// A provenance label is cut at 200 chars and flattened to one line without brackets, so
-/// it opens or closes no block.
-// spec: connector.infer.label-hygiene@9a527b00
+/// Fencing truncates a provenance label at 200 chars and flattens the label to one line without brackets. The label
+/// opens or closes no block.
+// spec: connector.infer.label-hygiene@6a21e05e
 #[test]
 fn a_label_cannot_smuggle_a_marker() {
     assert_eq!(LABEL_CHARS, 200);
@@ -152,8 +152,8 @@ fn a_label_cannot_smuggle_a_marker() {
     assert_eq!(provenance_label(&format!("{} tail", "z".repeat(LABEL_CHARS - 1))), "z".repeat(LABEL_CHARS - 1));
 }
 
-/// A call fencing no value renders an explicit no-data line, never an empty section.
-// spec: connector.infer.empty-batch@9ce5d4d7
+/// A call fencing no value renders an explicit no-data line instead of an empty section.
+// spec: connector.infer.empty-batch@9e939bc6
 #[test]
 fn an_empty_batch_says_so() {
     assert_eq!(fence(&[], CAP, RULES), NO_DATA);

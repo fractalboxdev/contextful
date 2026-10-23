@@ -25,8 +25,9 @@ fn files(at: &Path, env: &[(&str, &str)]) -> Vec<String> {
     ok(&cf(at, &["context", "files", "filings", "--project", "research"], env)).lines().map(str::to_string).collect()
 }
 
-/// A project's default node id is `node-<8 hex>` of SHA-256 over the host id and the absolute store root, so two checkouts of one project on one host write as distinct nodes.
-// spec: store.lay-out.node-id-project@94267868
+/// A project's default node id is `node-<8 hex>` from SHA-256 over the host id and absolute store root. Two checkouts
+/// of one project on one host therefore write as distinct nodes.
+// spec: store.lay-out.node-id-project@3117e7fb
 #[test]
 fn a_second_checkout_of_one_project_pulls_the_first_checkouts_run() {
     let host = tempfile::tempdir().unwrap();
@@ -47,8 +48,9 @@ fn a_second_checkout_of_one_project_pulls_the_first_checkouts_run() {
     assert_eq!(files(b.path(), &env), landed);
 }
 
-/// A push names on stderr, per owning node, each local key another node owns that the committed bucket manifest neither lists nor tombstones, with the `CONTEXTFUL_NODE_ID` that pushes it.
-// spec: store.push.stranded@f66b2541
+/// Push reports local keys owned by other nodes that the committed bucket manifest neither lists nor tombstones.
+/// Stderr groups keys by owner and names the `CONTEXTFUL_NODE_ID` required to push each group.
+// spec: store.push.stranded@607eeb97
 #[test]
 fn a_moved_checkout_names_the_run_it_landed_before_the_move() {
     let host = tempfile::tempdir().unwrap();

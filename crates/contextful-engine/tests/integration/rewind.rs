@@ -63,7 +63,7 @@ fn a_rewind_of_a_completed_or_unknown_execution_is_not_pending() {
 
 /// A rewind of an owner no attempt has asked another plan reference of raises `ExecutionRewindPlanCurrent`
 /// unless `--force` is given.
-// spec: run.own.rewind-plan-current@3e78b8cf
+// spec: run.own.rewind-plan-current@a381eb09
 #[test]
 fn an_unforced_rewind_of_a_current_owner_refuses_and_a_forced_one_retires_it() {
     let rig = Rig::new();

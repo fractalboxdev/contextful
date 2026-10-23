@@ -61,9 +61,9 @@ fn prefix_and_prefix_from_together_refuse() {
     assert!(matches!(c.resolve_prefix(|_| Some("x".into())), Err(StoreError::SyncPrefixOverspecified(_))));
 }
 
-/// A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit
-/// log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.
-// spec: store.merge.ownership@8d4f4f07
+/// A key names its owner through the node in its run directory, request-ledger filename, commit-log directory or run-
+/// state directory. Every other key is unowned and propagates no deletion.
+// spec: store.merge.ownership@0457be52
 #[test]
 fn a_keys_owner_is_read_off_the_key() {
     assert_eq!(owner_of(RUN_A).as_deref(), Some("ingest-a"));
@@ -87,7 +87,7 @@ fn a_keys_owner_is_read_off_the_key() {
 
 /// A merge takes each local entry this writer owns or no node owns, and every other remote entry; a remote entry it
 /// owns leaves with a tombstone only where the held record lists it and the store no longer holds it.
-// spec: store.merge.scoped-union@d6efe8eb
+// spec: store.merge.scoped-union@fc9577a4
 #[test]
 fn a_merge_tombstones_only_the_owned_entries_its_store_held() {
     let now = at("2030-01-01T00:00:00Z");
@@ -160,9 +160,8 @@ fn a_tombstone_leaves_the_manifest_after_30_days() {
     assert!(dropped.manifest.tombstones.is_empty());
 }
 
-/// Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through
-/// its commit.
-// spec: store.merge.cursor-recency@3e5813c0
+/// Resolving a cursor by last-write time raises `SyncCursorConflict`. A cursor resolves through its commit.
+// spec: store.merge.cursor-recency@a551b135
 #[test]
 fn differing_copies_of_a_commit_log_entry_refuse() {
     let key = "research/cursors/feed/00000000000000000003.json";
@@ -173,8 +172,8 @@ fn differing_copies_of_a_commit_log_entry_refuse() {
     assert!(merge(&remote, &same, "ingest-a", at("2030-01-01T00:00:00Z")).is_ok());
 }
 
-/// A lease is granted for 10 min.
-// spec: store.lease.ttl@e6b8444c
+/// A lease grants ownership for 10 min.
+// spec: store.lease.ttl@10aa496e
 #[test]
 fn a_lease_is_granted_for_10_minutes() {
     assert_eq!(TTL_SECS, 600);
@@ -185,7 +184,7 @@ fn a_lease_is_granted_for_10_minutes() {
 
 /// Acquisition creates the lease object under `If-None-Match`, or replaces an expired or released one under `If-
 /// Match` on its ETag, the fence one past the object's.
-// spec: store.lease.acquire@f2b819c5
+// spec: store.lease.acquire@deadc41c
 #[test]
 fn acquisition_creates_or_replaces_on_the_etag_with_the_next_fence() {
     let now = at("2030-01-01T00:00:00Z");
@@ -234,9 +233,9 @@ fn an_expiry_judgment_allows_30_seconds_of_skew_on_the_judging_clock() {
     assert!(!held.held_against("ingest-a", granted));
 }
 
-/// A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is
-/// attempted again at the next reconciliation tick.
-// spec: store.lease.held@d87a6a45
+/// If a run finds an unexpired lease, the engine raises `LeaseHeld`, names the holder and expiry, and skips the run.
+/// The engine retries the run at the next reconciliation tick.
+// spec: store.lease.held@82744098
 #[test]
 fn an_unexpired_lease_refuses_naming_its_holder_and_expiry_and_a_later_tick_takes_it() {
     let granted = at("2030-01-01T00:00:00Z");
@@ -280,10 +279,10 @@ fn endpoint(e: &str) -> SyncConfig {
     SyncConfig { endpoint: e.into(), bucket: "context-team".into(), ..SyncConfig::default() }
 }
 
-/// `[sync] endpoint` opens `file://<directory>` as a filesystem bucket, `s3://<region>` as that region's AWS S3
-/// endpoint, `r2://<account-id>` as that account's R2 endpoint at region `auto`, and `https://<host>` at `[sync]
-/// region`, default `us-east-1`.
-// spec: store.endpoint.schemes@a64c45a3
+/// `[sync] endpoint` maps `file://<directory>` to a filesystem bucket and `s3://<region>` to regional AWS S3.
+/// `r2://<account-id>` selects that account's R2 endpoint at region `auto`. `https://<host>` uses `[sync] region`,
+/// default `us-east-1`.
+// spec: store.endpoint.schemes@40b78d25
 #[test]
 fn each_endpoint_scheme_resolves_its_adapter_address() {
     assert_eq!(endpoint("file:///srv/buckets").resolve_endpoint().unwrap(), Endpoint::File("/srv/buckets".into()));
@@ -349,9 +348,9 @@ fn credential_keys_bind_secret_or_environment_references() {
     assert_eq!(temporary.credential_refs().unwrap().session_token, Some(CredentialRef::Secret(SecretName::parse("sync-session").unwrap())));
 }
 
-/// An S3 or R2 endpoint whose `[sync]` omits `access_key_id` or `secret_access_key`, binds a credential key to
-/// anything but a reference, or names an unset variable raises `SyncCredentialUnbound`, naming the key.
-// spec: store.endpoint.credential-unbound@7b840e6a
+/// S3 or R2 raises `SyncCredentialUnbound` when `[sync]` omits `access_key_id` or `secret_access_key`, supplies a non-
+/// reference credential, or names an unset variable. The error names the key.
+// spec: store.endpoint.credential-unbound@3f4efb9d
 #[test]
 fn an_unbound_or_literal_credential_key_is_refused_naming_the_key() {
     let bound = SyncConfig { access_key_id: Some("env://A".into()), secret_access_key: Some("env://B".into()), ..endpoint("s3://eu-west-1") };

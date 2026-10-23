@@ -337,8 +337,9 @@ fn server_held_claim_route_admits_each_request_and_keeps_browser_and_mcp_writes_
     assert!(body(&response).to_string().contains("no tool"));
 }
 
-/// `contextful serve --http <addr> --audience <aud> --max-in-flight <n>` answers MCP Streamable HTTP at `POST /mcp`: one JSON-RPC message per request, answered as `application/json` by the tool server the stdio transport runs.
-// spec: read.register.network-transport@38ec986b
+/// `contextful serve --http <addr> --audience <aud> --max-in-flight <n>` serves MCP Streamable HTTP at `POST /mcp`.
+/// The stdio tool server answers each request's single JSON-RPC message as `application/json`.
+// spec: read.register.network-transport@bf10065b
 #[test]
 fn post_mcp_answers_each_message_as_the_stdio_tool_server_does() {
     let key = holder(1);
@@ -415,8 +416,10 @@ fn a_notification_answers_202_and_the_face_holds_no_session_or_stream() {
     assert_eq!((status, body(&answer)["error"]["code"].clone()), (400, json!(-32600)));
 }
 
-/// Each request carries `Authorization: Bearer <credential>`, or `DPoP <credential>` with a `DPoP` proof header, admitted per request under {{authority.verify.possession-binding}} and {{authority.verify.network-bearer}}, so one listener serves many credentials, each reading its own grants.
-// spec: read.register.per-request-admission@b845e0c5
+/// Each request carries `Authorization: Bearer <credential>`, or `DPoP <credential>` with a `DPoP` proof header. The
+/// listener admits each credential under {{authority.verify.possession-binding}} and {{authority.verify.network-
+/// bearer}} and restricts reads to that credential's grants.
+// spec: read.register.per-request-admission@9a34af13
 #[test]
 fn one_listener_admits_bearers_and_holder_bound_credentials_each_on_its_own_grants() {
     let (dana, lee) = (holder(1), holder(2));
@@ -523,8 +526,9 @@ fn revocation_from_denylist() -> Result<RevocationState, String> {
     Ok(RevocationState { denylist: parse_denylist(&text, "static"), ..RevocationState::default() })
 }
 
-/// Each request re-reads the `--denylist` file, so a credential revoked between two requests is refused on the next with no restart; an unreadable denylist answers `503` and admits nothing.
-// spec: read.register.per-request-revocation@ddafa468
+/// The server re-reads `--denylist` for each request and rejects a revoked credential on the next request without
+/// restarting. An unreadable denylist returns `503` and admits nothing.
+// spec: read.register.per-request-revocation@51b2efe5
 #[test]
 fn a_credential_revoked_between_requests_is_refused_on_the_next() {
     let key = holder(1);
@@ -543,8 +547,9 @@ fn a_credential_revoked_between_requests_is_refused_on_the_next() {
     assert_eq!(status, 503, "{head}");
 }
 
-/// Requests on any number of connections run concurrently, each statement on its own engine connection under {{read.cache.pool-connections}}; a slow statement delays no other request.
-// spec: read.register.concurrent-statements@95a71dba
+/// Requests on any number of connections run concurrently. Each statement uses its own engine connection under
+/// {{read.cache.pool-connections}} and delays no other request.
+// spec: read.register.concurrent-statements@c0d86383
 #[test]
 fn a_fast_statement_answers_while_a_slow_one_runs() {
     let key = holder(1);
@@ -595,8 +600,9 @@ fn past_the_ceiling_a_request_answers_503_with_retry_after() {
     assert_eq!(send(addr, &signed(&query(FAST), &token, &key)).0, 200);
 }
 
-/// An accepted connection holds one of the ceiling's slots from accept until its answer is written; a connection accepted with every slot held answers as {{read.register.past-ceiling}} before its request is parsed, and starts no thread.
-// spec: read.register.connection-ceiling@9e698a3d
+/// An accepted connection holds a slot until the server writes its response. With all slots held, the server answers
+/// {{read.register.past-ceiling}} before parsing the request and starts no thread.
+// spec: read.register.connection-ceiling@d7148251
 #[test]
 fn a_stalled_request_head_holds_a_slot_and_a_connection_past_the_ceiling_is_shed() {
     let (_f, addr) = listen(fixture(), 1, &no_revocation);
@@ -640,8 +646,8 @@ fn a_missing_audience_or_ceiling_refuses_the_face() {
     assert!(HttpFace::new(&f.face, &clock, &f.audit, admitting, None).is_err());
 }
 
-/// A request body over 1 MiB answers `413` and is read no further.
-// spec: read.register.request-body@960a28a1
+/// For a request body over 1 MiB, the server returns `413` and stops reading the body.
+// spec: read.register.request-body@fb888a9f
 #[test]
 fn a_body_over_one_mebibyte_answers_413() {
     let head = format!("POST /mcp HTTP/1.1\r\nContent-Length: {}\r\n\r\n", 1024 * 1024 + 1);

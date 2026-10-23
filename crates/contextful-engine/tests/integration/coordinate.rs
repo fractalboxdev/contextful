@@ -9,9 +9,9 @@ fn pipeline() -> LeaseKey {
     LeaseKey::Pipeline("feed/filings".into())
 }
 
-/// A lease row is keyed by a pipeline, a source partition, a table's compaction or a deployment's cadence, and
-/// carries a holder, an expiry instant and a fence taken by one conditional update.
-// spec: topology.coordinate.lease-row@4ac1f061
+/// A lease key names a pipeline, source partition, table compaction or deployment cadence. One conditional update
+/// assigns the row's holder, expiry instant and fence.
+// spec: topology.coordinate.lease-row@3a12bd6d
 #[test]
 fn a_lease_row_carries_holder_expiry_and_fence_per_key() {
     let rig = Rig::new();
@@ -110,8 +110,8 @@ fn a_cursor_update_is_predicated_on_the_stored_version() {
     assert_eq!(c.cursor("feed", "filings").unwrap().version, 2);
 }
 
-/// A cadence lease is granted for 90 s.
-// spec: topology.coordinate.cadence-lease-ttl@cf640cd8
+/// The catalog grants a cadence lease for 90 s.
+// spec: topology.coordinate.cadence-lease-ttl@12e7174e
 #[test]
 fn a_cadence_lease_lives_90_s() {
     assert_eq!(CADENCE_LEASE_TTL_SECS, 90);

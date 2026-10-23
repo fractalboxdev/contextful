@@ -67,8 +67,10 @@ fn earnings(horizon: Option<&str>) -> Fixture {
     })
 }
 
-/// Under a horizon, the projection carries neither `_ingested_at` nor `_commit_seq` and keeps `_run_id` and `_row_seq`, which cite a row; `context.describe` computes row count, size, lexicon and example values over the horizon-bounded relation.
-// spec: read.horizon.engine-stamps@5a48531b
+/// Under a horizon, responses omit `_ingested_at` and `_commit_seq` but retain citation fields `_run_id` and
+/// `_row_seq`. `context.describe` computes row count, size, lexicon and example values from the horizon-bounded
+/// relation.
+// spec: read.horizon.engine-stamps@586a6493
 #[test]
 fn a_horizon_read_withholds_load_stamps_and_keeps_citation_stamps() {
     let sql = r#"SELECT * FROM "research/earnings""#;
@@ -105,8 +107,10 @@ fn a_horizon_read_withholds_load_stamps_and_keeps_citation_stamps() {
     assert!(ranked_columns.iter().any(|c| c == "_run_id") && !ranked_columns.iter().any(|c| c == "_ingested_at"), "{ranked_columns:?}");
 }
 
-/// Under a horizon, a column whose `first_landed_at` in `schema.json` — set once by its first merge, to that batch's earliest availability instant, else the commit instant — falls after the horizon is absent from the registered schema and describe payload.
-// spec: read.horizon.late-columns@c5a5c08f
+/// A column's first merge sets `schema.json`'s `first_landed_at` once to the batch's earliest availability instant,
+/// otherwise commit instant. Columns with `first_landed_at` after the horizon are absent from registered schemas and
+/// describe payloads.
+// spec: read.horizon.late-columns@b9ea72e3
 #[test]
 fn a_column_first_available_after_the_horizon_is_absent() {
     let open = earnings(None);
@@ -181,8 +185,9 @@ fn urls(answer: &Value) -> Vec<String> {
     out
 }
 
-/// `[pipeline.tables.snapshot]` names the `url`, `captured_at`, `digest` and `source` columns a snapshot corpus records per document; each capture commits as one store snapshot, and an evaluation case pins it by `snapshot` id.
-// spec: store.snapshot.capture@b8aab581
+/// `[pipeline.tables.snapshot]` names each document's `url`, `captured_at`, `digest` and `source` columns. Each
+/// capture commits as one store snapshot. An evaluation case pins the capture by `snapshot` id.
+// spec: store.snapshot.capture@bbab83d6
 #[test]
 fn each_capture_commits_one_snapshot_a_read_pins_by_id() {
     let mut ids = Vec::new();
@@ -201,8 +206,9 @@ fn each_capture_commits_one_snapshot_a_read_pins_by_id() {
     assert!(unknown.contains("PinnedBuildUnavailable") && unknown.contains("research/pages"), "{unknown}");
 }
 
-/// A document captured after the reading horizon carries `_available_reconstructed` true, as {{store.available-time.live-since}} injects it, and a horizon read admits it only where the block's `leak_score` column holds 0.
-// spec: store.snapshot.post-horizon-capture@76fce55e
+/// A document captured after the reading horizon carries `_available_reconstructed` true under {{store.available-
+/// time.live-since}}. A horizon read admits the document only when the block's `leak_score` column holds 0.
+// spec: store.snapshot.post-horizon-capture@81e4608c
 #[test]
 fn a_capture_after_the_horizon_answers_only_at_a_leak_score_of_zero() {
     let mut ids = Vec::new();
@@ -224,8 +230,9 @@ fn a_capture_after_the_horizon_answers_only_at_a_leak_score_of_zero() {
     assert_eq!(urls(&answer), ["https://a.example/rates", "https://b.example/jobs"]);
 }
 
-/// Under a horizon, `corpus.retrieve` ranks only stored rows through local indexes, and a search source reads its pinned {{store.snapshot.capture}} corpus; a live search reaches no host past {{read.horizon.egress-hook}}.
-// spec: read.horizon.local-rank@607a8ef0
+/// Under a horizon, `corpus.retrieve` ranks stored rows through local indexes; search sources read their pinned
+/// {{store.snapshot.capture}} corpus. Live search reaches no host through {{read.horizon.egress-hook}}.
+// spec: read.horizon.local-rank@60b37b28
 #[test]
 fn a_horizon_ranking_reads_the_pinned_capture() {
     let mut ids = Vec::new();
@@ -303,8 +310,10 @@ fn close_of(rows: &Value, i: usize) -> f64 {
     rows[i][2].as_f64().unwrap_or_else(|| rows[i][2].as_str().unwrap().parse().unwrap())
 }
 
-/// `available_time.adjustment = { table = "<name>", factor_column = "<column>", adjust_columns = [...] }` keeps values raw; an `available_as_of` read multiplies each listed numeric column by the product of factor vintages available by the bound.
-// spec: store.available-time.adjustment-factors@704c0a77
+/// `available_time.adjustment = { table = "<name>", factor_column = "<column>", adjust_columns = [...] }` keeps stored
+/// values raw. An `available_as_of` read multiplies each listed numeric column by the product of factor vintages
+/// available by the bound.
+// spec: store.available-time.adjustment-factors@0bf779c0
 #[test]
 fn a_bounded_read_applies_only_factors_announced_by_the_bound() {
     let f = prices();

@@ -39,7 +39,7 @@ const RECORD: &str = "[secret.vendor-token]\ndescription = \"Vendor API key\"\na
 
 /// The listing enumerates configured bindings with their adapters, operator metadata and
 /// observations, and reads no credential value.
-// spec: connector.record.inventory@87194ba2
+// spec: connector.record.inventory@39593444
 #[test]
 fn the_inventory_lists_configured_bindings_and_never_a_value() {
     let dir = project(&manifest("https://api.vendor.example/v1/orders", RECORD));
@@ -97,7 +97,7 @@ fn a_record_describing_no_binding_fails_the_listing_and_the_run() {
 }
 
 /// Editing an operator record changes no pipeline's content hash.
-// spec: connector.record.record-is-inert@ba3a6b73
+// spec: connector.record.record-is-inert@cb1e6f4b
 #[test]
 fn an_edited_record_leaves_the_content_hash_unchanged() {
     let hash = |extra: &str| {

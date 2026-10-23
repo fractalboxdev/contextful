@@ -123,7 +123,7 @@ fn a_one_day_append_reads_no_stored_vintage() {
 /// Day 50 restated for every symbol: half with a new digest, half re-pulling the stored
 /// digest under a later publication instant. The rows its vintage comparison reads
 /// (ledger `vintage-restate-day-scan`).
-// spec: store.available-time.vintage-scope@10ef927d
+// spec: store.available-time.vintage-scope@9e236004
 #[test]
 fn a_one_day_restatement_reads_only_that_days_vintages() {
     const SEED: u64 = 0x5eed_7101;
@@ -355,7 +355,7 @@ fn a_repull_respelling_its_valid_time_lands_no_vintage() {
 }
 
 /// Bars landed newest day first fold into a snapshot ordered by valid time, then symbol.
-// spec: store.available-time.vintage-fold-order@3f46959d
+// spec: store.available-time.vintage-fold-order@df6f27c4
 #[test]
 fn a_vintage_fold_orders_its_snapshot_by_valid_time() {
     let f = Fixture::new();

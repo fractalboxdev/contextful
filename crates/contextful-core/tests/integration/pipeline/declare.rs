@@ -93,9 +93,9 @@ fn a_specification_carries_three_required_and_eleven_optional_keys() {
     assert!(serde_json::from_value::<PipelineSpec>(extra).is_err(), "an unknown key refuses");
 }
 
-/// A `source` is a connector name beside a free-form JSON config object; a `destination` carries the same two
-/// fields and defaults to the store.
-// spec: run.declare.source-block@493201a1
+/// A `source` contains a connector name and free-form JSON config object. A `destination` contains the same two fields
+/// and defaults to the store.
+// spec: run.declare.source-block@15f13c5e
 #[test]
 fn source_and_destination_are_a_name_and_a_config_object() {
     let s = spec(BASE);
@@ -144,9 +144,9 @@ fn an_explicit_default_hashes_as_its_absence() {
     assert_ne!(fulltext_bare.content_hash(), spec(&doc("", &format!("{fulltext}tokenizer = \"cjk\"\n"))).content_hash());
 }
 
-/// A destination table is named `<pipeline id>_<table name>`, each non-alphanumeric character folded to `_` and
-/// each ASCII uppercase letter lowered.
-// spec: run.declare.table-name@5df3e9a0
+/// The engine names destination tables `<pipeline id>_<table name>`, replacing each non-alphanumeric character with
+/// `_` and lowercasing each ASCII uppercase letter.
+// spec: run.declare.table-name@d217bd24
 #[test]
 fn a_destination_table_folds_the_pipeline_and_table_names() {
     assert_eq!(table_name("meta-ads", "Insights"), "meta_ads_insights");

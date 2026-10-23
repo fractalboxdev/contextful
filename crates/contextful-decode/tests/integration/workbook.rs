@@ -55,9 +55,9 @@ fn refusal(bytes: &[u8]) -> String {
     rows(bytes, None, 0, "book.xlsx").unwrap_err().message
 }
 
-/// A workbook cell lands as a string and a date cell as its serial number. No formula is
-/// evaluated; a formula cell lands its cached value.
-// spec: connector.source.workbook-cell-typing@a2c68944
+/// The decoder stores a workbook cell as a string and a date cell as its serial number. The decoder stores cached
+/// formula values without evaluating formulas.
+// spec: connector.source.workbook-cell-typing@f257a9e8
 #[test]
 fn cells_land_as_strings_a_date_as_its_serial_and_a_formula_as_its_cached_value() {
     let sheet = r#"
@@ -140,9 +140,9 @@ fn every_form_of_external_reference_is_refused() {
     }
 }
 
-/// An office container is read by exact part name. No other part is opened and no
-/// external entity is resolved.
-// spec: connector.source.office-part-selection@0c92c165
+/// The decoder reads an office container by exact part name. The decoder opens no other part and resolves no external
+/// entity.
+// spec: connector.source.office-part-selection@e828c879
 #[test]
 fn only_the_named_parts_open_and_an_entity_stays_literal() {
     // A part past the whole inflate budget refuses only if it is opened.

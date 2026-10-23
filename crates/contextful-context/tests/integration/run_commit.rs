@@ -12,8 +12,9 @@ fn batch(rows: serde_json::Value) -> Batch {
     Batch { rows: rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect(), types: Default::default() }
 }
 
-/// A landing table is created on first sight of its schema, {{store.reconcile.first-sight}}; each batch is written durably in its own call, optionally carrying its ordinal as the join key onto the run's request ledger.
-// spec: run.land.batch-write@7a060194
+/// The store creates a landing table on first schema observation, {{store.reconcile.first-sight}}. The store writes
+/// each batch durably in a separate call. A batch may carry its ordinal for joining the run's request ledger.
+// spec: run.land.batch-write@d8289f1a
 #[cfg(feature = "read")]
 #[test]
 fn a_run_lands_each_batch_as_a_part_and_carries_its_position() {
@@ -77,9 +78,9 @@ fn readable(f: &Fixture) -> Vec<String> {
     f.store.committed_runs("filings").unwrap().into_iter().map(|m| m.run_id).collect()
 }
 
-/// A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises
-/// `LeaseFenced`, and the run or snapshot it carried stays unreadable.
-// spec: store.lease.stale-fence@5ca608ca
+/// If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher fence, the
+/// operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.
+// spec: store.lease.stale-fence@ec8153dd
 #[test]
 fn a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable() {
     let f = Fixture::new();
@@ -100,9 +101,10 @@ fn a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable() {
     assert_eq!(readable(&f), ["run-new"]);
 }
 
-/// Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`, and an
-/// acquisition creates one carrying its fence; a manifest marked `logged` is readable once that log records it.
-// spec: store.lease.commit-log@6a7d76a3
+/// Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`. Acquisition
+/// creates an entry carrying its fence. A manifest marked `logged` becomes readable when that log records the
+/// manifest.
+// spec: store.lease.commit-log@9805a808
 #[test]
 fn a_commit_created_before_the_next_acquisition_stands() {
     let f = Fixture::new();

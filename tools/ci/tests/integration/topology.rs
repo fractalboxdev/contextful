@@ -67,8 +67,9 @@ fn passes(r: &Repo) -> String {
     stdout(&o)
 }
 
-/// `contextful-core` declaring an async runtime, a component host, an HTTP client or a columnar-format implementation raises `DomainCrateImpurity`, naming the dependency and the feature that pulled it.
-// spec: topology.package.domain-impurity@d1a1edf3
+/// An async runtime, component host, HTTP client or columnar-format implementation in `contextful-core` raises
+/// `DomainCrateImpurity`. The error names the dependency and enabling feature.
+// spec: topology.package.domain-impurity@f447f89d
 #[test]
 fn a_domain_crate_reaching_an_async_runtime_is_refused() {
     let r = Repo::init();
@@ -113,8 +114,10 @@ fn a_domain_crate_depending_on_an_adapter_is_refused() {
     assert!(!err.contains("serde_like"), "a non-workspace dependency is no inversion: {err}");
 }
 
-/// `contextful-context` resolved without its `read` feature, on any target, and reaching `duckdb`, `libduckdb-sys`, `libsqlite3-sys`, an async runtime or an HTTP or TLS stack through a normal dependency raises `StoreWriteLinksEngine`, naming the package and path.
-// spec: topology.package.store-write-engine-free@e0b06723
+/// Without `read`, `contextful-context` excludes `duckdb`, `libduckdb-sys`, `libsqlite3-sys`, async runtimes, HTTP and
+/// TLS from normal dependencies on every target. A dependency reaching these raises `StoreWriteLinksEngine`, naming
+/// the package and path.
+// spec: topology.package.store-write-engine-free@f1affeb1
 #[test]
 fn a_store_adapter_linking_the_sql_engine_without_read_is_refused() {
     let r = Repo::init();
@@ -169,8 +172,9 @@ fn a_store_adapter_linking_the_sql_engine_without_read_is_refused() {
     assert!(err.contains("`contextful-context` without `read` links `libsqlite3-sys` through contextful-context -> catalogkit -> libsqlite3-sys"), "{err}");
 }
 
-/// `contextful-outbound` resolved without its `transport-ureq` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl` through a normal dependency raises `TransportStackLinked`, naming the path that pulled it.
-// spec: topology.package.transport-optional@80817ba0
+/// Without `transport-ureq`, `contextful-outbound` excludes `ureq`, `hyper`, `reqwest`, `rustls` and `curl` from
+/// normal dependencies. A dependency reaching these raises `TransportStackLinked`, naming the dependency path.
+// spec: topology.package.transport-optional@aac73982
 #[test]
 fn an_outbound_crate_linking_an_http_stack_without_its_transport_feature_is_refused() {
     let r = Repo::init();
@@ -199,9 +203,9 @@ fn an_outbound_crate_linking_an_http_stack_without_its_transport_feature_is_refu
     assert!(err.contains("through contextful-outbound -> httpkit -> rustls"), "{err}");
 }
 
-/// `contextful-sync` resolved without its `s3-sync` feature and reaching `ureq`, `hyper`, `reqwest`, `rustls` or `curl`
-/// through a normal dependency raises `SyncStackLinked`, naming the path that pulled it.
-// spec: topology.package.s3-sync-optional@58f37dde
+/// Without `s3-sync`, `contextful-sync` excludes `ureq`, `hyper`, `reqwest`, `rustls` and `curl` from normal
+/// dependencies. A dependency reaching these raises `SyncStackLinked`, naming the dependency path.
+// spec: topology.package.s3-sync-optional@1bada3c4
 #[test]
 fn a_sync_crate_linking_an_http_stack_without_its_s3_feature_is_refused() {
     let r = Repo::init();
@@ -260,8 +264,9 @@ fn a_decode_package_linking_the_network_stack_is_refused() {
     assert!(err.contains("`contextful-decode` links `tokio` through contextful-decode -> zipkit -> tokio"), "{err}");
 }
 
-/// The dependency audit raises `VendorSdkLinked`, naming the crate and the dependency, for a crate declaring a model-vendor SDK or a second outbound path to a model.
-// spec: topology.compose.vendor-sdk@ba72d1fc
+/// A model-vendor SDK or second outbound model path raises `VendorSdkLinked` in the dependency audit. The error names
+/// the crate and dependency.
+// spec: topology.compose.vendor-sdk@6d97e7bb
 #[test]
 fn a_crate_declaring_a_model_vendor_sdk_is_refused() {
     let r = Repo::init();
@@ -292,15 +297,16 @@ fn a_crate_linking_a_javascript_runtime_is_refused() {
     assert!(!err.contains("`demo`"), "{err}");
 }
 
-/// A run-path crate reaches a read-path crate only through a crate carrying one of the three crossings; {{assurance.gate.crate-graph}} checks every edge.
-// spec: topology.compose.undeclared-crossing@7d589387
+/// An execution crate depends on storage or query crates only through crates implementing the three shared contracts.
+/// {{assurance.gate.crate-graph}} checks each dependency.
+// spec: topology.compose.undeclared-crossing@1f591d11
 #[test]
 fn a_run_path_crate_reaching_a_read_path_crate_is_refused() {
     let r = Repo::init();
     package(&r, "contextful-core", "");
     package(&r, "contextful-context", "contextful-core = { path = \"../contextful-core\" }\n");
     package(&r, "contextful-engine", "contextful-core = { path = \"../contextful-core\" }\n");
-    // Both halves reaching the domain crate is no crossing.
+    // Execution and storage both depend on the shared domain crate.
     passes(&r);
 
     package(&r, "contextful-helpers", "contextful-context = { path = \"../contextful-context\" }\n");
@@ -656,8 +662,9 @@ fn this_repository_holds_to_the_dependency_rules() {
     assert!(stdout(&o).contains("`contextful-core` is pure and depends on no adapter"), "{}", stdout(&o));
 }
 
-/// One Cargo workspace compiles both halves. Neither half ships as its own binary, package scope or release; "read path" and "run path" name a boundary, not a product.
-// spec: topology.compose.workspace@4940e8e2
+/// One Cargo workspace compiles execution, storage and query code. These components share one binary, package scope
+/// and release.
+// spec: topology.compose.workspace@65b98307
 #[test]
 fn one_workspace_compiles_every_package_and_ships_one_binary() {
     let root = repo_root().canonicalize().unwrap();
@@ -717,8 +724,9 @@ fn crate_map(r: &Repo, count: &str, entries: &[&str]) {
     );
 }
 
-/// A `crates/` package absent from the crate tree under `## Shapes`, or a {{topology.package.crate-map}} count differing from that tree's entries, raises `CrateMapDrift`, naming the package or both counts.
-// spec: topology.package.crate-map-drift@bc8872b2
+/// An unmapped `crates/` package or {{topology.package.crate-map}} count differing from the `## Shapes` tree raises
+/// `CrateMapDrift`. The error names the package or both counts.
+// spec: topology.package.crate-map-drift@dbdc78e8
 #[test]
 fn a_crate_missing_from_the_crate_map_is_refused() {
     let r = Repo::init();
@@ -750,7 +758,7 @@ fn this_repository_crate_map_names_every_crate() {
 }
 
 /// The crate-graph stage runs the dependency rules and refuses a run-path crate reaching a
-/// read-path crate outside the crossings.
+/// read-path crate outside the shared contracts.
 // spec: assurance.gate.crate-graph@98b70ec8
 #[test]
 fn the_crate_graph_stage_refuses_an_undeclared_crossing() {
@@ -837,8 +845,10 @@ fn profile_stubs(r: &Repo) -> &'static str {
      automerge = { path = \"../../stubs/automerge\", optional = true }\n"
 }
 
-/// A profile resolving a package outside its role raises `ProfileRoleLeak`, naming the profile and the path: a component host, the run path or the evaluation runner in `contextful-edge` or `contextful-control`; the SQL engine in `contextful-control`; build tooling anywhere.
-// spec: topology.package.profile-leak@f1ad3643
+/// A dependency outside a profile's role raises `ProfileRoleLeak`, naming the profile and dependency path. Disallowed
+/// dependencies include component hosts, execution or evaluation in edge/control; SQL in control; build tooling in any
+/// profile.
+// spec: topology.package.profile-leak@a777c298
 #[test]
 fn a_profile_linking_a_dependency_outside_its_role_is_refused() {
     let r = Repo::init();
@@ -943,7 +953,7 @@ fn this_repository_binary_declares_the_three_profiles_each_linking_its_role() {
 /// document, verifies the operator through `contextful-policy` and claims canonical TOML,
 /// written by `toml_edit`, through `contextful-snapshot`; neither other profile links the
 /// control package or the CRDT library.
-// spec: topology.package.control-profile@8b92af49
+// spec: topology.package.control-profile@a52f229a
 #[test]
 fn this_repository_control_profile_links_the_control_plane_and_the_crdt_library() {
     let control = profile_graph("contextful-control");
@@ -1009,7 +1019,7 @@ fn the_snapshot_directory_has_one_home_both_callers_share() {
 /// engine with the sidecars beside it, the transform chain runs in the binary's pipeline
 /// module, compiled under the data plane the profile selects, and the tool server is
 /// `contextful-agent`.
-// spec: topology.package.full-profile@1366e642
+// spec: topology.package.full-profile@d760b7fe
 #[test]
 fn this_repository_full_profile_links_every_daemon_role() {
     let full = profile_graph("contextful-full");
@@ -1039,8 +1049,9 @@ fn this_repository_full_profile_links_every_daemon_role() {
     assert!(pipeline.contains("use contextful_core::pipeline::transform::Chain;"), "the pipeline module applies no transform chain");
 }
 
-/// `contextful-edge` is the read replica: it syncs parts and manifests from a bucket and serves a read-only SQL replica. It links no scheduler, run path, script runtime or component host.
-// spec: topology.package.edge-profile@06bc004e
+/// `contextful-edge` syncs parts and manifests from a bucket and serves read-only SQL queries. This profile links no
+/// scheduler, execution engine, script runtime or component host.
+// spec: topology.package.edge-profile@a29ccf69
 #[test]
 fn this_repository_edge_profile_serves_reads_and_links_no_component_host() {
     let edge = profile_graph("contextful-edge");
@@ -1071,9 +1082,9 @@ fn holds(path: &str) -> bool {
     repo_root().join("crates").join(path).exists()
 }
 
-/// The read path holds data at rest and its retrieval: the context store, the catalog, query and ranking, memory
-/// queries, bucket sync, and the capability check a record passes before it lands.
-// spec: topology.compose.read-path@f98df676
+/// Storage and query code manages the context store, catalog, queries, ranking, memory queries and bucket sync. A
+/// capability check admits each record before storage.
+// spec: topology.compose.read-path@035201e4
 #[test]
 fn the_read_replica_links_the_store_catalog_query_ranking_and_sync() {
     let edge = profile_graph("contextful-edge");
@@ -1095,9 +1106,9 @@ fn the_read_replica_links_the_store_catalog_query_ranking_and_sync() {
     assert!(verify.contains("pub fn require_write"), "no capability check a record passes before it lands");
 }
 
-/// The run path holds execution: the journal, the scheduler, cursor commit, awakeables, and every connector invoked
-/// as a journaled step. It owns no store and no ranking.
-// spec: topology.compose.run-path@5bcd0337
+/// Execution code manages the journal, scheduler, cursor commits, awakeables and journaled connector steps. Execution
+/// code owns no store or ranking.
+// spec: topology.compose.run-path@de18365a
 #[test]
 fn the_execution_core_holds_the_journal_scheduler_and_awakeables_and_no_store() {
     for (part, path) in [
@@ -1117,9 +1128,9 @@ fn the_execution_core_holds_the_journal_scheduler_and_awakeables_and_no_store() 
     assert!(runner.contains("step_keyed"), "a connector pull is no journaled step");
 }
 
-/// The enforcement stack spans both halves: capability allowlists and the journal on the run path; the statement
-/// guard, visibility semi-join, row and column restriction, masking and the audit chain on the read path.
-// spec: topology.compose.enforcement-span@9f5f59fc
+/// Execution enforces capability allowlists and records journal entries. Storage and queries enforce statement guards,
+/// visibility semi-joins, row and column restrictions, masking and the audit chain.
+// spec: topology.compose.enforcement-span@20e7f521
 #[test]
 fn the_enforcement_stack_has_a_run_path_half_and_a_read_path_half() {
     let connectors = reaches("contextful-connectors");
@@ -1139,9 +1150,9 @@ fn the_enforcement_stack_has_a_run_path_half_and_a_read_path_half() {
     }
 }
 
-/// Enforcement interprets no content. Retrieval, memory synthesis, the operator console and inference placement
-/// interpret content and reach enforcement through the three crossings alone.
-// spec: topology.compose.semantic-layer@54d9907a
+/// Access controls do not interpret content. Retrieval, memory synthesis, the operator console and inference placement
+/// interpret content and access enforcement through the three shared contracts alone.
+// spec: topology.compose.semantic-layer@71f312a9
 #[test]
 fn the_enforcement_package_reaches_no_retrieval_memory_or_inference_package() {
     let policy = reaches("contextful-policy");
@@ -1151,9 +1162,9 @@ fn the_enforcement_package_reaches_no_retrieval_memory_or_inference_package() {
     }
 }
 
-/// Laptop through cluster runs from one source tree. A single-node or edge deployment runs no external queue, cache
-/// or coordination process; a multi-node deployment adds one shared database.
-// spec: topology.compose.one-tree@dbc1fd99
+/// Local and clustered deployments use one source tree. Single-node and edge deployments use no external queue, cache
+/// or coordination process. Multi-node deployments add one shared database.
+// spec: topology.compose.one-tree@9ef4a59a
 /// Coordination rests on one property: a linearizable conditional write. No component depends on a stronger one, and
 /// the tree ships no consensus implementation or external coordination service.
 // spec: topology.coordinate.primitive@c29954df
@@ -1184,7 +1195,7 @@ fn no_profile_links_a_queue_cache_consensus_or_coordination_client() {
 /// The port names the three message kinds; the local spool implements it in the engine, which links no store
 /// package; every shape declaring a `queue` role uses the `queue` primitive and names its object-arrival feed; the
 /// local target declares none; and the binary wires the spool alone.
-// spec: topology.compose.queue-extension@614ae27d
+// spec: topology.compose.queue-extension@d8ec9f26
 #[test]
 fn a_queue_role_reaches_the_queue_port_and_a_profile_declaring_none_uses_the_local_spool() {
     let read = |path: &str| std::fs::read_to_string(repo_root().join(path)).unwrap_or_default();
@@ -1236,9 +1247,9 @@ fn a_queue_role_reaches_the_queue_port_and_a_profile_declaring_none_uses_the_loc
     assert!(read("crates/contextful-cli/src/queue.rs").contains("LocalSpool::open"), "the binary wires no local spool");
 }
 
-/// Every catalog backend is reached through the `Catalog` port, and code above the port names no backend. Swapping a
-/// backend is a wiring change in `contextful-cli`.
-// spec: topology.coordinate.catalog-port@4b1eafe6
+/// Engine code accesses catalog backends through the `Catalog` trait without naming a backend. `contextful-cli`
+/// selects the backend through dependency injection.
+// spec: topology.coordinate.catalog-port@27e9ef05
 #[test]
 fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() {
     let root = repo_root().join("crates");
@@ -1273,14 +1284,13 @@ fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() 
     assert!(port.contains("pub trait Catalog"), "no `Catalog` port");
 }
 
-/// Single-node self-hosting uses a local catalog file owned by one process; a self-hosted cluster uses Postgres via
-/// `pg-catalog`, linked into the full profile; a managed edge deployment uses per-object SQLite; a managed cloud
-/// deployment uses D1 and R2 through a private Worker binding.
+/// Single-node self-hosting uses a local catalog file. Clusters use Postgres through `pg-catalog`.
+/// Cloudflare execution uses D1 through `d1-catalog`.
 ///
 /// The machine, PostgreSQL and D1 catalogs each implement the port; the full profile links the remote
 /// adapter and its client while the edge and control profiles and a bare data-plane build link neither; and each
 /// provider's target file assigns its single-writer catalog role to the backend of its deployment shape.
-// spec: topology.coordinate.backends@af49f83a
+// spec: topology.coordinate.backends@bcde3ed3
 #[test]
 fn each_deployment_shape_reaches_its_catalog_backend_and_the_full_profile_links_postgres() {
     for (backend, path) in [("MachineCatalog", "contextful-sqlite/src/machine.rs"), ("PgCatalog", "contextful-pg/src/lib.rs"), ("D1Catalog", "contextful-d1/src/catalog.rs")] {
@@ -1309,11 +1319,10 @@ fn each_deployment_shape_reaches_its_catalog_backend_and_the_full_profile_links_
             assert!(role.contains(backend), "`{provider}` {kind} shape's catalog is `{role}`, not {backend}");
         }
     }
-    let shapes=catalog("cloudflare");
-    assert_eq!(shapes.len(),2,"Cloudflare declares SQLite and D1 execution shapes");
-    assert!(shapes.iter().all(|(kind,_)| kind=="orchestrated"));
-    assert!(shapes.iter().any(|(_,role)| role.contains("Durable Object SQLite")));
-    assert!(shapes.iter().any(|(_,role)| role=="D1 through a private Worker outbound binding"));
+    let shapes = catalog("cloudflare");
+    assert_eq!(shapes.len(), 1, "Cloudflare declares one D1 execution deployment");
+    assert!(shapes.iter().all(|(kind, _)| kind == "orchestrated"));
+    assert!(shapes.iter().any(|(_, role)| role == "D1 through a private Worker outbound binding"));
 }
 
 /// The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.

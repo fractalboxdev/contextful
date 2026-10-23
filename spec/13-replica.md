@@ -6,20 +6,21 @@ owns:
 
 # Replicas
 
-A replica is a read-only store that refreshes whole snapshots from another store's bucket
-and advertises what it holds, so a read face serves near its readers without writing back.
+A replica is a read-only store that downloads whole snapshots from another store's bucket.
+Operators use this contract to refresh a replica and identify the snapshots available to a local query server.
+The replica reports its local contents and writes nothing back to the source store.
 
 ## replicate
 
-A consuming replica of the bucket: the refresh diff, what it holds whole, what it declines, and what it rebuilds.
+Replica refreshes, required snapshot files, local snapshot records and refused reads or writes.
 
 - `write-refused` — A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store.
   *A-store*
-- `partial-parquet` — A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished.
+- `partial-parquet` — If a replica lacks any of a snapshot's Parquet files, refresh raises `ReplicaPartialParquet` and leaves that snapshot unpublished.
   *A-store*
-- `descriptor` — A replica's pull writes `replica.json` beside `derived.sqlite`, naming per table each snapshot it holds with that snapshot's parts and sidecar paths present on disk; no push carries it.
+- `descriptor` — A replica's pull writes `replica.json` beside `derived.sqlite`. For each table, the file names every locally held snapshot whose parts and sidecar paths exist on disk. Push excludes this file.
   *A-store*
-- `missing-index` — A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.
+- `missing-index` — If a query requires a sidecar or partition absent from the replica, the query raises `ReplicaMissingIndex`, naming the refresh that supplies it.
   *A-store*
-- `sensitive-refused` — A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face.
+- `sensitive-refused` — A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`. The consumer reads that table through the query proxy.
   *A-store*

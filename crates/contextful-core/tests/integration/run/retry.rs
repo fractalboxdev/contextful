@@ -194,9 +194,9 @@ fn retry_after_supersedes_the_delay_up_to_300_s() {
     }
 }
 
-/// The retry decision is a pure function of the one-based attempt that just closed and the classified failure,
-/// jitter derived from an injected seed. The runner owns the sleep and the attempt counter.
-// spec: run.retry.decision-is-pure@bb5beafc
+/// The retry decision is a pure function of the completed one-based attempt and classified failure. Jitter derives
+/// from an injected seed. The runner owns the sleep and attempt counter.
+// spec: run.retry.decision-is-pure@3dfb5574
 #[test]
 fn the_decision_is_a_function_of_attempt_failure_and_seed() {
     let s = Schedule::default();

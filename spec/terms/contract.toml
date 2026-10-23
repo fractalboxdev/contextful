@@ -13,7 +13,7 @@ gloss = "The grammar the corpus obeys: addressing, anatomy, registration, refere
 title = "System topology"
 files = ["spec/01-topology.md"]
 titles = ["System topology"]
-gloss = "The parties, the read path and run path as halves of one workspace, the crossings between them, the build profiles, coordination and the published hostname."
+gloss = "Execution, storage and query components, their shared contracts, build profiles, deployment processes, coordination and published hostnames."
 
 [contract.store]
 title = "The store and its sync"

@@ -163,7 +163,7 @@ mod deadline {
         assert!(!dir.path().join(SECOND).exists());
     }
 
-    // spec: read.cache.miss-wait@558a1f3f
+    // spec: read.cache.miss-wait@15b66524
     #[test]
     fn one_deadline_bounds_manifest_gets_and_backoff() {
         for (manifest_delay, part_delay, unavailable) in [
@@ -245,7 +245,7 @@ fn ids(rows: Vec<serde_json::Map<String, serde_json::Value>>) -> Vec<i64> {
 
 /// A lazy pull downloads no Parquet part, and a read fetches each part it needs, verified,
 /// answering the rows the writer landed.
-// spec: store.pull.lazy-parts@e8405d48
+// spec: store.pull.lazy-parts@40e792d9
 #[test]
 fn a_lazy_pull_downloads_no_part_and_a_read_fetches_each_it_needs() {
     let dir = tempfile::tempdir().unwrap();
@@ -264,7 +264,7 @@ fn a_lazy_pull_downloads_no_part_and_a_read_fetches_each_it_needs() {
 
 /// Past `[sync] part_cache_bytes`, the least recently read fetched part that no read holds
 /// leaves the disk.
-// spec: store.pull.part-cache@03d3e3f0
+// spec: store.pull.part-cache@4b8b4629
 #[test]
 fn past_the_part_cache_bound_the_least_recently_read_part_leaves() {
     let dir = tempfile::tempdir().unwrap();
@@ -286,7 +286,7 @@ fn past_the_part_cache_bound_the_least_recently_read_part_leaves() {
 }
 
 /// A failed acquisition keeps every completed download subject to cache eviction.
-// spec: store.pull.part-accounting@815f083a
+// spec: store.pull.part-accounting@b7253123
 #[test]
 fn a_refused_lazy_fetch_keeps_successful_parts_accounted() {
     use contextful_core::store::object::PartSource;
@@ -448,7 +448,7 @@ fn two_lazy_reads_fetching_one_part_count_it_once() {
 }
 
 /// A part the bucket no longer holds refuses the read, naming the part.
-// spec: store.pull.part-collected@0de4a1ac
+// spec: store.pull.part-collected@5c8f9bfc
 #[test]
 fn a_part_the_bucket_no_longer_holds_refuses_the_read() {
     let dir = tempfile::tempdir().unwrap();
@@ -487,7 +487,7 @@ fn a_lazy_store_push_tombstones_no_part_it_never_fetched() {
 
 /// A fold on a lazy store fetches its input parts through the part cache, and inputs larger
 /// than the cache refuse the pass, which publishes nothing.
-// spec: store.fold.cached-inputs@0f705ed9
+// spec: store.fold.cached-inputs@210d040f
 #[test]
 fn a_lazy_fold_reads_its_inputs_through_the_cache_and_refuses_past_its_bound() {
     use contextful_context::fold::fold;

@@ -3,8 +3,9 @@
 use contextful_core::read::embed::{cosine, Embedder, HashingEmbedder, HASHING_DIMENSIONS};
 use contextful_core::read::rank::{fuse, min_max};
 
-/// The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call.
-// spec: read.embed.default-embedder@35a3acd6
+/// The default embedding implementation deterministically hashes token term frequencies into an L2-normalized vector.
+/// This implementation performs no I/O and requires no download, key or network call.
+// spec: read.embed.default-embedder@f6e3ac3e
 #[test]
 fn the_default_embedder_is_deterministic_and_normalized() {
     let e: &dyn Embedder = &HashingEmbedder::default();

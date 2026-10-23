@@ -189,9 +189,9 @@ fn an_expired_lease_lets_a_second_worker_claim_the_next_attempt_under_its_own_pa
     assert!(again.path() != a.path() && again.path() != b.path());
 }
 
-/// The catalog row, not directory presence, is the commit signal; files under a path with no done row are collected by
-/// a retention window.
-// spec: run.backfill.commit-signal@22de3998
+/// The catalog row signals commit; directory presence does not. Retention collects files under paths without a done
+/// row according to a retention window.
+// spec: run.backfill.commit-signal@7f2c019d
 #[test]
 fn only_a_done_row_commits_a_path_and_the_sweep_collects_paths_without_one() {
     let rig = Rig::new();

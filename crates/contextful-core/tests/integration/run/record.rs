@@ -67,9 +67,9 @@ fn an_owner_lease_lives_30_s_and_renews_every_10_s() {
     assert!(!renewed.expired(t0.plus_secs(35)));
 }
 
-/// Startup marks `partial_failure` only a non-terminal row whose owner lease has expired; a row held by a live
-/// process is left alone.
-// spec: run.record.orphan-reap@065824ad
+/// Startup marks only non-terminal rows with expired owner leases as `partial_failure`. Startup leaves rows held by
+/// live processes unchanged.
+// spec: run.record.orphan-reap@8f3a2ec9
 #[test]
 fn only_an_in_flight_row_with_a_lapsed_lease_is_reaped() {
     let t0 = at("2030-01-01T00:00:00Z");
@@ -217,9 +217,9 @@ fn an_empty_window_answers_an_empty_list() {
     assert_eq!(serde_json::to_value(&page.runs).unwrap(), serde_json::json!([]));
 }
 
-/// A recorded error is masked over credential-shaped spans and capped at 2 KiB with an ellipsis marker, on the
-/// one projection every surface serves.
-// spec: run.record.error-cap@11aa1e6f
+/// The shared run projection masks credential-shaped spans in recorded errors and caps each error at 2 KiB with an
+/// ellipsis marker. Every surface serves that projection.
+// spec: run.record.error-cap@de929f79
 #[test]
 fn a_recorded_error_is_masked_and_capped_at_2_kib() {
     assert_eq!(ERROR_CAP_BYTES, 2048);

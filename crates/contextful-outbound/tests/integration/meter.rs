@@ -171,7 +171,7 @@ fn a_denial_a_bare_429_and_a_zero_grant_all_hold_the_request_back() {
 }
 
 /// An answer the engine cannot read fails the request with `ConnectorLimiterUnreadable` and spends nothing.
-// spec: connector.meter.unreadable-answer@398c4b5f
+// spec: connector.meter.unreadable-answer@d16cd037
 #[test]
 fn an_unreadable_answer_fails_the_request_before_the_vendor() {
     let _env = proxy_env();
@@ -333,7 +333,7 @@ fn a_limiter_on_a_private_address_is_not_refused_as_one() {
 
 /// With the limiter unreachable, failing, or unbound, a request raises `ConnectorUnmetered` and never reaches the
 /// vendor.
-// spec: connector.meter.unmetered-request@df535b45
+// spec: connector.meter.unmetered-request@f336c73b
 #[test]
 fn no_granted_reservation_means_no_request() {
     let _env = proxy_env();
@@ -386,7 +386,7 @@ fn an_unresolved_limiter_token_is_named_as_such() {
 }
 
 /// A request the allowlist refuses fails with `SecretUnpermittedRequest` before any acquire.
-// spec: connector.meter.allowlist-precedence@a04fd503
+// spec: connector.meter.allowlist-precedence@0634050f
 #[test]
 fn a_refused_request_never_reaches_the_limiter() {
     let _env = proxy_env();
@@ -399,9 +399,9 @@ fn a_refused_request_never_reaches_the_limiter() {
     assert!(l.requests.lock().unwrap().is_empty(), "no acquire and no report");
 }
 
-/// Each limiter call is bounded at 5 s, and a reservation never sleeps: a denial returns at once as `RateLimited`,
-/// and the wait it names is the run's retry sleep.
-// spec: connector.meter.acquire-call@e94be5b0
+/// Each limiter call takes at most 5 s. A reservation does not sleep: denial returns `RateLimited` without waiting.
+/// The run's retry schedule performs the specified wait.
+// spec: connector.meter.acquire-call@5c0cb6f0
 #[test]
 fn a_limiter_call_is_bounded_and_a_denial_returns_without_waiting() {
     use contextful_outbound::limiter::LIMITER_TIMEOUT;

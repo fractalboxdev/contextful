@@ -82,10 +82,10 @@ fn prompt_hash_is_a_prefixed_sha256() {
     assert!(optional_value_problem("_prompt_hash", "sha256:abc").is_some());
 }
 
-/// The engine reserves three table namespaces: `_runs`, the durable run record, `_items`, the item record of
-/// {{run.items.outcome-record}}, and `_visibility`, under which {{disclosure.mirror.grants-table}} lands each
-/// source's mirrored access tables.
-// spec: store.reserve.table-namespaces@37b138a2
+/// The engine reserves three table namespaces. `_runs` holds the durable run record; `_items` holds item records under
+/// {{run.items.outcome-record}}. `_visibility` holds each source's mirrored access tables under
+/// {{disclosure.mirror.grants-table}}.
+// spec: store.reserve.table-namespaces@251a4e2c
 #[test]
 fn the_visibility_namespace_holds_each_sources_access_tables() {
     for bad in ["_visibility", "_visibility/wiki/grants", "_visibility/drive/resources", "_runs", "_items", "_items/archive"] {
@@ -99,8 +99,9 @@ fn the_visibility_namespace_holds_each_sources_access_tables() {
     }
 }
 
-/// A pipeline declaring a table inside a reserved namespace raises `StoreReservedTableName` when its manifest is assembled, naming the reservation.
-// spec: store.reserve.table-name@4603a9ec
+/// When assembling a manifest, the engine raises `StoreReservedTableName` for a pipeline table inside a reserved
+/// namespace, naming the reservation.
+// spec: store.reserve.table-name@a9046ad8
 #[test]
 fn a_table_inside_a_reserved_namespace_is_refused() {
     for bad in ["_runs", "_runs/archive", "_visibility/wiki/grants"] {
@@ -128,9 +129,9 @@ fn the_run_record_validates_as_a_table_while_its_name_refuses() {
     assert!(matches!(TableDecl::named("_visibility").validate(&schema(&["id"])), Err(StoreError::StoreReservedTableName(_))));
 }
 
-/// A table name ending in `__requests` is reserved to request-ledger relations and refuses as
-/// {{store.reserve.table-name}}.
-// spec: store.reserve.ledger-suffix@d94383f5
+/// The engine reserves table names ending in `__requests` for request-ledger relations. Other declarations using that
+/// suffix refuse under {{store.reserve.table-name}}.
+// spec: store.reserve.ledger-suffix@a3bb2d9a
 #[test]
 fn a_table_named_like_a_ledger_is_refused() {
     for bad in ["notes__requests", "research/notes__requests"] {

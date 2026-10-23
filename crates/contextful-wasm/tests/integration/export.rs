@@ -54,9 +54,9 @@ fn a_batch_is_arrow_ipc_and_a_position_is_bytes_beside_a_kind() {
     assert!(rows(b"not arrow").is_err_and(|f| f.tag == FailureTag::SchemaIncompatible));
 }
 
-/// The host reads an Arrow `Binary` or `FixedSizeBinary` column as bytes of that width and a `FixedSizeList` of
-/// `Float32` or `Float16` as that vector, each landing in its {{store.reconcile.binary-and-vector}} type, never as text.
-// spec: connector.export.arrow-types@eab47828
+/// The host reads Arrow `Binary` or `FixedSizeBinary` columns as bytes of that width and `FixedSizeList` of `Float32`
+/// or `Float16` as vectors. Each lands in its {{store.reconcile.binary-and-vector}} type without text conversion.
+// spec: connector.export.arrow-types@f7f92e3b
 #[test]
 fn arrow_bytes_and_float_vectors_cross_in_their_own_types() {
     use arrow_array::builder::{FixedSizeListBuilder, Float16Builder, Float32Builder};
@@ -112,9 +112,9 @@ fn arrow_bytes_and_float_vectors_cross_in_their_own_types() {
     assert_eq!(pull.types.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<Vec<_>>(), [("blob", "binary")]);
 }
 
-/// A source exports its cursor kind, a discovery call, and an open call taking a table and an optional position. The
-/// handle's `next` yields one batch or exhaustion; its `position` reports where it stands.
-// spec: connector.export.read-handle@310c9d46
+/// A source exports its cursor kind, discovery call and open call taking a table and optional position. The handle's
+/// `next` yields one batch or exhaustion; `position` reports the current position.
+// spec: connector.export.read-handle@afd4e573
 #[test]
 fn a_read_yields_batches_to_exhaustion_and_resumes_from_its_position() {
     let mut s = open();
@@ -155,9 +155,9 @@ fn a_read_yields_batches_to_exhaustion_and_resumes_from_its_position() {
     assert_eq!(position, Some(json!({ "kind": "monotonic", "bytes": "33" })));
 }
 
-/// Operator configuration and failure attribution are each an interface in an additional world, probed on the
-/// instance by name. A base-world guest instantiates untouched, and neither addition moves the world version.
-// spec: connector.export.optional-world@61309f57
+/// Operator configuration and failure attribution each use an additional world interface. The host probes instances by
+/// interface name. A base-world guest instantiates unchanged; neither interface changes the world version.
+// spec: connector.export.optional-world@716b180b
 #[test]
 fn optional_interfaces_are_probed_and_a_base_guest_instantiates_untouched() {
     let (h, probe, base) = host();

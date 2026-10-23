@@ -148,10 +148,10 @@ fn a_call_record_carries_the_endpoint_usage() {
     assert!(serde_json::to_value(&record).unwrap().get("usage").is_none());
 }
 
-/// A traced call records one client span, child of the caller's, carrying `gen_ai.operation.name`,
-/// `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`,
-/// `server.address` and, on failure, `error.type`, never message content; its request's `traceparent` names it.
-// spec: connector.infer.model-span@356fc9ca
+/// A traced call records one client span under the caller's span: `gen_ai.operation.name`, `gen_ai.request.model`,
+/// `gen_ai.response.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `server.address` and, on
+/// failure, `error.type`. The span excludes message content. The request's `traceparent` names this span.
+// spec: connector.infer.model-span@dadd8cf8
 #[test]
 fn a_traced_call_records_a_gen_ai_span_its_request_names() {
     let _env = proxy_env();

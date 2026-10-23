@@ -49,9 +49,9 @@ fn every_page_decodes_to_its_own_text_in_order() {
     assert_eq!(got, ["Quarterly plan", "", "Hiring targets"], "a blank page inside a textual document keeps its number");
 }
 
-/// An encrypted document, and one with no extractable text on any page, is unreadable input under
-/// {{run.land.unreadable-input}} and never lands as empty pages.
-// spec: connector.source.document-unreadable@3161aca7
+/// An encrypted document or a document with no extractable text on any page counts as unreadable input under
+/// {{run.land.unreadable-input}}. The source stores no empty pages for these documents.
+// spec: connector.source.document-unreadable@58a7bccb
 #[test]
 fn an_encrypted_or_textless_document_refuses_whole_naming_it() {
     let blank = pages(&build(&["", ""], ""), "Team/scan.pdf").unwrap_err();

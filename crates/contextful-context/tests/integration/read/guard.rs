@@ -43,8 +43,9 @@ fn only_one_read_only_select_is_admitted() {
     assert_eq!(r.query(&s, r#"SELECT count(*) AS n FROM "research/notes""#).unwrap().rows.len(), 1);
 }
 
-/// The guard walks the syntax tree the engine itself serializes for the statement; read-only-ness is a property of that tree, not a keyword blocklist.
-// spec: read.guard.engine-own-parse@bc83988b
+/// The guard checks the syntax tree serialized by the SQL engine. The tree determines whether the statement is read-
+/// only; no keyword blocklist determines admission.
+// spec: read.guard.engine-own-parse@ad055d1a
 #[test]
 fn read_only_ness_is_a_property_of_the_engines_tree() {
     let r = Reads::new();
@@ -72,8 +73,9 @@ fn base_relations_are_registered_views_or_declared_ctes() {
     assert!(message.contains("part-00000.parquet"), "{message}");
 }
 
-/// The walk covers the entire tree — select-list subqueries, union arms, pivot sources — and a common-table-expression name resolves only within the scope that declares it and the scopes beneath.
-// spec: read.guard.whole-tree-walk@d78811bc
+/// The guard checks the entire tree, including select-list subqueries, union arms and pivot sources. Common-table-
+/// expression names resolve only within their declaring scope and nested scopes.
+// spec: read.guard.whole-tree-walk@700119ad
 #[test]
 fn the_walk_covers_every_subtree() {
     let r = Reads::new();
@@ -139,8 +141,9 @@ fn the_session_engine_is_closed_to_files_and_settings() {
     refused_with(r.query(&s, "SET enable_external_access = true"), "StatementNotReadOnly");
 }
 
-/// A base relation naming nothing this connection registered is refused by {{authority.refuse.ungranted-table}}, echoing what the statement asked for and no relation of another caller.
-// spec: read.guard.unregistered-relation@87f86239
+/// The guard rejects an unregistered base relation under {{authority.refuse.ungranted-table}}. The error echoes the
+/// requested name and no relation belonging to another caller.
+// spec: read.guard.unregistered-relation@e22dcb8b
 #[test]
 fn an_unregistered_relation_echoes_the_statements_spelling() {
     let r = Reads::new();
@@ -182,8 +185,10 @@ fn vendor_field_names_render_as_identifiers() {
     assert_eq!(column(&row, "a\"b"), [json!("quoted")]);
 }
 
-/// Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, or whose identifier opens with a built-in tool prefix — `context.`, `corpus.` or `memory.` — raising `TemplateNamesForeignRelation`.
-// spec: read.guard.template-relation-shape@19814a81
+/// Manifest validation and server startup raise `TemplateNamesForeignRelation` for template SQL naming anything except
+/// store tables as plain identifiers. Template identifiers starting with `context.`, `corpus.` or `memory.` also raise
+/// that error.
+// spec: read.guard.template-relation-shape@77c69aa9
 #[test]
 fn a_template_naming_a_foreign_relation_is_refused_at_startup() {
     for tail in [
@@ -236,7 +241,7 @@ fn aggregate_shape_follows_the_engine_parse() {
 
 /// Caller queries bind typed named or numbered placeholders; positional `?` refuses, and
 /// opt-in internals echo the validated bindings.
-// spec: read.guard.query-binding@06a8da63
+// spec: read.guard.query-binding@9dc89d77
 // spec: read.respond.query-internals-parameters@161d7143
 #[test]
 fn query_parameters_bind_by_declared_type() {

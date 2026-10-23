@@ -34,9 +34,9 @@ fn key() -> EntryKey {
     EntryKey::new("x-1", "pull-0", b"null")
 }
 
-/// A journaled step's value is recorded exactly once and its effect runs at least once: a crash between effect
-/// and write re-enters the effect, and every later call under the key returns the recorded value.
-// spec: run.journal.step-output@7b591248
+/// The journal records a step's value exactly once. Its effect runs at least once: a crash between effect and write
+/// repeats the effect. Every later call under the key returns the recorded value.
+// spec: run.journal.step-output@78bc23e4
 #[test]
 fn a_crash_before_the_write_re_enters_and_the_record_then_stands() {
     let dir = tempfile::tempdir().unwrap();
@@ -64,9 +64,9 @@ fn a_crash_before_the_write_re_enters_and_the_record_then_stands() {
     assert_eq!(effects.load(Ordering::SeqCst), 2);
 }
 
-/// An entry is keyed by `(execution_id, step_label, input_hash)`. The first caller claims the key with a pending
-/// row before entering the effect; a racing caller waits for the recorded value instead of computing.
-// spec: run.journal.entry-key@c571b2ea
+/// The journal keys entries by `(execution_id, step_label, input_hash)`. The first caller claims the key with a
+/// pending row before running the effect. A concurrent caller waits for the recorded value without computing.
+// spec: run.journal.entry-key@62b1a12d
 #[test]
 fn a_racing_caller_waits_for_the_first_callers_value() {
     let dir = tempfile::tempdir().unwrap();
@@ -150,9 +150,9 @@ fn racers_on_one_key_run_the_effect_once_and_read_equal_bytes() {
     assert_eq!(most, 1, "the effect ran {most} times under one key");
 }
 
-/// A pending claim whose run owner lease has expired, {{run.record.owner-lease}}, is taken over by the next
-/// caller under that key.
-// spec: run.journal.claim-takeover@2cfa59aa
+/// If a pending claim's run owner lease expires, {{run.record.owner-lease}}, the next caller under that key takes over
+/// the claim.
+// spec: run.journal.claim-takeover@9f58eef0
 #[test]
 fn a_claim_whose_holder_lapsed_is_taken_over() {
     let dir = tempfile::tempdir().unwrap();
@@ -199,9 +199,9 @@ fn concurrent_blob_writers_converge_on_one_file() {
     assert_eq!(std::fs::read(j.blob_path(&sha)).unwrap(), value);
 }
 
-/// {{run.journal.inline-cutoff}} holds for every step kind, a pull, a recorded effect, an input step and an
-/// awakeable payload alike, and no step kind overrides it.
-// spec: run.journal.one-cutoff@3e3611f7
+/// Every step kind follows {{run.journal.inline-cutoff}}: pulls, recorded effects, input steps and awakeable payloads.
+/// No step kind overrides the cutoff.
+// spec: run.journal.one-cutoff@5282a42b
 #[test]
 fn every_step_kind_places_its_value_by_the_one_cutoff() {
     let dir = tempfile::tempdir().unwrap();
@@ -236,9 +236,9 @@ fn every_step_kind_places_its_value_by_the_one_cutoff() {
     }
 }
 
-/// A row whose blob reference resolves to no stored blob raises `BlobMissing` carrying the reference, never an empty
-/// value in place of the recorded one.
-// spec: run.journal.missing-blob@e0644c95
+/// If a row references a missing blob, the journal raises `BlobMissing` carrying the reference. The journal returns no
+/// empty replacement value.
+// spec: run.journal.missing-blob@d04a3cf8
 #[test]
 fn a_missing_blob_refuses_rather_than_reading_empty() {
     let dir = tempfile::tempdir().unwrap();

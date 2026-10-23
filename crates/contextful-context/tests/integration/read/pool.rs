@@ -51,8 +51,10 @@ fn counts(r: &Reads) -> (u64, u64, u64) {
     (session_hits, session_misses, engine_opens)
 }
 
-/// `Face` reuses a resolved session and its connections while the whole key holds: admitted authority, token id, revocation epoch, request zone, bounds, pin map, table set, and per granted table its schema digest, pointer, run set and ledger files.
-// spec: read.cache.session-pool@945a082b
+/// `Face` reuses sessions and connections while the key matches: admitted authority, token id, revocation epoch,
+/// request zone, bounds, pin map and table set. Each granted table contributes schema digest, pointer, run set and
+/// ledger files.
+// spec: read.cache.session-pool@6eb75ae1
 #[test]
 fn statements_under_one_key_share_one_resolved_session_and_one_engine() {
     let r = Reads::with_manifest(&format!("{MANIFEST}{KINDS}"));
@@ -84,8 +86,9 @@ fn statements_under_one_key_share_one_resolved_session_and_one_engine() {
     assert_eq!(counts(&r), (2, 4, 4));
 }
 
-/// A committed run, snapshot, schema edit, new table, request-ledger file or token under another id or epoch misses the pool, and the next statement reads the new state on a new connection.
-// spec: read.cache.change-misses@f498fb90
+/// Committed runs, snapshots, schema edits, new tables, request-ledger files and tokens with different ids or epochs
+/// cause pool misses. The next statement reads the changed state through a new connection.
+// spec: read.cache.change-misses@4841e186
 #[test]
 fn every_change_to_the_whole_key_misses_and_reads_the_new_state() {
     let r = Reads::new();

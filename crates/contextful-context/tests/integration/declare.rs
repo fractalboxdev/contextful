@@ -29,8 +29,10 @@ fn an_unkeyed_table_reads_as_the_union_of_its_runs() {
 }
 
 #[cfg(feature = "read")]
-/// A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
-// spec: store.declare.dedup-view@3304b346
+/// A keyed table reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC,
+/// _run_id DESC, _row_seq DESC) = 1`. The source unions the current snapshot, if present, with committed runs omitted
+/// by that snapshot.
+// spec: store.declare.dedup-view@c5b79dd2
 #[test]
 fn a_keyed_table_reads_one_row_per_key_before_and_after_a_fold() {
     let f = Fixture::new();
@@ -146,8 +148,9 @@ fn a_key_added_after_rows_land_applies_at_the_next_read() {
 }
 
 #[cfg(feature = "read")]
-/// A replacing run leaves the runs it displaced on disk until `retain_runs` passes, writes no erasure receipt and walks no lineage.
-// spec: store.declare.replace-retains@3ffbc5fd
+/// A replacing run keeps displaced runs on disk until `retain_runs` expires. The replacing run writes no erasure
+/// receipt and traverses no lineage.
+// spec: store.declare.replace-retains@06386279
 #[test]
 fn a_replacing_run_leaves_displaced_runs_until_retention() {
     let f = Fixture::new();

@@ -184,7 +184,7 @@ fn a_target_file_lists_its_primitives_and_each_shape_the_ones_it_uses() {
     drop_line(&s, CF, "uses ");
     let found = codes(&s.lint("targets"), "SpecTargetIncomplete");
     assert_eq!(found.len(), 1, "{found:?}");
-    assert!(found[0].contains("`cloudflare`") && found[0].contains("`worker-container`"), "a missing `uses` reads as an empty one: {found:?}");
+    assert!(found[0].contains("`cloudflare`") && found[0].contains("`worker-container-d1`"), "a missing `uses` reads as an empty one: {found:?}");
     assert!(s.cmd(&["state"]).status.success());
     assert!(s.read("spec/targets.md").contains("## Cloudflare"), "the Cloudflare section still renders");
 }
@@ -196,9 +196,9 @@ fn a_shape_claiming_containers_on_a_provider_without_them_is_refused() {
     assert!(codes(&s.lint("targets"), "TargetShapeUnsupported").is_empty());
     drop_item(&s, CF, "primitives", "containers");
     let found = codes(&s.lint("targets"), "TargetShapeUnsupported");
-    assert_eq!(found.len(), 2, "both Cloudflare shapes run on a container: {found:?}");
+    assert_eq!(found.len(), 1, "the Cloudflare deployment runs on a container: {found:?}");
     assert!(found.iter().all(|m| m.contains("cloudflare") && m.contains("`containers`")), "{found:?}");
-    assert!(found.iter().any(|m| m.contains("`worker-container`")) && found.iter().any(|m| m.contains("`worker-container-d1`")), "{found:?}");
+    assert!(found.iter().any(|m| m.contains("`worker-container-d1`")), "{found:?}");
 
     let s = Scratch::copy();
     drop_item(&s, "spec/targets/aws.toml", "primitives", "functions");

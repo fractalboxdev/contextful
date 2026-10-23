@@ -121,7 +121,7 @@ fn rows(batches: &[Value]) -> Vec<Value> {
     batches.iter().flat_map(|b| b["rows"].as_array().cloned().unwrap_or_default()).collect()
 }
 
-// spec: connector.source.report-id-commit@fae17566
+// spec: connector.source.report-id-commit@73c56a64
 #[test]
 fn the_run_id_commits_on_creation_and_an_expired_run_recreates_for_its_window() {
     let (vendor, log) = Vendor::new(vec![("a1", Script { pages: pages(1), polls: VecDeque::from([RunState::Expired]), ..Script::default() })]);
@@ -220,7 +220,7 @@ fn a_next_link_names_the_cursor() {
     assert_eq!(log.lock().unwrap().pages[1].1.as_deref(), Some("c1"));
 }
 
-// spec: connector.source.report-watermark@ca5bc1ef
+// spec: connector.source.report-watermark@2a91444e
 #[test]
 fn watermarks_are_held_per_partition_in_one_versioned_position() {
     let config = ReportConfig::parse(&json!({
@@ -343,7 +343,7 @@ fn ordering_by_the_ingest_stamp_is_refused() {
     assert!(declare("date_start").is_ok());
 }
 
-// spec: connector.source.field-drift@4205f82c
+// spec: connector.source.field-drift@52d921b1
 #[test]
 fn report_rows_stay_untyped_json_and_a_throttle_code_in_the_body_is_recognized() {
     let row = json!({"ad_id": "ad-1", "date_start": "2030-01-05", "actions": [{"type": "click", "value": "3"}], "new_field": {"nested": true}});

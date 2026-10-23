@@ -566,7 +566,7 @@ fn a_content_table_left_without_rows_stops_answering_the_earlier_key() {
 
 /// An exec step's env template hydrates through the source's resolver at spawn into the
 /// child's environment, and the run's attribution names it.
-// spec: connector.attach.exec-environment@65aa88d9
+// spec: connector.attach.exec-environment@0584b560
 #[test]
 fn an_exec_steps_credential_hydrates_at_spawn_and_enters_the_attribution() {
     let sentinel = "sentinel-speech-key-41";
@@ -635,7 +635,7 @@ fn land_at(p: &std::path::Path, table: &str, run: &str, now: &str, rows: &str) {
 }
 
 /// A joined table declaring `primary_key` reads through its keyed view, so a unit joins one survivor per key.
-// spec: run.select.join-keyed@cfadfdfa
+// spec: run.select.join-keyed@7e6743df
 #[test]
 fn a_host_unit_joins_the_latest_version_of_a_keyed_row() {
     let host = host_binary();

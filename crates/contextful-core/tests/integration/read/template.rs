@@ -44,8 +44,9 @@ fn a_template_declares_an_id_a_statement_typed_parameters_and_a_ceiling() {
     assert!(parse_templates("[[query_templates]]\nid = \"x\"\nsql = \"SELECT 1\"\nparameters = [\"n\"]\n").is_err());
 }
 
-/// A template parameter named `as_of`, `valid_as_of`, `zone` or `pin` refuses the manifest; those names carry the read's bounds, zone and pin map on every template tool.
-// spec: read.guard.template-reserved-parameter@b782a9ff
+/// Manifest validation rejects template parameters named `as_of`, `valid_as_of`, `zone` or `pin`. Every template tool
+/// reserves those names for read bounds, zone and build pins.
+// spec: read.guard.template-reserved-parameter@666dc82b
 #[test]
 fn a_parameter_named_for_a_read_argument_refuses_the_manifest() {
     for reserved in ["as_of:timestamp", "valid_as_of:timestamp", "zone:string", "pin:string"] {
@@ -56,8 +57,9 @@ fn a_parameter_named_for_a_read_argument_refuses_the_manifest() {
     assert!(parse_templates("[[query_templates]]\nid = \"x\"\nsql = \"SELECT 1 WHERE ? IS NOT NULL\"\nparameters = [\"as_of_day:timestamp\"]\n").is_ok());
 }
 
-/// Every manifest template projects into a tool named by its identifier, whose declared positional parameters form a typed schema with every field required.
-// spec: read.register.template-projection@2fd44db4
+/// Each manifest template registers a tool named by the template's identifier. The tool's typed schema requires every
+/// declared positional parameter.
+// spec: read.register.template-projection@125ee6ee
 #[test]
 fn a_template_projects_into_a_tool_with_every_field_required() {
     let t = parse_templates(MANIFEST).unwrap();

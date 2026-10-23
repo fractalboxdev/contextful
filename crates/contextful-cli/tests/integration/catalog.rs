@@ -8,7 +8,7 @@ use std::process::Command;
 ///
 /// The named server is unreachable, so the command fails naming it, never the password, and no local catalog file
 /// opens beside it; `catalog_absent` holds the build without the feature.
-// spec: topology.coordinate.catalog-url@e265e6d7
+// spec: topology.coordinate.catalog-url@40f0286c
 #[test]
 fn a_named_postgres_catalog_replaces_the_local_catalog_file() {
     let dir = tempfile::tempdir().unwrap();

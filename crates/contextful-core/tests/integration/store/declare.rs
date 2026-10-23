@@ -51,11 +51,11 @@ on_erase = "survive"
     }
 }
 
-/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`,
-/// `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `bloom_filter`, `retain_runs`,
-/// `retain_rows`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries`,
-/// `content_hash_column`, `result_cache` and `private`; an unset key is absent from the canonical serialization.
-// spec: store.declare.table-block@6e3269c9
+/// Table keys: `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`,
+/// `valid_time`, `cluster_by`, `partition_by`, `bloom_filter`, `retain_runs`, `retain_rows`, `columns`, `indexes`,
+/// `agent_description`, `agent_hint`, `example_queries`, `content_hash_column`, `result_cache` and `private`.
+/// Canonical serialization omits unset keys.
+// spec: store.declare.table-block@e656abcf
 #[test]
 fn a_table_block_parses_its_keys_and_omits_unset_ones() {
     let t = &TableDecl::parse_pipeline(SPEC_EXAMPLE).unwrap()[0];
@@ -217,7 +217,7 @@ fn replace_covers_the_newest_complete_run_and_what_follows() {
 }
 
 /// A marked no-part replacing run clears current files while an earlier bound still reaches the displaced run.
-// spec: store.declare.empty-replacement@c29e64a1
+// spec: store.declare.empty-replacement@8ba10070
 #[test]
 fn a_marked_empty_run_is_a_replacement_frontier() {
     use contextful_core::store::bound_time::Bound;
@@ -238,9 +238,9 @@ fn a_marked_empty_run_is_a_replacement_frontier() {
     assert_eq!(append.resolve(None).unwrap().files().len(), 1, "append ignores a replacement marker");
 }
 
-/// An enabled compaction job covering a table is a `[[job]]` block of kind `fold` carrying a `schedule`, whose
-/// `enabled` is absent or true and whose `target` is absent or names the table's destination name.
-// spec: store.declare.fold-job@0d2cc21d
+/// A compaction job covers a table when its `[[job]]` block has kind `fold` and a `schedule`. The job's `enabled` is
+/// absent or true; its `target` is absent or names the table's destination name.
+// spec: store.declare.fold-job@1a704e7f
 #[test]
 fn a_scheduled_enabled_fold_job_covers_its_target_or_every_table() {
     use contextful_core::store::declare::FoldCoverage;

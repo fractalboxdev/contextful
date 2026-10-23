@@ -98,8 +98,9 @@ fn engine_code_types_flattens_extracts_and_identifies_raw_json_rows() {
     assert_eq!((&child["name"], &child["parent_id"], &child["list_index"]), (&serde_json::json!("start"), &root["row_id"], &serde_json::json!(0)));
 }
 
-/// The canonical form is nested Arrow structs and lists; relational shredding is a late projection at the sink, so a source landing in two sinks normalizes once.
-// spec: run.normalize.normalized-form@2bcf993d
+/// The canonical form uses nested Arrow structs and lists. The sink projects this form into relational tables late, so
+/// a source landing in two sinks normalizes once.
+// spec: run.normalize.normalized-form@92bf2cd7
 #[test]
 fn one_normalized_group_holds_nested_rows_and_shreds_only_when_materialized() {
     let rows: Vec<Row> = serde_json::from_value(serde_json::json!([
