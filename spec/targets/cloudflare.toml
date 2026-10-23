@@ -7,6 +7,54 @@ title    = "Cloudflare"
 serves   = "Edge-first deployments on native object storage with near-zero idle cost."
 primitives = ["functions", "containers", "workflows", "scheduler", "durable-objects", "d1", "object-store", "queue", "secret-store"]
 
+runtime = '''
+The default `worker-container-d1` target places TypeScript routing and reconciliation in Workers' V8 isolates, with Cron Triggers and Workflows as the scheduling and orchestration services. A Durable Object controls a Linux Container's lifecycle. Inside that Container, the native `contextful-full` executable runs the Rust engine, embedded DuckDB and embedded Wasmtime; Workers and Workflows reach it across a request boundary.
+
+The Rust processes use `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1`. Requests to the private `contextful.d1` outbound host reach a Worker binding handler, which accesses D1 for execution metadata and an R2 bucket for execution blobs. Corpus parts and manifests occupy a separate R2 bucket through its S3-compatible API; Container files form a replaceable local working copy. The `worker-container` alternative assigns the catalog role to Durable Object SQLite instead of D1.
+
+Cloudflare Queues carries receive batches and object-arrival notifications; the Rust engine remains the store writer. A separate Durable Object owns the hibernating WebSocket projection. Workers Secrets supply credentials to the configured bindings. The optional Node.js console server requires its own Node-capable host; its React assets alone form a static browser preview.
+
+The execution binding example under `apps/cloudflare-execution/` exposes authenticated `POST /conformance`: its Container runs `contextful-conformance`, which drives the packaged Linux `contextful` binary. That example's endpoint is a conformance harness, distinct from the target's query and orchestration routes. Clause implementation evidence lives in `status.md`.
+'''
+
+diagram = '''
+flowchart LR
+  CALLER(["MCP or HTTP client"]):::muted
+  subgraph ACCOUNT["Cloudflare target"]
+    subgraph WORKERS["Workers V8 isolates"]
+      ROUTER["routing Worker"]:::accent
+      RECON["reconciler Worker"]:::accent
+      BIND["execution binding handler"]:::accent
+      OWNER["Container Durable Object"]:::accent
+    end
+    CRON["Cron Trigger"]:::accent
+    FLOW["Workflows"]:::accent
+    subgraph LINUX["Linux Container running contextful-full"]
+      RUST["Rust engine"]:::accent
+      SQL["DuckDB library"]:::accent
+      WASM["Wasmtime component host"]:::accent
+      FILES[("ephemeral snapshot files")]:::store
+    end
+    DB[("D1 execution database")]:::store
+    BLOBS[("R2 execution blobs")]:::store
+    CORPUS[("R2 corpus bucket")]:::store
+  end
+  CALLER -- "HTTPS" --> ROUTER
+  ROUTER -- "store request" --> OWNER
+  CRON -- "scheduled event" --> RECON
+  RECON -- "due execution" --> FLOW
+  FLOW -- "dispatch step" --> OWNER
+  OWNER -- "start and forward" --> RUST
+  RUST -- "SQL" --> SQL
+  RUST -- "component invocation" --> WASM
+  RUST -- "hydrate snapshot" --> FILES
+  SQL -- "scan snapshot" --> FILES
+  RUST -- "private contextful.d1 HTTP" --> BIND
+  BIND -- "SQL batch" --> DB
+  BIND -- "content-addressed objects" --> BLOBS
+  RUST -- "S3 API sync" --> CORPUS
+'''
+
 [[shape]]
 name     = "worker-container"
 default  = false

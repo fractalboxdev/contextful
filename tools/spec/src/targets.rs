@@ -24,6 +24,12 @@ pub struct Target {
     pub title: String,
     #[serde(default)]
     pub serves: String,
+    /// Runtime placement and process names for the default shape.
+    #[serde(default)]
+    pub runtime: String,
+    /// The default shape's process boundaries and provider primitives.
+    #[serde(default)]
+    pub diagram: String,
     /// The primitives the provider offers; a shape uses no other.
     #[serde(default)]
     pub primitives: Vec<String>,
@@ -122,6 +128,9 @@ pub fn page(c: &Corpus) -> String {
     s.push_str("`corpus.targets` in [`00-corpus.md`](./00-corpus.md) states the rules every target file obeys; `topology.deploy` in [`01-topology.md`](./01-topology.md) the roles they fill.\n");
     for (_, t) in &targets {
         let _ = write!(s, "\n## {}\n\n{}\n\n", t.title, t.serves);
+        if !t.runtime.trim().is_empty() {
+            let _ = writeln!(s, "{}\n", t.runtime.trim());
+        }
         let _ = write!(s, "| Role |");
         for sh in &t.shape {
             let mark = if sh.default { " (default)" } else { "" };
@@ -155,6 +164,10 @@ pub fn page(c: &Corpus) -> String {
         }
         s.push('\n');
         if let Some(d) = t.shape.iter().find(|sh| sh.default) {
+            if !t.diagram.trim().is_empty() {
+                let _ = write!(s, "\nThe `{}` runtime and process boundaries:\n\n```mermaid\n{}\n```\n", d.name, t.diagram.trim());
+                continue;
+            }
             // one node per role; the primitive filling it is the role table's cell
             let _ = write!(s, "\nThe `{}` shape; the table above names the primitive filling each role:\n\n```mermaid\nflowchart LR\n", d.name);
             let node = |id: &str, open: &str, close: &str, role: &str| format!("      {id}{open}\"{role}\"{close}\n");

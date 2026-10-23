@@ -2,13 +2,35 @@
 import { dirname, resolve } from "node:path";
 import { visit, SKIP } from "unist-util-visit";
 import { readFileSync } from "node:fs";
-import { corpusIndex, routeFor } from "./corpus.mjs";
+import { corpusIndex, routeFor, SPEC_DIR } from "./corpus.mjs";
 
 const CLAUSE_ID = /^[a-z0-9-]+\.[a-z0-9-]+\.[a-z0-9.-]+$/;
 // `{{clause.id}}` references and bare record ids (P4, D07, A-store).
 const INLINE_REF = /\{\{([a-z0-9-]+\.[a-z0-9-]+\.[a-z0-9.-]+)\}\}|\b(P[1-9]|D\d{2}|A-[a-z]+)\b/g;
 
 const sourcePath = (file) => file.path ?? file.history?.[0];
+
+/** The topology deployment section includes the generated target tables and runtime diagrams. */
+export function remarkTopologyTargets() {
+  const processor = this;
+  return (tree, file) => {
+    if (sourcePath(file) !== resolve(SPEC_DIR, "01-topology.md")) return;
+    const targets = processor.parse(readFileSync(resolve(SPEC_DIR, "targets.md"), "utf8"));
+    // The generated file's provenance stays in its source; the site carries one page title.
+    const providers = targets.children.findIndex((node) => node.type === "heading" && node.depth === 2);
+    if (providers < 0) throw new Error("Deployment targets contain no provider sections");
+    const content = targets.children.slice(providers);
+    for (const node of content) {
+      if (node.type === "heading") node.depth += 1;
+    }
+    const at = tree.children.findIndex((node) => node.type === "heading" && node.depth === 2 && node.children[0]?.value === "publish-hostname");
+    if (at < 0) throw new Error("Topology contains no publish-hostname section");
+    tree.children.splice(at, 0,
+      { type: "heading", depth: 2, children: [{ type: "text", value: "Deployment targets" }] },
+      ...content,
+    );
+  };
+}
 
 /** Front-matter `contract` of the source file; guides and cards carry one too, so only `spec/NN-*.md` counts. */
 const contractOf = (file, from) => {
@@ -89,7 +111,7 @@ export function remarkCorpus() {
       const m = /^([^:#?]+\.md)(#.*)?$/.exec(node.url);
       if (!m || !from) return;
       const route = routeFor(resolve(dirname(from), m[1]));
-      if (route) node.url = route + (m[2] ?? "");
+      if (route) node.url = (m[2] ? route.split("#")[0] : route) + (m[2] ?? "");
     });
 
     const contract = contractOf(file, from);
