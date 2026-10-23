@@ -16,6 +16,8 @@ mod clock;
 #[cfg(feature = "data-plane")]
 mod component;
 #[cfg(feature = "data-plane")]
+mod connection;
+#[cfg(feature = "data-plane")]
 mod connector;
 #[cfg(feature = "data-plane")]
 mod context;

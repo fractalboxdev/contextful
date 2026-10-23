@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 344 | 70 | 25 | 5 | 302 | 0 | 302 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 3 | 18 | 417 | 95 | 23 | 14 | 305 | 0 | 305 |
+| `connector` | 3 | 19 | 420 | 95 | 23 | 14 | 307 | 0 | 307 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 323 | 58 | 29 | 16 | 281 | 0 | 281 |
 | `run` | 3 | 29 | 608 | 129 | 49 | 19 | 569 | 0 | 569 |
 | `store` | 5 | 20 | 337 | 70 | 22 | 13 | 326 | 0 | 326 |
-| `surface` | 2 | 22 | 195 | 69 | 24 | 1 | 161 | 0 | 161 |
+| `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
 | `topology` | 1 | 6 | 81 | 25 | 5 | 3 | 77 | 0 | 77 |
-| **total** | 25 | 176 | 2879 | 702 | 227 | 84 | 2543 | 0 | |
+| **total** | 25 | 177 | 2885 | 704 | 227 | 85 | 2553 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 307 | 296 | passing | closed |
-| 4 — Ingest | 25 | 650 | 538 | passing | closed |
+| 4 — Ingest | 25 | 641 | 536 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
 | 6 — Sync and replicas | 9 | 112 | 111 | passing | closed |
 | 7 — Memory | 6 | 100 | 85 | passing | closed |
@@ -44,9 +44,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
 | 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
-| 19 — Drive connections | 1 | 8 | 0 | absent | open |
+| 19 — Drive connections | 2 | 22 | 12 | open | open |
 | 20 — Drive permission custody | 2 | 11 | 0 | absent | open |
-| 21 — Sheet rows | 1 | 7 | 0 | absent | open |
+| 21 — Sheet rows | 1 | 8 | 0 | absent | open |
 | 22 — Drive change cursor | 1 | 6 | 0 | absent | open |
 | 23 — Workspace delegation | 1 | 4 | 0 | absent | open |
 
@@ -662,6 +662,10 @@ Unscheduled operations: 13.
 | `connector.declare-capability.scope-probe` | `crates/contextful-cli/tests/integration/component.rs::a_component_scope_probe_refuses_an_exceeded_grant_before_any_vendor_request` | performed |
 | `connector.declare-capability.scope-unverified` | `crates/contextful-outbound/tests/integration/probe.rs::a_grant_the_probe_cannot_read_refuses_and_the_session_does_not_open` | performed |
 | `connector.declare-capability.undeclared-access` | `crates/contextful-cli/tests/integration/component.rs::a_wall_clock_import_without_the_clock_grant_fails_to_load` | performed |
+| `connector.drive-picks.export-limit` | `crates/contextful-connectors/tests/integration/drive.rs::a_picked_sheet_over_drives_export_limit_is_skipped_and_never_withdrawn` | performed |
+| `connector.drive-picks.file-access` | `crates/contextful-connectors/tests/integration/drive.rs::a_picked_file_never_captured_or_outside_the_drive_is_rejected` | performed |
+| `connector.drive-picks.file-revoked` | `crates/contextful-connectors/tests/integration/drive.rs::a_revoked_picked_file_stays_withdrawn_across_later_fires` | performed |
+| `connector.drive-picks.file-withdrawn` | `crates/contextful-connectors/tests/integration/drive.rs::a_withdrawn_picked_file_readable_again_is_captured_as_new` | performed |
 | `connector.export.arrow-types` | `crates/contextful-wasm/tests/integration/export.rs::arrow_bytes_and_float_vectors_cross_in_their_own_types` | performed |
 | `connector.export.attribution-budget` | `crates/contextful-wasm/tests/integration/export.rs::attribution_keeps_512_values_of_at_most_512_bytes` | performed |
 | `connector.export.batch-encoding` | `crates/contextful-wasm/tests/integration/export.rs::a_batch_is_arrow_ipc_and_a_position_is_bytes_beside_a_kind` | performed |
@@ -827,9 +831,7 @@ Unscheduled operations: 13.
 | `connector.source.drive-capture-record` | `crates/contextful-connectors/tests/integration/drive.rs::metadata_only_records_digests_without_blobs_or_page_content` | performed |
 | `connector.source.drive-export` | `crates/contextful-connectors/tests/integration/drive.rs::docs_sheets_and_slides_export_as_pdf_and_other_files_download` | performed |
 | `connector.source.drive-export-limit` | `crates/contextful-connectors/tests/integration/drive.rs::an_export_over_drives_limit_is_skipped_by_name_and_the_read_succeeds` | performed |
-| `connector.source.drive-file-access` | `crates/contextful-connectors/tests/integration/drive.rs::a_picked_file_never_captured_or_outside_the_drive_is_rejected` | performed |
 | `connector.source.drive-file-cap` | `crates/contextful-connectors/tests/integration/drive.rs::a_file_over_the_cap_is_skipped_by_name_and_the_read_succeeds` | performed |
-| `connector.source.drive-file-revoked` | `crates/contextful-connectors/tests/integration/drive.rs::a_revoked_picked_file_stays_withdrawn_across_later_fires` | performed |
 | `connector.source.drive-fire` | `crates/contextful-cli/tests/integration/drive.rs::a_drive_fire_lands_files_and_pages_then_only_what_changed` | performed |
 | `connector.source.drive-incremental` | `crates/contextful-connectors/tests/integration/drive.rs::a_second_read_relands_the_changed_file_alone_and_tombstones_what_left` | performed |
 | `connector.source.drive-list-bound` | `crates/contextful-connectors/tests/integration/drive.rs::a_selected_root_page_token_at_the_listing_cap_refuses_by_name` | performed |
@@ -2403,6 +2405,14 @@ Unscheduled operations: 13.
 | `surface.browse.file-gallery` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a gallery preview uses context.file with the listing's snapshot bound` | performed |
 | `surface.browse.gallery-path-unlisted` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a gallery preview refuses paths absent from the governed listing` | performed |
 | `surface.browse.insights-panel` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::insights show governed table row counts` | performed |
+| `surface.connection.answer` | `crates/contextful-cli/tests/integration/serve.rs::each_connection_claim_advances_one_version_and_a_repeat_claims_none` | performed |
+| `surface.connection.authority` | `crates/contextful-cli/tests/integration/serve.rs::a_connection_outside_the_credentials_tenant_or_principal_is_denied` | performed |
+| `surface.connection.consent-boundary` | `spec/pins.toml` | performed |
+| `surface.connection.create` | `spec/pins.toml` | performed |
+| `surface.connection.idempotent-create` | `crates/contextful-cli/tests/integration/serve.rs::a_differing_declaration_under_one_connection_id_conflicts_and_keeps_the_standing_one` | performed |
+| `surface.connection.malformed` | `crates/contextful-cli/tests/integration/serve.rs::a_connection_body_outside_its_fields_or_carrying_an_oauth_code_is_malformed` | performed |
+| `surface.connection.routes` | `spec/pins.toml` | performed |
+| `surface.connection.unknown` | `crates/contextful-cli/tests/integration/serve.rs::a_pause_or_delete_naming_no_standing_connection_is_unknown_and_a_deleted_id_stays_bound` | performed |
 | `surface.delegate.binding` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_binding_reads_its_url_mode_and_timeout_and_names_its_body` | performed |
 | `surface.delegate.call-mode` | `crates/contextful-cli/tests/integration/delegate.rs::a_response_after_the_timeout_closes_the_attempt_transient_and_lands_nothing` | performed |
 | `surface.delegate.call-timeout` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_call_timeout_defaults_to_300_s` | performed |

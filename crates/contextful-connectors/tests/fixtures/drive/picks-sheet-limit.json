@@ -1,0 +1,25 @@
+{
+  "comment": "The picked `Budget` sheet moves to version 8, and Drive refuses its PDF export as over its export size limit.",
+  "exchanges": [
+    {
+      "method": "GET",
+      "path": "/drive/v3/files/sheet-budget",
+      "query": {"fields": "id,name,mimeType,modifiedTime,version,size,md5Checksum,driveId,trashed"},
+      "status": 200,
+      "body": {"id": "sheet-budget", "name": "Budget", "mimeType": "application/vnd.google-apps.spreadsheet", "modifiedTime": "2031-01-03T09:00:00.000Z", "version": "8"}
+    },
+    {
+      "method": "GET",
+      "path": "/drive/v3/files/sheet-budget/export",
+      "query": {"mimeType": "application/pdf"},
+      "status": 403,
+      "body": {
+        "error": {
+          "code": 403,
+          "message": "This file is too large to be exported.",
+          "errors": [{"domain": "global", "reason": "exportSizeLimitExceeded", "message": "This file is too large to be exported."}]
+        }
+      }
+    }
+  ]
+}

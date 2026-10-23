@@ -213,37 +213,206 @@ fn control_apply_uses_the_host_registered_task_set() {
     assert_eq!(state["applied"], json!(2));
 }
 
+/// A served face over an imported store, minting write credentials from its issuer seed.
+struct ConnectionFace {
+    dir: tempfile::TempDir,
+    _listener: Listener,
+    addr: String,
+}
+
+impl ConnectionFace {
+    fn start() -> ConnectionFace {
+        let (dir, public) = project();
+        let root = dir.path();
+        stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+        let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+            "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+        ConnectionFace { dir, _listener, addr }
+    }
+
+    /// A write credential for `tenant` acting on behalf of `principal`.
+    fn mint(&self, tenant: &str, principal: &str) -> String {
+        stdout(&run(self.dir.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+            "--on-behalf-of", principal, "--zone", "on-prem:hq",
+            "--action", "write", "--table", "research/notes", "--tenant", &format!("research/notes={tenant}"), "--ttl", "900"]))
+    }
+
+    fn call(&self, method: &str, path: &str, token: &str, body: &str) -> (u16, Value) {
+        control(&self.addr, method, path, Some(token), body)
+    }
+}
+
+const DANA: &str = "user://dana@acme.example";
+
+fn declaration(id: &str, tenant: &str) -> Value {
+    json!({"id": id, "tenant": tenant, "principal": DANA, "file_ids": ["doc-plan"],
+        "refresh_secret": "drive-refresh-dana", "schedule": "every 1h"})
+}
+
+fn refused(answer: &(u16, Value), status: u16, identifier: &str) {
+    assert_eq!(answer.0, status, "{}", answer.1);
+    assert_eq!(answer.1["error"]["identifier"], identifier, "{}", answer.1);
+}
+
 #[test]
-#[ignore = "tenant connection routes are not served yet (#691)"]
 fn tenant_connection_routes_create_pause_and_delete_once() {
-    let (dir, public) = project();
-    let root = dir.path();
-    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
-    let tenant = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
-        "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq",
-        "--action", "write", "--table", "research/notes", "--tenant", "research/notes=tenant-a", "--ttl", "900"]));
-    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
-        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
-    let create = json!({"id":"conn-a", "tenant":"tenant-a", "principal":"user://dana@acme.example",
-        "file_ids":["doc-plan"], "refresh_secret":"drive-refresh-dana", "schedule":"every 1h"}).to_string();
-    let (status, made) = control(&addr, "POST", "/connections", Some(&tenant), &create);
+    let face = ConnectionFace::start();
+    let tenant = face.mint("tenant-a", DANA);
+    let create = declaration("conn-a", "tenant-a").to_string();
+    let (status, made) = face.call("POST", "/connections", &tenant, &create);
     assert_eq!(status, 201, "{made}");
     assert_eq!(made["id"], "conn-a");
-    let (status, repeated) = control(&addr, "POST", "/connections", Some(&tenant), &create);
+    assert_eq!((made["version"].clone(), made["state"].clone()), (json!(1), json!("active")), "{made}");
+    assert_eq!((made["tenant"].clone(), made["principal"].clone(), made["refresh_secret"].clone()), (json!("tenant-a"), json!(DANA), json!("drive-refresh-dana")));
+    assert_eq!(made["pipeline"], "connection-conn-a", "{made}");
+    let (status, repeated) = face.call("POST", "/connections", &tenant, &create);
     assert_eq!(status, 200, "{repeated}");
     assert_eq!(repeated["version"], made["version"]);
     let wrong = create.replace("tenant-a", "tenant-b");
-    let (status, denied) = control(&addr, "POST", "/connections", Some(&tenant), &wrong);
-    assert_eq!(status, 403, "{denied}");
-    assert_eq!(denied["error"]["identifier"], "ConnectionScopeDenied");
+    refused(&face.call("POST", "/connections", &tenant, &wrong), 403, "ConnectionScopeDenied");
     let changed = create.replace("doc-plan", "doc-other");
-    let (status, conflict) = control(&addr, "POST", "/connections", Some(&tenant), &changed);
-    assert_eq!(status, 409, "{conflict}");
-    assert_eq!(conflict["error"]["identifier"], "ConnectionIdConflict");
-    let (status, paused) = control(&addr, "POST", "/connections/conn-a/pause", Some(&tenant), "{}");
+    refused(&face.call("POST", "/connections", &tenant, &changed), 409, "ConnectionIdConflict");
+    let (status, paused) = face.call("POST", "/connections/conn-a/pause", &tenant, "{}");
     assert_eq!(status, 200, "{paused}");
-    let (status, deleted) = control(&addr, "DELETE", "/connections/conn-a", Some(&tenant), "{}");
+    assert_eq!((paused["version"].clone(), paused["state"].clone()), (json!(2), json!("paused")), "{paused}");
+    let (status, again) = face.call("POST", "/connections/conn-a/pause", &tenant, "{}");
+    assert_eq!((status, again["version"].clone()), (200, json!(2)), "a repeated pause claims nothing: {again}");
+    let (status, deleted) = face.call("DELETE", "/connections/conn-a", &tenant, "{}");
     assert_eq!(status, 200, "{deleted}");
+    assert_eq!((deleted["version"].clone(), deleted["state"].clone()), (json!(3), json!("deleted")), "{deleted}");
+    let (status, _) = face.call("GET", "/connections", &tenant, "");
+    assert_eq!(status, 405);
+}
+
+/// Create answers `201` with the claimed connection, version and state; a repeat, pause or delete answers `200`; each
+/// claim advances the version by one, deleting an active connection claims twice, and a repeat claims nothing.
+// spec: surface.connection.answer@b9a0a1ce
+#[test]
+fn each_connection_claim_advances_one_version_and_a_repeat_claims_none() {
+    let face = ConnectionFace::start();
+    let dana = face.mint("tenant-a", DANA);
+    let create = declaration("conn-a", "tenant-a").to_string();
+    let (status, made) = face.call("POST", "/connections", &dana, &create);
+    assert_eq!((status, made["version"].clone(), made["state"].clone()), (201, json!(1), json!("active")), "{made}");
+    let (status, repeated) = face.call("POST", "/connections", &dana, &create);
+    assert_eq!((status, repeated["version"].clone()), (200, json!(1)), "a repeated create claims nothing: {repeated}");
+    // Deleting an active connection claims twice: the pause, then the retirement.
+    let (status, deleted) = face.call("DELETE", "/connections/conn-a", &dana, "{}");
+    assert_eq!((status, deleted["version"].clone(), deleted["state"].clone()), (200, json!(3), json!("deleted")), "{deleted}");
+
+    assert_eq!(face.call("POST", "/connections", &dana, &declaration("conn-b", "tenant-a").to_string()).0, 201);
+    let (status, paused) = face.call("POST", "/connections/conn-b/pause", &dana, "{}");
+    assert_eq!((status, paused["version"].clone(), paused["state"].clone()), (200, json!(2), json!("paused")), "{paused}");
+    let (status, again) = face.call("POST", "/connections/conn-b/pause", &dana, "{}");
+    assert_eq!((status, again["version"].clone()), (200, json!(2)), "a repeated pause claims nothing: {again}");
+    let (status, retired) = face.call("DELETE", "/connections/conn-b", &dana, "{}");
+    assert_eq!((status, retired["version"].clone()), (200, json!(3)), "a paused connection retires in one claim: {retired}");
+}
+
+/// A pause or delete whose path id lies outside the connection id grammar names no connection.
+#[test]
+fn a_pause_or_delete_naming_an_id_outside_the_grammar_is_unknown() {
+    let face = ConnectionFace::start();
+    let dana = face.mint("tenant-a", DANA);
+    let long = "x".repeat(65);
+    for id in ["a.b", long.as_str()] {
+        refused(&face.call("POST", &format!("/connections/{id}/pause"), &dana, "{}"), 404, "ConnectionUnknown");
+        refused(&face.call("DELETE", &format!("/connections/{id}"), &dana, "{}"), 404, "ConnectionUnknown");
+    }
+}
+
+/// A connection mutation requires an admitted write credential for its tenant and principal, checked on the request
+/// before reading and on the standing record before changing it; a mismatch raises `ConnectionScopeDenied`.
+// spec: surface.connection.authority@43697862
+#[test]
+fn a_connection_outside_the_credentials_tenant_or_principal_is_denied() {
+    let face = ConnectionFace::start();
+    let dana = face.mint("tenant-a", DANA);
+    let (status, made) = face.call("POST", "/connections", &dana, &declaration("conn-a", "tenant-a").to_string());
+    assert_eq!(status, 201, "{made}");
+
+    let mut other_principal = declaration("conn-b", "tenant-a");
+    other_principal["principal"] = json!("user://erin@acme.example");
+    refused(&face.call("POST", "/connections", &dana, &other_principal.to_string()), 403, "ConnectionScopeDenied");
+    refused(&face.call("POST", "/connections", &dana, &declaration("conn-b", "tenant-b").to_string()), 403, "ConnectionScopeDenied");
+
+    // Another tenant's credential names `conn-a`: create, pause and delete refuse, changing no version.
+    let other = face.mint("tenant-b", DANA);
+    refused(&face.call("POST", "/connections", &other, &declaration("conn-a", "tenant-b").to_string()), 403, "ConnectionScopeDenied");
+    refused(&face.call("POST", "/connections/conn-a/pause", &other, "{}"), 403, "ConnectionScopeDenied");
+    refused(&face.call("DELETE", "/connections/conn-a", &other, "{}"), 403, "ConnectionScopeDenied");
+    let erin = face.mint("tenant-a", "user://erin@acme.example");
+    refused(&face.call("POST", "/connections/conn-a/pause", &erin, "{}"), 403, "ConnectionScopeDenied");
+    let (status, standing) = face.call("POST", "/connections", &dana, &declaration("conn-a", "tenant-a").to_string());
+    assert_eq!((status, standing["version"].clone(), standing["state"].clone()), (200, json!(1), json!("active")), "{standing}");
+    let (status, absent) = face.call("POST", "/connections/conn-b/pause", &dana, "{}");
+    assert_eq!(status, 404, "a denied create claimed nothing: {absent}");
+}
+
+/// Repeating create with the same connection id and declaration returns the standing version; a differing
+/// declaration raises `ConnectionIdConflict` without replacing it.
+// spec: surface.connection.idempotent-create@90a2f2d8
+#[test]
+fn a_differing_declaration_under_one_connection_id_conflicts_and_keeps_the_standing_one() {
+    let face = ConnectionFace::start();
+    let dana = face.mint("tenant-a", DANA);
+    let create = declaration("conn-a", "tenant-a");
+    assert_eq!(face.call("POST", "/connections", &dana, &create.to_string()).0, 201);
+    for (key, value) in [("file_ids", json!(["doc-plan", "doc-other"])), ("refresh_secret", json!("drive-refresh-other")), ("schedule", json!("every 2h"))] {
+        let mut changed = create.clone();
+        changed[key] = value;
+        refused(&face.call("POST", "/connections", &dana, &changed.to_string()), 409, "ConnectionIdConflict");
+    }
+    let (status, standing) = face.call("POST", "/connections", &dana, &create.to_string());
+    assert_eq!((status, standing["version"].clone()), (200, json!(1)), "{standing}");
+    assert_eq!(standing["file_ids"], json!(["doc-plan"]), "{standing}");
+}
+
+/// A create body outside `id`, `tenant`, `principal`, `file_ids`, `refresh_secret` and `schedule`, an unreadable
+/// schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.
+// spec: surface.connection.malformed@54ab3015
+#[test]
+fn a_connection_body_outside_its_fields_or_carrying_an_oauth_code_is_malformed() {
+    let face = ConnectionFace::start();
+    let dana = face.mint("tenant-a", DANA);
+    let with = |key: &str, value: Value| {
+        let mut body = declaration("conn-a", "tenant-a");
+        body[key] = value;
+        body.to_string()
+    };
+    let mut missing = declaration("conn-a", "tenant-a");
+    missing.as_object_mut().unwrap().remove("file_ids");
+    for body in [with("code", json!("4/0Adeu5BW-oauth-code")), with("refresh_secret", json!("${secret://drive-refresh-dana}")),
+        with("schedule", json!("every fortnight")), with("file_ids", json!([])), with("id", json!("../conn")),
+        missing.to_string(), "[]".into(), "not json".into()] {
+        refused(&face.call("POST", "/connections", &dana, &body), 400, "ConnectionRequestMalformed");
+    }
+    assert_eq!(face.call("POST", "/connections/conn-a/pause", &dana, "{}").0, 404, "no malformed create claimed a version");
+
+    assert_eq!(face.call("POST", "/connections", &dana, &declaration("conn-a", "tenant-a").to_string()).0, 201);
+    refused(&face.call("POST", "/connections/conn-a/pause", &dana, r#"{"now":true}"#), 400, "ConnectionRequestMalformed");
+    refused(&face.call("DELETE", "/connections/conn-a", &dana, r#"{"force":true}"#), 400, "ConnectionRequestMalformed");
+    let (status, standing) = face.call("POST", "/connections", &dana, &declaration("conn-a", "tenant-a").to_string());
+    assert_eq!((status, standing["version"].clone(), standing["state"].clone()), (200, json!(1), json!("active")), "{standing}");
+}
+
+/// A pause or delete naming no standing connection raises `ConnectionUnknown`; a deleted id stays bound to its retired
+/// record, and create refuses its reuse as {{surface.connection.idempotent-create}}.
+// spec: surface.connection.unknown@4d133ef3
+#[test]
+fn a_pause_or_delete_naming_no_standing_connection_is_unknown_and_a_deleted_id_stays_bound() {
+    let face = ConnectionFace::start();
+    let dana = face.mint("tenant-a", DANA);
+    refused(&face.call("POST", "/connections/conn-a/pause", &dana, "{}"), 404, "ConnectionUnknown");
+    refused(&face.call("DELETE", "/connections/conn-a", &dana, "{}"), 404, "ConnectionUnknown");
+
+    let create = declaration("conn-a", "tenant-a").to_string();
+    assert_eq!(face.call("POST", "/connections", &dana, &create).0, 201);
+    let (status, deleted) = face.call("DELETE", "/connections/conn-a", &dana, "{}");
+    assert_eq!((status, deleted["version"].clone(), deleted["state"].clone()), (200, json!(3), json!("deleted")), "delete pauses, then retires: {deleted}");
+    refused(&face.call("POST", "/connections/conn-a/pause", &dana, "{}"), 404, "ConnectionUnknown");
+    refused(&face.call("DELETE", "/connections/conn-a", &dana, "{}"), 404, "ConnectionUnknown");
+    refused(&face.call("POST", "/connections", &dana, &create), 409, "ConnectionIdConflict");
 }
 
 /// A sink asserting, on each write, that the face it reports on has left warming.
