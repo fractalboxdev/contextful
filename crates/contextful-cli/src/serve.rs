@@ -229,14 +229,31 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     let control_attestation_secret = std::env::var("CONTEXTFUL_CONTROL_ATTESTATION_SECRET").ok().filter(|secret| !secret.is_empty());
     #[cfg(feature = "data-plane")]
     let control_admit = AdmitArgs { public_key: args.public_key.clone(), audience: args.audience.clone(), denylist: args.denylist.clone(), keyset: args.keyset.clone(), holder_key: None };
+    // The admitted credential still stands at a control mutation's commit.
+    #[cfg(feature = "data-plane")]
+    let still_admitted = |authority: &AdmittedAuthority| -> Result<(), ControlError> {
+        let state = revocation().map_err(ControlError::Storage)?;
+        contextful_policy::verify::effect_boundary(authority,
+            &contextful_policy::verify::Admission::new(clock.now(), &state).expecting(audience))
+            .map_err(ControlError::from)
+    };
+    #[cfg(feature = "data-plane")]
+    let connections = |request: &HttpRequest, authority: &AdmittedAuthority| -> HttpResponse {
+        let project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
+        match crate::connection::served(&project, Some(located.declaration.clone()), request, authority, &|| still_admitted(authority)) {
+            Ok((status, body)) => HttpResponse::json(status, &body),
+            Err(crate::connection::ConnectionError::Control(error)) => control_failure(error.into()),
+            Err(refusal) => {
+                let (status, body) = refusal.answer();
+                HttpResponse::json(status, &body)
+            }
+        }
+    };
     #[cfg(feature = "data-plane")]
     let control = |request: &HttpRequest, authority: &AdmittedAuthority| -> HttpResponse {
         let path = request.target.split('?').next().unwrap_or_default();
         let boundary = || {
-            let state = revocation().map_err(ControlError::Storage)?;
-            contextful_policy::verify::effect_boundary(authority,
-                &contextful_policy::verify::Admission::new(clock.now(), &state).expecting(audience))
-                .map_err(ControlError::from)?;
+            still_admitted(authority)?;
             if (path == EDIT_PATH || path == APPLY_PATH) &&
                 control_attestation_secret.as_deref().and_then(|secret| operator_attestation(request, secret)).is_none() {
                 return Err(ControlError::OperatorAttestationInvalid("the operator signature expired before the control mutation".into()));
@@ -374,7 +391,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         .with_build(crate::build_identity())
         .with_hydration(&hydration);
     #[cfg(feature = "data-plane")]
-    let http = http.with_control(&control);
+    let http = http.with_control(&control).with_connections(&connections);
     #[cfg(feature = "data-plane")]
     let http = http.with_claim_write(&claim_write);
     #[cfg(feature = "data-plane")]

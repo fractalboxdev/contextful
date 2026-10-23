@@ -665,23 +665,8 @@ The declared behavior of each source compiled into the engine.
 - `drive-oauth-shape` — `oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.
 - `drive-origin` — The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.
 - `drive-position-owned` — `incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.
-- `drive-picker-source` — The `gdrive-picks` source serves `files` and `pages` with {{connector.source.drive-oauth}} and {{connector.source.drive-page-grain}} for files selected through Picker.
-- `drive-file-selection` — On `gdrive-picks` and `gdrive-sheet`, `file_ids` selects distinct individual files without a folder root; `folder_id` and `folder_ids` are absent.
-  *A-connector*
-- `drive-file-selection-limit` — `file_ids` holds at most 128 entries.
-- `drive-file-selection-invalid` — An empty, repeated or mixed `file_ids` selection, or one exceeding {{connector.source.drive-file-selection-limit}}, raises `ConnectorDriveFilesInvalid` before a Drive request.
-  *because an ambiguous selection cannot establish which files a later tombstone withdraws*
-- `drive-file-access` — The source validates every selected file through the bound credential; a never-captured inaccessible or trashed id, a non-file id, or a file outside a configured `drive_id` raises `ConnectorDriveFileRejected` without landing rows or advancing position.
-  *because an inaccessible picker id cannot count as a complete selection*
-- `drive-file-revoked` — A captured file that becomes inaccessible or trashed under a valid credential lands tombstones for its file and pages once; the position keeps its id withdrawn, so later fires succeed; an authentication or transient failure advances no position.
-- `drive-file-position` — The position binds sorted `file_ids` and mode; changing either rereads retained files, and a complete read tombstones deselected files and their pages.
-  *A-connector*
-- `drive-row-scope` — A connection-bound run stamps its Drive `files` and `pages` rows and tombstones with the admitted `tenant` and `principal`; the source cannot supply either value.
-- `drive-row-identity` — A connection-bound Drive row and position key include connection identity beside `file_id`, so two connections selecting one file cannot overwrite each other.
 
 unsettled: Does a job whose `after` names a `receive` pipeline fire after each delivered batch commits, or does validation refuse it? owner: connector affects: connector.source
-
-unsettled: Does Picker selection of a folder under `drive.file` grant the app access to its descendant files? owner: connector affects: connector.source
 
 #### Scenarios
 
@@ -701,13 +686,6 @@ unsettled: Does Picker selection of a folder under `drive.file` grant the app ac
 - `connector.source.drive-selection-removals`: WHEN mode changes from `bytes-and-pages` to `metadata-only`, THEN old pages receive tombstones and no page content row remains.
 - `connector.source.drive-root-reassignment`: WHEN a retained file's version changes with identical `modifiedTime` and path, THEN the read captures its new bytes and digest.
 - `connector.source.drive-list-bound`: WHEN listing reaches the request cap with a next-page token but no queued folders, THEN the read refuses and lands no removal tombstone.
-- `connector.source.drive-file-selection-invalid`: WHEN `file_ids` repeats one id or appears beside `folder_id`, THEN validation raises `ConnectorDriveFilesInvalid` before any request.
-- `connector.source.drive-file-access`: WHEN a picked id is inaccessible to the bound credential, THEN `ConnectorDriveFileRejected` commits neither rows nor position.
-- `connector.source.drive-file-revoked`: WHEN a captured file loses access under a valid credential, THEN its file and pages receive tombstones before the selection position advances.
-- `connector.source.drive-file-revoked`: WHEN two fires follow a captured file's revocation, THEN the first lands its tombstone, the second lands none, and both keep the other picked files in the position.
-- `connector.source.drive-file-access`: WHEN a picked file lies in another Shared Drive than the configured `drive_id`, THEN `ConnectorDriveFileRejected` commits neither rows nor position.
-- `connector.source.drive-file-position`: WHEN a file id leaves a complete selection, THEN its file row and prior pages land tombstones.
-- `connector.source.drive-row-scope`: WHEN two tenants select the same file id, THEN each landed row carries only its admitted tenant and principal.
 
 unsettled: Does a next-URL walk resume mid-walk through a position holding the URL with every credential-bearing query parameter removed? owner: connector affects: connector.source
 

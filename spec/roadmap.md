@@ -240,7 +240,7 @@ Acceptance: `contextful_acceptance::m18::m18_orchestrate`
 
 | Operations | Intent |
 | --- | --- |
-| `surface.connection` | Tenant-bound connection creation, pause, deletion and shared scheduling. |
+| `surface.connection`, `connector.drive-picks` | Tenant-bound connection creation, pause, deletion and shared scheduling over Picker-selected files. |
 
 Reach: A Picker-selected file creates one tenant-bound Drive pipeline, lands scoped rows, pauses without another fire, and deletes with its credential revoked.
 

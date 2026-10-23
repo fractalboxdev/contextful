@@ -282,9 +282,8 @@ fn picks(fake: &Fake, extra: Value) -> Arc<Drive> {
 }
 
 /// A captured file that becomes inaccessible or trashed under a valid credential lands tombstones for its file and
-/// pages once; the position keeps its id withdrawn, so later fires succeed; an authentication or transient failure
-/// advances no position.
-// spec: connector.source.drive-file-revoked@7afc3dd7
+/// pages once and enters the position's withdrawn set; an authentication or transient failure advances no position.
+// spec: connector.drive-picks.file-revoked@3fdaae9f
 #[test]
 fn a_revoked_picked_file_stays_withdrawn_across_later_fires() {
     let fake = Fake::start();
@@ -330,7 +329,7 @@ fn a_trashed_picked_file_lands_its_tombstone_once() {
 /// The source validates every selected file through the bound credential; a never-captured inaccessible or trashed
 /// id, a non-file id, or a file outside a configured `drive_id` raises `ConnectorDriveFileRejected` without landing
 /// rows or advancing position.
-// spec: connector.source.drive-file-access@6fdba5f1
+// spec: connector.drive-picks.file-access@6fdba5f1
 #[test]
 fn a_picked_file_never_captured_or_outside_the_drive_is_rejected() {
     let fake = Fake::start();
@@ -349,6 +348,61 @@ fn a_picked_file_never_captured_or_outside_the_drive_is_rejected() {
     rejected(picks(&fake, json!({"file_ids": ["doc-plan"]})), None, "doc-plan");
     fake.overlay("picks-revoked.json");
     rejected(picks(&fake, json!({"file_ids": ["doc-plan"]})), None, "doc-plan");
+}
+
+/// A withdrawn id stays selected without refusing later fires: a fire still finding it inaccessible lands nothing for
+/// it, and a fire reading it again captures it as a new file and drops it from the withdrawn set.
+// spec: connector.drive-picks.file-withdrawn@ecdba17c
+#[test]
+fn a_withdrawn_picked_file_readable_again_is_captured_as_new() {
+    let fake = Fake::start();
+    fake.overlay("picks.json");
+    let selection = json!({"file_ids": ["doc-plan", "sheet-budget"]});
+    let files = |position: Option<Value>| pull(&mut picks(&fake, selection.clone()).source("files").unwrap(), position);
+    let (_, captured, _) = files(None);
+
+    fake.overlay("picks-revoked.json");
+    let (rows, revoked, _) = files(Some(captured));
+    assert_eq!(by_id(&rows, "doc-plan")["capture_status"], "removed");
+    assert_eq!(revoked["withdrawn"], json!(["doc-plan"]), "{revoked}");
+    let (rows, still, _) = files(Some(revoked));
+    assert!(rows.is_empty(), "a still-withdrawn id lands nothing and refuses nothing: {rows:?}");
+    assert_eq!(still["withdrawn"], json!(["doc-plan"]), "{still}");
+
+    fake.overlay("picks.json");
+    let (rows, restored, _) = files(Some(still));
+    assert_eq!(by_id(&rows, "doc-plan")["capture_status"], "captured", "{rows:?}");
+    assert!(rows.iter().all(|row| row["file_id"] != "sheet-budget"), "the retained file is not reread: {rows:?}");
+    assert!(restored["files"].get("doc-plan").is_some(), "{restored}");
+    assert_eq!(restored["withdrawn"], json!([]), "{restored}");
+}
+
+/// A picked file whose export Drive answers `403 exportSizeLimitExceeded` lands under
+/// {{connector.source.drive-export-limit}}, not as revoked: its id stays out of the withdrawn set and its `files` row
+/// lands no tombstone.
+// spec: connector.drive-picks.export-limit@14f5f0fa
+#[test]
+fn a_picked_sheet_over_drives_export_limit_is_skipped_and_never_withdrawn() {
+    let fake = Fake::start();
+    fake.overlay("picks.json");
+    let selection = json!({"file_ids": ["doc-plan", "sheet-budget"]});
+    let files = |position: Option<Value>| pull(&mut picks(&fake, selection.clone()).source("files").unwrap(), position);
+    let (rows, captured, _) = files(None);
+    assert_eq!(by_id(&rows, "sheet-budget")["capture_status"], "captured");
+
+    fake.overlay("picks-sheet-limit.json");
+    let (rows, limited, _) = files(Some(captured));
+    let sheet = by_id(&rows, "sheet-budget");
+    assert_eq!(sheet["capture_status"], "skipped", "{sheet:?}");
+    assert!(sheet["skipped"].as_str().unwrap().contains("exportSizeLimitExceeded"), "{sheet:?}");
+    assert!(rows.iter().all(|row| row["capture_status"] != "removed"), "an export limit lands no tombstone: {rows:?}");
+    assert!(limited["files"].get("sheet-budget").is_some(), "{limited}");
+    assert_eq!(limited["withdrawn"], json!([]), "{limited}");
+
+    // A never-captured sheet over the limit is skipped, not refused as inaccessible.
+    let (rows, first, _) = files(None);
+    assert_eq!(by_id(&rows, "sheet-budget")["capture_status"], "skipped", "{rows:?}");
+    assert_eq!(first["withdrawn"], json!([]), "{first}");
 }
 
 /// Pull `source` from `position`, answering its rows and the position after them.

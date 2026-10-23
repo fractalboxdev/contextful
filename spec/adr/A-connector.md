@@ -239,7 +239,7 @@ Revisit: Drive offers a verifiable export digest without reading bytes, or a ten
 
 Context: a Picker selection admits individual files, while folder walks and OAuth refreshes carry existing positions and credential names.
 
-Decision: `connector.source.drive-file-selection` admits one explicit file set. Its sorted ids and mode bind the position (`connector.source.drive-file-position`), while a connection binds tenant and principal at landing. Credential refresh serializes on the answering adapter's version (`connector.principal-secrets.write-serialization`).
+Decision: `connector.drive-picks.file-selection` admits one explicit file set. Its sorted ids and mode bind the position (`connector.drive-picks.file-position`), while a connection binds tenant and principal at landing. Credential refresh serializes on the answering adapter's version (`connector.principal-secrets.write-serialization`).
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

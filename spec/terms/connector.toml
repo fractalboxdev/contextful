@@ -9,6 +9,7 @@ meter              = {}
 infer              = {}
 package            = {}
 source             = {}
+drive-picks        = {}
 drive-sheet        = {}
 drive-changes      = {}
 drive-domain-auth  = {}
@@ -21,8 +22,8 @@ record             = {}
 principal-secrets  = {}
 
 [error]
-ConnectorDriveFilesInvalid = { clause = "connector.source.drive-file-selection-invalid", gloss = "An empty, repeated or mixed individual-file selection." }
-ConnectorDriveFileRejected = { clause = "connector.source.drive-file-access", gloss = "A selected id is inaccessible or is not a file." }
+ConnectorDriveFilesInvalid = { clause = "connector.drive-picks.file-selection-invalid", gloss = "An empty, repeated or mixed individual-file selection." }
+ConnectorDriveFileRejected = { clause = "connector.drive-picks.file-access", gloss = "A selected id is inaccessible or is not a file." }
 ConnectorDriveDomainRejected = { clause = "connector.drive-domain-auth.domain-boundary", gloss = "A delegated subject lies outside the approved Workspace domain." }
 ConnectorWidenUnresolved = { clause = "connector.widen.unresolved", gloss = "A grant comparison establishes neither inclusion nor a replayed widening witness." }
 ConnectorWidenApprovalRequired = { clause = "connector.widen.approval-required", gloss = "Additional connector access lacks approval bound to both manifests." }
@@ -118,7 +119,7 @@ SecretRecordRejected            = { clause = "connector.record.record-rejected",
 InferHostedToolUnderHorizon = { clause = "connector.infer.hosted-tools", gloss = "A model call under a credential horizon declares a provider-hosted tool." }
 
 [limit]
-connector-drive-file-selection = { clause = "connector.source.drive-file-selection-limit", value = 128, unit = "entries", basis = "chosen", gloss = "Individual selected file ids in one Drive source." }
+connector-drive-file-selection = { clause = "connector.drive-picks.file-selection-limit", value = 128, unit = "entries", basis = "chosen", gloss = "Individual selected file ids in one Drive source." }
 connector-attribution-entries   = { clause = "connector.export.attribution-budget", value = 512, unit = "entries", basis = "chosen", gloss = "Partition values one failure attribution returns per session." }
 connector-attribution-value     = { clause = "connector.export.attribution-budget", value = 512, unit = "B", basis = "chosen", gloss = "Bytes in one attributed partition value." }
 connector-guest-config          = { clause = "connector.import.config-shape", value = 64, unit = "KiB", basis = "chosen", gloss = "Serialized guest configuration table." }

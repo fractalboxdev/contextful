@@ -921,6 +921,15 @@ pub(crate) fn claim_operator_nonce(project: &ProjectArgs, declaration: Option<Pa
     owner(&control)?.claim_attestation_nonce_guarded(nonce, signed_at, now, boundary).map_err(Into::into)
 }
 
+/// The selected store owner's snapshot directory, once it took its guarded import: the home
+/// of control state beside the applied pointer, tenant connections included.
+pub(crate) fn control_owner(project: &ProjectArgs, declaration: Option<PathBuf>) -> Result<SnapshotDir> {
+    let (_, _, control) = located(project, declaration)?;
+    let snapshots = owner(&control)?;
+    snapshots.initialized()?;
+    Ok(snapshots.clone())
+}
+
 /// Revalidate the saved draft and claim it only at the version the editor read.
 pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks, authority: &AdmittedAuthority, admit: &AdmitArgs, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<()> {
     let (initial, _, control) = located(project, declaration.clone())?;

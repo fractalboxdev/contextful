@@ -480,20 +480,29 @@ Runtime lifecycle of one tenant's external source connection and its scheduled p
 - `routes` — `POST /connections` creates, `POST /connections/{id}/pause` pauses, and `DELETE /connections/{id}` deletes a connection outside the operator-only `/control/*` routes.
 - `create` — A served connection create binds an admitted tenant, principal, source selection, secret name and pipeline id in one versioned control claim under {{surface.apply.version-race}}.
   *A-surface*
-- `authority` — A connection mutation requires an admitted credential for its tenant and principal; a mismatch raises `ConnectionScopeDenied` before reading or changing connection state.
+- `authority` — A connection mutation requires an admitted write credential for its tenant and principal, checked on the request before reading and on the standing record before changing it; a mismatch raises `ConnectionScopeDenied`.
   *because a caller-controlled tenant or principal could otherwise point a pipeline at another user's credential*
 - `idempotent-create` — Repeating create with the same connection id and declaration returns the standing version; a differing declaration raises `ConnectionIdConflict` without replacing it.
   *because a retried consent callback must not produce a second scheduled pipeline*
+- `answer` — Create answers `201` with the claimed connection, its version and state; a repeated create, a pause and a delete answer `200`; each mutation advances the connection's version by one.
+- `malformed` — A create body outside `id`, `tenant`, `principal`, `file_ids`, `refresh_secret` and `schedule`, an unreadable schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.
+  *because a connection record binds exactly the declared selection, so an unrecognised field cannot ride along into the pipeline*
+- `unknown` — A pause or delete naming no standing connection raises `ConnectionUnknown`; a deleted id stays bound to its retired record, and create refuses its reuse as {{surface.connection.idempotent-create}}.
+  *because a retired id reused by a new declaration restarts a pipeline whose credential is revoked*
 - `pause` — Pause disarms the connection's schedule and prevents new fires; an in-flight fire reaches its run cancellation boundary under {{run.cancel.two-grains}}.
 - `delete` — Delete first pauses the connection, revokes its credential under {{connector.principal-secrets.disconnect}}, then retires its pipeline and schedule through a versioned claim.
 - `schedule-scale` — Connection schedules share {{surface.dispatch.pool-bound}} and {{surface.arm.next-fire-from-history}}; each connection holds one armed entry rather than one timer or thread.
   *A-surface*
 - `consent-boundary` — The calling application owns Google authorization, callback and code exchange; connection create receives only a secret name, never an OAuth code or token.
 
+unsettled: Which manifest block supplies a connection pipeline's OAuth client references and Drive origin? owner: surface affects: surface.connection
+
 #### Scenarios
 
 - `surface.connection.authority`: WHEN a caller names another tenant's connection, THEN `ConnectionScopeDenied` changes no control version.
 - `surface.connection.idempotent-create`: WHEN a consent callback retries the same declaration, THEN one pipeline and schedule remain.
+- `surface.connection.malformed`: WHEN a create body carries an OAuth `code` beside its secret name, THEN `ConnectionRequestMalformed` claims no version.
+- `surface.connection.unknown`: WHEN a deleted connection is paused, THEN `ConnectionUnknown` changes no version.
 - `surface.connection.pause`: WHEN a connection is paused before its due instant, THEN no new Drive fire starts.
 
 ## Shapes

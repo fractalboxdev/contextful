@@ -19222,122 +19222,6 @@
       "line": 667
     },
     {
-      "id": "connector.source.drive-picker-source",
-      "contract": "connector",
-      "operation": "source",
-      "subject": "drive-picker-source",
-      "kind": "behavior",
-      "statement": "The `gdrive-picks` source serves `files` and `pages` with {{connector.source.drive-oauth}} and {{connector.source.drive-page-grain}} for files selected through Picker.",
-      "why": "",
-      "file": "spec/40-connector.md",
-      "line": 668
-    },
-    {
-      "id": "connector.source.drive-file-selection",
-      "contract": "connector",
-      "operation": "source",
-      "subject": "drive-file-selection",
-      "kind": "behavior",
-      "statement": "On `gdrive-picks` and `gdrive-sheet`, `file_ids` selects distinct individual files without a folder root; `folder_id` and `folder_ids` are absent.",
-      "why": "A-connector",
-      "file": "spec/40-connector.md",
-      "line": 669
-    },
-    {
-      "id": "connector.source.drive-file-selection-limit",
-      "contract": "connector",
-      "operation": "source",
-      "subject": "drive-file-selection-limit",
-      "kind": "limit",
-      "statement": "`file_ids` holds at most 128 entries.",
-      "why": "",
-      "file": "spec/40-connector.md",
-      "line": 671
-    },
-    {
-      "id": "connector.source.drive-file-selection-invalid",
-      "contract": "connector",
-      "operation": "source",
-      "subject": "drive-file-selection-invalid",
-      "kind": "refusal",
-      "statement": "An empty, repeated or mixed `file_ids` selection, or one exceeding {{connector.source.drive-file-selection-limit}}, raises `ConnectorDriveFilesInvalid` before a Drive request.",
-      "why": "because an ambiguous selection cannot establish which files a later tombstone withdraws",
-      "file": "spec/40-connector.md",
-      "line": 672,
-      "scenarios": [
-        "WHEN `file_ids` repeats one id or appears beside `folder_id`, THEN validation raises `ConnectorDriveFilesInvalid` before any request."
-      ]
-    },
-    {
-      "id": "connector.source.drive-file-access",
-      "contract": "connector",
-      "operation": "source",
-      "subject": "drive-file-access",
-      "kind": "refusal",
-      "statement": "The source validates every selected file through the bound credential; a never-captured inaccessible or trashed id, a non-file id, or a file outside a configured `drive_id` raises `ConnectorDriveFileRejected` without landing rows or advancing position.",
-      "why": "because an inaccessible picker id cannot count as a complete selection",
-      "file": "spec/40-connector.md",
-      "line": 674,
-      "scenarios": [
-        "WHEN a picked id is inaccessible to the bound credential, THEN `ConnectorDriveFileRejected` commits neither rows nor position.",
-        "WHEN a picked file lies in another Shared Drive than the configured `drive_id`, THEN `ConnectorDriveFileRejected` commits neither rows nor position."
-      ]
-    },
-    {
-      "id": "connector.source.drive-file-revoked",
-      "contract": "connector",
-      "operation": "source",
-      "subject": "drive-file-revoked",
-      "kind": "behavior",
-      "statement": "A captured file that becomes inaccessible or trashed under a valid credential lands tombstones for its file and pages once; the position keeps its id withdrawn, so later fires succeed; an authentication or transient failure advances no position.",
-      "why": "",
-      "file": "spec/40-connector.md",
-      "line": 676,
-      "scenarios": [
-        "WHEN a captured file loses access under a valid credential, THEN its file and pages receive tombstones before the selection position advances.",
-        "WHEN two fires follow a captured file's revocation, THEN the first lands its tombstone, the second lands none, and both keep the other picked files in the position."
-      ]
-    },
-    {
-      "id": "connector.source.drive-file-position",
-      "contract": "connector",
-      "operation": "source",
-      "subject": "drive-file-position",
-      "kind": "behavior",
-      "statement": "The position binds sorted `file_ids` and mode; changing either rereads retained files, and a complete read tombstones deselected files and their pages.",
-      "why": "A-connector",
-      "file": "spec/40-connector.md",
-      "line": 677,
-      "scenarios": [
-        "WHEN a file id leaves a complete selection, THEN its file row and prior pages land tombstones."
-      ]
-    },
-    {
-      "id": "connector.source.drive-row-scope",
-      "contract": "connector",
-      "operation": "source",
-      "subject": "drive-row-scope",
-      "kind": "behavior",
-      "statement": "A connection-bound run stamps its Drive `files` and `pages` rows and tombstones with the admitted `tenant` and `principal`; the source cannot supply either value.",
-      "why": "",
-      "file": "spec/40-connector.md",
-      "line": 679,
-      "scenarios": [
-        "WHEN two tenants select the same file id, THEN each landed row carries only its admitted tenant and principal."
-      ]
-    },
-    {
-      "id": "connector.source.drive-row-identity",
-      "contract": "connector",
-      "operation": "source",
-      "subject": "drive-row-identity",
-      "kind": "behavior",
-      "statement": "A connection-bound Drive row and position key include connection identity beside `file_id`, so two connections selecting one file cannot overwrite each other.",
-      "why": "",
-      "file": "spec/40-connector.md",
-      "line": 680
-    },
-    {
       "id": "connector.reference.credential-plane",
       "contract": "connector",
       "operation": "reference",
@@ -20612,15 +20496,159 @@
       "line": 327
     },
     {
+      "id": "connector.drive-picks.picker-source",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "picker-source",
+      "kind": "behavior",
+      "statement": "The `gdrive-picks` source serves `files` and `pages` with {{connector.source.drive-oauth}} and {{connector.source.drive-page-grain}} for files selected through Picker.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 18
+    },
+    {
+      "id": "connector.drive-picks.file-selection",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "file-selection",
+      "kind": "behavior",
+      "statement": "On `gdrive-picks` and `gdrive-sheet`, `file_ids` selects distinct individual files without a folder root; `folder_id` and `folder_ids` are absent.",
+      "why": "A-connector",
+      "file": "spec/42-drive-extensions.md",
+      "line": 19
+    },
+    {
+      "id": "connector.drive-picks.file-selection-limit",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "file-selection-limit",
+      "kind": "limit",
+      "statement": "`file_ids` holds at most 128 entries.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 21
+    },
+    {
+      "id": "connector.drive-picks.file-selection-invalid",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "file-selection-invalid",
+      "kind": "refusal",
+      "statement": "An empty, repeated or mixed `file_ids` selection, or one exceeding {{connector.drive-picks.file-selection-limit}}, raises `ConnectorDriveFilesInvalid` before a Drive request.",
+      "why": "because an ambiguous selection cannot establish which files a later tombstone withdraws",
+      "file": "spec/42-drive-extensions.md",
+      "line": 22,
+      "scenarios": [
+        "WHEN `file_ids` repeats one id or appears beside `folder_id`, THEN validation raises `ConnectorDriveFilesInvalid` before any request."
+      ]
+    },
+    {
+      "id": "connector.drive-picks.file-access",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "file-access",
+      "kind": "refusal",
+      "statement": "The source validates every selected file through the bound credential; a never-captured inaccessible or trashed id, a non-file id, or a file outside a configured `drive_id` raises `ConnectorDriveFileRejected` without landing rows or advancing position.",
+      "why": "because an inaccessible picker id cannot count as a complete selection",
+      "file": "spec/42-drive-extensions.md",
+      "line": 24,
+      "scenarios": [
+        "WHEN a picked id is inaccessible to the bound credential, THEN `ConnectorDriveFileRejected` commits neither rows nor position.",
+        "WHEN a picked file lies in another Shared Drive than the configured `drive_id`, THEN `ConnectorDriveFileRejected` commits neither rows nor position."
+      ]
+    },
+    {
+      "id": "connector.drive-picks.file-revoked",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "file-revoked",
+      "kind": "behavior",
+      "statement": "A captured file that becomes inaccessible or trashed under a valid credential lands tombstones for its file and pages once and enters the position's withdrawn set; an authentication or transient failure advances no position.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 26,
+      "scenarios": [
+        "WHEN a captured file loses access under a valid credential, THEN its file and pages receive tombstones before the selection position advances.",
+        "WHEN two fires follow a captured file's revocation, THEN the first lands its tombstone, the second lands none, and both keep the other picked files in the position."
+      ]
+    },
+    {
+      "id": "connector.drive-picks.file-withdrawn",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "file-withdrawn",
+      "kind": "behavior",
+      "statement": "A withdrawn id stays selected without refusing later fires: a fire still finding it inaccessible lands nothing for it, and a fire reading it again captures it as a new file and drops it from the withdrawn set.",
+      "why": "A-connector",
+      "file": "spec/42-drive-extensions.md",
+      "line": 27,
+      "scenarios": [
+        "WHEN a withdrawn file becomes readable again, THEN the next fire lands its captured row and the position holds it outside the withdrawn set."
+      ]
+    },
+    {
+      "id": "connector.drive-picks.export-limit",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "export-limit",
+      "kind": "behavior",
+      "statement": "A picked file whose export Drive answers `403 exportSizeLimitExceeded` lands under {{connector.source.drive-export-limit}}, not as revoked: its id stays out of the withdrawn set and its `files` row lands no tombstone.",
+      "why": "because Drive refuses that export on every fire while the principal still reads the file, and a tombstone withdraws a file nobody revoked",
+      "file": "spec/42-drive-extensions.md",
+      "line": 29,
+      "scenarios": [
+        "WHEN a captured Sheet's new version exceeds Drive's export limit, THEN its `files` row lands `skipped`, never `removed`, and the position keeps it."
+      ]
+    },
+    {
+      "id": "connector.drive-picks.file-position",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "file-position",
+      "kind": "behavior",
+      "statement": "The position binds sorted `file_ids` and mode; changing either rereads retained files, and a complete read tombstones deselected files and their pages.",
+      "why": "A-connector",
+      "file": "spec/42-drive-extensions.md",
+      "line": 31,
+      "scenarios": [
+        "WHEN a file id leaves a complete selection, THEN its file row and prior pages land tombstones."
+      ]
+    },
+    {
+      "id": "connector.drive-picks.row-scope",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "row-scope",
+      "kind": "behavior",
+      "statement": "A connection-bound run stamps its Drive `files` and `pages` rows and tombstones with the admitted `tenant` and `principal`; the source cannot supply either value.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 33,
+      "scenarios": [
+        "WHEN two tenants select the same file id, THEN each landed row carries only its admitted tenant and principal."
+      ]
+    },
+    {
+      "id": "connector.drive-picks.row-identity",
+      "contract": "connector",
+      "operation": "drive-picks",
+      "subject": "row-identity",
+      "kind": "behavior",
+      "statement": "A connection-bound Drive row and position key include connection identity beside `file_id`, so two connections selecting one file cannot overwrite each other.",
+      "why": "",
+      "file": "spec/42-drive-extensions.md",
+      "line": 34
+    },
+    {
       "id": "connector.drive-sheet.source-name",
       "contract": "connector",
       "operation": "drive-sheet",
       "subject": "source-name",
       "kind": "behavior",
-      "statement": "The `gdrive-sheet` source serves `rows` and shares {{connector.source.drive-oauth}} and {{connector.source.drive-file-selection}} without changing the `gdrive` source's `files` and `pages` tables.",
+      "statement": "The `gdrive-sheet` source serves `rows` and shares {{connector.source.drive-oauth}} and {{connector.drive-picks.file-selection}} without changing the `gdrive` source's `files` and `pages` tables.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 17
+      "line": 54
     },
     {
       "id": "connector.drive-sheet.export-format",
@@ -20631,7 +20659,7 @@
       "statement": "A Google Sheet selected for structured capture exports as XLSX; CSV contains only the first sheet.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 18
+      "line": 55
     },
     {
       "id": "connector.drive-sheet.sheet-identity",
@@ -20642,7 +20670,7 @@
       "statement": "Each landed spreadsheet row carries `file_id`, sheet id, sheet name, source row number, connection identity, `tenant` and `principal`.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 19,
+      "line": 56,
       "scenarios": [
         "WHEN a workbook has two sheets with row 3 on each, THEN their landed keys differ by sheet id."
       ]
@@ -20656,7 +20684,7 @@
       "statement": "A spreadsheet row key joins connection identity, file id, sheet id and source row number; a complete recapture tombstones keys absent from the new workbook.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 20,
+      "line": 57,
       "scenarios": [
         "WHEN a complete recapture removes a row, THEN the old row key receives a tombstone."
       ]
@@ -20670,7 +20698,7 @@
       "statement": "The row preserves each cell's typed value and its column position; an empty cell is distinct from a missing row.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 21
+      "line": 58
     },
     {
       "id": "connector.drive-sheet.formula-value",
@@ -20681,7 +20709,7 @@
       "statement": "A formula cell lands its exported result and records that the source cell was a formula; the row does not evaluate the formula inside Contextful.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 22
+      "line": 59
     },
     {
       "id": "connector.drive-sheet.export-refusal",
@@ -20692,7 +20720,21 @@
       "statement": "A workbook whose export exceeds {{connector.source.drive-file-cap}} lands a named skipped file row and no partial spreadsheet rows.",
       "why": "because a truncated workbook cannot establish row identity or removal",
       "file": "spec/42-drive-extensions.md",
-      "line": 23
+      "line": 60
+    },
+    {
+      "id": "connector.drive-sheet.export-limit",
+      "contract": "connector",
+      "operation": "drive-sheet",
+      "subject": "export-limit",
+      "kind": "behavior",
+      "statement": "A workbook export refused as {{connector.drive-picks.export-limit}} lands a named skipped file row and keeps the workbook's prior spreadsheet rows and keys; only {{connector.drive-picks.file-revoked}} tombstones a selected workbook.",
+      "why": "because an export over Drive's size limit leaves the workbook readable, so its rows still describe the principal's file",
+      "file": "spec/42-drive-extensions.md",
+      "line": 62,
+      "scenarios": [
+        "WHEN a captured workbook's next export answers `403 exportSizeLimitExceeded`, THEN no spreadsheet row of it receives a tombstone."
+      ]
     },
     {
       "id": "connector.drive-changes.initial-token",
@@ -20703,7 +20745,7 @@
       "statement": "An initial full walk obtains a start page token before listing and commits that token with the complete walk, so changes during listing remain replayable.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 35
+      "line": 75
     },
     {
       "id": "connector.drive-changes.cursor-scope",
@@ -20714,7 +20756,7 @@
       "statement": "The cursor binds the connection, credential principal, declared drive, selected roots or file ids, and capture mode; a changed binding starts a full walk.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 36
+      "line": 76
     },
     {
       "id": "connector.drive-changes.page-commit",
@@ -20725,7 +20767,7 @@
       "statement": "A change read follows every `nextPageToken` and advances to `newStartPageToken` only after the resulting rows and removals commit.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 37,
+      "line": 77,
       "scenarios": [
         "WHEN a change response has another page, THEN the committed cursor does not skip that page."
       ]
@@ -20739,7 +20781,7 @@
       "statement": "Each changed file is admitted only when its current ancestry or id satisfies the bound selection; a move outside it lands tombstones.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 38
+      "line": 78
     },
     {
       "id": "connector.drive-changes.removed-file",
@@ -20750,7 +20792,7 @@
       "statement": "A removed change withdraws the file and its pages only after the source establishes that the selected file is gone or inaccessible.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 39
+      "line": 79
     },
     {
       "id": "connector.drive-changes.invalid-token",
@@ -20761,7 +20803,7 @@
       "statement": "A rejected or expired change token starts a full selected walk; the source advances no removals from the incomplete change response.",
       "why": "because a missing change interval cannot prove the retained files still satisfy the selection",
       "file": "spec/42-drive-extensions.md",
-      "line": 40,
+      "line": 80,
       "scenarios": [
         "WHEN Drive rejects the cursor, THEN a complete walk reconciles removals before a new token commits."
       ]
@@ -20775,7 +20817,7 @@
       "statement": "Domain-wide delegation requires an operator-declared Workspace domain, authorized service account and approved scope set bound to the connection.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 52
+      "line": 92
     },
     {
       "id": "connector.drive-domain-auth.impersonated-principal",
@@ -20786,7 +20828,7 @@
       "statement": "Every delegated Drive request names one admitted Workspace user as its subject; the row and permission sweep retain that subject's identity.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 53
+      "line": 93
     },
     {
       "id": "connector.drive-domain-auth.domain-boundary",
@@ -20797,7 +20839,7 @@
       "statement": "A delegated request for a subject outside its declared domain raises `ConnectorDriveDomainRejected` before token minting.",
       "why": "because administrator approval for one domain conveys no authority over another",
       "file": "spec/42-drive-extensions.md",
-      "line": 54,
+      "line": 94,
       "scenarios": [
         "WHEN a connection names a user outside its approved domain, THEN `ConnectorDriveDomainRejected` precedes any Google request."
       ]
@@ -20811,7 +20853,7 @@
       "statement": "A sanctioned organization-wide export declares its scope and disclosure posture explicitly under {{connector.source.twin-api}}; delegated user reads do not imply that export.",
       "why": "",
       "file": "spec/42-drive-extensions.md",
-      "line": 56
+      "line": 96
     },
     {
       "id": "authority.identify.subject-tuple",
@@ -27579,7 +27621,7 @@
       "operation": "connection",
       "subject": "authority",
       "kind": "refusal",
-      "statement": "A connection mutation requires an admitted credential for its tenant and principal; a mismatch raises `ConnectionScopeDenied` before reading or changing connection state.",
+      "statement": "A connection mutation requires an admitted write credential for its tenant and principal, checked on the request before reading and on the standing record before changing it; a mismatch raises `ConnectionScopeDenied`.",
       "why": "because a caller-controlled tenant or principal could otherwise point a pipeline at another user's credential",
       "file": "spec/70-control-plane.md",
       "line": 483,
@@ -27602,6 +27644,45 @@
       ]
     },
     {
+      "id": "surface.connection.answer",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "answer",
+      "kind": "behavior",
+      "statement": "Create answers `201` with the claimed connection, its version and state; a repeated create, a pause and a delete answer `200`; each mutation advances the connection's version by one.",
+      "why": "",
+      "file": "spec/70-control-plane.md",
+      "line": 487
+    },
+    {
+      "id": "surface.connection.malformed",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "malformed",
+      "kind": "refusal",
+      "statement": "A create body outside `id`, `tenant`, `principal`, `file_ids`, `refresh_secret` and `schedule`, an unreadable schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.",
+      "why": "because a connection record binds exactly the declared selection, so an unrecognised field cannot ride along into the pipeline",
+      "file": "spec/70-control-plane.md",
+      "line": 488,
+      "scenarios": [
+        "WHEN a create body carries an OAuth `code` beside its secret name, THEN `ConnectionRequestMalformed` claims no version."
+      ]
+    },
+    {
+      "id": "surface.connection.unknown",
+      "contract": "surface",
+      "operation": "connection",
+      "subject": "unknown",
+      "kind": "refusal",
+      "statement": "A pause or delete naming no standing connection raises `ConnectionUnknown`; a deleted id stays bound to its retired record, and create refuses its reuse as {{surface.connection.idempotent-create}}.",
+      "why": "because a retired id reused by a new declaration restarts a pipeline whose credential is revoked",
+      "file": "spec/70-control-plane.md",
+      "line": 490,
+      "scenarios": [
+        "WHEN a deleted connection is paused, THEN `ConnectionUnknown` changes no version."
+      ]
+    },
+    {
       "id": "surface.connection.pause",
       "contract": "surface",
       "operation": "connection",
@@ -27610,7 +27691,7 @@
       "statement": "Pause disarms the connection's schedule and prevents new fires; an in-flight fire reaches its run cancellation boundary under {{run.cancel.two-grains}}.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 487,
+      "line": 492,
       "scenarios": [
         "WHEN a connection is paused before its due instant, THEN no new Drive fire starts."
       ]
@@ -27624,7 +27705,7 @@
       "statement": "Delete first pauses the connection, revokes its credential under {{connector.principal-secrets.disconnect}}, then retires its pipeline and schedule through a versioned claim.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 488
+      "line": 493
     },
     {
       "id": "surface.connection.schedule-scale",
@@ -27635,7 +27716,7 @@
       "statement": "Connection schedules share {{surface.dispatch.pool-bound}} and {{surface.arm.next-fire-from-history}}; each connection holds one armed entry rather than one timer or thread.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 489
+      "line": 494
     },
     {
       "id": "surface.connection.consent-boundary",
@@ -27646,7 +27727,7 @@
       "statement": "The calling application owns Google authorization, callback and code exchange; connection create receives only a secret name, never an OAuth code or token.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 491
+      "line": 496
     },
     {
       "id": "surface.open-console.page-routes",
@@ -32492,6 +32573,7 @@
       "principal-secrets"
     ],
     "spec/42-drive-extensions.md": [
+      "drive-picks",
       "drive-sheet",
       "drive-changes",
       "drive-domain-auth"
@@ -32629,6 +32711,7 @@
     "connector.declare-capability": "The manifest's statement of host access and the scope probe judging a bound credential's grant.",
     "connector.drive-changes": "The change cursor and full-walk handoff for a selected Drive corpus.",
     "connector.drive-domain-auth": "Organization-approved Drive access and the principal whose authority each request carries.",
+    "connector.drive-picks": "Individual files a principal selects through Picker, their position, and the rows a tenant connection lands from them.",
     "connector.drive-sheet": "Structured capture of Google Sheets as source rows beside the existing PDF page path.",
     "connector.export": "The calls a connector offers across the boundary: the shared types, the source and destination worlds, the optional worlds, the compiled-in sibling.",
     "connector.import": "What crosses inward: the three host imports and the forwarded guest configuration table.",
@@ -34654,18 +34737,6 @@
       "connector.package.component-position"
     ],
     [
-      "connector.source.drive-picker-source",
-      "connector.source.drive-oauth"
-    ],
-    [
-      "connector.source.drive-picker-source",
-      "connector.source.drive-page-grain"
-    ],
-    [
-      "connector.source.drive-file-selection-invalid",
-      "connector.source.drive-file-selection-limit"
-    ],
-    [
       "connector.reference.environment-is-a-miss",
       "connector.resolve.unresolved-name"
     ],
@@ -34730,16 +34801,40 @@
       "connector.lease.lease"
     ],
     [
+      "connector.drive-picks.picker-source",
+      "connector.source.drive-oauth"
+    ],
+    [
+      "connector.drive-picks.picker-source",
+      "connector.source.drive-page-grain"
+    ],
+    [
+      "connector.drive-picks.file-selection-invalid",
+      "connector.drive-picks.file-selection-limit"
+    ],
+    [
+      "connector.drive-picks.export-limit",
+      "connector.source.drive-export-limit"
+    ],
+    [
       "connector.drive-sheet.source-name",
       "connector.source.drive-oauth"
     ],
     [
       "connector.drive-sheet.source-name",
-      "connector.source.drive-file-selection"
+      "connector.drive-picks.file-selection"
     ],
     [
       "connector.drive-sheet.export-refusal",
       "connector.source.drive-file-cap"
+    ],
+    [
+      "connector.drive-sheet.export-limit",
+      "connector.drive-picks.export-limit"
+    ],
+    [
+      "connector.drive-sheet.export-limit",
+      "connector.drive-picks.file-revoked"
     ],
     [
       "connector.drive-domain-auth.organization-export",
@@ -35376,6 +35471,10 @@
     [
       "surface.connection.create",
       "surface.apply.version-race"
+    ],
+    [
+      "surface.connection.unknown",
+      "surface.connection.idempotent-create"
     ],
     [
       "surface.connection.pause",
@@ -37280,6 +37379,10 @@
             "gloss": "",
             "aliases": []
           },
+          "drive-picks": {
+            "gloss": "",
+            "aliases": []
+          },
           "drive-sheet": {
             "gloss": "",
             "aliases": []
@@ -37399,11 +37502,11 @@
             "gloss": "A delegated subject lies outside the approved Workspace domain."
           },
           "ConnectorDriveFileRejected": {
-            "clause": "connector.source.drive-file-access",
+            "clause": "connector.drive-picks.file-access",
             "gloss": "A selected id is inaccessible or is not a file."
           },
           "ConnectorDriveFilesInvalid": {
-            "clause": "connector.source.drive-file-selection-invalid",
+            "clause": "connector.drive-picks.file-selection-invalid",
             "gloss": "An empty, repeated or mixed individual-file selection."
           },
           "ConnectorDriveListingExceeded": {
@@ -37770,7 +37873,7 @@
             "gloss": "Default body bytes one drive file carries before it is skipped."
           },
           "connector-drive-file-selection": {
-            "clause": "connector.source.drive-file-selection-limit",
+            "clause": "connector.drive-picks.file-selection-limit",
             "value": 128,
             "unit": "entries",
             "basis": "chosen",
@@ -41218,9 +41321,17 @@
             "clause": "surface.connection.idempotent-create",
             "gloss": "A connection id already binds a different declaration."
           },
+          "ConnectionRequestMalformed": {
+            "clause": "surface.connection.malformed",
+            "gloss": "A connection request body outside its route's exact fields."
+          },
           "ConnectionScopeDenied": {
             "clause": "surface.connection.authority",
             "gloss": "A connection mutation names a tenant or principal outside the admitted credential."
+          },
+          "ConnectionUnknown": {
+            "clause": "surface.connection.unknown",
+            "gloss": "A pause or delete naming no standing connection."
           },
           "ConnectorUploadRefused": {
             "clause": "surface.edit.connector-upload",

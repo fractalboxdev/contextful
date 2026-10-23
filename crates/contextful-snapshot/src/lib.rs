@@ -19,6 +19,15 @@ use serde::{Deserialize, Serialize};
 const LOCK_FILE: &str = "manifest.lock";
 const DRAFT_FILE: &str = "manifest@draft.json";
 const ATTESTATION_NONCES: &str = "attestation-nonces";
+const CONNECTIONS: &str = "connections";
+
+/// One tenant connection's standing record: the version its last claim took and the
+/// declaration and state that claim bound.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectionRecord {
+    pub version: u64,
+    pub body: serde_json::Value,
+}
 
 /// A validated store draft bound to the applied version it read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,6 +166,51 @@ impl SnapshotDir {
             }
         }
         Ok(claimed)
+    }
+
+    /// The standing record of tenant connection `id`, or `None` while no claim named it.
+    pub fn connection(&self, id: &str) -> Result<Option<ConnectionRecord>, ControlError> {
+        let path = self.connection_path(id)?;
+        match std::fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|e| ControlError::Storage(format!("{}: {e}", path.display()))),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(ControlError::Storage(format!("{}: {e}", path.display()))),
+        }
+    }
+
+    /// Claim connection `id`'s next version under the lock that serializes every control
+    /// claim (`surface.connection.create`). `change` reads the standing record and answers
+    /// the body to claim, or `None` to claim nothing; `boundary` rechecks authority under the
+    /// lock before the write. Answers the record standing afterwards and whether this call
+    /// claimed it.
+    pub fn claim_connection_guarded<E: From<ControlError>>(
+        &self,
+        id: &str,
+        change: impl FnOnce(Option<&ConnectionRecord>) -> Result<Option<serde_json::Value>, E>,
+        boundary: &dyn Fn() -> Result<(), ControlError>,
+    ) -> Result<(ConnectionRecord, bool), E> {
+        let path = self.connection_path(id)?;
+        let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
+        let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
+        let standing = self.connection(id)?;
+        let Some(body) = change(standing.as_ref())? else {
+            let standing = standing.ok_or_else(|| ControlError::Storage(format!("connection `{id}` has no record to answer")))?;
+            return Ok((standing, false));
+        };
+        let next = ConnectionRecord { version: standing.map_or(1, |record| record.version + 1), body };
+        let bytes = serde_json::to_vec(&next).map_err(|e| ControlError::Storage(e.to_string()))?;
+        std::fs::create_dir_all(self.root.join(CONNECTIONS)).map_err(|e| ControlError::Storage(format!("{}: {e}", self.root.display())))?;
+        boundary()?;
+        replace(&path, &bytes).map_err(storage)?;
+        Ok((next, true))
+    }
+
+    /// The record file of connection `id`: letters, digits, `-` and `_`, 1 to 64 bytes.
+    fn connection_path(&self, id: &str) -> Result<PathBuf, ControlError> {
+        if id.is_empty() || id.len() > 64 || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') {
+            return Err(ControlError::Storage(format!("connection id `{id}` is not 1 to 64 letters, digits, `-` or `_`")));
+        }
+        Ok(self.root.join(CONNECTIONS).join(format!("{id}.json")))
     }
 
     /// Save one store draft only while the applied version still matches its base.
