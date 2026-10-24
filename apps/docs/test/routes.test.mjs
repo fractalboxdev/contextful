@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import test from "node:test";
 import { createMarkdownProcessor } from "@astrojs/markdown-remark";
-import { routeFor, SPEC_DIR } from "../src/lib/corpus.mjs";
+import { legacyRedirects, routeFor, sitePaths, SPEC_DIR } from "../src/lib/corpus.mjs";
 import { remarkCorpus } from "../src/lib/markdown.mjs";
 
 test("cards and decision records live inside the specification", () => {
@@ -12,6 +12,14 @@ test("cards and decision records live inside the specification", () => {
   assert.equal(routeFor(resolve(SPEC_DIR, "roadmap.md")), "/docs/specs/roadmap/");
   assert.equal(routeFor(resolve(SPEC_DIR, "guide/store.md")), "/docs/guide/store/");
   assert.equal(routeFor(resolve(SPEC_DIR, "../README.md")), undefined);
+});
+
+test("the guide index redirects to docs while individual guides remain canonical", () => {
+  assert.equal(legacyRedirects()["/docs/guide/"], "/docs/");
+  const paths = sitePaths();
+  assert.ok(paths.includes("/docs/"));
+  assert.ok(paths.includes("/docs/guide/assurance/"));
+  assert.equal(paths.includes("/docs/guide/"), false);
 });
 
 test("rendered references preserve clause anchors across the route move", async () => {

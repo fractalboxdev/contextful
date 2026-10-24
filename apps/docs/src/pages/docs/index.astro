@@ -19,16 +19,8 @@ const headings = [
   { depth: 2, slug: "use-the-specification", text: "Use the specification" },
 ];
 
-const navigationGroups = [
-  { label: "Start here", items: [
-    { label: "What is Contextful?", href: "/docs/#what-is-contextful" },
-    { label: "Choose a deployment", href: "/docs/guide/topology/" },
-    { label: "Implementation status", href: "/docs/specs/status/" },
-  ] },
-  { label: "Read for your task", items: tasks.map(({ task, href }) => ({ label: task, href })) },
-];
 ---
-<Base title="What is Contextful?" description="Understand Contextful, see when a local-first context engine fits your agent workflow, and choose a guide for your task." headings={headings} navigationGroups={navigationGroups}>
+<Base title="What is Contextful?" description="Understand Contextful, see when a local-first context engine fits your agent workflow, and choose a guide for your task." headings={headings}>
   <div class="docs-start">
     <p class="eyebrow">For developers and operators building agent workflows</p>
     <h1 id="what-is-contextful">What is Contextful?</h1>

@@ -48,18 +48,22 @@ export const collectionRoute = (collection, id) => {
   return collection === "guide" ? `/docs/guide/${id}/` : `/docs/specs/${collection}/${id}/`;
 };
 
-/** Every former content URL resolves to the corresponding canonical page. */
-export const legacyRedirects = () => Object.fromEntries(
-  ["spec", "guide", "cards", "adr"].flatMap((collection) =>
+/**
+ * Every former content URL resolves to the corresponding canonical page.
+ * @returns {Record<string, string>}
+ */
+export const legacyRedirects = () => Object.fromEntries([
+  ["/docs/guide/", "/docs/"],
+  ...["spec", "guide", "cards", "adr"].flatMap((collection) =>
     mdFiles(collection === "spec" ? SPEC_DIR : join(SPEC_DIR, collection)).map((file) => {
       const id = basename(file, ".md");
       return [`/${collection}/${id}/`, collectionRoute(collection, id)];
     }),
   ),
-);
+]);
 
 export const sitePaths = () => [...new Set([
-  "/", "/docs/", "/docs/guide/", "/docs/specs/", "/docs/specs/contracts/", "/docs/specs/cards/", "/docs/specs/adr/",
+  "/", "/docs/", "/docs/specs/", "/docs/specs/contracts/", "/docs/specs/cards/", "/docs/specs/adr/",
   ...Object.values(legacyRedirects()).map((route) => route.split("#")[0]),
 ])];
 
