@@ -7,9 +7,7 @@
   "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true, "not_found_handling": "404-page" },
   "observability": { "enabled": true, "head_sampling_rate": 1 },
   "routes": [
-    { "pattern": "contextful.fractalbox.dev", "custom_domain": true },
-    // The former documentation domain redirects to the canonical site.
-    { "pattern": "spec.contextful.work", "custom_domain": true, "previews_enabled": true }
+    { "pattern": "contextful.fractalbox.dev", "custom_domain": true }
   ],
   // Workers Builds runs `wrangler preview` on non-production branches, and that command
   // refuses a configuration without a `previews` block.
