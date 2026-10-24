@@ -34,7 +34,7 @@ export function remarkTopologyTargets() {
 
 /** Front-matter `contract` of the source file; guides and cards carry one too, so only `spec/NN-*.md` counts. */
 const contractOf = (file, from) => {
-  if (!from || !/^\/spec\/[^/]+\/$/.test(routeFor(from) ?? "")) return undefined;
+  if (!from || dirname(from) !== SPEC_DIR) return undefined;
   const fm = file.data?.astro?.frontmatter?.contract;
   if (typeof fm === "string") return fm;
   const src = readFileSync(from, "utf8");

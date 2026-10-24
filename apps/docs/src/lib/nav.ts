@@ -1,8 +1,6 @@
 import { getCollection, type CollectionEntry } from "astro:content";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { parse } from "smol-toml";
-import { SPEC_DIR } from "./corpus.mjs";
+import { collectionRoute, contractsByFile } from "./corpus.mjs";
+export { contractsByFile } from "./corpus.mjs";
 
 type Entry = CollectionEntry<"spec"> | CollectionEntry<"adr"> | CollectionEntry<"guide"> | CollectionEntry<"cards">;
 
@@ -38,27 +36,6 @@ export const descriptionOf = (entry: Entry) => {
   return text.length > 160 ? `${text.slice(0, 157).replace(/\s+\S*$/, "")}…` : text;
 };
 
-interface ContractMeta {
-  contract: string;
-  title: string;
-  gloss?: string;
-}
-
-/** `spec/terms/contract.toml`, keyed by file stem (`10-store`). */
-export const contractsByFile = (): Map<string, ContractMeta> => {
-  const out = new Map<string, ContractMeta>();
-  const toml = parse(readFileSync(join(SPEC_DIR, "terms/contract.toml"), "utf8")) as {
-    contract?: Record<string, { title?: string; gloss?: string; files?: string[] }>;
-  };
-  for (const [contract, c] of Object.entries(toml.contract ?? {})) {
-    for (const f of c.files ?? []) {
-      const stem = f.replace(/^spec\//, "").replace(/\.md$/, "");
-      out.set(stem, { contract, title: c.title ?? contract, gloss: c.gloss });
-    }
-  }
-  return out;
-};
-
 /** A contract's guide, card and files, for the links a page carries to its companions. */
 export const companions = async (contract: string | undefined) => {
   if (!contract) return undefined;
@@ -66,12 +43,12 @@ export const companions = async (contract: string | undefined) => {
   const byFile = contractsByFile();
   return {
     contract,
-    guide: guides.some((g) => g.id === contract) ? `/guide/${contract}/` : undefined,
-    card: cards.some((c) => c.id === contract) ? `/cards/${contract}/` : undefined,
+    guide: guides.some((g) => g.id === contract) ? collectionRoute("guide", contract) : undefined,
+    card: cards.some((c) => c.id === contract) ? collectionRoute("cards", contract) : undefined,
     files: spec
       .filter((e) => (e.data.contract ?? byFile.get(e.id)?.contract) === contract)
       .sort((a, b) => a.id.localeCompare(b.id))
-      .map((e) => ({ href: `/spec/${e.id}/`, file: `${e.id}.md` })),
+      .map((e) => ({ href: collectionRoute("spec", e.id), file: `${e.id}.md` })),
   };
 };
 
@@ -83,23 +60,23 @@ export const navigation = async (): Promise<NavGroup[]> => {
   const guides = (await getCollection("guide")).sort((a, b) => a.id.localeCompare(b.id));
   const cards = (await getCollection("cards")).sort((a, b) => a.id.localeCompare(b.id));
   const contracts = contractsByFile();
-  const item = (base: string) => (e: Entry): NavItem => ({ href: `/${base}/${e.id}/`, label: titleOf(e) });
+  const item = (base: string) => (e: Entry): NavItem => ({ href: collectionRoute(base, e.id), label: titleOf(e) });
   const adrItem = (e: Entry): NavItem => ({
-    href: `/adr/${e.id}/`,
+    href: collectionRoute("adr", e.id),
     label: titleOf(e).replace(/^(P\d+|D\d+|A-[a-z]+)\s+—\s+/, ""),
     hint: e.id.startsWith("A-") ? e.id : e.id.split("-")[0],
   });
 
   const isContract = (e: Entry) => Boolean(e.data.contract) || contracts.has(e.id);
   const groups: NavGroup[] = [
-    { label: "Guides", items: guides.map((e) => ({ href: `/guide/${e.id}/`, label: titleOf(e) })) },
+    { label: "Guides", items: guides.map(item("guide")) },
     {
       label: "Contracts",
       items: spec.filter(isContract).map((e) => ({ ...item("spec")(e), hint: e.id.split("-")[0] })),
     },
     {
       label: "Cards",
-      items: cards.map((e) => ({ href: `/cards/${e.id}/`, label: titleOf(e).replace(/\s+—\s+card$/, "") })),
+      items: cards.map((e) => ({ href: collectionRoute("cards", e.id), label: titleOf(e).replace(/\s+—\s+card$/, "") })),
       collapsed: true,
     },
     { label: "Plan", items: spec.filter((e) => !isContract(e) && e.id !== "targets").map(item("spec")) },
