@@ -319,7 +319,7 @@ pub fn run(args: Args) -> Result<()> {
     land_corpus(
         &corpus,
         &store,
-        &StubEmbedder::new(0),
+        Some(&StubEmbedder::new(0)),
         Instant::from_unix_nanos(0)?,
     )?;
     let face = Face::open(

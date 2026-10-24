@@ -2,7 +2,7 @@
 
 # Target ledger
 
-167 entries: 118 gated, 35 recorded, 6 scheduled, 8 open.
+168 entries: 118 gated, 35 recorded, 7 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -136,6 +136,7 @@
 | `runs-record-live-objects` | `store.fold.retention` | `store.objects.runs_record_live_after_240_ticks` | gate | test `contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick` | `<= 3497` | gated |
 | `runs-record-manifest-keys-per-tick` | `store.push.generation` | `sync.manifest_keys_per_tick_steady_state` | gate | test `contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick` | `<= 20.4` | gated |
 | `runs-record-objects-per-tick` | `run.record.record-folds` | `store.objects_per_tick_steady_state` | gate | test `contextful_sync::push::the_run_record_adds_a_bounded_object_count_per_tick` | `<= 1` | gated |
+| `semantic-retrieval-hybrid-ndcg` | `assurance.evaluate.semantic-report` | `retrieval.hybrid.ndcg_at_k` | scheduled | test `contextful_cli::eval::semantic_quality_uses_cached_real_vectors_through_the_ranked_store` | — | scheduled |
 | `source-completion-bytes` | `run.export.group-source` | `run.export.source_completion_bytes` | gate | test `contextful_context::build::a_watermark_over_the_run_record_stays_bounded_after_n_runs` | `<= 332` | gated |
 | `source-history-bytes` | `run.export.group-source-latest` | `run.export.source_history_bytes` | gate | test `contextful_sqlite::export::source_history_stays_bounded_per_publication` | `<= 16384` | gated |
 | `source-history-rows` | `run.export.group-source-latest` | `run.export.source_history_rows` | gate | test `contextful_sqlite::export::source_history_stays_bounded_per_publication` | `<= 16` | gated |

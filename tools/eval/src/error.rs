@@ -35,6 +35,12 @@ pub enum EvalError {
     /// A backtest forecast case resolved before its freeze instant
     /// (`assurance.forecast.resolved-before-freeze`).
     EvalCaseResolvedBeforeFreeze { case: String, resolved: String, frozen: String },
+    /// A semantic cache input that is changed, unhashed, a symbolic link, or a table besides
+    /// `kb/semantic` (`assurance.evaluate.semantic-cache`).
+    EvalSemanticCacheUnverified { reason: String },
+    /// A semantic run's invalid vector, relocated held-out file, overlapping development
+    /// query or differing configuration (`assurance.evaluate.semantic-inputs`).
+    EvalSemanticInputRejected { reason: String },
 }
 
 impl EvalError {
@@ -52,6 +58,8 @@ impl EvalError {
             EvalError::EvalLabelIntervalMissing { .. } => "EvalLabelIntervalMissing",
             EvalError::EvalExecutionUndeclared { .. } => "EvalExecutionUndeclared",
             EvalError::EvalCaseResolvedBeforeFreeze { .. } => "EvalCaseResolvedBeforeFreeze",
+            EvalError::EvalSemanticCacheUnverified { .. } => "EvalSemanticCacheUnverified",
+            EvalError::EvalSemanticInputRejected { .. } => "EvalSemanticInputRejected",
         }
     }
 
@@ -109,6 +117,12 @@ impl fmt::Display for EvalError {
             }
             EvalError::EvalCaseResolvedBeforeFreeze { case, resolved, frozen } => {
                 write!(f, "EvalCaseResolvedBeforeFreeze: `{case}` resolved at {resolved}, before its freeze at {frozen}")
+            }
+            EvalError::EvalSemanticCacheUnverified { reason } => {
+                write!(f, "EvalSemanticCacheUnverified: {reason}")
+            }
+            EvalError::EvalSemanticInputRejected { reason } => {
+                write!(f, "EvalSemanticInputRejected: {reason}")
             }
         }
     }

@@ -99,6 +99,72 @@ fn mean(report: &Value, pointer: &str) -> f64 {
     report.pointer(pointer).and_then(Value::as_f64).unwrap_or_else(|| panic!("{pointer} in {report}"))
 }
 
+#[test]
+fn semantic_quality_uses_cached_real_vectors_through_the_ranked_store() {
+    let issuer = Issuer::new();
+    let token = issuer.mint(READER, "local:device");
+    let fixture = root().join("evals/semantic/v1");
+    let path = issuer.path().join("semantic-report.json");
+    let out = run(issuer.path(), &[
+        "eval", "run", "--goldens", fixture.join("heldout.jsonl").to_str().unwrap(),
+        "--semantic-manifest", fixture.join("manifest.json").to_str().unwrap(),
+        "--semantic-baseline", fixture.join("baseline.json").to_str().unwrap(),
+        "--zone", "local:device", "--public-key", &issuer.public, "--audience", AUD,
+        "--report", path.to_str().unwrap(),
+    ], Some(&token));
+    assert!(out.status.success(), "{}", stderr(&out));
+    let report: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    if let Some(path) = std::env::var_os("CONTEXTFUL_SEMANTIC_CAPTURE") {
+        std::fs::write(path, serde_json::to_string_pretty(&report).unwrap() + "\n").unwrap();
+    }
+    assert_eq!(report["run"]["tier"], "semantic");
+    assert_eq!(report["run"]["k"], 10);
+    assert_eq!(report["n_cases"], 36);
+    assert!(report.get("judge").is_none());
+    assert_eq!(report["retrieval"]["vector"]["recall_at_k"]["n"], 36);
+    assert!(report["slices"]["cross_language"]["n_cases"].as_u64().unwrap() > 0);
+    assert!(mean(&report, "/retrieval/vector/reciprocal_rank/mean") > 0.0);
+    assert_eq!(report["cases"].as_array().unwrap().len(), 36);
+    let value = mean(&report, "/retrieval/hybrid/ndcg_at_k/mean");
+    contextful_eval::record::emit("semantic-retrieval-hybrid-ndcg", value, 36, 683);
+}
+
+/// A cache holding a second table — declared, hashed and lacking a vector — refuses before
+/// any row lands: the semantic run stubs no embedding and writes no report.
+#[test]
+fn a_semantic_run_refuses_a_second_table_instead_of_stubbing_its_vectors() {
+    use sha2::{Digest, Sha256};
+    let issuer = Issuer::new();
+    let token = issuer.mint(READER, "local:device");
+    let fixture = root().join("evals/semantic/v1");
+    let cache = issuer.path().join("cache");
+    let mut manifest: Value = serde_json::from_slice(&std::fs::read(fixture.join("manifest.json")).unwrap()).unwrap();
+    for name in manifest["files"].as_object().unwrap().keys() {
+        let target = cache.join(name);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::copy(fixture.join(name), target).unwrap();
+    }
+    let table = "corpus/rows/kb/semantic-extra.jsonl";
+    let row = json!({"doc_id": "extra", "text": "A row without a vector would take the seeded stub."}).to_string() + "\n";
+    std::fs::write(cache.join(table), &row).unwrap();
+    manifest["files"][table] = json!(format!("{:x}", Sha256::digest(row.as_bytes())));
+    let declaration = cache.join("corpus/contextful.toml");
+    let toml = std::fs::read_to_string(&declaration).unwrap() + "\n[[pipeline.tables]]\nname = \"kb/semantic-extra\"\nprimary_key = [\"doc_id\"]\n";
+    std::fs::write(&declaration, &toml).unwrap();
+    manifest["files"]["corpus/contextful.toml"] = json!(format!("{:x}", Sha256::digest(toml.as_bytes())));
+    std::fs::write(cache.join("manifest.json"), manifest.to_string()).unwrap();
+    let path = issuer.path().join("semantic-report.json");
+    let out = run(issuer.path(), &[
+        "eval", "run", "--goldens", cache.join("heldout.jsonl").to_str().unwrap(),
+        "--semantic-manifest", cache.join("manifest.json").to_str().unwrap(),
+        "--zone", "local:device", "--public-key", &issuer.public, "--audience", AUD,
+        "--report", path.to_str().unwrap(),
+    ], Some(&token));
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("EvalSemanticCacheUnverified: semantic corpus holds a table other than kb/semantic"), "{}", stderr(&out));
+    assert!(!path.exists());
+}
+
 /// A corpus of one labelled table, `lab/notes`, whose rows carry 3-dimensional embeddings.
 const LAB: &str = r#"
 [[pipeline.tables]]
