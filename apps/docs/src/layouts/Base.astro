@@ -30,7 +30,7 @@ const pageTitle = `${title} · Contextful docs`;
     <Header />
     <a class="skip-link" href="#main">Skip to content</a>
     <div class="shell">
-      <nav class="sidebar" aria-label="Spec files">
+      <nav class="sidebar" aria-label={navigationGroups ? "Documentation navigation" : "Spec files"}>
         <div class="section-links">
           <a href="/docs/">Documentation</a>
           <a href="/docs/guide/">Guides</a>
