@@ -594,6 +594,8 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because rows landed locally carry columns the bucket's copy may lack*
 - `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every bucket table before their first read. A failed pull stops the command.
   *because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs*
+- `serve-refresh` — Under {{store.pull.before-run}}, `serve` pulls again every 30 s and maps the new generation for reads starting after that pull; a failed refresh keeps serving the held generation and logs the failure.
+  *because a query face running apart from the nodes that push otherwise serves the generation it started with until it restarts*
 - `lazy-parts` — With `[sync] lazy_parts = true`, pull downloads all listed keys except table Parquet data parts. On first read or fold use, the store fetches each complete part and verifies the digest under {{store.pull.digest-mismatch}}.
   *A-store*
 - `part-cache` — `[sync] part_cache_bytes`, default 8 GiB, bounds locally fetched parts. Above that bound, the cache deletes the least recently read part that no statement or fold holds.
