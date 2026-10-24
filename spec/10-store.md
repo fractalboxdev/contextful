@@ -9,7 +9,6 @@ owns:
   - fold
   - index
   - encrypt
-  - endpoint
   - emit
   - push
   - pull
@@ -461,31 +460,6 @@ At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and
 unsettled: How long does a sidecar decrypted into process memory stay resident across reads, and what evicts it? owner: store affects: store.encrypt
 
 unsettled: What reseals a part carried by reference under a retiring key version, given only a restatement, retention or merge rewrites it, so {{store.encrypt.rotation}} retires that version? owner: store affects: store.encrypt
-
-## endpoint
-
-Bucket endpoint schemes, transport, request addressing and signing, credentials and backend response handling.
-
-- `schemes` — `[sync] endpoint` maps `file://<directory>` to a filesystem bucket and `s3://<region>` to regional AWS S3. `r2://<account-id>` selects that account's R2 endpoint at region `auto`. `https://<host>` uses `[sync] region`, default `us-east-1`.
-- `unsupported-scheme` — Any other scheme, or an S3 or R2 endpoint in a build without the `s3-sync` feature, raises `SyncEndpointUnsupported`, naming the endpoint.
-  *because a bucket the binary cannot reach refuses when it opens, before a push uploads anything*
-- `plaintext` — An `http://` endpoint opens on a loopback host alone; any other host raises `SyncEndpointInsecure`, naming it.
-  *because objects and signed requests crossing a network in plaintext are readable and replayable by anyone on the path*
-- `addressing` — S3 and R2 use path-style `<endpoint>/<bucket>/<key>`, percent-encoding every key segment. Every request uses AWS Signature Version 4 for service `s3` at the endpoint's region.
-- `credentials` — `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each bind `secret://<name>`, hydrated as {{connector.reference.whole-value-reference}}, or `env://NAME`, read whole from the process environment, as the bucket opens.
-- `credential-unbound` — S3 or R2 raises `SyncCredentialUnbound` when `[sync]` omits `access_key_id` or `secret_access_key`, supplies a non-reference credential, or names an unset variable. The error names the key.
-  *because a literal key in `config.toml` sits in plaintext on every disk and backup holding the store root*
-- `conditional-answers` — A `412` or `409` means a failed condition; a `404` naming `NoSuchKey` does so for an `If-Match` put. `501` means an unsupported method; `403` means forbidden credentials. Both follow {{store.probe.inconclusive}}.
-- `missing-bucket` — A `404` naming a code other than `NoSuchKey`, including `NoSuchBucket`, indicates neither an absent object nor a failed condition. The get, put, delete or list fails as transport and names the code.
-  *because a mistyped or deleted bucket otherwise reads as an empty bucket, a free lease or a lost compare-and-set*
-- `transport` — An incomplete S3 get, head, list page, delete or unconditional put retries within 3 attempts. Connections allow 5 s; responses allow 2 s, 4 s, then 10 s. Conditional puts attempt once.
-  *because a resent conditional put whose lost answer applied reads its own write back as a failed condition, and a stalled small request otherwise holds a pull for 10 s*
-- `throttled` — S3 requests retry within 5 attempts after `429` or `503`, or `500` except on conditional puts. Each retry waits a uniform draw below a ceiling doubling from 100 ms to 5 s.
-  *because a throttled request never applied, a conditional put answered `500` may have, and jitter spreads clients throttled together*
-- `unavailable` — A request unanswered within {{store.endpoint.transport}}, or returning `429` or `5xx` beyond {{store.endpoint.throttled}}, fails as unavailable. The failure names the request without claiming what the bucket holds.
-- `list-pages` — A list follows continuation tokens until the backend reports completion. The list returns every key under the prefix in sorted order.
-
-unsettled: Does an S3 bucket whose `[sync]` binds no key sign with the instance or container role's credentials? owner: store affects: store.endpoint
 
 ## emit
 

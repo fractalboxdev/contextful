@@ -62,6 +62,8 @@ StoreIndexOverRedactedColumn = { clause = "store.encrypt.redacted-index", gloss 
 StoreIndexPathCollision      = { clause = "store.index.path-collision", gloss = "Two sidecar declarations of one table resolve to one path." }
 SyncEndpointUnsupported      = { clause = "store.endpoint.unsupported-scheme", gloss = "An endpoint's scheme names no bucket adapter this build links." }
 SyncEndpointInsecure         = { clause = "store.endpoint.plaintext", gloss = "A plain `http://` endpoint names a host off loopback." }
+SyncRoleUnavailable          = { clause = "store.endpoint.role-unavailable", gloss = "No workload-role source answers a bucket whose `[sync]` selects role credentials." }
+SyncCredentialConflict       = { clause = "store.endpoint.role-conflict", gloss = "Role credentials beside a key, or on an R2 endpoint." }
 SyncCredentialUnbound        = { clause = "store.endpoint.credential-unbound", gloss = "An S3 or R2 endpoint's `[sync]` binds a credential key to no reference, or to an unset variable." }
 SyncPrefixEscape             = { clause = "store.push.prefix-escape", gloss = "A key resolved outside the configured prefix." }
 SyncPrefixUnbound            = { clause = "store.push.prefix-unbound", gloss = "The variable named by `prefix_from` is unset at startup." }
@@ -101,6 +103,7 @@ store-endpoint-connect      = { clause = "store.endpoint.transport", value = 5, 
 store-endpoint-answer       = { clause = "store.endpoint.transport", value = 10, unit = "s", basis = "chosen", gloss = "Longest a sent S3 request attempt waits for its answer to begin." }
 store-endpoint-answer-first = { clause = "store.endpoint.transport", value = 2, unit = "s", basis = "standard:aws-s3-performance", gloss = "Answer window of the first attempt of an S3 request that may resend." }
 store-endpoint-answer-second = { clause = "store.endpoint.transport", value = 4, unit = "s", basis = "standard:aws-s3-performance", gloss = "Answer window of the second attempt of an S3 request that may resend." }
+store-endpoint-role-refresh = { clause = "store.endpoint.role-refresh", value = 300, unit = "s", basis = "chosen", gloss = "Lead time before expiry at which workload-role credentials refresh." }
 store-endpoint-throttled    = { clause = "store.endpoint.throttled", value = 5, unit = "attempts", basis = "chosen", gloss = "Total attempts of an S3 request the backend answers throttled." }
 store-endpoint-backoff-base = { clause = "store.endpoint.throttled", value = 100, unit = "ms", basis = "chosen", gloss = "Ceiling of the backoff before the first throttled resend, doubling per resend." }
 store-endpoint-backoff-cap  = { clause = "store.endpoint.throttled", value = 5, unit = "s", basis = "chosen", gloss = "Highest ceiling a throttled resend's backoff reaches." }

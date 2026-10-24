@@ -5,10 +5,10 @@
 provider = "aws"
 title    = "AWS"
 serves   = "VPC-bound and regulated deployments, and teams already operating on AWS."
-primitives = ["functions", "containers", "workflows", "scheduler", "managed-postgres", "object-store", "queue", "secret-store"]
+primitives = ["functions", "containers", "scheduler", "managed-postgres", "object-store", "queue", "secret-store"]
 
 runtime = '''
-The `lambda-fargate` target runs reconciliation in Lambda, dispatches ECS tasks through Step Functions, and hosts the native Linux `contextful-full` executable in Fargate containers. The query process embeds DuckDB; component execution embeds Wasmtime. RDS Postgres supplies the shared catalog and S3 holds corpus objects. The `fargate-daemon` alternative keeps scheduling and reconciliation in the native daemon.
+The `lambda-fargate` target runs reconciliation in Lambda, starts ECS tasks with `RunTask` directly, and hosts the native Linux `contextful-full` executable in Fargate containers. The query process embeds DuckDB; component execution embeds Wasmtime. RDS Postgres supplies the shared catalog, the engine journal in it makes every run durable and resumable, and S3 holds corpus objects. The `fargate-daemon` alternative keeps scheduling and reconciliation in the native daemon.
 '''
 
 diagram = '''
@@ -17,7 +17,6 @@ flowchart LR
   subgraph ACCOUNT["AWS target"]
     TICK["EventBridge Scheduler"]:::accent
     REC["Lambda reconciler"]:::accent
-    ORCH["Step Functions"]:::accent
     ALB["Application Load Balancer"]:::accent
     subgraph TASK["Fargate Linux tasks"]
       QUERY["contextful serve process"]:::accent
@@ -27,8 +26,7 @@ flowchart LR
     OBJ[("S3 corpus bucket")]:::store
   end
   TICK -- "due tick" --> REC
-  REC -- "start execution" --> ORCH
-  ORCH -- "ECS RunTask" --> RUN
+  REC -- "ECS RunTask" --> RUN
   CALLER -- "HTTPS" --> ALB
   ALB -- "HTTP store request" --> QUERY
   QUERY -- "read snapshot" --> OBJ
@@ -43,17 +41,17 @@ default  = true
 kind     = "orchestrated"
 profiles = ["full"]
 excludes = []
-uses     = ["functions", "containers", "workflows", "scheduler", "managed-postgres", "object-store", "queue", "secret-store"]
+uses     = ["functions", "containers", "scheduler", "managed-postgres", "object-store", "queue", "secret-store"]
 
 [shape.roles]
 cron_tick    = "EventBridge Scheduler"
 reconciler   = "Lambda"
-orchestrator = "Step Functions: Standard for backfills, Express for short high-frequency pipelines"
+orchestrator = "engine journal in the catalog"
 catalog      = "RDS Postgres via pg-catalog"
 object_store = "S3"
 query_face   = "ALB → warm contextful-full on Fargate"
-compute      = "Fargate task started by Step Functions (ECS RunTask, .sync)"
-secrets      = "Secrets Manager through the task role"
+compute      = "Fargate task the reconciler starts with ECS RunTask"
+secrets      = "Secrets Manager adapter through the task role"
 queue        = "SQS standard queue; S3 event notifications to SQS for object arrival"
 realtime     = "Fargate-hosted run projection"
 
@@ -63,17 +61,17 @@ kind = "function"
 profiles = ["edge"]
 wall_clock_cap_min = 15
 excludes = ["first-time-backfill", "component-connector"]
-uses     = ["functions", "workflows", "scheduler", "managed-postgres", "object-store", "secret-store"]
+uses     = ["functions", "scheduler", "managed-postgres", "object-store", "secret-store"]
 
 [shape.roles]
 cron_tick    = "EventBridge Scheduler"
 reconciler   = "Lambda"
-orchestrator = "Step Functions Express"
+orchestrator = "engine journal in the catalog"
 catalog      = "RDS Postgres via pg-catalog"
 object_store = "S3"
-query_face   = "Lambda function URL serving the read-only replica"
+query_face   = "Lambda function URL through the Lambda Web Adapter to a read-only contextful serve"
 compute      = "Lambda"
-secrets      = "Secrets Manager through the function role"
+secrets      = "Secrets Manager adapter through the function role"
 
 [[shape]]
 name     = "fargate-daemon"
@@ -90,5 +88,5 @@ catalog      = "RDS Postgres via pg-catalog"
 object_store = "S3"
 query_face   = "ALB → contextful serve on Fargate"
 compute      = "in-process component host"
-secrets      = "Secrets Manager through the task role"
+secrets      = "Secrets Manager adapter through the task role"
 queue        = "SQS standard queue; S3 event notifications to SQS for object arrival"
