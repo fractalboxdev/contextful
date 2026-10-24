@@ -1,5 +1,5 @@
 import { defineConfig } from "astro/config";
-import rehypeMerlion from "@fractalbox/merlion-rehype";
+import rehypeMerlion from "@fractalboxdev/merlion-rehype";
 import { diagramGate, remarkTopologyTargets, remarkCorpus, rehypeCorpus } from "./src/lib/markdown.mjs";
 import { legacyRedirects } from "./src/lib/corpus.mjs";
 

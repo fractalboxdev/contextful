@@ -27,6 +27,8 @@ engineering gates. Each claim names its scope and assumptions
 
 ## How it works
 
+The CI gate receives audit verdicts, comparison verdicts and retrieval scores.
+
 ```mermaid
 flowchart LR
   SPEC["specification"] -->|"modelled clauses"| MODEL
@@ -42,6 +44,9 @@ flowchart LR
   AUDIT -->|"audit verdict"| GATE["CI gate"]
   DIFF -->|"agreement verdict"| GATE
   EVAL["quality harness"] -->|"retrieval scores"| GATE
+  class SPEC muted
+  class MODEL,ENGINE,AUDIT,DIFF,EVAL accent
+  class GATE ok
 ```
 
 Models follow the specification text, not the engine source
@@ -103,18 +108,34 @@ A backtest places each case against the reader model's post-training cutoff ({{a
 and purges overlapping labels ({{assurance.backtest.split}}); forecast tracks never pool
 ({{assurance.forecast.tracks-separate}}).
 
+The leakage estimate compares scores from exposed and unseen cases against a declared reference.
+
 ```mermaid
 flowchart LR
-  CASES["case set"] -->|"resolution minus cutoff"| SEEN{"Resolved before reader cutoff?"}
+  CASES["case set"] -->|"resolution minus cutoff"| SEEN{"Resolved before cutoff?"}
   SEEN -->|"before: exposed"| EXPOSED["exposed slice"]
   SEEN -->|"after: unseen"| UNSEEN["unseen slice"]
   REF["declared reference"] -->|"discontinuity or control"| EST["leakage estimate"]
   EXPOSED -->|"scores"| EST
   UNSEEN -->|"scores"| EST
-  CASES -->|"label intervals"| FOLD{"Where does the label fall?"}
+  class CASES,REF muted
+  class SEEN,EXPOSED warn
+  class UNSEEN ok
+  class EST accent
+```
+
+The training fold excludes labels overlapping test labels or inside the embargo span.
+
+```mermaid
+flowchart LR
+  CASES["case set"] -->|"label intervals"| FOLD{"Label placement?"}
   FOLD -->|"overlaps a test label"| PURGED["purged cases"]
   FOLD -->|"inside embargo span"| EMBARGOED["embargoed cases"]
   FOLD -->|"clear of both"| TRAIN["training fold"]
+  class CASES muted
+  class FOLD warn
+  class PURGED,EMBARGOED danger
+  class TRAIN ok
 ```
 
 ## Worked example
