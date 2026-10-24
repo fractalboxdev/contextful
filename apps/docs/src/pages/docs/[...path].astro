@@ -19,7 +19,7 @@ export async function getStaticPaths() {
     const entries = (await getCollection(collection)).filter((entry) => entry.id !== "targets")
       .sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
     return [
-      { params: { path }, props: { collection, title, entries: collection === "spec" ? entries.filter((entry) => contracts.has(entry.id)) : entries } },
+      ...(collection === "guide" ? [] : [{ params: { path }, props: { collection, title, entries: collection === "spec" ? entries.filter((entry) => contracts.has(entry.id)) : entries } }]),
       ...entries.map((entry) => ({
         params: { path: collectionRoute(collection, entry.id).replace(/^\/docs\//, "").replace(/\/$/, "") },
         props: { entry, collection },
@@ -34,7 +34,7 @@ const Content = rendered?.Content;
 const links = entry ? await companions(collection === "spec" ? entry.data.contract : collection === "guide" || collection === "cards" ? entry.id : undefined) : undefined;
 ---
 <Base title={entry ? titleOf(entry) : title!} description={entry ? descriptionOf(entry) : `${title} in the Contextful documentation.`} headings={rendered?.headings}>
-  {entry && <p class="eyebrow"><a href="/docs/">Docs</a> / <a href={collection === "guide" ? "/docs/guide/" : "/docs/specs/"}>{collection === "guide" ? "Guides" : "Specification"}</a></p>}
+  {entry && <p class="eyebrow"><a href="/docs/">Docs</a> / <a href={collection === "guide" ? "/docs/#choose-a-guide" : "/docs/specs/"}>{collection === "guide" ? "Guides" : "Specification"}</a></p>}
   {links && <p class="eyebrow">
     contract <code>{links.contract}</code>
     {links.files.map((file) => <Fragment> · <a href={file.href}>{file.file}</a></Fragment>)}

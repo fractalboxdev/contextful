@@ -20,6 +20,26 @@ test("the homepage introduces the product and docs have a separate navigation la
   assert.ok(!home.includes('class="sidebar"'));
 });
 
+test("docs and individual guides share stable navigation with a separate page TOC", () => {
+  const sidebarLinks = (html) => {
+    const sidebar = /<nav\b[^>]*class="sidebar"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1];
+    assert.ok(sidebar, "documentation sidebar exists");
+    return [...sidebar.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)]
+      .map(([, href, label]) => ({ href, label: label.replace(/<[^>]+>/g, "").trim() }));
+  };
+  const docs = htmlFor("/docs/");
+  const expected = sidebarLinks(docs);
+  assert.ok(expected.some(({ href }) => href === "/docs/guide/assurance/"));
+  assert.ok(expected.some(({ href }) => href === "/docs/guide/store/"));
+  const toc = /<aside\b[^>]*class="toc"[^>]*>([\s\S]*?)<\/aside>/.exec(docs)?.[1];
+  assert.ok(toc?.includes('href="#choose-a-guide"'));
+  for (const path of sitePaths().filter((path) => path.startsWith("/docs/"))) {
+    const html = htmlFor(path);
+    assert.deepEqual(sidebarLinks(html), expected, path);
+    assert.equal(html.includes('href="/docs/guide/"'), false, `retired index link: ${path}`);
+  }
+});
+
 test("every canonical page and its internal links resolve in the production build", () => {
   const paths = sitePaths();
   assert.ok(paths.length > 60);

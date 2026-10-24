@@ -1,6 +1,6 @@
 ---
 import type { MarkdownHeading } from "astro";
-import { navigation, type NavGroup } from "../lib/nav";
+import { navigation } from "../lib/nav";
 import "@fractalbox/merlion-themes/merlion-themes.css";
 import "@fractalbox/merlion-themes/merlion-font.css";
 import "../styles/site.css";
@@ -11,11 +11,10 @@ interface Props {
   title: string;
   description: string;
   headings?: MarkdownHeading[];
-  navigationGroups?: NavGroup[];
 }
 
-const { title, description, headings = [], navigationGroups } = Astro.props;
-const groups = navigationGroups ?? await navigation();
+const { title, description, headings = [] } = Astro.props;
+const groups = await navigation();
 const here = Astro.url.pathname;
 const toc = headings.filter((h) => h.depth === 2);
 const pageTitle = `${title} · Contextful docs`;
@@ -30,10 +29,10 @@ const pageTitle = `${title} · Contextful docs`;
     <Header />
     <a class="skip-link" href="#main">Skip to content</a>
     <div class="shell">
-      <nav class="sidebar" aria-label={navigationGroups ? "Documentation navigation" : "Spec files"}>
+      <nav class="sidebar" aria-label="Documentation navigation">
         <div class="section-links">
           <a href="/docs/">Documentation</a>
-          <a href="/docs/guide/">Guides</a>
+          <a href="/docs/#choose-a-guide">Guides</a>
           <a href="/docs/specs/">Specification</a>
         </div>
         <details class="sidebar-toggle" id="sidebar-toggle">
