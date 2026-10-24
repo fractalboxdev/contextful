@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f7f7f2"/>
+  <path d="M80 80h1040M80 550h1040" stroke="#d8ded3"/>
+  <text x="80" y="150" font-family="sans-serif" font-size="32" font-weight="600" fill="#245c42">Contextful</text>
+  <text x="80" y="290" font-family="sans-serif" font-size="74" font-weight="600" fill="#172e29">Local-first context</text>
+  <text x="80" y="380" font-family="sans-serif" font-size="74" font-weight="600" fill="#172e29">for agents.</text>
+  <text x="80" y="490" font-family="monospace" font-size="24" fill="#53645b">YOUR DATA · CLI · MCP · HTTP</text>
+</svg>

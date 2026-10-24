@@ -1,0 +1,11 @@
+---
+const path = Astro.url.pathname;
+---
+<header class="topbar">
+  <a class="brand" href="/"><strong>Contextful</strong></a>
+  <nav class="topnav" aria-label="Main navigation">
+    <a href="/docs/" aria-current={path === "/docs/" ? "page" : undefined}>Docs</a>
+    <a href="/docs/specs/" aria-current={path.startsWith("/docs/specs/") ? "page" : undefined}>Specification</a>
+    <a href="https://github.com/fractalboxdev/contextful">GitHub <span aria-hidden="true">↗</span></a>
+  </nav>
+</header>

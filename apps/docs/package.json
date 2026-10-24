@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev --force",
-    "build": "astro build --force",
+    "build": "astro build --force && pnpm test && pnpm test:site",
     "preview": "astro preview",
     "check": "astro check",
     "typecheck": "astro check",
     "test": "node --test test/*.test.mjs",
-    "deploy": "astro build --force && wrangler deploy"
+    "test:site": "node --test test/built-site.mjs",
+    "deploy": "pnpm build && wrangler deploy"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.1",

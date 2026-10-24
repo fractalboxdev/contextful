@@ -67,6 +67,14 @@ code, pre { font-family: var(--font-mono); font-size: 0.86em; }
 }
 .brand { font-weight: 650; color: var(--fg); letter-spacing: -0.01em; }
 .brand span { color: var(--fg-muted); font-weight: 450; }
+.topnav { display: flex; gap: 1.5rem; margin-left: auto; font-size: .85rem; }
+.topnav a { color: var(--fg-muted); }
+.topnav a[aria-current="page"] { color: var(--accent); }
+.section-links { display: grid; gap: .35rem; padding: 0 .5rem 1.25rem; }
+.skip-link { position: fixed; top: -5rem; left: 1rem; z-index: 20; padding: .75rem; background: var(--bg); }
+.skip-link:focus { top: .5rem; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+@media (max-width: 450px) { .topnav { gap: .75rem; font-size: .75rem; } }
 
 .shell {
   display: grid;

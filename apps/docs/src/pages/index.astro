@@ -1,71 +1,46 @@
 ---
-import { getCollection } from "astro:content";
-import Base from "../layouts/Base.astro";
-import { contractsByFile, navigation, titleOf } from "../lib/nav";
-
-const spec = (await getCollection("spec")).sort((a, b) => a.id.localeCompare(b.id));
-const contracts = contractsByFile();
-const groups = (await navigation()).filter((g) => g.label !== "Contracts");
-const contractFiles = spec
-  .filter((e) => e.data.contract || contracts.has(e.id))
-  .map((e) => {
-    const meta = contracts.get(e.id);
-    return {
-      href: `/spec/${e.id}/`,
-      file: `${e.id}.md`,
-      contract: meta?.contract ?? e.data.contract,
-      title: titleOf(e),
-      gloss: meta?.gloss,
-    };
-  });
+import Head from "../components/Head.astro";
+import Header from "../components/Header.astro";
+import "../styles/site.css";
+import "../styles/landing.css";
 ---
-
-<Base
-  title="Contextful specification"
-  description="The Contextful specification: contract files, per-contract guides and cards, principles, per-contract decision records, the milestone roadmap and computed build status."
->
-  <h1><strong>Contextful</strong> specification</h1>
-  <p>
-    Each contract file states its clauses as list items under one <code>##</code> section per operation, and
-    each clause is addressed <code>&lt;contract&gt;.&lt;operation&gt;.&lt;subject&gt;</code>. The item carries an
-    anchor at its full id, so <code>/spec/10-store/#store.fold.partial-snapshot</code> lands on that clause.
-    Each contract also has a guide that teaches it in prose and a generated card that lists its operations,
-    refusals and bounds on one page.
-  </p>
-
-  <h2 id="contracts">Contracts</h2>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>File</th><th>Contract</th><th>Title</th><th>Covers</th></tr></thead>
-      <tbody>
-        {
-          contractFiles.map((c) => (
-            <tr>
-              <td><a href={c.href}><code>{c.file}</code></a></td>
-              <td>{c.contract && <code>{c.contract}</code>}</td>
-              <td><a href={c.href}>{c.title}</a></td>
-              <td>{c.gloss}</td>
-            </tr>
-          ))
-        }
-      </tbody>
-    </table>
-  </div>
-
-  {
-    groups.map((g) => (
-      <>
-        <h2>{g.label}</h2>
-        <ul class="index-list">
-          {g.items.map((i) => (
-            <li>
-              <a href={i.href}>
-                {i.hint && <code>{i.hint}</code>} {i.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </>
-    ))
-  }
-</Base>
+<!doctype html>
+<html lang="en">
+  <head><Head title="Contextful — local-first context for agents" description="A local-first context engine for agents and small teams. Versioned data, retrieval and memory through CLI, MCP and HTTP." /></head>
+  <body class="landing">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <Header />
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="kicker"><span></span> LOCAL-FIRST CONTEXT ENGINE</p>
+          <h1 id="hero-title">Your data.<br />Your agents.<br /><em>Your context.</em></h1>
+          <p class="hero-description">Connect your sources. Keep versioned data on your own storage. Give agents retrieval and memory through CLI, MCP and HTTP.</p>
+          <div class="actions">
+            <a class="button primary" href="/docs/">Explore the docs <span aria-hidden="true">↗</span></a>
+            <a class="button" href="https://github.com/fractalboxdev/contextful">View on GitHub <span aria-hidden="true">↗</span></a>
+          </div>
+          <p class="hero-note">Open source · Apache-2.0 · Built in Rust</p>
+        </div>
+        <div class="system-panel" aria-label="Contextful data flow: sources, versioned storage, and agent interfaces">
+          <div class="panel-heading"><span>CONTEXTFUL / SYSTEM</span><span>LOCAL NODE</span></div>
+          <div class="system-row"><span class="step">01</span><div><h2>Connect sources</h2><p>Sandboxed component connectors</p></div><span class="node-symbol" aria-hidden="true">↳</span></div>
+          <div class="system-row"><span class="step">02</span><div><h2>Keep the data</h2><p>Parquet · manifest · catalog</p></div><span class="node-symbol" aria-hidden="true">≡</span></div>
+          <div class="system-row"><span class="step">03</span><div><h2>Serve context</h2><p>Query · retrieval · memory</p></div><span class="node-symbol" aria-hidden="true">↗</span></div>
+          <div class="interfaces"><span>CLI</span><span>MCP</span><span>HTTP</span></div>
+          <p class="panel-footer">One node offline. Optional object-storage sync.</p>
+        </div>
+      </section>
+      <section class="principles" aria-labelledby="principles-title">
+        <div class="section-heading"><p class="kicker">DESIGNED FOR OWNERSHIP</p><h2 id="principles-title">Context stays close<br />to the data.</h2></div>
+        <div class="feature-grid">
+          <article><span class="feature-number">01 / STORAGE</span><h3>Files you own.</h3><p>Versioned Parquet sits beside a JSON manifest and a rebuildable catalog. Object storage carries optional sync.</p><a href="/docs/guide/store/">Explore the store →</a></article>
+          <article><span class="feature-number">02 / INTERFACES</span><h3>Context agents can use.</h3><p>A CLI, MCP endpoint and HTTP interface expose retrieval, memory and derived results from the same engine.</p><a href="/docs/guide/read/">Explore the read path →</a></article>
+          <article><span class="feature-number">03 / CONTRACTS</span><h3>Behavior you can inspect.</h3><p>Addressable clauses define the system. Tests and formal proofs ground its computed implementation status.</p><a href="/docs/specs/">Read the specification →</a></article>
+        </div>
+      </section>
+      <section class="docs-callout"><div><p class="kicker">FROM OVERVIEW TO CONTRACT</p><h2>See how Contextful fits together.</h2><p>Start with the topology, follow a guide, or inspect the demonstrated behavior.</p></div><a class="button primary" href="/docs/">Open documentation ↗</a></section>
+    </main>
+    <footer class="site-footer"><a class="brand" href="/">Contextful</a><span>A local-first context engine.</span><nav aria-label="Footer"><a href="/docs/">Documentation</a><a href="/docs/specs/status/">Implementation status</a><a href="https://github.com/fractalboxdev/contextful/blob/main/LICENSE">Apache-2.0</a></nav></footer>
+  </body>
+</html>

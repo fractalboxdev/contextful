@@ -4,6 +4,8 @@ import { navigation } from "../lib/nav";
 import "@fractalbox/merlion-themes/merlion-themes.css";
 import "@fractalbox/merlion-themes/merlion-font.css";
 import "../styles/site.css";
+import Head from "../components/Head.astro";
+import Header from "../components/Header.astro";
 
 interface Props {
   title: string;
@@ -15,26 +17,24 @@ const { title, description, headings = [] } = Astro.props;
 const groups = await navigation();
 const here = Astro.url.pathname;
 const toc = headings.filter((h) => h.depth === 2);
-const pageTitle = here === "/" ? title : `${title} · Contextful spec`;
+const pageTitle = `${title} · Contextful docs`;
 ---
 
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
-    <title>{pageTitle}</title>
-    <meta name="description" content={description} />
-    <meta property="og:title" content={pageTitle} />
-    <meta property="og:description" content={description} />
+    <Head title={pageTitle} description={description} />
   </head>
   <body>
-    <header class="topbar">
-      <a class="brand" href="/"><strong>Contextful</strong> <span>spec</span></a>
-    </header>
+    <Header />
+    <a class="skip-link" href="#main">Skip to content</a>
     <div class="shell">
       <nav class="sidebar" aria-label="Spec files">
+        <div class="section-links">
+          <a href="/docs/">Documentation</a>
+          <a href="/docs/guide/">Guides</a>
+          <a href="/docs/specs/">Specification</a>
+        </div>
         <details class="sidebar-toggle" id="sidebar-toggle">
           <summary>Contents</summary>
           {
@@ -78,7 +78,7 @@ const pageTitle = here === "/" ? title : `${title} · Contextful spec`;
           document.getElementById("sidebar-toggle").open = !matchMedia("(max-width: 800px)").matches;
         </script>
       </nav>
-      <main class="content">
+      <main class="content" id="main">
         <article class="prose">
           <slot />
         </article>

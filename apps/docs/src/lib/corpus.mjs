@@ -2,6 +2,7 @@
 // Imported by astro.config.mjs (markdown plugins) and by pages (navigation).
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
+import { parse } from "smol-toml";
 
 // Anchored to the Astro project root (apps/docs), the same base the content
 // collections use. `import.meta.url` is not a stable anchor: pages load this module
@@ -24,15 +25,61 @@ export const recordId = (file) => {
   return stem.startsWith("A-") ? stem : stem.split("-")[0];
 };
 
+/** The contract registry supplies metadata and canonical contract routes. */
+export const contractsByFile = () => {
+  const out = new Map();
+  const { contract } = parse(readFileSync(join(SPEC_DIR, "terms/contract.toml"), "utf8"));
+  for (const [name, entry] of Object.entries(contract)) {
+    for (const file of entry.files) {
+      out.set(file.replace(/^spec\//, "").replace(/\.md$/, ""), {
+        contract: name, title: entry.title, gloss: entry.gloss,
+      });
+    }
+  }
+  return out;
+};
+
+/** Canonical routes share one mapping across navigation, Markdown and generated pages. */
+export const collectionRoute = (collection, id) => {
+  if (collection === "spec") {
+    if (id === "targets") return `${collectionRoute("spec", "01-topology")}#deployment-targets`;
+    return `/docs/specs/${contractsByFile().has(id) ? "contracts/" : ""}${id}/`;
+  }
+  return collection === "guide" ? `/docs/guide/${id}/` : `/docs/specs/${collection}/${id}/`;
+};
+
+/** Every former content URL resolves to the corresponding canonical page. */
+export const legacyRedirects = () => Object.fromEntries(
+  ["spec", "guide", "cards", "adr"].flatMap((collection) =>
+    mdFiles(collection === "spec" ? SPEC_DIR : join(SPEC_DIR, collection)).map((file) => {
+      const id = basename(file, ".md");
+      return [`/${collection}/${id}/`, collectionRoute(collection, id)];
+    }),
+  ),
+);
+
+export const sitePaths = () => [...new Set([
+  "/", "/docs/", "/docs/guide/", "/docs/specs/", "/docs/specs/contracts/", "/docs/specs/cards/", "/docs/specs/adr/",
+  ...Object.values(legacyRedirects()).map((route) => route.split("#")[0]),
+])];
+
+/** Machine-readable exports read the same Markdown as the content collections. */
+export const sourceDocuments = () => ["spec", "guide", "cards", "adr"].flatMap((collection) => {
+  const directory = collection === "spec" ? SPEC_DIR : join(SPEC_DIR, collection);
+  return mdFiles(directory).map((file) => ({
+    route: collectionRoute(collection, basename(file, ".md")),
+    body: readFileSync(join(directory, file), "utf8"),
+  }));
+});
+
 /** Site route for a Markdown file under spec/, or undefined outside it. */
 export const routeFor = (absPath) => {
   const rel = relative(SPEC_DIR, absPath).split(sep).join("/");
   if (rel.startsWith("..") || !rel.endsWith(".md")) return undefined;
   const stem = rel.slice(0, -3);
-  if (stem === "targets") return "/spec/01-topology/#deployment-targets";
-  if (!stem.includes("/")) return `/spec/${stem}/`;
+  if (!stem.includes("/")) return collectionRoute("spec", stem);
   const [dir, name, ...rest] = stem.split("/");
-  if (rest.length === 0 && ["adr", "guide", "cards"].includes(dir)) return `/${dir}/${name}/`;
+  if (rest.length === 0 && ["adr", "guide", "cards"].includes(dir)) return collectionRoute(dir, name);
   return undefined;
 };
 

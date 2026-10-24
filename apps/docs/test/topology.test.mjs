@@ -29,8 +29,8 @@ test("topology contains generated provider tables inside the deployment section"
 
 test("target links retain provider anchors on the topology route", async () => {
   const { code } = await render("10-store.md", "[targets](./targets.md) [Cloudflare](./targets.md#cloudflare)");
-  assert.ok(code.includes('href="/spec/01-topology/#deployment-targets"'));
-  assert.ok(code.includes('href="/spec/01-topology/#cloudflare"'));
+  assert.ok(code.includes('href="/docs/specs/contracts/01-topology/#deployment-targets"'));
+  assert.ok(code.includes('href="/docs/specs/contracts/01-topology/#cloudflare"'));
 });
 
 test("other contracts contain no transcluded target tables", async () => {
