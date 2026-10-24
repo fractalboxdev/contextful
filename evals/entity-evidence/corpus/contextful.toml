@@ -1,0 +1,19 @@
+[[pipeline.tables]]
+name = "evidence/notes"
+primary_key = ["evidence_id"]
+
+[pipeline.tables.retrieve]
+text = ["text"]
+
+[pipeline.tables.policy.rows]
+predicate = "owner = subject.agent"
+
+[[table]]
+name = "memory/entities"
+shape = "memory_entities"
+columns = ["entity_id", "kind", "name", "aliases"]
+
+[[table]]
+name = "memory/facts"
+shape = "memory_facts"
+columns = ["claim_id", "subject", "predicate", "object", "scope", "tier", "confidence", "valid_from", "valid_to", "evidence", "superseded_by", "grant_id", "agent"]
