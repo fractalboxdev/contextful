@@ -7,8 +7,8 @@
     "dev": "astro dev --force",
     "build": "astro build --force && pnpm test && pnpm test:site",
     "preview": "astro preview",
-    "check": "astro check",
-    "typecheck": "astro check",
+    "check": "pnpm typecheck",
+    "typecheck": "wrangler types .astro/worker-configuration.d.ts && astro check",
     "test": "node --test test/*.test.mjs",
     "test:site": "node --test test/built-site.mjs",
     "deploy": "pnpm build && wrangler deploy"

@@ -47,7 +47,9 @@ test("redirects, sitemap and machine-readable exports cover the canonical routes
   const sitemap = readFileSync("dist/sitemap.xml", "utf8");
   const index = readFileSync("dist/llms.txt", "utf8");
   const full = readFileSync("dist/llms-full.txt", "utf8");
-  assert.ok(rules.includes(`https://spec.contextful.work/ ${origin}/docs/specs/ 301`));
+  const sources = rules.trim().split("\n").map((line) => line.split(/\s+/)[0]);
+  assert.ok(sources.length > 60);
+  for (const source of sources) assert.ok(source.startsWith("/"), `Workers require relative redirect sources: ${source}`);
   for (const [from, to] of Object.entries(legacyRedirects())) assert.ok(rules.includes(`${from} ${origin}${to} 301`), from);
   for (const path of sitePaths()) assert.ok(sitemap.includes(`<loc>${origin}${path}</loc>`), path);
   assert.ok(index.includes(`${origin}/docs/specs/cards/store/`));

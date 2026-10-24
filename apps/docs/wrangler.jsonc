@@ -1,10 +1,11 @@
-// The docs site is static: the Worker serves `dist/` through Workers Static Assets
-// and runs no script. The Node.js build renders diagrams to inline SVG.
+// The Worker redirects the former hostname and serves the static Astro build.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "contextful-docs",
   "compatibility_date": "2026-09-01",
-  "assets": { "directory": "./dist" },
+  "main": "src/worker.ts",
+  "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true, "not_found_handling": "404-page" },
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
   "routes": [
     { "pattern": "contextful.fractalbox.dev", "custom_domain": true },
     // The former documentation domain redirects to the canonical site.
