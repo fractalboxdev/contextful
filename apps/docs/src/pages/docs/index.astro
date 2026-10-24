@@ -1,23 +1,93 @@
 ---
 import Base from "../../layouts/Base.astro";
+
+const tasks = [
+  { task: "Connect a data source", guide: "Connectors and credentials", href: "/docs/guide/connector/", description: "Read before choosing a connector, binding credentials or declaring network access." },
+  { task: "Run ingestion and keep data current", guide: "Runs, pipelines and derive", href: "/docs/guide/run/", description: "Read when configuring pipelines, schedules, retries, recovery or historical imports." },
+  { task: "Query data from an agent", guide: "Reading and memory", href: "/docs/guide/read/", description: "Read before using SQL, ranked retrieval, MCP tools or synthesized memory." },
+  { task: "Manage history, snapshots or sync", guide: "The store and its sync", href: "/docs/guide/store/", description: "Read when choosing table keys, reading earlier data, setting retention or creating a replica." },
+  { task: "Control who reads which data", guide: "Authority and enforcement", href: "/docs/guide/authority/", description: "Read before issuing credentials or restricting a caller's tables, rows, columns or inference zones." },
+  { task: "Preserve source permissions and audit reads", guide: "Visibility, disclosure and accountability", href: "/docs/guide/disclosure/", description: "Read when mirroring source access, releasing aggregates, tracing reads or handling erasure." },
+  { task: "Operate the console and team configuration", guide: "Operator surfaces", href: "/docs/guide/surface/", description: "Read when using Query and Admin, changing the control document or publishing a hosted interface." },
+  { task: "Test or extend the engine", guide: "Assurance", href: "/docs/guide/assurance/", description: "Read before changing engine behavior, adding evidence or interpreting a gate failure." },
+];
+
+const headings = [
+  { depth: 2, slug: "when-to-use-contextful", text: "When Contextful fits" },
+  { depth: 2, slug: "how-contextful-works", text: "How Contextful works" },
+  { depth: 2, slug: "choose-a-guide", text: "Choose a guide by task" },
+  { depth: 2, slug: "use-the-specification", text: "Use the specification" },
+];
+
+const navigationGroups = [
+  { label: "Start here", items: [
+    { label: "What is Contextful?", href: "/docs/#what-is-contextful" },
+    { label: "Choose a deployment", href: "/docs/guide/topology/" },
+    { label: "Implementation status", href: "/docs/specs/status/" },
+  ] },
+  { label: "Read for your task", items: tasks.map(({ task, href }) => ({ label: task, href })) },
+];
 ---
-<Base title="Documentation" description="Explore Contextful guides, system topology, contracts and the verified implementation status.">
-  <p class="eyebrow">Contextful / Documentation</p>
-  <h1>Start with the system.<br />Follow the contracts.</h1>
-  <p>Contextful is a local-first context engine for agents and small teams. It connects sources to versioned data and serves retrieval and memory through a CLI, MCP and HTTP.</p>
-  <h2>Get oriented</h2>
-  <ul>
-    <li><a href="/docs/specs/contracts/01-topology/">System topology</a> — components, build profiles and deployment targets.</li>
-    <li><a href="/docs/guide/">Guides</a> — the flows behind each contract.</li>
-    <li><a href="/docs/specs/status/">Implementation status</a> — behavior demonstrated by tests and formal proofs.</li>
-  </ul>
-  <h2>Read the specification</h2>
-  <p>The specification is the source of truth. Every clause has a stable address; guides, cards and decision records link back to the rules they explain.</p>
-  <ul>
-    <li><a href="/docs/specs/">Specification overview</a></li>
-    <li><a href="/docs/specs/contracts/">Contracts</a></li>
-    <li><a href="/docs/specs/cards/">Contract cards</a></li>
-    <li><a href="/docs/specs/adr/">Principles and architecture decisions</a></li>
-    <li><a href="/docs/specs/roadmap/">Milestone roadmap</a></li>
-  </ul>
+<Base title="What is Contextful?" description="Understand Contextful, see when a local-first context engine fits your agent workflow, and choose a guide for your task." headings={headings} navigationGroups={navigationGroups}>
+  <div class="docs-start">
+    <p class="eyebrow">For developers and operators building agent workflows</p>
+    <h1 id="what-is-contextful">What is Contextful?</h1>
+    <p>Contextful is a local-first context engine for AI agents and teams. Contextful collects source data, keeps versioned data in a store you control, and serves that data to agents.</p>
+    <p>Agents query rows, retrieve relevant material and use memory derived from stored data. Agents connect through Model Context Protocol (MCP) or HTTP. Developers and operators use the command-line interface (CLI) to run and inspect the engine.</p>
+    <p>Your application supplies prompts, business rules and the user interface. Contextful supplies data ingestion, storage and controlled reads.</p>
+
+    <aside class="reading-note" aria-label="First read">
+      <p><strong>Start with <a href="/docs/guide/topology/">System topology</a></strong> for component responsibilities, binary profiles and deployment choices. Then choose the guide for your task below.</p>
+      <p>The guides describe the design. Check <a href="/docs/specs/status/">Implementation status</a> for behavior backed by tests and proofs.</p>
+    </aside>
+
+    <h2 id="when-to-use-contextful">When Contextful fits</h2>
+    <p>Use Contextful when your agent workflow needs one or more of these capabilities:</p>
+    <ul>
+      <li><strong>Context from changing sources.</strong> Collect documents or structured records, update the stored data and retrieve relevant material for an agent.</li>
+      <li><strong>Versioned data under your control.</strong> Keep source data in files, retain snapshots and sync a replica through object storage.</li>
+      <li><strong>Access controls shared by clients.</strong> Apply caller-specific table, row and column restrictions when agents or applications read data.</li>
+    </ul>
+    <p>A local-first deployment reads from a local store. Source connections, model calls and optional object-storage sync use configured network services.</p>
+
+    <h2 id="how-contextful-works">How Contextful works</h2>
+    <ol>
+      <li><strong>Connect a source.</strong> A connector reads a source through the engine's credential and network controls.</li>
+      <li><strong>Run a pipeline.</strong> A pipeline declares the ingestion work. Each run executes the pipeline and records progress, retries and failures.</li>
+      <li><strong>Commit data to the store.</strong> The store keeps versioned Parquet files and manifests describing committed data. Parquet is a column-oriented file format.</li>
+      <li><strong>Read from an agent or application.</strong> Clients query rows, retrieve relevant passages or recall memory under the caller's access rules.</li>
+    </ol>
+    <p>For example, a research agent reads reports that a pipeline has collected. When reports change, the pipeline updates the store. The agent retrieves relevant passages from committed data under the caller's access rules.</p>
+
+    <h2 id="choose-a-guide">Choose a guide by task</h2>
+    <p>Read the guide that matches your next action. Each guide explains a flow and links to its exact rules.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Your task</th><th scope="col">Read this guide</th></tr></thead>
+        <tbody>{tasks.map(({ task, guide, href, description }) => <tr><td>{task}</td><td><a href={href}>{guide}</a><p>{description}</p></td></tr>)}</tbody>
+      </table>
+    </div>
+
+    <h2 id="use-the-specification">Use the specification</h2>
+    <p>Open the <a href="/docs/specs/">specification</a> when a guide's explanation leaves a question about exact behavior.</p>
+    <ul>
+      <li><a href="/docs/specs/contracts/">Contracts</a> define operations, refusals and limits. Read a contract when implementing or checking a specific behavior.</li>
+      <li><a href="/docs/specs/cards/">Contract cards</a> provide a compact lookup of operations, errors and bounds.</li>
+      <li><a href="/docs/specs/adr/">Architecture decisions</a> explain the alternatives and costs behind a rule.</li>
+    </ul>
+    <p>Read <a href="/docs/guide/corpus/">Corpus law</a> before editing the specification. Use the <a href="/docs/specs/roadmap/">milestone roadmap</a> to understand the implementation order.</p>
+  </div>
 </Base>
+
+<style>
+  .docs-start { max-width: 72ch; font-size: 1.125rem; line-height: 1.75; }
+  .docs-start li + li { margin-top: .65rem; }
+  .reading-note { margin: 1.75rem 0; padding: 1rem 1.25rem; border-left: 3px solid var(--accent); background: var(--bg-soft); }
+  .reading-note p:last-child { margin-bottom: 0; }
+  .docs-start table { min-width: 0; font-size: .95em; }
+  .docs-start th { white-space: normal; }
+  .docs-start th:first-child { width: 34%; }
+  .docs-start td:first-child { min-width: 0; font-weight: 550; }
+  .docs-start td { padding: .85rem .9rem; }
+  .docs-start td p { margin: .35rem 0 0; }
+</style>
