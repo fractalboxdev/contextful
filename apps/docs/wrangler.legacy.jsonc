@@ -1,0 +1,8 @@
+// The optional legacy redirect deploys in the account containing contextful.work.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "contextful-docs-legacy",
+  "compatibility_date": "2026-09-01",
+  "main": "src/legacy.ts",
+  "routes": [{ "pattern": "spec.contextful.work", "custom_domain": true }]
+}
