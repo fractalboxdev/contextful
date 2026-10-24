@@ -66,7 +66,7 @@ export const sitePaths = () => [...new Set([
 /** Machine-readable exports read the same Markdown as the content collections. */
 export const sourceDocuments = () => ["spec", "guide", "cards", "adr"].flatMap((collection) => {
   const directory = collection === "spec" ? SPEC_DIR : join(SPEC_DIR, collection);
-  return mdFiles(directory).filter((file) => file !== "targets.md").map((file) => ({
+  return mdFiles(directory).map((file) => ({
     route: collectionRoute(collection, basename(file, ".md")),
     body: readFileSync(join(directory, file), "utf8"),
   }));

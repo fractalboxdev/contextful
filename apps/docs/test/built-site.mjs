@@ -53,5 +53,7 @@ test("redirects, sitemap and machine-readable exports cover the canonical routes
   assert.ok(index.includes(`${origin}/docs/specs/cards/store/`));
   assert.ok(index.includes(`${origin}/docs/specs/adr/A-store/`));
   assert.ok(full.includes("store.fold.partial-snapshot"));
+  assert.ok(full.includes(`Source: ${origin}/docs/specs/contracts/01-topology/#deployment-targets`));
+  assert.ok(full.includes("Fargate Linux tasks"), "deployment target tables appear in the full Markdown export");
   assert.ok(readFileSync("dist/robots.txt", "utf8").includes(`${origin}/sitemap.xml`));
 });
