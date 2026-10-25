@@ -9,10 +9,12 @@ Every identifier in this directory is a placeholder or a variable. `terraform.tf
 | Resource | Configuration |
 | --- | --- |
 | VPC | `az_count` private subnets for tasks, the database and the interface endpoints; public subnets only for an internet-facing load balancer or `enable_nat` |
-| VPC endpoints | S3 gateway on the private route table; interface endpoints for `ecr.api`, `ecr.dkr`, `secretsmanager`, `logs` and `sts`, answering HTTPS from the task security group |
+| VPC endpoints | S3 gateway on the private route table; interface endpoints for `ecr.api`, `ecr.dkr`, `secretsmanager`, `logs`, `sts` and, under `queue_enabled`, `sqs`, answering HTTPS from the task security group |
 | NAT gateway | One, when `enable_nat = true`; sources outside AWS need it, the AWS services above do not |
 | RDS Postgres | `db_engine_version`, gp3 storage encrypted with the RDS key or `kms_key_arn`, private subnets, `publicly_accessible = false`, port 5432 open to the task security group alone |
 | S3 corpus bucket | Public access blocked, bucket-owner-enforced ownership, versioning, SSE-S3 or SSE-KMS with `kms_key_arn`, a policy denying non-TLS and pre-TLS 1.2 requests, noncurrent versions expiring after `noncurrent_version_days` |
+| SQS queue | Under `queue_enabled` (default): a standard queue with a 300 s visibility timeout, 20 s receive wait, 1 MiB message cap and `queue_retention_seconds` retention, SSE-SQS or SSE-KMS with `kms_key_arn`, a policy denying non-TLS requests; a dead-letter queue takes a message after `queue_max_receive_count` receives |
+| Object-arrival notification | When `object_arrival_bucket` is set: that bucket's `s3:ObjectCreated:*` events under `object_arrival_prefix` and `object_arrival_suffix` go to the queue, which admits `s3.amazonaws.com` for that bucket in this account alone |
 | ECR repository | Immutable tags, scan on push, 20 images retained; omitted when `image_uri` names an image elsewhere |
 | ECS cluster | Container Insights on; the `pipeline` and `serve` task definitions share the image, the environment and the injected secrets |
 | EventBridge Scheduler | One schedule whose ECS RunTask target starts the `pipeline` task definition in the private subnets, retried twice within 300 s |
@@ -26,7 +28,7 @@ An internet-facing load balancer without `certificate_arn` fails the plan: beare
 | Role | Grants |
 | --- | --- |
 | `<name>-execution` | `ecr:GetAuthorizationToken`; image pull on the one repository; log writes to the one log group; `secretsmanager:GetSecretValue` on the catalog URL secret, the interim key secret and each `secrets` entry |
-| `<name>-task` | The `<name>-corpus` policy: `s3:ListBucket` limited to `corpus_prefix`, `s3:GetObject`, `s3:PutObject` and `s3:DeleteObject` under `<corpus_prefix>/`, and the KMS key when set; `secretsmanager:GetSecretValue` on names under `<name>/secrets/` |
+| `<name>-task` | The `<name>-corpus` policy: `s3:ListBucket` limited to `corpus_prefix`, `s3:GetObject`, `s3:PutObject` and `s3:DeleteObject` under `<corpus_prefix>/`, and the KMS key when set; `secretsmanager:GetSecretValue` on names under `<name>/secrets/`; `sqs:SendMessage`, `sqs:ReceiveMessage` and `sqs:DeleteMessage` on the one queue under `queue_enabled` |
 | `<name>-scheduler` | `ecs:RunTask` on the `pipeline` task definition family in the one cluster; `iam:PassRole` on the execution and task roles, passed to `ecs-tasks.amazonaws.com` only |
 
 Both task roles trust `ecs-tasks.amazonaws.com` for this account's ECS resources alone; the scheduler role trusts `scheduler.amazonaws.com` for this account alone. The sync adapter issues GET, PUT, DELETE and list requests, and no multipart upload, so the corpus policy grants nothing further.
@@ -77,6 +79,7 @@ credentials     = "role"
 | `CONTEXTFUL_SYNC_PREFIX` | `corpus_prefix`, read by `[sync] prefix_from` | both |
 | `CONTEXTFUL_AWS_SECRET_PREFIX` | `<name>/secrets/` | both |
 | `CONTEXTFUL_ISSUER_PUBKEY` | `issuer_public_keys`, when set | both |
+| `CONTEXTFUL_QUEUE_URL` | The SQS queue, under `queue_enabled` | both |
 | `CONTEXTFUL_AUDIENCE` | `audience` | `serve` |
 | `AWS_REGION` | `region` | both |
 | `environment`, `secrets` | Variables, merged last | both |
@@ -84,6 +87,12 @@ credentials     = "role"
 `serve` takes `--max-in-flight` from `serve_max_in_flight` and `--result-cache-bytes` from `serve_result_cache_bytes`; `project` adds `--project` to both commands. A project whose applied control document schedules jobs that admit a credential needs `CONTEXTFUL_TOKEN` through `secrets`; without it, `pipeline serve` refuses with `FireCredentialMissing`. A source reaching a private VPC address lists that range in `CONTEXTFUL_EGRESS_PRIVATE_RANGES` through `environment` (`connector.attach.private-range-admitted`).
 
 Every container runs under an init process, which reaps the child `contextful` processes a cycle dispatches. The `pipeline` container receives `SIGTERM` 120 s before `SIGKILL`; `pipeline serve` ends its children within 10 s (`surface.dispatch.children-reaped`) and pushes for at most 15 s more (`store.drain.deadline`). The `serve` container receives `SIGTERM` 30 s before `SIGKILL` (see [Stopping](#stopping)).
+
+## Queue
+
+Under `queue_enabled`, every task reaches the SQS queue as `CONTEXTFUL_QUEUE_URL`, signing with the task role (`topology.compose.queue-sqs`). A `POST /receive/:pipeline` carrying `Prefer: respond-async` answers `202` once its batch is on the queue (`run.land.receive-queued`); a body past 1 MiB is written first to `<corpus_prefix>/queue/spill/` in the corpus bucket, which the corpus policy already reaches (`topology.compose.queue-sqs-cap`). Each `pipeline serve --cycle` drains the queue once after its units end: object-arrival keys wake the `s3` reads covering them, and queued batches land and are deleted once their outcome records (`surface.fire.cycle-drain`). A sender reads the outcome at `GET /receive/:pipeline/:key`. Post-commit wake-ups stay on each task's local spool.
+
+`object_arrival_bucket` names an existing bucket in this account and region; the notification resource replaces every other notification configured on it. The `s3` source reading that bucket keeps its `schedule`, the backstop for an event S3 never delivers (`run.land.object-arrival-wake`), and needs its own read access to the bucket. With `kms_key_arn` set, the key policy must let `s3.amazonaws.com` call `kms:GenerateDataKey` and `kms:Decrypt`, or S3 delivers no notification to the encrypted queue. Set `queue_retention_seconds` at or above the longest `key_retention_secs` of a `receive` source. A message on the dead-letter queue is one no consumer could read or settle; `dead_letter_queue_url` names it for inspection and redrive.
 
 ## Catalog TLS
 
@@ -130,7 +139,7 @@ ECS stops a `serve` task in two steps. It first deregisters the task from the ta
 
 ## `fargate-daemon`
 
-`shape = "fargate-daemon"` removes the schedule and the scheduler role and runs the `pipeline` task definition as a one-task service whose command is `contextful pipeline serve`: the in-process scheduler arms each unit under the cadence lease, for cadences below the one-minute floor of EventBridge Scheduler. A deployment stops the old task before starting its replacement, and the cadence lease fences any overlap. The `serve` service and every other resource stay identical.
+`shape = "fargate-daemon"` removes the schedule and the scheduler role and runs the `pipeline` task definition as a one-task service whose command is `contextful pipeline serve`: the in-process scheduler arms each unit under the cadence lease, for cadences below the one-minute floor of EventBridge Scheduler. A deployment stops the old task before starting its replacement, and the cadence lease fences any overlap. The `serve` service and every other resource stay identical. The daemon's scheduler drains no queue, so under `fargate-daemon` queued batches and object-arrival keys wait for a `queue drain` command override.
 
 ## Validation
 

@@ -26,3 +26,9 @@ sync_credentials = "role"
 # secrets = {
 #   CONTEXTFUL_TOKEN = "arn:aws:secretsmanager:<aws-region>:<account-id>:secret:contextful/env/token-<suffix>"
 # }
+
+# The SQS queue behind the `Queue` port; an existing bucket whose object-create events
+# enqueue arrival keys for the `s3` reads covering them.
+# queue_enabled         = true
+# object_arrival_bucket = "<source-bucket>"
+# object_arrival_prefix = "<source-prefix>/"
