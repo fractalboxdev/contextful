@@ -9,6 +9,8 @@ primitives = ["containers", "scheduler", "managed-postgres", "object-store", "qu
 
 runtime = '''
 The `scheduled-fargate` target runs every process as the native Linux `contextful-full` executable in Fargate containers. EventBridge Scheduler starts `contextful pipeline serve --cycle` as an ECS task on a fixed rate; the cycle takes the cadence lease, runs every due unit and exits. A long-running `contextful serve` behind an Application Load Balancer answers queries and pulls the bucket every 30 s. The query process embeds DuckDB; component execution embeds Wasmtime. RDS Postgres supplies the shared catalog, the engine journal in it makes every run durable and resumable, and S3 holds corpus objects. The `fargate-daemon` alternative keeps scheduling in one always-on task for sub-minute cadences.
+
+The OpenTofu configuration under `apps/aws-fargate/` provisions either shape: a private VPC with its service endpoints, RDS Postgres, the S3 corpus bucket, the ECS cluster, the cycle task or daemon service, and the `serve` service behind the load balancer.
 '''
 
 diagram = '''

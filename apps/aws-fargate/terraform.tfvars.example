@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars and replace every <placeholder>. terraform.tfvars stays untracked.
+
+region      = "<aws-region>"
+name        = "contextful"
+shape       = "scheduled-fargate"
+recovery_id = "<recovery-identity>"
+audience    = "<credential-audience>"
+
+# Issuer key pins for `serve` and pulled control receipts.
+issuer_public_keys = "<issuer-public-key>"
+
+# HTTPS listener of the internet-facing load balancer.
+certificate_arn = "arn:aws:acm:<aws-region>:<account-id>:certificate/<certificate-id>"
+ingress_cidrs   = ["<client-cidr>"]
+
+# Outbound internet for sources outside AWS.
+enable_nat = false
+
+# EventBridge Scheduler cadence of `pipeline serve --cycle`.
+cycle_schedule = "rate(5 minutes)"
+
+# `role` once the image signs [sync] with the task role; `keys` for the interim key pair.
+sync_credentials = "role"
+
+# Extra environment injected from Secrets Manager, such as a fire credential.
+# secrets = {
+#   CONTEXTFUL_TOKEN = "arn:aws:secretsmanager:<aws-region>:<account-id>:secret:contextful/env/token-<suffix>"
+# }
