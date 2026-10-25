@@ -21,6 +21,7 @@ mod probe;
 mod stage;
 mod tag;
 mod footprint;
+mod image;
 mod topology;
 mod native_transport;
 
@@ -223,6 +224,25 @@ enum Cmd {
         #[arg(long)]
         target_dir: Option<PathBuf>,
     },
+    /// Assemble a profile's release image from its musl release binaries: one platform
+    /// manifest per binary, each with its layer and descriptor, and an OCI layout archive.
+    Image {
+        /// The profile the binaries were built as, e.g. `contextful-full`.
+        #[arg(long)]
+        profile: String,
+        /// The image tag, the release version without its `v`.
+        #[arg(long)]
+        version: String,
+        /// A release binary as `<target>=<path>`; repeatable, one per Linux musl target.
+        #[arg(long = "binary", required = true)]
+        binaries: Vec<String>,
+        /// The CA roots the image carries for bucket endpoints.
+        #[arg(long, default_value = "/etc/ssl/certs/ca-certificates.crt")]
+        ca_bundle: PathBuf,
+        /// The directory receiving the layers, descriptors and layout archive.
+        #[arg(long, default_value = "dist")]
+        out: PathBuf,
+    },
     /// Write the package-manager formulae and `SHA256SUMS` over a directory of release archives.
     Formula {
         /// The directory `contextful-ci release` packaged every target into.
@@ -410,6 +430,7 @@ fn main() {
             let target = target_dir.map_or_else(|| build_target(&root, "wasi-probe"), |p| root.join(p));
             release::wasi_probe(&root, &target)
         }),
+        Cmd::Image { profile, version, binaries, ca_bundle, out } => repo_root().and_then(|root| image::image(&root, &profile, &version, &binaries, &ca_bundle, &out)),
         Cmd::Formula { dist, manifest, base_url } => repo_root().and_then(|root| {
             release::formulae(&root, &dist, manifest.as_deref(), &base_url).map(|written| written.iter().for_each(|p| println!("formula: {}", p.display())))
         }),

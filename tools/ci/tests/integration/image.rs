@@ -1,6 +1,7 @@
-//! `assurance.build.release-profile`, `assurance.build.container-image` and
-//! `assurance.gate.footprint-exceeded`: the release profile and the container recipe of this
-//! repository, and `contextful-ci footprint` over hand-built ELF artifacts.
+//! `assurance.build.release-profile`, `assurance.build.container-image`,
+//! `assurance.build.release-image` and `assurance.gate.footprint-exceeded`: the release
+//! profile and the container recipe of this repository, and `contextful-ci image` and
+//! `contextful-ci footprint` over hand-built ELF artifacts.
 
 use crate::{repo_root, stderr, Repo};
 use std::process::{Command, Output};
@@ -47,8 +48,8 @@ fn the_container_recipe_accepts_a_native_linux_release_target_without_changing_p
     assert!(lines.iter().any(|line| line.starts_with("RUN test \"$RUST_TARGET\"") && line.contains("rustc -vV")), "the target must match the pinned builder's native platform: {lines:?}");
 }
 
-/// The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
-// spec: assurance.build.container-image@898ae2c7
+/// The repository's `Dockerfile` builds one profile, `contextful-full` by default, as a static binary for the `PLATFORM` and `RUST_TARGET` its arguments name, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
+// spec: assurance.build.container-image@41f0245a
 #[test]
 fn the_container_recipe_builds_one_static_profile_into_a_shell_free_non_root_image() {
     let lines = instructions();
@@ -305,4 +306,181 @@ fn the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_no
         let builds = test.ends_with("::this_repository_profiles_hold_to_their_footprint_budgets");
         assert!(!(builds && entry["tier"].as_str() == Some("gate")), "the gate-tier entry `{id}` builds every profile in the evaluate stage");
     }
+}
+
+const AMD64: &str = "x86_64-unknown-linux-musl";
+const ARM64: &str = "aarch64-unknown-linux-musl";
+
+/// A minimal static little-endian ELF64 executable for `machine` carrying `payload`, with one
+/// `PT_INTERP` program header when `interpreter` holds.
+fn executable(machine: u16, interpreter: bool, payload: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x7f, b'E', b'L', b'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&machine.to_le_bytes());
+    out.extend_from_slice(&1u32.to_le_bytes());
+    out.extend_from_slice(&0u64.to_le_bytes());
+    out.extend_from_slice(&(if interpreter { 64u64 } else { 0 }).to_le_bytes());
+    out.extend_from_slice(&0u64.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    for half in [64u16, 56, u16::from(interpreter), 64, 0, 0] {
+        out.extend_from_slice(&half.to_le_bytes());
+    }
+    if interpreter {
+        out.extend_from_slice(&3u32.to_le_bytes());
+        out.extend_from_slice(&[0u8; 52]);
+    }
+    out.extend_from_slice(payload);
+    out
+}
+
+fn image(dir: &std::path::Path, binaries: &[(&str, &[u8])], out: &str) -> Output {
+    let ca = dir.join("ca-certificates.crt");
+    std::fs::write(&ca, "-----BEGIN CERTIFICATE-----\n").unwrap();
+    let mut c = Command::new(env!("CARGO_BIN_EXE_contextful-ci"));
+    c.args(["image", "--profile", "contextful-full", "--version", "0.0.1", "--ca-bundle"]).arg(&ca);
+    for (i, (target, bytes)) in binaries.iter().enumerate() {
+        let path = dir.join(format!("{out}-{i}.bin"));
+        std::fs::write(&path, bytes).unwrap();
+        c.arg("--binary").arg(format!("{target}={}", path.display()));
+    }
+    c.arg("--out").arg(dir.join(out)).current_dir(repo_root()).output().unwrap()
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn json(bytes: &[u8]) -> serde_json::Value {
+    serde_json::from_slice(bytes).unwrap()
+}
+
+/// The runtime stage's argument to one instruction.
+fn runtime(instruction: &str) -> String {
+    let lines = instructions();
+    let stage: Vec<&String> = lines.iter().rev().take_while(|l| !l.starts_with("FROM ")).collect();
+    stage.iter().find_map(|l| l.strip_prefix(&format!("{instruction} "))).unwrap_or_else(|| panic!("no {instruction} in the runtime stage")).to_string()
+}
+
+/// Each profile's release image is an OCI index of a `linux/amd64` and a `linux/arm64` manifest; `contextful-ci image` assembles each from the profile's `x86_64` or `aarch64` musl release binary, with the `Dockerfile`'s runtime user, volume and entrypoint.
+// spec: assurance.build.release-image@ac0e40ea
+#[test]
+fn the_release_image_indexes_an_amd64_and_an_arm64_manifest_assembled_from_release_binaries() {
+    let dir = tempfile::tempdir().unwrap();
+    let amd = executable(0x3e, false, b"amd64 release binary");
+    let arm = executable(0xb7, false, b"arm64 release binary");
+    // Listed arm64 first: the index orders its platforms amd64 then arm64 whatever the order given.
+    let o = image(dir.path(), &[(ARM64, &arm), (AMD64, &amd)], "both");
+    assert!(o.status.success(), "{}", stderr(&o));
+    let printed = String::from_utf8_lossy(&o.stdout).into_owned();
+    assert!(printed.contains("image: `contextful-full` linux/amd64 manifest sha256:") && printed.contains("image: `contextful-full` linux/arm64 manifest sha256:"), "{printed}");
+
+    let archive = dir.path().join("both/contextful-full-0.0.1.oci.tar");
+    let layout = dir.path().join("layout");
+    std::fs::create_dir_all(&layout).unwrap();
+    let x = Command::new("tar").arg("-xf").arg(&archive).arg("-C").arg(&layout).output().unwrap();
+    assert!(x.status.success(), "{}", stderr(&x));
+    assert_eq!(json(&std::fs::read(layout.join("oci-layout")).unwrap())["imageLayoutVersion"], "1.0.0");
+    let blob = |digest: &str| -> Vec<u8> {
+        let hex = digest.strip_prefix("sha256:").unwrap();
+        let bytes = std::fs::read(layout.join("blobs/sha256").join(hex)).unwrap_or_else(|e| panic!("{digest}: {e}"));
+        assert_eq!(sha256_hex(&bytes), hex, "a blob named by another digest");
+        bytes
+    };
+
+    // The layout names one image index, tagged with the version; it lists both platforms.
+    let top = json(&std::fs::read(layout.join("index.json")).unwrap());
+    let refs = top["manifests"].as_array().unwrap();
+    assert_eq!(refs.len(), 1, "{top}");
+    assert_eq!(refs[0]["mediaType"], "application/vnd.oci.image.index.v1+json");
+    assert_eq!(refs[0]["annotations"]["org.opencontainers.image.ref.name"], "0.0.1");
+    let index_bytes = blob(refs[0]["digest"].as_str().unwrap());
+    assert_eq!(refs[0]["size"].as_u64(), Some(index_bytes.len() as u64));
+    let index = json(&index_bytes);
+    assert_eq!(index["schemaVersion"], 2);
+    assert_eq!(index["mediaType"], "application/vnd.oci.image.index.v1+json");
+    let entries = index["manifests"].as_array().unwrap();
+    let platforms: Vec<(&str, &str)> = entries.iter().map(|e| (e["platform"]["os"].as_str().unwrap(), e["platform"]["architecture"].as_str().unwrap())).collect();
+    assert_eq!(platforms, [("linux", "amd64"), ("linux", "arm64")], "{index}");
+    assert_eq!(entries[1]["platform"]["variant"], "v8");
+
+    let entrypoint: serde_json::Value = serde_json::from_str(&runtime("ENTRYPOINT")).unwrap();
+    let cmd: serde_json::Value = serde_json::from_str(&runtime("CMD")).unwrap();
+    let volumes: Vec<String> = serde_json::from_str(&runtime("VOLUME")).unwrap();
+    for (entry, (arch, target, binary)) in entries.iter().zip([("amd64", AMD64, &amd), ("arm64", ARM64, &arm)]) {
+        assert_eq!(entry["mediaType"], "application/vnd.oci.image.manifest.v1+json");
+        let manifest_bytes = blob(entry["digest"].as_str().unwrap());
+        assert_eq!(entry["size"].as_u64(), Some(manifest_bytes.len() as u64));
+        let manifest = json(&manifest_bytes);
+        assert_eq!(manifest["schemaVersion"], 2);
+        assert_eq!(manifest["config"]["mediaType"], "application/vnd.oci.image.config.v1+json");
+        let config = json(&blob(manifest["config"]["digest"].as_str().unwrap()));
+        assert_eq!((config["os"].as_str(), config["architecture"].as_str()), (Some("linux"), Some(arch)), "{config}");
+        assert_eq!(config["config"]["User"].as_str(), Some(runtime("USER").as_str()), "{config}");
+        assert_eq!(config["config"]["WorkingDir"].as_str(), Some(runtime("WORKDIR").as_str()), "{config}");
+        assert_eq!(config["config"]["Entrypoint"], entrypoint, "{config}");
+        assert_eq!(config["config"]["Cmd"], cmd, "{config}");
+        let declared: Vec<&String> = config["config"]["Volumes"].as_object().unwrap().keys().collect();
+        assert_eq!(declared, volumes.iter().collect::<Vec<_>>(), "{config}");
+
+        let layers = manifest["layers"].as_array().unwrap();
+        assert_eq!(layers.len(), 1, "{manifest}");
+        assert_eq!(layers[0]["mediaType"], "application/vnd.oci.image.layer.v1.tar+gzip");
+        let layer = blob(layers[0]["digest"].as_str().unwrap());
+        let gz = dir.path().join(format!("{arch}.layer.tar.gz"));
+        std::fs::write(&gz, &layer).unwrap();
+        let tar = Command::new("gzip").arg("-dc").arg(&gz).output().unwrap();
+        assert!(tar.status.success(), "{}", stderr(&tar));
+        assert_eq!(config["rootfs"]["diff_ids"][0].as_str(), Some(format!("sha256:{}", sha256_hex(&tar.stdout)).as_str()), "the diff id digests the uncompressed layer");
+        let shipped = Command::new("tar").args(["-xzOf"]).arg(&gz).arg("usr/local/bin/contextful").output().unwrap();
+        assert_eq!(&shipped.stdout, binary, "{target}: the layer ships another binary");
+        let listed = Command::new("tar").args(["--numeric-owner", "-tvzf"]).arg(&gz).output().unwrap();
+        let listed = String::from_utf8_lossy(&listed.stdout).into_owned();
+        assert!(listed.lines().any(|l| l.ends_with("etc/ssl/certs/ca-certificates.crt")), "{listed}");
+        let data = listed.lines().find(|l| l.trim_end_matches('/').ends_with(" data")).unwrap_or_else(|| panic!("no data directory: {listed}"));
+        assert!(data.starts_with('d') && data.contains("65532"), "the store volume belongs to the runtime user: {data}");
+        let bin = listed.lines().find(|l| l.ends_with("usr/local/bin/contextful")).unwrap();
+        assert!(bin.starts_with("-rwxr-xr-x"), "{bin}");
+
+        // Each platform's descriptor carries the blobs a registry push uploads and the index entry.
+        let descriptor = json(&std::fs::read(dir.path().join(format!("both/contextful-full-0.0.1-linux-{arch}.image.json"))).unwrap());
+        assert_eq!(descriptor["target"].as_str(), Some(target));
+        assert_eq!(&descriptor["entry"], entry, "{descriptor}");
+        assert_eq!(descriptor["manifest"]["content"].as_str().map(str::as_bytes), Some(&manifest_bytes[..]));
+        assert_eq!(descriptor["config"]["digest"], manifest["config"]["digest"]);
+        assert_eq!(descriptor["layer"]["digest"], layers[0]["digest"]);
+        let file = descriptor["layer"]["path"].as_str().unwrap();
+        assert_eq!(std::fs::read(dir.path().join("both").join(file)).unwrap(), layer, "{file}");
+    }
+
+    // One release cell per platform yields the same descriptor, so two cells compose the index.
+    let o = image(dir.path(), &[(ARM64, &arm)], "cell");
+    assert!(o.status.success(), "{}", stderr(&o));
+    let cell = std::fs::read(dir.path().join("cell/contextful-full-0.0.1-linux-arm64.image.json")).unwrap();
+    assert_eq!(cell, std::fs::read(dir.path().join("both/contextful-full-0.0.1-linux-arm64.image.json")).unwrap());
+    let composed = serde_json::json!({ "schemaVersion": 2, "mediaType": "application/vnd.oci.image.index.v1+json", "manifests": entries });
+    assert_eq!(serde_json::to_vec(&composed).unwrap(), index_bytes, "the index is its entries, amd64 then arm64");
+
+    // The same binaries assemble the same archive, byte for byte.
+    let o = image(dir.path(), &[(AMD64, &amd), (ARM64, &arm)], "again");
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(std::fs::read(dir.path().join("again/contextful-full-0.0.1.oci.tar")).unwrap(), std::fs::read(&archive).unwrap());
+}
+
+/// A binary whose ELF machine differs from its target's, or whose program headers name a dynamic interpreter, raises `ImageBinaryMismatch`, naming the target.
+// spec: assurance.build.image-binary-mismatch@f8fa386a
+#[test]
+fn an_image_binary_of_another_machine_or_naming_an_interpreter_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let refused = |binaries: &[(&str, &[u8])], out: &str, needle: &str| {
+        let o = image(dir.path(), binaries, out);
+        let err = stderr(&o);
+        assert!(!o.status.success(), "{err}");
+        assert!(err.starts_with(&format!("ImageBinaryMismatch: `{}`", binaries.last().unwrap().0)) && err.contains(needle), "{err}");
+        assert!(!dir.path().join(out).join("contextful-full-0.0.1.oci.tar").exists(), "a refused image left an archive");
+    };
+    let amd = executable(0x3e, false, b"x");
+    refused(&[(AMD64, &amd), (ARM64, &amd)], "machine", "machine");
+    refused(&[(AMD64, &executable(0x3e, true, b"x"))], "interp", "interpreter");
+    refused(&[(ARM64, b"#!/bin/sh\n")], "script", "no ELF64");
 }

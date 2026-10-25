@@ -2,7 +2,11 @@
 # unless `--build-arg PROFILE=contextful-edge` or `contextful-control` selects another.
 #
 #   docker build --platform linux/amd64 -t contextful .
+#   docker build --platform linux/arm64 --build-arg PLATFORM=linux/arm64 --build-arg RUST_TARGET=aarch64-unknown-linux-musl -t contextful .
 #   docker run --rm -v "$PWD:/data" contextful query "SELECT 1"
+#
+# A release image compiles nothing: `contextful-ci image` assembles it from the release
+# binaries under this file's runtime stage (`assurance.build.release-image`).
 
 # The builder: Rust 1.97 on Alpine, whose native target is musl, so the binary links
 # statically, the SQL engine's C++ runtime included.
