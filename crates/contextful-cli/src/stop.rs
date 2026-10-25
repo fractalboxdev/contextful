@@ -18,7 +18,7 @@ pub fn requested() -> bool {
 }
 
 /// Send `SIGKILL` when `kill`, else `SIGTERM`, to every process in group `group`.
-#[cfg(unix)]
+#[cfg(all(unix, feature = "data-plane"))]
 pub fn signal_group(group: u32, kill: bool) -> std::io::Result<()> {
     let group = libc::pid_t::try_from(group).map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
     let signal = if kill { libc::SIGKILL } else { libc::SIGTERM };
