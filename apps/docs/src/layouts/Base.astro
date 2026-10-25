@@ -1,8 +1,8 @@
 ---
 import type { MarkdownHeading } from "astro";
 import { navigation } from "../lib/nav";
-import "@fractalbox/merlion-themes/merlion-themes.css";
-import "@fractalbox/merlion-themes/merlion-font.css";
+import "@fractalboxdev/merlion-themes/merlion-themes.css";
+import "@fractalboxdev/merlion-themes/merlion-font.css";
 import "../styles/site.css";
 import Head from "../components/Head.astro";
 import Header from "../components/Header.astro";
@@ -101,7 +101,7 @@ const pageTitle = `${title} · Contextful docs`;
     <script>
       // <merlion-view> gives each diagram pan, zoom, fullscreen and highlighting; a drag
       // on a label selects its text.
-      import "@fractalbox/merlion-view";
+      import "@fractalboxdev/merlion-view";
     </script>
   </body>
 </html>
