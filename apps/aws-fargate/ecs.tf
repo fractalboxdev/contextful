@@ -130,7 +130,7 @@ resource "aws_ecs_service" "serve" {
   desired_count                     = var.serve_count
   launch_type                       = "FARGATE"
   platform_version                  = "LATEST"
-  health_check_grace_period_seconds = 60
+  health_check_grace_period_seconds = var.serve_hydration_grace_seconds
   propagate_tags                    = "SERVICE"
 
   network_configuration {

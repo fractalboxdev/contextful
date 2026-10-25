@@ -161,6 +161,17 @@ variable "serve_count" {
   default     = 2
 }
 
+variable "serve_hydration_grace_seconds" {
+  description = "Seconds a new `contextful serve` task may hydrate its snapshot set before failed `/health?ready=hydrated` checks count; size it to the store's cold pull."
+  type        = number
+  default     = 300
+
+  validation {
+    condition     = var.serve_hydration_grace_seconds >= 0 && var.serve_hydration_grace_seconds <= 2147483647
+    error_message = "serve_hydration_grace_seconds must be a non-negative number of seconds."
+  }
+}
+
 variable "serve_cpu" {
   description = "Fargate CPU units of a `contextful serve` task."
   type        = number
