@@ -36,7 +36,7 @@ pub const DEFAULT_ENDPOINT: &str = "https://s3.amazonaws.com";
 pub const DEFAULT_REGION: &str = "us-east-1";
 
 /// The configuration keys the object source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 18] = [
+pub const KEYS: [&str; 19] = [
     "bucket",
     "key",
     "prefix",
@@ -55,6 +55,7 @@ pub const KEYS: [&str; 18] = [
     "replay_dead_letters",
     "access_key_id",
     "secret_access_key",
+    "session_token",
 ];
 
 /// Which objects a read lands.
@@ -100,6 +101,9 @@ pub struct ObjectConfig {
     /// The access key id and secret access key references, declared together or not at all.
     pub access_key_id: Option<Template>,
     pub secret_access_key: Option<Template>,
+    /// The session token reference a temporary credential signs with, beside the key pair
+    /// (`connector.source.object-session-token`).
+    pub session_token: Option<Template>,
 }
 
 fn invalid(why: String) -> ConfigError {
@@ -217,6 +221,10 @@ impl ObjectConfig {
         if access_key_id.is_some() != secret_access_key.is_some() {
             return Err(invalid("declares one of `access_key_id` and `secret_access_key`; a key pair binds both".into()));
         }
+        let session_token = text(cfg, "session_token")?.map(|v| credential("session_token", &v)).transpose()?;
+        if session_token.is_some() && access_key_id.is_none() {
+            return Err(invalid("declares `session_token` without a key pair; a temporary credential binds `access_key_id` and `secret_access_key` beside it".into()));
+        }
         let endpoint = endpoint(NAME, text(cfg, "endpoint")?.as_deref().unwrap_or(DEFAULT_ENDPOINT))?;
         if endpoint.query().is_some() || endpoint.fragment().is_some() {
             return Err(invalid(format!("`endpoint = \"{}\"` carries a query or fragment; objects address under a bare origin and path", scrub(&endpoint))));
@@ -239,12 +247,13 @@ impl ObjectConfig {
             replay_dead_letters: flag(cfg, "replay_dead_letters")?,
             access_key_id,
             secret_access_key,
+            session_token,
         })
     }
 
     /// The credential templates the source hydrates per read.
     pub fn credentials(&self) -> impl Iterator<Item = &Template> {
-        self.access_key_id.iter().chain(self.secret_access_key.iter())
+        self.access_key_id.iter().chain(self.secret_access_key.iter()).chain(self.session_token.iter())
     }
 
     /// The name an object refuses under: `s3://<bucket>/<key>`.
@@ -306,8 +315,16 @@ pub trait Presign: Send + Sync {
     fn page(&self, body: &str) -> Result<(Vec<(String, String)>, Option<String>), String>;
 }
 
-/// Opens the presigner for a source's bucket, with the key pair hydrated for one read.
-pub type Presigner = Arc<dyn Fn(&ObjectConfig, Option<(Hydrated, Hydrated)>) -> Result<Box<dyn Presign>, Failure> + Send + Sync>;
+/// The key material one signed read hydrates: the key pair, and the session token of a
+/// temporary credential (`connector.source.object-session-token`).
+pub struct ObjectKeys {
+    pub access_key_id: Hydrated,
+    pub secret_access_key: Hydrated,
+    pub session_token: Option<Hydrated>,
+}
+
+/// Opens the presigner for a source's bucket, with the key material hydrated for one read.
+pub type Presigner = Arc<dyn Fn(&ObjectConfig, Option<ObjectKeys>) -> Result<Box<dyn Presign>, Failure> + Send + Sync>;
 
 /// A bucket on an S3-compatible endpoint, each request presigned and sent through the
 /// mediated client, whose allowlist holds the endpoint host alone. It reads; it never writes.
@@ -404,7 +421,11 @@ impl ObjectSource {
         let c = config.clone();
         let open: Open = Box::new(move || {
             let credentials = match (&c.access_key_id, &c.secret_access_key) {
-                (Some(id), Some(secret)) => Some((resolver.render(id)?, resolver.render(secret)?)),
+                (Some(id), Some(secret)) => Some(ObjectKeys {
+                    access_key_id: resolver.render(id)?,
+                    secret_access_key: resolver.render(secret)?,
+                    session_token: c.session_token.as_ref().map(|t| resolver.render(t)).transpose()?,
+                }),
                 _ => None,
             };
             Ok(Box::new(SignedBucket::open(&c, presigner(&c, credentials)?)?) as Box<dyn Objects>)

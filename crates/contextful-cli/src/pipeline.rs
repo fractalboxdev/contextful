@@ -560,7 +560,7 @@ fn check_object(spec: &PipelineSpec) -> Result<Checked> {
 /// (`connector.source.object-transport`).
 #[cfg(feature = "s3-sync")]
 fn object_source(config: ObjectConfig, resolver: Arc<contextful_outbound::Resolver>) -> contextful_connectors::object::ObjectSource {
-    use contextful_connectors::object::{ObjectSource, Presign, Presigner};
+    use contextful_connectors::object::{ObjectKeys, ObjectSource, Presign, Presigner};
     use contextful_core::run::{Failure, FailureTag};
     use contextful_sync::{S3Bucket, S3Credentials};
 
@@ -583,8 +583,8 @@ fn object_source(config: ObjectConfig, resolver: Arc<contextful_outbound::Resolv
     let presigner: Presigner = Arc::new(|c: &ObjectConfig, credentials| {
         let endpoint = c.endpoint.as_str();
         let bucket = match credentials {
-            Some((access_key_id, secret_access_key)) => {
-                S3Bucket::open(endpoint, &c.region, &c.bucket, S3Credentials { access_key_id, secret_access_key, session_token: None })
+            Some(ObjectKeys { access_key_id, secret_access_key, session_token }) => {
+                S3Bucket::open(endpoint, &c.region, &c.bucket, S3Credentials { access_key_id, secret_access_key, session_token })
             }
             None => S3Bucket::anonymous(endpoint, &c.region, &c.bucket),
         }

@@ -294,6 +294,25 @@ fn a_literal_credential_is_refused_and_a_reference_parses() {
     assert!(matches!(refusal(json!({"bucket": "b", "key": "k", "access_key_id": "secret://id"})), ConfigError::Run(_)), "a key pair binds both");
 }
 
+/// `session_token` binds one `secret://<name>` reference beside the key pair and joins the
+/// templates hydrated per read; a literal refuses, and a token without the pair names no key.
+#[test]
+fn a_session_token_reference_joins_the_key_pair() {
+    let pair = json!({"bucket": "b", "key": "k.jsonl", "access_key_id": "secret://id", "secret_access_key": "secret://s", "session_token": "secret://lake-token"});
+    let ok = ObjectConfig::parse(&pair).unwrap();
+    let names: Vec<String> = ok.credentials().flat_map(|t| t.names().map(|n| n.as_str().to_string()).collect::<Vec<_>>()).collect();
+    assert_eq!(names, ["id", "s", "lake-token"]);
+    assert!(ok.session_token.is_some());
+    let mut literal = pair.clone();
+    literal["session_token"] = json!("IQoJb3JpZ2luX2VjEXAMPLETOKEN");
+    match refusal(literal) {
+        ConfigError::Connector(ConnectorError::SecretMaterialInDeclaration(m)) => assert!(m.contains("session_token"), "{m}"),
+        other => panic!("{other}"),
+    }
+    let alone = json!({"bucket": "b", "key": "k.jsonl", "session_token": "secret://lake-token"});
+    assert!(matches!(refusal(alone), ConfigError::Run(_)), "a token signs only beside the key pair");
+}
+
 /// A signing source never addresses a cleartext endpoint off loopback; an unsigned one may,
 /// carrying no capability to leak.
 // spec: connector.source.object-cleartext@80d4cece

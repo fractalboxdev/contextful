@@ -145,6 +145,23 @@ fn a_fixed_key_object_lands_once_per_etag() {
     }
 }
 
+/// A `session_token` beside the key pair, hydrated per read, signs each request as a
+/// temporary credential: every presigned URL carries the token.
+// spec: connector.source.object-session-token@ea65e5ac
+#[test]
+fn a_session_token_signs_every_request_as_a_temporary_credential() {
+    let bucket = Bucket::start(&[("feed/orders.jsonl", "{\"id\":\"o1\"}\n")]);
+    let dir = fixed_key(bucket.port, ", access_key_id = \"secret://lake-key-id\", secret_access_key = \"secret://lake-secret\", session_token = \"secret://lake-token\"");
+    let env = [("LAKE_KEY_ID", "ASIALOOPBACKEXAMPLE"), ("LAKE_SECRET", "loopback-secret"), ("LAKE_TOKEN", "loopback-session-token")];
+    assert!(ok(&fire(dir.path(), "f1", "2030-01-01T00:00:00Z", &env)).contains("1 rows"));
+    assert!(ok(&fire(dir.path(), "f2", "2030-01-01T00:01:00Z", &env)).contains("f2 success · 0 rows"));
+    let targets = bucket.targets.lock().unwrap().clone();
+    assert_eq!(targets.len(), 2);
+    for (_, t) in &targets {
+        assert!(t.contains("X-Amz-Security-Token=loopback-session-token") && t.contains("ASIALOOPBACKEXAMPLE") && !t.contains("loopback-secret"), "{t}");
+    }
+}
+
 /// A source binding no key pair sends every request unsigned.
 #[test]
 fn an_unbound_object_source_sends_unsigned() {
