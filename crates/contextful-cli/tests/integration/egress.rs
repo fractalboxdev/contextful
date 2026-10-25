@@ -1,5 +1,6 @@
 //! The process refuses an admitted private range reaching loopback, link-local or the
 //! metadata address before running any command.
+#![cfg(feature = "data-plane")]
 
 use std::process::Command;
 
