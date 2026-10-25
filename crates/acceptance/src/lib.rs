@@ -4,6 +4,7 @@
 pub mod http;
 pub mod container_recovery;
 pub mod s3;
+pub mod sqs;
 pub mod stdio;
 pub mod conformance;
 

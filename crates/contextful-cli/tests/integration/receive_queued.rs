@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 /// `POST /receive/otel` under `token` and `key`, preferring the queued answer when `queued`;
 /// the status and the JSON answer.
-fn deliver(addr: &str, token: &str, key: &str, body: &str, queued: bool) -> (u16, Value) {
+pub(super) fn deliver(addr: &str, token: &str, key: &str, body: &str, queued: bool) -> (u16, Value) {
     let mut stream = TcpStream::connect(addr).unwrap();
     let prefer = if queued { "Prefer: respond-async\r\n" } else { "" };
     write!(stream, "POST /receive/otel HTTP/1.1\r\nAuthorization: Bearer {token}\r\nContextful-Batch-Key: {key}\r\n{prefer}Content-Type: application/x-ndjson\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
@@ -23,7 +23,7 @@ fn deliver(addr: &str, token: &str, key: &str, body: &str, queued: bool) -> (u16
 }
 
 /// The outcome route's answer for `key`.
-fn outcome(addr: &str, token: &str, key: &str) -> (u16, Value) {
+pub(super) fn outcome(addr: &str, token: &str, key: &str) -> (u16, Value) {
     control(addr, "GET", &format!("/receive/otel/{key}"), Some(token), "")
 }
 
@@ -61,7 +61,7 @@ fn spilled(root: &Path) -> usize {
     std::fs::read_dir(spool(root).join("bodies")).map(|d| d.flatten().count()).unwrap_or(0)
 }
 
-fn two_tables() -> String {
+pub(super) fn two_tables() -> String {
     format!("{}{}{}", delivered("events", json!({ "id": "e1" })), delivered("spans", json!({ "id": "s1" })), delivered("spans", json!({ "id": "s2" })))
 }
 

@@ -17,7 +17,7 @@ getrandom = "0.3"
 serde_json = "1"
 url = "2"
 ureq = { version = "3", default-features = false, features = ["rustls"], optional = true }
-# Signature Version 4 for the `aws-secrets-manager` adapter.
+# Signature Version 4 for the AWS adapters.
 hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
 
@@ -30,13 +30,19 @@ sha2 = { version = "0.10", optional = true }
 transport-ureq = ["dep:ureq"]
 # The `aws-secrets-manager` adapter, signing under the workload role. A build without it
 # links no Secrets Manager client (`connector.resolve.adapter-is-optional`).
-aws-secrets-manager = ["transport-ureq", "dep:hmac", "dep:sha2"]
+aws-secrets-manager = ["transport-ureq", "sigv4"]
+# The `aws-sqs` adapter behind the `Queue` port, signing under the workload role
+# (`topology.compose.queue-sqs`). A build without it links no SQS client.
+aws-sqs = ["transport-ureq", "sigv4"]
+# The Signature Version 4 header signer the AWS adapters share; it performs no I/O.
+sigv4 = ["dep:hmac", "dep:sha2"]
 
 # The suite drives loopback servers over the ureq adapter, which the package's own
 # dev-dependency entry links into every test build.
 [dev-dependencies]
-contextful-outbound = { path = ".", features = ["transport-ureq", "aws-secrets-manager"] }
+contextful-outbound = { path = ".", features = ["transport-ureq", "aws-secrets-manager", "aws-sqs"] }
 contextful-eval = { path = "../../tools/eval" }
+contextful-acceptance = { path = "../acceptance" }
 tempfile = "3"
 
 [[test]]

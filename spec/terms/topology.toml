@@ -42,3 +42,7 @@ topology-parity-soak         = { clause = "topology.deploy.parity", value = 24, 
 topology-container-readiness = { clause = "topology.publish-hostname.container-readiness", value = 8, unit = "s", basis = "chosen", gloss = "Cold start to readiness for a retrieval container; no workload is measured." }
 topology-cadence-lease-ttl   = { clause = "topology.coordinate.cadence-lease-ttl", value = 90, unit = "s", basis = "chosen", gloss = "Granted life of a cadence lease, three renewal intervals." }
 topology-cadence-renewal     = { clause = "topology.coordinate.cadence-lease-renewal", value = 30, unit = "s", basis = "chosen", gloss = "Interval at which the reconciler renews a cadence lease." }
+topology-queue-sqs-wait       = { clause = "topology.compose.queue-sqs-wait", value = 20, unit = "s", basis = "standard:aws-sqs-receive-message", gloss = "Long poll of the first SQS receive call, the most SQS waits." }
+topology-queue-sqs-batch      = { clause = "topology.compose.queue-sqs-batch", value = 10, unit = "messages", basis = "standard:aws-sqs-receive-message", gloss = "Messages one SQS receive call asks for, the most SQS answers." }
+topology-queue-sqs-visibility = { clause = "topology.compose.queue-sqs-visibility", value = 300, unit = "s", basis = "chosen", gloss = "Window a received SQS message stays hidden before it redelivers." }
+topology-queue-sqs-cap        = { clause = "topology.compose.queue-sqs-cap", value = 1, unit = "MiB", basis = "standard:aws-sqs-quotas", gloss = "Largest SQS message; a receive body past it spills to the store bucket." }

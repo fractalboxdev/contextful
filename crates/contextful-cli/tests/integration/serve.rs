@@ -142,16 +142,22 @@ impl Drop for Listener {
 
 /// Start the face; its address, reported on standard error.
 pub(super) fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
-    serve_binary(Path::new(env!("CARGO_BIN_EXE_contextful")), dir, args)
+    serve_binary(Path::new(env!("CARGO_BIN_EXE_contextful")), dir, args, &[])
 }
 
-fn serve_binary(binary: &Path, dir: &Path, args: &[&str]) -> (Listener, String) {
+/// [`serve`] with `env` in the face's environment.
+pub(super) fn serve_env(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> (Listener, String) {
+    serve_binary(Path::new(env!("CARGO_BIN_EXE_contextful")), dir, args, env)
+}
+
+fn serve_binary(binary: &Path, dir: &Path, args: &[&str], env: &[(&str, &str)]) -> (Listener, String) {
     let mut child = Command::new(binary)
         .args(args)
         .env("CONTEXTFUL_CONTROL_ATTESTATION_SECRET", "separate-attestation-secret")
         .current_dir(dir)
         .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
         .env_remove("CONTEXTFUL_AUDIENCE")
+        .envs(env.iter().copied())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
@@ -203,7 +209,7 @@ fn control_apply_uses_the_host_registered_task_set() {
     let draft = super::derive::host_manifest("word-split").replace("[pipeline.source]", "schedule = \"every 1h\"\n[pipeline.source]");
     std::fs::write(root.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{draft}")).unwrap();
     let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
-    let (_listener, addr) = serve_binary(&binary, root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (_listener, addr) = serve_binary(&binary, root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public], &[]);
     let edit = json!({ "expected": 1, "document": draft }).to_string();
     let (status, edited) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
     assert_eq!(status, 200, "{edited}");

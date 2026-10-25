@@ -68,6 +68,10 @@ mod query;
 mod receive;
 #[cfg(feature = "data-plane")]
 mod receive_queued;
+#[cfg(feature = "aws-sqs")]
+mod receive_sqs;
+#[cfg(all(feature = "data-plane", not(feature = "aws-sqs")))]
+mod receive_sqs_absent;
 #[cfg(feature = "data-plane")]
 mod run;
 #[cfg(feature = "data-plane")]

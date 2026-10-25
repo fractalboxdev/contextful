@@ -3,6 +3,8 @@
 
 #[cfg(feature = "aws-secrets-manager")]
 pub mod aws_secrets;
+#[cfg(feature = "aws-sqs")]
+pub mod aws_sqs;
 pub mod client;
 pub mod egress;
 pub mod infer;
@@ -11,7 +13,7 @@ pub mod probe;
 #[cfg(feature = "transport-ureq")]
 pub mod role;
 pub mod secrets;
-#[cfg(feature = "aws-secrets-manager")]
+#[cfg(feature = "sigv4")]
 pub mod sigv4;
 pub mod telemetry;
 #[cfg(feature = "transport-ureq")]

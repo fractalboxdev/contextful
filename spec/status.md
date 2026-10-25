@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `run` | 3 | 29 | 613 | 129 | 49 | 19 | 579 | 0 | 579 |
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 200 | 71 | 24 | 2 | 171 | 0 | 171 |
-| `topology` | 1 | 6 | 85 | 26 | 5 | 3 | 81 | 0 | 81 |
-| **total** | 26 | 177 | 2923 | 711 | 230 | 84 | 2588 | 0 | |
+| `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 88 | 0 | 88 |
+| **total** | 26 | 177 | 2930 | 711 | 234 | 84 | 2595 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
-| 3 — The run path | 12 | 311 | 300 | passing | closed |
+| 3 — The run path | 12 | 318 | 307 | passing | closed |
 | 4 — Ingest | 25 | 651 | 551 | passing | closed |
 | 5 — The read face under enforcement | 17 | 321 | 287 | passing | closed |
 | 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
@@ -2575,6 +2575,13 @@ Unscheduled operations: 13.
 | `topology.compose.one-tree` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.compose.open-store` | `spec/pins.toml` | performed |
 | `topology.compose.queue-extension` | `tools/ci/tests/integration/topology.rs::a_queue_role_reaches_the_queue_port_and_a_profile_declaring_none_uses_the_local_spool` | performed |
+| `topology.compose.queue-object-notification` | `crates/contextful-outbound/tests/integration/aws_sqs.rs::an_s3_notification_delivers_one_arrival_per_created_record` | performed |
+| `topology.compose.queue-sqs` | `crates/contextful-cli/tests/integration/receive_sqs.rs::a_queued_batch_travels_through_the_sqs_queue_signed_under_the_role` | performed |
+| `topology.compose.queue-sqs-absent` | `crates/contextful-cli/tests/integration/receive_sqs_absent.rs::a_configured_queue_without_the_adapter_refuses_and_spools_nothing` | performed |
+| `topology.compose.queue-sqs-batch` | `crates/contextful-outbound/tests/integration/aws_sqs.rs::one_receive_call_asks_for_at_most_ten_messages` | performed |
+| `topology.compose.queue-sqs-cap` | `crates/contextful-cli/tests/integration/receive_sqs.rs::a_body_past_the_sqs_cap_spills_to_the_store_bucket` | performed |
+| `topology.compose.queue-sqs-visibility` | `crates/contextful-outbound/tests/integration/aws_sqs.rs::an_undeleted_message_stays_hidden_then_redelivers` | performed |
+| `topology.compose.queue-sqs-wait` | `crates/contextful-outbound/tests/integration/aws_sqs.rs::a_receive_long_polls_once_then_drains_what_waits` | performed |
 | `topology.compose.read-path` | `tools/ci/tests/integration/topology.rs::the_read_replica_links_the_store_catalog_query_ranking_and_sync` | performed |
 | `topology.compose.run-path` | `tools/ci/tests/integration/topology.rs::the_execution_core_holds_the_journal_scheduler_and_awakeables_and_no_store` | performed |
 | `topology.compose.run-path-droppable` | `spec/pins.toml` | performed |

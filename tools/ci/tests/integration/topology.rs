@@ -1194,7 +1194,7 @@ fn no_profile_links_a_queue_cache_consensus_or_coordination_client() {
 ///
 /// The port names the three message kinds; the local spool implements it in the engine, which links no store
 /// package; every shape declaring a `queue` role uses the `queue` primitive and names its object-arrival feed; the
-/// local target declares none; and the binary wires the spool alone.
+/// local target declares none; and the binary wires the spool and selects the SQS adapter, implementing neither.
 // spec: topology.compose.queue-extension@d8ec9f26
 #[test]
 fn a_queue_role_reaches_the_queue_port_and_a_profile_declaring_none_uses_the_local_spool() {
@@ -1239,12 +1239,14 @@ fn a_queue_role_reaches_the_queue_port_and_a_profile_declaring_none_uses_the_loc
     let mut wired = Vec::new();
     for entry in std::fs::read_dir(repo_root().join("crates/contextful-cli/src")).unwrap().flatten() {
         let text = std::fs::read_to_string(entry.path()).unwrap_or_default();
-        if text.contains("impl Queue for") || text.contains("dyn Queue") {
+        if text.contains("impl Queue for") {
             wired.push(entry.file_name().to_string_lossy().into_owned());
         }
     }
-    assert!(wired.is_empty(), "the binary implements a queue beside the spool: {wired:?}");
-    assert!(read("crates/contextful-cli/src/queue.rs").contains("LocalSpool::open"), "the binary wires no local spool");
+    assert!(wired.is_empty(), "the binary implements a queue adapter of its own: {wired:?}");
+    let binary = read("crates/contextful-cli/src/queue.rs");
+    assert!(binary.contains("LocalSpool::open") && binary.contains("AwsSqs::from_vars"), "the binary wires the spool and selects the SQS adapter");
+    assert!(read("crates/contextful-outbound/src/aws_sqs.rs").contains("impl Queue for AwsSqs"), "no SQS adapter behind the port");
 }
 
 /// Engine code accesses catalog backends through the `Catalog` trait without naming a backend. `contextful-cli`

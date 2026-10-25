@@ -18,7 +18,7 @@ use contextful_context::Store;
 use contextful_core::export::parse_exports;
 use contextful_core::pipeline::declare::collect;
 use contextful_core::run::derive::task::Tasks;
-use contextful_core::run::queue::{Queue, QueueMessage};
+use contextful_core::run::queue::{BodyStore, Queue, QueueMessage};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::StoreError;
 use contextful_engine::queue::{drain, Batch, Drained, LocalSpool, Wake};
@@ -77,13 +77,107 @@ pub(crate) fn local_spool(store_root: &Path) -> Result<LocalSpool> {
     Ok(LocalSpool::open(&dir)?)
 }
 
+/// The queue `receive` batches and object-arrival keys travel through, and where a body past
+/// its cap waits: the SQS queue `CONTEXTFUL_QUEUE_URL` names with the store's `[sync]` bucket
+/// (`topology.compose.queue-sqs`, `topology.compose.queue-sqs-cap`), else the local spool.
+pub(crate) enum Port {
+    Local(LocalSpool),
+    #[cfg(feature = "aws-sqs")]
+    Sqs(contextful_outbound::aws_sqs::AwsSqs, BucketBodies),
+}
+
+impl Port {
+    /// The port the process environment selects for the project `l` locates. A build linking
+    /// no SQS adapter refuses a configured queue rather than spool beside it
+    /// (`topology.compose.queue-sqs-absent`).
+    pub(crate) fn open(l: &crate::project::Located) -> Result<Port> {
+        let configured = std::env::var(QUEUE_URL).ok().filter(|v| !v.trim().is_empty());
+        let Some(_url) = configured else { return Ok(Port::Local(local_spool(&l.project.store_root())?)) };
+        #[cfg(feature = "aws-sqs")]
+        {
+            let clock: std::sync::Arc<dyn contextful_core::ports::Clock + Send + Sync> = std::sync::Arc::new(crate::run::SystemClock);
+            let queue = contextful_outbound::aws_sqs::AwsSqs::from_vars(&std::env::vars().collect(), clock)?
+                .context("the queue URL names no queue")?
+                .with_role(crate::sync::role_provider());
+            Ok(Port::Sqs(queue, BucketBodies::open(l)?))
+        }
+        #[cfg(not(feature = "aws-sqs"))]
+        Err(crate::ProfileError::ProfileCapabilityAbsent(format!("`{QUEUE_URL}` names an SQS queue and this build links no SQS adapter; rebuild with `--features aws-sqs`; build profile is `{}`", crate::PROFILE)).into())
+    }
+
+    /// Run `f` over the selected queue and body store.
+    pub(crate) fn with<R>(&self, f: impl FnOnce(&dyn Queue, &dyn BodyStore) -> R) -> R {
+        match self {
+            Port::Local(spool) => f(spool, spool),
+            #[cfg(feature = "aws-sqs")]
+            Port::Sqs(queue, bodies) => f(queue, bodies),
+        }
+    }
+}
+
+/// The variable naming an SQS queue (`topology.compose.queue-sqs`).
+const QUEUE_URL: &str = "CONTEXTFUL_QUEUE_URL";
+
+/// Bodies past the SQS cap, in the store's `[sync]` bucket beneath its prefix's
+/// `queue/spill/` (`topology.compose.queue-sqs-cap`).
+#[cfg(feature = "aws-sqs")]
+pub(crate) struct BucketBodies {
+    /// The bucket and spill prefix, or why none is configured: a queue without `[sync]`
+    /// serves every body under the cap and refuses one past it.
+    opened: std::result::Result<(std::sync::Arc<dyn contextful_core::store::object::ObjectStore>, String), String>,
+}
+
+#[cfg(feature = "aws-sqs")]
+impl BucketBodies {
+    fn open(l: &crate::project::Located) -> Result<BucketBodies> {
+        let (config, path) = crate::sync::sync_config(l)?;
+        let Some(config) = config else {
+            return Ok(BucketBodies { opened: Err(format!("a body past the SQS cap spills to the store's bucket, and `{}` declares no `[sync]`", path.display())) });
+        };
+        let prefix = config.resolve_prefix(|k| std::env::var(k).ok())?;
+        let prefix = if prefix.is_empty() { "queue/spill".to_string() } else { format!("{}/queue/spill", prefix.trim_end_matches('/')) };
+        Ok(BucketBodies { opened: Ok((crate::sync::bucket(&config)?, prefix)) })
+    }
+
+    /// The bucket and the object key a spilled body sits under.
+    fn at(&self, key: &str) -> std::result::Result<(&dyn contextful_core::store::object::ObjectStore, String), Failure> {
+        match &self.opened {
+            Ok((bucket, prefix)) => Ok((bucket.as_ref(), format!("{prefix}/{key}"))),
+            Err(why) => Err(Failure::deterministic(FailureTag::Config, why.clone())),
+        }
+    }
+}
+
+#[cfg(feature = "aws-sqs")]
+fn object_failure(e: contextful_core::store::object::ObjectError) -> Failure {
+    Failure::new(FailureTag::Transient, format!("the spill bucket: {e}"))
+}
+
+#[cfg(feature = "aws-sqs")]
+impl BodyStore for BucketBodies {
+    fn put(&self, key: &str, body: &[u8]) -> Result<(), Failure> {
+        let (bucket, at) = self.at(key)?;
+        bucket.put(&at, body, contextful_core::store::object::Condition::None).map(|_| ()).map_err(object_failure)
+    }
+
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Failure> {
+        let (bucket, at) = self.at(key)?;
+        Ok(bucket.get(&at).map_err(object_failure)?.map(|(bytes, _)| bytes))
+    }
+
+    fn delete(&self, key: &str) -> Result<(), Failure> {
+        let (bucket, at) = self.at(key)?;
+        bucket.delete(&at).map_err(object_failure)
+    }
+}
+
 pub fn run(cmd: QueueCmd, tasks: &Tasks) -> Result<()> {
     match cmd {
         QueueCmd::Drain { project, declaration, max, json, no_wake_ups, admit } => {
             let l = project.locate(declaration.clone())?;
-            let spool = local_spool(&l.project.store_root())?;
+            let port = Port::open(&l)?;
             let mut wake = Woken { project: &project, declaration, located: l.declaration.clone(), admit: &admit, tasks, wake_ups: !no_wake_ups };
-            let drained = drain(&spool, &spool, max, &mut wake).map_err(|f| match f.tag {
+            let drained = port.with(|queue, bodies| drain(queue, bodies, max, &mut wake)).map_err(|f| match f.tag {
                 FailureTag::Transient => anyhow::anyhow!("{}; retryable, its deliveries stay queued for the next drain", f.message),
                 _ => anyhow::anyhow!("{}; its deliveries stay queued", f.message),
             })?;
