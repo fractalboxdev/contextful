@@ -103,6 +103,22 @@ pub struct SyncConfig {
     /// `secret://<name>` or `env://NAME`: an S3 session token, for temporary credentials.
     #[serde(default)]
     pub session_token: Option<String>,
+    /// `role`: sign with workload-role credentials in place of every key
+    /// (`store.endpoint.role-credentials`).
+    #[serde(default)]
+    pub credentials: Option<String>,
+}
+
+/// The one `[sync] credentials` value: workload-role credentials.
+pub const ROLE_CREDENTIALS: &str = "role";
+
+/// How an S3 or R2 bucket signs its requests.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Signing {
+    /// The key references `[sync]` binds (`store.endpoint.credentials`).
+    Keys(CredentialRefs),
+    /// Workload-role credentials (`store.endpoint.role-credentials`).
+    Role,
 }
 
 /// The signing region of a generic S3-compatible endpoint that declares none.
@@ -264,6 +280,37 @@ impl SyncConfig {
             secret_access_key: required("secret_access_key", &self.secret_access_key)?,
             session_token: parse("session_token", &self.session_token)?,
         })
+    }
+
+    /// How an S3 or R2 bucket signs: the key references, or workload-role credentials under
+    /// `credentials = "role"`, which no key and no R2 endpoint accompanies
+    /// (`store.endpoint.role-conflict`).
+    pub fn signing(&self) -> Result<Signing, StoreError> {
+        match self.credentials.as_deref() {
+            None => self.credential_refs().map(Signing::Keys),
+            Some(ROLE_CREDENTIALS) => {
+                let keys: Vec<&str> = [("access_key_id", &self.access_key_id), ("secret_access_key", &self.secret_access_key), ("session_token", &self.session_token)]
+                    .into_iter()
+                    .filter(|(_, v)| v.is_some())
+                    .map(|(k, _)| k)
+                    .collect();
+                if !keys.is_empty() {
+                    return Err(StoreError::SyncCredentialConflict(format!(
+                        "endpoint `{}` selects `credentials = \"role\"` beside `{}`; role credentials replace every key",
+                        self.endpoint,
+                        keys.join("`, `")
+                    )));
+                }
+                if self.endpoint.starts_with("r2://") {
+                    return Err(StoreError::SyncCredentialConflict(format!(
+                        "endpoint `{}` is R2, which answers no workload role; bind `access_key_id` and `secret_access_key`",
+                        self.endpoint
+                    )));
+                }
+                Ok(Signing::Role)
+            }
+            Some(other) => Err(StoreError::SyncCredentialUnbound(format!("`[sync] credentials = \"{other}\"` names no credential source; the one value is `role`"))),
+        }
     }
 
     /// Whether the push is declared to coordinate by compare-and-set.

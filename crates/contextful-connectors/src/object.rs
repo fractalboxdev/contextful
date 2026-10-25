@@ -20,6 +20,8 @@ use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::{Cancellation, DeadLetter, PullRequest, Row, Source};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::object::{ObjectError, ObjectStore};
+use contextful_core::store::sync::ROLE_CREDENTIALS;
+use contextful_core::store::StoreError;
 use contextful_outbound::client::{classify, Client};
 use contextful_outbound::Resolver;
 use serde_json::{Map, Value};
@@ -36,7 +38,7 @@ pub const DEFAULT_ENDPOINT: &str = "https://s3.amazonaws.com";
 pub const DEFAULT_REGION: &str = "us-east-1";
 
 /// The configuration keys the object source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 19] = [
+pub const KEYS: [&str; 20] = [
     "bucket",
     "key",
     "prefix",
@@ -56,6 +58,7 @@ pub const KEYS: [&str; 19] = [
     "access_key_id",
     "secret_access_key",
     "session_token",
+    "credentials",
 ];
 
 /// Which objects a read lands.
@@ -104,6 +107,9 @@ pub struct ObjectConfig {
     /// The session token reference a temporary credential signs with, beside the key pair
     /// (`connector.source.object-session-token`).
     pub session_token: Option<Template>,
+    /// `credentials = "role"`: sign with workload-role credentials in place of the key pair
+    /// (`connector.source.object-role`).
+    pub role: bool,
 }
 
 fn invalid(why: String) -> ConfigError {
@@ -225,13 +231,31 @@ impl ObjectConfig {
         if session_token.is_some() && access_key_id.is_none() {
             return Err(invalid("declares `session_token` without a key pair; a temporary credential binds `access_key_id` and `secret_access_key` beside it".into()));
         }
+        let role = match text(cfg, "credentials")?.as_deref() {
+            None => false,
+            Some(ROLE_CREDENTIALS) => true,
+            Some(other) => return Err(invalid(format!("`credentials = \"{other}\"` names no credential source; the one value is `{ROLE_CREDENTIALS}`"))),
+        };
         let endpoint = endpoint(NAME, text(cfg, "endpoint")?.as_deref().unwrap_or(DEFAULT_ENDPOINT))?;
+        if role {
+            let keys: Vec<&str> = [("access_key_id", access_key_id.is_some()), ("secret_access_key", secret_access_key.is_some()), ("session_token", session_token.is_some())]
+                .into_iter()
+                .filter_map(|(k, declared)| declared.then_some(k))
+                .collect();
+            if !keys.is_empty() {
+                return Err(ConfigError::Store(StoreError::SyncCredentialConflict(format!(
+                    "the `{NAME}` source at `{}` selects `credentials = \"role\"` beside `{}`; role credentials replace every key",
+                    scrub(&endpoint),
+                    keys.join("`, `")
+                ))));
+            }
+        }
         if endpoint.query().is_some() || endpoint.fragment().is_some() {
             return Err(invalid(format!("`endpoint = \"{}\"` carries a query or fragment; objects address under a bare origin and path", scrub(&endpoint))));
         }
         // A signed URL is a bearer capability for its lifetime, so it never travels in cleartext
         // off loopback (`connector.source.object-transport`).
-        if access_key_id.is_some() && endpoint.scheme() != "https" && !endpoint.host_str().is_some_and(is_loopback_host) {
+        if (access_key_id.is_some() || role) && endpoint.scheme() != "https" && !endpoint.host_str().is_some_and(is_loopback_host) {
             return Err(ConnectorError::SecretCleartextEndpoint(format!("the `{NAME}` source signs its requests and `{}` is cleartext", scrub(&endpoint))).into());
         }
         Ok(ObjectConfig {
@@ -248,6 +272,7 @@ impl ObjectConfig {
             access_key_id,
             secret_access_key,
             session_token,
+            role,
         })
     }
 
@@ -306,11 +331,11 @@ impl Objects for Port {
 }
 
 /// The S3 protocol a signed read needs, performing no I/O: presigned request URLs and the
-/// listing parser.
+/// listing parser. A presign fails where no credential can sign the request.
 pub trait Presign: Send + Sync {
-    fn get(&self, key: &str) -> String;
-    fn head(&self, key: &str) -> String;
-    fn list(&self, prefix: &str, token: Option<&str>) -> String;
+    fn get(&self, key: &str) -> Result<String, Failure>;
+    fn head(&self, key: &str) -> Result<String, Failure>;
+    fn list(&self, prefix: &str, token: Option<&str>) -> Result<String, Failure>;
     /// One listing page's keys with their ETags, and the token continuing it.
     fn page(&self, body: &str) -> Result<(Vec<(String, String)>, Option<String>), String>;
 }
@@ -323,7 +348,8 @@ pub struct ObjectKeys {
     pub session_token: Option<Hydrated>,
 }
 
-/// Opens the presigner for a source's bucket, with the key material hydrated for one read.
+/// Opens the presigner for a source's bucket, with the key material hydrated for one read;
+/// a source declaring `credentials = "role"` hands it none (`connector.source.object-role`).
 pub type Presigner = Arc<dyn Fn(&ObjectConfig, Option<ObjectKeys>) -> Result<Box<dyn Presign>, Failure> + Send + Sync>;
 
 /// A bucket on an S3-compatible endpoint, each request presigned and sent through the
@@ -366,7 +392,7 @@ impl Objects for SignedBucket {
         let mut out = Vec::new();
         let mut token: Option<String> = None;
         for _ in 0..crate::http::PAGE_CAP {
-            let resp = self.send("GET", &self.presign.list(prefix, token.as_deref()), prefix)?;
+            let resp = self.send("GET", &self.presign.list(prefix, token.as_deref())?, prefix)?;
             if resp.status == 404 {
                 return Err(Failure::deterministic(FailureTag::Permanent, format!("`{}`: no bucket answers", self.input(prefix))));
             }
@@ -381,7 +407,7 @@ impl Objects for SignedBucket {
     }
 
     fn etag(&self, key: &str) -> Result<Option<String>, Failure> {
-        let resp = self.send("HEAD", &self.presign.head(key), key)?;
+        let resp = self.send("HEAD", &self.presign.head(key)?, key)?;
         if resp.status == 404 {
             return Ok(None);
         }
@@ -389,7 +415,7 @@ impl Objects for SignedBucket {
     }
 
     fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, Failure> {
-        let resp = self.send("GET", &self.presign.get(key), key)?;
+        let resp = self.send("GET", &self.presign.get(key)?, key)?;
         if resp.status == 404 {
             return Ok(None);
         }

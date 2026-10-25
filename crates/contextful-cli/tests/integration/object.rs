@@ -214,6 +214,40 @@ fn a_signed_read_passes_the_backends_signature_check_and_a_skip_downloads_nothin
     assert_eq!(server.gets(), 3);
 }
 
+/// `credentials = "role"` on the `s3` source signs each request with the workload role's
+/// credential in place of the key pair, which the backend verifies; beside a key it refuses at
+/// validation as a credential conflict.
+// spec: connector.source.object-role@21954bf3
+#[test]
+fn a_role_signed_object_source_reads_and_refuses_beside_a_key() {
+    use crate::sync::s3::{container_endpoint, NO_ROLE};
+    let server = S3Server::start("lake");
+    let keys = S3Credentials { access_key_id: Hydrated::new(ACCESS_KEY), secret_access_key: Hydrated::new(SECRET_KEY), session_token: None };
+    S3Bucket::open(&server.endpoint, "us-east-1", "lake", keys).unwrap().put("feed/01.jsonl", b"{\"n\":1}\n{\"n\":2}\n", Condition::None).unwrap();
+    let (url, served) = container_endpoint();
+    let mut env = NO_ROLE.to_vec();
+    env[1].1 = &url;
+    let manifest = |extra: &str| {
+        project(&format!(
+            "[[pipeline]]\nid = \"feed\"\ntables = [\"orders\"]\n[pipeline.source]\nname = \"s3\"\nconfig = {{ bucket = \"lake\", endpoint = \"{}\", prefix = \"feed/\", format = \"jsonl\", credentials = \"role\"{extra} }}\n",
+            server.endpoint
+        ))
+    };
+    let role = manifest("");
+    assert!(ok(&fire(role.path(), "f1", "2030-01-01T00:00:00Z", &env)).contains("2 rows"));
+    assert_eq!(server.gets(), 1);
+    assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    // No role source answering lands nothing and names the error.
+    let out = fire(role.path(), "f2", "2030-01-01T00:01:00Z", &NO_ROLE);
+    let said = format!("{}{}", String::from_utf8_lossy(&out.stdout), stderr(&out));
+    assert!(said.contains("SyncRoleUnavailable") && !said.contains("2 rows"), "{said}");
+    assert_eq!(server.gets(), 1);
+
+    let out = cf(manifest(", access_key_id = \"secret://lake-key-id\", secret_access_key = \"secret://lake-secret\"").path(), &["pipeline", "validate"]);
+    assert!(!out.status.success() && stderr(&out).contains("SyncCredentialConflict"), "{}", stderr(&out));
+}
+
 /// An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a
 /// duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.
 // spec: run.land.object-arrival-wake@3d0668f8

@@ -233,14 +233,31 @@ pub(crate) fn bucket(config: &SyncConfig) -> Result<Arc<dyn ObjectStore>> {
     })
 }
 
+/// The process's one workload-role provider, read from its environment and shared by every
+/// bucket and object source signing under it (`store.endpoint.role-credentials`).
+#[cfg(feature = "s3-sync")]
+pub(crate) fn role_provider() -> Arc<contextful_outbound::role::RoleProvider> {
+    static ROLE: std::sync::OnceLock<Arc<contextful_outbound::role::RoleProvider>> = std::sync::OnceLock::new();
+    ROLE.get_or_init(|| Arc::new(contextful_outbound::role::RoleProvider::new(std::env::vars().collect()))).clone()
+}
+
 /// An S3 or R2 bucket, signing with the material its credential keys hydrate
-/// (`store.endpoint.credentials`, `connector.reference.whole-value-reference`).
+/// (`store.endpoint.credentials`, `connector.reference.whole-value-reference`), or with
+/// workload-role credentials, which must answer as the bucket opens
+/// (`store.endpoint.role-credentials`, `store.endpoint.role-unavailable`).
 #[cfg(feature = "s3-sync")]
 fn s3_bucket(config: &SyncConfig, url: &str, region: &str) -> Result<Arc<dyn ObjectStore>> {
     use contextful_core::connector::reference::Hydrated;
-    use contextful_core::store::sync::CredentialRef;
+    use contextful_core::store::sync::{CredentialRef, Signing};
     use contextful_core::store::StoreError;
-    let refs = config.credential_refs()?;
+    let refs = match config.signing()? {
+        Signing::Keys(refs) => refs,
+        Signing::Role => {
+            let role = role_provider();
+            role.credentials().map_err(|e| StoreError::SyncRoleUnavailable(format!("endpoint `{}`: {e}", config.endpoint)))?;
+            return Ok(Arc::new(contextful_sync::S3Bucket::with_role(url, region, &config.bucket, role).map_err(|e| anyhow::anyhow!("bucket: {e}"))?));
+        }
+    };
     let vars: std::collections::BTreeMap<String, String> = std::env::vars().collect();
     let mut resolver = None;
     let mut hydrate = |key: &str, r: &CredentialRef| -> Result<Hydrated> {

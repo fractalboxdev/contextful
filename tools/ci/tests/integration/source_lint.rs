@@ -209,6 +209,18 @@ fn configured_adapters_listeners_and_test_modules_pass_the_egress_lint() {
     passes(&r.run_ci(&["source-lint"]));
 }
 
+/// The workload-role provider asks its credential sources only under an operator's
+/// `credentials = "role"`, so it is a configured adapter.
+#[test]
+fn the_workload_role_provider_is_a_configured_adapter() {
+    let r = Repo::init();
+    r.write(
+        "crates/contextful-outbound/src/role.rs",
+        "pub fn fetch() {\n    let agent = ureq::Agent::new_with_defaults();\n    let _ = agent.get(\"http://169.254.170.2/v2/credentials\").call();\n}\n",
+    );
+    passes(&r.run_ci(&["source-lint"]));
+}
+
 #[test]
 fn a_registered_operator_path_masks_no_later_row_function() {
     let r = Repo::init();

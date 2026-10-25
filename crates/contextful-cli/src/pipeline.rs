@@ -564,16 +564,20 @@ fn object_source(config: ObjectConfig, resolver: Arc<contextful_outbound::Resolv
     use contextful_core::run::{Failure, FailureTag};
     use contextful_sync::{S3Bucket, S3Credentials};
 
-    struct Signer(S3Bucket);
+    /// A presign no credential can sign fails the read as transient, naming the bucket.
+    fn unsigned(bucket: &str, e: contextful_core::store::object::ObjectError) -> Failure {
+        Failure::new(FailureTag::Transient, format!("`s3://{bucket}`: {e}"))
+    }
+    struct Signer(S3Bucket, String);
     impl Presign for Signer {
-        fn get(&self, key: &str) -> String {
-            self.0.presign_get(key)
+        fn get(&self, key: &str) -> Result<String, Failure> {
+            self.0.presign_get(key).map_err(|e| unsigned(&self.1, e))
         }
-        fn head(&self, key: &str) -> String {
-            self.0.presign_head(key)
+        fn head(&self, key: &str) -> Result<String, Failure> {
+            self.0.presign_head(key).map_err(|e| unsigned(&self.1, e))
         }
-        fn list(&self, prefix: &str, token: Option<&str>) -> String {
-            self.0.presign_list(prefix, token)
+        fn list(&self, prefix: &str, token: Option<&str>) -> Result<String, Failure> {
+            self.0.presign_list(prefix, token).map_err(|e| unsigned(&self.1, e))
         }
         fn page(&self, body: &str) -> Result<(Vec<(String, String)>, Option<String>), String> {
             S3Bucket::parse_list(body).map_err(|e| e.to_string())
@@ -586,10 +590,16 @@ fn object_source(config: ObjectConfig, resolver: Arc<contextful_outbound::Resolv
             Some(ObjectKeys { access_key_id, secret_access_key, session_token }) => {
                 S3Bucket::open(endpoint, &c.region, &c.bucket, S3Credentials { access_key_id, secret_access_key, session_token })
             }
+            // A role no source answers fails the read before any request (`store.endpoint.role-unavailable`).
+            None if c.role => {
+                let role = crate::sync::role_provider();
+                role.credentials().map_err(|e| Failure::new(FailureTag::Transient, format!("`s3://{}`: SyncRoleUnavailable: {e}", c.bucket)))?;
+                S3Bucket::with_role(endpoint, &c.region, &c.bucket, role)
+            }
             None => S3Bucket::anonymous(endpoint, &c.region, &c.bucket),
         }
         .map_err(|e| Failure::deterministic(FailureTag::Config, format!("`s3://{}`: {e}", c.bucket)))?;
-        Ok(Box::new(Signer(bucket)) as Box<dyn Presign>)
+        Ok(Box::new(Signer(bucket, c.bucket.clone())) as Box<dyn Presign>)
     });
     ObjectSource::signed(config, resolver, presigner)
 }

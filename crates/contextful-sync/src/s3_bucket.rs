@@ -3,12 +3,16 @@
 //! a Signature Version 4 query signature, and conditional puts ride `If-None-Match: *` and
 //! `If-Match: <etag>`, so the backend itself arbitrates every compare-and-set. The `s3`
 //! object source reads through the same adapter, anonymously where it binds no key pair.
+//! Under workload-role credentials each request signs with the provider's current
+//! credential, so none signs with an expired one (`store.endpoint.role-refresh`).
 
 use crate::s3_retry::{request_budget, resend_until, Resend, ANSWER_TIMEOUT, REQUEST_TIMEOUT};
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
+use contextful_outbound::role::RoleProvider;
 use rusty_s3::actions::{ListObjectsV2, S3Action};
 use rusty_s3::{Bucket, Credentials, UrlStyle};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Life of one signed request URL. A request is signed immediately before it is sent, so
@@ -28,11 +32,20 @@ pub struct S3Credentials {
     pub session_token: Option<Hydrated>,
 }
 
+/// What each request signs with.
+enum Signer {
+    /// An anonymous reader's requests go unsigned.
+    Anonymous,
+    /// A key pair, with a session token for a temporary credential.
+    Keys(Credentials),
+    /// The workload role's current credential (`store.endpoint.role-credentials`).
+    Role(Arc<RoleProvider>),
+}
+
 /// The bucket `<url>/<bucket>/` on an S3-compatible endpoint.
 pub struct S3Bucket {
     bucket: Bucket,
-    /// Absent for an anonymous reader, whose requests go unsigned.
-    credentials: Option<Credentials>,
+    signer: Signer,
     agent: ureq::Agent,
 }
 
@@ -71,15 +84,38 @@ impl S3Bucket {
             Some(token) => Credentials::new_with_token(credentials.access_key_id.reveal(), credentials.secret_access_key.reveal(), token.reveal()),
             None => Credentials::new(credentials.access_key_id.reveal(), credentials.secret_access_key.reveal()),
         };
-        S3Bucket::with(url, region, bucket, Some(credentials))
+        S3Bucket::with(url, region, bucket, Signer::Keys(credentials))
+    }
+
+    /// Open `bucket` signing each request with `role`'s current credential
+    /// (`store.endpoint.role-credentials`).
+    pub fn with_role(url: &str, region: &str, bucket: &str, role: Arc<RoleProvider>) -> Result<S3Bucket, ObjectError> {
+        S3Bucket::with(url, region, bucket, Signer::Role(role))
     }
 
     /// Open `bucket` for unsigned requests, as a public bucket answers them.
     pub fn anonymous(url: &str, region: &str, bucket: &str) -> Result<S3Bucket, ObjectError> {
-        S3Bucket::with(url, region, bucket, None)
+        S3Bucket::with(url, region, bucket, Signer::Anonymous)
     }
 
-    fn with(url: &str, region: &str, bucket: &str, credentials: Option<Credentials>) -> Result<S3Bucket, ObjectError> {
+    /// `sign` handed the credential one request signs with now. A role no source answers,
+    /// holding no still-valid credential, fails the request before it is sent.
+    fn signed<T>(&self, sign: impl FnOnce(Option<&Credentials>) -> T) -> Result<T, ObjectError> {
+        match &self.signer {
+            Signer::Anonymous => Ok(sign(None)),
+            Signer::Keys(c) => Ok(sign(Some(c))),
+            Signer::Role(role) => {
+                let c = role.credentials().map_err(|e| ObjectError::Unavailable(format!("SyncRoleUnavailable: {e}")))?;
+                let credentials = match &c.session_token {
+                    Some(token) => Credentials::new_with_token(c.access_key_id.reveal(), c.secret_access_key.reveal(), token.reveal()),
+                    None => Credentials::new(c.access_key_id.reveal(), c.secret_access_key.reveal()),
+                };
+                Ok(sign(Some(&credentials)))
+            }
+        }
+    }
+
+    fn with(url: &str, region: &str, bucket: &str, signer: Signer) -> Result<S3Bucket, ObjectError> {
         if !bucket_name(bucket) {
             return Err(ObjectError::Unsupported(format!("`{bucket}` is not an S3 bucket name")));
         }
@@ -98,7 +134,7 @@ impl S3Bucket {
             .max_idle_connections_per_host(crate::transfer::TRANSFER_WIDTH)
             .build()
             .new_agent();
-        Ok(S3Bucket { bucket, credentials, agent })
+        Ok(S3Bucket { bucket, signer, agent })
     }
 
     /// The error a non-success answer carries (`store.endpoint.conditional-answers`).
@@ -121,24 +157,26 @@ impl S3Bucket {
     }
 
     /// A presigned `GET` of `key`, for a caller sending through its own client.
-    pub fn presign_get(&self, key: &str) -> String {
-        self.bucket.get_object(self.credentials.as_ref(), key).sign(SIGNATURE_TTL).into()
+    pub fn presign_get(&self, key: &str) -> Result<String, ObjectError> {
+        self.signed(|c| self.bucket.get_object(c, key).sign(SIGNATURE_TTL).into())
     }
 
     /// A presigned `HEAD` of `key`, for a caller sending through its own client.
-    pub fn presign_head(&self, key: &str) -> String {
-        self.bucket.head_object(self.credentials.as_ref(), key).sign(SIGNATURE_TTL).into()
+    pub fn presign_head(&self, key: &str) -> Result<String, ObjectError> {
+        self.signed(|c| self.bucket.head_object(c, key).sign(SIGNATURE_TTL).into())
     }
 
     /// A presigned list-type-2 page under `prefix`, continuing from `token`.
-    pub fn presign_list(&self, prefix: &str, token: Option<&str>) -> String {
-        let mut action: ListObjectsV2<'_> = self.bucket.list_objects_v2(self.credentials.as_ref());
-        action.with_prefix(prefix.to_string());
-        action.with_max_keys(LIST_PAGE);
-        if let Some(t) = token {
-            action.with_continuation_token(t.to_string());
-        }
-        action.sign(SIGNATURE_TTL).into()
+    pub fn presign_list(&self, prefix: &str, token: Option<&str>) -> Result<String, ObjectError> {
+        self.signed(|c| {
+            let mut action: ListObjectsV2<'_> = self.bucket.list_objects_v2(c);
+            action.with_prefix(prefix.to_string());
+            action.with_max_keys(LIST_PAGE);
+            if let Some(t) = token {
+                action.with_continuation_token(t.to_string());
+            }
+            action.sign(SIGNATURE_TTL).into()
+        })
     }
 
     /// One list page's keys, each with its ETag, and the token continuing the listing; `None`
@@ -154,7 +192,7 @@ impl S3Bucket {
     /// document tells a missing key from a missing bucket (`store.endpoint.missing-bucket`).
     pub fn head(&self, key: &str) -> Result<Option<String>, ObjectError> {
         let what = format!("HEAD `{key}`");
-        let url = self.presign_head(key);
+        let url = self.presign_head(key)?;
         let (status, mut response) = S3Bucket::resend(&what, Resend::Repeatable, |window| {
             let response = self.agent.head(&url).config().timeout_recv_response(Some(window)).build().call()?;
             Ok((response.status().as_u16(), response))
@@ -173,7 +211,7 @@ impl S3Bucket {
         let mut keys = Vec::new();
         let mut token: Option<String> = None;
         loop {
-            let url = self.presign_list(prefix, token.as_deref());
+            let url = self.presign_list(prefix, token.as_deref())?;
             let (status, text) = S3Bucket::resend(&what, Resend::Repeatable, |window| {
                 let mut response = self.agent.get(&url).config().timeout_recv_response(Some(window)).build().call()?;
                 Ok((response.status().as_u16(), response.body_mut().with_config().limit(u64::MAX).read_to_string()?))
@@ -206,7 +244,7 @@ fn read_text(response: &mut ureq::http::Response<ureq::Body>) -> String {
 impl S3Bucket {
     fn get_until(&self, key: &str, deadline: Option<Instant>) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
         let what = format!("GET `{key}`");
-        let url = self.presign_get(key);
+        let url = self.presign_get(key)?;
         let (status, (tag, bytes)) = resend_until(&what, Resend::Repeatable, deadline, |window| -> Result<_, ureq::Error> {
             let timeout = request_budget(&what, deadline).map_err(|_| ureq::Error::Timeout(ureq::Timeout::Global))?;
             let mut response = self.agent.get(&url).config().timeout_global(Some(timeout)).timeout_recv_response(Some(window)).build().call()?;
@@ -240,16 +278,18 @@ impl ObjectStore for S3Bucket {
 
     fn put(&self, key: &str, bytes: &[u8], condition: Condition) -> Result<Put, ObjectError> {
         let what = format!("PUT `{key}`");
-        let mut action = self.bucket.put_object(self.credentials.as_ref(), key);
         let header = match &condition {
             Condition::None => None,
             Condition::IfNoneMatch => Some(("if-none-match", "*".to_string())),
             Condition::IfMatch(tag) => Some(("if-match", tag.clone())),
         };
-        if let Some((name, value)) = &header {
-            action.headers_mut().insert(*name, value.clone());
-        }
-        let url = action.sign(SIGNATURE_TTL);
+        let url = self.signed(|c| {
+            let mut action = self.bucket.put_object(c, key);
+            if let Some((name, value)) = &header {
+                action.headers_mut().insert(*name, value.clone());
+            }
+            action.sign(SIGNATURE_TTL)
+        })?;
         let send = |window| {
             let mut request = self.agent.put(url.as_str()).config().timeout_recv_response(Some(window)).build();
             if let Some((name, value)) = &header {
@@ -279,7 +319,7 @@ impl ObjectStore for S3Bucket {
 
     fn delete(&self, key: &str) -> Result<(), ObjectError> {
         let what = format!("DELETE `{key}`");
-        let url = self.bucket.delete_object(self.credentials.as_ref(), key).sign(SIGNATURE_TTL);
+        let url = self.signed(|c| self.bucket.delete_object(c, key).sign(SIGNATURE_TTL))?;
         let (status, mut response) = S3Bucket::resend(&what, Resend::Repeatable, |window| {
             let response = self.agent.delete(url.as_str()).config().timeout_recv_response(Some(window)).build().call()?;
             Ok((response.status().as_u16(), response))

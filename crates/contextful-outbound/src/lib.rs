@@ -6,6 +6,8 @@ pub mod egress;
 pub mod infer;
 pub mod limiter;
 pub mod probe;
+#[cfg(feature = "transport-ureq")]
+pub mod role;
 pub mod secrets;
 pub mod telemetry;
 #[cfg(feature = "transport-ureq")]
