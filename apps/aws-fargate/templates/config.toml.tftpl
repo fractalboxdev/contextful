@@ -1,0 +1,15 @@
+# The store configuration at /data/.contextful/context/<project>/config.toml.
+# No [node] block: each task's fresh disk resolves its own node id.
+[sync]
+endpoint        = "s3://${region}"
+bucket          = "${bucket}"
+prefix_from     = "env:CONTEXTFUL_SYNC_PREFIX"
+coordination    = "cas"
+pull_before_run = true
+push_after_run  = true
+%{ if credentials == "role" ~}
+credentials     = "role"
+%{ else ~}
+access_key_id     = "env://CONTEXTFUL_SYNC_ACCESS_KEY_ID"
+secret_access_key = "env://CONTEXTFUL_SYNC_SECRET_ACCESS_KEY"
+%{ endif ~}
