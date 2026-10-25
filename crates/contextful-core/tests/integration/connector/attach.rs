@@ -100,3 +100,59 @@ fn a_permitted_name_resolving_inward_is_refused() {
         assert!(vet_address(host, "127.0.0.1".parse().unwrap()).is_ok(), "{host}");
     }
 }
+
+/// An address inside a listed private range passes the private-address check; one outside every listed range
+/// still refuses.
+#[test]
+fn a_listed_private_range_admits_its_addresses_only() {
+    use contextful_core::connector::attach::{vet_address_admitting, PrivateRanges};
+    let ranges = PrivateRanges::parse("10.20.0.0/16, fd12:3456::/32 ,192.168.7.9").unwrap();
+    for raw in ["10.20.0.1", "10.20.255.254", "fd12:3456::1", "192.168.7.9", "::ffff:10.20.3.4"] {
+        assert!(vet_address_admitting("vpce.vendor.example", raw.parse().unwrap(), &ranges).is_ok(), "{raw}");
+    }
+    for raw in ["10.21.0.1", "192.168.7.10", "fd12:3457::1", "169.254.169.254", "127.0.0.1", "fd00:ec2::254"] {
+        assert!(
+            matches!(vet_address_admitting("vpce.vendor.example", raw.parse().unwrap(), &ranges), Err(ConnectorError::ConnectorPrivateAddress(_))),
+            "{raw}"
+        );
+    }
+    let none = PrivateRanges::parse("").unwrap();
+    assert!(none.is_empty());
+    assert!(vet_address_admitting("api.vendor.example", "10.20.0.1".parse().unwrap(), &none).is_err());
+}
+
+/// A listed range overlapping loopback, link-local or the metadata address, and an entry that is no CIDR range,
+/// raise `ConnectorPrivateRangeRejected` naming the entry.
+#[test]
+fn a_range_reaching_loopback_link_local_or_metadata_is_refused() {
+    use contextful_core::connector::attach::PrivateRanges;
+    let refused = [
+        "127.0.0.0/8",
+        "127.0.0.1",
+        "126.0.0.0/7",
+        "169.254.169.254/32",
+        "169.254.0.0/16",
+        "169.0.0.0/8",
+        "0.0.0.0/0",
+        "::/0",
+        "::1/128",
+        "fe80::/10",
+        "fe80::1/128",
+        "fd00:ec2::254/128",
+        "fd00::/8",
+        "fc00::/7",
+        "::ffff:127.0.0.1/128",
+        "::ffff:169.254.0.0/112",
+        "10.0.0.0/33",
+        "10.0.0.1/8",
+        "not-a-range",
+        "10.0.0.0/",
+    ];
+    for entry in refused {
+        match PrivateRanges::parse(&format!("10.0.0.0/8,{entry}")) {
+            Err(ConnectorError::ConnectorPrivateRangeRejected(m)) => assert!(m.contains(entry), "{entry}: {m}"),
+            other => panic!("{entry}: {other:?}"),
+        }
+    }
+    assert!(PrivateRanges::parse("10.0.0.0/8,172.16.0.0/12,100.64.0.0/10,fd12::/16").is_ok());
+}

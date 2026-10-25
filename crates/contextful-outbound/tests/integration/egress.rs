@@ -180,6 +180,34 @@ fn a_name_resolving_inward_never_reaches_the_send_half() {
     assert_eq!(c.send("GET", &url("http://localhost:8080/v1"), &plain(), None).unwrap().status, 200);
 }
 
+/// An address inside a CIDR range listed in `CONTEXTFUL_EGRESS_PRIVATE_RANGES` passes
+/// {{connector.attach.private-address}}; the host name allowlist still applies.
+// spec: connector.attach.private-range-admitted@5222cb8c
+#[test]
+fn a_listed_private_range_reaches_the_send_half_under_the_allowlist() {
+    use contextful_core::connector::attach::PrivateRanges;
+    let ranges = PrivateRanges::parse("10.20.0.0/16,fd12:3456::/32").unwrap();
+    for addr in ["10.20.4.5:0", "[fd12:3456::9]:0"] {
+        let t = Recording::new(&[("api.vendor.example", addr)], vec![ok("{}")], Arc::default());
+        let c = vendor_client(t.clone()).with_private_ranges(ranges.clone());
+        assert_eq!(c.send("GET", &url("https://api.vendor.example/v1"), &plain(), None).unwrap().status, 200, "{addr}");
+        assert_eq!(t.sends(), 1);
+    }
+    // An address outside every listed range still refuses before the send half.
+    for addr in ["10.21.0.1:0", "169.254.169.254:0", "[fd00:ec2::254]:0"] {
+        let t = Recording::new(&[("api.vendor.example", addr)], vec![ok("{}")], Arc::default());
+        let f = vendor_client(t.clone()).with_private_ranges(ranges.clone()).send("GET", &url("https://api.vendor.example/v1"), &plain(), None).unwrap_err();
+        assert!(f.message.starts_with("ConnectorPrivateAddress"), "{addr}: {f}");
+        assert_eq!(t.sends(), 0);
+    }
+    // A host outside the allowlist refuses even when its address lies inside a listed range.
+    let t = Recording::new(&[("internal.vendor.example", "10.20.4.5:0")], vec![ok("{}")], Arc::default());
+    let c = Client::new(Allowlist::parse(&["api.vendor.example"]).unwrap(), url("https://internal.vendor.example/")).with_transport(t.clone()).with_private_ranges(ranges);
+    let f = c.send("GET", &url("https://internal.vendor.example/v1"), &plain(), None).unwrap_err();
+    assert!(f.message.starts_with("SecretUnpermittedRequest"), "{f}");
+    assert_eq!(t.sends(), 0);
+}
+
 /// The host resolves a permitted host name once per request and connects to the address it vetted, with no second
 /// lookup between check and connect.
 // spec: connector.attach.resolve-once@9bf12798

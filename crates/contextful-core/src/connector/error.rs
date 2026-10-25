@@ -162,6 +162,9 @@ pub enum ConnectorError {
     /// A permitted host name resolving to a private, link-local, loopback or metadata address. (`connector.attach.private-address`)
     #[error("ConnectorPrivateAddress: {0}")]
     ConnectorPrivateAddress(String),
+    /// An admitted private range overlapping loopback, link-local or the metadata address. (`connector.attach.private-range-rejected`)
+    #[error("ConnectorPrivateRangeRejected: {0}")]
+    ConnectorPrivateRangeRejected(String),
     /// A granted scope outside the manifest's declared expectation. (`connector.declare-capability.scope-exceeded`)
     #[error("ConnectorScopeExceeded: {0}")]
     ConnectorScopeExceeded(String),
