@@ -256,6 +256,11 @@ pub trait Wake {
     /// outcome records, committed or refused; a failure leaves it queued for redelivery
     /// (`run.land.receive-queued-consume`).
     fn batches(&mut self, batches: &[Batch]) -> Vec<Result<(), Failure>>;
+    /// Whether this drain takes post-commit wake-ups; one that does not leaves each queued,
+    /// unacknowledged and uncounted, for a drain that does (`surface.fire.cycle-drain`).
+    fn wakes_exports(&self) -> bool {
+        true
+    }
 }
 
 /// One drain's tally: the deliveries each kind acknowledged, and those left queued.
@@ -281,6 +286,7 @@ pub fn drain(queue: &dyn Queue, bodies: &dyn BodyStore, max: usize, wake: &mut d
     let mut failed = None;
     for d in deliveries {
         match d.message {
+            QueueMessage::Committed { .. } if !wake.wakes_exports() => {}
             QueueMessage::Committed { table, .. } => {
                 tables.insert(table);
                 wakes.push(d.receipt);

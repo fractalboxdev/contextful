@@ -127,6 +127,38 @@ fn a_drain_wakes_each_read_once_and_acknowledges_only_what_its_wake_settled() {
     assert!(idle.exports.is_empty() && idle.arrivals.is_empty() && idle.batches.is_empty());
 }
 
+/// A drain taking no wake-ups wakes no export and leaves each wake-up queued, uncounted, while it settles arrivals
+/// and batches.
+#[test]
+fn a_drain_taking_no_wake_ups_leaves_them_queued_for_one_that_does() {
+    struct ArrivalsOnly(Woken);
+    impl Wake for ArrivalsOnly {
+        fn exports(&mut self, tables: &BTreeSet<String>) -> Result<(), Failure> {
+            self.0.exports(tables)
+        }
+        fn arrivals(&mut self, arrivals: &BTreeSet<(String, String)>) -> Result<(), Failure> {
+            self.0.arrivals(arrivals)
+        }
+        fn batches(&mut self, batches: &[Batch]) -> Vec<Result<(), Failure>> {
+            self.0.batches(batches)
+        }
+        fn wakes_exports(&self) -> bool {
+            false
+        }
+    }
+    let queue = MemoryQueue::default();
+    for m in [committed("spans", 1), arrival("feed/01.jsonl"), batch("b-1")] {
+        queue.send(&m).unwrap();
+    }
+    let mut cycle = ArrivalsOnly(Woken::default());
+    assert_eq!(drain(&queue, &queue, 10, &mut cycle).unwrap(), Drained { wakes: 0, arrivals: 1, batches: 1, left: 0 });
+    assert!(cycle.0.exports.is_empty());
+    assert_eq!(queue.pending(), [committed("spans", 1)], "the wake-up waits for a drain that takes it");
+    let mut full = Woken::default();
+    assert_eq!(drain(&queue, &queue, 10, &mut full).unwrap().wakes, 1);
+    assert!(queue.pending().is_empty());
+}
+
 /// A queued batch is acknowledged once its outcome records; a retryable landing leaves it queued.
 #[test]
 fn a_drain_lands_queued_batches_and_leaves_a_retryable_one_queued() {

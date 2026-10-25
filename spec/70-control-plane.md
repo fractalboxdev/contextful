@@ -210,6 +210,10 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
 - `cycle` — `serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.
 - `cycle-exit` — `serve --cycle` exits non-zero when any unit it dispatched failed, after printing its answer; a cycle with no failed unit, or one finding the cadence lease held, exits zero.
   *because a scheduler running the cycle reads the exit status, and a zero over a failed fire reports success*
+- `cycle-drain` — After its dispatched units end and before it releases the cadence lease, `serve --cycle` drains the queue's object-arrival keys and queued batches once, leaving post-commit wake-ups for `contextful queue drain`, and its answer counts what that drain settled.
+  *because an object-arrival key or a queued batch must reach its read between cadence fires, and the cadence lease keeps one drainer*
+- `cycle-drain-exit` — A cycle whose drain fails exits non-zero as {{surface.fire.cycle-exit}} does, its deliveries left queued for the next cycle.
+  *because a drain failure leaves work queued, and a scheduler reading a zero retries none of it*
 
 ## dispatch
 

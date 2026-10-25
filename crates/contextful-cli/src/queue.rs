@@ -21,7 +21,7 @@ use contextful_core::run::derive::task::Tasks;
 use contextful_core::run::queue::{Queue, QueueMessage};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::StoreError;
-use contextful_engine::queue::{drain, Batch, LocalSpool, Wake};
+use contextful_engine::queue::{drain, Batch, Drained, LocalSpool, Wake};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -40,6 +40,13 @@ pub enum QueueCmd {
         /// The most deliveries one drain receives.
         #[arg(long, default_value_t = DRAIN_MAX)]
         max: usize,
+        /// Print the tally as one JSON object on the last line.
+        #[arg(long)]
+        json: bool,
+        /// Leave post-commit wake-ups queued for a drain that takes them; `pipeline serve --cycle`
+        /// drains this way (`surface.fire.cycle-drain`).
+        #[arg(long)]
+        no_wake_ups: bool,
         #[command(flatten)]
         admit: AdmitArgs,
     },
@@ -72,18 +79,26 @@ pub(crate) fn local_spool(store_root: &Path) -> Result<LocalSpool> {
 
 pub fn run(cmd: QueueCmd, tasks: &Tasks) -> Result<()> {
     match cmd {
-        QueueCmd::Drain { project, declaration, max, admit } => {
+        QueueCmd::Drain { project, declaration, max, json, no_wake_ups, admit } => {
             let l = project.locate(declaration.clone())?;
             let spool = local_spool(&l.project.store_root())?;
-            let mut wake = Woken { project: &project, declaration, located: l.declaration.clone(), admit: &admit, tasks };
+            let mut wake = Woken { project: &project, declaration, located: l.declaration.clone(), admit: &admit, tasks, wake_ups: !no_wake_ups };
             let drained = drain(&spool, &spool, max, &mut wake).map_err(|f| match f.tag {
                 FailureTag::Transient => anyhow::anyhow!("{}; retryable, its deliveries stay queued for the next drain", f.message),
                 _ => anyhow::anyhow!("{}; its deliveries stay queued", f.message),
             })?;
-            println!("drained {} wake-ups, {} batches and {} arrivals · {} left queued", drained.wakes, drained.batches, drained.arrivals, drained.left);
+            match json {
+                true => println!("{}", tally(&drained)),
+                false => println!("drained {} wake-ups, {} batches and {} arrivals · {} left queued", drained.wakes, drained.batches, drained.arrivals, drained.left),
+            }
             Ok(())
         }
     }
+}
+
+/// A drain's tally as one JSON object, the last line `queue drain --json` prints.
+pub(crate) fn tally(drained: &Drained) -> serde_json::Value {
+    serde_json::json!({ "wake_ups": drained.wakes, "batches": drained.batches, "arrivals": drained.arrivals, "left": drained.left })
 }
 
 /// The project's declared exports and pipelines as the reads a drain wakes, and its
@@ -94,6 +109,7 @@ struct Woken<'a> {
     located: PathBuf,
     admit: &'a AdmitArgs,
     tasks: &'a Tasks,
+    wake_ups: bool,
 }
 
 /// A wake's failure. A push guard held past its wait (`SyncPushInFlight`) is retryable, and
@@ -177,5 +193,9 @@ impl Wake for Woken<'_> {
 
     fn batches(&mut self, batches: &[Batch]) -> Vec<Result<(), Failure>> {
         crate::receive::consume(self.project, self.declaration.clone(), self.tasks, self.admit, batches)
+    }
+
+    fn wakes_exports(&self) -> bool {
+        self.wake_ups
     }
 }

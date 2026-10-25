@@ -1728,6 +1728,7 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
 /// `pipeline serve [--cycle]`.
 pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: bool, http: Option<&str>, public_key: Option<&str>, issuer_key: Option<&Path>, tasks: &Tasks, bodies: &Bodies) -> Result<()> {
     let explicit = declaration.clone();
+    let explicit_declaration = declaration.clone();
     let (l, text, mut control) = located(project, declaration)?;
     control.bodies = bodies.names().into_iter().collect();
     control.issuer_pin = public_key.map(str::to_string).or_else(|| std::env::var(crate::admit::PUBKEY_VAR).ok());
@@ -1770,7 +1771,8 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
             }
             watched.end_all(Duration::from_secs(CHILD_GRACE_SECS));
         });
-        let answered = serve_cycle(&mut scheduler, &control, &l.project, &l.declaration, tasks);
+        let drain = || drain_child(&l.project.name, explicit_declaration.as_deref(), project.now.as_deref(), control.issuer_pin.as_deref());
+        let answered = serve_cycle(&mut scheduler, &control, &l.project, &l.declaration, tasks, &drain);
         drop(reaper);
         if crate::stop::requested() {
             // A failed stop push reports beside the cycle's own error, never in its place.
@@ -1860,7 +1862,38 @@ fn held_answer(holder: &str) -> Result<()> {
 
 /// One-shot evaluation (`surface.fire.cycle`). The lease comes first: finding it held,
 /// the cycle arms nothing and answers the holder (`surface.dispatch.lease-gated`).
-fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, declaration: &Path, tasks: &Tasks) -> Result<()> {
+/// Drain the project's queue once through this executable, as `contextful queue drain --json`
+/// (`surface.fire.cycle-drain`): the child's other output goes to standard error, so the
+/// cycle's standard output stays its one answer; the tally is the child's last stdout line.
+fn drain_child(project: &str, declaration: Option<&Path>, now: Option<&str>, pin: Option<&str>) -> Result<serde_json::Value> {
+    let mut child = std::process::Command::new(std::env::current_exe()?);
+    child.args(["queue", "drain", "--json", "--no-wake-ups", "--project", project]);
+    if let Some(d) = declaration {
+        child.arg("--declaration").arg(d);
+    }
+    if let Some(now) = now {
+        child.args(["--now", now]);
+    }
+    if let Some(pin) = pin {
+        child.args(["--public-key", pin]);
+    }
+    let out = child.stderr(std::process::Stdio::inherit()).output().context("starting the queue drain")?;
+    let said = String::from_utf8_lossy(&out.stdout);
+    let mut lines: Vec<&str> = said.lines().collect();
+    let last = lines.pop().unwrap_or_default();
+    for line in lines {
+        eprintln!("{line}");
+    }
+    if !out.status.success() {
+        if !last.is_empty() {
+            eprintln!("{last}");
+        }
+        bail!("the queue drain exited {}; its deliveries stay queued", out.status);
+    }
+    serde_json::from_str(last).with_context(|| format!("reading the queue drain's tally `{last}`"))
+}
+
+fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, declaration: &Path, tasks: &Tasks, drain: &dyn Fn() -> Result<serde_json::Value>) -> Result<()> {
     if let LeaseState::HeldBy(holder) = scheduler.hold()? {
         return held_answer(&holder);
     }
@@ -1893,7 +1926,14 @@ fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
     failed.sort();
     let pending = scheduler.with_steps(beat.pending.iter().chain(&beat.held).chain(&beat.deferred).map(String::as_str));
     let next_due = scheduler.next_due()?.map(|t| t.to_rfc3339());
+    // The queue drains under the cadence lease, after the dispatched units end
+    // (`surface.fire.cycle-drain`).
+    let drained = drain();
     scheduler.release()?;
+    let queue = match &drained {
+        Ok(tally) => tally.clone(),
+        Err(e) => json!({ "failed": format!("{e:#}") }),
+    };
     let answer = json!({
         "fired": fired,
         "failed": failed,
@@ -1901,14 +1941,16 @@ fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
         "armed": scheduler.armed().len(),
         "unarmed": unarmed,
         "next_due": next_due,
+        "drained": queue,
     });
     println!("{}", serde_json::to_string_pretty(&answer)?);
     // The answer prints before the exit status, so a caller learns what fired either way
-    // (`surface.fire.cycle-exit`).
+    // (`surface.fire.cycle-exit`, `surface.fire.cycle-drain-exit`).
     if !failed.is_empty() {
         let ids: Vec<String> = failed.iter().map(|id| format!("`{id}`")).collect();
         bail!("{} dispatched unit(s) failed: {}", failed.len(), ids.join(", "));
     }
+    drained.context("the cycle's queue drain failed")?;
     Ok(())
 }
 
