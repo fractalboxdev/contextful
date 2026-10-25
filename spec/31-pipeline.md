@@ -257,6 +257,16 @@ The engine processes batches from pull to commit, records ingest counts and isol
   *because a batch delayed in the queue must end typed rather than land after its replay guarantee lapsed*
 - `receive-queued-spill` — If a body exceeds the queue's message cap, the receiver writes the body to the bucket under its batch key before queuing. The body is deleted after its outcome records.
   *because a queue message carries a reference when a body under `max_batch_bytes` still exceeds the provider's cap*
+- `receive-queued-ask` — A served delivery carrying `Prefer: respond-async` asks for {{run.land.receive-queued}}'s answer; a delivery without that preference answers as {{run.land.receive-endpoint}}.
+  *because a sender reading the committed answer keeps it, and the preference is HTTP's standard asynchronous request*
+- `receive-queued-credential` — A queued message carries the credential its route admitted; the consumer admits it again against the pinned keys, expiry and revocation, with possession and audience settled at the route, and records a refusal as the batch's outcome.
+  *because a credential revoked or expired while its batch waits must land no row under it*
+- `receive-queued-consume` — A consumer receives up to the queue's batch size, lands each pipeline's queued batches per credential as {{run.land.receive-group}}, pushes, then acknowledges each message whose outcome recorded; a retryable failure leaves its message queued.
+  *because a message acknowledged before its push loses the batch when the engine dies between commit and push*
+- `receive-queued-redelivery` — A redelivered message lands through its batch key under {{run.land.receive-batch-key}}, so a message delivered twice lands its rows once.
+  *because a managed queue delivers at least once*
+- `receive-queued-outcome-grant` — The outcome route answers a credential holding `write` over every table of the pipeline and refuses any other as {{run.land.receive-write-not-granted}}.
+  *because the outcome names the runs a sender's rows landed in, which only a sender of those tables reads*
 - `object-arrival-wake` — An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.
   *because a notification is a hint a provider may repeat, reorder or drop, and the held position already decides what lands*
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
@@ -328,6 +338,8 @@ flowchart LR
 - `run.land.receive-torn`: WHEN a group of two commits and its run row stays open, THEN one member resent beside a new batch and the other resent alone both replay the group's run, and every row lands once.
 - `run.land.receive-wait`: WHEN a spooled batch waits 30 s behind a held land lock, THEN it leaves the spool and answers `ReceiveBackpressure`, retryable.
 - `run.land.receive-resume`: WHEN the receiver dies after recording a delivered batch and the batch is resent under its key, THEN every landed cell but the run id is identical to the uninterrupted run's.
+- `run.land.receive-queued-redelivery`: WHEN a consumer lands a queued batch and dies before acknowledging it, THEN the next consumer replays the batch key and every row lands once.
+- `run.land.receive-queued-window`: WHEN a consumer reaches a batch queued 3601 s earlier under `key_retention_secs = 3600`, THEN its outcome reads `ReceiveBatchKeyExpired` and no table lands.
 - `run.land.receive-write-not-granted`: WHEN a credential holds `write` over one of two declared tables, THEN the receiver refuses before reading the body and no table lands.
 - `run.land.receive-key-expired`: WHEN a key's first attempt is 3601 s old under a 3600 s window, THEN the resend raises `ReceiveBatchKeyExpired` and no row lands.
 - `run.land.receive-endpoint`: WHEN a request carries no credential and a body past `max_batch_bytes`, THEN the route answers `401` without reading the body.

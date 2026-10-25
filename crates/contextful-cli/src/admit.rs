@@ -362,6 +362,23 @@ mod wired {
             }
             Ok(Some(Author { authority, denylist: self.denylist.clone(), ledger: Arc::new(LedgerFile::at(&crate::root::root(project)?, self.keyset.as_deref())) }))
         }
+
+        /// The author of a queued batch (`run.land.receive-queued-credential`): `credential`,
+        /// which the receive route admitted, admitted again now against the live pins, its
+        /// expiry and the revocation state. The route settled its possession proof and
+        /// audience, so neither is asked again.
+        #[cfg(feature = "data-plane")]
+        pub fn carried(&self, project: Option<&str>, credential: &str) -> Result<Author> {
+            let now = SystemClock.now();
+            let root = crate::root::root(project)?;
+            let ledger = Arc::new(LedgerFile::at(&root, self.keyset.as_deref()));
+            let state = ledger.read()?;
+            let keys: Arc<KeySet> = live_pins(self.public_key.as_deref(), &state, now)?.keys()?;
+            let revocation = revocation_state(self.denylist.as_deref(), &state)?;
+            let settled = |_: &str| Ok::<(), AuthorityError>(());
+            let authority = verify_local(credential, &keys, &Admission::new(now, &revocation), LocalTransport::InheritedPipe, settled)?.into_authority();
+            Ok(Author { authority, denylist: self.denylist.clone(), ledger })
+        }
     }
 
     /// The credential in [`TOKEN_VAR`], when one is set.

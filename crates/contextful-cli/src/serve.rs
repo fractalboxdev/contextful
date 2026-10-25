@@ -434,7 +434,11 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     let receive = |head: &HttpRequest, authority: &AdmittedAuthority, pipeline: &str, read: &mut contextful_agent::http::BodyReader<'_>| {
         let author = crate::admit::Author::served(authority.clone(), args.denylist.clone(), receive_ledger.clone());
         let key = head.header(contextful_agent::http::BATCH_KEY_HEADER);
-        match crate::receive::served(&run_project, &located.declaration, tasks, author, key, pipeline, read) {
+        let answer = match head.prefers_async() {
+            true => crate::receive::Answer::Queued { credential: head.credential() },
+            false => crate::receive::Answer::Committed,
+        };
+        match crate::receive::served(&run_project, &located.declaration, tasks, author, key, pipeline, answer, read) {
             Ok(served) => {
                 let answer = HttpResponse::json(served.status, &served.body);
                 if served.retry_after {
@@ -450,6 +454,13 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     };
     #[cfg(feature = "data-plane")]
     let http = http.with_receive(&receive);
+    #[cfg(feature = "data-plane")]
+    let receive_outcome = |_: &HttpRequest, authority: &AdmittedAuthority, pipeline: &str, key: &str| {
+        let served = crate::receive::outcome(&run_project, &located.declaration, tasks, authority, pipeline, key);
+        HttpResponse::json(served.status, &served.body)
+    };
+    #[cfg(feature = "data-plane")]
+    let http = http.with_receive_outcome(&receive_outcome);
     let hydrated = |set: contextful_context::read::MappedSnapshotSet| {
         let (files, bytes) = (set.files().count(), set.bytes());
         *mapped.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(set);

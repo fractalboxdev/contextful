@@ -43,6 +43,10 @@ pub enum EngineError {
 /// landed in (`run.land.receive-group`).
 pub const RECEIVE_GROUP_FIELD: &str = "receive_group";
 
+/// The field of a queued batch key's receive-scope position holding its recorded outcome
+/// (`run.land.receive-queued-outcome`).
+pub const RECEIVE_OUTCOME_FIELD: &str = "queued_outcome";
+
 /// The run-id stem of batch `key`'s `table` in pipeline `pipeline_id`: `receive-<digest>.<table>`.
 pub fn receive_stem(pipeline_id: &str, table: &str, key: &str) -> String {
     format!("receive-{}.{table}", contextful_core::run::own::receive_digest(pipeline_id, key))
@@ -387,13 +391,33 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     /// against a fresh scope; once its version moved, a read and a retry that keeps every
     /// other field of the recorded position.
     fn name_receive_group(&self, scope: &OwnerScope, digest: &str) -> Result<(), Failure> {
+        self.set_receive_field(scope, RECEIVE_GROUP_FIELD, Value::String(digest.to_string()))
+    }
+
+    /// Record a queued batch `key`'s outcome on its receive scope over `table`, the first
+    /// table its pipeline declares (`run.land.receive-queued-outcome`).
+    pub fn receive_record_outcome(&self, pipeline_id: &str, table: &str, key: &str, outcome: Value) -> Result<(), Failure> {
+        self.set_receive_field(&OwnerScope::receive(pipeline_id, table, key), RECEIVE_OUTCOME_FIELD, outcome)
+    }
+
+    /// The outcome [`Engine::receive_record_outcome`] recorded for batch `key`; `None` while
+    /// none has.
+    pub fn receive_outcome(&self, pipeline_id: &str, table: &str, key: &str) -> Result<Option<Value>, Failure> {
+        let cursor = self.catalog.cursor_at(&OwnerScope::receive(pipeline_id, table, key))?;
+        Ok(cursor.position.as_ref().and_then(|p| p.get(RECEIVE_OUTCOME_FIELD)).cloned())
+    }
+
+    /// Set `field` of a receive `scope`'s position to `value`: one conditional write against
+    /// a fresh scope; once its version moved, a read and a retry that keeps every other field
+    /// of the recorded position.
+    fn set_receive_field(&self, scope: &OwnerScope, field: &str, value: Value) -> Result<(), Failure> {
         let mut held = CursorRow::default();
         for _ in 0..8 {
             let mut position = match held.position.clone() {
                 Some(Value::Object(map)) => map,
                 _ => serde_json::Map::new(),
             };
-            position.insert(RECEIVE_GROUP_FIELD.to_string(), Value::String(digest.to_string()));
+            position.insert(field.to_string(), value.clone());
             let next = CursorRow { position: Some(Value::Object(position)), version: held.version, ..held.clone() };
             match self.catalog.cursor_cas_at(scope, held.version, next, None)? {
                 Cas::Applied => return Ok(()),
@@ -401,7 +425,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 Cas::Fenced(e) => return Err(Failure::new(FailureTag::Transient, e.to_string())),
             }
         }
-        Err(Failure::new(FailureTag::Transient, format!("the receive scope {scope} kept moving while its group was recorded")))
+        Err(Failure::new(FailureTag::Transient, format!("the receive scope {scope} kept moving while its `{field}` was recorded")))
     }
 
     /// Execute one run under `scope` in place of the plan's table scope: a seed chunk runs

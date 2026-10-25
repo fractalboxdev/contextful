@@ -1059,3 +1059,37 @@ fn the_receive_route_admits_on_the_head_and_checks_the_proof_against_the_body() 
     fetched.body.clear();
     assert_eq!(send(addr, &fetched).0, 405);
 }
+
+/// The outcome route admits the credential before calling its handler with the pipeline and the percent-decoded
+/// batch key; it answers GET alone, and a request's `Prefer: respond-async` reads as the queued preference.
+#[test]
+fn the_outcome_route_admits_then_hands_its_handler_the_pipeline_and_decoded_key() {
+    let f: &'static Fixture = Box::leak(Box::new(fixture()));
+    let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let calls: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
+    let outcome = |request: &HttpRequest, authority: &AdmittedAuthority, pipeline: &str, key: &str| {
+        calls.fetch_add(1, Ordering::SeqCst);
+        HttpResponse::json(200, &json!({ "pipeline": pipeline, "key": key, "actor": authority.subject().on_behalf_of(), "async": request.prefers_async() }))
+    };
+    let outcome: &'static _ = Box::leak(Box::new(outcome));
+    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(4)).unwrap().with_receive_outcome(outcome)));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || face.serve(listener));
+    let key = holder(8);
+    let token = credential_with_action(&f.signer, Action::Write, "otel_*", 900, Some(&key));
+
+    let mut asking = proven("GET", "/receive/otel/flush%201", Vec::new(), &token, &key);
+    asking.headers.push(("Prefer".into(), "wait=5, Respond-Async".into()));
+    let (status, _, answer) = send(addr, &asking);
+    assert_eq!((status, body(&answer)), (200, json!({ "pipeline": "otel", "key": "flush 1", "actor": "user://dana@acme.example", "async": true })));
+
+    let before = calls.load(Ordering::SeqCst);
+    let mut anonymous = proven("GET", "/receive/otel/flush-1", Vec::new(), &token, &key);
+    anonymous.headers.retain(|(k, _)| k != "Authorization");
+    assert_eq!(send(addr, &anonymous).0, 401);
+    assert_eq!(calls.load(Ordering::SeqCst), before, "an unadmitted request reaches no handler");
+    assert_eq!(send(addr, &proven("POST", "/receive/otel/flush-1", Vec::new(), &token, &key)).0, 405);
+    assert_eq!(send(addr, &proven("GET", "/receive/otel/a/b", Vec::new(), &token, &key)).0, 404, "a key spans one segment");
+}

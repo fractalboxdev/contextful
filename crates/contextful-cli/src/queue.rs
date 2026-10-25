@@ -5,7 +5,9 @@
 //! each export reading a woken table and fires each object read an arrival key covers, then
 //! acknowledges what it settled. A wake reads from the export's cursor or the source's held
 //! position, so a lost, repeated or reordered message delays work and lands no row twice
-//! (`run.export.queue-wake`, `run.land.object-arrival-wake`).
+//! (`run.export.queue-wake`, `run.land.object-arrival-wake`). A queued `receive` batch lands
+//! through the receive group, and its message is acknowledged once its outcome records
+//! (`run.land.receive-queued-consume`).
 
 use crate::admit::AdmitArgs;
 use crate::run::ProjectArgs;
@@ -15,10 +17,11 @@ use contextful_connectors::object::{ObjectConfig, NAME as OBJECT_SOURCE};
 use contextful_context::Store;
 use contextful_core::export::parse_exports;
 use contextful_core::pipeline::declare::collect;
+use contextful_core::run::derive::task::Tasks;
 use contextful_core::run::queue::{Queue, QueueMessage};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::StoreError;
-use contextful_engine::queue::{drain, LocalSpool, Wake};
+use contextful_engine::queue::{drain, Batch, LocalSpool, Wake};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -61,29 +64,36 @@ pub(crate) fn announce(store: &Store, table: &str, run: &str, commit_seq: Option
     }
 }
 
-pub fn run(cmd: QueueCmd) -> Result<()> {
+/// The project's local spool, which also holds the bodies spilled past its message cap.
+pub(crate) fn local_spool(store_root: &Path) -> Result<LocalSpool> {
+    let dir = spool_dir(store_root).context("the project's store root names no queue spool")?;
+    Ok(LocalSpool::open(&dir)?)
+}
+
+pub fn run(cmd: QueueCmd, tasks: &Tasks) -> Result<()> {
     match cmd {
         QueueCmd::Drain { project, declaration, max, admit } => {
             let l = project.locate(declaration.clone())?;
-            let dir = spool_dir(&l.project.store_root()).context("the project's store root names no queue spool")?;
-            let spool = LocalSpool::open(&dir)?;
-            let mut wake = Woken { project: &project, declaration, located: l.declaration.clone(), admit: &admit };
-            let drained = drain(&spool, max, &mut wake).map_err(|f| match f.tag {
+            let spool = local_spool(&l.project.store_root())?;
+            let mut wake = Woken { project: &project, declaration, located: l.declaration.clone(), admit: &admit, tasks };
+            let drained = drain(&spool, &spool, max, &mut wake).map_err(|f| match f.tag {
                 FailureTag::Transient => anyhow::anyhow!("{}; retryable, its deliveries stay queued for the next drain", f.message),
                 _ => anyhow::anyhow!("{}; its deliveries stay queued", f.message),
             })?;
-            println!("drained {} wake-ups and {} arrivals · {} left queued", drained.wakes, drained.arrivals, drained.left);
+            println!("drained {} wake-ups, {} batches and {} arrivals · {} left queued", drained.wakes, drained.batches, drained.arrivals, drained.left);
             Ok(())
         }
     }
 }
 
-/// The project's declared exports and pipelines as the reads a drain wakes.
+/// The project's declared exports and pipelines as the reads a drain wakes, and its
+/// `receive` pipelines as the landing of queued batches.
 struct Woken<'a> {
     project: &'a ProjectArgs,
     declaration: Option<PathBuf>,
     located: PathBuf,
     admit: &'a AdmitArgs,
+    tasks: &'a Tasks,
 }
 
 /// A wake's failure. A push guard held past its wait (`SyncPushInFlight`) is retryable, and
@@ -163,5 +173,9 @@ impl Wake for Woken<'_> {
             }
         }
         first.map_or(Ok(()), |e| Err(failed(e)))
+    }
+
+    fn batches(&mut self, batches: &[Batch]) -> Vec<Result<(), Failure>> {
+        crate::receive::consume(self.project, self.declaration.clone(), self.tasks, self.admit, batches)
     }
 }

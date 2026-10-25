@@ -27,6 +27,9 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+mod queued;
+pub(crate) use queued::{consume, outcome};
+
 /// The longest a delivered batch's pull or push waits for the push guard, in seconds
 /// (`run.land.receive-push-wait`).
 pub(crate) const PUSH_WAIT_SECS: u64 = 30;
@@ -872,8 +875,18 @@ fn served_failure(e: &anyhow::Error) -> Served {
     Served { status: 500, body: json!({ "error": { "http": 500, "message": format!("{e:#}") } }), retry_after: false }
 }
 
-/// Land one served delivery to `pipeline` under `authority`: the grant and the queue slot
-/// are checked before `read` takes the body, which it reads to at most `max_batch_bytes`.
+/// How a served delivery asks to be answered (`run.land.receive-queued-ask`).
+pub(crate) enum Answer<'c> {
+    /// After every touched table commits (`run.land.receive-endpoint`).
+    Committed,
+    /// `202` once the batch is in queue custody, carrying the credential its consumer admits
+    /// again (`run.land.receive-queued`).
+    Queued { credential: Option<&'c str> },
+}
+
+/// Land one served delivery to `pipeline` under `authority`, or queue it when `answer` asks:
+/// the grant and the queue slot are checked before `read` takes the body, which it reads to
+/// at most `max_batch_bytes` (`run.land.receive-queued-admission`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn served(
     project: &ProjectArgs,
@@ -882,6 +895,7 @@ pub(crate) fn served(
     author: Author,
     key: Option<&str>,
     pipeline: &str,
+    answer: Answer<'_>,
     read: &mut dyn FnMut(u64) -> std::result::Result<Option<Vec<u8>>, contextful_agent::http::HttpResponse>,
 ) -> std::result::Result<Served, contextful_agent::http::HttpResponse> {
     let receiver = match Receiver::open(project, Some(declaration.to_path_buf()), pipeline, None, None, tasks, true) {
@@ -908,6 +922,12 @@ pub(crate) fn served(
     let Some(body) = read(receiver.config.max_batch_bytes)? else {
         return Ok(served_refusal(Some(&receiver), key, &receiver.too_large(key)));
     };
+    if let Answer::Queued { credential } = answer {
+        return Ok(match receiver.enqueue(admitted, key, credential, &body) {
+            Ok(receipt) => Served { status: 202, body: receipt, retry_after: false },
+            Err(e) => served_failure(&e),
+        });
+    }
     match receiver.land(admitted, key, &body, Some(author)) {
         Ok(Ok(Landed { answer, failed: None })) => Ok(Served { status: 200, body: answer, retry_after: false }),
         Ok(Ok(Landed { answer, failed: Some((_, retryable)) })) => Ok(Served { status: if retryable { 503 } else { 422 }, body: answer, retry_after: retryable }),

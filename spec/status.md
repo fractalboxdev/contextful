@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 324 | 58 | 29 | 16 | 282 | 0 | 282 |
-| `run` | 3 | 29 | 608 | 129 | 49 | 19 | 569 | 0 | 569 |
+| `run` | 3 | 29 | 613 | 129 | 49 | 19 | 579 | 0 | 579 |
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
 | `topology` | 1 | 6 | 85 | 26 | 5 | 3 | 81 | 0 | 81 |
-| **total** | 26 | 177 | 2913 | 711 | 229 | 84 | 2573 | 0 | |
+| **total** | 26 | 177 | 2918 | 711 | 229 | 84 | 2583 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 311 | 300 | passing | closed |
-| 4 — Ingest | 25 | 646 | 541 | passing | closed |
+| 4 — Ingest | 25 | 651 | 551 | passing | closed |
 | 5 — The read face under enforcement | 17 | 318 | 284 | passing | closed |
 | 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
 | 7 — Memory | 6 | 100 | 85 | passing | closed |
@@ -1774,6 +1774,16 @@ Unscheduled operations: 13.
 | `run.land.receive-pipeline-unknown` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_answers_404_for_a_pipeline_that_receives_nothing` | performed |
 | `run.land.receive-push-wait` | `crates/contextful-cli/tests/integration/receive.rs::a_held_push_guard_answers_a_delivered_batch_retryable_within_thirty_seconds` | performed |
 | `run.land.receive-queue` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_waits_for_the_land_lock_another_batch_holds` | performed |
+| `run.land.receive-queued` | `crates/contextful-cli/tests/integration/receive_queued.rs::a_delivery_preferring_async_answers_202_with_its_key_and_lands_nothing_until_drained` | performed |
+| `run.land.receive-queued-admission` | `crates/contextful-cli/tests/integration/receive_queued.rs::a_queued_delivery_refused_before_its_body_queues_nothing` | performed |
+| `run.land.receive-queued-ask` | `crates/contextful-cli/tests/integration/receive_queued.rs::a_delivery_preferring_async_answers_202_with_its_key_and_lands_nothing_until_drained` | performed |
+| `run.land.receive-queued-consume` | `crates/contextful-cli/tests/integration/receive_queued.rs::a_drain_lands_queued_batches_as_one_group_and_the_outcome_names_each_committed_run` | performed |
+| `run.land.receive-queued-credential` | `crates/contextful-cli/tests/integration/receive_queued.rs::a_credential_revoked_while_queued_records_its_refusal_and_lands_nothing` | performed |
+| `run.land.receive-queued-outcome` | `crates/contextful-cli/tests/integration/receive_queued.rs::a_drain_lands_queued_batches_as_one_group_and_the_outcome_names_each_committed_run` | performed |
+| `run.land.receive-queued-outcome-grant` | `crates/contextful-cli/tests/integration/receive_queued.rs::the_outcome_route_refuses_a_credential_without_write_over_every_table` | performed |
+| `run.land.receive-queued-redelivery` | `crates/contextful-cli/tests/integration/receive_queued.rs::a_message_redelivered_after_landing_replays_its_key_and_lands_every_row_once` | performed |
+| `run.land.receive-queued-spill` | `crates/contextful-cli/tests/integration/receive_queued.rs::a_body_past_the_message_cap_spills_and_its_spill_leaves_once_landed` | performed |
+| `run.land.receive-queued-window` | `crates/contextful-cli/tests/integration/receive_queued.rs::a_batch_reached_past_its_key_window_records_the_expiry_and_lands_nothing` | performed |
 | `run.land.receive-resume` | `crates/contextful-cli/tests/integration/receive.rs::a_resend_after_the_receiver_dies_lands_what_the_uninterrupted_run_lands` | performed |
 | `run.land.receive-retry-after` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
 | `run.land.receive-spool` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_spooled_by_a_dead_receiver_lands_in_the_next_group` | performed |

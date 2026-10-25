@@ -315,7 +315,7 @@ pub fn main_host(host: Host) {
         #[cfg(feature = "data-plane")]
         Cmd::Export(c) => export::run(c),
         #[cfg(feature = "data-plane")]
-        Cmd::Queue(c) => queue::run(c),
+        Cmd::Queue(c) => queue::run(c, &tasks),
         #[cfg(feature = "read-plane")]
         Cmd::Sync(c) => sync::run(c),
         #[cfg(feature = "data-plane")]

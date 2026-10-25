@@ -16,7 +16,7 @@ use std::path::Path;
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const AUD: &str = "contextful://acme-research";
+pub(super) const AUD: &str = "contextful://acme-research";
 
 /// One bounded Content-Length response ends at its body, so a later TCP reset has
 /// no bearing on the HTTP answer; a reset or EOF inside the frame remains an error.
@@ -97,7 +97,7 @@ fn exchange_response_refuses_ambiguous_or_unbounded_framing() {
     assert!(exchange_response(&mut vec![b'x'; 8193].as_slice()).is_err());
 }
 
-fn run(dir: &Path, args: &[&str]) -> Output {
+pub(super) fn run(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful"))
         .args(args)
         .current_dir(dir)
@@ -107,7 +107,7 @@ fn run(dir: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
-fn stdout(out: &Output) -> String {
+pub(super) fn stdout(out: &Output) -> String {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
@@ -1839,7 +1839,7 @@ fn receiving_face() -> (tempfile::TempDir, String) {
 }
 
 /// [`receiving_face`], its queue `depth` deep and its body bound `bytes`.
-fn receiving_face_with(depth: u32, bytes: u64) -> (tempfile::TempDir, String) {
+pub(super) fn receiving_face_with(depth: u32, bytes: u64) -> (tempfile::TempDir, String) {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path();
     std::fs::create_dir_all(p.join(".contextful/context/research")).unwrap();
@@ -1869,16 +1869,16 @@ fn deliver_to(addr: &str, pipeline: &str, token: Option<&str>, key: Option<&str>
     (status, head.to_string(), serde_json::from_str(answer).unwrap_or_else(|e| panic!("{e}: {raw}")))
 }
 
-fn delivered(table: &str, row: Value) -> String {
+pub(super) fn delivered(table: &str, row: Value) -> String {
     format!("{}\n", json!({ "table": table, "row": row }))
 }
 
-fn receive_rows(root: &Path, sql: &str) -> Value {
+pub(super) fn receive_rows(root: &Path, sql: &str) -> Value {
     let out: Value = serde_json::from_str(&stdout(&run(root, &["query", "--json", "--project", "research", sql]))).unwrap();
     out["rows"].clone()
 }
 
-fn mint_write(root: &Path, table: &str) -> String {
+pub(super) fn mint_write(root: &Path, table: &str) -> String {
     stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--action", "write", "--table", table, "--ttl", "900"]))
 }
 

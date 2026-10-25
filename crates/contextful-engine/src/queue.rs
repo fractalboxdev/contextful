@@ -2,12 +2,13 @@
 //! spool every profile without a `queue` role uses, an in-process queue for tests, and the
 //! drain that routes received hints to the reads they wake.
 //!
-//! A consumer only wakes: an export reads from its own cursor and an object read lists
-//! from its held position, so the store's writer stays the engine's landing path.
+//! A consumer only wakes or hands a batch to the engine's landing path: an export reads
+//! from its own cursor, an object read lists from its held position, and a queued `receive`
+//! batch lands through the receive group, so the store's writer stays the engine's.
 
 use crate::fsutil::{replace, FileLock};
 use contextful_core::run::journal::sha256_hex;
-use contextful_core::run::queue::{Delivery, Queue, QueueMessage};
+use contextful_core::run::queue::{BodyRef, BodyStore, Delivery, Queue, QueueMessage};
 use contextful_core::run::{Failure, FailureTag};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -17,6 +18,13 @@ use std::sync::Mutex;
 
 /// The lock file serializing a spool's sends and acknowledgements.
 const LOCK_FILE: &str = "spool.lock";
+
+/// The directory under a spool holding bodies past its message cap.
+const BODIES: &str = "bodies";
+
+/// The largest message the local spool takes, in bytes: a managed queue's 1 MiB, so a body
+/// spills on the laptop exactly where it spills on a cluster (`run.land.receive-queued-spill`).
+pub const SPOOL_MESSAGE_CAP: usize = 1 << 20;
 
 /// One spooled message and the sequence that tells a resend from the copy it replaced.
 #[derive(Serialize, Deserialize)]
@@ -66,6 +74,10 @@ impl LocalSpool {
         self.dir.join(format!("{}.json", sha256_hex(identity.as_bytes())))
     }
 
+    fn body(&self, key: &str) -> PathBuf {
+        self.dir.join(BODIES).join(format!("{}.body", sha256_hex(key.as_bytes())))
+    }
+
     fn read(path: &Path) -> Result<Option<Spooled>, Failure> {
         match std::fs::read(path) {
             Ok(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|e| storage(path, e)),
@@ -112,6 +124,38 @@ impl Queue for LocalSpool {
             _ => Ok(()),
         }
     }
+
+    fn message_cap(&self) -> usize {
+        SPOOL_MESSAGE_CAP
+    }
+}
+
+/// A spilled body sits beside the spool, `bodies/<digest of its key>.body`.
+impl BodyStore for LocalSpool {
+    fn put(&self, key: &str, body: &[u8]) -> Result<(), Failure> {
+        let path = self.body(key);
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| storage(dir, e))?;
+        }
+        replace(&path, body)
+    }
+
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Failure> {
+        let path = self.body(key);
+        match std::fs::read(&path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(storage(&path, e)),
+        }
+    }
+
+    fn delete(&self, key: &str) -> Result<(), Failure> {
+        let path = self.body(key);
+        match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(storage(&path, e)),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// An in-process queue with a managed queue's delivery: every send is its own message, a
@@ -119,6 +163,24 @@ impl Queue for LocalSpool {
 #[derive(Default)]
 pub struct MemoryQueue {
     held: Mutex<(u64, Vec<(u64, QueueMessage)>)>,
+    bodies: Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+}
+
+/// Spilled bodies held in process.
+impl BodyStore for MemoryQueue {
+    fn put(&self, key: &str, body: &[u8]) -> Result<(), Failure> {
+        self.bodies.lock().unwrap_or_else(|e| e.into_inner()).insert(key.to_string(), body.to_vec());
+        Ok(())
+    }
+
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Failure> {
+        Ok(self.bodies.lock().unwrap_or_else(|e| e.into_inner()).get(key).cloned())
+    }
+
+    fn delete(&self, key: &str) -> Result<(), Failure> {
+        self.bodies.lock().unwrap_or_else(|e| e.into_inner()).remove(key);
+        Ok(())
+    }
 }
 
 impl MemoryQueue {
@@ -146,16 +208,54 @@ impl Queue for MemoryQueue {
         self.held.lock().unwrap_or_else(|e| e.into_inner()).1.retain(|(id, _)| id.to_string() != receipt);
         Ok(())
     }
+
+    fn message_cap(&self) -> usize {
+        SPOOL_MESSAGE_CAP
+    }
 }
 
-/// What a drained batch wakes. Each call reads from its own durable position; neither
-/// receives rows.
+/// One queued `receive` batch as a consumer lands it: its body read back, `None` when a
+/// spilled body is gone because an earlier delivery's outcome recorded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Batch {
+    pub pipeline: String,
+    pub batch_key: String,
+    pub credential: Option<String>,
+    pub queued_at: i64,
+    pub body: Option<Vec<u8>>,
+}
+
+/// Queue `body` as a `receive` batch (`run.land.receive-queued-spill`): inline when the
+/// message fits the queue's cap, else written to `bodies` under the batch key first and
+/// referenced.
+pub fn enqueue(queue: &dyn Queue, bodies: &dyn BodyStore, pipeline: &str, batch_key: &str, credential: Option<&str>, queued_at: i64, body: &[u8]) -> Result<(), Failure> {
+    let credential = credential.map(|c| contextful_core::run::queue::Credential(c.to_string()));
+    let inline = QueueMessage::Receive { pipeline: pipeline.into(), batch_key: batch_key.into(), credential: credential.clone(), queued_at, body: BodyRef::Inline { body: body.to_vec() } };
+    if inline.encoded_len() <= queue.message_cap() {
+        return queue.send(&inline);
+    }
+    let key = spill_key(pipeline, batch_key);
+    bodies.put(&key, body)?;
+    queue.send(&QueueMessage::Receive { pipeline: pipeline.into(), batch_key: batch_key.into(), credential, queued_at, body: BodyRef::Spilled { key } })
+}
+
+/// The key a spilled body sits under: its pipeline and batch key, so a resend overwrites it.
+fn spill_key(pipeline: &str, batch_key: &str) -> String {
+    format!("receive/{pipeline}/{}", sha256_hex(batch_key.as_bytes()))
+}
+
+/// What a drained batch wakes or lands. Each wake reads from its own durable position and
+/// receives no rows; a queued `receive` batch lands through the engine's receive group.
 pub trait Wake {
     /// Run every export reading one of `tables` from its cursor (`run.export.queue-wake`).
     fn exports(&mut self, tables: &BTreeSet<String>) -> Result<(), Failure>;
     /// Fire every object read whose address covers one of `arrivals`, each `(bucket, key)`,
     /// from its held position (`run.land.object-arrival-wake`).
     fn arrivals(&mut self, arrivals: &BTreeSet<(String, String)>) -> Result<(), Failure>;
+    /// Land `batches`, pushing what they commit, and answer each in order: `Ok` once its
+    /// outcome records, committed or refused; a failure leaves it queued for redelivery
+    /// (`run.land.receive-queued-consume`).
+    fn batches(&mut self, batches: &[Batch]) -> Vec<Result<(), Failure>>;
 }
 
 /// One drain's tally: the deliveries each kind acknowledged, and those left queued.
@@ -163,40 +263,78 @@ pub trait Wake {
 pub struct Drained {
     pub wakes: usize,
     pub arrivals: usize,
-    /// Deliveries no wake consumes, or whose wake failed; each redelivers.
+    /// Queued `receive` batches whose outcome recorded.
+    pub batches: usize,
+    /// Deliveries whose wake or landing failed; each redelivers.
     pub left: usize,
 }
 
-/// Receive up to `max` deliveries, wake each read they name once, and acknowledge the
-/// deliveries whose wake succeeded. A failed wake leaves its deliveries queued and its
-/// failure is returned after the other kind's acknowledgements; a `receive` batch stays
-/// queued for the landing consumer.
-pub fn drain(queue: &dyn Queue, max: usize, wake: &mut dyn Wake) -> Result<Drained, Failure> {
+/// Receive up to `max` deliveries, wake each read they name once, land the queued `receive`
+/// batches, and acknowledge each delivery whose wake succeeded or whose outcome recorded,
+/// deleting a settled batch's spilled body from `bodies` after its acknowledgement. A
+/// failure leaves its deliveries queued and is returned after the other acknowledgements.
+pub fn drain(queue: &dyn Queue, bodies: &dyn BodyStore, max: usize, wake: &mut dyn Wake) -> Result<Drained, Failure> {
     let deliveries = queue.receive(max)?;
     let (mut tables, mut objects) = (BTreeSet::new(), BTreeSet::new());
     let (mut wakes, mut arrivals, mut left) = (Vec::new(), Vec::new(), 0);
+    let mut queued: Vec<(String, Option<String>, Batch)> = Vec::new();
+    let mut failed = None;
     for d in deliveries {
-        match &d.message {
+        match d.message {
             QueueMessage::Committed { table, .. } => {
-                tables.insert(table.clone());
+                tables.insert(table);
                 wakes.push(d.receipt);
             }
             QueueMessage::ObjectArrival { bucket, key } => {
-                objects.insert((bucket.clone(), key.clone()));
+                objects.insert((bucket, key));
                 arrivals.push(d.receipt);
             }
-            QueueMessage::Receive { .. } => left += 1,
+            QueueMessage::Receive { pipeline, batch_key, credential, queued_at, body } => {
+                let (spill, body) = match body {
+                    BodyRef::Inline { body } => (None, Ok(Some(body))),
+                    BodyRef::Spilled { key } => {
+                        let read = bodies.get(&key);
+                        (Some(key), read)
+                    }
+                };
+                match body {
+                    Ok(body) => queued.push((d.receipt, spill, Batch { pipeline, batch_key, credential: credential.map(|c| c.0), queued_at, body })),
+                    Err(f) => {
+                        left += 1;
+                        failed.get_or_insert(f);
+                    }
+                }
+            }
         }
     }
-    let mut failed = None;
     // An arrival lands first, so the wake-up its commit sends finds the exports current.
     let landed = if objects.is_empty() { Ok(()) } else { wake.arrivals(&objects) };
     let arrivals = settle(queue, arrivals, landed, &mut left, &mut failed)?;
+    let mut batches = 0;
+    if !queued.is_empty() {
+        let given: Vec<Batch> = queued.iter().map(|(_, _, b)| b.clone()).collect();
+        let answers = wake.batches(&given);
+        for (i, (receipt, spill, _)) in queued.into_iter().enumerate() {
+            match answers.get(i).cloned().unwrap_or_else(|| Err(Failure::new(FailureTag::Transient, "the consumer answered no outcome for the batch"))) {
+                Ok(()) => {
+                    queue.ack(&receipt)?;
+                    if let Some(key) = spill {
+                        bodies.delete(&key)?;
+                    }
+                    batches += 1;
+                }
+                Err(f) => {
+                    left += 1;
+                    failed.get_or_insert(f);
+                }
+            }
+        }
+    }
     let delivered = if tables.is_empty() { Ok(()) } else { wake.exports(&tables) };
     let wakes = settle(queue, wakes, delivered, &mut left, &mut failed)?;
     match failed {
         Some(f) => Err(f),
-        None => Ok(Drained { wakes, arrivals, left }),
+        None => Ok(Drained { wakes, arrivals, batches, left }),
     }
 }
 
