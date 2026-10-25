@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 312 | 0 | 312 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
-| `read` | 2 | 20 | 324 | 58 | 29 | 16 | 282 | 0 | 282 |
+| `read` | 2 | 20 | 327 | 58 | 30 | 16 | 285 | 0 | 285 |
 | `run` | 3 | 29 | 613 | 129 | 49 | 19 | 579 | 0 | 579 |
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
 | `topology` | 1 | 6 | 85 | 26 | 5 | 3 | 81 | 0 | 81 |
-| **total** | 26 | 177 | 2918 | 711 | 229 | 84 | 2583 | 0 | |
+| **total** | 26 | 177 | 2921 | 711 | 230 | 84 | 2586 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 311 | 300 | passing | closed |
 | 4 — Ingest | 25 | 651 | 551 | passing | closed |
-| 5 — The read face under enforcement | 17 | 318 | 284 | passing | closed |
+| 5 — The read face under enforcement | 17 | 321 | 287 | passing | closed |
 | 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
 | 7 — Memory | 6 | 100 | 85 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
@@ -1318,6 +1318,8 @@ Unscheduled operations: 13.
 | `read.register.declaration-set` | `crates/contextful-cli/tests/integration/query.rs::a_pipeline_file_declares_the_key_every_read_face_dedupes_on` | performed |
 | `read.register.describe-payload` | `crates/contextful-context/tests/integration/read/register.rs::describe_returns_the_whole_payload` | performed |
 | `read.register.describe-zone` | `crates/contextful-context/tests/integration/read/respond.rs::describe_reports_the_session_zone_and_each_tables_admission` | performed |
+| `read.register.drain-unfinished` | `crates/contextful-cli/tests/integration/serve.rs::a_connection_unanswered_at_the_drain_bound_is_cut_off_and_the_exit_is_non_zero` | performed |
+| `read.register.draining-health` | `crates/contextful-cli/tests/integration/serve.rs::a_terminated_face_answers_its_accepted_request_and_sheds_new_ones_before_exiting` | performed |
 | `read.register.duration-no-statement` | `crates/contextful-agent/tests/integration/mcp.rs::read_tools_advertise_and_enforce_request_budgets` | performed |
 | `read.register.engine` | `crates/contextful-context/tests/integration/read/register.rs::the_embedded_engine_reads_the_parquet_an_external_reader_opens` | performed |
 | `read.register.file-listing` | `crates/contextful-context/tests/integration/read/register.rs::file_listing_covers_the_callers_tables_alone` | performed |
@@ -1339,6 +1341,7 @@ Unscheduled operations: 13.
 | `read.register.serve-declaration` | `crates/contextful-agent/tests/integration/http.rs::a_missing_audience_or_ceiling_refuses_the_face` | performed |
 | `read.register.size-estimate` | `crates/contextful-context/tests/integration/read/register.rs::describe_estimates_the_size_of_the_callers_restricted_rows` | performed |
 | `read.register.stateless-session` | `crates/contextful-agent/tests/integration/http.rs::a_notification_answers_202_and_the_face_holds_no_session_or_stream` | performed |
+| `read.register.stop-drain` | `crates/contextful-cli/tests/integration/serve.rs::a_terminated_face_answers_its_accepted_request_and_sheds_new_ones_before_exiting` | performed |
 | `read.register.template-projection` | `crates/contextful-core/tests/integration/read/template.rs::a_template_projects_into_a_tool_with_every_field_required` | performed |
 | `read.register.tool-set` | `crates/contextful-agent/tests/integration/mcp.rs::the_tool_list_is_the_closed_read_set` | performed |
 | `read.resolve-entity.alias-conflict` | `crates/contextful-cli/tests/integration/memory.rs::an_entity_upsert_lands_merges_aliases_and_refuses_a_taken_mention` | performed |

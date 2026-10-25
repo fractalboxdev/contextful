@@ -53,6 +53,10 @@ toml = "0.8"
 toml_edit = "0.22"
 url = "2"
 
+# The stop signal a serving process drains on, linked by the read path.
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", optional = true }
+
 [dev-dependencies]
 ed25519-dalek = "2"
 contextful-eval = { path = "../../tools/eval" }
@@ -79,6 +83,7 @@ read-plane = [
     "contextful-context/fts",
     "dep:contextful-outbound",
     "dep:contextful-sync",
+    "dep:libc",
 ]
 # The run path over the read path: the execution core and its scheduler, the connectors,
 # the SQLite run store, memory synthesis and the evaluation runner. A build without it

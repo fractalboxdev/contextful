@@ -1315,7 +1315,7 @@ impl Children {
             }
             running += 1;
             #[cfg(unix)]
-            let sent = contextful_engine::stop::signal_group(*pid, kill);
+            let sent = crate::stop::signal_group(*pid, kill);
             #[cfg(not(unix))]
             let sent = if kill { child.kill() } else { Ok(()) };
             if let Err(e) = sent {
@@ -1760,19 +1760,19 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     };
     let holder = format!("{}:{}", boot_id(), std::process::id());
     let mut scheduler = Scheduler::new(w.engine.catalog.clone(), dispatch, &l.project.name, &holder, control.pool);
-    contextful_engine::stop::install();
+    crate::stop::install();
     if cycle {
         // A stop signal ends the cycle's children, so its drain returns.
         let watched = children.clone();
         std::thread::spawn(move || {
-            while !contextful_engine::stop::requested() {
+            while !crate::stop::requested() {
                 std::thread::sleep(CHILD_POLL);
             }
             watched.end_all(Duration::from_secs(CHILD_GRACE_SECS));
         });
         let answered = serve_cycle(&mut scheduler, &control, &l.project, &l.declaration, tasks);
         drop(reaper);
-        if contextful_engine::stop::requested() {
+        if crate::stop::requested() {
             // A failed stop push reports beside the cycle's own error, never in its place.
             match (answered, crate::sync::drain(&l)) {
                 (Err(cycle), Err(drain)) => return Err(cycle.context(format!("{drain:#}"))),
@@ -1784,7 +1784,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
         } else {
             answered?;
         }
-        if contextful_engine::stop::requested() {
+        if crate::stop::requested() {
             bail!("a stop signal ended the cycle's dispatched units");
         }
         return Ok(());
@@ -1796,7 +1796,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     let tick = Duration::from_millis(TICK_INTERVAL_MS);
     let mut next_poll = w.clock.now();
     let mut held_by: Option<String> = None;
-    while !contextful_engine::stop::requested() {
+    while !crate::stop::requested() {
         // The lease comes before arming: a process finding it held arms nothing
         // (`surface.dispatch.lease-gated`).
         match scheduler.hold() {
@@ -1920,12 +1920,12 @@ fn serve_wakes(scheduler: &mut Scheduler, control: &ControlConfig, addr: &str, p
     eprintln!("wake on http://{}/wake", listener.local_addr()?);
     let watched = reaper.0.clone();
     std::thread::spawn(move || {
-        while !contextful_engine::stop::requested() {
+        while !crate::stop::requested() {
             std::thread::sleep(CHILD_POLL);
         }
         watched.end_all(Duration::from_secs(CHILD_GRACE_SECS));
     });
-    while !contextful_engine::stop::requested() {
+    while !crate::stop::requested() {
         match listener.accept() {
             Ok((stream, _)) => {
                 if let Err(e) = answer_wake(scheduler, control, project, declaration, tasks, stream) {

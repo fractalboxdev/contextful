@@ -283,14 +283,24 @@ fn no_revocation() -> Result<RevocationState, String> {
 /// of the test process: the fixture and face are leaked so the accept loop outlives
 /// the test body.
 fn listen(f: Fixture, ceiling: usize, revocation: &'static Revocation<'static>) -> (&'static Fixture, SocketAddr) {
+    let (f, _, addr) = listen_face(f, ceiling, revocation);
+    (f, addr)
+}
+
+/// [`listen`], answering the serving face beside its fixture and address.
+fn listen_face(
+    f: Fixture,
+    ceiling: usize,
+    revocation: &'static Revocation<'static>,
+) -> (&'static Fixture, &'static HttpFace<'static, FixedClock>, SocketAddr) {
     let f: &'static Fixture = Box::leak(Box::new(f));
     let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
     let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation };
-    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(ceiling)).unwrap()));
+    let face: &'static HttpFace<'static, FixedClock> = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(ceiling)).unwrap()));
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     std::thread::spawn(move || face.serve(listener));
-    (f, addr)
+    (f, face, addr)
 }
 
 /// The same credential's answer from the tool server the stdio transport runs, its
@@ -625,6 +635,41 @@ fn a_stalled_request_head_holds_a_slot_and_a_connection_past_the_ceiling_is_shed
         assert!(std::time::Instant::now() < deadline, "the slot frees once the stalled connection closes: {head}");
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
+}
+
+/// A draining face sheds every new connection, `/health` included, with `503` and
+/// `Retry-After` before parsing it, answers the connection it accepted before the drain,
+/// and returns once none remains.
+#[test]
+fn a_draining_face_answers_its_accepted_connection_and_sheds_new_ones() {
+    let (_f, face, addr) = listen_face(fixture(), 4, &no_revocation);
+    let health = HttpRequest { method: "GET".into(), target: "/health".into(), headers: Vec::new(), body: Vec::new() };
+    let mut held = TcpStream::connect(addr).unwrap();
+    held.write_all(b"GET /health HTTP/1.1\r\n").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let drained = std::thread::spawn(move || face.drain(std::time::Duration::from_secs(10)));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let (status, head, _) = send(addr, &health);
+    assert_eq!(status, 503, "a new connection meets the drain: {head}");
+    assert!(head.contains("Retry-After: 1\r\n") || head.ends_with("Retry-After: 1"), "{head}");
+    assert!(!drained.is_finished(), "the drain waits on the accepted connection");
+    held.write_all(b"\r\n").unwrap();
+    let mut raw = String::new();
+    held.read_to_string(&mut raw).unwrap();
+    assert!(raw.starts_with("HTTP/1.1 200"), "the accepted connection is answered: {raw}");
+    assert_eq!(drained.join().unwrap(), 0, "every accepted connection was answered");
+}
+
+/// A drain reaching its bound with a connection still unanswered returns their count.
+#[test]
+fn a_drain_reaching_its_bound_counts_the_unanswered_connections() {
+    let (_f, face, addr) = listen_face(fixture(), 4, &no_revocation);
+    let _stalled = TcpStream::connect(addr).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let started = std::time::Instant::now();
+    assert_eq!(face.drain(std::time::Duration::from_millis(500)), 1);
+    let waited = started.elapsed();
+    assert!(waited >= std::time::Duration::from_millis(500) && waited < std::time::Duration::from_secs(5), "{waited:?}");
 }
 
 /// A serve with no `--audience`, or no positive `--max-in-flight`, raises `ServeDeclarationMissing` naming the flag and binds no listener; neither ships a default.

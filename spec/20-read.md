@@ -134,6 +134,12 @@ Registered relations, query tools, templates, the embedded SQL engine and HTTP t
   *because a container runtime probes readiness before any caller holds a credential*
 - `health-hydrated` — `GET /health?ready=hydrated` answers as {{read.register.past-ceiling}} until snapshot-set hydration completes, then as {{read.register.health}}.
   *because a load balancer probing plain `/health` routes reads to a container still hydrating, which answers each one `503`*
+- `stop-drain` — On `SIGTERM` or `SIGINT`, `contextful serve --http` admits no new request, answers every connection it accepted before the signal, and exits 0 once none remains, at most 20 s after the signal.
+  *because a container platform kills a stopping process after its grace period, and a process exiting at the signal resets every request it holds*
+- `drain-unfinished` — A connection still unanswered at the bound of {{read.register.stop-drain}} closes unanswered; the server names their count on stderr and exits non-zero.
+  *because an operator reading a clean exit as a complete drain misses the requests the bound cut off*
+- `draining-health` — From the stop signal on, every new connection, `GET /health` included, answers as {{read.register.past-ceiling}} before its request is parsed.
+  *because a load balancer reading `503` from `/health` stops routing to a target whose admitted requests are still finishing*
 
 ## guard
 

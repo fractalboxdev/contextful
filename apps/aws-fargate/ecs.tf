@@ -108,8 +108,11 @@ resource "aws_ecs_task_definition" "serve" {
   }
 
   container_definitions = jsonencode([merge(local.container, {
-    name         = "serve"
-    command      = local.serve_command
+    name    = "serve"
+    command = local.serve_command
+    # `serve` answers the connections it accepted within 20 s of SIGTERM, then exits
+    # (`read.register.stop-drain`); 10 s more covers the exit before SIGKILL.
+    stopTimeout  = 30
     environment  = [for k, v in merge(local.environment, { CONTEXTFUL_AUDIENCE = var.audience }) : { name = k, value = v }]
     portMappings = [{ containerPort = var.serve_port, protocol = "tcp" }]
     logConfiguration = {
