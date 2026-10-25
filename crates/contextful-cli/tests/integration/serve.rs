@@ -2149,3 +2149,120 @@ fn served_receive_throughput_at_one_sixteen_and_256_writers() {
     let landed = receive_rows(root, "SELECT count(*) FROM otel_spans");
     assert_eq!(landed[0][0].as_str().and_then(|n| n.parse::<u64>().ok()), Some(next * BAR_ROWS), "every committed batch lands its rows once: {landed}");
 }
+
+/// A face started to be stopped: its process, address and every standard-error line it writes.
+struct Stopping {
+    child: Child,
+    addr: String,
+    lines: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    reader: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Stopping {
+    /// Start `serve --http` over the project at `dir` and wait until it answers reads.
+    fn start(dir: &Path, public: &str) -> Stopping {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+            .args(["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "4", "--project", "research", "--public-key", public])
+            .current_dir(dir)
+            .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
+            .env_remove("CONTEXTFUL_AUDIENCE")
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let err = BufReader::new(child.stderr.take().unwrap());
+        let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (listening, addr) = std::sync::mpsc::channel();
+        let written = lines.clone();
+        let reader = std::thread::spawn(move || {
+            for line in err.lines().map_while(Result::ok) {
+                if let Some(addr) = line.trim().strip_prefix("listening on http://").and_then(|a| a.strip_suffix("/mcp")) {
+                    let _ = listening.send(addr.to_string());
+                }
+                written.lock().unwrap().push(line);
+            }
+        });
+        let addr = addr.recv_timeout(std::time::Duration::from_secs(60)).expect("the face never listened");
+        ready(&addr);
+        Stopping { child, addr, lines, reader: Some(reader) }
+    }
+
+    fn signal(&self, name: &str) {
+        let sent = Command::new("kill").args([&format!("-{name}"), &self.child.id().to_string()]).status().unwrap();
+        assert!(sent.success(), "kill -{name}");
+    }
+
+    /// Wait up to 30 s for a standard-error line holding `needle`.
+    fn wait_for(&self, needle: &str) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while !self.lines.lock().unwrap().iter().any(|l| l.contains(needle)) {
+            assert!(std::time::Instant::now() < deadline, "no `{needle}`:\n{}", self.lines.lock().unwrap().join("\n"));
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    /// Wait up to `limit` for the exit; its status and every line written before it.
+    fn exit_within(&mut self, limit: std::time::Duration) -> (std::process::ExitStatus, Vec<String>) {
+        let deadline = std::time::Instant::now() + limit;
+        let status = loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                break status;
+            }
+            assert!(std::time::Instant::now() < deadline, "the face outlived its stop:\n{}", self.lines.lock().unwrap().join("\n"));
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+        (status, self.lines.lock().unwrap().clone())
+    }
+}
+
+impl Drop for Stopping {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// On `SIGTERM` the face admits no new request, answers the connection it accepted before
+/// the signal, and exits 0 once none remains; meanwhile a new `/health` answers `503`.
+// spec: read.register.stop-drain@0d87758d
+// spec: read.register.draining-health@41ea186c
+#[test]
+fn a_terminated_face_answers_its_accepted_request_and_sheds_new_ones_before_exiting() {
+    let (dir, public) = project();
+    let mut face = Stopping::start(dir.path(), &public);
+    let mut held = TcpStream::connect(&face.addr).unwrap();
+    held.write_all(b"GET /health HTTP/1.1\r\n").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    face.signal("TERM");
+    face.wait_for("draining:");
+    let (status, health) = control(&face.addr, "GET", "/health", None, "");
+    assert_eq!(status, 503, "a new connection meets the drain: {health}");
+    assert!(face.child.try_wait().unwrap().is_none(), "the face waits on the connection it accepted");
+    held.write_all(b"\r\n").unwrap();
+    let mut raw = String::new();
+    held.read_to_string(&mut raw).unwrap();
+    assert!(raw.starts_with("HTTP/1.1 200") && raw.contains("\"complete\""), "the accepted request is answered: {raw}");
+    let (status, lines) = face.exit_within(std::time::Duration::from_secs(10));
+    assert!(status.success(), "{status}:\n{}", lines.join("\n"));
+}
+
+/// A connection still unanswered 20 s after `SIGINT` closes unanswered; the face names
+/// their count on standard error and exits non-zero.
+// spec: read.register.drain-unfinished@1eceab56
+#[test]
+fn a_connection_unanswered_at_the_drain_bound_is_cut_off_and_the_exit_is_non_zero() {
+    let (dir, public) = project();
+    let mut face = Stopping::start(dir.path(), &public);
+    let _stalled = TcpStream::connect(&face.addr).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let signalled = std::time::Instant::now();
+    face.signal("INT");
+    let (status, lines) = face.exit_within(std::time::Duration::from_secs(40));
+    let waited = signalled.elapsed();
+    assert!(!status.success(), "{status}:\n{}", lines.join("\n"));
+    assert!(waited >= std::time::Duration::from_secs(19) && waited < std::time::Duration::from_secs(25), "{waited:?}");
+    assert!(lines.iter().any(|l| l.contains("1 connection(s) unanswered")), "{}", lines.join("\n"));
+}

@@ -33,6 +33,13 @@ use std::time::Duration;
 /// (`read.register.past-ceiling`).
 pub const RETRY_AFTER_SECS: u64 = 1;
 
+/// Longest a stopping server waits for the connections it accepted before the stop
+/// signal (`read.register.stop-drain`).
+pub const DRAIN_BOUND: Duration = Duration::from_secs(20);
+
+/// How often a drain checks whether its accepted connections are answered.
+const DRAIN_POLL: Duration = Duration::from_millis(20);
+
 /// Largest request body the face reads (`read.register.request-body`).
 pub const REQUEST_BODY_BYTES: usize = 1024 * 1024;
 
@@ -311,6 +318,7 @@ pub struct HttpFace<'a, C> {
     connections: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority) -> HttpResponse + Sync)>,
     ceiling: usize,
     in_flight: AtomicUsize,
+    draining: AtomicBool,
     exchange: Option<&'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)>,
     exchange_unconfigured: bool,
     claim_write: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)>,
@@ -373,7 +381,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, control: None, connections: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, receive: None, receive_outcome: None, hydration: None })
+        Ok(HttpFace { tools, admitting, control: None, connections: None, ceiling, in_flight: AtomicUsize::new(0), draining: AtomicBool::new(false), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, receive: None, receive_outcome: None, hydration: None })
     }
 
     /// Report `build` at the handshake and `/health` in place of this package's linked
@@ -447,6 +455,8 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// the ceiling's count of connection threads run. One accepted with every slot held
     /// goes, unparsed, to the one shedding thread, and is dropped when
     /// [`SHED_QUEUE`] connections already wait there (`read.register.connection-ceiling`).
+    /// Once [`HttpFace::drain`] begins, every connection goes to the shedding thread
+    /// (`read.register.draining-health`).
     pub fn serve(&self, listener: TcpListener) -> std::io::Result<()> {
         std::thread::scope(|scope| {
             let (shed, queue) = std::sync::mpsc::sync_channel::<TcpStream>(SHED_QUEUE);
@@ -461,7 +471,15 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
                     Err(e) if e.kind() == std::io::ErrorKind::ConnectionAborted => continue,
                     Err(e) => return Err(e),
                 };
-                match self.slot() {
+                // The slot is counted before the drain flag is read, so a drain that reads
+                // no slot held finds every later connection shed.
+                let slot = self.slot();
+                if self.draining.load(Ordering::SeqCst) {
+                    drop(slot);
+                    let _ = shed.try_send(stream);
+                    continue;
+                }
+                match slot {
                     Some(slot) => {
                         scope.spawn(move || {
                             let _ = self.connection(stream, slot);
@@ -564,9 +582,29 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// close sends no reset ahead of the answer (`read.register.past-ceiling`).
     fn shed(&self, mut stream: TcpStream) -> std::io::Result<()> {
         stream.set_write_timeout(Some(SHED_LINGER))?;
-        HttpResponse::unavailable(format!("{} requests are in flight, the declared ceiling", self.ceiling)).write_to(&mut stream)?;
+        let why = if self.draining.load(Ordering::SeqCst) {
+            "the server is stopping and admits no new request".to_string()
+        } else {
+            format!("{} requests are in flight, the declared ceiling", self.ceiling)
+        };
+        HttpResponse::unavailable(why).write_to(&mut stream)?;
         stream.shutdown(std::net::Shutdown::Write)?;
         discard(&mut stream)
+    }
+
+    /// Admit no new request, then wait until every connection accepted before the call is
+    /// answered or `bound` passes; the count still unanswered (`read.register.stop-drain`,
+    /// `read.register.drain-unfinished`).
+    pub fn drain(&self, bound: Duration) -> usize {
+        self.draining.store(true, Ordering::SeqCst);
+        let started = std::time::Instant::now();
+        loop {
+            let held = self.in_flight.load(Ordering::SeqCst);
+            if held == 0 || started.elapsed() >= bound {
+                return held;
+            }
+            std::thread::sleep(DRAIN_POLL);
+        }
     }
 
     /// Take a slot under the ceiling, or none when the ceiling's count is in flight

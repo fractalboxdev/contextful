@@ -114,6 +114,7 @@ read-session-pool-entries    = { clause = "read.cache.pool-entries", value = 16,
 read-session-pool-connections = { clause = "read.cache.pool-connections", value = 4, unit = "connections", basis = "chosen", gloss = "Idle connections one pooled session keeps." }
 read-http-retry-after        = { clause = "read.register.past-ceiling", value = 1, unit = "s", basis = "chosen", gloss = "The `Retry-After` a request shed past the in-flight ceiling carries." }
 read-http-request-body       = { clause = "read.register.request-body", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest request body the network transport reads." }
+read-http-stop-drain         = { clause = "read.register.stop-drain", value = 20, unit = "s", basis = "chosen", gloss = "Longest a stopping server waits for the connections it accepted before the stop signal." }
 memory-extract-attempts      = { clause = "read.synthesize.extract-attempts", value = 3, unit = "attempts", basis = "chosen", gloss = "Extract attempts per batch, feedback included." }
 memory-gleanings            = { clause = "read.declare.gleanings", value = 1, unit = "passes", basis = "chosen", gloss = "Most gleaning passes one extraction batch runs." }
 memory-prompt-bytes          = { clause = "read.synthesize.prompt-bound", value = 32, unit = "KiB", basis = "chosen", gloss = "Fenced row bytes one extraction batch packs." }

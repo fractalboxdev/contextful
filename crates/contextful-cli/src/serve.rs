@@ -14,6 +14,9 @@
 //! hydration that fails stops the process (`store.pull.before-run`). Once hydrated, one
 //! loop runs every 30 s: a store declaring `pull_before_run` pulls the bucket again, and the
 //! mappings are reconciled with the current set (`store.pull.serve-refresh`).
+//!
+//! `SIGTERM` or `SIGINT` drains the listener: it admits no new request, answers the
+//! connections it accepted, and exits within the drain bound (`read.register.stop-drain`).
 
 #[cfg(feature = "data-plane")]
 use crate::admit::AdmitArgs;
@@ -471,7 +474,29 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     let listener = TcpListener::bind(&args.http)?;
     eprintln!("listening on http://{}/mcp", listener.local_addr()?);
     let stopped = std::sync::atomic::AtomicBool::new(false);
+    crate::stop::install();
     std::thread::scope(|scope| {
+        // A stop signal drains the listener: it admits no new request, answers what it
+        // accepted, and the process exits once that is done or the bound passes
+        // (`read.register.stop-drain`, `read.register.drain-unfinished`).
+        scope.spawn(|| {
+            while !crate::stop::requested() {
+                std::thread::sleep(STOP_POLL);
+            }
+            eprintln!("draining: a stop signal arrived; no new request is admitted");
+            let unanswered = http.drain(contextful_agent::http::DRAIN_BOUND);
+            #[cfg(feature = "data-plane")]
+            crate::telemetry::finish();
+            if unanswered == 0 {
+                eprintln!("drained: every accepted connection is answered");
+                std::process::exit(0);
+            }
+            eprintln!(
+                "drain: {unanswered} connection(s) unanswered after {} s; exiting",
+                contextful_agent::http::DRAIN_BOUND.as_secs()
+            );
+            std::process::exit(1);
+        });
         scope.spawn(|| {
             use std::io::Write;
             let pull = pull;
@@ -531,7 +556,8 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
 /// How often a hydrated server pulls the bucket under `pull_before_run` and reconciles its
 /// mappings with the current snapshot set (`store-pull-serve-refresh`).
 const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
-/// How often the reconciler checks whether the listener has stopped.
+/// How often the reconciler checks whether the listener has stopped, and the drain whether
+/// a stop signal has arrived.
 const STOP_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Map the snapshot set; a store declaring `pull_before_run` first pulls the bucket and

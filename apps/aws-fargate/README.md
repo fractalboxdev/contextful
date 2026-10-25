@@ -83,7 +83,7 @@ credentials     = "role"
 
 `serve` takes `--max-in-flight` from `serve_max_in_flight` and `--result-cache-bytes` from `serve_result_cache_bytes`; `project` adds `--project` to both commands. A project whose applied control document schedules jobs that admit a credential needs `CONTEXTFUL_TOKEN` through `secrets`; without it, `pipeline serve` refuses with `FireCredentialMissing`. A source reaching a private VPC address lists that range in `CONTEXTFUL_EGRESS_PRIVATE_RANGES` through `environment` (`connector.attach.private-range-admitted`).
 
-Every container runs under an init process, which reaps the child `contextful` processes a cycle dispatches, and receives `SIGTERM` 120 s before `SIGKILL`.
+Every container runs under an init process, which reaps the child `contextful` processes a cycle dispatches. The `pipeline` container receives `SIGTERM` 120 s before `SIGKILL`; `pipeline serve` ends its children within 10 s (`surface.dispatch.children-reaped`) and pushes for at most 15 s more (`store.drain.deadline`). The `serve` container receives `SIGTERM` 30 s before `SIGKILL` (see [Stopping](#stopping)).
 
 ## Catalog TLS
 
@@ -106,6 +106,10 @@ RDS Proxy is the alternative for a build without `sslrootcert` support (see [`sp
 ## Health and warming
 
 The target group checks `GET /health?ready=hydrated` every 15 s and expects `200`. The probe admits no credential, answers `503` with `Retry-After: 1` while the snapshot set hydrates, and once hydration completes answers `200` with the build identity and `"hydration": "complete"` (`read.register.health-hydrated`), so a rolling deployment routes no read to a warming task. Plain `/health` answers `200` from a cold start, before hydration completes (`read.register.health`, `topology.publish-hostname.container-readiness`); until then every other route answers `503` with `Retry-After: 1` (`read.cache.warming-read`). `serve_hydration_grace_seconds` (default 300 s) plus three failed checks bounds how long a task may hydrate before ECS replaces it; size it to the store's cold pull, or a large store replaces each task before it serves. `serve` pulls every bucket table before its first read (`store.pull.before-run`) and again every 30 s (`store.pull.serve-refresh`). A deployment registers replacement tasks before it drains the old ones, and the circuit breaker rolls back a revision whose tasks fail to start.
+
+## Stopping
+
+ECS stops a `serve` task in two steps. It first deregisters the task from the target group, which routes it no new request and holds its open connections for `deregistration_delay` (30 s). It then sends `SIGTERM` and, `stopTimeout` (30 s) later, `SIGKILL`. On `SIGTERM`, `serve` admits no new request, answers every connection it accepted, and exits 0 once none remains, at most 20 s after the signal (`read.register.stop-drain`). Each new connection meanwhile, `/health` included, answers `503` with `Retry-After: 1` (`read.register.draining-health`). A connection still unanswered at 20 s closes; `serve` names their count on stderr and exits non-zero (`read.register.drain-unfinished`). Keep `stopTimeout` above 20 s, or `SIGKILL` cuts the drain short.
 
 ## First deployment
 
