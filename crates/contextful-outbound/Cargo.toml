@@ -17,6 +17,9 @@ getrandom = "0.3"
 serde_json = "1"
 url = "2"
 ureq = { version = "3", default-features = false, features = ["rustls"], optional = true }
+# Signature Version 4 for the `aws-secrets-manager` adapter.
+hmac = { version = "0.12", optional = true }
+sha2 = { version = "0.10", optional = true }
 
 # No `default` feature: a member selected by `--workspace` activates its own `default`,
 # one selected through a dependent does not, and the differing feature sets hash every
@@ -25,11 +28,14 @@ ureq = { version = "3", default-features = false, features = ["rustls"], optiona
 # The ureq adapter of the transport port. Without it the crate links no HTTP stack, and
 # an embedder supplies its own `egress::Transport`.
 transport-ureq = ["dep:ureq"]
+# The `aws-secrets-manager` adapter, signing under the workload role. A build without it
+# links no Secrets Manager client (`connector.resolve.adapter-is-optional`).
+aws-secrets-manager = ["transport-ureq", "dep:hmac", "dep:sha2"]
 
 # The suite drives loopback servers over the ureq adapter, which the package's own
 # dev-dependency entry links into every test build.
 [dev-dependencies]
-contextful-outbound = { path = ".", features = ["transport-ureq"] }
+contextful-outbound = { path = ".", features = ["transport-ureq", "aws-secrets-manager"] }
 contextful-eval = { path = "../../tools/eval" }
 tempfile = "3"
 

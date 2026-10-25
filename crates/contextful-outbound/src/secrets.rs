@@ -1,5 +1,6 @@
 //! The credential resolver: the provider chain, its cache, and the adapters this build
-//! links — the process environment and the lease provider.
+//! links — the process environment, the lease provider and, under its feature, AWS
+//! Secrets Manager.
 
 use crate::client::{Client, HeaderValue};
 use contextful_core::connector::attach::{is_loopback_host, scrub, Allowlist};
@@ -304,8 +305,17 @@ impl Assembly {
     }
 }
 
+/// The adapters this build links, as `CONTEXTFUL_SECRETS_BACKEND` names them.
+pub const LINKED: &[&str] = &[
+    "lease",
+    "env",
+    #[cfg(feature = "aws-secrets-manager")]
+    crate::aws_secrets::NAME,
+];
+
 /// Assemble the chain from the process environment `vars`: `CONTEXTFUL_SECRETS_BACKEND`
-/// names the adapters, `env` when unset; `lease` joins at the head.
+/// names the adapters, `env` when unset; `lease` joins at the head and the others answer in
+/// the order named.
 pub fn assemble(vars: &BTreeMap<String, String>, clock: Arc<dyn Clock + Send + Sync>) -> Result<Resolver, Failure> {
     assemble_all(vars, clock).map(|a| a.resolver)
 }
@@ -325,8 +335,17 @@ pub fn assemble_all(vars: &BTreeMap<String, String>, clock: Arc<dyn Clock + Send
                 observers.push(env);
             }
             "lease" => {}
+            #[cfg(feature = "aws-secrets-manager")]
+            crate::aws_secrets::NAME => {
+                let manager = Arc::new(crate::aws_secrets::AwsSecretsManager::from_vars(vars, clock.clone())?);
+                behind.push(manager.clone());
+                observers.push(manager);
+            }
             other => {
-                return Err(Failure::deterministic(FailureTag::Config, format!("`{BACKEND}` names `{other}`; this build links the `lease` and `env` adapters")))
+                return Err(Failure::deterministic(
+                    FailureTag::Config,
+                    format!("`{BACKEND}` names `{other}`; this build links the `{}` adapters", LINKED.join("`, `")),
+                ))
             }
         }
     }
