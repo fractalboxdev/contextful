@@ -67,6 +67,8 @@ mod query;
 #[cfg(feature = "data-plane")]
 mod receive;
 #[cfg(feature = "data-plane")]
+mod receive_queued;
+#[cfg(feature = "data-plane")]
 mod run;
 #[cfg(feature = "data-plane")]
 mod secrets;

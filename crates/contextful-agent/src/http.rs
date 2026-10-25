@@ -68,6 +68,16 @@ pub type BodyReader<'r> = dyn FnMut(u64) -> Result<Option<Vec<u8>>, HttpResponse
 /// body byte is read, the pipeline id and the body reader.
 pub type ReceiveHandler<'h> = dyn Fn(&HttpRequest, &AdmittedAuthority, &str, &mut BodyReader<'_>) -> HttpResponse + Sync + 'h;
 
+/// The outcome route's handler, `GET /receive/:pipeline/:key`: the request, the authority
+/// admitted on it, the pipeline id and the percent-decoded batch key
+/// (`run.land.receive-queued-outcome`).
+pub type OutcomeHandler<'h> = dyn Fn(&HttpRequest, &AdmittedAuthority, &str, &str) -> HttpResponse + Sync + 'h;
+
+/// The header asking for the queued answer, and the preference it carries
+/// (`run.land.receive-queued-ask`).
+pub const PREFER_HEADER: &str = "Prefer";
+pub const RESPOND_ASYNC: &str = "respond-async";
+
 /// The key a websocket handshake appends before hashing (RFC 6455, section 1.3).
 const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -128,10 +138,16 @@ impl HttpRequest {
     /// The credential of an `Authorization: DPoP` or `Authorization: Bearer` header, the
     /// scheme compared case-insensitively. Either scheme reaches admission, where the
     /// credential's confirmation claim, not the scheme, decides whether a proof is required.
-    fn credential(&self) -> Option<&str> {
+    pub fn credential(&self) -> Option<&str> {
         let (scheme, credential) = self.header("Authorization")?.trim().split_once(' ')?;
         let admitted = scheme.eq_ignore_ascii_case("Bearer") || scheme.eq_ignore_ascii_case("DPoP");
         Some(credential.trim()).filter(|c| admitted && !c.is_empty())
+    }
+
+    /// Whether a `Prefer` header carries `respond-async`, the token compared
+    /// case-insensitively among comma-separated preferences (`run.land.receive-queued-ask`).
+    pub fn prefers_async(&self) -> bool {
+        self.header(PREFER_HEADER).is_some_and(|v| v.split(',').any(|p| p.split(';').next().unwrap_or_default().trim().eq_ignore_ascii_case(RESPOND_ASYNC)))
     }
 }
 
@@ -301,6 +317,7 @@ pub struct HttpFace<'a, C> {
     runs: Option<RunRoutes<'a>>,
     awake: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &str) -> HttpResponse + Sync)>,
     receive: Option<&'a ReceiveHandler<'a>>,
+    receive_outcome: Option<&'a OutcomeHandler<'a>>,
     hydration: Option<&'a Hydration>,
 }
 
@@ -356,7 +373,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, control: None, connections: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, receive: None, hydration: None })
+        Ok(HttpFace { tools, admitting, control: None, connections: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, awake: None, receive: None, receive_outcome: None, hydration: None })
     }
 
     /// Report `build` at the handshake and `/health` in place of this package's linked
@@ -415,6 +432,13 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// the request head admits and before any body byte is read (`run.land.receive-endpoint`).
     pub fn with_receive(mut self, receive: &'a ReceiveHandler<'a>) -> Self {
         self.receive = Some(receive);
+        self
+    }
+
+    /// Attach the outcome route, `GET /receive/:pipeline/:key`, called once the credential
+    /// on the request admits (`run.land.receive-queued-outcome`).
+    pub fn with_receive_outcome(mut self, outcome: &'a OutcomeHandler<'a>) -> Self {
+        self.receive_outcome = Some(outcome);
         self
     }
 
@@ -598,6 +622,13 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
                     (false, _) => HttpResponse::message(405, "`/runs/:run_id/stop` answers POST").with("Allow", "POST"),
                     (true, "GET") => self.stream_request(request, run),
                     (true, _) => HttpResponse::message(405, "`/runs/:run_id/stream` answers GET").with("Allow", "GET"),
+                }
+            }
+            (path, method) if self.receive_outcome.is_some() && outcome_route(path).is_some() => {
+                let (pipeline, key) = outcome_route(path).expect("matched above");
+                match method {
+                    "GET" => self.admitted(request, |authority, _| self.receive_outcome.expect("route exists")(request, authority, pipeline, &key)),
+                    _ => HttpResponse::message(405, "`/receive/:pipeline/:key` answers GET").with("Allow", "GET"),
                 }
             }
             (path, method) if self.awake.is_some() && awake_route(path).is_some() => {
@@ -841,6 +872,29 @@ fn discard(stream: &mut TcpStream) -> std::io::Result<()> {
 /// The pipeline of a `/receive/:pipeline` path: one non-empty segment; `None` for any other path.
 fn receive_route(path: &str) -> Option<&str> {
     path.strip_prefix(RECEIVE_PREFIX).filter(|p| !p.is_empty() && !p.contains('/'))
+}
+
+/// The pipeline and percent-decoded batch key of a `/receive/:pipeline/:key` path: two
+/// non-empty segments; `None` for any other path or a key that is not UTF-8 once decoded.
+fn outcome_route(path: &str) -> Option<(&str, String)> {
+    let (pipeline, key) = path.strip_prefix(RECEIVE_PREFIX)?.split_once('/')?;
+    if pipeline.is_empty() || key.is_empty() || key.contains('/') {
+        return None;
+    }
+    let bytes = key.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok()?;
+            decoded.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            decoded.push(bytes[i]);
+            i += 1;
+        }
+    }
+    Some((pipeline, String::from_utf8(decoded).ok()?))
 }
 
 /// The token of an `/awake/:token` path: one non-empty segment; `None` for any other path.
