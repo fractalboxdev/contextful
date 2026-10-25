@@ -309,3 +309,89 @@ fn an_arrival_key_wakes_the_prefix_read_covering_it_and_lands_nothing_twice() {
     writer.put("feed/03.jsonl", b"{\"n\":4}\n", Condition::None).unwrap();
     assert!(ok(&fire(p, "f9", "2030-01-01T00:09:00Z", &env)).contains("f9 success · 1 rows"));
 }
+
+/// The env a cycle's fires read the loopback bucket's key pair from.
+const LAKE_ENV: [(&str, &str); 3] = [("LAKE_KEY_ID", ACCESS_KEY), ("LAKE_SECRET", SECRET_KEY), ("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")];
+
+/// `pipeline serve --cycle` at `now`: its exit status and printed answer.
+fn cycle(dir: &Path, now: &str) -> (bool, serde_json::Value, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "serve", "--cycle", "--project", "research", "--now", now])
+        .current_dir(dir)
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .env_remove("CONTEXTFUL_SECRETS_BACKEND")
+        .envs(LAKE_ENV.iter().copied())
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let answer = serde_json::from_str(text.trim()).unwrap_or_else(|e| panic!("{e}: {text}\n{}", stderr(&out)));
+    (out.status.success(), answer, stderr(&out))
+}
+
+fn rows(dir: &Path) -> String {
+    ok(&cf(dir, &["query", "--json", "--project", "research", "SELECT count(*) FROM feed_orders"]))
+}
+
+/// A cycle drains the queue under the cadence lease once its units end: an arrival key wakes its prefix read before the
+/// source's cadence comes due, and an object whose key never arrives lands on that cadence.
+// spec: surface.fire.cycle-drain@803aebae
+#[test]
+fn a_cycle_drains_arrival_keys_between_cadence_fires() {
+    use contextful_core::run::queue::{Queue, QueueMessage};
+    use contextful_engine::queue::LocalSpool;
+
+    let server = S3Server::start("lake");
+    let keys = S3Credentials { access_key_id: Hydrated::new(ACCESS_KEY), secret_access_key: Hydrated::new(SECRET_KEY), session_token: None };
+    let writer = S3Bucket::open(&server.endpoint, "us-east-1", "lake", keys).unwrap();
+    writer.put("feed/01.jsonl", b"{\"n\":1}\n", Condition::None).unwrap();
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n[[pipeline]]\nid = \"feed\"\ntables = [\"orders\"]\nschedule = \"every 1h\"\n[pipeline.source]\nname = \"s3\"\nconfig = {{ bucket = \"lake\", endpoint = \"{}\", prefix = \"feed/\", suffix = \".jsonl\", format = \"jsonl\", skip_unchanged = true, access_key_id = \"secret://lake-key-id\", secret_access_key = \"secret://lake-secret\" }}\n",
+        server.endpoint
+    ));
+    let p = dir.path();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let (passed, first, said) = cycle(p, "2030-01-01T00:00:00Z");
+    assert!(passed, "{first}\n{said}");
+    assert_eq!(first["fired"], serde_json::json!(["feed"]), "{first}");
+    assert_eq!(first["drained"]["arrivals"], 0, "{first}");
+
+    writer.put("feed/02.jsonl", b"{\"n\":2}\n{\"n\":3}\n", Condition::None).unwrap();
+    LocalSpool::open(&p.join(".contextful/queue/research")).unwrap().send(&QueueMessage::ObjectArrival { bucket: "lake".into(), key: "feed/02.jsonl".into() }).unwrap();
+    let (passed, woke, said) = cycle(p, "2030-01-01T00:05:00Z");
+    assert!(passed, "{woke}\n{said}");
+    assert_eq!((woke["fired"].clone(), woke["drained"]["arrivals"].clone(), woke["drained"]["left"].clone()), (serde_json::json!([]), serde_json::json!(1), serde_json::json!(0)), "nothing is due; the arrival wakes the read: {woke}");
+    assert!(rows(p).contains("\"3\""), "{}", rows(p));
+
+    // An object whose key never arrives waits for the cadence, which counts from the woken fire.
+    writer.put("feed/03.jsonl", b"{\"n\":4}\n", Condition::None).unwrap();
+    let (_, quiet, _) = cycle(p, "2030-01-01T00:10:00Z");
+    assert_eq!((quiet["drained"]["arrivals"].clone(), quiet["next_due"].clone()), (serde_json::json!(0), serde_json::json!("2030-01-01T01:05:00Z")), "{quiet}");
+    assert!(rows(p).contains("\"3\""), "{}", rows(p));
+    let (passed, due, said) = cycle(p, "2030-01-01T01:05:00Z");
+    assert!(passed, "{due}\n{said}");
+    assert_eq!(due["fired"], serde_json::json!(["feed"]), "{due}");
+    assert!(rows(p).contains("\"4\""), "{}", rows(p));
+}
+
+/// A cycle whose drain fails prints its answer, exits non-zero and leaves the delivery queued.
+// spec: surface.fire.cycle-drain-exit@c1cbfb90
+#[test]
+fn a_cycle_whose_drain_fails_exits_non_zero_and_keeps_the_delivery() {
+    use contextful_core::run::queue::{Queue, QueueMessage};
+    use contextful_engine::queue::LocalSpool;
+
+    // `dead` reads an endpoint nothing listens on and declares no schedule, so only its arrival fires it.
+    let dir = project(
+        "site_id = \"site-a\"\n[[pipeline]]\nid = \"dead\"\ntables = [\"orders\"]\n[pipeline.source]\nname = \"s3\"\nconfig = { bucket = \"lake\", endpoint = \"http://127.0.0.1:9\", prefix = \"feed/\", format = \"jsonl\", access_key_id = \"secret://lake-key-id\", secret_access_key = \"secret://lake-secret\" }\n",
+    );
+    let p = dir.path();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let spool = LocalSpool::open(&p.join(".contextful/queue/research")).unwrap();
+    spool.send(&QueueMessage::ObjectArrival { bucket: "lake".into(), key: "feed/01.jsonl".into() }).unwrap();
+    let (passed, answer, said) = cycle(p, "2030-01-01T00:00:00Z");
+    assert!(!passed, "a failed drain exits non-zero: {answer}");
+    assert_eq!(answer["failed"], serde_json::json!([]), "{answer}");
+    assert!(answer["drained"]["failed"].as_str().is_some_and(|f| f.contains("stay queued")), "{answer}");
+    assert!(said.contains("queue drain failed") && said.contains("`dead`"), "{said}");
+    assert_eq!(spool.receive(10).unwrap().len(), 1, "the arrival stays queued for the next cycle");
+}
