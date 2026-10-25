@@ -259,8 +259,8 @@ fn this_repository_profiles_hold_to_their_footprint_budgets() {
     assert!(o.status.success(), "{}", stderr(&o));
 }
 
-/// The budget stage runs the footprint step over every profile, in one part per profile dispatched as its own nightly check, and the evaluate stage builds no profile.
-// spec: assurance.gate.budget-stage@3c76c341
+/// The budget stage runs the footprint step over every profile, in one nightly-tier part per profile, and the evaluate stage builds no profile.
+// spec: assurance.gate.budget-stage@8a2241c8
 #[test]
 fn the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_none() {
     let stages = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();

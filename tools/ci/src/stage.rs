@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use crate::{refuse, run, tracked, Exited};
 
-/// Gate stages in run order. FlareDispatch dispatches each as its own check.
+/// Gate stages in run order, each runnable alone.
 pub const STAGES: [&str; 13] = [
     "pins",
     "toolchain",
@@ -28,13 +28,13 @@ pub const STAGES: [&str; 13] = [
     "budget",
 ];
 
-/// The stages whose parts form the nightly tier (`assurance.gate.nightly-tier`): FlareDispatch
-/// runs them against the default-branch head, and `stages --parts` omits them from the
-/// required pull-request checks.
+/// The stages whose parts form the nightly tier (`assurance.gate.nightly-tier`): `gate --stage`
+/// runs them on demand, and `stages --parts` omits them from the parts a change runs before
+/// merge.
 pub const NIGHTLY: [&str; 3] = ["features", "formal", "budget"];
 
-/// The dispatched checks that each run several stage parts (`assurance.gate.folded-parts`):
-/// a label and its members in run order. Every other part dispatches as itself, and each
+/// The folded parts that each run several stage parts (`assurance.gate.folded-parts`):
+/// a label and its members in run order. Every other part runs as itself, and each
 /// member stays runnable by its own name.
 pub const FOLDS: [(&str, &[&str]); 7] = [
     ("preflight", &["pins", "toolchain", "schema", "test-first.validate"]),
@@ -46,7 +46,7 @@ pub const FOLDS: [(&str, &[&str]); 7] = [
     ("perimeter", &["crate-graph", "connectors", "surfaces"]),
 ];
 
-/// The stage parts a dispatched `part` runs: a fold's members, else the part itself.
+/// The stage parts a listed `part` runs: a fold's members, else the part itself.
 pub fn members(part: &str) -> Vec<&str> {
     FOLDS.iter().find(|(label, _)| *label == part).map_or_else(|| vec![part], |(_, members)| members.to_vec())
 }

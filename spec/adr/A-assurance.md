@@ -16,20 +16,6 @@ Decision: a distributable matching-target suite drives public surfaces with synt
 
 Consequences: compatibility remains scoped to executed scenarios and named storage profiles. A foreign-target archive carries no native execution pass until a matching host runs its suite. Unknown source correspondence remains unknown.
 
-## FlareDispatch owns native Windows diagnostics through a dispatch-only transport
-
-Context: Linux containers cannot execute MSVC command-tree or directory durability regressions. Native Windows runners supply both target C toolchains and runtime behavior. Windows diagnostics preserve porting evidence and carry no merge or release verdict.
-Decision: one trusted GitHub workflow accepts FlareDispatch dispatch inputs. FlareDispatch binds repository/head/base, nonce and command to its admitted request and verifies API job identity, fixed runner labels, observed native target, terminal exit and artifact digests before recording its diagnostic. The executor holds read-only repository permission and no publication credential. Reviewed same-repository workload code shares the runner user; a wrapper records evidence and supplies no hostile-code isolation.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Flare-governed dispatch-only native transport *(chosen)* | — | Actions dispatch/read/artifact permissions and an authenticated execution backend. |
-| Cloudflare Linux containers alone | Runtime fidelity | Cross-compilation supplies no native Windows execution or MSVC linker. |
-| Independent PR-triggered Actions orchestration | One admission and publisher | Two trigger and verdict authorities can disagree about the tested head. |
-
-Criteria: native runtime fidelity decides the transport; one admission authority, immutable provenance and finite execution remain constraints.
-Consequences: a missing or mismatched native receipt records a failed diagnostic and blocks no merge or release. The narrow workflow invariant permits this executor alone; broad triggers and a second workflow fail the schema stage. A reviewed executor reaches the default branch before its dispatch is admitted.
-
 ## Assurance claims carry their qualifiers, and the proof gate audits assumptions
 
 `assurance.scope-claim` states named authorization decisions, named specifications and stated translation and runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-assumptions` matches a hand-maintained inventory against each constant's transitive assumption footprint over a two-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.
@@ -155,7 +141,7 @@ Revisit: the base-commit build exceeds the stage wall clock; the refactor traile
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Count-first gate, trend tier, notes history *(chosen)* | — | The Dispatcher's GitHub App token appends notes; a timing regression surfaces as an annotation. A missing baseline scans first-parent history; matching baselines stop the stream. |
+| Count-first gate, trend tier, notes history *(chosen)* | — | The operator's `measure-publish` appends notes; a timing regression surfaces as an annotation. A missing baseline scans first-parent history; matching baselines stop the stream. |
 | Separate baseline index | Extra state | An index needs synchronization with notes and reconstruction after missing updates; the stream preserves full-history comparisons across runner changes. |
 | Gate on wall-clock p95 against a committed baseline | Determinism | Shared containers move p95 past any useful band; the check flakes until ignored. |
 | History as a committed JSONL file | Branch policy | A bot commit on the default branch per run and a conflict with every open change. |
@@ -195,11 +181,11 @@ Context: a consumer pinning `~0.16` takes every `v0.16.*` tag as a patch, yet a 
 Consequences: 16 closed milestones under format `2.0` compute `v0.17.0`; the tag message names the reader-first upgrade order.
 Revisit: the store format promises compatibility across majors, or `v1` opens.
 
-## The remote workspace fits the stage wall clock through parts
+## The workspace fits the stage wall clock through parts
 
 **Status:** accepted; answers the test-first decision's revisit trigger, a base-commit build exceeding the stage wall clock.
 
-Context: the feature-unified workspace suite exceeds the 1800 s sandbox cap on a cold remote build. Criteria: every package suite runs, the feature union compiles, and each dispatched command runs locally too.
+Context: the feature-unified workspace suite exceeds the 1800 s sandbox cap on a cold build. Criteria: every package suite runs, the feature union compiles, and each part runs as one local command.
 
 Decision: `assurance.gate.workspace-parts` compiles the union untested, runs `differential::` tests in one check, and splits the remaining CLI tests into eight shards by the map of `assurance.gate.cli-shard-map`: local four-thread durations scaled to a measured gate shard, a group of tests sharing one costly nested build on one shard. Four parts run the other suites; the local stage keeps one invocation under `assurance.build.one-engine-build`.
 
@@ -207,7 +193,7 @@ Decision: `assurance.gate.workspace-parts` compiles the union untested, runs `di
 | --- | --- | --- |
 | Duration-balanced shards *(chosen)* | — | Each shard compiles the CLI suite cold, about 650 s; a new test runs unbalanced until the map is regenerated. |
 | Four name-hashed shards | Stage wall clock | Each shard rebuilt both nested examples; three exceeded 2700 s. |
-| One CLI test build handed to every shard | Operability | FlareDispatch hands parts one prebuilt `[[bin]]` from the parent, no test executable between parts. |
+| One CLI test build handed to every shard | Operability | A part run in a fresh checkout receives no test executable another part built. |
 | `cargo nextest --partition hash:k/4` | Operability | The gate image carries no nextest, which runs no doctests. |
 
 Consequences: fourteen workspace checks cover the local stage's packages, each ordinary CLI test once. A nested example build inherits no package environment from the test process, so it reuses the shard's compiled graph. A shard over budget raises the shard count; a unit over it alone must shorten.
@@ -216,34 +202,34 @@ Consequences: fourteen workspace checks cover the local stage's packages, each o
 
 **Status:** accepted
 
-Context: a part building the binary cold and running its CLI suite takes 1250–1750 s; under a 1800 s deadline the slowest regularly end without a verdict. The dispatcher runs two parts at a time, and each part repeats its own cold build. Criteria: every part reports a verdict, and the whole gate finishes soonest.
+Context: a part building the binary cold and running its CLI suite takes 1250–1750 s; under a 1800 s deadline the slowest regularly end without a verdict. Each part repeats its own cold build. Criteria: every part reports a verdict, and the whole gate finishes soonest.
 
 Decision: `assurance.gate.container` gives each part 45 min. The slowest passing part uses about 65% of it, and the part list stays as `assurance.gate.workspace-parts` and `assurance.build.profile-build` define it.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | A 45 min exec deadline *(chosen)* | — | A hung part reports 15 min later. |
-| Splitting each long part by test module | Gate wall clock | Each extra part adds a cold build of 550–760 s to a queue served two at a time. |
+| Splitting each long part by test module | Gate wall clock | Each extra part adds a cold build of 550–760 s. |
 | A shared build cache | Operability | A cache bucket and credential become part of the gate. |
 
-Consequences: a part non-terminal 60 min after dispatch is stalled. A part nearing 45 min splits under `assurance.gate.part-budget`.
+Consequences: a part nearing 45 min splits under `assurance.gate.part-budget`.
 
 ## Feature runs, formal checks and profile budgets run in a nightly tier
 
 **Status:** accepted
 
-Context: the pull-request gate runs about 6 h of wall clock at two parts at a time; the features, formal and budget parts sum to over 2 h of it, each a cold build of its own feature set or release profile. Criteria: a pull-request verdict within 30 min; every check still runs against every merged change; P7 holds. P7 rejects a nightly cadence for every assertion and keeps one for a check too costly per change, naming the change range.
+Context: the pre-merge gate runs about 6 h of wall clock; the features, formal and budget parts sum to over 2 h of it, each a cold build of its own feature set or release profile. Criteria: a pre-merge verdict within 30 min; every check stays runnable against the default-branch head; P7 holds. P7 rejects a nightly cadence for every assertion and keeps one for a check too costly per change, naming the change range.
 
-Decision: `assurance.gate.nightly-tier` moves the features, formal and budget parts out of the required pull-request checks. `assurance.measure.scheduled` runs them against the default-branch head, names the change range since the last passing run, and opens an issue on failure.
+Decision: `assurance.gate.nightly-tier` moves the features, formal and budget parts out of the pre-merge parts. `contextful-ci gate --stage <part>` runs each on demand against the default-branch head.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| A nightly tier for features, formal and budget *(chosen)* | — | A feature-only, proof or footprint regression lands and reds the next nightly run, attributed to a change range rather than one change. |
+| A nightly tier for features, formal and budget *(chosen)* | — | A feature-only, proof or footprint regression lands and reds the next run of its part, attributed to the change range since the last passing run rather than one change. |
 | Every part per change | Gate wall clock | Thirteen extra cold builds on every pull request. |
 | Per-change parts selected by changed paths alone | Detectability | A spec or dependency change reaches proofs and footprints no path filter names. |
 | One shared build cache across parts | Operability | A cache bucket and credential become part of the gate, and feature runs still resolve separately. |
 
-Consequences: `contextful-ci gate --stage <part>` reproduces a nightly part locally; a nightly part runs remotely only through `assurance.measure.scheduled`.
+Consequences: a nightly part runs only when an operator invokes it; no scheduler runs it or opens an issue.
 
 Revisit: pull-request parts share builds, so the nightly parts fit the 30 min verdict.
 
@@ -292,7 +278,7 @@ Decision: releases ship Linux on musl for every profile and macOS for edge and f
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| No WASI release, a scheduled probe *(chosen)* | — | A function-class host runs the musl edge build or none; the probe's verdict waits for the nightly run. |
+| No WASI release, a scheduled probe *(chosen)* | — | A function-class host runs the musl edge build or none; the probe's verdict waits for a scheduled-tier measure run. |
 | Ship `wasm32-wasip2` for edge | Buildability | The engine's threads and file locks have no WASI preview-2 equivalent; every release blocks on a port. |
 | Drop the target with no probe | Measured viability | Nobody learns when the engine's WASI support reaches the budget. |
 
@@ -304,7 +290,7 @@ Consequences: the accepted cost is that a WASI host stays unserved until the pro
 
 Context: workspace artifacts retain checkout paths, merge history changes test selection, and a stage timeout without phase evidence obscures whether compilation or tests exhaust the budget. Criteria: each verdict identifies its source, comparison and failure class.
 
-Decision: `assurance.build.checkout-artifacts` and `assurance.build.runtime-checkout` bind builds and helpers to invocation identity. `assurance.test.comparison-base`, `assurance.test.merge-source` and `assurance.test.base-evidence` bind test-first obligations to one comparison and distinguish infrastructure from regression evidence. `assurance.gate.stage-timings`, `assurance.gate.part-budget`, `assurance.gate.build-admission` and `assurance.gate.timeout-cleanup` bind resource evidence to dispatched parts.
+Decision: `assurance.build.checkout-artifacts` and `assurance.build.runtime-checkout` bind builds and helpers to invocation identity. `assurance.test.comparison-base`, `assurance.test.merge-source` and `assurance.test.base-evidence` bind test-first obligations to one comparison and distinguish infrastructure from regression evidence. `assurance.gate.stage-timings`, `assurance.gate.part-budget`, `assurance.gate.build-admission` and `assurance.gate.timeout-cleanup` bind resource evidence to parts.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -353,18 +339,18 @@ Consequences: the accepted cost is that a defect in the relation a scan resolves
 
 **Status:** accepted
 
-Context: the toolchain stage reads the pins stage's record, and the formal stage reads the toolchain stage's environment. Each remote check runs one stage in a fresh sandbox, and a contributor reruns one stage locally. Criteria: a gate fails rather than skips (P7); a remote check and a local run invoke one command; a rerun reuses an output already on disk.
+Context: the toolchain stage reads the pins stage's record, and the formal stage reads the toolchain stage's environment. A part run in a fresh checkout holds no earlier stage's output, and a contributor reruns one stage locally. Criteria: a gate fails rather than skips (P7); a fresh run and a rerun invoke one command; a rerun reuses an output already on disk.
 
-Decision: `assurance.gate.stage-subset` runs a selection in the sequence's order and refuses before any stage starts when a selected stage reads an unselected predecessor's output and that output is absent. `--predecessors` adds those predecessors, and FlareDispatch passes it (`assurance.gate.remote-predecessors`).
+Decision: `assurance.gate.stage-subset` runs a selection in the sequence's order and refuses before any stage starts when a selected stage reads an unselected predecessor's output and that output is absent. `--predecessors` adds those predecessors for a run in a fresh checkout.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Sequence order, refuse an absent predecessor output *(chosen)* | — | Each remote formal check reruns pins and toolchain. |
+| Sequence order, refuse an absent predecessor output *(chosen)* | — | Each fresh-checkout formal run reruns pins and toolchain. |
 | Run the named stages alone, whatever is absent | Fail rather than skip | The formal stage runs without the pinned Lean toolchain and reports a verdict on another one. |
 | Always add every predecessor | Rerun reuse | A local formal rerun repeats the pin fetch and provisioning each time. |
 | Run in the order named | One command | Two contributors naming one subset differently run different gates. |
 
-Consequences: a predecessor's output on disk satisfies its reader, so a stale record from an earlier run reaches the stage. The accepted cost: the remote formal check pays the pins and toolchain stages on every run.
+Consequences: a predecessor's output on disk satisfies its reader, so a stale record from an earlier run reaches the stage. The accepted cost: a fresh-checkout formal run pays the pins and toolchain stages every time.
 
 ## Generated artifacts prove currency by regeneration and diff
 
@@ -432,15 +418,14 @@ Consequences: a report without a reference or an execution component refuses; a 
 
 **Status:** accepted
 
-Context: every pull request dispatches every required part, two at a time, each repeating its own cold build, so a prose change waits hours behind binary feature suites. Criteria: branch protection still sees every required check, no change skips a part its diff can reach, and the selection runs locally.
+Context: running every pre-merge part, each repeating its own cold build, makes a prose change wait hours behind binary feature suites. Criteria: no change skips a part its diff can reach, and the selection runs locally.
 
-Decision: `assurance.gate.affected-parts` lists the required parts the diff from the merge base reaches. Build inputs and unmapped paths reach every part under `assurance.gate.affected-every`; spec, TypeScript and Lean paths reach their own parts. `assurance.gate.remote-check` completes every unlisted required part as succeeded.
+Decision: `assurance.gate.affected-parts` lists the required parts the diff from the merge base reaches. Build inputs and unmapped paths reach every part under `assurance.gate.affected-every`; spec, TypeScript and Lean paths reach their own parts.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | A path map with a dependency closure through pins, every unknown reaching every part *(chosen)* | — | A new top-level directory reaches every part until a clause maps it. |
 | A cargo dependency graph per changed package | Locality | Every part learns which packages it compiles; a lock change still reaches everything. |
 | Every part on every change | Gate wall clock | A spec-only change waits on hours of builds. |
-| Skipped required checks left absent | Branch protection | An absent required check blocks the merge. |
 
 Consequences: a change confined to `spec/`, `references/`, `apps/`, `packages/` or `formal/` runs a fraction of the parts. A part the map omits wrongly stays green until a change under `crates/` or `tools/` runs it.

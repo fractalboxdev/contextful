@@ -136,10 +136,10 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
     }
 }
 
-/// Remote workspace checks compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.
-// spec: assurance.gate.workspace-parts@63542de6
+/// The workspace parts compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.
+// spec: assurance.gate.workspace-parts@8cd5b1cd
 #[test]
-fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
+fn workspace_parts_compile_the_union_and_run_each_package_suite() {
     let r = Repo::init();
     with_acceptance(&r);
     for name in ["sample", "contextful-engine", "contextful-context", "contextful-cli", "contextful-ci"] {
