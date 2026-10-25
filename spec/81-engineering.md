@@ -158,7 +158,11 @@ Target directories, the engine-linked invocation, linked query functions, build 
   *because the run keeper survives a panicking job only by unwinding to its guard*
 - `profile-build` — The features stage tests each package under every feature set its manifest lists in `feature-runs`: each other package has its own nightly check; each binary feature run has separate nightly checks for differential tests and all remaining tests.
   *because one cold build of the binary under one feature set fills most of a stage's wall clock, and a listed set reaches what none and all miss*
-- `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
+- `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` by default, as a static binary for the `PLATFORM` and `RUST_TARGET` its arguments name, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
+- `release-image` — Each profile's release image is an OCI index of a `linux/amd64` and a `linux/arm64` manifest; `contextful-ci image` assembles each from the profile's `x86_64` or `aarch64` musl release binary, with the `Dockerfile`'s runtime user, volume and entrypoint.
+  *because arm64 hosts pull the same tag natively, and each release cell already holds its target's binary, so no image compiles twice*
+- `image-binary-mismatch` — A binary whose ELF machine differs from its target's, or whose program headers name a dynamic interpreter, raises `ImageBinaryMismatch`, naming the target.
+  *because a mislabelled layer runs only under emulation, and a dynamic binary finds no C library in the static runtime*
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
   *A-assurance*
 - `windows-target` — Windows targets are excluded from the release matrix; no profile publishes Windows artifacts.

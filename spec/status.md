@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 354 | 72 | 25 | 5 | 304 | 0 | 304 |
+| `assurance` | 3 | 18 | 356 | 73 | 25 | 5 | 306 | 0 | 306 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 308 | 0 | 308 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 328 | 0 | 328 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
 | `topology` | 1 | 6 | 85 | 26 | 5 | 3 | 81 | 0 | 81 |
-| **total** | 26 | 177 | 2911 | 710 | 229 | 84 | 2563 | 0 | |
+| **total** | 26 | 177 | 2913 | 711 | 229 | 84 | 2565 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 67 | 55 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 197 | 154 | passing | closed |
+| 14 — Assurance | 7 | 199 | 156 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
@@ -129,12 +129,14 @@ Unscheduled operations: 13.
 | `assurance.build.debug-info` | `tools/ci/tests/integration/target_dirs.rs::development_and_test_builds_carry_line_tables_only` | performed |
 | `assurance.build.dependency-allowlist` | `tools/ci/tests/integration/deny.rs::a_backtracking_matcher_or_unbounded_parser_in_a_profile_is_refused` | performed |
 | `assurance.build.formula-manifest` | `tools/ci/tests/integration/artifact.rs::formula_uses_metadata_without_local_release_archives` | performed |
+| `assurance.build.image-binary-mismatch` | `tools/ci/tests/integration/image.rs::an_image_binary_of_another_machine_or_naming_an_interpreter_is_refused` | performed |
 | `assurance.build.licence-field` | `tools/ci/tests/integration/topology.rs::a_workspace_package_without_the_apache_licence_is_refused` | performed |
 | `assurance.build.linked-query-functions` | `crates/contextful-context/tests/integration/read/extension.rs::columnar_reading_and_statement_serialization_are_statically_linked_and_loaded` | performed |
 | `assurance.build.one-engine-build` | `tools/ci/tests/integration/target_dirs.rs::the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_without_read` | performed |
 | `assurance.build.profile-build` | `tools/ci/tests/integration/features.rs::the_features_stage_tests_each_listed_run_in_two_binary_parts` | performed |
 | `assurance.build.release-artifact` | `tools/ci/tests/integration/artifact.rs::a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae` | performed |
 | `assurance.build.release-builder` | `tools/ci/tests/integration/artifact.rs::zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata` | performed |
+| `assurance.build.release-image` | `tools/ci/tests/integration/image.rs::the_release_image_indexes_an_amd64_and_an_arm64_manifest_assembled_from_release_binaries` | performed |
 | `assurance.build.release-metadata` | `tools/ci/tests/integration/artifact.rs::zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata` | performed |
 | `assurance.build.release-profile` | `tools/ci/tests/integration/image.rs::the_release_profile_optimizes_across_crates_strips_and_unwinds` | performed |
 | `assurance.build.runtime-extension-load` | `crates/contextful-context/tests/integration/read/extension.rs::an_explicit_load_or_install_refuses` | performed |
