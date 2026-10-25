@@ -20,6 +20,7 @@ use std::sync::Mutex;
 mod stores;
 mod export;
 mod guard;
+mod tls;
 pub use export::PgExportLedger;
 pub use stores::{PgAwakeableStore, PgBlobStore, PgJournalStore, PgRunStores, EXECUTION_SCHEMA_VERSION};
 
@@ -66,6 +67,8 @@ const NOW_US: &str = "(EXTRACT(EPOCH FROM clock_timestamp()) * 1000000)::BIGINT"
 /// The catalog in one Postgres database, over one connection per daemon.
 pub struct PgCatalog {
     config: Config,
+    /// The roots this connection authenticates its server against.
+    tls: rustls::ClientConfig,
     /// `host:port/database`, the name every failure carries; never the password.
     name: String,
     client: Mutex<Client>,
@@ -107,10 +110,10 @@ impl PgCatalog {
 
     fn connect_schema(conninfo: &str, initialize: bool) -> Result<PgCatalog, Failure> {
         // A parse error can quote the string, password included, so it is not passed on.
-        let config = protected_config(conninfo)?;
+        let (config, tls) = protected_config(conninfo)?;
         let name = describe(&config);
-        let client = connect(&config).map_err(|e| storage(&name, e))?;
-        let catalog = PgCatalog { config, name, client: Mutex::new(client) };
+        let client = connect(&config, &tls).map_err(|e| storage(&name, e))?;
+        let catalog = PgCatalog { config, tls, name, client: Mutex::new(client) };
         if !initialize { return Ok(catalog) }
         catalog.with(|tx, fail| {
             tx.execute("SELECT pg_advisory_xact_lock($1)", &[&SCHEMA_LOCK]).map_err(|e| fail(&e))?;
@@ -131,7 +134,7 @@ impl PgCatalog {
         // A blocked takeover or keeper renewal must not hold the shared client
         // while the admitted callback updates its run metadata.
         if guard::active() {
-            let mut client = connect(&self.config).map_err(|e| fail(&e))?;
+            let mut client = connect(&self.config, &self.tls).map_err(|e| fail(&e))?;
             let mut tx = client.transaction().map_err(|e| fail(&e))?;
             let out = f(&mut tx, &fail)?;
             tx.commit().map_err(|e| fail(&e))?;
@@ -139,7 +142,7 @@ impl PgCatalog {
         }
         let mut client = self.client.lock().unwrap_or_else(|p| p.into_inner());
         if client.is_closed() {
-            *client = connect(&self.config).map_err(|e| fail(&e))?;
+            *client = connect(&self.config, &self.tls).map_err(|e| fail(&e))?;
         }
         let mut tx = client.transaction().map_err(|e| fail(&e))?;
         let out = f(&mut tx, &fail)?;
@@ -148,7 +151,16 @@ impl PgCatalog {
     }
 }
 
-fn protected_config(conninfo: &str) -> Result<Config, Failure> {
+/// The parsed connection string and the TLS configuration its `sslrootcert`, if any,
+/// selects; the bundle loads here, before any connection.
+fn protected_config(conninfo: &str) -> Result<(Config, rustls::ClientConfig), Failure> {
+    let (conninfo, root_cert) = tls::split_root_cert(conninfo);
+    let config = transport_config(&conninfo)?;
+    let tls = tls::client_config(root_cert.as_deref()).map_err(|e| storage(&describe(&config), e))?;
+    Ok((config, tls))
+}
+
+fn transport_config(conninfo: &str) -> Result<Config, Failure> {
     let mut config: Config = conninfo.parse().map_err(|_| storage("", "the connection string does not parse"))?;
     let local = config.get_hostaddrs().iter().all(std::net::IpAddr::is_loopback) && config.get_hosts().iter().all(|host| match host {
         postgres::config::Host::Tcp(host) => host == "localhost" || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback()),
@@ -165,12 +177,18 @@ fn protected_config(conninfo: &str) -> Result<Config, Failure> {
     Ok(config)
 }
 
-fn connect(config: &Config) -> Result<Client, postgres::Error> {
-    let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let tls = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(rustls::crypto::ring::default_provider()))
-        .with_safe_default_protocol_versions().expect("ring supports the configured TLS versions")
-        .with_root_certificates(roots).with_no_client_auth();
-    config.connect(tokio_postgres_rustls::MakeRustlsConnect::new(tls))
+/// A connection, or the failure with its cause chain, so a refused certificate names its
+/// reason (an unknown issuer, another name) rather than only a failed handshake.
+fn connect(config: &Config, tls: &rustls::ClientConfig) -> Result<Client, String> {
+    config.connect(tokio_postgres_rustls::MakeRustlsConnect::new(tls.clone())).map_err(|e| {
+        let mut message = e.to_string();
+        let mut cause = std::error::Error::source(&e);
+        while let Some(c) = cause {
+            message = format!("{message}: {c}");
+            cause = c.source();
+        }
+        message
+    })
 }
 
 fn instant_us(us: i64, fail: Fail) -> Result<Instant, Failure> {

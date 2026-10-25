@@ -23,6 +23,7 @@ serde_json = "1"
 [dev-dependencies]
 contextful-acceptance = { path = "../acceptance" }
 contextful-engine = { path = "../contextful-engine" }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde_json = "1"
 tempfile = "3"
 

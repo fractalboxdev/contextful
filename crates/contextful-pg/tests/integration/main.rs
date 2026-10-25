@@ -12,6 +12,7 @@ mod image_awakeable;
 mod server;
 mod stores;
 mod export;
+mod tls;
 
 use contextful_core::run::own::{ConnectorPin, ExecutionOwner, OwnerScope, Pins};
 use contextful_core::run::record::{Phase, RunRow, RunStatus};

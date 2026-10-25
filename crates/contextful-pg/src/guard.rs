@@ -82,7 +82,7 @@ pub(super) fn acquire(
         ));
     }
     let fail = |e: &dyn std::fmt::Display| storage(&db.name, e);
-    let client = connect(&db.config).map_err(|e| fail(&e))?;
+    let client = connect(&db.config, &db.tls).map_err(|e| fail(&e))?;
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     HELD.fetch_add(1, Ordering::SeqCst);
     let mut guard = Guard {
