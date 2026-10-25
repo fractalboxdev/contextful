@@ -813,7 +813,7 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "contextful-acceptance"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-agent"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-context",
  "contextful-core",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-ci"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -871,7 +871,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-cli"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -910,7 +910,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-connectors"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-core",
  "contextful-decode",
@@ -929,7 +929,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-context"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -962,7 +962,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-control"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-core",
  "contextful-policy",
@@ -976,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-core"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "base64 0.22.1",
  "regex-automata",
@@ -996,7 +996,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-d1"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-core",
  "contextful-eval",
@@ -1010,7 +1010,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-decode"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-core",
  "encoding_rs",
@@ -1024,7 +1024,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-engine"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-connectors",
  "contextful-core",
@@ -1043,7 +1043,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-eval"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-core",
  "serde",
@@ -1055,7 +1055,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-fs"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-eval",
  "getrandom 0.3.4",
@@ -1066,7 +1066,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-memory"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-context",
  "contextful-core",
@@ -1081,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-outbound"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-acceptance",
  "contextful-core",
@@ -1098,7 +1098,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-pg"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-acceptance",
  "contextful-core",
@@ -1114,7 +1114,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-policy"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "base64 0.22.1",
  "biscuit-auth",
@@ -1142,7 +1142,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-probe"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-connectors",
  "contextful-context",
@@ -1160,7 +1160,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-snapshot"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-core",
  "contextful-fs",
@@ -1174,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-spec"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1188,7 +1188,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-sqlite"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-context",
  "contextful-core",
@@ -1204,7 +1204,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-sync"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "contextful-acceptance",
  "contextful-context",
@@ -1226,7 +1226,7 @@ dependencies = [
 
 [[package]]
 name = "contextful-wasm"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "arrow-array",
  "arrow-ipc",
