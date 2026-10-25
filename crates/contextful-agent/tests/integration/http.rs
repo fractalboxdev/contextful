@@ -977,6 +977,26 @@ fn a_read_while_the_snapshot_set_hydrates_answers_503_with_retry_after_and_admit
     assert_eq!(body(&answer)["hydration"], "warming");
 }
 
+/// `GET /health?ready=hydrated` answers as {{read.register.past-ceiling}} until snapshot-set hydration completes, then
+/// as {{read.register.health}}.
+// spec: read.register.health-hydrated@9dc6af02
+#[test]
+fn a_hydrated_readiness_probe_answers_503_while_warming_and_200_once_hydrated() {
+    let hydration: &'static Hydration = Box::leak(Box::new(Hydration::warming()));
+    let (_f, addr, _) = listen_hydrating(fixture(), hydration);
+    let ready = HttpRequest { method: "GET".into(), target: "/health?ready=hydrated".into(), headers: vec![], body: vec![] };
+    let (status, head, _) = send(addr, &ready);
+    assert_eq!(status, 503, "{head}");
+    assert!(head.contains("Retry-After: 1\r\n") || head.ends_with("Retry-After: 1"), "{head}");
+    // Plain `/health` still reports readiness while the set hydrates.
+    assert_eq!(send(addr, &health()).0, 200);
+    hydration.finish();
+    let (status, head, answer) = send(addr, &ready);
+    assert_eq!(status, 200, "{head}");
+    assert_eq!(body(&answer)["hydration"], "complete");
+    assert_eq!(body(&answer)["contextful.build"]["faces"], json!(["http"]));
+}
+
 /// The receive route admits the credential on the request head and calls its handler before any body byte is read;
 /// the body reader refuses a body past the handler's bound unread, and checks a holder proof against the body it reads.
 #[test]

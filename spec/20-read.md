@@ -132,6 +132,8 @@ Registered relations, query tools, templates, the embedded SQL engine and HTTP t
   *because the listener reads the body before admission, and an unbounded body lets an unadmitted caller hold memory*
 - `health` — `GET /health` answers `200` with the build identity of {{read.embed.build-identity}}, admitting no credential and reading no row.
   *because a container runtime probes readiness before any caller holds a credential*
+- `health-hydrated` — `GET /health?ready=hydrated` answers as {{read.register.past-ceiling}} until snapshot-set hydration completes, then as {{read.register.health}}.
+  *because a load balancer probing plain `/health` routes reads to a container still hydrating, which answers each one `503`*
 
 ## guard
 

@@ -119,6 +119,12 @@ impl HttpRequest {
         self.target.split('?').next().unwrap_or_default()
     }
 
+    /// Each `name=value` pair of the target's query, undecoded.
+    fn query_pairs(&self) -> impl Iterator<Item = (&str, &str)> {
+        let query = self.target.split_once('?').map_or("", |(_, q)| q);
+        query.split('&').filter(|p| !p.is_empty()).map(|p| p.split_once('=').unwrap_or((p, "")))
+    }
+
     /// The credential of an `Authorization: DPoP` or `Authorization: Bearer` header, the
     /// scheme compared case-insensitively. Either scheme reaches admission, where the
     /// credential's confirmation claim, not the scheme, decides whether a proof is required.
@@ -550,7 +556,10 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// Answer one request under a slot already held.
     pub fn answer(&self, request: &HttpRequest) -> HttpResponse {
         let hydration = self.hydration.map_or("complete", Hydration::state);
-        if hydration == "warming" && !(request.path() == HEALTH_PATH && request.method == "GET") {
+        // A readiness probe asking for hydration answers as a read does while the set warms
+        // (`read.register.health-hydrated`).
+        let probe = request.path() == HEALTH_PATH && request.method == "GET" && !request.query_pairs().any(|p| p == ("ready", "hydrated"));
+        if hydration == "warming" && !probe {
             return HttpResponse::unavailable("the snapshot set is hydrating; reads answer once it is local");
         }
         match (request.path(), request.method.as_str()) {

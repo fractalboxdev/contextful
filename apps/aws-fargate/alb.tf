@@ -20,8 +20,9 @@ resource "aws_lb" "serve" {
   }
 }
 
-# `GET /health` admits no credential and answers 200 with the build identity and the
-# snapshot-set hydration state; every other route answers 503 while hydration runs.
+# `GET /health?ready=hydrated` admits no credential, answers 503 while snapshot-set
+# hydration runs and 200 once it completes, so the target group routes no read to a
+# warming task (`read.register.health-hydrated`).
 resource "aws_lb_target_group" "serve" {
   name                 = "${var.name}-serve"
   port                 = var.serve_port
@@ -31,7 +32,7 @@ resource "aws_lb_target_group" "serve" {
   deregistration_delay = 30
 
   health_check {
-    path                = "/health"
+    path                = "/health?ready=hydrated"
     matcher             = "200"
     interval            = 15
     timeout             = 5
