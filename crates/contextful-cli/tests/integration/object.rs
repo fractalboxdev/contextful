@@ -399,3 +399,65 @@ fn a_cycle_whose_drain_fails_exits_non_zero_and_keeps_the_delivery() {
     assert!(said.contains("queue drain failed") && said.contains("`dead`"), "{said}");
     assert_eq!(spool.receive(10).unwrap().len(), 1, "the arrival stays queued for the next cycle");
 }
+
+/// The queue messages pending in the project's local spool.
+fn spooled(dir: &Path) -> Vec<contextful_core::run::queue::QueueMessage> {
+    use contextful_core::run::queue::Queue;
+    let spool = contextful_engine::queue::LocalSpool::open(&dir.join(".contextful/queue/research")).unwrap();
+    spool.receive(10).unwrap().into_iter().map(|d| d.message).collect()
+}
+
+/// The daemon drains the queue under the cadence lease between cadence fires: an arrival key wakes its prefix read
+/// while the source's hourly cadence is far from due, and the woken read's post-commit wake-up stays spooled.
+// spec: surface.fire.daemon-drain@a2bc94c8
+#[test]
+fn the_daemon_drains_arrival_keys_between_cadence_fires() {
+    use contextful_core::run::queue::{Queue, QueueMessage};
+    use contextful_engine::queue::LocalSpool;
+
+    let server = S3Server::start("lake");
+    let keys = S3Credentials { access_key_id: Hydrated::new(ACCESS_KEY), secret_access_key: Hydrated::new(SECRET_KEY), session_token: None };
+    let writer = S3Bucket::open(&server.endpoint, "us-east-1", "lake", keys).unwrap();
+    writer.put("feed/01.jsonl", b"{\"n\":1}\n", Condition::None).unwrap();
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n[[pipeline]]\nid = \"feed\"\ntables = [\"orders\"]\nschedule = \"every 1h\"\n[pipeline.source]\nname = \"s3\"\nconfig = {{ bucket = \"lake\", endpoint = \"{}\", prefix = \"feed/\", suffix = \".jsonl\", format = \"jsonl\", skip_unchanged = true, access_key_id = \"secret://lake-key-id\", secret_access_key = \"secret://lake-secret\" }}\n",
+        server.endpoint
+    ));
+    let p = dir.path();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let mut daemon = crate::pipeline::Daemon::start_env(p, &LAKE_ENV);
+    let fired = daemon.wait_for("fire feed: done", 0);
+
+    writer.put("feed/02.jsonl", b"{\"n\":2}\n{\"n\":3}\n", Condition::None).unwrap();
+    LocalSpool::open(&p.join(".contextful/queue/research")).unwrap().send(&QueueMessage::ObjectArrival { bucket: "lake".into(), key: "feed/02.jsonl".into() }).unwrap();
+    daemon.wait_for("\"arrivals\":1", fired);
+    assert!(daemon.running(), "{}", daemon.lines().join("\n"));
+    assert!(daemon.terminate().success(), "{}", daemon.lines().join("\n"));
+    assert_eq!(daemon.lines().iter().filter(|l| l.contains("fire feed: started")).count(), 1, "the hourly cadence fired once:\n{}", daemon.lines().join("\n"));
+    assert!(rows(p).contains("\"3\""), "{}", rows(p));
+    let waiting = spooled(p);
+    assert!(!waiting.is_empty() && waiting.iter().all(|m| matches!(m, QueueMessage::Committed { .. })), "only wake-ups wait for `queue drain`: {waiting:?}");
+}
+
+/// A daemon drain that fails logs its error and leaves the delivery queued; the daemon keeps serving and drains again
+/// on its next pass.
+// spec: surface.fire.daemon-drain-retry@d169b8df
+#[test]
+fn a_failed_daemon_drain_logs_keeps_serving_and_retries() {
+    use contextful_core::run::queue::{Queue, QueueMessage};
+    use contextful_engine::queue::LocalSpool;
+
+    // `dead` reads an endpoint nothing listens on and declares no schedule, so only its arrival fires it.
+    let dir = project(
+        "site_id = \"site-a\"\n[[pipeline]]\nid = \"dead\"\ntables = [\"orders\"]\n[pipeline.source]\nname = \"s3\"\nconfig = { bucket = \"lake\", endpoint = \"http://127.0.0.1:9\", prefix = \"feed/\", format = \"jsonl\", access_key_id = \"secret://lake-key-id\", secret_access_key = \"secret://lake-secret\" }\n",
+    );
+    let p = dir.path();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    LocalSpool::open(&p.join(".contextful/queue/research")).unwrap().send(&QueueMessage::ObjectArrival { bucket: "lake".into(), key: "feed/01.jsonl".into() }).unwrap();
+    let mut daemon = crate::pipeline::Daemon::start_env(p, &LAKE_ENV);
+    let first = daemon.wait_for("queue drain failed", 0);
+    daemon.wait_for("queue drain failed", first + 1);
+    assert!(daemon.running(), "a failed drain stops nothing:\n{}", daemon.lines().join("\n"));
+    assert!(daemon.terminate().success(), "{}", daemon.lines().join("\n"));
+    assert!(matches!(spooled(p).as_slice(), [QueueMessage::ObjectArrival { key, .. }] if key == "feed/01.jsonl"), "the arrival stays queued");
+}

@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 20 | 327 | 58 | 30 | 16 | 285 | 0 | 285 |
 | `run` | 3 | 29 | 613 | 129 | 49 | 19 | 579 | 0 | 579 |
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
-| `surface` | 2 | 22 | 200 | 71 | 24 | 2 | 171 | 0 | 171 |
+| `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 173 | 0 | 173 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 88 | 0 | 88 |
-| **total** | 26 | 177 | 2930 | 711 | 234 | 84 | 2595 | 0 | |
+| **total** | 26 | 177 | 2932 | 711 | 235 | 84 | 2597 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 100 | 85 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 119 | 106 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 121 | 108 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 67 | 55 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
@@ -2491,6 +2491,8 @@ Unscheduled operations: 13.
 | `surface.fire.cycle-drain` | `crates/contextful-cli/tests/integration/object.rs::a_cycle_drains_arrival_keys_between_cadence_fires` | performed |
 | `surface.fire.cycle-drain-exit` | `crates/contextful-cli/tests/integration/object.rs::a_cycle_whose_drain_fails_exits_non_zero_and_keeps_the_delivery` | performed |
 | `surface.fire.cycle-exit` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_a_failed_fire_exits_non_zero` | performed |
+| `surface.fire.daemon-drain` | `crates/contextful-cli/tests/integration/object.rs::the_daemon_drains_arrival_keys_between_cadence_fires` | performed |
+| `surface.fire.daemon-drain-retry` | `crates/contextful-cli/tests/integration/object.rs::a_failed_daemon_drain_logs_keeps_serving_and_retries` | performed |
 | `surface.fire.job-identity` | `spec/pins.toml` | performed |
 | `surface.fire.job-kind-unknown` | `crates/contextful-core/tests/integration/job.rs::a_kind_outside_the_union_or_a_command_raises_job_kind_unknown` | performed |
 | `surface.fire.job-snapshot` | `spec/pins.toml` | performed |

@@ -139,7 +139,7 @@ ECS stops a `serve` task in two steps. It first deregisters the task from the ta
 
 ## `fargate-daemon`
 
-`shape = "fargate-daemon"` removes the schedule and the scheduler role and runs the `pipeline` task definition as a one-task service whose command is `contextful pipeline serve`: the in-process scheduler arms each unit under the cadence lease, for cadences below the one-minute floor of EventBridge Scheduler. A deployment stops the old task before starting its replacement, and the cadence lease fences any overlap. The `serve` service and every other resource stay identical. The daemon's scheduler drains no queue, so under `fargate-daemon` queued batches and object-arrival keys wait for a `queue drain` command override.
+`shape = "fargate-daemon"` removes the schedule and the scheduler role and runs the `pipeline` task definition as a one-task service whose command is `contextful pipeline serve`: the in-process scheduler arms each unit under the cadence lease, for cadences below the one-minute floor of EventBridge Scheduler. A deployment stops the old task before starting its replacement, and the cadence lease fences any overlap. The `serve` service and every other resource stay identical. While it holds the cadence lease, the daemon drains the queue beside its ticks, starting each drain 5 s after the previous one ends, so queued batches land and object-arrival keys wake their reads between cadence fires (`surface.fire.daemon-drain`). A failed drain leaves its deliveries queued and the next pass retries them (`surface.fire.daemon-drain-retry`).
 
 ## Validation
 

@@ -214,6 +214,10 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
   *because an object-arrival key or a queued batch must reach its read between cadence fires, and the cadence lease keeps one drainer*
 - `cycle-drain-exit` — A cycle whose drain fails exits non-zero as {{surface.fire.cycle-exit}} does, its deliveries left queued for the next cycle.
   *because a drain failure leaves work queued, and a scheduler reading a zero retries none of it*
+- `daemon-drain` — While it holds the cadence lease, `pipeline serve` under the in-process trigger drains the queue as {{surface.fire.cycle-drain}} does, beside its ticks, starting each drain 5 s after the previous one ends.
+  *because a daemon running no cycle still owes each object-arrival key and queued batch its read, and the cadence lease keeps one drainer*
+- `daemon-drain-retry` — A failed daemon drain logs its error and leaves its deliveries queued; the daemon keeps serving and drains again on its next pass.
+  *because one unreachable source must not stop every schedule the daemon arms*
 
 ## dispatch
 

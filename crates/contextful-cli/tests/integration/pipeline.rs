@@ -1480,12 +1480,22 @@ impl Daemon {
     }
 
     pub(crate) fn start_from(dir: &Path, extra: &[&str], exe: &Path) -> Daemon {
+        Self::start_in(dir, extra, exe, &[])
+    }
+
+    /// A daemon started with `env` in its process environment.
+    pub(crate) fn start_env(dir: &Path, env: &[(&str, &str)]) -> Daemon {
+        Self::start_in(dir, &[], Path::new(env!("CARGO_BIN_EXE_contextful")), env)
+    }
+
+    fn start_in(dir: &Path, extra: &[&str], exe: &Path, env: &[(&str, &str)]) -> Daemon {
         let mut child = Command::new(exe)
             .args(["pipeline", "serve", "--project", "research"])
             .args(extra)
             .current_dir(dir)
             .env_remove("CONTEXTFUL_NODE_ID")
             .env_remove("CONTEXTFUL_SECRETS_BACKEND")
+            .envs(env.iter().copied())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -1520,8 +1530,13 @@ impl Daemon {
         }
     }
 
+    /// Whether the daemon has not exited.
+    pub(crate) fn running(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+    }
+
     /// Send `SIGTERM` and wait up to 60 s for the exit.
-    fn terminate(&mut self) -> std::process::ExitStatus {
+    pub(crate) fn terminate(&mut self) -> std::process::ExitStatus {
         signal(self.pid(), "TERM");
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         loop {
