@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 323 | 58 | 29 | 16 | 281 | 0 | 281 |
 | `run` | 3 | 29 | 608 | 129 | 49 | 19 | 569 | 0 | 569 |
-| `store` | 6 | 20 | 342 | 72 | 24 | 12 | 326 | 0 | 326 |
+| `store` | 6 | 20 | 343 | 72 | 24 | 12 | 328 | 0 | 328 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
 | `topology` | 1 | 6 | 83 | 26 | 5 | 3 | 79 | 0 | 79 |
-| **total** | 26 | 177 | 2907 | 710 | 229 | 84 | 2558 | 0 | |
+| **total** | 26 | 177 | 2908 | 710 | 229 | 84 | 2560 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 12 | 309 | 298 | passing | closed |
 | 4 — Ingest | 25 | 646 | 537 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
-| 6 — Sync and replicas | 9 | 117 | 111 | passing | closed |
+| 6 — Sync and replicas | 9 | 118 | 113 | passing | closed |
 | 7 — Memory | 6 | 100 | 85 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -2279,9 +2279,11 @@ Unscheduled operations: 13.
 | `store.pull.part-collected` | `crates/contextful-sync/tests/integration/lazy.rs::a_part_the_bucket_no_longer_holds_refuses_the_read` | performed |
 | `store.pull.pointer-advance` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies` | performed |
 | `store.pull.pointer-last` | `crates/contextful-sync/tests/integration/pull.rs::a_pointer_is_written_only_once_its_snapshot_is_home` | performed |
+| `store.pull.run-manifest-last` | `crates/contextful-sync/tests/integration/pull.rs::a_run_manifest_is_written_only_once_its_parts_are_home` | performed |
 | `store.pull.run-state-cursor` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_resumes_the_cursor_a_push_carried` | performed |
 | `store.pull.run-state-torn` | `crates/contextful-sync/tests/integration/pull.rs::a_run_state_torn_by_an_uncommitted_push_is_discarded_and_the_next_push_heals_it` | performed |
 | `store.pull.schema-merge` | `crates/contextful-sync/tests/integration/pull.rs::a_pulled_schema_merges_into_the_local_one` | performed |
+| `store.pull.serve-refresh` | `crates/contextful-cli/tests/integration/sync/hydrate.rs::a_serving_face_pulls_each_new_generation_and_keeps_the_held_one_when_a_refresh_fails` | performed |
 | `store.pull.tombstone-applied` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_deletes_the_copy_a_tombstone_names` | performed |
 | `store.pull.transfer-width` | `crates/contextful-sync/tests/integration/pull.rs::a_cold_pull_keeps_sixteen_fetches_in_flight_and_reads_each_object_once` | performed |
 | `store.pull.unconverged` | `crates/contextful-sync/tests/integration/pull.rs::a_key_that_keeps_moving_refuses_and_writes_no_pointer` | performed |

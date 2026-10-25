@@ -330,7 +330,7 @@ pub struct PendingPull {
 impl PendingPull {
     /// Transfer every table of the bucket into the store. The report line is best effort:
     /// a closed stderr fails no pull.
-    pub fn run(self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
         use std::io::Write;
         let r = self.syncer.pull(&self.scope).context("`pull_before_run`")?;
         for discarded in &r.discarded {
@@ -338,6 +338,20 @@ impl PendingPull {
         }
         let _ = writeln!(std::io::stderr(), "pull_before_run: pulled {} objects and {} pointers", r.downloaded.len(), r.pointers.len());
         self.push_unpushed()
+    }
+
+    /// Pull every table of the bucket again into a store already serving
+    /// (`store.pull.serve-refresh`). A pull that changes nothing reports nothing.
+    pub fn refresh(&self) -> Result<()> {
+        use std::io::Write;
+        let r = self.syncer.pull(&self.scope)?;
+        for discarded in &r.discarded {
+            let _ = writeln!(std::io::stderr(), "pull_before_run: warning: {discarded}");
+        }
+        if !(r.downloaded.is_empty() && r.removed.is_empty() && r.pointers.is_empty()) {
+            let _ = writeln!(std::io::stderr(), "pull_before_run: refreshed {} objects and {} pointers", r.downloaded.len(), r.pointers.len());
+        }
+        Ok(())
     }
 
     /// Push before the first read while this node holds a run marked unpushed and not lost

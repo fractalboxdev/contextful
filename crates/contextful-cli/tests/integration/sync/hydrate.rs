@@ -1,7 +1,7 @@
 //! A cold `serve --http` listening while its snapshot set hydrates from the bucket.
 #![cfg(unix)]
 
-use super::{file_sync, issue, project, seed, AUD};
+use super::{cf, file_sync, issue, ok, project, seed, AUD};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -40,8 +40,15 @@ impl Served {
 
 /// Start `contextful serve --http` on `dir` and wait at most `within` for it to listen.
 fn serve_within(dir: &Path, public: &str, within: Duration) -> Served {
+    serve_with(dir, public, &[], within)
+}
+
+/// Start `contextful serve --http` on `dir` with `extra` arguments and wait at most `within`
+/// for it to listen.
+fn serve_with(dir: &Path, public: &str, extra: &[&str], within: Duration) -> Served {
     let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
         .args(["serve", "--http", "127.0.0.1:0", "--project", "research", "--public-key", public, "--audience", AUD, "--max-in-flight", "4"])
+        .args(extra)
         .current_dir(dir)
         .env_remove("CONTEXTFUL_NODE_ID")
         .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
@@ -71,6 +78,7 @@ fn serve_within(dir: &Path, public: &str, within: Duration) -> Served {
 /// One request's status and body.
 fn exchange(addr: &str, method: &str, target: &str, token: Option<&str>, body: &str) -> (u16, String) {
     let mut s = std::net::TcpStream::connect(addr).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
     let auth = token.map(|t| format!("Authorization: Bearer {t}\r\n")).unwrap_or_default();
     write!(s, "{method} {target} HTTP/1.1\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
     let mut raw = String::new();
@@ -194,4 +202,52 @@ fn a_failed_transfer_after_listening_stops_the_server() {
     }
     assert!(rest.iter().any(|l| l.contains("pull_before_run")), "the failure names the pull: {rest:?}");
     assert!(!rest.iter().any(|l| l.starts_with("hydrated:")), "a failed transfer never completes hydration: {rest:?}");
+}
+
+fn rows(addr: &str, token: &str) -> Value {
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT id FROM filings ORDER BY id" } } }).to_string();
+    let (status, body) = exchange(addr, "POST", "/mcp", Some(token), &body);
+    assert_eq!(status, 200, "{body}");
+    let answer = serde_json::from_str::<Value>(&body).unwrap();
+    assert!(answer["result"]["structuredContent"]["rows"].is_array(), "{answer}");
+    answer["result"]["structuredContent"]["rows"].clone()
+}
+
+/// Under {{store.pull.before-run}}, `serve` pulls again every 30 s and maps the new generation for reads starting after
+/// that pull; a failed refresh keeps serving the held generation and logs the failure.
+// spec: store.pull.serve-refresh@7be93a2b
+#[test]
+fn a_serving_face_pulls_each_new_generation_and_keeps_the_held_one_when_a_refresh_fails() {
+    let bucket = tempfile::tempdir().unwrap();
+    let a = seed(&file_sync(bucket.path(), ""), &[]);
+    let cold = project("ingest-h", &file_sync(bucket.path(), "pull_before_run = true\n"));
+    let (public, token) = issue(cold.path());
+    let served = serve_with(cold.path(), &public, &["--refresh-secs", "1"], Duration::from_secs(8));
+    served.line("hydrated:", Duration::from_secs(60)).expect("the hydrator reports the mapped snapshot set");
+    assert_eq!(rows(&served.addr, &token), json!([["1"]]));
+
+    // Another node pushes a second run; its data object holds the next refresh until the test feeds it.
+    std::fs::write(a.path().join("batch.jsonl"), "{\"id\":2}\n").unwrap();
+    ok(&cf(a.path(), &["context", "land", "filings", "--project", "research", "--rows", "batch.jsonl", "--run-id", "run-2", "--site-id", "site", "--now", "2030-01-01T00:10:00Z"], &[]));
+    ok(&cf(a.path(), &["sync", "push", "--project", "research"], &[]));
+    let part = objects(bucket.path()).into_iter().find(|p| p.extension().is_some_and(|e| e == "parquet") && p.to_string_lossy().contains("run-2")).expect("the second run's part");
+    let bytes = std::fs::read(&part).unwrap();
+    std::fs::remove_file(&part).unwrap();
+    assert!(Command::new("mkfifo").arg(&part).status().unwrap().success());
+
+    // A read arriving while the refresh waits on the bucket answers from the held generation.
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(rows(&served.addr, &token), json!([["1"]]), "a read during a refresh answers from the held generation");
+
+    std::fs::OpenOptions::new().write(true).open(&part).unwrap().write_all(&bytes).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while rows(&served.addr, &token) != json!([["1"], ["2"]]) {
+        assert!(Instant::now() < deadline, "the face never served the pushed generation");
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    // A refresh that fails logs the failure, and reads keep the held generation.
+    std::fs::write(bucket.path().join("context-team/team/manifest.json"), "not a manifest").unwrap();
+    served.line("refresh failed", Duration::from_secs(30)).expect("a failed refresh logs the failure");
+    assert_eq!(rows(&served.addr, &token), json!([["1"], ["2"]]), "a failed refresh keeps the held generation");
 }

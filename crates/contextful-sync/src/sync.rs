@@ -1468,8 +1468,12 @@ impl Syncer {
                 .filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k)) && !(lazy && crate::lazy::is_lazy_part(k)))
                 .collect();
             // Each differing object downloads on its own request, up to the transfer width at once (`store.pull.transfer-width`).
+            // A read resolves every run whose `_manifest.json` exists, so each run manifest
+            // transfers after every other object has landed (`store.pull.run-manifest-last`).
+            let (rest, run_manifests): (Vec<_>, Vec<_>) = wanted.into_iter().partition(|(k, _)| !is_run_manifest(k));
+            let wanted: Vec<(&String, &Entry)> = rest.iter().chain(&run_manifests).copied().collect();
             let (read, hashed) = (AtomicU64::new(0), AtomicU64::new(0));
-            let fetched = each(self.config.transfers(), &wanted, |(key, entry)| {
+            let fetch = |(key, entry): &(&String, &Entry)| -> Result<Fetched> {
                 let Some(path) = self.local_path(key) else { return Ok(Fetched::Kept) };
                 let rel = &key[self.project.len() + 1..];
                 let local = record.digest(rel, &path).ok().flatten().map(|d| {
@@ -1518,6 +1522,21 @@ impl Syncer {
                 write(&path, &merged)?;
                 record.note(rel, &path, digest);
                 Ok(Fetched::Downloaded)
+            };
+            let width = self.config.transfers();
+            let fetched = each(width, &rest, &fetch).and_then(|mut first| {
+                // A run with an object short holds its manifest back for the retry.
+                let short: Vec<&str> = rest.iter().zip(&first)
+                    .filter(|(_, f)| matches!(f, Fetched::Missing))
+                    .map(|((k, _), _)| k.as_str())
+                    .collect();
+                let held = |k: &str| k.strip_suffix(MANIFEST_FILE).is_some_and(|run| short.iter().any(|s| s.starts_with(run)));
+                let ready: Vec<(&String, &Entry)> = run_manifests.iter().filter(|(k, _)| !held(k)).copied().collect();
+                let mut landed = each(width, &ready, &fetch)?.into_iter();
+                for (k, _) in &run_manifests {
+                    first.push(if held(k) { Fetched::Kept } else { landed.next().unwrap_or(Fetched::Kept) });
+                }
+                Ok(first)
             });
             report.bytes_read += read.into_inner();
             report.bytes_hashed += hashed.into_inner();
@@ -1758,6 +1777,13 @@ impl Syncer {
             }
         }
     }
+}
+
+/// Whether `key` is a run's manifest, `.../data/runs/<run-id>/<node-id>/_manifest.json`,
+/// whose presence commits the run to every read.
+fn is_run_manifest(key: &str) -> bool {
+    let segs: Vec<&str> = key.split('/').collect();
+    segs.len() >= 5 && segs[segs.len() - 1] == MANIFEST_FILE && segs[segs.len() - 5..segs.len() - 3] == ["data", "runs"]
 }
 
 /// The first part of `snapshot` absent under `table_dir`, or `None` when it is whole.
