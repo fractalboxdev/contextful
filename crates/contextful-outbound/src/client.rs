@@ -6,7 +6,7 @@
 
 use crate::egress::{self, Inbound, Intent, Outbound, Outcome, PreSendHook, Reserve, Transport, TransportFault};
 use crate::limiter::Meter;
-use contextful_core::connector::attach::{check_hop, check_transport, scrub, vet_address, Allowlist};
+use contextful_core::connector::attach::{check_hop, check_transport, scrub, vet_address_admitting, Allowlist, PrivateRanges};
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::{Failure, FailureTag};
@@ -118,6 +118,8 @@ pub struct Client {
     /// Whether a permitted host may resolve to an internal address: the operator's own
     /// limiter only (`connector.meter.limiter-address`).
     internal: bool,
+    /// The operator's admitted private ranges (`connector.attach.private-range-admitted`).
+    ranges: PrivateRanges,
 }
 
 /// A hop the hook admitted, and what it came to.
@@ -144,7 +146,15 @@ impl Client {
             run_id: None,
             framing: Vec::new(),
             internal: false,
+            ranges: egress::private_ranges().cloned().unwrap_or_default(),
         }
+    }
+
+    /// The client admitting addresses inside `ranges` past the private-address check, in
+    /// place of the process's [`egress::private_ranges`] (`connector.attach.private-range-admitted`).
+    pub fn with_private_ranges(mut self, ranges: PrivateRanges) -> Client {
+        self.ranges = ranges;
+        self
     }
 
     /// The client reaching the network through `transport` (`connector.attach.transport-port`).
@@ -286,7 +296,7 @@ impl Client {
         }
         if !self.internal {
             for a in &addrs {
-                vet_address(self.origin.host_str().unwrap_or_default(), a.ip()).map_err(deny)?;
+                vet_address_admitting(self.origin.host_str().unwrap_or_default(), a.ip(), &self.ranges).map_err(deny)?;
             }
         }
         Ok(addrs)

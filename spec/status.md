@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 356 | 73 | 25 | 5 | 306 | 0 | 306 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 308 | 0 | 308 |
+| `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 310 | 0 | 310 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 324 | 58 | 29 | 16 | 282 | 0 | 282 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 328 | 0 | 328 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
 | `topology` | 1 | 6 | 85 | 26 | 5 | 3 | 81 | 0 | 81 |
-| **total** | 26 | 177 | 2913 | 711 | 229 | 84 | 2565 | 0 | |
+| **total** | 26 | 177 | 2913 | 711 | 229 | 84 | 2567 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 311 | 300 | passing | closed |
-| 4 — Ingest | 25 | 646 | 537 | passing | closed |
+| 4 — Ingest | 25 | 646 | 539 | passing | closed |
 | 5 — The read face under enforcement | 17 | 318 | 284 | passing | closed |
 | 6 — Sync and replicas | 9 | 118 | 113 | passing | closed |
 | 7 — Memory | 6 | 100 | 85 | passing | closed |
@@ -648,6 +648,8 @@ Unscheduled operations: 13.
 | `connector.attach.no-material-to-a-guest` | `crates/contextful-wasm/tests/integration/attach.rs::the_host_attaches_the_credential_and_the_guest_sees_only_the_response` | performed |
 | `connector.attach.per-request-hydration` | `crates/contextful-wasm/tests/integration/attach.rs::a_hydrated_header_renders_afresh_for_each_request` | performed |
 | `connector.attach.private-address` | `crates/contextful-core/tests/integration/connector/attach.rs::a_permitted_name_resolving_inward_is_refused` | performed |
+| `connector.attach.private-range-admitted` | `crates/contextful-outbound/tests/integration/egress.rs::a_listed_private_range_reaches_the_send_half_under_the_allowlist` | performed |
+| `connector.attach.private-range-rejected` | `crates/contextful-cli/tests/integration/egress.rs::a_private_range_reaching_metadata_or_loopback_refuses_at_startup` | performed |
 | `connector.attach.redirect-pinning` | `crates/contextful-outbound/tests/integration/attach.rs::a_hop_is_followed_only_within_the_configured_origin` | performed |
 | `connector.attach.referer-off` | `crates/contextful-outbound/tests/integration/attach.rs::no_request_carries_a_referer` | performed |
 | `connector.attach.resolve-half` | `crates/contextful-outbound/tests/integration/egress.rs::resolution_follows_the_hook_and_runs_through_the_port` | performed |

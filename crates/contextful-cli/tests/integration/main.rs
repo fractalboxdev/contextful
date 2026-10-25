@@ -18,6 +18,8 @@ mod context;
 #[cfg(feature = "data-plane")]
 mod erase;
 #[cfg(feature = "data-plane")]
+mod egress;
+#[cfg(feature = "data-plane")]
 mod disclosure;
 #[cfg(feature = "data-plane")]
 mod derive;

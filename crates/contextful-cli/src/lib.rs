@@ -295,6 +295,11 @@ pub fn main_host(host: Host) {
         eprintln!("{error:#}");
         std::process::exit(1);
     }
+    #[cfg(feature = "read-plane")]
+    if let Err(error) = contextful_outbound::egress::private_ranges() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
     let result = match cli.cmd {
         #[cfg(feature = "data-plane")]
         Cmd::Storage(command) => storage::run(command),

@@ -5,10 +5,12 @@
 //! outcome; the limiter reservation is its innermost stage, behind any operator hook.
 
 use crate::client::HeaderValue;
+use contextful_core::connector::attach::{PrivateRanges, PRIVATE_RANGES_VAR};
+use contextful_core::connector::ConnectorError;
 use contextful_core::run::Failure;
 use std::fmt;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use url::Url;
 
@@ -135,6 +137,14 @@ pub fn system() -> Arc<dyn Transport> {
     {
         Arc::new(Unlinked)
     }
+}
+
+/// The process's admitted private ranges, read from [`PRIVATE_RANGES_VAR`] once. A process
+/// building mediated clients calls this at startup and exits on the refusal
+/// (`connector.attach.private-range-rejected`); a client built after a refusal admits no range.
+pub fn private_ranges() -> Result<&'static PrivateRanges, ConnectorError> {
+    static RANGES: OnceLock<Result<PrivateRanges, ConnectorError>> = OnceLock::new();
+    RANGES.get_or_init(|| PrivateRanges::parse(&std::env::var(PRIVATE_RANGES_VAR).unwrap_or_default())).as_ref().map_err(Clone::clone)
 }
 
 impl fmt::Debug for dyn Transport {

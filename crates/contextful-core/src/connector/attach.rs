@@ -170,10 +170,140 @@ pub fn internal_address(ip: IpAddr) -> bool {
 /// Vet a resolved address for a configured host: an internal address refuses unless the
 /// configured host is itself a loopback name or literal.
 pub fn vet_address(configured_host: &str, ip: IpAddr) -> Result<(), ConnectorError> {
-    if internal_address(ip) && !is_loopback_host(configured_host) {
+    vet_address_admitting(configured_host, ip, &PrivateRanges::default())
+}
+
+/// [`vet_address`] with the operator's admitted private ranges: an address inside one of
+/// `ranges` passes (`connector.attach.private-range-admitted`).
+pub fn vet_address_admitting(configured_host: &str, ip: IpAddr, ranges: &PrivateRanges) -> Result<(), ConnectorError> {
+    if internal_address(ip) && !is_loopback_host(configured_host) && !ranges.contains(ip) {
         return Err(ConnectorError::ConnectorPrivateAddress(format!("`{configured_host}` resolves to internal address {ip}")));
     }
     Ok(())
+}
+
+/// The process variable listing admitted private ranges, comma-separated CIDR entries.
+pub const PRIVATE_RANGES_VAR: &str = "CONTEXTFUL_EGRESS_PRIVATE_RANGES";
+
+/// One CIDR range, an IPv4-mapped IPv6 range held in its IPv4 form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Cidr {
+    V4(u32, u8),
+    V6(u128, u8),
+}
+
+impl Cidr {
+    /// Parse `a.b.c.d/n`, `x::y/n` or a bare address as a single-host range. Host bits set
+    /// past the prefix refuse, so an entry states exactly the range it admits.
+    fn parse(entry: &str) -> Option<Cidr> {
+        let (addr, prefix) = match entry.split_once('/') {
+            Some((a, p)) => (a.parse::<IpAddr>().ok()?, Some(p.parse::<u8>().ok()?)),
+            None => (entry.parse::<IpAddr>().ok()?, None),
+        };
+        let cidr = match addr {
+            IpAddr::V4(v4) => Cidr::V4(u32::from(v4), prefix.unwrap_or(32)),
+            IpAddr::V6(v6) => Cidr::V6(u128::from(v6), prefix.unwrap_or(128)),
+        };
+        let canonical = cidr.canonical();
+        let fits = match canonical {
+            Cidr::V4(n, p) => p <= 32 && n & !mask4(p) == 0,
+            Cidr::V6(n, p) => p <= 128 && n & !mask6(p) == 0,
+        };
+        fits.then_some(canonical)
+    }
+
+    /// A range inside `::ffff:0:0/96` in its IPv4 form.
+    fn canonical(self) -> Cidr {
+        match self {
+            Cidr::V6(n, p) if (96..=128).contains(&p) && n >> 32 == 0xffff => Cidr::V4(n as u32, p - 96),
+            other => other,
+        }
+    }
+
+    fn contains(self, ip: IpAddr) -> bool {
+        match (self, canonical_ip(ip)) {
+            (Cidr::V4(n, p), IpAddr::V4(a)) => u32::from(a) & mask4(p) == n,
+            (Cidr::V6(n, p), IpAddr::V6(a)) => u128::from(a) & mask6(p) == n,
+            _ => false,
+        }
+    }
+
+    /// Whether two ranges share an address: the shorter prefix covers the other's network.
+    fn overlaps(self, other: Cidr) -> bool {
+        match (self, other) {
+            (Cidr::V4(a, p), Cidr::V4(b, q)) => {
+                let m = mask4(p.min(q));
+                a & m == b & m
+            }
+            (Cidr::V6(a, p), Cidr::V6(b, q)) => {
+                let m = mask6(p.min(q));
+                a & m == b & m
+            }
+            _ => false,
+        }
+    }
+}
+
+fn mask4(prefix: u8) -> u32 {
+    if prefix == 0 { 0 } else { u32::MAX << (32 - u32::from(prefix.min(32))) }
+}
+
+fn mask6(prefix: u8) -> u128 {
+    if prefix == 0 { 0 } else { u128::MAX << (128 - u32::from(prefix.min(128))) }
+}
+
+fn canonical_ip(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+        v4 => v4,
+    }
+}
+
+/// The ranges no admitted range may touch, with the name a refusal gives each: loopback,
+/// the unspecified address that connects to the local host, link-local and the metadata address.
+const UNADMITTABLE: [(&str, &str); 7] = [
+    ("127.0.0.0/8", "loopback"),
+    ("0.0.0.0/32", "the unspecified address"),
+    ("169.254.0.0/16", "link-local"),
+    ("::1/128", "loopback"),
+    ("::/128", "the unspecified address"),
+    ("fe80::/10", "link-local"),
+    ("fd00:ec2::254/128", "the metadata address"),
+];
+
+/// The operator's admitted private ranges (`connector.attach.private-range-admitted`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PrivateRanges(Vec<Cidr>);
+
+impl PrivateRanges {
+    /// Parse a comma-separated list of CIDR entries; blank entries are skipped. An entry that
+    /// is no CIDR range, or one overlapping loopback, link-local or the metadata address,
+    /// raises `ConnectorPrivateRangeRejected` naming it (`connector.attach.private-range-rejected`).
+    pub fn parse(list: &str) -> Result<PrivateRanges, ConnectorError> {
+        let mut out = Vec::new();
+        for entry in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+            let reject = |why: String| ConnectorError::ConnectorPrivateRangeRejected(format!("`{entry}` in {PRIVATE_RANGES_VAR} {why}"));
+            let cidr = Cidr::parse(entry).ok_or_else(|| reject("is not a CIDR range".into()))?;
+            for (raw, name) in UNADMITTABLE {
+                let forbidden = Cidr::parse(raw).expect("a fixed range parses");
+                if cidr.overlaps(forbidden) {
+                    return Err(reject(format!("overlaps {name} {raw}")));
+                }
+            }
+            out.push(cidr);
+        }
+        Ok(PrivateRanges(out))
+    }
+
+    /// Whether no range is admitted.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Whether `ip`, an IPv4-mapped address in its IPv4 form, lies inside an admitted range.
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        self.0.iter().any(|c| c.contains(ip))
+    }
 }
 
 /// Judge a redirect or vendor-supplied next link against the configured origin: the
