@@ -28,3 +28,4 @@ mod conformance_pg;
 
 static CONFORMANCE_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
 mod container_fixture;
+mod sqs_fixture;

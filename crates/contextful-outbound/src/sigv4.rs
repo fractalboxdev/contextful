@@ -1,5 +1,5 @@
 //! AWS Signature Version 4 in the `Authorization` header, for a JSON request to an AWS
-//! service API, behind the `aws-secrets-manager` feature. It performs no I/O.
+//! service API, behind the `sigv4` feature the AWS adapters share. It performs no I/O.
 
 use contextful_core::time::Instant;
 use hmac::{Hmac, Mac};

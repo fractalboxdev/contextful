@@ -33,8 +33,8 @@ impl Receiver {
     /// now (`run.land.receive-queued-window`); the queue slot frees once the message is sent.
     pub(super) fn enqueue(&self, admitted: Admitted, key: &str, credential: Option<&str>, body: &[u8]) -> Result<Value> {
         let queued_at = admitted.wired.clock.now().unix_secs();
-        let spool = crate::queue::local_spool(&self.l.project.store_root())?;
-        enqueue(&spool, &spool, &self.spec.id, key, credential, queued_at, body)?;
+        let port = crate::queue::Port::open(&self.l)?;
+        port.with(|queue, bodies| enqueue(queue, bodies, &self.spec.id, key, credential, queued_at, body))?;
         Ok(json!({
             "pipeline": self.spec.id,
             "key": key,

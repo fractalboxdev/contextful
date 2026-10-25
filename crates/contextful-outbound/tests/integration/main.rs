@@ -2,6 +2,7 @@
 
 mod attach;
 mod aws_secrets;
+mod aws_sqs;
 mod egress;
 mod infer;
 mod lease;

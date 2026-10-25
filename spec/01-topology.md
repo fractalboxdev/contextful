@@ -43,6 +43,20 @@ Execution, storage, queries, access controls and the contracts these components 
 - `one-tree` — Local and clustered deployments use one source tree. Single-node and edge deployments use no external queue, cache or coordination process. Multi-node deployments add one shared database.
 - `queue-extension` — With a `queue` role, the target carries `receive` batches, object-arrival keys and post-commit wake-ups through the `Queue` port. Without that role, the target uses the local spool. Only the engine writes the store.
   *A-topology*
+- `queue-sqs` — With `CONTEXTFUL_QUEUE_URL` set, `receive` batches and object-arrival keys travel through that SQS standard queue, each request signed with Signature Version 4 under {{store.endpoint.role-credentials}}; post-commit wake-ups stay in the local spool.
+  *because the `aws` target's queue role is an SQS standard queue, and its task holds a workload role rather than a key pair*
+- `queue-sqs-absent` — A build linking no SQS adapter, given `CONTEXTFUL_QUEUE_URL`, refuses each queue use as {{topology.package.capability-absent}} and never falls back to the local spool.
+  *because a batch queued where no consumer of the configured queue reads it is a batch lost*
+- `queue-sqs-wait` — A receive long-polls the SQS queue for up to 20 s on its first call and waits on none after, stopping at the first empty answer.
+  *because a long poll answers an idle queue with one request rather than many, and later calls drain what already waits*
+- `queue-sqs-batch` — One SQS receive call asks for at most 10 messages.
+  *because SQS answers no more per call*
+- `queue-sqs-visibility` — A received SQS message stays hidden for 300 s; a consumer acknowledges it by deleting its receipt handle, and one left undeleted redelivers after that window.
+  *because a batch's landing and push finish inside it, and a consumer that died must hand its messages to the next*
+- `queue-sqs-cap` — An SQS message carries at most 1 MiB; a `receive` body past it spills under {{run.land.receive-queued-spill}} to the store's `[sync]` bucket beneath its prefix's `queue/spill/`.
+  *because SQS refuses a larger message, and the store's bucket is the one object store every shape with a queue role already writes*
+- `queue-object-notification` — An S3 event notification on the queue delivers one object-arrival key per `ObjectCreated` record, its key URL-decoded; a message holding none, the test event among them, is deleted and delivers nothing.
+  *because S3 notifies object creation in its own envelope, and a message no read consumes must not redeliver forever*
 - `connector-pillar` — A connector is an interface world run in a sandboxed component host that mediates every capability. A native connector, the first-party path for stateful sources, satisfies the same schema, record and cursor contract.
 - `open-store` — Table data sits in columnar parts with a JSON manifest and a rebuildable catalog on plain object storage, readable by standard SQL tooling. No proprietary container or opaque blob holds table data.
 - `inference-egress` — Model access leaves the process through one operator-configured endpoint speaking OpenAI-compatible HTTP. The one provider-shaped step serializes a tool's parameter schema into the provider's envelope.

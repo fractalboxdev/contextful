@@ -1083,6 +1083,7 @@ dependencies = [
 name = "contextful-outbound"
 version = "0.17.0"
 dependencies = [
+ "contextful-acceptance",
  "contextful-core",
  "contextful-eval",
  "contextful-outbound",
