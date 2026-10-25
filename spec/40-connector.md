@@ -529,6 +529,8 @@ The declared behavior of each source compiled into the engine.
   *because a complete snapshot claim tombstones every row the read omits*
 - `etag-skip` — With `skip_unchanged = true`, the object source's position maps each object key to its ETag in place of {{run.advance.skip-unchanged}}'s digest; an object whose ETag matches lands nothing, and a read matching every object closes a zero-row success.
 - `object-credentials` — The `s3` source declares `access_key_id` and `secret_access_key` together, each as one `secret://<name>` reference hydrated per read. Without them, requests go unsigned. The host refuses a literal in either under {{connector.reference.material-in-a-declaration}}.
+- `object-session-token` — Beside the key pair, the `s3` source accepts an optional `session_token`, one `secret://<name>` reference hydrated per read, and signs each request as a temporary credential.
+- `object-role` — `credentials = "role"` on the `s3` source signs under {{store.endpoint.role-credentials}} in place of the key pair, refusing alongside a key under {{store.endpoint.role-conflict}}.
 - `object-transport` — The `s3` source presigns each request through the S3 bucket adapter of {{store.endpoint.addressing}} and sends it through the mediated client, allowlisting the endpoint host alone; a skip compares listed or head-request ETags and downloads no object.
   *because one S3 client then signs every bucket request while the mediated client stays the one attachment point for source egress*
 - `object-cleartext` — At build, the host refuses an `s3` source binding a key pair to a cleartext endpoint outside loopback under {{connector.attach.cleartext-endpoint}}.

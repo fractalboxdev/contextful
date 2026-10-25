@@ -9,6 +9,7 @@ coordinate        = {}
 bound-application = {}
 
 [error]
+DatabaseCaBundleUnreadable   = { clause = "topology.coordinate.postgres-ca-unreadable", gloss = "A PostgreSQL `sslrootcert` path is unreadable or holds no certificate." }
 DatabaseTransportUnprotected = { clause = "topology.coordinate.postgres-transport", gloss = "A remote PostgreSQL connection disables authenticated TLS." }
 VendorSdkLinked             = { clause = "topology.compose.vendor-sdk", gloss = "A crate declares a model-vendor SDK, or a second outbound path to a model exists." }
 ScriptRuntimeLinked         = { clause = "topology.compose.script-runtime", gloss = "A script-language runtime links into a profile." }

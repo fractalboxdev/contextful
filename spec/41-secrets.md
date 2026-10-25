@@ -103,6 +103,7 @@ The provider interface, adapter order, request-time resolution, credential buffe
 - `adapter-is-optional` — Each managed backend is one adapter holding opaque versioned ciphertext; a deployment links only the adapters it uses.
 - `know-how-in-an-adapter` — An adapter exposing a provider-specific exchange, refresh or lifetime entry point raises `SecretProviderKnowHowInBackend` at load.
   *A-connector*
+- `aws-secrets-manager` — The `aws-secrets-manager` backend answers `secret://<name>` with the `AWSCURRENT` value of secret id `CONTEXTFUL_AWS_SECRET_PREFIX` plus the name, signing under {{store.endpoint.role-credentials}}; an absent secret is a miss.
 
 ```mermaid
 flowchart LR
@@ -210,6 +211,10 @@ Host handling of outbound requests: network transport, permitted hosts and addre
   *A-connector*
 - `private-address` — A host name resolving to a private, link-local, unique-local, loopback or cloud-metadata address raises `ConnectorPrivateAddress`, unless the configured host is itself a loopback name or literal.
   *because an allowlisted name pointed at an internal range is SSRF*
+- `private-range-admitted` — An address inside a CIDR range listed in `CONTEXTFUL_EGRESS_PRIVATE_RANGES` passes {{connector.attach.private-address}}; the host name allowlist still applies.
+  *because a VPC-bound deployment reaches its sources, interface endpoints and PrivateLink services at private addresses*
+- `private-range-rejected` — A listed range overlapping loopback, link-local `169.254.0.0/16` or `fe80::/10`, or the metadata address `fd00:ec2::254`, raises `ConnectorPrivateRangeRejected` at startup, naming the range.
+  *because admitting the metadata or loopback range reopens the SSRF path the private-address check closes*
 - `bound-host` — A credential-bound source declares one non-wildcard host, checked at validation and session open. A wildcard entry or table-bound endpoint host beside a bound credential raises `SecretWildcardHost`.
   *A-connector*
 - `default-attachment` — Without an attachment declaration, the host writes `Authorization: Bearer <value>` from the single bound credential.

@@ -3,6 +3,35 @@
 use crate::{codes, Scratch};
 
 const CF: &str = "spec/targets/cloudflare.toml";
+const AWS: &str = "spec/targets/aws.toml";
+
+/// A function-class shape capped at 15 min, appended to the AWS file, which declares none of its own.
+const CAPPED: &str = r#"
+[[shape]]
+name = "capped-function"
+kind = "function"
+profiles = ["edge"]
+wall_clock_cap_min = 15
+excludes = ["first-time-backfill", "component-connector"]
+uses     = ["containers", "scheduler", "managed-postgres", "object-store", "secret-store"]
+
+[shape.roles]
+cron_tick    = "EventBridge Scheduler"
+reconciler   = "function"
+orchestrator = "engine journal in the catalog"
+catalog      = "RDS Postgres via pg-catalog"
+object_store = "S3"
+query_face   = "function URL"
+compute      = "function"
+secrets      = "Secrets Manager adapter through the function role"
+"#;
+
+fn with_capped(s: &Scratch) -> String {
+    let aws = format!("{}{CAPPED}", s.read(AWS));
+    s.write(AWS, &aws);
+    assert!(codes(&s.lint("targets"), "SpecTargetCapUnrecorded").is_empty(), "the appended shape records both exclusions");
+    aws
+}
 
 #[test]
 fn provider_runtime_diagrams_and_notes_come_from_the_target_file() {
@@ -90,8 +119,7 @@ fn a_shape_leaving_a_role_unfilled_is_refused() {
 #[test]
 fn a_capped_shape_not_recording_its_exclusions_is_refused() {
     let s = Scratch::copy();
-    let aws = s.read("spec/targets/aws.toml");
-    assert!(aws.contains("wall_clock_cap_min = 15"), "the live AWS file carries a capped shape");
+    let aws = with_capped(&s);
     let line = aws.lines().find(|l| l.trim_start().starts_with("excludes") && l.contains("first-time-backfill")).unwrap().to_string();
     s.write("spec/targets/aws.toml", &aws.replacen(&line, r#"excludes = ["first-time-backfill"]"#, 1));
     let found = codes(&s.lint("targets"), "SpecTargetCapUnrecorded");
@@ -101,7 +129,7 @@ fn a_capped_shape_not_recording_its_exclusions_is_refused() {
 #[test]
 fn a_function_class_shape_hosting_the_full_profile_is_refused() {
     let s = Scratch::copy();
-    let aws = s.read("spec/targets/aws.toml");
+    let aws = with_capped(&s);
     let line = aws.lines().find(|l| l.trim_start().starts_with("profiles = [\"edge\"]")).expect("a function-class shape").to_string();
     s.write("spec/targets/aws.toml", &aws.replacen(&line, "profiles = [\"edge\", \"full\"]", 1));
     let found = codes(&s.lint("targets"), "SpecTargetFunctionProfile");
@@ -114,7 +142,7 @@ fn the_targets_page_is_rendered_from_the_files() {
     assert!(s.cmd(&["state"]).status.success());
     let page = s.read("spec/targets.md");
     assert!(page.contains("Durable Object"), "{page}");
-    assert!(page.contains("Step Functions"), "{page}");
+    assert!(page.contains("EventBridge Scheduler"), "{page}");
     assert_eq!(page.matches("```mermaid").count(), 3, "one diagram per provider:\n{page}");
     // the deploying account and its planes are containers; the caller stands outside them
     assert_eq!(page.matches("  subgraph ACCOUNT[").count(), 3, "{page}");
@@ -132,7 +160,7 @@ fn the_default_shape_diagrams_name_provider_runtimes_and_processes() {
     let s = Scratch::copy();
     assert!(s.cmd(&["state"]).status.success());
     let page = s.read("spec/targets.md");
-    for label in ["Fargate Linux tasks", "Step Functions", "Workers V8 isolates", "Linux Container running contextful-full", "Linux host", "contextful pipeline serve process", "Wasmtime component host", "DuckDB library"] {
+    for label in ["Fargate Linux tasks", "contextful cycle process", "Workers V8 isolates", "Linux Container running contextful-full", "Linux host", "contextful pipeline serve process", "Wasmtime component host", "DuckDB library"] {
         assert!(page.contains(label), "missing runtime or process {label}: {page}");
     }
     assert!(!page.contains("COMP[\"heavy compute\"]"), "{page}");
@@ -201,8 +229,8 @@ fn a_shape_claiming_containers_on_a_provider_without_them_is_refused() {
     assert!(found.iter().any(|m| m.contains("`worker-container-d1`")), "{found:?}");
 
     let s = Scratch::copy();
-    drop_item(&s, "spec/targets/aws.toml", "primitives", "functions");
+    drop_item(&s, "spec/targets/aws.toml", "primitives", "scheduler");
     let found = codes(&s.lint("targets"), "TargetShapeUnsupported");
-    assert!(found.iter().any(|m| m.contains("`lambda-only`") && m.contains("`functions`")), "{found:?}");
-    assert!(!found.iter().any(|m| m.contains("`fargate-daemon`")), "a daemon shape runs no function: {found:?}");
+    assert!(found.iter().any(|m| m.contains("`scheduled-fargate`") && m.contains("`scheduler`")), "{found:?}");
+    assert!(!found.iter().any(|m| m.contains("`fargate-daemon`")), "a daemon shape schedules in process: {found:?}");
 }

@@ -91,6 +91,7 @@ ConnectorDriveRootRejected      = { clause = "connector.source.drive-root-valida
 ConnectorDriveModeUnknown       = { clause = "connector.source.drive-mode", gloss = "A Drive capture mode other than bytes-and-pages or metadata-only." }
 ConnectorDriveVersionMoved      = { clause = "connector.source.drive-version-consistency", gloss = "A Drive file whose version changes during metadata-only capture." }
 ConnectorDriveListingExceeded   = { clause = "connector.source.drive-list-bound", gloss = "A Drive listing reaching its request cap before all selected folders are exhausted." }
+ConnectorPrivateRangeRejected   = { clause = "connector.attach.private-range-rejected", gloss = "An admitted private range overlaps loopback, link-local or the metadata address." }
 ConnectorPrivateAddress         = { clause = "connector.attach.private-address", gloss = "A permitted host name resolving to a private, link-local, loopback or metadata address." }
 SecretForeignPlaceholder        = { clause = "connector.reference.foreign-placeholder", gloss = "A template carrying `${env://NAME}` or a bare `${NAME}`." }
 SecretMalformedTemplate         = { clause = "connector.reference.malformed-placeholder", gloss = "An unclosed, empty or nested placeholder." }

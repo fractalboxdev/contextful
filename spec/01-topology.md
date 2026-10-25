@@ -353,6 +353,10 @@ Conditional metadata updates, writer leases and the databases that store coordin
   *because a daemon falling back to its own file while its peers share the database holds leases no peer sees*
 - `postgres-transport` — Beyond loopback or Unix sockets, PostgreSQL requires TLS with WebPKI roots and hostname verification. Disabling TLS there raises `DatabaseTransportUnprotected` before DNS resolution. Preferred TLS mode permits no plaintext fallback there.
   *because remote execution state and database credentials cross an untrusted network boundary*
+- `postgres-ca-bundle` — `sslrootcert=<path>` in the connection string names a PEM bundle whose roots replace the WebPKI roots of {{topology.coordinate.postgres-transport}} for that connection; hostname verification still applies.
+  *because a managed database such as RDS chains its server certificate to a provider CA that WebPKI omits*
+- `postgres-ca-unreadable` — An `sslrootcert` path that is unreadable or holds no certificate raises `DatabaseCaBundleUnreadable`, naming the path, before connecting.
+  *because a silent fallback to WebPKI roots fails later as an unknown issuer and hides the misconfigured path*
 - `weak-backend` — A catalog backend whose conditional update is not linearizable refuses at open with {{surface.apply.weak-conditional-backend}}.
   *A-store*
 - `cluster-availability` — Cluster availability is the shared database's availability. The engine adds no replication and no failover protocol between daemons.
