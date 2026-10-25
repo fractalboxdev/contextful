@@ -108,6 +108,7 @@ surface-callback-skew      = { clause = "surface.dispatch.callback-skew", value 
 surface-heartbeat-beat     = { clause = "surface.dispatch.heartbeat-beat", value = 15, unit = "s", basis = "chosen", gloss = "Interval between worker heartbeats." }
 surface-heartbeat-lapse    = { clause = "surface.dispatch.heartbeat-lapse", value = 60, unit = "s", basis = "chosen", gloss = "Heartbeat lapse that reschedules in-flight work." }
 surface-fire-pool          = { clause = "surface.dispatch.pool-bound", value = 4, unit = "units", basis = "chosen", gloss = "Default count of units one deployment runs at once." }
+surface-daemon-drain       = { clause = "surface.fire.daemon-drain", value = 5, unit = "s", basis = "chosen", gloss = "Wait between one daemon queue drain ending and the next starting." }
 surface-child-grace        = { clause = "surface.dispatch.children-reaped", value = 10, unit = "s", basis = "chosen", gloss = "Wait between a stopping serve's SIGTERM and SIGKILL to its children." }
 surface-fire-credential    = { clause = "surface.dispatch.fire-credential-lifetime", value = 600, unit = "s", basis = "chosen", gloss = "Lifetime of the credential serve mints for one store-driven fire." }
 surface-region-entries     = { clause = "surface.reside.region-entries", value = 16, unit = "entries", basis = "chosen", gloss = "Largest residency allow-set." }

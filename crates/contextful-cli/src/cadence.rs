@@ -65,6 +65,10 @@ const CONTROL_READ_MAX_BYTES: u64 = 16 * 1024 * 1024;
 /// Interval at which a dispatch thread and a stopping serve poll a child's exit.
 const CHILD_POLL: Duration = Duration::from_millis(20);
 
+/// Seconds the daemon waits after one queue drain ends before it starts the next
+/// (`surface.fire.daemon-drain`).
+const DAEMON_DRAIN_SECS: u64 = 5;
+
 /// A loopback control plane serving the pointer and each version beneath one URL.
 struct ControlUrl {
     base: Url,
@@ -1759,6 +1763,14 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
             })
         }
     };
+    let drainer = Arc::new(Drainer {
+        exe: std::env::current_exe()?,
+        project: l.project.name.clone(),
+        declaration: explicit_declaration,
+        now: project.now.clone(),
+        pin: control.issuer_pin.clone(),
+        children: children.clone(),
+    });
     let holder = format!("{}:{}", boot_id(), std::process::id());
     let mut scheduler = Scheduler::new(w.engine.catalog.clone(), dispatch, &l.project.name, &holder, control.pool);
     crate::stop::install();
@@ -1771,8 +1783,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
             }
             watched.end_all(Duration::from_secs(CHILD_GRACE_SECS));
         });
-        let drain = || drain_child(&l.project.name, explicit_declaration.as_deref(), project.now.as_deref(), control.issuer_pin.as_deref());
-        let answered = serve_cycle(&mut scheduler, &control, &l.project, &l.declaration, tasks, &drain);
+        let answered = serve_cycle(&mut scheduler, &control, &l.project, &l.declaration, tasks, &|| drainer.drain());
         drop(reaper);
         if crate::stop::requested() {
             // A failed stop push reports beside the cycle's own error, never in its place.
@@ -1798,6 +1809,10 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
     let tick = Duration::from_millis(TICK_INTERVAL_MS);
     let mut next_poll = w.clock.now();
     let mut held_by: Option<String> = None;
+    // One queue drain runs beside the ticks at a time, started only under the lease
+    // (`surface.fire.daemon-drain`).
+    let mut draining: Option<std::thread::JoinHandle<Result<Value>>> = None;
+    let mut next_drain = std::time::Instant::now();
     while !crate::stop::requested() {
         // The lease comes before arming: a process finding it held arms nothing
         // (`surface.dispatch.lease-gated`).
@@ -1829,15 +1844,25 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
                     }
                     Err(e) => eprintln!("beat: {e}"),
                 }
+                if draining.is_none() && std::time::Instant::now() >= next_drain {
+                    let drainer = drainer.clone();
+                    draining = Some(std::thread::spawn(move || drainer.drain()));
+                }
             }
             Err(e) => eprintln!("cadence lease: {e}"),
         }
         report(scheduler.ended());
+        if draining.as_ref().is_some_and(std::thread::JoinHandle::is_finished) {
+            report_drain(draining.take().map(join_drain));
+            next_drain = std::time::Instant::now() + Duration::from_secs(DAEMON_DRAIN_SECS);
+        }
         std::thread::sleep(tick);
     }
     eprintln!("stopping: ending dispatched children, then releasing the cadence lease");
     drop(reaper);
     report(scheduler.drain());
+    // Ending the children ended a running drain's child; its deliveries stay queued.
+    report_drain(draining.take().map(join_drain));
     scheduler.release()?;
     // The stop push carries what the ended children committed (`store.drain.deadline`).
     crate::sync::drain(&l)?;
@@ -1860,40 +1885,74 @@ fn held_answer(holder: &str) -> Result<()> {
     Ok(())
 }
 
-/// One-shot evaluation (`surface.fire.cycle`). The lease comes first: finding it held,
-/// the cycle arms nothing and answers the holder (`surface.dispatch.lease-gated`).
-/// Drain the project's queue once through this executable, as `contextful queue drain --json`
-/// (`surface.fire.cycle-drain`): the child's other output goes to standard error, so the
-/// cycle's standard output stays its one answer; the tally is the child's last stdout line.
-fn drain_child(project: &str, declaration: Option<&Path>, now: Option<&str>, pin: Option<&str>) -> Result<serde_json::Value> {
-    let mut child = std::process::Command::new(std::env::current_exe()?);
-    child.args(["queue", "drain", "--json", "--no-wake-ups", "--project", project]);
-    if let Some(d) = declaration {
-        child.arg("--declaration").arg(d);
-    }
-    if let Some(now) = now {
-        child.args(["--now", now]);
-    }
-    if let Some(pin) = pin {
-        child.args(["--public-key", pin]);
-    }
-    let out = child.stderr(std::process::Stdio::inherit()).output().context("starting the queue drain")?;
-    let said = String::from_utf8_lossy(&out.stdout);
-    let mut lines: Vec<&str> = said.lines().collect();
-    let last = lines.pop().unwrap_or_default();
-    for line in lines {
-        eprintln!("{line}");
-    }
-    if !out.status.success() {
-        if !last.is_empty() {
-            eprintln!("{last}");
-        }
-        bail!("the queue drain exited {}; its deliveries stay queued", out.status);
-    }
-    serde_json::from_str(last).with_context(|| format!("reading the queue drain's tally `{last}`"))
+/// The project's queue drain through this executable, as `contextful queue drain --json
+/// --no-wake-ups` (`surface.fire.cycle-drain`, `surface.fire.daemon-drain`). The drain runs
+/// as a tracked child, so a stopping serve ends it beside its dispatched units.
+struct Drainer {
+    exe: PathBuf,
+    project: String,
+    declaration: Option<PathBuf>,
+    now: Option<String>,
+    pin: Option<String>,
+    children: Arc<Children>,
 }
 
-fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, declaration: &Path, tasks: &Tasks, drain: &dyn Fn() -> Result<serde_json::Value>) -> Result<()> {
+impl Drainer {
+    /// Drain once. The child's other output goes to standard error, so a cycle's standard
+    /// output stays its one answer; the tally is the child's last stdout line.
+    fn drain(&self) -> Result<Value> {
+        let mut child = Command::new(&self.exe);
+        child.args(["queue", "drain", "--json", "--no-wake-ups", "--project", &self.project]);
+        if let Some(d) = &self.declaration {
+            child.arg("--declaration").arg(d);
+        }
+        if let Some(now) = &self.now {
+            child.args(["--now", now]);
+        }
+        if let Some(pin) = &self.pin {
+            child.args(["--public-key", pin]);
+        }
+        child.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit());
+        let (pid, out, _) = self.children.spawn(&mut child).context("starting the queue drain")?;
+        let mut said = String::new();
+        if let Some(mut out) = out {
+            out.read_to_string(&mut said).context("reading the queue drain's output")?;
+        }
+        let status = self.children.wait(pid).context("waiting on the queue drain")?;
+        let mut lines: Vec<&str> = said.lines().collect();
+        let last = lines.pop().unwrap_or_default();
+        for line in lines {
+            eprintln!("{line}");
+        }
+        if !status.success() {
+            if !last.is_empty() {
+                eprintln!("{last}");
+            }
+            bail!("the queue drain exited {status}; its deliveries stay queued");
+        }
+        serde_json::from_str(last).with_context(|| format!("reading the queue drain's tally `{last}`"))
+    }
+}
+
+fn join_drain(handle: std::thread::JoinHandle<Result<Value>>) -> Result<Value> {
+    handle.join().unwrap_or_else(|_| Err(anyhow::anyhow!("the queue drain's thread panicked")))
+}
+
+/// Log a daemon drain that settled something, or failed; a failed drain stops nothing and the
+/// next pass drains again (`surface.fire.daemon-drain-retry`).
+fn report_drain(drained: Option<Result<Value>>) {
+    match drained {
+        Some(Ok(tally)) if ["wake_ups", "batches", "arrivals"].iter().any(|k| tally[k].as_u64().unwrap_or(0) > 0) => {
+            eprintln!("drained {tally}");
+        }
+        Some(Err(e)) => eprintln!("the queue drain failed: {e:#}; the next pass drains again"),
+        _ => {}
+    }
+}
+
+/// One-shot evaluation (`surface.fire.cycle`). The lease comes first: finding it held,
+/// the cycle arms nothing and answers the holder (`surface.dispatch.lease-gated`).
+fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, declaration: &Path, tasks: &Tasks, drain: &dyn Fn() -> Result<Value>) -> Result<()> {
     if let LeaseState::HeldBy(holder) = scheduler.hold()? {
         return held_answer(&holder);
     }
