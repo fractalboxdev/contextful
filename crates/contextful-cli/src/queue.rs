@@ -80,7 +80,7 @@ pub fn run(cmd: QueueCmd, tasks: &Tasks) -> Result<()> {
                 FailureTag::Transient => anyhow::anyhow!("{}; retryable, its deliveries stay queued for the next drain", f.message),
                 _ => anyhow::anyhow!("{}; its deliveries stay queued", f.message),
             })?;
-            println!("drained {} wake-ups, {} arrivals and {} batches · {} left queued", drained.wakes, drained.arrivals, drained.batches, drained.left);
+            println!("drained {} wake-ups, {} batches and {} arrivals · {} left queued", drained.wakes, drained.batches, drained.arrivals, drained.left);
             Ok(())
         }
     }
