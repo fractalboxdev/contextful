@@ -104,7 +104,9 @@ fn an_undeleted_message_stays_hidden_then_redelivers() {
     sqs.seed(&serde_json::to_string(&arrival("feed/01.jsonl")).unwrap());
     let first = q.receive(10).unwrap();
     assert_eq!(first.len(), 1);
-    assert!(sqs.requests("ReceiveMessage").iter().all(|r| r.body["VisibilityTimeout"] == 300));
+    let asked = sqs.requests("ReceiveMessage");
+    assert_eq!(asked.len(), 2, "a long poll, then the empty answer ending the receive");
+    assert!(asked.iter().all(|r| r.body["VisibilityTimeout"] == 300));
     assert!(q.receive(10).unwrap().is_empty(), "a received message stays hidden");
     sqs.expire_visibility();
     let again = q.receive(10).unwrap();
