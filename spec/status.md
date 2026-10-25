@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 354 | 72 | 25 | 5 | 304 | 0 | 304 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 307 | 0 | 307 |
+| `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 308 | 0 | 308 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 323 | 58 | 29 | 16 | 281 | 0 | 281 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 342 | 72 | 24 | 12 | 326 | 0 | 326 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
 | `topology` | 1 | 6 | 83 | 26 | 5 | 3 | 79 | 0 | 79 |
-| **total** | 26 | 177 | 2907 | 710 | 229 | 84 | 2557 | 0 | |
+| **total** | 26 | 177 | 2907 | 710 | 229 | 84 | 2558 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 309 | 298 | passing | closed |
-| 4 — Ingest | 25 | 646 | 536 | passing | closed |
+| 4 — Ingest | 25 | 646 | 537 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
 | 6 — Sync and replicas | 9 | 117 | 111 | passing | closed |
 | 7 — Memory | 6 | 100 | 85 | passing | closed |
@@ -903,6 +903,7 @@ Unscheduled operations: 13.
 | `connector.source.object-expansion` | `crates/contextful-connectors/tests/integration/object.rs::an_object_expanding_past_256_mib_lands_nothing_and_is_named_with_the_ceiling` | performed |
 | `connector.source.object-gzip` | `crates/contextful-connectors/tests/integration/object.rs::a_gz_key_or_declared_gzip_decompresses_and_none_reads_as_stored` | performed |
 | `connector.source.object-position-owned` | `crates/contextful-cli/tests/integration/object.rs::an_incremental_field_beside_an_etag_position_is_refused_at_validation` | performed |
+| `connector.source.object-session-token` | `crates/contextful-cli/tests/integration/object.rs::a_session_token_signs_every_request_as_a_temporary_credential` | performed |
 | `connector.source.object-transport` | `crates/contextful-cli/tests/integration/object.rs::a_signed_read_passes_the_backends_signature_check_and_a_skip_downloads_nothing` | performed |
 | `connector.source.object-unreadable` | `crates/contextful-connectors/tests/integration/object.rs::an_unreadable_object_lands_a_dead_letter_and_the_rest_of_the_read_lands` | performed |
 | `connector.source.object-zip` | `crates/contextful-connectors/tests/integration/object.rs::a_declared_or_zip_keyed_archive_lands_its_tab_delimited_headerless_member` | performed |
