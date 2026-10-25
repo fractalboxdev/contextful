@@ -347,24 +347,13 @@ fn run_probe(root: &Path, name: &str, records: &Path) -> Result<()> {
     Ok(())
 }
 
-/// A run's identifier in a note: an integer from a numbered run, or a FlareDispatch
-/// execution id. Each keeps its JSON shape, so earlier notes parse unchanged.
+/// A run's identifier in a note. A report writes an integer; earlier notes carrying a text
+/// id keep their JSON shape and read back as baselines (`assurance.measure.run-report`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum RunId {
+enum RunId {
     Number(u64),
     Text(String),
-}
-
-impl std::str::FromStr for RunId {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, String> {
-        if s.trim().is_empty() {
-            return Err("a run id names a run".into());
-        }
-        Ok(s.parse().map_or_else(|_| RunId::Text(s.to_string()), RunId::Number))
-    }
 }
 
 /// One annotation in a default-branch report; the baseline names its earlier run.
@@ -479,7 +468,7 @@ fn earlier_baselines(root: &Path, commit: &str, current: &[&Record]) -> Result<B
 
 /// Write one JSON-line run report, annotating a trend only against matching earlier
 /// successful history. The measure's exit status remains a separate workflow verdict.
-pub fn report(root: &Path, commit: &str, run_id: RunId, run_attempt: u64, exit_code: i32, out: &Path) -> Result<()> {
+pub fn report(root: &Path, commit: &str, run_id: u64, run_attempt: u64, exit_code: i32, out: &Path) -> Result<()> {
     let dir = root.join(RECORDS_DIR);
     let mut records = Vec::new();
     match std::fs::read_dir(&dir) {
@@ -525,7 +514,7 @@ pub fn report(root: &Path, commit: &str, run_id: RunId, run_attempt: u64, exit_c
             });
         }
     }
-    let report = RunReport { commit: commit.to_string(), run_id, run_attempt, exit_code, records, annotations };
+    let report = RunReport { commit: commit.to_string(), run_id: RunId::Number(run_id), run_attempt, exit_code, records, annotations };
     let path = root.join(out);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;

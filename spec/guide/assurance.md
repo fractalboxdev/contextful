@@ -76,8 +76,8 @@ Beneath the proofs sit the engineering rules: one implementation per capability
 ({{assurance.structure-tree.capability-registry}}) and its copies matched across languages
 ({{assurance.structure-tree.cross-language}}), test-first with its refactor exemption
 ({{assurance.test.test-first}}, {{assurance.test.refactor-trailer}}), and ordered gate stages
-({{assurance.gate.stage-sequence}}), each a remote check
-({{assurance.gate.remote-check}}). The quality harness
+({{assurance.gate.stage-sequence}}), each run locally before merge
+({{assurance.automate.one-path}}). The quality harness
 ({{assurance.evaluate.run-command}}) loads its corpus through the real store
 ({{assurance.evaluate.through-the-store}}) under policy labels
 ({{assurance.evaluate.policy-labels}}), and baselines only ever rise
@@ -122,7 +122,7 @@ flowchart LR
 A contributor changes zone admission so an allow-set entry `on-prem:*` rejects
 `on-prem:lab`, a zone it admits under {{authority.place.disjunctive}}.
 
-Its test fails at base, or the test-first stage stops it; the nightly
+Its test fails at base, or the test-first stage stops it; a nightly-tier
 run reaches the formal stage
 ({{assurance.gate.formal-stage}}).
 

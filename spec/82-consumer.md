@@ -31,7 +31,7 @@ Artifact compatibility: source-independent execution, required capabilities, sce
 - `artifact-stability` — The suite verifies the supplied artifact's digest before and after execution; changed bytes refuse a compatibility verdict.
 - `release-distribution` — Each release archive carries the matching-target suite and compatibility report whatever its verdict; release metadata names the report, binary digest and verdict, preserving failed and skipped outcomes.
   *because a profile lacking a scenario's capability never passes, and refusing its cell withholds the evidence stating so*
-- `release-notes` — `contextful-ci formula` writes `release-notes.md` stating every cell's local and `cloudflare-d1` verdict, and fails on a cell carrying none; FlareDispatch publishes it as the release body.
+- `release-notes` — `contextful-ci formula` writes `release-notes.md` stating every cell's local and `cloudflare-d1` verdict, and fails on a cell carrying none; the operator publishes it as the GitHub release body.
   *because a failing verdict ships, so the release page states it beside the archives*
 - `foreign-target` — A release target unavailable to its packaging host records explicit skipped scenarios with a target diagnostic; its report supplies no execution pass.
   *because a cross compilation cannot demonstrate the produced artifact's behavior*

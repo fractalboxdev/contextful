@@ -1,5 +1,5 @@
-//! `contextful-ci` — the gate's stages as typed subcommands. A contributor and the
-//! FlareDispatch gate invoke the identical command.
+//! `contextful-ci` — the gate's stages as typed subcommands. Every gate run, whole or one
+//! part, invokes the command a contributor invokes.
 
 mod affected;
 mod capability;
@@ -23,7 +23,6 @@ mod tag;
 mod footprint;
 mod image;
 mod topology;
-mod native_transport;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -103,8 +102,7 @@ enum Cmd {
     },
     /// Print the stage names, one per line, in run order.
     Stages {
-        /// Print what FlareDispatch dispatches: each stage, a split stage
-        /// as its parts.
+        /// Print each runnable part: each stage, a split stage as its parts.
         #[arg(long)]
         parts: bool,
         /// Include one test-first part per changed test package against this revision.
@@ -113,7 +111,7 @@ enum Cmd {
         /// Print only the parts the change against `--base` reaches (`assurance.gate.affected-parts`).
         #[arg(long, requires = "base")]
         affected: bool,
-        /// The tier whose parts to print: `pr`, the required pull-request checks, or
+        /// The tier whose parts to print: `pr`, the parts a change runs before merge, or
         /// `nightly`, the features, formal and budget parts.
         #[arg(long, requires = "parts", value_parser = ["pr", "nightly"])]
         tier: Option<String>,
@@ -158,8 +156,6 @@ enum Cmd {
         /// Test files relative to the repository root.
         files: Vec<String>,
     },
-    /// Hold the sole native Actions executor to its dispatch, runner and credential boundary.
-    NativeTransport,
     /// Hold the workspace's dependency graph to the topology contract's rules.
     Topology,
     /// Drive the release consumer flow through the binary, with an optional local MinIO backend.
@@ -275,9 +271,9 @@ enum Cmd {
     MeasureReport {
         #[arg(long)]
         commit: String,
-        /// An integer run number or a FlareDispatch execution id.
+        /// The run's integer number.
         #[arg(long)]
-        run_id: measure::RunId,
+        run_id: u64,
         #[arg(long)]
         run_attempt: u64,
         #[arg(long)]
@@ -373,7 +369,7 @@ fn main() {
             let tier = tier.unwrap_or_else(|| "pr".into());
             let listed = if parts {
                 repo_root().and_then(|root| {
-                    let required: Vec<String> = dispatched(&root, base.as_deref())?.into_iter().filter(|p| stage::in_tier(p, &tier)).collect();
+                    let required: Vec<String> = runnable_parts(&root, base.as_deref())?.into_iter().filter(|p| stage::in_tier(p, &tier)).collect();
                     match base.as_deref() {
                         Some(base) if affected => affected::select(&root, base, required),
                         _ => Ok(required),
@@ -400,7 +396,6 @@ fn main() {
             let files = if files.is_empty() { tracked(&root)?.into_iter().filter(|p| is_test(p)).collect() } else { files };
             vacuous::check(&root, &files)
         }),
-        Cmd::NativeTransport => repo_root().and_then(|root| native_transport::check(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
         Cmd::E2e { minio } => repo_root().and_then(|root| e2e::run(&root, minio)),
         Cmd::Footprint { profile, artifact, build, plan, host } => std::env::current_dir().map_err(Into::into).and_then(|root| match artifact {
@@ -521,9 +516,9 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(git(&["rev-parse", "--show-toplevel"])?))
 }
 
-/// The stages whose work splits into parts FlareDispatch dispatches one check
-/// each, so each part fits one stage's wall clock (`assurance.gate.part-budget`,
-/// `assurance.build.profile-build`, `assurance.gate.budget-stage`).
+/// The stages whose work splits into parts, each runnable alone, so each part fits one
+/// stage's wall clock (`assurance.gate.part-budget`, `assurance.build.profile-build`,
+/// `assurance.gate.budget-stage`).
 const SPLIT: [&str; 5] = ["test-first", "workspace", "evaluate", "features", "budget"];
 
 /// A package's name with the workspace prefix `contextful-` removed.
@@ -554,13 +549,13 @@ fn parts(root: &Path, stage: &str, base: Option<&str>) -> Result<Vec<String>> {
     })
 }
 
-/// What FlareDispatch dispatches, in run order: each stage, a split stage as
+/// Every runnable part, in run order: each stage, a split stage as
 /// `<stage>.<part>` per part, and each fold's members as its one label.
-fn dispatched(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
+fn runnable_parts(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
     Ok(stage::fold(unfolded(root, base)?))
 }
 
-/// [`dispatched`] before folding: each stage, a split stage as `<stage>.<part>` per part.
+/// [`runnable_parts`] before folding: each stage, a split stage as `<stage>.<part>` per part.
 fn unfolded(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
     let mut out = Vec::new();
     for stage in STAGES {
@@ -594,7 +589,7 @@ fn gate(named: &[String], predecessors: bool, plan: bool, base: &str, bound: Dur
             Some(part) if SPLIT.contains(&stage) && parts(&root, stage, Some(base))?.iter().any(|p| p == part) => {
                 narrowed.entry(stage).or_default().push(part.to_string())
             }
-            Some(_) => bail!("no part `{name}`; the parts are {}", dispatched(&root, None)?.join(", ")),
+            Some(_) => bail!("no part `{name}`; the parts are {}", runnable_parts(&root, None)?.join(", ")),
         }
     }
     narrowed.retain(|stage, _| !whole.contains(stage));
@@ -643,7 +638,6 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
             stage::toolchain(root)?
         }
         "schema" => {
-            if root.join(".github/workflows").is_dir() { native_transport::check(root)?; }
             secrets(root)?;
             mirrors(root)?;
             measure::raises(root, base)?;
@@ -917,7 +911,7 @@ fn target_kinds(root: &Path, package: &str) -> Result<Vec<String>> {
         .collect())
 }
 
-/// The differential module runs separately from the other CLI tests in remote parts;
+/// The differential module runs separately from the other CLI tests in separate parts;
 /// selecting both partitions retains Cargo's complete suite, including doctests.
 fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
     if !ordinary {

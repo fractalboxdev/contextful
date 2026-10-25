@@ -138,7 +138,7 @@ fn each_changed_test_package_has_its_own_dispatch_part() {
     assert!(validation.status.success(), "{}", stderr(&validation));
 }
 
-// spec: assurance.gate.test-first-parts@183cbf13
+// spec: assurance.gate.test-first-parts@f3429653
 #[test]
 fn a_source_package_requires_its_own_changed_test_when_another_package_is_red() {
     let r = Repo::init();

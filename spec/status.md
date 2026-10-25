@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 356 | 73 | 25 | 5 | 306 | 0 | 306 |
+| `assurance` | 3 | 18 | 347 | 73 | 25 | 3 | 306 | 0 | 306 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 312 | 0 | 312 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 173 | 0 | 173 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 88 | 0 | 88 |
-| **total** | 26 | 177 | 2932 | 711 | 235 | 84 | 2597 | 0 | |
+| **total** | 26 | 177 | 2923 | 711 | 235 | 82 | 2597 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 67 | 55 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 199 | 156 | passing | closed |
+| 14 — Assurance | 7 | 190 | 156 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
@@ -71,7 +71,7 @@ Unscheduled operations: 13.
 | `assurance.audit-assumptions.transitive-audit` | `crates/contextful-cli/tests/integration/formal.rs::a_footprint_reaches_through_helper_lemmas` | performed |
 | `assurance.audit-assumptions.verdict-input` | `crates/contextful-cli/tests/integration/formal.rs::source_text_and_build_status_decide_nothing` | performed |
 | `assurance.automate.build-time-toolchain` | `tools/ci/tests/integration/automate.rs::no_runtime_package_depends_on_the_automation_toolchain` | performed |
-| `assurance.automate.one-path` | `tools/ci/tests/integration/workflow.rs::proposed_required_checks_match_every_gate_part` | performed |
+| `assurance.automate.one-path` | `tools/ci/tests/integration/workflow.rs::every_listed_part_is_one_gate_invocation` | performed |
 | `assurance.automate.subcommand-surface` | `tools/ci/tests/integration/automate.rs::every_subcommand_has_generated_help_and_refuses_an_untyped_option` | performed |
 | `assurance.automate.test-shellcheck` | `tools/ci/tests/integration/shell.rs::a_test_process_the_gate_starts_resolves_the_provisioned_shellcheck` | performed |
 | `assurance.automate.typed-subcommand` | `tools/ci/tests/integration/automate.rs::every_automation_step_is_at_most_five_commands_without_a_branch_loop_or_retry` | performed |
@@ -258,7 +258,7 @@ Unscheduled operations: 13.
 | `assurance.gate.test-first-parts` | `tools/ci/tests/integration/test_first.rs::a_source_package_requires_its_own_changed_test_when_another_package_is_red` | performed |
 | `assurance.gate.typescript-surfaces` | `tools/ci/tests/integration/stages.rs::the_surfaces_stage_installs_then_runs_each_declared_check` | performed |
 | `assurance.gate.unconfigured-egress` | `tools/ci/tests/integration/source_lint.rs::outbound_call_outside_a_configured_adapter_names_the_call_site` | performed |
-| `assurance.gate.workspace-parts` | `tools/ci/tests/integration/target_dirs.rs::remote_workspace_parts_compile_the_union_and_run_each_package_suite` | performed |
+| `assurance.gate.workspace-parts` | `tools/ci/tests/integration/target_dirs.rs::workspace_parts_compile_the_union_and_run_each_package_suite` | performed |
 | `assurance.measure.absolute-threshold` | `tools/eval/tests/integration/ledger.rs::a_threshold_is_a_finite_absolute_figure` | performed |
 | `assurance.measure.count-first` | `tools/eval/tests/integration/ledger.rs::a_timing_or_resident_set_figure_decides_no_gate` | performed |
 | `assurance.measure.judged-tier` | `tools/eval/tests/integration/ledger.rs::a_judged_figure_runs_on_the_scheduled_tier_alone` | performed |
@@ -266,7 +266,7 @@ Unscheduled operations: 13.
 | `assurance.measure.measured-basis` | `tools/spec/tests/integration/readable.rs::a_measured_basis_names_a_trend_or_scheduled_ledger_entry` | performed |
 | `assurance.measure.open-entry` | `tools/ci/tests/integration/measure.rs::an_issue_entry_is_listed_open_and_gates_nothing` | performed |
 | `assurance.measure.record` | `tools/ci/tests/integration/measure.rs::a_gate_method_writing_no_record_is_refused` | performed |
-| `assurance.measure.run-report` | `tools/ci/tests/integration/measure.rs::a_report_reads_dispatcher_history_whose_run_ids_are_execution_ids` | performed |
+| `assurance.measure.run-report` | `tools/ci/tests/integration/measure.rs::a_report_writes_an_integer_run_id_and_reads_earlier_text_run_ids` | performed |
 | `assurance.measure.runner-stamp` | `tools/eval/tests/integration/trend.rs::a_figure_compares_only_on_a_matching_runner` | performed |
 | `assurance.measure.seed-mismatch` | `tools/ci/tests/integration/measure.rs::a_record_under_another_seed_than_its_entry_declares_is_refused` | performed |
 | `assurance.measure.seeded` | `crates/contextful-cli/tests/integration/eval.rs::replaying_the_ledger_seed_reproduces_the_native_gate_figures` | performed |

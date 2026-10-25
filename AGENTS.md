@@ -119,41 +119,39 @@ The gate measures commits, so commit before running it.
 
 ## The gate
 
-The FlareDispatch GitHub App dispatches `contextful-ci gate` from same-repository
-pull-request heads. Its `contextful-gate` run publishes the
-`flare-dispatch/contextful-gate` parent, 17 static child check-runs, and one
-test-first child per changed source package, each `flare-dispatch/check:<part>`:
+The gate is local. Before merge, the author runs `contextful-ci gate`, or the parts
+the change reaches, records each command and its pass count in the pull request, and
+squash-merges. No remote check runs on a pull request, a tag or a schedule.
+
+`contextful-ci stages --parts` prints the 17 parts a change runs before merge:
 `preflight` (pins, toolchain, schema and `test-first.validate`), `workspace.compile`,
 `workspace.cli-1` to `workspace.cli-8`, one `suite.<group>` per package group running
 its `workspace.<group>` then `evaluate.<group>` part (`suite.cli` pairs
 `workspace.cli-formal` with `evaluate.cli`, `suite.ci` adds `evaluate.probe`),
-`acceptance`, `perimeter` (crate-graph, connectors and surfaces), and
-`test-first.<package>`. A fold pays one sandbox setup for its members, and the CLI
-shards stay apart because a pair of them exceeds the part deadline cold;
-`contextful-ci stages --folds` prints each fold's members (`assurance.gate.folded-parts`).
-`contextful-ci stages --parts --base <rev>` prints the required list, and
-`--stage <part>` runs one part, a fold label or any member by its own name. A selected
-subset runs in run order and refuses a
-stage whose predecessor's output is absent; `--predecessors` runs those too. A local run and
-the remote check invoke the identical command. `contextful-ci`'s suite asserts 17
-static required parts covering 28 stage parts.
+`acceptance` and `perimeter` (crate-graph, connectors and surfaces); `--base <rev>`
+adds one `test-first.<package>` part per changed source package, and `--affected`
+narrows the list to the parts the diff from the merge base reaches. A fold pays one
+sandbox setup for its members; `contextful-ci stages --folds` prints each fold's
+members (`assurance.gate.folded-parts`). `--stage <part>` runs one part, a fold label
+or any member by its own name. A selected subset runs in run order and refuses a
+stage whose predecessor's output is absent; `--predecessors` runs those too.
+`contextful-ci`'s suite asserts 17 parts covering 28 stage parts.
 
 The nightly tier holds the `features`, `formal` and `budget` stages:
 `contextful-ci stages --parts --tier nightly` prints their 22 parts,
-`features.<package>`, `features.<binary|formal>-<set>`, `formal` and `budget.<profile>`,
-which leave the required set.
-FlareDispatch runs them nightly against the default-branch head, names the change range
-since the last passing run, and opens an issue on failure
-(`assurance.gate.nightly-tier`). `contextful-ci gate --stage <part>` runs a nightly part
-locally, `contextful-ci gate` with no stage runs both tiers, and `gate --plan` prints a
-run's stages without running them.
+`features.<package>`, `features.<binary|formal>-<set>`, `formal` and `budget.<profile>`
+(`assurance.gate.nightly-tier`). They run on demand: `contextful-ci gate --stage <part>`
+runs one against the default-branch head, `contextful-ci gate` with no stage runs both
+tiers, and `gate --plan` prints a run's stages without running them.
+`contextful-ci measure --tier all` runs every ledger tier, `measure-report` writes a run
+report with an integer run id, and `measure-publish` appends it to `refs/notes/measures`.
 
-FlareDispatch runs `contextful-measures` nightly against the default
-branch and attaches its report to `refs/notes/measures`. A `v*` tag starts
-`contextful-release`, with `contextful-release-cell` for the ten cells in
-`contextful-ci release --plan`, `contextful-release-formula` for formulae and
-SHA256SUMS, and three independently tagged container images. The disabled
-ruleset proposal under `.github/rulesets/` lists the parent and all 17 static children.
+A release runs on the operator's machine: `contextful-ci tag` creates the signed tag
+and the operator pushes it; `contextful-ci release` packages each of the ten cells in
+`contextful-ci release --plan`; `contextful-ci formula` writes the formulae,
+`SHA256SUMS` and `release-notes.md`; `contextful-ci image` assembles the three
+independently tagged container images; the operator publishes the GitHub release with
+`release-notes.md` as its body.
 
 The CLI differential module runs in `workspace.cli-formal` (inside `suite.cli`) and `features.formal-<set>`;
 `workspace.cli-1` to `workspace.cli-8` and `features.binary-<set>` run the remaining CLI tests;
@@ -164,31 +162,18 @@ the map from a four-thread timed run:
 `RUSTC_BOOTSTRAP=1 cargo test -p contextful-cli --test integration -- --skip differential:: --test-threads 4 -Z unstable-options --format json --report-time > .tmp/cli-times.json`,
 then `contextful-ci cli-shards --report .tmp/cli-times.json --scale 4`.
 
-### Landing without a remote verdict
-
-A remote check is evidence, never a lock. A child check still non-terminal 60 minutes
-after dispatch — the 2700 s part deadline plus queue and setup — is a stalled
-execution, and the parent's failure that follows carries no verdict on the change.
-Landing proceeds on the identical local command instead:
+### Landing
 
 1. Rebase onto `origin/main` and regenerate `spec/` with `contextful-spec state` and
    `extract`.
-2. Run `contextful-spec lint`, `cargo test` for every touched package, and
-   `contextful-ci gate --stage test-first --base origin/main`; run each stalled stage
-   locally with `--stage <stage>`.
+2. Run `contextful-spec lint`, `cargo test` for every touched package,
+   `contextful-ci gate --stage test-first --base origin/main`, and each part
+   `contextful-ci stages --parts --base origin/main --affected` lists.
 3. Record each command and its pass count in the pull request, then squash-merge.
 
-A stage that fails locally blocks the merge; a stage that stalls remotely does not.
-Native Windows checks are diagnostics and block nothing (`assurance.gate.windows-checks`).
-A pull request stacked on another rebases with `git rebase --onto origin/main <old base>`
-after its base squash-merges.
-
-The sole Actions workflow transports FlareDispatch-admitted native Windows
-diagnostics through `workflow_dispatch` and read-only repository permission.
-`contextful-ci native-transport` checks its fixed runners, immutable executor
-checkout, bound inputs and artifact directory. FlareDispatch verifies authentic
-API job conclusions and receipts before recording a diagnostic; none is required.
-The wrapper records subprocess evidence; reviewed workload code shares its user.
+A stage that fails locally blocks the merge. Native Windows checks are diagnostics and
+block nothing (`assurance.gate.windows-checks`). A pull request stacked on another
+rebases with `git rebase --onto origin/main <old base>` after its base squash-merges.
 
 The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
 under a comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays

@@ -461,7 +461,7 @@ fn publishing_a_report_retries_a_competing_push() {
     assert!(note.contains("racer report") && note.contains(&report), "{note}");
 }
 
-// spec: assurance.measure.tier@0feb15e4
+// spec: assurance.measure.tier@e51338c1
 #[test]
 fn a_failed_or_reseeded_trend_method_does_not_fail_the_measure_run() {
     let trend = entry("demo-doubles", "run.journal.entry-key", "{ test = \"demo::measured::doubles_measured\" }", "seed = 8")
@@ -477,9 +477,9 @@ fn a_failed_or_reseeded_trend_method_does_not_fail_the_measure_run() {
     assert!(stderr(&o).contains("trend method failed") || stderr(&o).contains("failed"), "{}", stderr(&o));
 }
 
-// spec: assurance.measure.run-report@29cba49a
+// spec: assurance.measure.run-report@7ceff870
 #[test]
-fn a_report_reads_dispatcher_history_whose_run_ids_are_execution_ids() {
+fn a_report_writes_an_integer_run_id_and_reads_earlier_text_run_ids() {
     let r = Repo::init();
     r.write("evals/ledger.toml", "[entry.latency]\nclause = \"run.journal.entry-key\"\nmetric = \"run.latency_ms\"\nkind = \"bench\"\ntier = \"trend\"\ndirection = \"lower_is_better\"\nmethod = { issue = 81 }\n");
     let figure = r#"{"id":"latency","value":40,"n":200,"seed":7,"run":{"processor":"t","nproc":1,"memory_limit":null}}"#;
@@ -491,11 +491,11 @@ fn a_report_reads_dispatcher_history_whose_run_ids_are_execution_ids() {
     r.write("README", "current\n");
     let current = r.commit("current");
     r.write("target/evaluate/records/latency.json", &figure.replace("\"value\":40", "\"value\":52"));
-    let out = r.run_ci(&["measure-report", "--commit", &current, "--run-id", "contextful-measures_2026-10-15", "--run-attempt", "2", "--exit-code", "101", "--out", "target/measure-report.json"]);
+    let out = r.run_ci(&["measure-report", "--commit", &current, "--run-id", "42", "--run-attempt", "2", "--exit-code", "101", "--out", "target/measure-report.json"]);
     assert!(out.status.success(), "{}", stderr(&out));
     let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(r.root.join("target/measure-report.json")).unwrap()).unwrap();
     assert_eq!(report["commit"], current.as_str());
-    assert_eq!(report["run_id"], "contextful-measures_2026-10-15");
+    assert_eq!(report["run_id"], 42);
     assert_eq!(report["run_attempt"], 2);
     assert_eq!(report["exit_code"], 101);
     assert_eq!(report["records"][0]["value"], 52.0);
@@ -510,4 +510,6 @@ fn a_report_reads_dispatcher_history_whose_run_ids_are_execution_ids() {
 
     let empty = r.run_ci(&["measure-report", "--commit", &current, "--run-id", "", "--run-attempt", "1", "--exit-code", "0", "--out", "target/measure-report.json"]);
     assert!(!empty.status.success(), "an empty run id names no run");
+    let text = r.run_ci(&["measure-report", "--commit", &current, "--run-id", "contextful-measures_2026-10-15", "--run-attempt", "1", "--exit-code", "0", "--out", "target/measure-report.json"]);
+    assert!(!text.status.success(), "a text run id is written");
 }

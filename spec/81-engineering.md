@@ -194,11 +194,9 @@ Target directories, the engine-linked invocation, linked query functions, build 
 Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.
 
 - `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — all of both tiers when none is named, else the named subset, which `--plan` prints unrun.
-- `nightly-tier` — `contextful-ci stages --parts --tier nightly` prints the features, formal and budget parts in run order; `stages --parts` prints the remaining parts, the required pull-request checks, and `gate --stage` runs a part of either tier.
+- `nightly-tier` — `contextful-ci stages --parts --tier nightly` prints the features, formal and budget parts in run order; `stages --parts` prints the remaining parts, those a change runs before merge, and `gate --stage` runs a part of either tier.
   *A-assurance*
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
-  *A-assurance*
-- `remote-check` — The FlareDispatch pull-request webhook dispatches every part `contextful-ci stages --parts --base <base-sha> --affected` lists, each as `flare-dispatch/check:<part>` on the head commit, and completes every other required part as succeeded, not affected.
   *A-assurance*
 - `affected-parts` — `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including `preflight`.
   *A-assurance*
@@ -218,33 +216,25 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `windows-checks` — Windows native checks run only as optional diagnostics and contribute no required merge or release verdict.
   *A-assurance*
-- `native-transport` — The sole GitHub Actions workflow accepts only FlareDispatch `workflow_dispatch` inputs for native Windows diagnostics under {{assurance.gate.windows-checks}}; FlareDispatch owns admission, immutable head selection, receipt verification and diagnostic artifact publication.
-  *A-assurance*
-- `native-receipt` — FlareDispatch records a native diagnostic result only when repository, head, base, nonce, command digest, trusted workflow identity, fixed runner label, observed native target, terminal exit and artifact digests match the admitted request.
-  *A-assurance*
-- `test-first-parts` — Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package checks only its own changed tests against the base in a separate dispatch.
+- `test-first-parts` — The test-first parts require a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package's part checks only its own changed tests against the base.
   *because one base build per package fits the sandbox's wall clock more reliably*
-- `workspace-parts` — Remote workspace checks compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.
+- `workspace-parts` — The workspace parts compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.
   *A-assurance*
 - `cli-shard-map` — `tools/ci/cli-shards.toml` assigns each remaining CLI test, a nested-build group whole, one shard by recorded duration within 9 min per shard; an unmapped test, reported as drift, joins its group or the least-loaded shard, which adds unit tests and doctests.
   *A-assurance*
 - `folded-parts` — `stages --parts` folds pins, toolchain, schema and test-first validation into `preflight`; each package group's workspace and evaluate parts into `suite.<group>`, probes into `suite.ci`; crate graph, connectors and surfaces into `perimeter`; members stay runnable alone.
-  *because every dispatched part pays its own sandbox setup and compile, and parts beyond one admission window queue a second wave*
+  *because every part pays its own sandbox setup and compile, and a fold pays it once for every member*
 - `compile-only` — `gate --stage <part> --compile-only` runs each `cargo test` invocation the part runs, in its own target directory with `--no-run` and without its `--` arguments, and nothing else; a CLI shard compiles every shard's invocations.
   *because a compile cache serves a part only when the warming build's cargo arguments, environment and target directory match the part's*
 - `compile-groups` — `stages --parts --compile-groups` lists, in run order, the first part of each distinct compile signature — its ordered `--compile-only` invocations and target directory — across both tiers unless `--tier` names one.
   *because the eight CLI shards share one signature, and warming each compiles it eight times*
 - `fold-verdicts` — A fold runs each member after an earlier member fails, skips a member reading a failed member's output, and fails when any member fails.
   *because one fold check replaces a check per member, and one run reports every member's verdict*
-- `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
-  *A-assurance*
-- `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the required stage checks.
-  *because a dispatch runs untrusted code in the organization's compute account, and absent required checks fail closed*
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*
-- `stage-timings` — Each dispatched part records queue, setup, compilation and test durations separately, alongside its commit, feature set, runner identity and cold or warm cache state.
+- `stage-timings` — Each part records queue, setup, compilation and test durations separately, alongside its commit, feature set, runner identity and cold or warm cache state.
   *A-assurance*
-- `part-budget` — Every dispatched part completes within {{assurance.gate.container}} on cold and warm builds; oversized work splits into locally runnable parts retaining every required suite and predecessor obligation.
+- `part-budget` — Every part completes within {{assurance.gate.container}} on cold and warm builds; oversized work splits into locally runnable parts retaining every required suite and predecessor obligation.
   *A-assurance*
 - `build-admission` — The runner admits concurrent builds only within available build slots and {{assurance.gate.parallel-jobs}}; excess builds queue before setup and compilation.
   *A-assurance*
@@ -287,7 +277,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `control-budget` — The control profile holds to 60 MiB compressed and 80 MiB idle resident set.
 - `footprint` — Per nightly run and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
   *P7*
-- `budget-stage` — The budget stage runs {{assurance.gate.footprint}} over every profile, in one part per profile dispatched as its own nightly check, and the evaluate stage builds no profile.
+- `budget-stage` — The budget stage runs {{assurance.gate.footprint}} over every profile, in one nightly-tier part per profile, and the evaluate stage builds no profile.
   *because one link-time-optimized release build of the full profile fills most of one stage's wall clock*
 - `footprint-exceeded` — An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile.
   *P7*
@@ -297,12 +287,10 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `surface-check-failed` — A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.
   *P7*
 
-unsettled: How does corpus status attest FlareDispatch's external webhook and check-run behavior? owner: build affects: assurance.gate
-
 #### Scenarios
 
 - `assurance.gate.stage-timings`: WHEN a part queues and then executes, THEN its report distinguishes queue, setup, compilation and test durations.
-- `assurance.gate.part-budget`: WHEN every dispatched part runs with empty caches and then warm caches, THEN each completes within {{assurance.gate.container}} and the union preserves required coverage.
+- `assurance.gate.part-budget`: WHEN every part runs with empty caches and then warm caches, THEN each completes within {{assurance.gate.container}} and the union preserves required coverage.
 - `assurance.gate.build-admission`: WHEN occupied build slots reach the admission limit, THEN another build queues without starting setup or compilation.
 - `assurance.gate.timeout-cleanup`: WHEN a forced hang leaves a descendant holding output pipes, THEN timeout diagnostics survive, the descendant exits and the part fails before its slot is released.
 
@@ -313,11 +301,7 @@ flowchart LR
   subgraph contributor["contributor"]
     LOCAL["contextful-ci gate"]
   end
-  subgraph forge["FlareDispatch"]
-    WF["one remote check per stage"]
-  end
-  LOCAL -->|"local run"| C
-  WF -->|"remote run"| C
+  LOCAL -->|"runs before merge"| C
   subgraph C["gate container, 12 GiB memory and 18 GiB disk"]
     S1["1 pins"]
     S2["2 toolchain"]
@@ -543,7 +527,7 @@ The target ledger: each tracked target, the clause it serves, how it is measured
 - `unresolved-entry` — An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.
   *P7*
 - `open-entry` — An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.
-- `tier` — A gate-tier entry decides the evaluate stage, a trend-tier entry is measured on the default-branch run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.
+- `tier` — A gate-tier entry decides the evaluate stage, a trend-tier entry decides nothing, and `contextful-ci measure` runs the gate tier alone unless `--tier` names `trend`, `scheduled` or `all`.
 - `judged-tier` — An entry whose metric names a judged figure is scheduled-tier; on another tier it resolves to nothing under {{assurance.measure.unresolved-entry}}.
   *because a judged figure costs a model call per item and moves with the judge, not with the change*
 - `count-first` — A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.
@@ -567,13 +551,8 @@ The target ledger: each tracked target, the clause it serves, how it is measured
   *because a loosened gate otherwise reads as a changed number, and the cost it accepts goes unrecorded*
 - `history` — A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.
   *A-assurance*
-- `run-report` — `contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — and a run id is an integer or a FlareDispatch execution id, each read back from history.
-  *because the Dispatcher names a run by its execution id, and an unreadable note hides every older baseline*
-- `scheduled` — The FlareDispatch nightly run executes every measurement tier and every {{assurance.gate.nightly-tier}} part against the default-branch head, reports one check per run, and on failure opens an issue naming the change range since the last passing run.
-- `note-credential` — The Dispatcher appends the run report through the Git data API under its GitHub App installation token, which holds contents write on this repository; the measure container receives no write credential.
-  *because the container executes the measured tree's code, and a write token inside it lets any commit rewrite history*
-- `remote-attest` — Status pins only the commands this tree ships; the Dispatcher's schedule and note write pin no test here, and each note commit on `refs/notes/measures` names its measured commit and writer.
-  *because a pin demonstrates code in this tree, and the Dispatcher's code lives in its own repository*
+- `run-report` — `contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — with an integer run id, and reads back every earlier note whatever its run id's JSON type.
+  *because earlier notes on `refs/notes/measures` carry text run ids, and an unreadable note hides every older baseline*
 - `measured-basis` — A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.
 
 A ledger entry's path from the tree to a verdict:
@@ -595,12 +574,12 @@ flowchart LR
 - `assurance.measure.unresolved-entry`: WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs.
 - `assurance.measure.trend-band`: WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes.
 - `assurance.measure.trend-baseline`: WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes.
-- `assurance.measure.run-report`: WHEN the baseline note's run id is `contextful-measures_2026-10-14`, THEN the report's annotation names that run id as its baseline.
+- `assurance.measure.run-report`: WHEN the baseline note's run id is the text `contextful-measures_2026-10-14` and the run's is `42`, THEN the report writes `42` and its annotation names that text run id as its baseline.
 - `assurance.measure.open-entry`: WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it.
 
 ## release
 
-The release tag's version, the refusals guarding it, the signed annotated tag `contextful-ci tag` creates, and the FlareDispatch packaging run.
+The release tag's version, the refusals guarding it, the signed annotated tag `contextful-ci tag` creates, and the local packaging the operator runs from it.
 
 - `version` — A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.
   *A-assurance*
@@ -624,12 +603,8 @@ The release tag's version, the refusals guarding it, the signed annotated tag `c
   *A-assurance*
 - `release-tag-version` — `contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.
   *because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version*
-- `release-run` — A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.
-  *because distributed builds and formula generation share one tag identity*
-- `release-dry-run` — A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.
-  *because a packaging rehearsal must not claim a released version*
-
-unsettled: How does corpus status attest FlareDispatch's external tag dispatch and publication? owner: build affects: assurance.release
+- `release-run` — The operator pushes the tag, runs `contextful-ci release` per {{assurance.build.targets}} matrix cell, `contextful-ci formula` over their metadata and `contextful-ci image` per profile, then publishes the GitHub release from that tag.
+  *because every packaging command then reads one tag identity, and each runs on the operator's machine*
 
 #### Scenarios
 
