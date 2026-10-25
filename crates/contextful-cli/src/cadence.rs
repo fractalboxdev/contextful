@@ -1867,7 +1867,7 @@ fn held_answer(holder: &str) -> Result<()> {
 /// cycle's standard output stays its one answer; the tally is the child's last stdout line.
 fn drain_child(project: &str, declaration: Option<&Path>, now: Option<&str>, pin: Option<&str>) -> Result<serde_json::Value> {
     let mut child = std::process::Command::new(std::env::current_exe()?);
-    child.args(["queue", "drain", "--json", "--project", project]);
+    child.args(["queue", "drain", "--json", "--no-wake-ups", "--project", project]);
     if let Some(d) = declaration {
         child.arg("--declaration").arg(d);
     }

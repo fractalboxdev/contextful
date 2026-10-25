@@ -334,7 +334,7 @@ fn rows(dir: &Path) -> String {
 
 /// A cycle drains the queue under the cadence lease once its units end: an arrival key wakes its prefix read before the
 /// source's cadence comes due, and an object whose key never arrives lands on that cadence.
-// spec: surface.fire.cycle-drain@803aebae
+// spec: surface.fire.cycle-drain@9362d1e0
 #[test]
 fn a_cycle_drains_arrival_keys_between_cadence_fires() {
     use contextful_core::run::queue::{Queue, QueueMessage};
@@ -361,6 +361,10 @@ fn a_cycle_drains_arrival_keys_between_cadence_fires() {
     assert!(passed, "{woke}\n{said}");
     assert_eq!((woke["fired"].clone(), woke["drained"]["arrivals"].clone(), woke["drained"]["left"].clone()), (serde_json::json!([]), serde_json::json!(1), serde_json::json!(0)), "nothing is due; the arrival wakes the read: {woke}");
     assert!(rows(p).contains("\"3\""), "{}", rows(p));
+    let spool = LocalSpool::open(&p.join(".contextful/queue/research")).unwrap();
+    let waiting: Vec<QueueMessage> = spool.receive(10).unwrap().into_iter().map(|d| d.message).collect();
+    assert_eq!(woke["drained"]["wake_ups"], 0, "{woke}");
+    assert!(matches!(waiting.as_slice(), [QueueMessage::Committed { table, .. }] if table == "feed_orders"), "the wake-up waits for `queue drain`: {waiting:?}");
 
     // An object whose key never arrives waits for the cadence, which counts from the woken fire.
     writer.put("feed/03.jsonl", b"{\"n\":4}\n", Condition::None).unwrap();

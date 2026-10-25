@@ -43,6 +43,10 @@ pub enum QueueCmd {
         /// Print the tally as one JSON object on the last line.
         #[arg(long)]
         json: bool,
+        /// Leave post-commit wake-ups queued for a drain that takes them; `pipeline serve --cycle`
+        /// drains this way (`surface.fire.cycle-drain`).
+        #[arg(long)]
+        no_wake_ups: bool,
         #[command(flatten)]
         admit: AdmitArgs,
     },
@@ -75,10 +79,10 @@ pub(crate) fn local_spool(store_root: &Path) -> Result<LocalSpool> {
 
 pub fn run(cmd: QueueCmd, tasks: &Tasks) -> Result<()> {
     match cmd {
-        QueueCmd::Drain { project, declaration, max, json, admit } => {
+        QueueCmd::Drain { project, declaration, max, json, no_wake_ups, admit } => {
             let l = project.locate(declaration.clone())?;
             let spool = local_spool(&l.project.store_root())?;
-            let mut wake = Woken { project: &project, declaration, located: l.declaration.clone(), admit: &admit, tasks };
+            let mut wake = Woken { project: &project, declaration, located: l.declaration.clone(), admit: &admit, tasks, wake_ups: !no_wake_ups };
             let drained = drain(&spool, &spool, max, &mut wake).map_err(|f| match f.tag {
                 FailureTag::Transient => anyhow::anyhow!("{}; retryable, its deliveries stay queued for the next drain", f.message),
                 _ => anyhow::anyhow!("{}; its deliveries stay queued", f.message),
@@ -105,6 +109,7 @@ struct Woken<'a> {
     located: PathBuf,
     admit: &'a AdmitArgs,
     tasks: &'a Tasks,
+    wake_ups: bool,
 }
 
 /// A wake's failure. A push guard held past its wait (`SyncPushInFlight`) is retryable, and
@@ -188,5 +193,9 @@ impl Wake for Woken<'_> {
 
     fn batches(&mut self, batches: &[Batch]) -> Vec<Result<(), Failure>> {
         crate::receive::consume(self.project, self.declaration.clone(), self.tasks, self.admit, batches)
+    }
+
+    fn wakes_exports(&self) -> bool {
+        self.wake_ups
     }
 }

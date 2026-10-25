@@ -27051,7 +27051,7 @@
       "operation": "fire",
       "subject": "cycle-drain",
       "kind": "behavior",
-      "statement": "After its dispatched units end and before it releases the cadence lease, `serve --cycle` drains the queue once as `contextful queue drain` does, and its answer counts what that drain settled and left queued.",
+      "statement": "After its dispatched units end and before it releases the cadence lease, `serve --cycle` drains the queue's object-arrival keys and queued batches once, leaving post-commit wake-ups for `contextful queue drain`, and its answer counts what that drain settled.",
       "why": "because an object-arrival key or a queued batch must reach its read between cadence fires, and the cadence lease keeps one drainer",
       "file": "spec/70-control-plane.md",
       "line": 213
