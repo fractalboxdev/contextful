@@ -8,7 +8,7 @@ mod hydrate;
 mod run_state;
 mod node_id;
 mod redistribute;
-mod s3;
+pub(crate) mod s3;
 mod unpushed;
 mod without_s3;
 

@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 356 | 73 | 25 | 5 | 306 | 0 | 306 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 310 | 0 | 310 |
+| `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 311 | 0 | 311 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 324 | 58 | 29 | 16 | 282 | 0 | 282 |
 | `run` | 3 | 29 | 608 | 129 | 49 | 19 | 569 | 0 | 569 |
-| `store` | 6 | 20 | 343 | 72 | 24 | 12 | 328 | 0 | 328 |
+| `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
 | `topology` | 1 | 6 | 85 | 26 | 5 | 3 | 81 | 0 | 81 |
-| **total** | 26 | 177 | 2913 | 711 | 229 | 84 | 2567 | 0 | |
+| **total** | 26 | 177 | 2913 | 711 | 229 | 84 | 2572 | 0 | |
 
 Decision records: 18.
 
@@ -29,9 +29,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 311 | 300 | passing | closed |
-| 4 — Ingest | 25 | 646 | 539 | passing | closed |
+| 4 — Ingest | 25 | 646 | 540 | passing | closed |
 | 5 — The read face under enforcement | 17 | 318 | 284 | passing | closed |
-| 6 — Sync and replicas | 9 | 118 | 113 | passing | closed |
+| 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
 | 7 — Memory | 6 | 100 | 85 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -907,6 +907,7 @@ Unscheduled operations: 13.
 | `connector.source.object-expansion` | `crates/contextful-connectors/tests/integration/object.rs::an_object_expanding_past_256_mib_lands_nothing_and_is_named_with_the_ceiling` | performed |
 | `connector.source.object-gzip` | `crates/contextful-connectors/tests/integration/object.rs::a_gz_key_or_declared_gzip_decompresses_and_none_reads_as_stored` | performed |
 | `connector.source.object-position-owned` | `crates/contextful-cli/tests/integration/object.rs::an_incremental_field_beside_an_etag_position_is_refused_at_validation` | performed |
+| `connector.source.object-role` | `crates/contextful-cli/tests/integration/object.rs::a_role_signed_object_source_reads_and_refuses_beside_a_key` | performed |
 | `connector.source.object-session-token` | `crates/contextful-cli/tests/integration/object.rs::a_session_token_signs_every_request_as_a_temporary_credential` | performed |
 | `connector.source.object-transport` | `crates/contextful-cli/tests/integration/object.rs::a_signed_read_passes_the_backends_signature_check_and_a_skip_downloads_nothing` | performed |
 | `connector.source.object-unreadable` | `crates/contextful-connectors/tests/integration/object.rs::an_unreadable_object_lands_a_dead_letter_and_the_rest_of_the_read_lands` | performed |
@@ -2126,6 +2127,10 @@ Unscheduled operations: 13.
 | `store.endpoint.list-pages` | `crates/contextful-sync/tests/integration/s3.rs::a_list_follows_every_continuation_token` | performed |
 | `store.endpoint.missing-bucket` | `crates/contextful-sync/tests/integration/s3.rs::a_missing_bucket_answers_no_absent_object` | performed |
 | `store.endpoint.plaintext` | `crates/contextful-core/tests/integration/store/sync.rs::plaintext_http_opens_on_loopback_alone` | performed |
+| `store.endpoint.role-conflict` | `crates/contextful-core/tests/integration/store/sync.rs::role_credentials_beside_a_key_or_on_r2_conflict_naming_the_endpoint` | performed |
+| `store.endpoint.role-credentials` | `crates/contextful-cli/tests/integration/sync/s3.rs::role_credentials_sign_a_push_and_a_pull` | performed |
+| `store.endpoint.role-refresh` | `crates/contextful-outbound/tests/integration/role.rs::role_credentials_refresh_ahead_of_expiry_and_a_failed_refresh_keeps_valid_ones` | performed |
+| `store.endpoint.role-unavailable` | `crates/contextful-cli/tests/integration/sync/s3.rs::a_role_no_source_answers_refuses_naming_each_source` | performed |
 | `store.endpoint.schemes` | `crates/contextful-core/tests/integration/store/sync.rs::each_endpoint_scheme_resolves_its_adapter_address` | performed |
 | `store.endpoint.throttled` | `crates/contextful-sync/tests/integration/s3.rs::a_throttled_answer_resends_after_backoff_and_a_failed_conditional_put_goes_once` | performed |
 | `store.endpoint.transport` | `spec/pins.toml` | performed |

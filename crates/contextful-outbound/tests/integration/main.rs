@@ -8,6 +8,7 @@ mod meter;
 mod probe;
 mod record;
 mod resolve;
+mod role;
 mod rotate;
 mod support;
 mod telemetry;

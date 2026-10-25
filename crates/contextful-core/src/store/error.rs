@@ -147,6 +147,12 @@ pub enum StoreError {
     /// An S3 or R2 endpoint's `[sync]` binds a credential key to no reference, or to an unset variable. (`store.endpoint.credential-unbound`)
     #[error("SyncCredentialUnbound: {0}")]
     SyncCredentialUnbound(String),
+    /// Role credentials beside a key, or on an R2 endpoint. (`store.endpoint.role-conflict`)
+    #[error("SyncCredentialConflict: {0}")]
+    SyncCredentialConflict(String),
+    /// No workload-role source answers a bucket whose `[sync]` selects role credentials. (`store.endpoint.role-unavailable`)
+    #[error("SyncRoleUnavailable: {0}")]
+    SyncRoleUnavailable(String),
     /// A cursor was resolved by recency instead of through its commit. (`store.merge.cursor-recency`)
     #[error("SyncCursorConflict: {0}")]
     SyncCursorConflict(String),

@@ -5,7 +5,7 @@ use contextful_core::store::lease::{BucketLease, CLOCK_SKEW_SECS, RENEWAL_SECS, 
 use contextful_core::store::object::Condition;
 use contextful_core::connector::reference::SecretName;
 use contextful_core::store::sync::{
-    confine, merge, merge_verified, owner_of, BucketManifest, HeldKeys, ControlHead, CredentialRef, Endpoint, Entry, SyncConfig, Tombstone, DEFAULT_REGION, TOMBSTONE_TTL_SECS,
+    confine, merge, merge_verified, owner_of, BucketManifest, HeldKeys, ControlHead, CredentialRef, Endpoint, Entry, Signing, SyncConfig, Tombstone, DEFAULT_REGION, TOMBSTONE_TTL_SECS,
 };
 use contextful_core::store::StoreError;
 use std::collections::BTreeMap;
@@ -370,6 +370,33 @@ fn an_unbound_or_literal_credential_key_is_refused_naming_the_key() {
             other => panic!("{key}: {other:?}"),
         }
     }
+}
+
+/// `credentials = "role"` beside `access_key_id`, `secret_access_key` or `session_token`, or on an R2 endpoint,
+/// raises `SyncCredentialConflict`, naming the endpoint; alone on an S3 or HTTPS endpoint it selects role signing.
+// spec: store.endpoint.role-conflict@0db7d718
+#[test]
+fn role_credentials_beside_a_key_or_on_r2_conflict_naming_the_endpoint() {
+    let role = |e: &str| SyncConfig { credentials: Some("role".into()), ..endpoint(e) };
+    let parsed: SyncConfig = toml::from_str("endpoint = \"s3://eu-west-1\"\nbucket = \"b\"\ncredentials = \"role\"\n").unwrap();
+    assert_eq!(parsed.signing().unwrap(), Signing::Role);
+    assert_eq!(role("https://objects.example.org").signing().unwrap(), Signing::Role);
+    let cases = [
+        (SyncConfig { access_key_id: Some("env://A".into()), ..role("s3://eu-west-1") }, "s3://eu-west-1", "access_key_id"),
+        (SyncConfig { secret_access_key: Some("secret://s".into()), ..role("s3://eu-west-1") }, "s3://eu-west-1", "secret_access_key"),
+        (SyncConfig { session_token: Some("env://T".into()), ..role("https://objects.example.org") }, "https://objects.example.org", "session_token"),
+        (role("r2://account"), "r2://account", "R2"),
+    ];
+    for (c, named, why) in cases {
+        match c.signing() {
+            Err(StoreError::SyncCredentialConflict(m)) => assert!(m.contains(named) && m.contains(why), "{why}: {m}"),
+            other => panic!("{why}: {other:?}"),
+        }
+    }
+    // Without `credentials`, the keys sign as before.
+    let keys = SyncConfig { access_key_id: Some("env://A".into()), secret_access_key: Some("env://B".into()), ..endpoint("s3://eu-west-1") };
+    assert!(matches!(keys.signing().unwrap(), Signing::Keys(_)));
+    assert!(matches!(SyncConfig { credentials: Some("instance".into()), ..endpoint("s3://eu-west-1") }.signing(), Err(StoreError::SyncCredentialUnbound(_))));
 }
 
 #[test]

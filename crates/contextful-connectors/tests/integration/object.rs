@@ -9,6 +9,7 @@ use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Source;
 use contextful_core::run::RunError;
 use contextful_core::store::object::{Condition, ObjectError, ObjectStore, Put};
+use contextful_core::store::StoreError;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde_json::{json, Value};
@@ -311,6 +312,30 @@ fn a_session_token_reference_joins_the_key_pair() {
     }
     let alone = json!({"bucket": "b", "key": "k.jsonl", "session_token": "secret://lake-token"});
     assert!(matches!(refusal(alone), ConfigError::Run(_)), "a token signs only beside the key pair");
+}
+
+/// `credentials = "role"` selects workload-role signing, alone: beside any key it refuses as
+/// `SyncCredentialConflict`, and a cleartext endpoint off loopback refuses as for a key pair.
+#[test]
+fn role_credentials_replace_the_key_pair_and_refuse_beside_a_key() {
+    let role = ObjectConfig::parse(&json!({"bucket": "b", "key": "k.jsonl", "credentials": "role"})).unwrap();
+    assert!(role.role && role.access_key_id.is_none());
+    assert_eq!(role.credentials().count(), 0, "a role read hydrates no reference");
+    for (k, v) in [("access_key_id", "secret://id"), ("secret_access_key", "secret://s"), ("session_token", "secret://t")] {
+        let mut config = json!({"bucket": "b", "key": "k.jsonl", "credentials": "role", "access_key_id": "secret://id", "secret_access_key": "secret://s"});
+        if k == "session_token" {
+            config[k] = json!(v);
+        }
+        match refusal(config) {
+            ConfigError::Store(StoreError::SyncCredentialConflict(m)) => assert!(m.contains("access_key_id") && m.contains("s3.amazonaws.com"), "{k}: {m}"),
+            other => panic!("{k}: {other}"),
+        }
+    }
+    assert!(matches!(refusal(json!({"bucket": "b", "key": "k", "credentials": "instance"})), ConfigError::Run(_)));
+    match refusal(json!({"bucket": "b", "key": "k.jsonl", "credentials": "role", "endpoint": "http://objects.vendor.example"})) {
+        ConfigError::Connector(ConnectorError::SecretCleartextEndpoint(m)) => assert!(m.contains("objects.vendor.example"), "{m}"),
+        other => panic!("{other}"),
+    }
 }
 
 /// A signing source never addresses a cleartext endpoint off loopback; an unsigned one may,

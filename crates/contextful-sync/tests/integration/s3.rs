@@ -115,6 +115,54 @@ fn a_list_follows_every_continuation_token() {
     assert!(b.list("none/").unwrap().is_empty());
 }
 
+/// A loopback container credential endpoint answering the server's key pair as a role
+/// credential, counting each answer.
+fn container_endpoint() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    use std::io::{BufRead, BufReader, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://127.0.0.1:{}/creds", listener.local_addr().unwrap().port());
+    let served = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = served.clone();
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while reader.read_line(&mut line).is_ok_and(|n| n > 0) && line != "\r\n" {
+                line.clear();
+            }
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let body = format!(r#"{{"AccessKeyId":"{ACCESS_KEY}","SecretAccessKey":"{SECRET_KEY}","Token":"role-session","Expiration":"2999-01-01T00:00:00Z"}}"#);
+            let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+        }
+    });
+    (url, served)
+}
+
+/// Under role credentials every request signs with the provider's current credential: the
+/// backend verifies each signature, and the provider's held credential serves every request.
+#[test]
+fn a_role_bucket_signs_every_request_with_the_providers_credential() {
+    use contextful_outbound::role::RoleProvider;
+    let server = S3Server::start(BUCKET);
+    let (url, served) = container_endpoint();
+    let vars = [("AWS_CONTAINER_CREDENTIALS_FULL_URI".to_string(), url)].into_iter().collect();
+    let b = S3Bucket::with_role(&server.endpoint, "us-east-1", BUCKET, Arc::new(RoleProvider::new(vars))).unwrap();
+    let Put::Applied(etag) = b.put("team/a.json", b"{}", Condition::IfNoneMatch).unwrap() else { panic!("the create applies") };
+    assert_eq!(b.get("team/a.json").unwrap(), Some((b"{}".to_vec(), etag)));
+    assert_eq!(b.list("team/").unwrap(), ["team/a.json"]);
+    assert!(b.presign_get("team/a.json").unwrap().contains("X-Amz-Security-Token=role-session"));
+    assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 1, "one fetch serves every request");
+
+    // A role no source answers sends nothing and names the error.
+    let none = [("AWS_EC2_METADATA_SERVICE_ENDPOINT".to_string(), "http://127.0.0.1:9".to_string())].into_iter().collect();
+    let unsigned = S3Bucket::with_role(&server.endpoint, "us-east-1", BUCKET, Arc::new(RoleProvider::new(none))).unwrap();
+    match unsigned.get("team/a.json") {
+        Err(ObjectError::Unavailable(m)) => assert!(m.contains("SyncRoleUnavailable") && m.contains("imds:"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(server.gets(), 1);
+}
+
 /// A head request answers an object's ETag and a tagged listing answers each key's ETag, both
 /// without transferring an object's bytes.
 #[test]

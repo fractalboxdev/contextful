@@ -25,11 +25,13 @@ const SENDS: [&str; 1] = ["default_send_request"];
 
 /// The configured adapters: a source path prefix and the clause naming the configuration
 /// that alone reaches it.
-const CONFIGURED: [(&str, &str); 5] = [
+const CONFIGURED: [(&str, &str); 6] = [
     // Dialed only for a host a connector, component or model declaration names.
     ("crates/contextful-outbound/src/ureq_transport.rs", "connector.attach.transport-port"),
     // Opened only from a `[sync] endpoint` with an `s3://` or `r2://` scheme.
     ("crates/contextful-sync/src/s3_bucket.rs", "store.endpoint.schemes"),
+    // Asked for credentials only under an operator's `credentials = "role"`.
+    ("crates/contextful-outbound/src/role.rs", "store.endpoint.role-credentials"),
     // Opened only under the `d1-catalog` backend an operator selects.
     ("crates/contextful-d1/src/lib.rs", "topology.coordinate.backends"),
     // Connected only under the `pg-catalog` backend an operator selects.

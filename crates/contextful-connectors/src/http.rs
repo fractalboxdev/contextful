@@ -397,6 +397,7 @@ fn text(cfg: &Map<String, Value>, k: &str) -> Result<Option<String>, RunError> {
 pub enum ConfigError {
     Run(RunError),
     Connector(ConnectorError),
+    Store(contextful_core::store::StoreError),
 }
 
 impl std::fmt::Display for ConfigError {
@@ -404,6 +405,7 @@ impl std::fmt::Display for ConfigError {
         match self {
             ConfigError::Run(e) => e.fmt(f),
             ConfigError::Connector(e) => e.fmt(f),
+            ConfigError::Store(e) => e.fmt(f),
         }
     }
 }
