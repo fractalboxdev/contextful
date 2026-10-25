@@ -24,6 +24,7 @@ locals {
       CONTEXTFUL_AWS_SECRET_PREFIX = local.source_secret_prefix
     },
     var.issuer_public_keys == null ? {} : { CONTEXTFUL_ISSUER_PUBKEY = var.issuer_public_keys },
+    var.queue_enabled ? { CONTEXTFUL_QUEUE_URL = aws_sqs_queue.this[0].url } : {},
     var.environment,
   )
 

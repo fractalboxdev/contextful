@@ -64,3 +64,13 @@ output "store_config" {
     credentials = var.sync_credentials
   })
 }
+
+output "queue_url" {
+  description = "SQS queue behind the `Queue` port, passed as CONTEXTFUL_QUEUE_URL, or null when queue_enabled is false."
+  value       = one(aws_sqs_queue.this[*].url)
+}
+
+output "dead_letter_queue_url" {
+  description = "Dead-letter queue holding messages received queue_max_receive_count times without a delete, or null when queue_enabled is false."
+  value       = one(aws_sqs_queue.dead_letter[*].url)
+}

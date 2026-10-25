@@ -242,6 +242,54 @@ variable "log_retention_days" {
   default     = 30
 }
 
+# ------------------------------------------------------------------ queue
+
+variable "queue_enabled" {
+  description = "Provision the SQS queue behind the `Queue` port and pass its URL as `CONTEXTFUL_QUEUE_URL`. False keeps every task on the local spool."
+  type        = bool
+  default     = true
+}
+
+variable "queue_max_receive_count" {
+  description = "Receives of one message without a delete before SQS moves it to the dead-letter queue."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.queue_max_receive_count >= 1 && var.queue_max_receive_count <= 1000
+    error_message = "queue_max_receive_count is between 1 and 1000."
+  }
+}
+
+variable "queue_retention_seconds" {
+  description = "How long the queue keeps an undeleted message. Keep it at or above the longest `key_retention_secs` of a `receive` source, so an expired key ends a batch as `ReceiveBatchKeyExpired` rather than vanishing."
+  type        = number
+  default     = 345600
+
+  validation {
+    condition     = var.queue_retention_seconds >= 60 && var.queue_retention_seconds <= 1209600
+    error_message = "queue_retention_seconds is between 60 and 1209600."
+  }
+}
+
+variable "object_arrival_bucket" {
+  description = "Existing bucket in this account and region whose object-create events enqueue object-arrival keys. Its notification configuration is replaced. Null configures no notification."
+  type        = string
+  default     = null
+}
+
+variable "object_arrival_prefix" {
+  description = "Key prefix an object-create event must match to enqueue; empty matches every key."
+  type        = string
+  default     = ""
+}
+
+variable "object_arrival_suffix" {
+  description = "Key suffix an object-create event must match to enqueue; empty matches every key."
+  type        = string
+  default     = ""
+}
+
 # ------------------------------------------------------------------ storage
 
 variable "corpus_bucket_name" {

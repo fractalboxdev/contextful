@@ -1,7 +1,7 @@
 locals {
   # The load balancer's public subnets and the NAT gateway share the public tier.
   public_tier = !var.alb_internal || var.enable_nat
-  endpoints   = toset(["ecr.api", "ecr.dkr", "secretsmanager", "logs", "sts"])
+  endpoints   = toset(concat(["ecr.api", "ecr.dkr", "secretsmanager", "logs", "sts"], var.queue_enabled ? ["sqs"] : []))
 }
 
 resource "aws_vpc" "this" {
