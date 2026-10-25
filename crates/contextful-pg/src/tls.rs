@@ -1,41 +1,61 @@
 //! The TLS roots a connection authenticates its server against: the WebPKI roots, or the
 //! PEM bundle the connection string's `sslrootcert` names in their place
-//! (`topology.coordinate.postgres-ca-bundle`). The driver's parser knows no `sslrootcert`,
-//! so the parameter leaves the string before the driver reads it.
+//! (`topology.coordinate.postgres-ca-bundle`). The driver's parser knows no `sslrootcert`
+//! and no `verify-ca` or `verify-full` mode, so the string is rewritten before the driver
+//! reads it: `sslrootcert` leaves it, and a verifying mode becomes `require`, whose TLS
+//! already verifies the chain and the hostname (`topology.coordinate.postgres-verify-modes`).
 
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::CertificateDer;
 use rustls::{ClientConfig, RootCertStore};
-use std::borrow::Cow;
 use std::sync::Arc;
 
-const PARAMETER: &str = "sslrootcert";
-
-/// `conninfo` without its `sslrootcert` parameters, and the last one's path. A key-value
-/// string the scan cannot tokenize passes through whole, so the driver reports the error.
-pub(crate) fn split_root_cert(conninfo: &str) -> (Cow<'_, str>, Option<String>) {
-    match ["postgres://", "postgresql://"].iter().find(|p| conninfo.starts_with(*p)) {
-        Some(_) => split_url(conninfo),
-        None => split_key_value(conninfo).map_or((Cow::Borrowed(conninfo), None), |(rest, path)| (Cow::Owned(rest), path)),
-    }
+/// What happens to one parameter of the connection string.
+enum Rewrite {
+    Keep,
+    Drop,
+    Value(&'static str),
 }
 
-fn split_url(url: &str) -> (Cow<'_, str>, Option<String>) {
+/// The connection string the driver parses, and the `sslrootcert` path it carried, absent
+/// for libpq's `system` value (`topology.coordinate.postgres-system-roots`). A key-value
+/// string the scan cannot tokenize passes through whole, so the driver reports the error.
+pub(crate) fn driver_conninfo(conninfo: &str) -> (String, Option<String>) {
+    let mut root_cert = None;
+    let mut rewrite = |key: &str, value: String| match (key, value.as_str()) {
+        ("sslrootcert", _) => {
+            root_cert = Some(value);
+            Rewrite::Drop
+        }
+        ("sslmode", "verify-ca" | "verify-full") => Rewrite::Value("require"),
+        _ => Rewrite::Keep,
+    };
+    let rewritten = if ["postgres://", "postgresql://"].iter().any(|p| conninfo.starts_with(p)) {
+        rewrite_url(conninfo, &mut rewrite)
+    } else {
+        rewrite_key_value(conninfo, &mut rewrite).unwrap_or_else(|| conninfo.to_string())
+    };
+    (rewritten, root_cert.filter(|path| path != "system"))
+}
+
+fn rewrite_url(url: &str, rewrite: &mut dyn FnMut(&str, String) -> Rewrite) -> String {
     // The driver takes credentials up to the first `@`, so the query starts after it.
     let after = url.find('@').map_or(0, |at| at + 1);
-    let Some(q) = url[after..].find('?').map(|q| after + q) else { return (Cow::Borrowed(url), None) };
-    let (mut kept, mut path) = (Vec::new(), None);
+    let Some(q) = url[after..].find('?').map(|q| after + q) else { return url.to_string() };
+    let mut kept = Vec::new();
     for pair in url[q + 1..].split('&') {
-        match pair.split_once('=') {
-            Some((PARAMETER, value)) => path = Some(percent_decode(value)),
-            _ => kept.push(pair),
+        let Some((key, value)) = pair.split_once('=') else {
+            kept.push(pair.to_string());
+            continue;
+        };
+        match rewrite(&percent_decode(key), percent_decode(value)) {
+            Rewrite::Keep => kept.push(pair.to_string()),
+            Rewrite::Drop => {}
+            Rewrite::Value(value) => kept.push(format!("{key}={value}")),
         }
     }
-    if path.is_none() {
-        return (Cow::Borrowed(url), None);
-    }
     let base = &url[..q];
-    (Cow::Owned(if kept.is_empty() { base.to_string() } else { format!("{base}?{}", kept.join("&")) }), path)
+    if kept.is_empty() { base.to_string() } else { format!("{base}?{}", kept.join("&")) }
 }
 
 fn percent_decode(s: &str) -> String {
@@ -60,9 +80,9 @@ fn percent_decode(s: &str) -> String {
 
 /// The key-value scan the driver performs: `key = value`, where a value is single-quoted
 /// or runs to whitespace, and a backslash escapes the next character.
-fn split_key_value(s: &str) -> Option<(String, Option<String>)> {
+fn rewrite_key_value(s: &str, rewrite: &mut dyn FnMut(&str, String) -> Rewrite) -> Option<String> {
     let mut it = s.char_indices().peekable();
-    let (mut rest, mut path, mut kept_from) = (String::new(), None, 0);
+    let (mut rest, mut kept_from) = (String::new(), 0);
     loop {
         while it.next_if(|&(_, c)| c.is_whitespace()).is_some() {}
         let Some(&(start, _)) = it.peek() else { break };
@@ -97,15 +117,18 @@ fn split_key_value(s: &str) -> Option<(String, Option<String>)> {
                 }
             }
         }
-        if key == PARAMETER {
-            let end = it.peek().map_or(s.len(), |&(i, _)| i);
-            rest.push_str(&s[kept_from..start]);
-            kept_from = end;
-            path = Some(value);
-        }
+        let replacement = match rewrite(key, value) {
+            Rewrite::Keep => continue,
+            Rewrite::Drop => String::new(),
+            Rewrite::Value(value) => format!("{key}={value}"),
+        };
+        let end = it.peek().map_or(s.len(), |&(i, _)| i);
+        rest.push_str(&s[kept_from..start]);
+        rest.push_str(&replacement);
+        kept_from = end;
     }
     rest.push_str(&s[kept_from..]);
-    Some((rest, path))
+    Some(rest)
 }
 
 /// The client configuration for a connection: WebPKI roots, or the bundle at `root_cert`

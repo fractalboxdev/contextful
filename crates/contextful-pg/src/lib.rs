@@ -154,7 +154,7 @@ impl PgCatalog {
 /// The parsed connection string and the TLS configuration its `sslrootcert`, if any,
 /// selects; the bundle loads here, before any connection.
 fn protected_config(conninfo: &str) -> Result<(Config, rustls::ClientConfig), Failure> {
-    let (conninfo, root_cert) = tls::split_root_cert(conninfo);
+    let (conninfo, root_cert) = tls::driver_conninfo(conninfo);
     let config = transport_config(&conninfo)?;
     let tls = tls::client_config(root_cert.as_deref()).map_err(|e| storage(&describe(&config), e))?;
     Ok((config, tls))

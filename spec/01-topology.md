@@ -357,6 +357,8 @@ Conditional metadata updates, writer leases and the databases that store coordin
   *because a managed database such as RDS chains its server certificate to a provider CA that WebPKI omits*
 - `postgres-ca-unreadable` — An `sslrootcert` path that is unreadable or holds no certificate raises `DatabaseCaBundleUnreadable`, naming the path, before connecting.
   *because a silent fallback to WebPKI roots fails later as an unknown issuer and hides the misconfigured path*
+- `postgres-verify-modes` — `sslmode=verify-ca` and `sslmode=verify-full` parse and require TLS on every host, verifying the server's chain and hostname as {{topology.coordinate.postgres-transport}} does.
+- `postgres-system-roots` — `sslrootcert=system` selects the WebPKI roots of {{topology.coordinate.postgres-transport}}, as libpq's `system` value does, and reads no file.
 - `weak-backend` — A catalog backend whose conditional update is not linearizable refuses at open with {{surface.apply.weak-conditional-backend}}.
   *A-store*
 - `cluster-availability` — Cluster availability is the shared database's availability. The engine adds no replication and no failover protocol between daemons.

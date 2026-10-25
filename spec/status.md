@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `run` | 3 | 29 | 608 | 129 | 49 | 19 | 569 | 0 | 569 |
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 328 | 0 | 328 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
-| `topology` | 1 | 6 | 83 | 26 | 5 | 3 | 79 | 0 | 79 |
-| **total** | 26 | 177 | 2908 | 710 | 229 | 84 | 2560 | 0 | |
+| `topology` | 1 | 6 | 85 | 26 | 5 | 3 | 81 | 0 | 81 |
+| **total** | 26 | 177 | 2910 | 710 | 229 | 84 | 2562 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
-| 3 — The run path | 12 | 309 | 298 | passing | closed |
+| 3 — The run path | 12 | 311 | 300 | passing | closed |
 | 4 — Ingest | 25 | 646 | 537 | passing | closed |
 | 5 — The read face under enforcement | 17 | 317 | 283 | passing | closed |
 | 6 — Sync and replicas | 9 | 118 | 113 | passing | closed |
@@ -2576,6 +2576,8 @@ Unscheduled operations: 13.
 | `topology.coordinate.no-clustered-catalog` | `tools/ci/tests/integration/topology.rs::the_catalog_port_has_exactly_the_known_implementors_and_postgres_alone_clusters` | performed |
 | `topology.coordinate.postgres-ca-bundle` | `crates/contextful-pg/tests/integration/tls.rs::an_sslrootcert_bundle_authenticates_a_server_the_webpki_roots_do_not` | performed |
 | `topology.coordinate.postgres-ca-unreadable` | `crates/contextful-pg/tests/integration/tls.rs::an_unreadable_or_certificate_free_bundle_refuses_before_connecting` | performed |
+| `topology.coordinate.postgres-system-roots` | `crates/contextful-pg/tests/integration/tls.rs::sslrootcert_system_selects_the_webpki_roots_and_reads_no_file` | performed |
+| `topology.coordinate.postgres-verify-modes` | `crates/contextful-pg/tests/integration/tls.rs::verify_ca_and_verify_full_require_tls_and_verify_the_chain_and_hostname` | performed |
 | `topology.coordinate.primitive` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.coordinate.weak-backend` | `spec/pins.toml` | performed |
 | `topology.deploy.parity-divergence` | `tools/ci/tests/integration/parity.rs::a_flipped_byte_names_the_target_the_table_and_the_first_differing_part` | performed |
