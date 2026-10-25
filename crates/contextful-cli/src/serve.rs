@@ -11,8 +11,9 @@
 //! (`read.cache.hot-local-parquet`). The listener binds warming (`read.cache.cold-start`),
 //! and a hydrator pulls the bucket when the store declares it, checks the face's
 //! declarations against the pulled schemas, maps the set and only then opens reads. A
-//! hydration that fails stops the process (`store.pull.before-run`). Once hydrated, the
-//! mappings are reconciled with the current set every 30 s.
+//! hydration that fails stops the process (`store.pull.before-run`). Once hydrated, one
+//! loop runs every 30 s: a store declaring `pull_before_run` pulls the bucket again, and the
+//! mappings are reconciled with the current set (`store.pull.serve-refresh`).
 
 #[cfg(feature = "data-plane")]
 use crate::admit::AdmitArgs;
@@ -131,6 +132,9 @@ pub struct ServeArgs {
     /// every request; absent, `.contextful/keyset.toml` under the project root.
     #[arg(long)]
     keyset: Option<PathBuf>,
+    /// Lower the refresh interval below 30 s.
+    #[arg(long, hide = true)]
+    refresh_secs: Option<u64>,
 }
 
 #[cfg(feature = "data-plane")]
@@ -219,6 +223,11 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     // The bucket and its credentials resolve before the listener binds; an unusable
     // endpoint binds nothing (`store.pull.before-run`). The transfer runs once listening.
     let pull = crate::sync::pending_pull(&located)?;
+    let interval = match args.refresh_secs {
+        None => REFRESH_INTERVAL,
+        Some(s) if s <= REFRESH_INTERVAL.as_secs() => std::time::Duration::from_secs(s),
+        Some(s) => anyhow::bail!("a refresh interval of {s} s exceeds the {} s bound", REFRESH_INTERVAL.as_secs()),
+    };
     let face = crate::admit::face_with_pins(&located, args.public_key.as_deref(), args.keyset.as_deref())?;
     let face = match args.result_cache_bytes {
         Some(budget) => face.with_result_cache(budget),
@@ -454,9 +463,10 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     std::thread::scope(|scope| {
         scope.spawn(|| {
             use std::io::Write;
+            let pull = pull;
             // A hydrator that fails or panics stops the process rather than leave it warming.
             let set = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                hydrate(pull, &located, &face, args.public_key.as_deref(), args.keyset.as_deref())
+                hydrate(pull.as_ref(), &located, &face, args.public_key.as_deref(), args.keyset.as_deref())
             }));
             match set {
                 Ok(Ok(set)) => hydrated(set),
@@ -466,14 +476,24 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
                 }
                 Err(_) => std::process::exit(1),
             }
-            // The mappings follow the set a read resolves against, so a file a land, fold,
-            // erasure or retention collection takes out of it is unmapped within one
-            // interval and keeps no inode alive (`disclosure.erase.physical-removal`).
+            // A store declaring `pull_before_run` pulls the bucket each interval on this
+            // thread, apart from the request threads; a read resolves against the pointers on
+            // disk, which a pull writes only after their data (`store.pull.pointer-last`), so a
+            // read starting after the pull reads its generation and a failed pull leaves the
+            // held one (`store.pull.serve-refresh`). The mappings then follow the set a read
+            // resolves against, so a file a pull, land, fold, erasure or retention collection
+            // takes out of it is unmapped within one interval and keeps no inode alive
+            // (`disclosure.erase.physical-removal`).
             let mut since = std::time::Instant::now();
             while !stopped.load(std::sync::atomic::Ordering::Relaxed) {
                 std::thread::sleep(STOP_POLL);
-                if since.elapsed() < REMAP_INTERVAL {
+                if since.elapsed() < interval {
                     continue;
+                }
+                if let Some(pull) = &pull {
+                    if let Err(error) = pull.refresh() {
+                        let _ = writeln!(std::io::stderr(), "pull_before_run: refresh failed: {error:#}");
+                    }
                 }
                 since = std::time::Instant::now();
                 let mut held = mapped.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -497,8 +517,9 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     Ok(())
 }
 
-/// How often a hydrated server reconciles its mappings with the current snapshot set.
-const REMAP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+/// How often a hydrated server pulls the bucket under `pull_before_run` and reconciles its
+/// mappings with the current snapshot set (`store-pull-serve-refresh`).
+const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 /// How often the reconciler checks whether the listener has stopped.
 const STOP_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
@@ -506,7 +527,7 @@ const STOP_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 /// checks the declarations against the pulled schemas as a face opening
 /// on them would (`read.guard.startup-time-check`).
 fn hydrate(
-    pull: Option<crate::sync::PendingPull>,
+    pull: Option<&crate::sync::PendingPull>,
     located: &crate::project::Located,
     face: &contextful_context::read::Face,
     public_key: Option<&str>,

@@ -584,6 +584,8 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because rehashing every held file on each pull and push grows with the store, and setting a modification time moves the change time*
 - `pointer-last` — A pull writes a table's pointer only after every Parquet part in the named snapshot exists locally. Readers therefore encounter no pointer before its data.
   *A-store*
+- `run-manifest-last` — A pull writes a run's `_manifest.json` only after every other listed object it downloads exists locally. A read during the pull therefore resolves no run whose parts are absent.
+  *because a read resolves every run whose `_manifest.json` exists, and a manifest landing before its parts fails a read running beside the pull*
 - `tombstone-applied` — Pull deletes local keys named by tombstones and absent from entries. For a key without a local copy, pull performs no verification and reports nothing.
   *because a deletion that never reaches a consumer resurrects once its tombstone ages out*
 - `cold-own-keys` — If the store lacks its own `nodes/<node-id>/run-state.json`, pull downloads missing keys owned by that node. A replacement host reusing the node id therefore tombstones none of those keys.

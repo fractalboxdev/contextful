@@ -358,6 +358,38 @@ fn a_pointer_is_written_only_once_its_snapshot_is_home() {
     assert_eq!(files(&c), [format!("tables/filings/data/snapshots/{snapshot_id}/part-00000.parquet")]);
 }
 
+/// A pull writes a run's `_manifest.json` only after every other listed object it downloads exists locally. A read
+/// during the pull therefore resolves no run whose parts are absent.
+// spec: store.pull.run-manifest-last@fac9ec40
+#[test]
+fn a_run_manifest_is_written_only_once_its_parts_are_home() {
+    let (_dir, b, _a) = pushed();
+    // While the bucket answers for the run's part, the pull has written no run manifest a read would resolve.
+    let manifest = Arc::new(std::sync::Mutex::new(None::<std::path::PathBuf>));
+    let early = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (m, e) = (manifest.clone(), early.clone());
+    let watching: Arc<dyn ObjectStore> = Arc::new(Scripted {
+        inner: b,
+        script: Script {
+            on_get: Some(Box::new(move |key| {
+                if key == PART_A {
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    if m.lock().unwrap().as_ref().is_some_and(|p| p.exists()) {
+                        e.store(true, Ordering::SeqCst);
+                    }
+                }
+                None
+            })),
+            ..Script::default()
+        },
+    });
+    let c = node("ingest-b", watching, "");
+    *manifest.lock().unwrap() = Some(c.root().join("tables/filings/data/runs/run-1/ingest-a/_manifest.json"));
+    c.syncer.pull(&PullScope::default()).unwrap();
+    assert!(!early.load(Ordering::SeqCst), "the run's manifest landed while its part was still in transfer");
+    assert_eq!(files(&c), ["tables/filings/data/runs/run-1/ingest-a/part-00000.parquet"]);
+}
+
 /// A pulled snapshot carrying a part by reference is home once that part is under its
 /// origin's directory, so the pull writes its pointer and reads every row
 /// (`store.fold.carry-by-reference`).
