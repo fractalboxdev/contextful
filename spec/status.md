@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 356 | 73 | 25 | 5 | 306 | 0 | 306 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
-| `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 311 | 0 | 311 |
+| `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 312 | 0 | 312 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 324 | 58 | 29 | 16 | 282 | 0 | 282 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 198 | 71 | 24 | 2 | 169 | 0 | 169 |
 | `topology` | 1 | 6 | 85 | 26 | 5 | 3 | 81 | 0 | 81 |
-| **total** | 26 | 177 | 2913 | 711 | 229 | 84 | 2572 | 0 | |
+| **total** | 26 | 177 | 2913 | 711 | 229 | 84 | 2573 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 311 | 300 | passing | closed |
-| 4 — Ingest | 25 | 646 | 540 | passing | closed |
+| 4 — Ingest | 25 | 646 | 541 | passing | closed |
 | 5 — The read face under enforcement | 17 | 318 | 284 | passing | closed |
 | 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
 | 7 — Memory | 6 | 100 | 85 | passing | closed |
@@ -796,6 +796,7 @@ Unscheduled operations: 13.
 | `connector.reference.reference-scheme` | `crates/contextful-core/tests/integration/connector/reference.rs::a_reference_is_a_lowercase_logical_name_of_at_most_128_chars` | performed |
 | `connector.reference.value-template` | `crates/contextful-core/tests/integration/connector/reference.rs::a_template_is_literal_text_and_secret_placeholders` | performed |
 | `connector.reference.whole-value-reference` | `crates/contextful-outbound/tests/integration/resolve.rs::a_whole_value_reference_consults_the_environment` | performed |
+| `connector.resolve.aws-secrets-manager` | `crates/contextful-outbound/tests/integration/aws_secrets.rs::the_secrets_manager_backend_answers_the_current_value_signed_under_the_role` | performed |
 | `connector.resolve.cache-ttl` | `crates/contextful-outbound/tests/integration/resolve.rs::a_cached_value_retires_at_300_s` | performed |
 | `connector.resolve.first-hit-wins` | `crates/contextful-outbound/tests/integration/resolve.rs::the_earliest_answer_serves_and_later_adapters_are_left_alone` | performed |
 | `connector.resolve.provider-port` | `crates/contextful-outbound/tests/integration/resolve.rs::the_backend_variable_selects_the_adapters` | performed |

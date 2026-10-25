@@ -1,6 +1,8 @@
 //! Host mediation, credential resolution and shared-quota metering for the run path's
 //! outbound requests, and the one inference endpoint.
 
+#[cfg(feature = "aws-secrets-manager")]
+pub mod aws_secrets;
 pub mod client;
 pub mod egress;
 pub mod infer;
@@ -9,6 +11,8 @@ pub mod probe;
 #[cfg(feature = "transport-ureq")]
 pub mod role;
 pub mod secrets;
+#[cfg(feature = "aws-secrets-manager")]
+pub mod sigv4;
 pub mod telemetry;
 #[cfg(feature = "transport-ureq")]
 pub mod ureq_transport;
