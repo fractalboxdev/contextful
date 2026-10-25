@@ -160,6 +160,7 @@ fn a_body_past_the_cap_spills_and_leaves_once_its_outcome_records() {
         })
         .collect();
     assert_eq!(spilled.len(), 1, "only the body past the cap spills");
+    assert_eq!(pending.len(), 2);
     assert!(pending.iter().all(|d| d.message.encoded_len() <= SPOOL_MESSAGE_CAP));
     assert_eq!(spool.get(&spilled[0]).unwrap().as_deref(), Some(&big[..]));
 
