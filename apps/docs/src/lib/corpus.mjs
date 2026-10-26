@@ -179,7 +179,14 @@ export const REPOSITORY = "https://github.com/fractalboxdev/contextful";
 export const lockPins = (lock) => {
   const out = new Map();
   for (const [id, entries] of Object.entries(lock.pins ?? {})) {
-    out.set(id, [entries].flat().map((pin) => {
+    // `contextful-spec state` writes `{ sites: ["<path>::<name>"], verdict, proved }`.
+    const list = Array.isArray(entries?.sites)
+      ? entries.sites.map((site) => {
+          const [path, name] = site.split("::");
+          return { kind: path.endsWith(".lean") ? "theorem" : path.endsWith(".toml") ? "item" : "test", path, name };
+        })
+      : [entries].flat();
+    out.set(id, list.map((pin) => {
       const { kind = "test", path, file = path, name, test, theorem, line } = typeof pin === "string" ? { name: pin } : pin;
       const target = name ?? test ?? theorem ?? "";
       return {

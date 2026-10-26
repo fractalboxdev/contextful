@@ -83,6 +83,20 @@ test("a clause's pins from the lock render in its margin beside the id", async (
   assert.ok(!unpinned.includes("clause-pins"));
 });
 
+test("the pins `contextful-spec state` writes render as one link per site", async () => {
+  const pins = {
+    "store.reserve.commit-wait": {
+      sites: ["crates/contextful-context/tests/integration/commit.rs::commit_waits_for_the_table_lock", "formal/protocol/Protocol/Invariants.lean::commit_order"],
+      verdict: "performed",
+      proved: true,
+    },
+  };
+  const html = await render(fixture("grouped-operation.md"), "10-store.md", { lock: { ...readLock(), pins } });
+  const item = clauseItem(html, "store.reserve.commit-wait");
+  assert.ok(item.includes('href="https://github.com/fractalboxdev/contextful/blob/main/crates/contextful-context/tests/integration/commit.rs"'));
+  assert.ok(item.includes('class="clause-pin pin-theorem"'));
+});
+
 test("a glossary under spec/ routes to its own page and links its pointers", async () => {
   assert.equal(routeFor(resolve(SPEC_DIR, "glossary.md")), "/docs/specs/glossary/");
   const html = await render(fixture("glossary.md"), "glossary.md");
