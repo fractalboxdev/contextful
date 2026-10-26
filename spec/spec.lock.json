@@ -501,7 +501,7 @@
       "operation": "state",
       "subject": "limit-const",
       "kind": "behavior",
-      "statement": "A named-bound entry may record the Rust const holding its bound as `const = \"<crate path>\"`; a test pin of its clause computes `broken` while that const resolves to nothing or no non-test source under `crates/*/src` or `tools/*/src` reads it.",
+      "statement": "A named-bound entry may record the Rust const holding its bound as `const = \"<file>::<NAME>\"`; a test pin of its clause computes `broken` while that const resolves to nothing or no non-test source under `crates/*/src` or `tools/*/src` reads it.",
       "why": "because a test of a bound the code never consults demonstrates a number, not a limit",
       "file": "spec/00-corpus.md",
       "line": 174

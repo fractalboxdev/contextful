@@ -136,7 +136,7 @@ fn one_test_pinned_both_ways_is_one_pin() {
     assert_eq!(verdict(&s, "corpus.anatomy.file-length"), "performed");
 }
 
-// spec: corpus.state.limit-const@4d63f0d1
+// spec: corpus.state.limit-const@e888dd76
 #[test]
 fn a_limit_pin_performs_only_while_non_test_source_uses_its_registered_const() {
     let s = Scratch::copy();
@@ -145,7 +145,7 @@ fn a_limit_pin_performs_only_while_non_test_source_uses_its_registered_const() {
     assert_eq!(verdict(&s, clause), "performed");
     let terms = s.read("spec/terms/corpus.toml");
     let entry = terms.lines().find(|l| l.starts_with("corpus-statement-words ")).unwrap().to_string();
-    s.write("spec/terms/corpus.toml", &terms.replacen(&entry, &entry.replacen(" }", ", const = \"x::MAX_WORDS\" }", 1), 1));
+    s.write("spec/terms/corpus.toml", &terms.replacen(&entry, &entry.replacen(" }", ", const = \"crates/x/src/lib.rs::MAX_WORDS\" }", 1), 1));
     s.write("crates/x/src/lib.rs", "pub const MAX_WORDS: usize = 40;\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn bound() {\n        assert_eq!(super::MAX_WORDS, 40);\n    }\n}\n");
     let broken = codes(&s.lint("state"), "SpecBrokenPin");
     assert_eq!(broken.len(), 1, "{broken:?}");
