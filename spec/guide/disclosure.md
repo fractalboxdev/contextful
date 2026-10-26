@@ -8,7 +8,7 @@ contract: disclosure
 
 A **Contextful** workspace indexes an organization's wiki, drive and chat. Three
 problems follow. A reader sees only what the source lets that reader see
-(**visibility**). A figure computed from many people's rows reaches one asker without
+(**visibility**). A figure computed from other people's rows reaches one asker without
 exposing any contributor (**disclosure**). Every read leaves a verifiable trace, and a
 person or a tenant is removable on demand (**accountability**).
 
@@ -17,13 +17,13 @@ person or a tenant is removable on demand (**accountability**).
 The example is a wiki page shared with the group `planning`, which contains `eng-leads`,
 which contains one reader.
 
-A **pack** is the reviewed unit that lands one source with its access mapping; a table
+A **pack** is the reviewed unit that loads one source with its access mapping; a table
 with no mapping fails at diagnosis ({{disclosure.pack.mapping-absent}}). A **sweep**
 reads the source's permission state and commits it as one run
-({{disclosure.sweep.sweep-verb}}). Grants land as ordinary rows of reserved
+({{disclosure.sweep.sweep-verb}}). Grants arrive as ordinary rows of reserved
 `_visibility` tables ({{disclosure.mirror.grants-table}}).
 
-For the wiki, the sweep lands one resource row, one grant to `planning` and two
+For the wiki, the sweep writes one resource row, one grant to `planning` and two
 membership rows. A grant naming no resource fails at commit
 ({{disclosure.sweep.orphan-grant}}). A Drive sweep follows every permission page of each
 file before its grants replace earlier ones ({{disclosure.drive-sweep.permission-pages}}).
@@ -72,24 +72,24 @@ keeps answering. If the sweep stalls past the budget, the reader's next
 read fails instead of serving a revoked grant ({{disclosure.bound-staleness.access-stale}}).
 
 A table declared `public_only` instead narrows to public rows past its budget
-({{disclosure.bound-staleness.public-only}}). No reachable set computed in either state
-is retained ({{disclosure.reach.degraded-uncached}}).
+({{disclosure.bound-staleness.public-only}}). The engine retains no reachable set computed in
+either state ({{disclosure.reach.degraded-uncached}}).
 
 ## Explaining a decision
 
-Asked why a colleague cannot see the page, `audit explain` decides from current grants
-({{disclosure.explain.decision}}). The explanation names groups on the path but never
+Asked why a colleague lacks access to the page, `audit explain` decides from current grants
+({{disclosure.explain.decision}}). The explanation names groups on the path and omits
 their members ({{disclosure.explain.groups-not-members}}).
 
 ## Disclosure: releasing a figure
 
-A release computes statistics over many contributors. Before computing, it reserves
+A release computes statistics over contributors' rows. Before computing, it reserves
 each contributor's spend against a lifetime budget, and a failed reservation publishes
 nothing ({{disclosure.release.budget-reservation}}). A group key outside the permitted
 columns fails ({{disclosure.release.group-key}}).
 
-A group with too few distinct contributors is suppressed
-({{disclosure.suppress.min-group-size}}). Every suppressed group together leaves one
+The release suppresses a group whose distinct contributors fall under the declared
+minimum ({{disclosure.suppress.min-group-size}}). Every suppressed group together leaves one
 sentinel row with no key or figure ({{disclosure.suppress.sentinel-row}}).
 
 A cohort key resolving to one person fails at declaration
@@ -109,10 +109,10 @@ earliest broken index ({{disclosure.attest.broken-chain}}).
 
 ## Erasure
 
-The reader leaves the organization and is erased. Erasure needs the forget grant
+The reader leaves the organization, and an operator erases the reader's rows. Erasure needs the forget grant
 ({{disclosure.erase.privilege}}). The cascade invalidates every fact derived from the
 erased rows in the same operation ({{disclosure.erase.cascade}}), and the files holding
 them are rewritten or collected ({{disclosure.erase.physical-removal}}).
 
-A tenant purge returns a signed receipt naming a salted pseudonym, never the tenant
+A tenant purge returns a signed receipt naming a salted pseudonym, not the tenant
 identifier ({{disclosure.receipt.pseudonym}}).

@@ -17,8 +17,8 @@ The example agent wants the current status of one resource.
 
 Each session connection registers one view per manifest table
 ({{read.register.connection-views}}). A bare table name in the caller's SQL resolves
-to that caller's restricted view ({{read.register.bare-name}}). The tool set is closed,
-so a caller reaches nothing outside it ({{read.register.tool-set}}).
+to that caller's restricted view ({{read.register.bare-name}}). The face exposes a closed
+tool set, so a caller reaches nothing outside it ({{read.register.tool-set}}).
 
 The agent first calls `context.describe` and learns row counts, declared indexes and
 the published row ceiling ({{read.register.describe-payload}}).
@@ -62,8 +62,8 @@ sequenceDiagram
 ## The response
 
 Every transport serializes one projection: columns, rows, `truncated` and optional
-blocks ({{read.respond.one-projection}}). `truncated` is set from an over-fetched probe
-row, never from comparing counts ({{read.respond.truncation-is-exact}}). Zero rows is a
+blocks ({{read.respond.one-projection}}). The serializer sets `truncated` from an over-fetched
+probe row, not from comparing counts ({{read.respond.truncation-is-exact}}). Zero rows is a
 success, not an error ({{read.respond.zero-rows-is-success}}).
 
 ## Ranked retrieval
@@ -75,7 +75,7 @@ contributes no rows instead of running unfiltered ({{read.retrieve.unsatisfiable
 Ranking fuses vector cosine with lexical BM25 scores ({{read.rank.fusion}}). A
 question's timeframe orders rows but drops none ({{read.rank.question-window-is-a-tier}}).
 Each stored vector sits beside the name of the model that produced it
-({{read.embed.model-identifier}}), so the rows themselves record how they were embedded.
+({{read.embed.model-identifier}}), so the rows themselves record which model embedded them.
 
 To report that no document mentions a status change, the agent counts rows. A low top
 score proves no absence ({{read.respond.coverage-is-a-count}}).

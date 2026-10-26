@@ -46,7 +46,7 @@ flowchart LR
 ## What a credential says
 
 A **subject** is a tuple of agent, host, principal, task, zone and incognito flag
-({{authority.identify.subject-tuple}}). Only the principal is verified, at the mint,
+({{authority.identify.subject-tuple}}). The mint verifies only the principal,
 against the identity provider ({{authority.identify.on-behalf-of}}).
 
 The credential is a chain-signed token under a versioned profile that names every fact
@@ -129,16 +129,16 @@ A cleared redistribution flag withholds the whole table from the bucket at push
 ({{authority.bound-redistribution.withhold}}).
 
 The sub-agent queries `workspace/documents` with no tenant filter. The engine conjoins a
-byte-exact tenant equality the query never wrote ({{authority.filter-rows.tenant-equality}}).
+byte-exact tenant equality the query text omits ({{authority.filter-rows.tenant-equality}}).
 A statement naming `acme-us` fails, naming both scopes ({{authority.refuse.scope-denied}}).
-A refusal is a typed error, never an empty result ({{authority.refuse.not-empty}}).
+A refusal returns a typed error, not an empty result ({{authority.refuse.not-empty}}).
 
 A `contact_email` column masked by policy arrives masked where it stands
 ({{authority.mask.in-place}}). The table declares no zone policy, so it resolves to a
 fail-closed pair of zones ({{authority.place.fail-closed}}). The response envelope
 reports the zone's removals and carries no removed value ({{authority.place.envelope}}).
 
-Every step completes before a ranked result is cut to size, so visible positions carry no
+Every step completes before the engine cuts a ranked result to size, so visible positions carry no
 trace of a withheld row ({{authority.compose.before-the-cut}}).
 
 ## Injected instructions

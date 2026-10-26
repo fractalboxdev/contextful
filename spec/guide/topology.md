@@ -17,7 +17,7 @@ One Cargo workspace builds execution, storage and query code ({{topology.compose
 The components share exactly three contracts: the connector interface, the part and
 manifest layout, and the capability-token format ({{topology.compose.three-crossings}}).
 
-Because the layout is shared, a query-only binary reads what a full binary wrote
+Because every binary shares the layout, a query-only binary reads what a full binary wrote
 ({{topology.compose.run-path-droppable}}). A function returning stored rows requires an
 access-control admission value, so a call omitting it fails to compile
 ({{topology.compose.mediation}}).
@@ -39,7 +39,7 @@ unlinked capability fails, naming the subcommand and profile
 
 Coordination rests on one property: a linearizable conditional write
 ({{topology.coordinate.primitive}}). Each new lease holder gets a higher fence, so a
-stale writer is always distinguishable ({{topology.coordinate.fence-advances}}). A
+stale writer's fence sits below the holder's ({{topology.coordinate.fence-advances}}). A
 single node uses a local catalog file, a cluster uses Postgres, and Cloudflare uses D1
 ({{topology.coordinate.backends}}).
 

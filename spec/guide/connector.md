@@ -8,7 +8,7 @@ contract: connector
 
 A **vendor** is an outside service, such as a reporting API. Reading its data needs code
 that knows the vendor's pages and cursors, and a credential the vendor accepts. That code
-runs inside the deployment, so it gets no store handle and never sees a credential value.
+runs inside the deployment, so it gets no store handle and sees no credential value.
 A **connector** holds the vendor knowledge; the **host** process runs the connector,
 checks every destination, reserves quota and attaches credentials.
 
@@ -68,7 +68,7 @@ request, and no record or log line holds the value
 ({{connector.resolve.hydration-is-just-in-time}}). A cached value lives at most 300 s
 ({{connector.resolve.cache-ttl}}).
 
-`vendor-token` is declared as a lease, so the lease adapter answers it first
+The deployment declares `vendor-token` as a lease, so the lease adapter answers it first
 ({{connector.lease.head-of-chain}}). The resolver keeps a leased credential in memory
 only, and evicts it at expiry ({{connector.lease.lease}}).
 

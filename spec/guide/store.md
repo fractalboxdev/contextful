@@ -6,7 +6,7 @@ contract: store
 
 ## The problem the store solves
 
-Many writers append rows while readers query and a background pass compacts. A reader
+Writers append rows while readers query and a background pass compacts. A reader
 needs a consistent answer, and a crashed writer must leave nothing half visible. The
 store holds Parquet files, JSON manifests and one pointer object per table
 ({{store.lay-out.components}}). Every commit is a conditional write, so a batch is
@@ -16,7 +16,7 @@ either whole or absent ({{topology.coordinate.primitive}}).
 
 `contextful init` writes `contextful.toml` and creates the store root beside it
 ({{store.init.declaration-file}}). The store receives an identity that clones keep,
-so two stores never merge by accident ({{store.init.store-identity}}).
+so two different stores do not merge by accident ({{store.init.store-identity}}).
 
 ## One table, from write to read
 
@@ -36,13 +36,13 @@ any value the producer sent ({{store.reserve.injected}}). It also assigns
 
 Schemas grow additively: an unseen column joins, and older files read it as null
 ({{store.reconcile.additive}}). One batch sends `page` as a float. That batch fails
-before any Parquet, because a key column never widens ({{store.reconcile.key-widening}}).
+before any Parquet, because a key column takes no float promotion ({{store.reconcile.key-widening}}).
 
 A **snapshot** is a compacted, immutable set of a table's parts, named by a sortable id
 ({{store.lay-out.snapshot-id}}). A query with no time bound reads the current snapshot
 plus the committed runs it omits
 ({{store.bound-time.unbounded-latest}}). Every read passes an explicit sorted file
-list, never a glob ({{store.reconcile.explicit-file-list}}).
+list, not a glob ({{store.reconcile.explicit-file-list}}).
 
 ## Leases and a paused writer
 
