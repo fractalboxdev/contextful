@@ -515,9 +515,10 @@ mod hosted {
         #[test]
         fn oci_manifest_requires_one_component_layer_with_a_sha256_descriptor() {
             let digest = "ab".repeat(32);
-            let valid = format!(r#"{{"schemaVersion":2,"layers":[{{"mediaType":"application/vnd.wasm.content.layer.v1+wasm","digest":"sha256:{digest}"}}]}}"#);
+            let layer = format!(r#"{{"mediaType":"application/vnd.wasm.content.layer.v1+wasm","digest":"sha256:{digest}"}}"#);
+            let valid = format!(r#"{{"schemaVersion":2,"layers":[{layer}]}}"#);
             assert_eq!(component_layer(valid.as_bytes(), "oci://example.test/repo").unwrap().as_str(), digest);
-            let two = valid.replace("]}", format!(",{{\"mediaType\":\"application/vnd.wasm.content.layer.v1+wasm\",\"digest\":\"sha256:{digest}\"}}]}}").as_str());
+            let two = format!(r#"{{"schemaVersion":2,"layers":[{layer},{layer}]}}"#);
             assert!(component_layer(two.as_bytes(), "oci://example.test/repo").unwrap_err().to_string().contains("ConnectorOciArtifactUnsupported"));
             let wrong_type = valid.replace("application/vnd.wasm.content.layer.v1+wasm", "application/octet-stream");
             assert!(component_layer(wrong_type.as_bytes(), "oci://example.test/repo").unwrap_err().to_string().contains("ConnectorOciArtifactUnsupported"));

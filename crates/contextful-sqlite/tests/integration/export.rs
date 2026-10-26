@@ -81,13 +81,15 @@ fn coordinated_outbox_retries_identical_bytes_and_checkpoint_rejects_incompatibi
     let first = ledger.batch("copy", "one").unwrap().unwrap();
     assert_eq!(serde_json::to_vec(&first).unwrap(), serde_json::to_vec(&ledger.batch("copy", "one").unwrap().unwrap()).unwrap());
     assert!(ledger.acknowledge("copy", "one", &first.group.id, 0).is_err());
-    assert!(ledger.stage(&plan, &states, "different-reader").is_err());
+    let changed = ledger.stage(&plan, &states, "different-reader").unwrap_err();
+    assert!(changed.message.contains("PublicationIncompatible"), "{changed}");
     ledger.acknowledge("copy", "one", &first.group.id, first.events.last().unwrap().sequence).unwrap();
     assert!(ledger.batch("copy", "one").unwrap().is_none());
     ledger.restore("copy", "one", &checkpoint, "store-1", "read-identity").unwrap();
     let replay = ledger.batch("copy", "one").unwrap().unwrap();
     assert_eq!(first, replay);
-    assert!(ledger.restore("copy", "one", &checkpoint, "store-2", "read-identity").is_err());
+    let other_store = ledger.restore("copy", "one", &checkpoint, "store-2", "read-identity").unwrap_err();
+    assert!(other_store.message.contains("PublicationIncompatible"), "{other_store}");
     assert!(ledger.restore("copy", "one", &checkpoint, "store-1", "other-reader").is_err());
     assert!(ledger.stage(&PublicationPlan {members:BTreeMap::new(),..plan}, &BTreeMap::new(), "read-identity").is_err());
 }

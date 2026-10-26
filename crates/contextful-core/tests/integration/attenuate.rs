@@ -70,7 +70,7 @@ fn widens() {
     assert!(attenuate(&p, &child(vec![narrower])).is_ok());
 
     let actions = Grant { actions: vec![Action::Read, Action::Admin], ..base.clone() };
-    assert!(widened(&p, &child(vec![actions])).starts_with("actions"));
+    assert!(matches!(attenuate(&p, &child(vec![actions])), Err(AuthorityError::AttenuationWidens(m)) if m.starts_with("actions")));
 
     for tables in [&["*"][..], &["research/filings", "sales/invoices"][..], &["research*"][..]] {
         let g = Grant { tables: tables.iter().map(|t| TablePattern::parse(t).unwrap()).collect(), ..base.clone() };

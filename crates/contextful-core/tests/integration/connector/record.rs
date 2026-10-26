@@ -96,7 +96,10 @@ fn an_absent_grants_key_reads_as_unknown() {
 #[test]
 fn a_record_describing_nothing_or_holding_a_bad_key_is_refused_without_its_value() {
     let sentinel = "sentinel-value-0042";
-    let unbound = rejected(&format!("[secret.vendor-tokne]\ndescription = \"{sentinel}\"\n"));
+    let unbound = match read_records(FILE, &manifest(&format!("[secret.vendor-tokne]\ndescription = \"{sentinel}\"\n")), &bound(&["vendor-token"])) {
+        Err(ConnectorError::SecretRecordRejected(m)) => m,
+        other => panic!("expected SecretRecordRejected, got {other:?}"),
+    };
     assert!(unbound.contains(FILE) && unbound.contains("secret.vendor-tokne"), "{unbound}");
     assert!(!unbound.contains(sentinel), "{unbound}");
 

@@ -268,17 +268,17 @@ impl SigningPort for Impostor {
 // spec: authority.issue.encoding-invalid@7d06e4f1
 #[test]
 fn a_signature_off_its_tag_or_its_key_raises_signature_encoding_invalid() {
-    refuses(Custodian::tagged(SignatureEncoding::Es256Raw, SignatureEncoding::Es256Der));
-    refuses(Custodian::tagged(SignatureEncoding::Es256Der, SignatureEncoding::Es256Raw));
-    refuses(Impostor { named: SeedSigner::generate(SignatureAlgorithm::Ed25519), signing: SeedSigner::generate(SignatureAlgorithm::Ed25519) });
+    refuses(Custodian::tagged(SignatureEncoding::Es256Raw, SignatureEncoding::Es256Der), "SignatureEncodingInvalid");
+    refuses(Custodian::tagged(SignatureEncoding::Es256Der, SignatureEncoding::Es256Raw), "SignatureEncodingInvalid");
+    refuses(Impostor { named: SeedSigner::generate(SignatureAlgorithm::Ed25519), signing: SeedSigner::generate(SignatureAlgorithm::Ed25519) }, "SignatureEncodingInvalid");
 }
 
-/// `port` mints nothing, and a log opened through it writes no tip.
-fn refuses<P: SigningPort + Send + Sync + 'static>(port: P) {
-    refused(mint(&read_research(&port), &MintClaims::default(), &port), "SignatureEncodingInvalid");
+/// `port` mints nothing and raises `error`, and a log opened through it writes no tip.
+fn refuses<P: SigningPort + Send + Sync + 'static>(port: P, error: &str) {
+    refused(mint(&read_research(&port), &MintClaims::default(), &port), error);
     let dir = tempfile::tempdir().unwrap();
     match AuditLog::open(dir.path(), port) {
-        Err(AuditError::AuditEntryUnpersisted(why)) => assert!(why.contains("SignatureEncodingInvalid"), "{why}"),
+        Err(AuditError::AuditEntryUnpersisted(why)) => assert!(why.contains(error), "{why}"),
         other => panic!("expected the tip to refuse, got {other:?}"),
     }
     assert!(!dir.path().join("chain.tip").exists(), "no tip is written");

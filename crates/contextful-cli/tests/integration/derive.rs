@@ -265,7 +265,10 @@ fn a_host_task_counts_an_incomplete_parent_on_its_run_records() {
     let dir = host_project(&host_manifest("word-split"));
     std::fs::write(dir.path().join("missing.jsonl"), "{\"body\":\"orphan\"}\n").unwrap();
     ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "missing.jsonl", "--run-id", "load-2", "--site-id", "site", "--now", "2030-01-01T00:30:00Z"]));
-    ok(&fire(&host, dir.path(), "split-1", "2030-01-01T01:00:00Z", &[]));
+    let fired = fire(&host, dir.path(), "split-1", "2030-01-01T01:00:00Z", &[]);
+    ok(&fired);
+    let stderr = String::from_utf8_lossy(&fired.stderr);
+    assert!(stderr.contains("DeriveUnitIncomplete"), "{stderr}");
     let history = ok(&cf(dir.path(), &["run", "history", "--project", "research", "--export"]));
     let runs: Vec<serde_json::Value> = history.lines().skip(1).map(|line| serde_json::from_str(line).unwrap()).collect();
     for table in ["split_words", "split_stats", "split_units"] {

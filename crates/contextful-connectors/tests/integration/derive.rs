@@ -2,7 +2,8 @@
 
 use crate::support::{Never, Response, Server};
 use contextful_connectors::derive::{resolve_step, run_chain, Chain, ChainError, DeriveSource};
-use contextful_core::run::derive::config::{bindings, Binding, DeriveConfig};
+use contextful_core::run::derive::config::{bindings, Binding, DeriveConfig, ATTEMPTS_PER_UNIT};
+use contextful_core::run::derive::emit::{revived, Unit};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag, RunError};
@@ -679,10 +680,14 @@ fn a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows() {
             .clone()
     };
     let parent_rows: Vec<Row> = parents.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
-    s.reader = Box::new(Racing { parents: parent_rows.clone(), landed: vec![settled("memo", memo_key)], output_reads: Default::default() });
+    let landed = settled("memo", memo_key.clone());
+    s.reader = Box::new(Racing { parents: parent_rows.clone(), landed: vec![landed.clone()], output_reads: Default::default() });
     let rows = pulled(&mut s);
     assert!(!rows.is_empty(), "the exclusion below ranges over no element");
     assert!(rows.iter().all(|r| r["unit_ref"] != "memo"), "the revived unit lands nothing: {rows:?}");
+    // The same landed row refuses the unit with `DeriveSettledUnitRevived`, the error the source reports.
+    let memo = Unit { key: "memo".into(), media: "memo.txt".into(), prior_attempts: 0, derivation_key: memo_key };
+    assert!(matches!(revived(&memo, &[landed], ATTEMPTS_PER_UNIT), Some(RunError::DeriveSettledUnitRevived(m)) if m.contains("`memo`")));
     assert_eq!(unit(&rows, "brief")["text"], "Filing is due.");
     assert_eq!(unit(&rows, "brief")["derivation_key"], brief_key);
     // A concurrent landing under another key settles nothing under this one.

@@ -100,14 +100,14 @@ function suggestionFixture() {
   return { browse, tables, counts, columns };
 }
 
-const unanswerable = (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleSuggestionUnanswerable";
+const consoleError = (code: string) => (error: unknown) => error instanceof ConsoleError && error.code === code;
 
 // spec: surface.speak.unanswerable-suggestion@dc680207
 test("a suggestion the live turn would decline raises ConsoleSuggestionUnanswerable and leaves the chip set", async () => {
   const { browse, tables, counts, columns } = suggestionFixture();
-  assert.throws(() => assertSuggestion("Tell me about Daily Totals", tables, counts, columns), unanswerable);
-  assert.throws(() => assertSuggestion("Tell me about Empty Notes", tables, counts, columns), unanswerable);
-  assert.throws(() => assertSuggestion("Tell me about 2030", tables.slice(1, 2), counts, columns), unanswerable);
+  assert.throws(() => assertSuggestion("Tell me about Daily Totals", tables, counts, columns), consoleError("ConsoleSuggestionUnanswerable"));
+  assert.throws(() => assertSuggestion("Tell me about Empty Notes", tables, counts, columns), consoleError("ConsoleSuggestionUnanswerable"));
+  assert.throws(() => assertSuggestion("Tell me about 2030", tables.slice(1, 2), counts, columns), consoleError("ConsoleSuggestionUnanswerable"));
   assert.doesNotThrow(() => assertSuggestion("Tell me about Vendor Filings", tables, counts, columns));
   const result = await browse.discover({});
   assert.deepEqual(result.chips.map((chip) => chip.prompt), ["Tell me about Vendor Filings"]);
