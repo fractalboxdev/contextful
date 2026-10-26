@@ -1,0 +1,14 @@
+extends: existence
+message: "'%s' narrates how the work was produced. Cite the evidence (file:line, a run, a benchmark) instead."
+level: error
+ignorecase: true
+tokens:
+  - subagents?
+  - generated with Claude
+  - after auditing
+  - parallel sweep
+  - review agents
+  - after several iterations
+  - to be thorough
+  - after digging into
+  - rather than guess

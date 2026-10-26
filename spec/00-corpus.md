@@ -136,6 +136,8 @@ Where a spelling is registered, the single owner of an error or a bound, the col
   *because the registry decides each term, and a hand-edited copy of its list drifts from it*
 - `term-first-use` — A guide's first use of a registered term, in any case or inflection, sits in a paragraph carrying the term's defining clause as a pointer; first uses without one past the `term-first-use` ceiling raise `SpecTermFirstUse`.
   *because a reader meets a term at its first use, and a definition reached later arrives after the misreading*
+- `prose-report` — `contextful-ci prose` runs Vale 3.25.1 with `.vale/vale.ini` over `spec/guide/` and `references/`, prints each alert and their count, and exits 0, naming an absent or other Vale version instead of refusing.
+  *because Vale finds candidates a reviewer decides, and a check that cannot judge an alert refuses nothing*
 
 ## reference
 

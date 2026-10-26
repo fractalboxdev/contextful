@@ -1,0 +1,13 @@
+extends: substitution
+message: "Use %s instead of '%s' — invented scaffolding or conquest metaphor (workspace voice rules)."
+level: error
+ignorecase: true
+# Overlaps corpus.render.banned-vocabulary, which lint enforces on every authored spec file.
+swap:
+  load-bearing: "'critical'"
+  wedge: "'foothold' or 'entry point'"
+  seams?: "'boundary', 'interface' or 'injection point'"
+  land-grab: "'race for the market'"
+  rungs?: "'step' or 'milestone'"
+  rung 0: "'first step'"
+  climb(?:s|ing)? the ladder: "'roadmap' or 'milestones'"

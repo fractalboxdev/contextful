@@ -1,0 +1,8 @@
+extends: existence
+message: "'%s' looks passive. Name the actor as the subject."
+link: https://www.plainlanguage.gov/guidelines/conversational/use-active-voice/
+level: warning
+ignorecase: true
+raw:
+  - \b(am|are|were|being|is|been|was|be|gets?|got)\b\s+
+  - (\w+ed|awoken|been|born|beat|become|begun|bent|bet|bid|bidden|bitten|bled|blown|broken|brought|built|burnt|bought|caught|chosen|come|cost|cut|dealt|done|drawn|driven|eaten|fallen|fed|felt|fought|found|forbidden|forgotten|forgiven|frozen|gotten|given|gone|grown|hung|had|heard|hidden|hit|held|hurt|kept|known|laid|led|left|lent|let|lain|lit|lost|made|meant|met|paid|put|quit|read|ridden|rung|risen|run|said|seen|sought|sold|sent|set|shaken|shot|shown|shut|sung|sunk|sat|slept|slid|spoken|spent|spun|split|spread|stood|stolen|stuck|struck|sworn|swept|swum|taken|taught|torn|told|thought|thrown|understood|woken|worn|won|withdrawn|written)\b
