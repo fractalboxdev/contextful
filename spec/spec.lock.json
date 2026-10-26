@@ -17681,7 +17681,7 @@
       "operation": "infer",
       "subject": "data-fence",
       "kind": "behavior",
-      "statement": "No ingested value reaches a model outside a data boundary: marker pairs whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.",
+      "statement": "No ingested value reaches a model outside its data boundary markers: a pair whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.",
       "why": "",
       "file": "spec/40-connector.md",
       "line": 282
@@ -17692,7 +17692,7 @@
       "operation": "infer",
       "subject": "fence-is-not-a-boundary",
       "kind": "behavior",
-      "statement": "The fence lowers the success rate of injected instructions and bounds nothing. No clause treats the output of a fenced call as trusted.",
+      "statement": "Data boundary markers lower the success rate of injected instructions and bound nothing. No clause treats the output of a marked call as trusted.",
       "why": "because spotlighting reduces injection and guarantees nothing",
       "file": "spec/40-connector.md",
       "line": 283
@@ -17703,7 +17703,7 @@
       "operation": "infer",
       "subject": "output-taint",
       "kind": "behavior",
-      "statement": "Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.",
+      "statement": "Model output carries the least-trusted provenance label among its marked inputs, and lands under that label.",
       "why": "because output re-landing as fresh data launders injected text",
       "file": "spec/40-connector.md",
       "line": 285
@@ -17714,8 +17714,8 @@
       "operation": "infer",
       "subject": "provenance-order",
       "kind": "behavior",
-      "statement": "Provenance labels order by trust: `operator` above `ingested:first-party` above `ingested:third-party`. A call fencing no value carries `operator`.",
-      "why": "because the least-trusted input is defined only over a total order, and a call fencing nothing sends the operator's template alone",
+      "statement": "Provenance labels order by trust: `operator` above `ingested:first-party` above `ingested:third-party`. A call marking no value carries `operator`.",
+      "why": "because the least-trusted input is defined only over a total order, and a call marking nothing sends the operator's template alone",
       "file": "spec/40-connector.md",
       "line": 287
     },
@@ -17725,7 +17725,7 @@
       "operation": "infer",
       "subject": "marker-derivation",
       "kind": "limit",
-      "statement": "Every marker of one call carries one token of 16 B, derived from every label and value the call fences, as fenced.",
+      "statement": "Every marker of one call carries one token of 16 B, derived from every label and value the call marks, as marked.",
       "why": "because closing one's own block then requires content containing the digest of a batch that contains it",
       "file": "spec/40-connector.md",
       "line": 289
@@ -17736,7 +17736,7 @@
       "operation": "infer",
       "subject": "replay",
       "kind": "behavior",
-      "statement": "The same values, labels, cap and rules fence to the same bytes, and a change to any value or label moves the token.",
+      "statement": "The same values, labels, cap and rules mark to the same bytes, and a change to any value or label moves the token.",
       "why": "because a replayed call sends an identical prompt, and a token read from one batch closes no other",
       "file": "spec/40-connector.md",
       "line": 291
@@ -17747,7 +17747,7 @@
       "operation": "infer",
       "subject": "fenced-value-hygiene",
       "kind": "behavior",
-      "statement": "Fencing removes control characters other than newline and tab from a value.",
+      "statement": "Marking removes control characters other than newline and tab from a value.",
       "why": "",
       "file": "spec/40-connector.md",
       "line": 293
@@ -17769,7 +17769,7 @@
       "operation": "infer",
       "subject": "label-hygiene",
       "kind": "limit",
-      "statement": "Fencing truncates a provenance label at 200 chars and flattens the label to one line without brackets. The label opens or closes no block.",
+      "statement": "Marking truncates a provenance label at 200 chars and flattens the label to one line without brackets. The label opens or closes no block.",
       "why": "because a label is built from connector-supplied table names and row ids",
       "file": "spec/40-connector.md",
       "line": 295
@@ -17780,7 +17780,7 @@
       "operation": "infer",
       "subject": "empty-batch",
       "kind": "behavior",
-      "statement": "A call fencing no value renders an explicit no-data line instead of an empty section.",
+      "statement": "A call marking no value renders an explicit no-data line instead of an empty section.",
       "why": "",
       "file": "spec/40-connector.md",
       "line": 297
@@ -17791,8 +17791,8 @@
       "operation": "infer",
       "subject": "operator-template",
       "kind": "behavior",
-      "statement": "The operator's prompt template stays unfenced in the system role. The idempotency hash covers the template alone.",
-      "why": "because hardening the fence leaves a dedup key intact",
+      "statement": "The operator's prompt template stays unmarked in the system role. The idempotency hash covers the template alone.",
+      "why": "because hardening the markers leaves a dedup key intact",
       "file": "spec/40-connector.md",
       "line": 298
     },
@@ -20495,7 +20495,7 @@
       "operation": "lease",
       "subject": "scope-declaration",
       "kind": "behavior",
-      "statement": "`CONTEXTFUL_LEASE_SCOPES` lists the logical names hydrating as run-time leases, each optionally as `name=scope`.",
+      "statement": "`CONTEXTFUL_LEASE_SCOPES` lists the logical names hydrating as credential leases, each optionally as `name=scope`.",
       "why": "",
       "file": "spec/41-secrets.md",
       "line": 126
@@ -20539,7 +20539,7 @@
       "operation": "lease",
       "subject": "lease",
       "kind": "behavior",
-      "statement": "The resolver holds a leased credential and its expiry together in memory for the run. The resolver evicts both at expiry. Neither enters a file, journal entry or audit record.",
+      "statement": "The resolver holds a credential lease's value and its expiry together in memory for the run. The resolver evicts both at expiry. Neither enters a file, journal entry or audit record.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
       "line": 132
@@ -20550,7 +20550,7 @@
       "operation": "lease",
       "subject": "malformed-lease",
       "kind": "refusal",
-      "statement": "A lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient failure.",
+      "statement": "A credential lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient failure.",
       "why": "P6",
       "file": "spec/41-secrets.md",
       "line": 134
@@ -20561,7 +20561,7 @@
       "operation": "lease",
       "subject": "cache-window",
       "kind": "behavior",
-      "statement": "A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the lease's own expiry.",
+      "statement": "A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the credential lease's own expiry.",
       "why": "",
       "file": "spec/41-secrets.md",
       "line": 136
@@ -20660,7 +20660,7 @@
       "operation": "lease",
       "subject": "vendor-requests-on-failure",
       "kind": "limit",
-      "statement": "A run holding an expired lease whose provider is unreachable issues 0 requests to the vendor.",
+      "statement": "A run holding an expired credential lease whose provider is unreachable issues 0 requests to the vendor.",
       "why": "P6",
       "file": "spec/41-secrets.md",
       "line": 152
@@ -33787,8 +33787,8 @@
     "connector.drive-sheet": "Google Sheets capture as structured rows, separate from PDF page capture.",
     "connector.export": "Connector interfaces: shared types, source and destination worlds, optional interfaces and compiled-in sources.",
     "connector.import": "Host imports and the configuration table the host forwards to a guest.",
-    "connector.infer": "Model requests: endpoint selection, prompt data markers and output provenance labels.",
-    "connector.lease": "The first credential adapter: lease declarations, mint requests, expiry, failures and the mint credential.",
+    "connector.infer": "Model requests: endpoint selection, data boundary markers and output provenance labels.",
+    "connector.lease": "The first credential adapter: credential lease declarations, mint requests, expiry, failures and the mint credential.",
     "connector.meter": "Vendor quota declarations, limiter bindings, pre-send checks, permit reservations, denials and usage reports.",
     "connector.package": "Distribution form, digest pinning, per-connector resource bounds and world versioning.",
     "connector.principal-secrets": "Per-principal credential names and the adapter that serves their material.",

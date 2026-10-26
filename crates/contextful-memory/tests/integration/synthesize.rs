@@ -100,8 +100,8 @@ fn a_landed_claim_carries_its_authoring_agent() {
     assert_eq!(rows, [vec![json!("agent://synthesizer"), json!("user://dana@acme.example")]]);
 }
 
-/// Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.
-// spec: connector.infer.output-taint@ad6fddaf
+/// Model output carries the least-trusted provenance label among its marked inputs, and lands under that label.
+// spec: connector.infer.output-taint@5e14e18c
 #[test]
 fn a_synthesized_claim_lands_under_the_label_of_its_inputs() {
     let f = Fixture::new();
