@@ -365,6 +365,8 @@ struct Pools {
     shares: &'static [f64],
     /// How often a grant carries aggregate constraints, in percent.
     aggregate_percent: u64,
+    /// Horizons and expiries a narrowing case draws, in Unix seconds.
+    instants: &'static [u64],
     zones: &'static [&'static str],
     entries: &'static [&'static str],
     /// Credential lifetimes, in seconds from issue.
@@ -398,6 +400,7 @@ const WELL_FORMED: Pools = Pools {
     counts: &[2, 5, 10, 20, 100],
     shares: &[0.1, 0.25, 0.5, 0.75, 1.0],
     aggregate_percent: 30,
+    instants: &[1_893_456_000, 1_893_459_600, 1_893_542_400],
     zones: &["local:device", "on-prem:hq", "on-prem:ward-3", "private-cloud:vpc-7", "public-cloud:us-east-1", "public-cloud:eu-west-1"],
     entries: &[
         "*",
@@ -431,6 +434,9 @@ const BOUNDARY: Pools = Pools {
     counts: &[0, 1, 2, u64::MAX - 1, u64::MAX],
     shares: &[0.0, 1.0, 0.5, 0.9999],
     aggregate_percent: 60,
+    // The epoch, the last second a timestamp represents and the one past it, and the edges of
+    // the signed 64-bit range an expiry decodes into.
+    instants: &[0, 1, 253_402_300_799, 253_402_300_800, i64::MAX as u64, i64::MAX as u64 + 1, u64::MAX],
     // Whitespace Unicode lists, a zero-width space it does not, identifiers at and past
     // 128 chars, a second colon, case and non-ASCII letters.
     zones: &[
@@ -610,7 +616,23 @@ fn gen_grant(rng: &mut Rng, pools: &Pools) -> Value {
     if rng.chance(20) {
         g["max_rows"] = json!(rng.pick(pools.counts));
     }
+    if rng.chance(30) {
+        g["horizon"] = json!(rng.pick(pools.instants));
+    }
     g
+}
+
+/// A value kept, stepped to a neighbour or replaced from the pool: a narrower, equal or
+/// broader bound.
+fn step_instant(rng: &mut Rng, pools: &Pools, at: Option<u64>) -> u64 {
+    match at {
+        Some(n) if rng.chance(70) => match rng.below(3) {
+            0 => n,
+            1 => n.saturating_sub(1),
+            _ => n.saturating_add(1),
+        },
+        _ => *rng.pick(pools.instants),
+    }
 }
 
 /// A child grant derived from a parent grant: kept or narrowed on each dimension, then
@@ -658,6 +680,15 @@ fn derive_grant(rng: &mut Rng, pools: &Pools, parent: &Value) -> Value {
             _ => *rng.pick(pools.counts),
         };
         agg[key] = json!(value);
+    }
+    if let Some(h) = parent.get("horizon").and_then(Value::as_u64) {
+        if rng.chance(30) {
+            if let Some(o) = g.as_object_mut() {
+                o.remove("horizon");
+            }
+        } else {
+            g["horizon"] = json!(step_instant(rng, pools, Some(h)));
+        }
     }
     for (key, percent) in [("aggregate", 30), ("tenant", 10)] {
         if parent.get(key).is_some() && rng.chance(percent) {
@@ -722,7 +753,15 @@ fn gen_request(rng: &mut Rng, pools: &Pools) -> Value {
                     }
                 })
                 .collect();
-            json!({"op": "narrow", "parent": parent, "child": child})
+            let mut case = json!({"op": "narrow", "parent": parent, "child": child});
+            if rng.chance(40) {
+                let parent_exp = rng.chance(80).then(|| *rng.pick(pools.instants));
+                if let Some(e) = parent_exp {
+                    case["parent_exp"] = json!(e);
+                }
+                case["child_exp"] = json!(step_instant(rng, pools, parent_exp));
+            }
+            case
         }
     }
 }
