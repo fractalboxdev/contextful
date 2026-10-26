@@ -11,9 +11,9 @@ use contextful_core::run::failure::{CALL_DEADLINE, LINEAR_MEMORY};
 use contextful_core::run::record::{BoundHit, RunRow};
 use contextful_core::run::{Failure, FailureTag, RunError};
 
-/// A run status is `pending`, `running`, `waiting`, `success`, `partial_failure`, `failed` or `canceled`, spelled
-/// identically on the record and the wire snapshot; every surface classifying a run covers all seven.
-// spec: run.record.status-set@0d803c11
+/// A run status is a {{type:contextful_core::run::record::RunStatus}}, spelled identically on the record and the
+/// wire snapshot; every surface classifying a run covers all seven.
+// spec: run.record.status-set@4c8411a6
 #[test]
 fn seven_statuses_spelled_once_for_record_and_wire() {
     let names: Vec<&str> = RunStatus::ALL.iter().map(|s| s.name()).collect();

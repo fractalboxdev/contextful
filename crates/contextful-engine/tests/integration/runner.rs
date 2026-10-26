@@ -992,9 +992,10 @@ fn a_pointer_clock_reads_a_nested_value_from_each_row() {
     assert!(rig.run(&p, "1.0.0", "run-3", &mut source, &mut sink).map_or(true, |r| r.status != RunStatus::Success));
 }
 
-/// A `monotonic` position is concurrent-safe and commits the highest value observed. An `opaque-token` or
-/// `snapshot-id` position moves only under a single-writer lease. Last-write-wins governs no cursor.
-// spec: run.advance.concurrency-by-kind@b06ad45d
+/// A `monotonic` position is concurrent-safe and commits the highest value observed. A position of
+/// another {{type:contextful_core::run::advance::CursorKind}} moves only under a single-writer lease.
+/// Last-write-wins governs no cursor.
+// spec: run.advance.concurrency-by-kind@a9e47a03
 #[test]
 fn a_token_cursor_moves_under_one_writer_and_a_watermark_never_rewinds() {
     use contextful_core::coordinate::LeaseKey;

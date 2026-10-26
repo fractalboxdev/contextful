@@ -31,7 +31,7 @@ fn isolated_items_skip_completed_paid_calls_and_outputs_on_later_fires() {
 /// One exhausted and two succeeded items each read back from the item record with their
 /// job, keys, attempt count and outcome; a later fire holding their receipts adds no row.
 // spec: run.items.outcome-record@3702f38d
-// spec: run.items.terminal-outcome@8b1abe1a
+// spec: run.items.terminal-outcome@8b3425cd
 #[test]
 fn terminal_items_read_back_from_the_item_record_by_job_and_entity() {
     let (dir, public, token) = project(&job("max_in_flight=1\n[job.isolated_items]\nlogical_key='doc_id'\nentity_key='doc_id'\nentity_namespace='documents'\nmax_attempts=1\n"));

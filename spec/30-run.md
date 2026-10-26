@@ -144,8 +144,6 @@ Journal rows, blobs and awakeables persist through storage ports that SQLite, Po
   *because creating an empty replacement for a missing table erases the evidence of a partial restore*
 - `execution-recovery` — Missing execution tables or a mismatched project recovery identity raise `ExecutionRecoveryMismatch`. Normal startup provisions no recovery identity. A corpus-only restore admits no paid or effectful work.
   *A-run#run-substrate-storage*
-- `execution-backup` — An execution backup contains owners, leases, cadence run history, journal rows, blobs, awakeables and export state from one quiesced PostgreSQL snapshot, together with the corpus object frontier, project recovery identity and executable schema.
-  *A-run#run-substrate-storage*
 - `current-owner` — An execution checks its durable owner, admitted pins and active attempt immediately before effect dispatch and publication; a superseded attempt enters neither boundary, and a late stop still follows {{run.cancel.land-path-uncut}}.
   *A-run#run-substrate-storage*
 - `durable-dispatch` — PostgreSQL admission holds shared owner and unexpired lease locks through each bounded provider or destination callback, including item ancestors and entity fences; owner replacement, retirement and takeover serialize after admitted callbacks.
@@ -211,14 +209,13 @@ The engine executes isolated input items with independent completion receipts, b
   *P6*
 - `replay` — A nonterminal failed or parked item retains its execution owner and recorded paid calls; its next admitted attempt reuses that journal.
 - `entity-admission` — Admission holds one leased entity namespace and key across triggers, job names and execution versions; unrelated entities occupy at most the job's `max_in_flight` body slots.
-- `overlap` — An active entity lease returns a deferred item outcome through the scheduler's failed fire report; its next scheduled fire rechecks admission.
 - `fence` — Recorded effects and output publication check their execution owner and entity fence immediately before dispatch; a superseded owner sends no provider request and publishes no output.
   *because an owner that resumes after transfer cannot authorize another effect*
-- `delegated-item` — Under a delegated body, each call ordinal is one request under {{surface.delegate.envelope}}, its `ok`, `defer` or `permanent` answer recorded under the item's entry key, so a resume replays every recorded answer and sends only the unrecorded call.
+- `delegated-item` — Under a delegated body, each call ordinal is one request under {{surface.delegate.envelope}}, its {{type:contextful_core::surface::delegate::Answer}} recorded under the item's entry key, so a resume replays every recorded answer and sends only the unrecorded call.
   *A-surface#delegated-body-deploy*
 - `outcome-record` — Each terminal item appends one row to the reserved `_items` table once its receipt commits: job, logical key, entity namespace and key, attempt count, terminal outcome, reason, attempt run id, execution id and end instant.
   *A-run#terminal-item-s*
-- `terminal-outcome` — An item row's outcome is `succeeded`, `failed` for a failure no retry changes, or `exhausted` for a retryable failure on the attempt spending {{run.items.retry-budget}}; its reason carries the failure tag and {{run.record.error-cap}} message.
+- `terminal-outcome` — An item row's outcome is an {{type:contextful_core::run::drive::ItemTerminal}}, `exhausted` on the attempt spending {{run.items.retry-budget}}; its reason carries the failure tag and {{run.record.error-cap}} message.
   *A-run#terminal-item-s*
 - `waiting-item` — Under `isolated_items`, every retry wait closes its item {{run.retry.waiting-state}} and frees its slot; once the pass ends, an item whose instant falls within {{run.retry.retry-after}}'s ceiling re-enters in the same fire.
   *because one throttled item sleeping in a slot delays every sibling queued behind it*
@@ -241,8 +238,8 @@ unsettled: Does a job credential holding a mask exception record its entity key 
 
 The engine commits source positions according to cursor kind and re-reads rows at each poll's boundary.
 
-- `cursor-kind` — A cursor declares `monotonic` for a timestamp, autoincrement or watermark, `opaque-token` for a vendor continuation token, or `snapshot-id` for a log sequence number or version id. An undeclared kind resolves to `opaque-token`.
-- `concurrency-by-kind` — A `monotonic` position is concurrent-safe and commits the highest value observed. An `opaque-token` or `snapshot-id` position moves only under a single-writer lease. Last-write-wins governs no cursor.
+- `cursor-kind` — A cursor declares a {{type:contextful_core::run::advance::CursorKind}}. An undeclared kind resolves to `opaque-token`.
+- `concurrency-by-kind` — A `monotonic` position is concurrent-safe and commits the highest value observed. A position of another {{type:contextful_core::run::advance::CursorKind}} moves only under a single-writer lease. Last-write-wins governs no cursor.
   *because two writers resolving one continuation token by recency skip or duplicate records with no count showing it*
 - `engine-owned` — A connector moves its position only by committing through the engine; that commit is a recorded step and replays as a resolved read.
 - `commit-with-rows` — A table's run commit marker, {{store.lay-out.run-manifest}}, publishes its rows and new position together. The catalog cursor caches the newest committed marker.
@@ -335,7 +332,7 @@ sequenceDiagram
 
 The runner classifies failures and schedules step retries through one retry layer.
 
-- `failure-taxonomy` — One tagged failure type crosses every port: `Transient`, `Permanent`, `SchemaIncompatible`, `AuthExpired`, `RateLimited`, `Config`, `Storage`, `UnknownConnector`, `SecretNotFound` and `Canceled`. A caller branches on the tag, never on a message.
+- `failure-taxonomy` — One tagged failure type, {{type:contextful_core::run::failure::FailureTag}}, crosses every port. A caller branches on the tag, never on a message.
   *P2*
 - `schedule` — A schedule attaches to a step and carries a fixed or exponential backoff with base and factor, a total attempt count including the first, a per-delay clamp, a jitter ceiling and `retry_on`.
 - `default-policy` — The default schedule is exponential from a 100 ms base with factor 2, to 5 attempts in total, each delay clamped at 30 s, plus seeded jitter below 250 ms.
@@ -519,7 +516,7 @@ The engine stops work at run or pipeline scope through a shared cancellation tok
 - `child-reaped` — A stop signals a running subprocess chain's process group. The engine records `canceled` only after reaping the group.
   *because a record reading canceled while a child still runs misstates what the machine is doing*
 - `storage-blip` — A failed poll read warns and keeps polling.
-- `not-in-flight` — Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.
+- `not-in-flight` — Only a row holding a non-terminal {{type:contextful_core::run::record::RunStatus}} accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.
   *A-run#external-signals-single*
 - `re-mark` — Marking an already-marked row overwrites it with the newer request.
 - `distinct-terminal-status` — `canceled` is a terminal status apart from `failed`, and upstream health observations skip it.
@@ -566,10 +563,11 @@ sequenceDiagram
 The store records run status, owner leases and execution history. History requests select a time window and row ceiling.
 
 - `reserved-table` — The durable run record is a reserved store table holding two append-only rows per run, one at plan and one at commit; the latest row per run and phase wins. The local catalog is a cache in front of it.
+  *A-run#run-record-folds*
 - `columns` — A run row carries run id, pipeline id, site id, status, owner, start and end instants, row and byte counts, error kind and message, connector id, version and hash, trace id and phase.
 - `trace-context` — A run a command opens takes as trace id the trace of the caller's `traceparent`, read from `TRACEPARENT` and `TRACESTATE`, or a fresh trace; both run rows carry it.
 - `run-span` — With an exporter configured, a run exports one span, child of the caller's span, carrying run id, pipeline, table, status, row and byte counts, and the failure tag.
-- `status-set` — A run status is `pending`, `running`, `waiting`, `success`, `partial_failure`, `failed` or `canceled`, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.
+- `status-set` — A run status is a {{type:contextful_core::run::record::RunStatus}}, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.
   *because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading*
 - `row-at-open` — The engine writes a run row at open, before the first pull. Readers distinguish zero-row `success`, `failed` with an error kind, and no run row.
 - `record-folds` — An append to {{run.record.reserved-table}} runs a pass on it once {{store.fold.triggers}} fires; a pass that fails leaves the row appended and the append succeeding, and the next append retries it.
@@ -596,8 +594,6 @@ The store records run status, owner leases and execution history. History reques
 - `export-ceiling` — The export returns 500 rows by default and clamps at 5000 rows. Each pipeline's window takes the full ceiling; the export clips the merged result once.
 - `error-cap` — The shared run projection masks credential-shaped spans in recorded errors and caps each error at 2 KiB with an ellipsis marker. Every surface serves that projection.
 - `failure-publishes` — The bucket push runs on the failure arm as on the success arm, for every failure past run open.
-- `per-table-accounting` — A table failing inside a multi-table fire leaves one row with its error kind, a step-failure and a run-failure event, and a position where the next run resumes, under either `on_table_error` setting.
-  *A-run#run-record-folds*
 - `counts-at-destination` — The engine measures row and byte counts at the destination rather than at the source.
 - `skipped-count` — A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.
   *because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows*
@@ -621,8 +617,8 @@ unsettled: Does a run the engine drives for a job continue the trace of the job'
 The runner publishes a best-effort live view of run progress to subscribers.
 
 - `best-effort` — Live run state is a best-effort projection of events the runner emits after durable state changes; execution never reads it.
-- `wire-snapshot` — The wire snapshot carries run id, workflow id, a status from {{run.record.status-set}}, an ordered step list, an application metadata map, optional start and end instants, an optional tagged error and a version. Every deploy target emits it identically.
-- `step-view` — A step view carries its label, a status of `pending`, `running`, `completed`, `failed` or `retrying`, its attempt count, optional instants, an optional output reference with byte count, and an optional tagged failure.
+- `wire-snapshot` — The wire snapshot is a {{type:contextful_core::run::project::Snapshot}}, its status from {{run.record.status-set}}. Every deploy target emits it identically.
+- `step-view` — A step view is a {{type:contextful_core::run::project::StepView}}, its status a {{type:contextful_core::run::project::StepStatus}}.
 - `stopped-step` — A stopped run reports its executing step `failed` with the `Canceled` tag and leaves the run-level error unset.
 - `emission-never-blocks` — Progress emission is no journal step: events reach an in-process observer over a bounded channel that drops when full and never blocks the runner.
 - `terminal-slot` — A terminal transition bypasses the lossy channel through a per-run slot that is never dropped; a projection reading non-terminal behind a terminal run record reconciles from the record.
@@ -649,7 +645,7 @@ The runner publishes a best-effort live view of run progress to subscribers.
 
 The scheduler runs one store-driven job per origin across a declared span. Each origin reads data available at that origin under one frozen transaction-time bound.
 
-- `origins` — A store-driven `[[job]]` declaring `sweep = { start, end, step, state }` opens one run per origin from `start` through `end` at each `step`, a `<n><unit>` interval in {{surface.arm.grammar}} units, each reading with `available_as_of` equal to its origin.
+- `origins` — A store-driven `[[job]]` declaring {{type:contextful_core::run::sweep::Sweep}} opens one run per origin from its start through its end at each step in {{surface.arm.grammar}} units, each reading with `available_as_of` equal to its origin.
   *because an origin reading rows published after it scores a forecast against its own answer*
 - `sweep-id` — A sweep's id is the execution id of the fire that opens it; every origin's run records it, so run history groups one sweep's origins.
 - `frozen-as-of` — Every origin of one sweep reads at one `as_of`: the job's declared `as_of`, else the instant the sweep opens, recorded once as {{run.journal.open-as-of}} records it for resumes.

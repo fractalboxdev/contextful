@@ -79,8 +79,8 @@ fn run(rig: &Rig, f: &SweepFire<'_>, asked: &Mutex<Vec<Asked>>) -> Swept {
     rig.engine.sweep(f, &mut read, &mut land).unwrap()
 }
 
-/// A store-driven `[[job]]` declaring `sweep = { start, end, step, state }` opens one run per origin from `start` through `end` at each `step`, a `<n><unit>` interval in {{surface.arm.grammar}} units, each reading with `available_as_of` equal to its origin.
-// spec: run.sweep.origins@ee93e0d3
+/// A store-driven `[[job]]` declaring {{type:contextful_core::run::sweep::Sweep}} opens one run per origin from its start through its end at each step in {{surface.arm.grammar}} units, each reading with `available_as_of` equal to its origin.
+// spec: run.sweep.origins@44d60b8e
 #[test]
 fn a_sweep_opens_one_run_per_origin_each_bounded_by_its_origin() {
     let rig = Rig::new();

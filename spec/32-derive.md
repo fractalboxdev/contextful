@@ -113,7 +113,7 @@ Engine bindings select registered tasks, configure engine interfaces and constra
 
 - `unbound-engine` — An engine with no `[derive.<name>]` block raises `DeriveEngineUnbound`, naming the pipeline, the engine, the file to edit and every bound engine.
   *A-run#derive-engine-machine*
-- `command-in-manifest` — `command`, `preprocess`, `env` or `allow_hosts` inside `[pipeline.source.config]` raises `DeriveCommandInManifest`.
+- `command-in-manifest` — A {{type:contextful_core::run::derive::config::Binding}} key `preprocess`, `env` or `allow_hosts`, or a step's `command`, inside `[pipeline.source.config]` raises `DeriveCommandInManifest`.
   *A-run#derive-engine-machine*
 - `unknown-task` — `task` names `transcribe`, the default, `link_preview`, or a task the embedding binary registered; any other value raises `DeriveUnknownTask`, listing the built-in and registered names.
   *A-run#derive-engine-machine*
@@ -207,7 +207,7 @@ The fetch driver follows third-party links with host and address checks, bounded
 - `address-literal` — A host written as an address literal raises `DeriveAddressLiteral`.
   *A-connector#outbound-transport-origin*
 - `redirect-chain` — A redirect chain runs to at most 5 hops.
-- `binding-key` — `env`, `preprocess`, `engine` or `max_output_bytes` on a fetch binding raises `DeriveFetchBindingKey`, naming the key.
+- `binding-key` — A {{type:contextful_core::run::derive::config::Binding}} key `env`, `preprocess`, `engine` or `max_output_bytes` on a fetch binding raises `DeriveFetchBindingKey`, naming the key.
   *because a silently ignored key leaves an operator believing a fetch carries a credential or runs a process*
 - `document-prefix` — `max_document_bytes` bounds the scanned document prefix at 1 MiB by default, dropping the remainder.
 - `probe-prefix` — `max_probe_bytes` bounds one picture range request at 64 KiB by default.

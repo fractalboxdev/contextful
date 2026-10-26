@@ -274,9 +274,10 @@ fn an_engine_with_no_block_refuses_naming_every_bound_engine() {
     }
 }
 
-/// `command`, `preprocess`, `env` or `allow_hosts` inside `[pipeline.source.config]` raises
+/// A {{type:contextful_core::run::derive::config::Binding}} key `preprocess`, `env` or
+/// `allow_hosts`, or a step's `command`, inside `[pipeline.source.config]` raises
 /// `DeriveCommandInManifest`.
-// spec: run.bind.command-in-manifest@a1e200c3
+// spec: run.bind.command-in-manifest@44c64227
 #[test]
 fn an_executable_key_in_the_manifest_refuses() {
     for k in ["command", "preprocess", "env", "allow_hosts"] {
@@ -322,7 +323,7 @@ fn a_driver_the_task_does_not_serve_refuses() {
     assert!(bind("doc-text", &link, &b, "m").is_ok());
 }
 
-// spec: run.fetch.binding-key@e267e119
+// spec: run.fetch.binding-key@c362aa7b
 // spec: run.bind.endpoint-host-bare@7f200598
 #[test]
 fn a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts() {
