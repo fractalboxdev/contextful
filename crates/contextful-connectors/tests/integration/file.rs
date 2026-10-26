@@ -208,6 +208,7 @@ fn a_table_other_than_documents_refuses() {
 /// A document source lands one row per page, or one row per heading past a length threshold. With a base URL, each
 /// row links to its own page anchor.
 // spec: connector.source.document-grain@efa4b1d0
+// spec: connector.source.document-url@b05b719f
 #[test]
 fn a_note_lands_whole_or_by_heading_and_a_pdf_by_page_each_linked_to_its_anchor() {
     let dir = tempfile::tempdir().unwrap();

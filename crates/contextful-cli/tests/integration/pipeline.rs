@@ -525,6 +525,7 @@ fn typed_removal_admits_nonjournaled_and_prepared_journal_source_pipelines() {
     }
 }
 
+// spec: authority.redact.pipeline-wide@b0a14883
 #[test]
 fn a_relational_pipeline_removes_parent_selected_text_from_its_child_table() {
     let vendor = Vendor::start(|_| (200, r#"[{"body":{"parts":[{"text":"415-555-0100","public":"keep"}]},"public":"root"}]"#.into()));

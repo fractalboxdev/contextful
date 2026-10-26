@@ -79,6 +79,7 @@ fn vendor_hits(server: &Server) -> usize {
 
 /// The declaration names the quota, the class every request reserves under, and the headers the report forwards;
 /// a header it does not name stays home.
+// spec: connector.meter.limiter-declaration@fb907310
 #[test]
 fn the_declaration_names_the_quota_the_class_and_the_forwarded_headers() {
     let _env = proxy_env();
@@ -208,6 +209,7 @@ fn the_report_carries_the_accounting_the_responses_and_the_run() {
 
 /// A failing report endpoint is retried under backoff up to three attempts when the run finishes; one that never
 /// takes the report is recorded in the audit and fails no request.
+// spec: connector.meter.report-delivery@c35c8270
 #[test]
 fn a_report_retries_then_lands_in_the_audit_and_fails_nothing() {
     let _env = proxy_env();

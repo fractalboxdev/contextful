@@ -3,6 +3,7 @@ use std::process::Command;
 
 const TEST: &str = "harness::runtime_manifest_selects_only_its_declared_acceptance_workspace";
 
+// spec: assurance.build.runtime-checkout@2c76a9ef
 #[test]
 fn runtime_manifest_selects_only_its_declared_acceptance_workspace() {
     if let Ok(expected) = std::env::var("ACCEPTANCE_PROVENANCE_EXPECTED_ROOT") {

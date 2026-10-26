@@ -49,6 +49,7 @@ fn a_declared_csv_encoding_preserves_text_and_refuses_invalid_input() {
 }
 
 
+// spec: connector.source.json-object-record@1a389bc5
 #[test]
 fn json_object_selects_one_object_and_retains_the_pagination_root() {
     let format = Format::parse("json-object").unwrap();
@@ -65,6 +66,7 @@ fn json_object_selects_one_object_and_retains_the_pagination_root() {
     }
 }
 
+// spec: connector.source.json-record-shape@fc6d6b96
 #[test]
 fn json_object_refuses_nonobjects_and_bad_input_without_relaxing_json_arrays() {
     let format = Format::parse("json-object").unwrap();

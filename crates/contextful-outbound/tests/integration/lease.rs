@@ -337,6 +337,7 @@ fn a_provider_named_localhost_mints_over_loopback() {
 }
 
 /// One mint call answers one scope: two leased names send two calls, each body naming one scope.
+// spec: connector.lease.scope-declaration@20184934
 #[test]
 fn each_leased_name_mints_alone() {
     let _env = proxy_env();
