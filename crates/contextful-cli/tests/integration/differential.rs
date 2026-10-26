@@ -18,6 +18,9 @@ use std::sync::OnceLock;
 
 const BIN: &str = env!("CARGO_BIN_EXE_contextful");
 
+/// The operations the reference decides and the harness accounts for, as `contextful-reference ops` prints them.
+const OPS: &str = "covers_name\ncovers_pattern\nnarrow\nzone_admits\nsession_zone\nhost_covers\nhost_included\nhost_witness\n";
+
 /// The `decide` example: the decision module alone, built once per test process with no
 /// feature, so it compiles neither the engine nor the SQL engine under whichever feature set
 /// the suite runs. The stand-in references start it once per case.
@@ -164,9 +167,14 @@ impl Scratch {
         self.dir.path().join(rel)
     }
 
+    /// A stand-in answering `ops` with the harness's operations, and every other call with `body`.
     fn script(&self, name: &str, body: &str) -> PathBuf {
+        self.script_listing(name, OPS, body)
+    }
+
+    fn script_listing(&self, name: &str, ops: &str, body: &str) -> PathBuf {
         let path = self.path(name);
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::write(&path, format!("#!/bin/sh\nif [ \"$1\" = ops ]; then printf '%s' '{ops}'; exit 0; fi\n{body}\n")).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path
     }
@@ -427,6 +435,31 @@ fn the_reference_binary_reads_one_case_and_prints_one_decision() {
     let malformed = json!({"op": "covers_name", "pattern": "a*b", "name": "a"});
     assert_eq!(decide(&exe, &[], &malformed)["error"], "GrantPatternMalformed");
     assert_eq!(decide(&exe, &[], &json!([1]))["error"], "CaseMalformed");
+}
+
+/// Before any case, the harness reads the reference binary's operation listing; an operation one of the reference and the harness lists and the other lacks raises `ReferenceVocabularyDrift`, printing both lists.
+// spec: assurance.differential-test.reference-vocabulary@7e85bf39
+#[test]
+fn an_operation_the_reference_and_the_harness_do_not_share_raises_vocabulary_drift() {
+    let s = Scratch::new(Vec::new());
+    let decide = decide_exe().display().to_string();
+    for (ops, named) in [(format!("{OPS}host_resolve\n"), "host_resolve"), (OPS.replace("narrow\n", ""), "narrow")] {
+        let reference = s.script_listing("drifted.sh", &ops, &format!("exec '{decide}'"));
+        let out = s.run(&reference, &["--seed", "1", "--cases", "1"]);
+        assert!(!out.status.success(), "{}", stdout(&out));
+        let error = stderr(&out);
+        assert!(error.contains("ReferenceVocabularyDrift") && error.contains(named), "{error}");
+        assert!(!stdout(&out).contains("generated"), "a case ran before the vocabulary check");
+    }
+}
+
+/// The reference binary's operation listing equals the harness's.
+#[test]
+fn the_reference_lists_the_operations_the_harness_accounts_for() {
+    let exe = lean_or_skip!();
+    let out = Command::new(&exe).arg("ops").output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), OPS);
 }
 
 /// The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
