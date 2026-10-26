@@ -262,6 +262,7 @@ fn old_run_records_decode_without_a_plan_identity() {
 
 /// A run row records the pipeline phase it ran under as its snake-case name, and a row without one serializes and
 /// reads back with the field absent.
+// spec: run.backfill.phase@a7f0395f
 #[test]
 fn a_run_row_records_its_pipeline_phase_by_name() {
     use contextful_core::run::backfill::PipelinePhase;

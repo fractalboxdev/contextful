@@ -11,15 +11,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 11 | 125 | 50 | 13 | 0 | 125 | 0 | 0 | 125 |
 | `disclosure` | 3 | 17 | 185 | 64 | 14 | 5 | 167 | 0 | 0 | 167 |
 | `read` | 2 | 20 | 303 | 53 | 29 | 16 | 286 | 0 | 0 | 286 |
-| `run` | 3 | 29 | 609 | 128 | 49 | 19 | 590 | 4 | 0 | 590 |
+| `run` | 3 | 29 | 604 | 128 | 49 | 19 | 592 | 4 | 0 | 592 |
 | `store` | 6 | 20 | 315 | 67 | 23 | 13 | 311 | 13 | 0 | 311 |
 | `surface` | 2 | 22 | 199 | 70 | 24 | 2 | 186 | 0 | 0 | 186 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 90 | 0 | 0 | 90 |
-| **total** | 27 | 178 | 2870 | 701 | 236 | 85 | 2710 | 24 | 0 | |
+| **total** | 27 | 178 | 2865 | 701 | 236 | 85 | 2712 | 24 | 0 | |
 
 Decision records: 18.
 
-Clauses restating a code type: 64.
+Clauses restating a code type: 63.
 
 ## Milestones
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 261 | 260 | passing | closed |
 | 2 — The store | 9 | 183 | 180 | passing | closed |
 | 3 — The run path | 12 | 317 | 312 | passing | closed |
-| 4 — Ingest | 25 | 624 | 580 | passing | closed |
+| 4 — Ingest | 25 | 619 | 582 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 296 | passing | closed |
 | 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
 | 7 — Memory | 6 | 87 | 85 | passing | closed |

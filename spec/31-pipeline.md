@@ -199,9 +199,8 @@ The engine processes batches from pull to commit, records ingest counts and isol
 - `late-type` — A pull declaring a type for a column an earlier staged batch of its run carried undeclared raises `PipelineTypeDeclaredLate`, deterministic, naming the column; the run commits nothing and retires its owner.
   *because that batch's part already holds the column in its inferred type, and a staged part is immutable*
 - `irreconcilable-schema` — An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}.
-- `commit-visibility` — A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.
-- `observed-schema` — Planning fetches no source schema. Staging assigns each observed batch's types under {{run.own.stage-schema}} and validates the batch against declared columns.
   *A-run#observed-batch-fixes*
+- `commit-visibility` — A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
 - `object-arrival-wake` — An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.
@@ -306,10 +305,8 @@ Input a decoder cannot read fails alone, lands as a dead letter, and decodes in 
   *because two shapes committing into one table mix their schemas*
 - `partial-parse` — A reader stopping partway through a multi-part input raises `PipelinePartialParse` over the whole input and lands none of its parts.
   *A-connector#untrusted-input-decodes*
-- `parse-boundary` — A decoder subject to process failure runs outside the serving process. The serving process bounds the decoder's wall clock and memory and supports terminating the decoder.
+- `parse-boundary` — Each input whose decoder is subject to process failure decodes alone in a child process outside the serving process, which bounds the child's wall clock and memory and can terminate it.
   *A-connector#untrusted-input-decodes*
-- `parse-child` — Each input whose decoder is subject to process failure runs in a separate child process. That process decodes no second input.
-  *A-run#decoder-child-owns*
 - `parse-deadline` — A decode runs for at most 60 s from child spawn; expiry kills its process group and raises {{run.land.parse-crashed}}.
   *A-run#decoder-child-owns*
 - `parse-memory` — A decoder child receives at most 512 MiB of memory; exceeding the bound fails that input under {{run.land.parse-crashed}}.
@@ -341,10 +338,8 @@ flowchart LR
 
 #### Scenarios
 
-- `run.land.parse-child`: WHEN two PDF inputs decode in one fire, THEN each input starts a separate child process.
 - `run.land.parse-deadline`: WHEN a decoder holds its output pipe past 60 s, THEN its process group dies and that input fails by name.
 - `run.land.parse-memory`: WHEN a decoder exceeds 512 MiB, THEN that input fails and the serving process continues.
-- `run.land.observed-schema`: WHEN a source exposes no schema before its first batch, THEN planning succeeds and staging checks that batch against the declared table columns.
 - `run.land.session-input`: WHEN stdin carries `run-1`, `run-2` and `run-1` again, THEN the session prints two commits and one replay, one line each.
 - `run.land.session-schema`: WHEN a session lands 300 single-row runs under one schema, THEN it parses `schema.json` once and leaves the file's bytes and identity unchanged.
 - `run.land.receive-ack`: WHEN one `jsonl` batch carries rows for two declared tables, THEN the answer follows both commits and names the batch id and each table's run id.
@@ -470,8 +465,6 @@ A coordinated `[[publication]]` delivers every member of one producer completion
   *A-run#coordinated-exports-activate*
 - `group-storage` — A coordinated publication under `postgres` raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery; a `cloudflare-d1` sender state over 8 MiB raises it before staging.
   *A-run#d1-coordinated-groups*
-- `group-sender-profile` — {{run.export.group-storage}} reads the sender's storage profile alone; under the local profile a group keeps its sender state in `machine.sqlite` and delivers to any `changes-v1` receiver, a D1-backed one included.
-  *because the outbox is the sender's durable state, and a receiver's storage is behind its endpoint*
 - `group-d1-state` — Under {{run.journal.d1-profile}}, D1 holds each group's producer frontier, sender outbox and active namespace; one D1 batch commits a completing acknowledgement with its promoted state and active namespace.
   *A-run#d1-coordinated-groups*
 - `group-d1-lease` — A `cloudflare-d1` group writer holds one durable D1 lease per publication, and every sender write predicates on that lease and the row's prior version.
@@ -505,7 +498,7 @@ unsettled: Does a local-profile sender whose disk a replacement emptied continue
 
 The scheduler loads history through chunk plans with fenced leases and supports rewinding a declared range.
 
-- `phase` — The catalog records one phase per pipeline: `planning` computes the chunk plan with nothing fetched, `seeding` loads consumer-held history, `backfilling` runs chunks across ticks, `streaming` pulls the incremental delta.
+- `phase` — A run row records the {{type:contextful_core::run::backfill::PipelinePhase}} it ran under by its snake-case name, and a row without a phase carries no field.
 - `chunk-plan` — Plan shape follows cursor kind: `monotonic` plans independent time-window or id-range chunks, `opaque-token` one sequential chunk walked in order, `snapshot-id` version ranges sequential per stream and parallel across streams.
 - `chunk` — A chunk row carries pipeline id, chunk id, predicate, status, attempt count, start and completion instants and a cursor-committed flag; an interrupted plan resumes at the first chunk not done.
 - `chunk-lease` — A worker leases a chunk row, recording node id and attempt, for a 300 s time-to-live renewed every 60 s, and writes under a path segmented by run, node, chunk and attempt.
@@ -514,25 +507,14 @@ The scheduler loads history through chunk plans with fenced leases and supports 
   *because an expired holder otherwise commits over its successor*
 - `commit-signal` — The catalog row signals commit; directory presence does not. Retention collects files under paths without a done row according to a retention window.
 - `attempt-isolation` — An expired lease lets a second worker claim the chunk, increment the attempt and write under its own path.
-- `tick` — While a pipeline backfills, a tick dispatches up to the per-tick chunk cap or no-ops when the queue is full; the declared cadence resumes once the position catches up.
 - `block` — `[pipeline.backfill]` declares `max_chunks`, the bound on a plan's chunk count; `chunk_size`, one clock-ranged chunk's width in cursor units; and `start_from`, the floor, default zero.
-- `rewind` — A rewind returns every chunk overlapping the half-open range to pending and appends one reason row per rewound chunk to an audit log a catalog rebuild leaves untouched.
+- `rewind` — A rewind returns every chunk overlapping the half-open range to pending.
 - `rewind-invalid` — An inverted, empty or scale-incomparable rewind window raises `PipelineRewindWindowInvalid`; a window overlapping no chunk is a no-op.
   *P4*
 - `available-instant` — A backfill lands each row's availability column as {{store.available-time.declaration}} resolves it from the source, while `_ingested_at` stays the commit instant {{run.own.stage-instant}} writes.
   *because a 2026 backfill of 2014 history stamped with its commit instant answers no availability bound before 2026*
 
-```mermaid
-stateDiagram-v2
-  [*] --> planning
-  planning --> seeding: seed block declared
-  planning --> backfilling: no seed block
-  seeding --> backfilling: seed committed
-  backfilling --> streaming: position caught up
-  streaming --> backfilling: rewind window opened
-```
-
-unsettled: What is the per-tick chunk cap, and how long does the retention window keep files under a path with no done row? owner: pipeline affects: run.backfill
+unsettled: How long does the retention window keep files under a path with no done row? owner: pipeline affects: run.backfill
 
 ## seed
 
@@ -555,7 +537,6 @@ A seed source bulk-loads history below a declared ordering ceiling before live i
 - `source-changed` — A differing fingerprint raises `PipelineSeedSourceChanged` naming both values; an equal one skips the load, and an unavailable one skips with a warning.
   *A-run#incremental-position-bound*
 - `commands` — `seed status` prints each seeded table's ceiling, commit state and fingerprint match; `seed reset <pipeline> [--table T]` clears the seed's chunk plan and commit stamp, so the next run loads it again.
-- `parity` — Over keys the vendor still returns, seeding then running live across an overlapping window yields a pure live backfill's row count and per-key winners; a key the vendor stopped returning keeps its seeded value.
 - `compaction-cadence` — A seeded table that no job meeting {{store.declare.fold-job}} covers raises `PipelineSeedCompactionMissing` at validate and before a fire, naming the table.
   *A-store#keyed-table-covered*
 
