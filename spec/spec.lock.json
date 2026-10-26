@@ -39112,7 +39112,7 @@
           },
           "DisclosureMinGroupSizeBelowFloor": {
             "clause": "disclosure.suppress.min-group-size",
-            "gloss": "A declared group-size floor is below its minimum."
+            "gloss": "A declared `min_group_size` is below the floor."
           },
           "DisclosureModelUnreadable": {
             "clause": "disclosure.set-mode.model-unreadable",
@@ -39132,7 +39132,7 @@
           },
           "DisclosureShareOutOfRange": {
             "clause": "disclosure.suppress.contributor-share",
-            "gloss": "A declared contributor share lies outside its interval."
+            "gloss": "A declared `max_contributor_share` lies outside `(0, 1]`."
           },
           "DisclosureSingletonCohort": {
             "clause": "disclosure.bound-cohort.singleton-cohort",
@@ -40277,7 +40277,7 @@
           },
           "DeriveEndpointHostNotBare": {
             "clause": "run.bind.endpoint-host-bare",
-            "gloss": "An engine host carrying more than a host."
+            "gloss": "An engine host carrying a path, query, port or scheme."
           },
           "DeriveEngineUnbound": {
             "clause": "run.bind.unbound-engine",
@@ -40521,7 +40521,7 @@
           },
           "PipelineNormalizeModeUnknown": {
             "clause": "run.normalize.mode-unknown",
-            "gloss": "A normalize mode outside the two."
+            "gloss": "A normalize mode outside `native` and `relational`."
           },
           "PipelineParallelUnjoined": {
             "clause": "run.compile.unjoined-parallel",
@@ -41249,7 +41249,7 @@
           },
           "LeaseFenced": {
             "clause": "store.lease.stale-fence",
-            "gloss": "A conditional commit lost to a higher fence."
+            "gloss": "A commit, pointer replace or catalog update losing its condition to a higher fence."
           },
           "LeaseHeld": {
             "clause": "store.lease.held",

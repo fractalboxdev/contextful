@@ -33,7 +33,7 @@ pub enum RunError {
     /// A clock value with no ordering, or a position type changing mid-pass. (`run.advance.unorderable-position`)
     #[error("CursorPositionUnorderable: {0}")]
     CursorPositionUnorderable(String),
-    /// A connector identity, component world or plan hash moved under a pending owner. (`run.own.pinned-plan-changed`)
+    /// A connector identity, component world, plan hash, plan reference or host identity moved under a pending owner. (`run.own.pinned-plan-changed`)
     #[error("ExecutionPinMismatch: {0}")]
     ExecutionPinMismatch(String),
     /// A rewind naming an execution no pending owner holds. (`run.own.rewind-not-pending`)
@@ -48,7 +48,7 @@ pub enum RunError {
     /// A run whose staged parts pass the per-run staged-bytes bound. (`run.own.staged-bytes`)
     #[error("RunStagedBytesExceeded: {0}")]
     RunStagedBytesExceeded(String),
-    /// A checkpointing run whose later commits' run id passes the store's run-id bound. (`run.own.checkpoint-id-length`)
+    /// A checkpointing run whose next commit's run id passes the store's run-id bound. (`run.own.checkpoint-id-length`)
     #[error("RunCheckpointIdTooLong: {0}")]
     RunCheckpointIdTooLong(String),
     /// A declared command that is not an executable file. (`run.exec.missing-binary`)
@@ -60,10 +60,10 @@ pub enum RunError {
     /// A required derive config key absent or blank. (`run.select.required-key`)
     #[error("DeriveConfigKeyMissing: {0}")]
     DeriveConfigKeyMissing(String),
-    /// An explicit predecessor differing from the derive source-table parent. (`run.select.derive-after-conflict`)
+    /// A derive child whose explicit predecessor differs from its source-table parent. (`run.select.derive-after-conflict`)
     #[error("DeriveAfterConflict: {0}")]
     DeriveAfterConflict(String),
-    /// A derive source-table graph returning to one of its pipelines. (`run.select.derive-cycle`)
+    /// Derive source-table dependencies returning to a pipeline. (`run.select.derive-cycle`)
     #[error("DeriveCycle: {0}")]
     DeriveCycle(String),
     /// A caption block starting before the one already accepted. (`run.parse-cues.backward-cue`)
@@ -84,13 +84,13 @@ pub enum RunError {
     /// An environment allowlist name outside the permitted characters. (`run.exec.env-name`)
     #[error("DeriveEnvNameInvalid: {0}")]
     DeriveEnvNameInvalid(String),
-    /// Configuration naming another pipeline's output table. (`run.select.foreign-output-table`)
+    /// Configuration overriding the build-owned anti-join output identity. (`run.select.foreign-output-table`)
     #[error("DeriveForeignOutputTable: {0}")]
     DeriveForeignOutputTable(String),
     /// A process-spawning key on a fetch binding. (`run.fetch.binding-key`)
     #[error("DeriveFetchBindingKey: {0}")]
     DeriveFetchBindingKey(String),
-    /// A followed address with a scheme other than HTTP or HTTPS. (`run.fetch.scheme`)
+    /// A followed address with a scheme other than http or https. (`run.fetch.scheme`)
     #[error("DeriveSchemeUnsupported: {0}")]
     DeriveSchemeUnsupported(String),
     /// A followed host written as an address literal. (`run.fetch.address-literal`)
@@ -150,7 +150,7 @@ pub enum RunError {
     /// A transcribe pipeline declaring a shared-quota grant. (`run.select.unmetered-grant`)
     #[error("DeriveUnmeteredGrant: {0}")]
     DeriveUnmeteredGrant(String),
-    /// A link preview without a run-bound mediated client. (`run.select.metered-client`)
+    /// A link pipeline opening a socket outside the mediated client. (`run.select.metered-client`)
     #[error("DeriveMeteredClient: {0}")]
     DeriveMeteredClient(String),
     /// A unit status outside the four. (`run.emit.unit-status`)
@@ -165,7 +165,7 @@ pub enum RunError {
     /// A host task whose joins name one table twice. (`run.bind.join-repeated`)
     #[error("DeriveJoinRepeated: {0}")]
     DeriveJoinRepeated(String),
-    /// A host-task pipeline's tables, or a unit's rows, outside its task's tables. (`run.emit.output-tables`)
+    /// A host-task pipeline or unit reaching tables other than its task's. (`run.emit.output-tables`)
     #[error("DeriveOutputTablesMismatch: {0}")]
     DeriveOutputTablesMismatch(String),
     /// A preprocess condition naming no known condition. (`run.exec.step-condition`)
@@ -252,10 +252,10 @@ pub enum RunError {
     /// An inverted, empty or scale-incomparable rewind window. (`run.backfill.rewind-invalid`)
     #[error("PipelineRewindWindowInvalid: {0}")]
     PipelineRewindWindowInvalid(String),
-    /// A seeded stamp at or past the ceiling. (`run.seed.ceiling-breached`)
+    /// A seeded row stamped at or past the ceiling. (`run.seed.ceiling-breached`)
     #[error("PipelineSeedCeilingBreached: {0}")]
     PipelineSeedCeilingBreached(String),
-    /// A seeded batch whose stamp cannot be ordered against the ceiling. (`run.seed.ceiling-unevaluable`)
+    /// A batch whose stamp cannot be compared with the ceiling. (`run.seed.ceiling-unevaluable`)
     #[error("PipelineSeedCeilingUnevaluable: {0}")]
     PipelineSeedCeilingUnevaluable(String),
     /// A seeded table lacking a key or an event-time ordering. (`run.seed.declaration-missing`)
@@ -339,7 +339,7 @@ pub enum RunError {
     /// A run-stream request with no valid credential before the upgrade. (`run.project.unauthenticated-upgrade`)
     #[error("RunStreamUnauthorized: {0}")]
     RunStreamUnauthorized(String),
-    /// A site id with no bound source, or two. (`run.record.site-id-unresolved`)
+    /// A site id with no declaration, two in one place, or an unset variable. (`run.record.site-id-unresolved`)
     #[error("SiteIdUnresolved: {0}")]
     SiteIdUnresolved(String),
     /// A step closed on a terminal failure, carrying its label and tag. (`run.retry.step-failed`)

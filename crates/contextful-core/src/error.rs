@@ -56,10 +56,10 @@ pub enum AuthorityError {
     /// An exchange configured with no verifying material. (`authority.exchange.material-missing`)
     #[error("ExchangeMaterialMissing: {0}")]
     ExchangeMaterialMissing(String),
-    /// An exchange request body of any shape but `{"jwt": "<assertion>"}`. (`authority.exchange.wire`)
+    /// An exchange request body of any shape but a lone `jwt` string member. (`authority.exchange.wire`)
     #[error("ExchangeRequestMalformed: {0}")]
     ExchangeRequestMalformed(String),
-    /// An exchange requested of a project declaring no exchange policy. (`authority.exchange.unconfigured`)
+    /// An exchange in a project declaring no exchange policy. (`authority.exchange.unconfigured`)
     #[error("ExchangeUnconfigured: {0}")]
     ExchangeUnconfigured(String),
     /// An action outside the registered vocabulary. (`authority.grant.unknown-action`)
@@ -86,7 +86,7 @@ pub enum AuthorityError {
     /// A requested lifetime above the persisted ceiling. (`authority.issue.above-ceiling`)
     #[error("IssuanceLifetimeAboveCeiling: {0}")]
     IssuanceLifetimeAboveCeiling(String),
-    /// A write or execute grant naming no on-behalf-of principal. (`authority.issue.principal-required`)
+    /// An attributed-effect grant naming no on-behalf-of principal. (`authority.issue.principal-required`)
     #[error("IssuancePrincipalRequired: {0}")]
     IssuancePrincipalRequired(String),
     /// A mint request without an admin grant. (`authority.issue.unauthorized-mint`)
@@ -150,9 +150,7 @@ pub enum AuthorityError {
     /// A credential timestamp outside the timestamp grammar. (`authority.verify.malformed-timestamp`)
     #[error("TimestampMalformed: {0}")]
     TimestampMalformed(String),
-    /// A socket peer of another or an unreported uid holding a credential that binds no
-    /// key, or a request on a connection other than the admitted one.
-    /// (`authority.verify.peer-mismatch`)
+    /// A socket peer, holding a credential with no confirmation claim, whose uid differs from the checkpoint's or is unreportable; a request on a connection other than the admitted one. (`authority.verify.peer-mismatch`)
     #[error("TransportPeerMismatch: {0}")]
     TransportPeerMismatch(String),
 }

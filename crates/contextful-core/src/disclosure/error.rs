@@ -19,8 +19,7 @@ pub enum VisibilityError {
     /// (`disclosure.declare-fidelity.family-undeclared`)
     #[error("VisibilityFamilyUndeclared: table `{table}` names no family")]
     FamilyUndeclared { table: String },
-    /// A full or webhook run missed a governed resource of its source and would have
-    /// advanced the watermark. (`disclosure.sweep.coverage-watermark`)
+    /// A sweep run that missed a governed resource advanced the watermark. (`disclosure.sweep.coverage-watermark`)
     #[error("VisibilityWatermarkUncovered: source `{origin}`: the run did not read {missed} governed resource(s), first `{first}`; watermark_at stays where it stood")]
     WatermarkUncovered { origin: String, missed: usize, first: String },
     /// A grant landed with no resource row, or on an unknown-class resource.
@@ -35,12 +34,10 @@ pub enum VisibilityError {
     /// (`disclosure.mirror.unbound-table`)
     #[error("VisibilityUnboundTable: table `{table}` carries no visibility block, and this project's faces are organization-wide")]
     UnboundTable { table: String },
-    /// A run advanced the watermark from an event stream not declared gap-detectable.
-    /// (`disclosure.sweep.ungapped-stream`)
+    /// The watermark advanced from an event stream not declared gap-detectable. (`disclosure.sweep.ungapped-stream`)
     #[error("VisibilityUngappedStream: source `{origin}`: {stream}; a webhook run moves watermark_at only from a stream declaring `gap_detectable = true`")]
     UngappedStream { origin: String, stream: String },
-    /// A pack lands a table with neither an access mapping nor an exclusion.
-    /// (`disclosure.pack.mapping-absent`)
+    /// A pack landed a table with neither a mapping nor an exclusion. (`disclosure.pack.mapping-absent`)
     #[error("VisibilityMappingAbsent: pack `{pack}` lands table `{table}` with neither an access mapping nor `excluded`")]
     MappingAbsent { pack: String, table: String },
     /// A pack carries an access-shaped key the mapping schema lacks.
@@ -54,16 +51,13 @@ pub enum VisibilityError {
     /// (`disclosure.pack.unsupported-coarse`)
     #[error("VisibilityUnsupportedCoarse: pack `{pack}`: table `{table}` declares `coarse` and names no `container_key`")]
     UnsupportedCoarse { pack: String, table: String },
-    /// A group closure reached its depth or node bound; no set is returned.
-    /// (`disclosure.reach.closure-overflow`)
+    /// The group closure reached its depth or node bound; no set is returned. (`disclosure.reach.closure-overflow`)
     #[error("VisibilityClosureDepth: source `{origin}`: the group closure of `{subject}` reached its bound of {bound}; no reachable set is returned")]
     ClosureDepth { origin: String, subject: String, bound: String },
-    /// A reachable set or result produced past a budget, or under the narrowing posture,
-    /// was retained. (`disclosure.reach.degraded-uncached`)
+    /// A result produced past a budget or under the narrowing posture was retained. (`disclosure.reach.degraded-uncached`)
     #[error("VisibilityDegradedCached: {what} was produced past a budget or under the narrowing posture and is not retained")]
     DegradedCached { what: String },
-    /// A read touched a table whose source lag exceeds its budget, or whose source has no
-    /// completed full run. (`disclosure.bound-staleness.access-stale`)
+    /// Source lag exceeds a touched table's budget, or the source was never fully swept. (`disclosure.bound-staleness.access-stale`)
     #[error("VisibilityAccessStale: table `{table}`: source `{origin}` {reason}; lag {lag}, budget {budget}s, last observation {last_observed}")]
     AccessStale { table: String, origin: String, reason: &'static str, lag: String, budget: u64, last_observed: String },
     /// A budget is tighter than the sweep cadence its source sustains.
@@ -134,19 +128,19 @@ impl VisibilityError {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DisclosureError {
-    /// A published aggregate-shaped model has no policy or opt-out. (`disclosure.set-mode.policy-absent`)
+    /// A published aggregate-shaped model carries no policy and no opt-out. (`disclosure.set-mode.policy-absent`)
     #[error("DisclosurePolicyAbsent: {0}")]
     PolicyAbsent(String),
-    /// A published model's local statement file does not read. (`disclosure.set-mode.model-unreadable`)
+    /// A published model's statement text does not read. (`disclosure.set-mode.model-unreadable`)
     #[error("DisclosureModelUnreadable: {0}")]
     ModelUnreadable(String),
     /// A template declaration holds more than one statement. (`disclosure.template.single-statement`)
     #[error("DisclosureTemplateMultiStatement: {0}")]
     TemplateMultiStatement(String),
-    /// A grouping allowlist is empty or contains a non-column name. (`disclosure.suppress.grouping-allowlist`)
+    /// A grouping allowlist is empty or names a non-column. (`disclosure.suppress.grouping-allowlist`)
     #[error("DisclosureGroupingAllowlistEmpty: {0}")]
     GroupingAllowlistEmpty(String),
-    /// A group under a share constraint arrived without per-contributor masses. (`disclosure.suppress.dominance-unverifiable`)
+    /// Per-contributor masses are unavailable where a share constraint applies. (`disclosure.suppress.dominance-unverifiable`)
     #[error("DisclosureDominanceUnverifiable: {0}")]
     DominanceUnverifiable(String),
     /// A declared `min_group_size` is below the floor. (`disclosure.suppress.min-group-size`)
@@ -158,7 +152,7 @@ pub enum DisclosureError {
     /// A declared `max_contributor_share` lies outside `(0, 1]`. (`disclosure.suppress.contributor-share`)
     #[error("DisclosureShareOutOfRange: {0}")]
     ShareOutOfRange(String),
-    /// A contributing unit's reservation failed; nothing is published. (`disclosure.release.budget-reservation`)
+    /// A contributing unit's budget reservation failed; nothing is published. (`disclosure.release.budget-reservation`)
     #[error("DisclosureUnitBudgetExhausted: {0}")]
     UnitBudgetExhausted(String),
     /// A released model's policy declares no positive per-run spend. (`disclosure.release.spend-declaration`)
@@ -167,7 +161,7 @@ pub enum DisclosureError {
     /// A release requests an activation handle or lookalike segment. (`disclosure.release.lookalike-refusal`)
     #[error("DisclosureLookalikeUnsupported: {0}")]
     LookalikeUnsupported(String),
-    /// A noised sum has no finite bounds or positive quantum. (`disclosure.release.metric-bounds`)
+    /// A noised sum has no finite contributor bounds or positive quantum. (`disclosure.release.metric-bounds`)
     #[error("DisclosureMetricBoundsAbsent: {0}")]
     MetricBoundsAbsent(String),
     /// A carried non-grain column is not constant within its group. (`disclosure.release.duplicate-grain`)
@@ -179,13 +173,13 @@ pub enum DisclosureError {
     /// A governed statement omits the contributor key. (`disclosure.release.contributor-key`)
     #[error("DisclosureContributorKeyAbsent: {0}")]
     ContributorKeyAbsent(String),
-    /// A published column is forbidden. (`disclosure.release.forbidden-column`)
+    /// A contract declares, or a materialization produces, a forbidden column. (`disclosure.release.forbidden-column`)
     #[error("DisclosureForbiddenColumnPublished: {0}")]
     ForbiddenColumnPublished(String),
-    /// A cross-owner store lacks a per-owner boundary below the engine. (`disclosure.set-mode.clean-room-preconditions`)
+    /// A shared store lacks a clean-room requirement. (`disclosure.set-mode.clean-room-preconditions`)
     #[error("DisclosureCleanRoomPreconditionUnmet: {0}")]
     CleanRoomPreconditionUnmet(String),
-    /// A cross-owner hashed join presents a pepper already joined under. (`disclosure.set-mode.hashed-join`)
+    /// A cross-owner hashed join is keyed on a static pepper. (`disclosure.set-mode.hashed-join`)
     #[error("DisclosureStaticPepper: {0}")]
     StaticPepper(String),
 }

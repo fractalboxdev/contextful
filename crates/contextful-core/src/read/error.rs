@@ -10,10 +10,10 @@ use crate::memory::MemoryError;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ReadError {
-    /// The statement exceeded its selected execution deadline. (`read.respond.duration-ceiling`)
+    /// A statement reached its selected duration ceiling. (`read.respond.duration-ceiling`)
     #[error("ReadDurationExceeded: {0}")]
     ReadDurationExceeded(String),
-    /// The response envelope or first row exceeds the selected byte ceiling. (`read.respond.byte-ceiling`)
+    /// A response envelope or first row exceeds its selected byte ceiling. (`read.respond.byte-ceiling`)
     #[error("ReadResponseTooLarge: {0}")]
     ReadResponseTooLarge(String),
     /// A previewed path resolved to no table. (`read.register.file-preview-target`)
@@ -58,7 +58,7 @@ pub enum ReadError {
     /// A template named a non-store relation or collided with a built-in tool prefix. (`read.guard.template-relation-shape`)
     #[error("TemplateNamesForeignRelation: {0}")]
     TemplateNamesForeignRelation(String),
-    /// The network transport started with no audience or no positive in-flight ceiling. (`read.register.serve-declaration`)
+    /// The network transport was started with no audience or no positive in-flight ceiling. (`read.register.serve-declaration`)
     #[error("ServeDeclarationMissing: {0}")]
     ServeDeclarationMissing(String),
     /// A network transport request carried no credential. (`read.register.credential-missing`)
@@ -76,7 +76,7 @@ pub enum ReadError {
     /// A tool-protocol subscription arrived under a credential carrying a horizon. (`read.subscribe.horizon-refusal`)
     #[error("SubscriptionUnderHorizon: {0}")]
     SubscriptionUnderHorizon(String),
-    /// A read reached for a query-engine extension the binary does not link. (`assurance.build.runtime-extension-load`)
+    /// A read path loading a query-engine extension into a statically linked binary. (`assurance.build.runtime-extension-load`)
     #[error("ExtensionAutoloadRefused: {0}")]
     ExtensionAutoloadRefused(String),
 }

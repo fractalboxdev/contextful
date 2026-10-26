@@ -117,43 +117,38 @@ pub mod attr {
 /// A refusal of the audit chain.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AuditError {
-    /// A disagreeing digest, entry format or Merkle root, a sequence gap, an absent chain
-    /// beside a tip or root, entries without a tip, or an unsigned tip over a held chain;
-    /// `index` is the seq of the earliest failure. (`disclosure.attest.broken-chain`)
+    /// A digest, format or Merkle root mismatch, sequence gap or vanished chain, with the earliest failing index. (`disclosure.attest.broken-chain`)
+    /// `index` is the seq of the earliest failure.
     #[error("AuditChainBroken: entry {index}: {reason}")]
     AuditChainBroken { index: u64, reason: String },
-    /// An entry that did not reach local durable storage; the log keeps its prior tip.
-    /// (`disclosure.record.unpersisted-entry`)
+    /// A read's audit entry did not persist; no rows are returned. (`disclosure.record.unpersisted-entry`)
+    /// The log keeps its prior tip.
     #[error("AuditEntryUnpersisted: {0}")]
     AuditEntryUnpersisted(String),
-    /// A chain header naming a format, digest or segment size this build does not verify.
-    /// (`disclosure.record.header-unsupported`)
+    /// A chain header names a format, digest or segment size this build does not verify. (`disclosure.record.header-unsupported`)
     #[error("AuditHeaderUnsupported: {0}")]
     AuditHeaderUnsupported(String),
-    /// A v1 entry's attribute holding an integer beyond ±[`AUDIT_EXACT_INTEGER`], which the
-    /// canonical form cannot write exactly. (`disclosure.record.inexact-integer`)
+    /// A v1 entry's attribute holds an integer the canonical form cannot write exactly. (`disclosure.record.inexact-integer`)
+    /// The bound is ±[`AUDIT_EXACT_INTEGER`].
     #[error("AuditAttributeInexact: {0}")]
     AuditAttributeInexact(String),
-    /// An inclusion proof that does not verify. (`disclosure.attest.proof-invalid`)
+    /// An inclusion proof's entry, path, header, root or signature disagrees. (`disclosure.attest.proof-invalid`)
     #[error("AuditProofInvalid: {0}")]
     AuditProofInvalid(String),
-    /// An entry no signed Merkle root covers. (`disclosure.attest.proof-unavailable`)
+    /// No signed Merkle root covers the entry to prove. (`disclosure.attest.proof-unavailable`)
     #[error("AuditProofUnavailable: {0}")]
     AuditProofUnavailable(String),
-    /// An append through a read-only handle. (`disclosure.record.read-only`)
+    /// An append through a read-only audit handle. (`disclosure.record.read-only`)
     #[error("AuditLogReadOnly: {0}")]
     AuditLogReadOnly(String),
-    /// An unanchored handle opened over a chain holding a signed tip, a signed root or `chain.held`.
-    /// (`disclosure.record.unanchored-over-signed`)
+    /// An unanchored handle opened over a chain holding a signed tip, a signed root or a held record. (`disclosure.record.unanchored-over-signed`)
     #[error("AuditLogAnchored: {0}")]
     AuditLogAnchored(String),
-    /// A held open or signed check over a chain whose tip is unsigned, carrying no
-    /// `chain.held` or signed root.
-    /// (`disclosure.record.unsigned-tip`)
+    /// A held open or signed check over a chain whose tip is unsigned, carrying no held record or signed root. (`disclosure.record.unsigned-tip`)
     #[error("AuditLogUnanchored: {0}")]
     AuditLogUnanchored(String),
-    /// An audit verb presented with a capability credential; the verbs answer the local
-    /// store owner alone. (`disclosure.attest.owner-only`)
+    /// An audit verb reading a chain was presented a capability credential. (`disclosure.attest.owner-only`)
+    /// The audit verbs answer the local store owner alone.
     #[error("AuditRequiresOwner: {0}")]
     AuditRequiresOwner(String),
     /// An audit file the process cannot read or parse.

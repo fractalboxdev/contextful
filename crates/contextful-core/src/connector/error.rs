@@ -45,25 +45,25 @@ pub enum ConnectorError {
     /// An empty, oversized, repeated or ambiguous Drive root selection. (`connector.source.drive-root-set`)
     #[error("ConnectorDriveRootsInvalid: {0}")]
     ConnectorDriveRootsInvalid(String),
-    /// A selected Drive root that is missing or outside its declared Shared Drive. (`connector.source.drive-root-validation`)
+    /// A selected Drive root that does not exist or lies outside the declared Shared Drive. (`connector.source.drive-root-validation`)
     #[error("ConnectorDriveRootRejected: {0}")]
     ConnectorDriveRootRejected(String),
-    /// A Drive listing reaching its request cap before every folder page completes. (`connector.source.drive-list-bound`)
+    /// A Drive listing reaching its request cap before all selected folders are exhausted. (`connector.source.drive-list-bound`)
     #[error("ConnectorDriveListingExceeded: {0}")]
     ConnectorDriveListingExceeded(String),
-    /// A Drive capture mode other than `bytes-and-pages` or `metadata-only`. (`connector.source.drive-mode`)
+    /// A Drive capture mode other than bytes-and-pages or metadata-only. (`connector.source.drive-mode`)
     #[error("ConnectorDriveModeUnknown: {0}")]
     ConnectorDriveModeUnknown(String),
     /// A Drive file whose version changes during metadata-only capture. (`connector.source.drive-version-consistency`)
     #[error("ConnectorDriveVersionMoved: {0}")]
     ConnectorDriveVersionMoved(String),
-    /// An empty, repeated, oversized or mixed Picker file selection. (`connector.drive-picks.file-selection-invalid`)
+    /// An empty, repeated or mixed individual-file selection. (`connector.drive-picks.file-selection-invalid`)
     #[error("ConnectorDriveFilesInvalid: {0}")]
     ConnectorDriveFilesInvalid(String),
-    /// A selected Picker id that is inaccessible or is not a file. (`connector.drive-picks.file-access`)
+    /// A selected id is inaccessible or is not a file. (`connector.drive-picks.file-access`)
     #[error("ConnectorDriveFileRejected: {0}")]
     ConnectorDriveFileRejected(String),
-    /// A forwarded guest configuration value that is not a table, over 64 KiB, or carrying a reference. (`connector.import.config-shape`)
+    /// A forwarded guest configuration value of the wrong type, above its size bound, or carrying a reference. (`connector.import.config-shape`)
     #[error("ConnectorConfigRejected: {0}")]
     ConnectorConfigRejected(String),
     /// A guest configuration table declared against a guest exporting no configuration interface. (`connector.import.config-unclaimed`)
@@ -87,19 +87,19 @@ pub enum ConnectorError {
     /// A remote artifact reference with no 64-hex content pin. (`connector.package.remote-unpinned`)
     #[error("ConnectorRemoteUnpinned: {0}")]
     ConnectorRemoteUnpinned(String),
-    /// A malformed OCI registry, repository or selector. (`connector.package.oci-reference`)
+    /// An OCI reference with an empty registry, repository or selector. (`connector.package.oci-reference`)
     #[error("ConnectorOciReferenceInvalid: {0}")]
     ConnectorOciReferenceInvalid(String),
-    /// An OCI manifest without one component layer. (`connector.package.oci-component-layer`)
+    /// An OCI manifest that is not schema 2 with exactly one WebAssembly component layer. (`connector.package.oci-component-layer`)
     #[error("ConnectorOciArtifactUnsupported: {0}")]
     ConnectorOciArtifactUnsupported(String),
-    /// OCI layer bytes differing from their descriptor digest. (`connector.package.oci-layer-integrity`)
+    /// OCI layer bytes differing from their manifest descriptor digest. (`connector.package.oci-layer-integrity`)
     #[error("ConnectorOciLayerMismatch: {0}")]
     ConnectorOciLayerMismatch(String),
-    /// Damaged bytes in the project artifact cache. (`connector.package.remote-cache-corrupt`)
+    /// Project-cached artifact bytes differing from their digest key. (`connector.package.remote-cache-corrupt`)
     #[error("ConnectorArtifactCacheCorrupt: {0}")]
     ConnectorArtifactCacheCorrupt(String),
-    /// A failed remote artifact request. (`connector.package.remote-fetch-failure`)
+    /// A remote artifact manifest or byte fetch that fails. (`connector.package.remote-fetch-failure`)
     #[error("ConnectorArtifactFetchFailed: {0}")]
     ConnectorArtifactFetchFailed(String),
     /// An allowlist that is empty or bare-wildcard, or an entry carrying a scheme, port or path. (`connector.declare-capability.allowlist-shape`)
@@ -144,10 +144,10 @@ pub enum ConnectorError {
     /// An `incremental` field declared beside a component source, whose position the guest owns. (`connector.package.component-position`)
     #[error("ConnectorPositionOwned: {0}")]
     ConnectorPositionOwned(String),
-    /// A non-HTTPS non-loopback limiter endpoint, one carrying a query, fragment or userinfo, or a limiter token that is not a `secret://` reference. (`connector.meter.binding-transport`)
+    /// A non-HTTPS limiter endpoint, one carrying a query, fragment or userinfo, or a limiter token that is not a secret reference. (`connector.meter.binding-transport`)
     #[error("ConnectorLimiterBindingRejected: {0}")]
     ConnectorLimiterBindingRejected(String),
-    /// A limiter response the engine cannot read. (`connector.meter.unreadable-answer`)
+    /// A limiter response the engine cannot parse. (`connector.meter.unreadable-answer`)
     #[error("ConnectorLimiterUnreadable: {0}")]
     ConnectorLimiterUnreadable(String),
     /// A paging token or link the vendor already served. (`connector.source.page-loop`)
@@ -156,13 +156,13 @@ pub enum ConnectorError {
     /// Two pagination shapes on one source. (`connector.source.pagination-ambiguity`)
     #[error("ConnectorPaginationAmbiguous: {0}")]
     ConnectorPaginationAmbiguous(String),
-    /// A URL placeholder with no table pattern to bind it. (`connector.source.placeholder-unbound`)
+    /// A URL or bound-column placeholder with no table pattern to bind it. (`connector.source.placeholder-unbound`)
     #[error("ConnectorPlaceholderUnbound: {0}")]
     ConnectorPlaceholderUnbound(String),
     /// A permitted host name resolving to a private, link-local, loopback or metadata address. (`connector.attach.private-address`)
     #[error("ConnectorPrivateAddress: {0}")]
     ConnectorPrivateAddress(String),
-    /// An admitted private range overlapping loopback, link-local or the metadata address. (`connector.attach.private-range-rejected`)
+    /// An admitted private range overlaps loopback, link-local or the metadata address. (`connector.attach.private-range-rejected`)
     #[error("ConnectorPrivateRangeRejected: {0}")]
     ConnectorPrivateRangeRejected(String),
     /// A granted scope outside the manifest's declared expectation. (`connector.declare-capability.scope-exceeded`)
@@ -177,11 +177,11 @@ pub enum ConnectorError {
     /// A declared limiter quota with no operator binding. (`connector.meter.quota-unbound`)
     #[error("ConnectorQuotaUnbound: {0}")]
     ConnectorQuotaUnbound(String),
-    /// A table not matching the source's table pattern. (`connector.source.table-unmatched`)
+    /// A table off the source's table pattern, or binding a dot segment. (`connector.source.table-unmatched`)
     /// A table off the source's table pattern, or binding a dot segment. (`connector.source.table-unmatched`)
     #[error("ConnectorTableUnmatched: {0}")]
     ConnectorTableUnmatched(String),
-    /// A provider call to a non-TLS transport or a host other than the provider's. (`connector.source.provider-origin`)
+    /// A search call to a non-TLS transport or a host other than the provider's. (`connector.source.provider-origin`)
     #[error("ConnectorProviderOriginRejected: {0}")]
     ConnectorProviderOriginRejected(String),
     /// Host access a connector reaches for that its manifest does not list. (`connector.declare-capability.undeclared-access`)

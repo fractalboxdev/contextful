@@ -5,13 +5,13 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StoreError {
-    /// A persisted store UUID is malformed or cannot identify a store. (`store.init.identity-invalid`)
+    /// A store UUID is malformed or owner mint names no initialized root. (`store.init.identity-invalid`)
     #[error("StoreIdentityInvalid: {0}")]
     StoreIdentityInvalid(String),
     /// A pull would replace one store UUID with another. (`store.pull.identity-conflict`)
     #[error("StoreIdentityConflict: {0}")]
     StoreIdentityConflict(String),
-    /// A row-retention column is absent or not declared Timestamp (`store.declare.retain-rows`).
+    /// A row-retention column or age is invalid, or a landed value is null. (`store.declare.retain-rows`)
     #[error("StoreRetentionColumnInvalid: {0}")]
     StoreRetentionColumnInvalid(String),
     /// An `as_of` precedes the oldest retained snapshot of a table whose history was collected. (`store.bound-time.as-of-unretained`)
@@ -35,14 +35,13 @@ pub enum StoreError {
     /// An index is declared over a column redacted at write time. (`store.encrypt.redacted-index`)
     #[error("StoreIndexOverRedactedColumn: {0}")]
     StoreIndexOverRedactedColumn(String),
-    /// Two sidecar declarations resolve to one path. (`store.index.path-collision`)
+    /// Two sidecar declarations of one table resolve to one path. (`store.index.path-collision`)
     #[error("StoreIndexPathCollision: {0}")]
     StoreIndexPathCollision(String),
     /// A `primary_key` names a column neither declared nor injected. (`store.declare.key-unknown`)
     #[error("StoreKeyUnknownColumn: {0}")]
     StoreKeyUnknownColumn(String),
-    /// A struct, list or map column names a key, ordering, clustering, partition or
-    /// valid-time role. (`store.declare.nested-key`)
+    /// A struct, list or map column takes a key, ordering, clustering, partition or valid-time role. (`store.declare.nested-key`)
     #[error("StoreNestedKeyColumn: {0}")]
     StoreNestedKeyColumn(String),
     /// A primary-key column takes the float promotion. (`store.reconcile.key-widening`)
@@ -87,10 +86,10 @@ pub enum StoreError {
     /// A declared table collides with a reserved table namespace. (`store.reserve.table-name`)
     #[error("StoreReservedTableName: {0}")]
     StoreReservedTableName(String),
-    /// A commit outwaited its table's commit lock past the commit wait. (`store.reserve.commit-wait`)
+    /// A commit outwaited its table's commit lock or a lower value's publication. (`store.reserve.commit-wait`)
     #[error("StoreCommitLockTimeout: {0}")]
     StoreCommitLockTimeout(String),
-    /// A run id already committed on its node lands again, as other than its replay. (`store.lay-out.run-conflict`)
+    /// A run id already committed on its node lands again as other than its replay. (`store.lay-out.run-conflict`)
     #[error("StoreRunConflict: {0}")]
     StoreRunConflict(String),
     /// Two observed types for one column have no supertype in the lattice. (`store.reconcile.incompatible`)
@@ -177,7 +176,7 @@ pub enum StoreError {
     /// A bucket or generation manifest carries a format newer than the reader parses. (`store.push.format-unsupported`)
     #[error("SyncManifestFormatUnsupported: {0}")]
     SyncManifestFormatUnsupported(String),
-    /// The bucket manifest commit lost its race past the retry bound. (`store.merge.exhausted`)
+    /// The bucket manifest commit lost its race past the retry bound or the round ceiling. (`store.merge.exhausted`)
     #[error("SyncManifestRebaseExhausted: {0}")]
     SyncManifestRebaseExhausted(String),
     /// A downloaded object's digest differs from its entry. (`store.pull.digest-mismatch`)
@@ -207,7 +206,7 @@ pub enum StoreError {
     /// A pull exhausted its retries against keys moving beneath it. (`store.pull.unconverged`)
     #[error("SyncPullDidNotConverge: {0}")]
     SyncPullDidNotConverge(String),
-    /// A second push of one store started on a machine already pushing it. (`store.push.in-flight`)
+    /// A push of one store waited past its bound for the push guard another push on the machine holds. (`store.push.in-flight`)
     #[error("SyncPushInFlight: {0}")]
     SyncPushInFlight(String),
     /// A tombstone names an entry another node owns. (`store.merge.tombstone-owner`)

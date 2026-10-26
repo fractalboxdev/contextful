@@ -88,7 +88,7 @@ SyncManifestRebaseExhausted  = { clause = "store.merge.exhausted", gloss = "The 
 SyncCursorConflict           = { clause = "store.merge.cursor-recency", gloss = "A cursor was resolved by recency instead of through its commit." }
 SyncHeldRecordUnreadable      = { clause = "store.merge.held-unreadable", gloss = "The local ownership record cannot be read or decoded." }
 LeaseHeld                    = { clause = "store.lease.held", gloss = "A run or pass found an unexpired lease another node holds." }
-LeaseFenced                  = { clause = "store.lease.stale-fence", gloss = "A conditional commit lost to a higher fence." }
+LeaseFenced                  = { clause = "store.lease.stale-fence", gloss = "A commit, pointer replace or catalog update losing its condition to a higher fence." }
 LeaseNotHeld                 = { clause = "store.lease.not-held", gloss = "A release was attempted against a lease another node holds." }
 LeaseCursorKindMismatch      = { clause = "store.lease.cursor-kind", gloss = "A cursor whose kind takes no lease reached `cursors/`." }
 LeaseNodeIdLocal             = { clause = "store.lease.local-node", gloss = "A bucket lease was attempted under the reserved node id `local`." }
