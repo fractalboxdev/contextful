@@ -336,19 +336,6 @@ A memory read's audit entry records the claim ids it returned under the caller's
 Consequences: a multi-hop question answers from edges the caller reads, and a walk cut by fan-out or frontier reports a non-zero `edges_omitted`, the walk's incompleteness signal.
 Revisit: a graph arm seeded from the query's entities earns a place in fusion; truncation dominates native multi-hop cases.
 
-## edges-supersede-under — Edges supersede under one-cardinality relations
-
-Each declared relation carries a direction, a cardinality of `one` or `many` edges per source, and a walkable flag; the engine fixes the traits of the reserved core. Under a `one` relation, a new edge from a source ends that source's live edge at the new edge's valid-from instant and names it as successor, so `reports_to` answers one manager at any instant while the prior edge keeps its interval. A `many` relation accumulates edges. A producer's valid-from stands, so a backfilled edge keeps its history; an absent one takes the row's availability instant, else its commit instant.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Declared cardinality, superseding under `one` *(chosen)* | — | Every declared relation states its traits; a misdeclared cardinality retires a live edge. |
-| Dead-letter the second edge | Currency | A changed manager is refused instead of recorded. |
-| Newest edge wins and the prior is deleted | History | What held at an earlier instant is lost. |
-| Keep every edge live | Answer | A one-valued relation answers two values at once. |
-
-Consequences: edges share the claims' validity-line discipline, and history answers through the ended edge's interval.
-
 ## join-matches-availability — The as-of join matches on availability time, not valid time
 
 `read.as-of-join` matches a driving row to the right relation's latest row whose declared availability instant precedes the driving instant. Valid time says when a value held; availability time says when anyone could see it. A restated figure keeps its original valid time, and a resource's new label can be published after its effective date, so a valid-time match hands a backtest a value published after its decision. The join runs inside one statement over registered relations, so restriction, masks and the three bounds compose as they do for any read; a right relation declaring no availability time refuses rather than falling back.

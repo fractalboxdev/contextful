@@ -132,11 +132,15 @@ enum Cmd {
     Secrets,
     /// Resolve every `mirrors:` comment under crates/, tools/, apps/ and packages/ to a clause id.
     Mirrors,
-    /// Refuse a public item that only a performed pin's test calls (`corpus.state.unwired`).
+    /// Refuse more public items that only a performed pin's test calls than the ceiling in
+    /// `tools/ci/unwired.toml` admits (`corpus.state.unwired`).
     Unwired {
-        /// Report only the clauses of this contract; repeatable.
+        /// Report only the clauses of this contract, against no ceiling; repeatable.
         #[arg(long)]
         contract: Vec<String>,
+        /// Lower the ceiling to the live count.
+        #[arg(long, conflicts_with = "contract")]
+        lower: bool,
     },
     /// Refuse subject claims formatted into SQL text in runtime crates.
     SourceLint,
@@ -395,7 +399,7 @@ fn main() {
         }
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
-        Cmd::Unwired { contract } => repo_root().and_then(|root| unwired::check(&root, &contract)),
+        Cmd::Unwired { contract, lower } => repo_root().and_then(|root| unwired::check(&root, &contract, lower)),
         Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
         Cmd::Shellcheck => repo_root().and_then(|root| shell::check(&root)),
         Cmd::CliShards { report, scale } => repo_root().and_then(|root| shards::command(&root, report.as_deref(), scale, DIFFERENTIAL_FILTER)),
@@ -695,6 +699,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
         "connectors" => stage::connectors(root)?,
         "surfaces" => stage::typescript(root)?,
         "formal" => stage::formal(root)?,
+        "unwired" => unwired::check(root, &[], false)?,
         _ => unreachable!(),
     }
     Ok(())

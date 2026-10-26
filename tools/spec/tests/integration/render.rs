@@ -42,7 +42,7 @@ fn a_committed_render_differing_from_regeneration_is_stale() {
     }
 }
 
-// spec: corpus.render.lock-file@1cd4f2ab
+// spec: corpus.render.lock-file@97a36957
 #[test]
 fn the_lock_carries_clauses_ledes_owns_registry_and_pointers() {
     let s = Scratch::copy();

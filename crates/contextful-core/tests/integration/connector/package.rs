@@ -12,6 +12,7 @@ fn pin_of(bytes: &[u8]) -> String {
 
 /// A reference parses into one of four forms: in-tree by name, a project-local path, an HTTPS URL, or an OCI
 /// reference; any other scheme refuses.
+// spec: connector.package.distribution-form@4b96ee60
 #[test]
 fn a_reference_parses_into_one_of_four_forms() {
     let pin = pin_of(BYTES);

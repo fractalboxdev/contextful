@@ -340,8 +340,6 @@ A delegate is deploy-bound code outside the binary that runs a store-driven item
   *because a prompt or model change inside a delegate otherwise resumes recorded work under new semantics*
 - `clocks` — Signature timestamps on a request and an answer ride each side's system clock; the `deadline` and a `defer` wait ride the engine's instant.
   *because the engine's instant is injectable while a delegate shares only wall time, and a wait measured on two clocks never fires*
-- `submit-relay` — A `submit` binding on a daemon declaring no `[control] relay` or holding no worker key refuses at startup, as {{surface.dispatch.worker-key}} refuses a worker list.
-  *because a submit delegate posts its answer to the awakeable route the relay binds*
 
 One item on a `call` delegate, from the fence check to the recorded answer:
 

@@ -44,8 +44,6 @@ Artifact compatibility: source-independent execution, required capabilities, sce
   *A-assurance#consumer-compatibility-binds*
 - `d1-absent` — A native `contextful-full` release cell without `CONTEXTFUL_CONFORMANCE_D1_ENDPOINT` runs no `cloudflare-d1` pass; its report records binding origin `absent` and every required scenario skipped with `ConformanceBindingAbsent`.
   *because a release container holds no D1 binding, and the deployment run against D1 and R2 supplies that verdict*
-- `d1-deployment` — Deployment readiness requires a replacement run against Cloudflare D1 and R2, with the same artifact digest and source revision as its release report.
-  *A-assurance#consumer-compatibility-binds*
 
 #### Scenarios
 

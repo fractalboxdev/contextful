@@ -63,9 +63,7 @@ Every served table carries a visibility block ({{disclosure.mirror.unbound-table
 {{disclosure.bound-staleness.access-stale}} and {{disclosure.bound-staleness.public-only}}.
 
 Fidelity states how closely a table follows its source. The family caps the claim
-({{disclosure.declare-fidelity.family-bound}}), and a source that computes access with its
-own sharing engine is queried live rather than mirrored
-({{disclosure.declare-fidelity.computed-inputs}}).
+({{disclosure.declare-fidelity.family-bound}}).
 
 The local diagnostic ({{disclosure.set-mode.check-verb}}) checks {{disclosure.set-mode.aggregate-shape}},
 {{disclosure.set-mode.policy-absent}} and {{disclosure.set-mode.model-unreadable}}.
@@ -121,8 +119,7 @@ audience ({{disclosure.explain.audience}}), and returns no page content
 Ada leaves and is erased under the forget grant ({{disclosure.erase.privilege}}). The
 cascade invalidates facts derived from her rows ({{disclosure.erase.cascade}}) or commits
 nothing ({{disclosure.erase.cascade-unbounded}}); files and cached copies of her rows are
-collected ({{disclosure.erase.physical-removal}}); re-synthesis replays untouched
-batches through the cache ({{disclosure.erase.restage-cache}}). A tenant purge
+collected ({{disclosure.erase.physical-removal}}). A tenant purge
 ({{disclosure.erase.tenant-rewrite}}) signs a receipt naming a salted pseudonym
 ({{disclosure.receipt.pseudonym}}) within its version's claim ({{disclosure.receipt.coverage}}).
 

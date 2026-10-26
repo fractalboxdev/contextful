@@ -278,6 +278,7 @@ fn item_parked_and_entity_overlap_report_individual_outcomes() {
     rig.catalog().release(&held).unwrap();
 }
 
+// spec: run.items.fence@fa42dac4
 #[test]
 fn superseded_entity_fence_refuses_paid_effect_before_provider_dispatch() {
     struct Stale<'a> {

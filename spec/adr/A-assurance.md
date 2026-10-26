@@ -18,7 +18,7 @@ Consequences: compatibility remains scoped to executed scenarios and named stora
 
 ## assurance-claims-carry — Assurance claims carry their qualifiers, and the proof gate audits assumptions
 
-`assurance.scope-claim` states named authorization decisions, named specifications and stated translation and runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-assumptions` matches a hand-maintained inventory against each constant's transitive assumption footprint over a two-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.
+`assurance.scope-claim` states named authorization decisions, named specifications and stated runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-assumptions` matches a hand-maintained inventory against each constant's transitive assumption footprint over a two-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ Revisit: the read path releases a row outside a statement; the model gains SQL s
 
 ## differentially-tested-reference — A differentially tested reference model is the standing link between proofs and binary
 
-`assurance.differential-test` drives a reference model and the engine's decision functions over the same generated case; a disagreement shrinks and raises `ReferenceModelDrift`, and one reported without a corpus entry raises `CounterexampleDiscarded`. Minimized cases replay first; the seed is recorded. `assurance.scope-claim` limits refinement to pure decision functions — inclusion and grant narrowing — else `RefinementScopeExceeded`.
+`assurance.differential-test` drives a reference model and the engine's decision functions over the same generated case; a disagreement shrinks and raises `ReferenceModelDrift`, and one reported without a corpus entry raises `CounterexampleDiscarded`. Minimized cases replay first; the seed is recorded.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -303,7 +303,7 @@ Consequences: the accepted cost is that a WASI host stays unserved until the pro
 
 Context: workspace artifacts retain checkout paths, merge history changes test selection, and a stage timeout without phase evidence obscures whether compilation or tests exhaust the budget. Criteria: each verdict identifies its source, comparison and failure class.
 
-Decision: `assurance.build.checkout-artifacts` and `assurance.build.runtime-checkout` bind builds and helpers to invocation identity. `assurance.test.comparison-base`, `assurance.test.merge-source` and `assurance.test.base-evidence` bind test-first obligations to one comparison and distinguish infrastructure from regression evidence. `assurance.gate.stage-timings`, `assurance.gate.part-budget`, `assurance.gate.build-admission` and `assurance.gate.timeout-cleanup` bind resource evidence to parts.
+Decision: `assurance.build.checkout-artifacts` and `assurance.build.runtime-checkout` bind builds and helpers to invocation identity. `assurance.test.base-evidence` separates infrastructure faults from regression evidence. `assurance.gate.part-budget` binds resource evidence to parts.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -312,7 +312,7 @@ Decision: `assurance.build.checkout-artifacts` and `assurance.build.runtime-chec
 | Independent comparison rules for selection and replay | Regression evidence | A test runs against source outside the comparison that selected it. |
 | Retry full gates or increase their timeout | Diagnosis and platform budget | Repeated cold builds provide no phase evidence and can exceed the sandbox cap. |
 
-Consequences: integration and doctest contrasts, history fixtures, cold/warm part runs and forced descendant hangs provide independent acceptance controls.
+Consequences: integration and doctest contrasts, history fixtures and cold/warm part runs provide independent acceptance controls.
 Revisit: representative timings demonstrate checkout isolation or partitioning exceeds the declared resource budget.
 
 ## windows-release-support — Windows release support is deferred independently of Linux and macOS delivery
@@ -321,7 +321,7 @@ Revisit: representative timings demonstrate checkout isolation or partitioning e
 
 Context: native Windows execution adds MSVC toolchains, executor registration, descendant-lifetime verification and bundled read-engine validation to the release boundary. Criteria: Linux and macOS delivery has a bounded platform scope independent of Windows executor availability.
 
-Decision: `assurance.build.windows-target` and `assurance.gate.windows-checks` define the Windows exclusion. The supported release matrix remains owned by `assurance.build.targets`; Windows diagnostics preserve porting evidence without widening its delivery obligations.
+Decision: `assurance.build.windows-target` defines the Windows exclusion. The supported release matrix remains owned by `assurance.build.targets`, and no required check runs on Windows.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

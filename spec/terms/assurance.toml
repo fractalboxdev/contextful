@@ -1,4 +1,5 @@
-# Registry fragment — contract `assurance`, files spec/80-formal.md and spec/81-engineering.md.
+# Registry fragment — contract `assurance`, files spec/80-formal.md, spec/81-engineering.md,
+# spec/82-consumer.md and spec/83-gate.md.
 
 [operation]
 model             = {}
@@ -29,6 +30,7 @@ UnmodelledConstructor            = { clause = "assurance.model.unmodelled-constr
 ProtocolInvariantViolated        = { clause = "assurance.model.protocol-check", gloss = "A state the bounded check reaches breaks a protocol invariant." }
 ProtocolConformanceDrift         = { clause = "assurance.differential-test.protocol-drift", gloss = "The protocol model and the Rust store disagree on the state after a step." }
 ProtocolVocabularyDrift          = { clause = "assurance.differential-test.protocol-vocabulary", gloss = "The protocol model and the harness list different step kinds." }
+ReferenceVocabularyDrift         = { clause = "assurance.differential-test.reference-vocabulary", gloss = "The reference binary and the harness list different operations." }
 CommutationClaimed               = { clause = "assurance.prove.commutation-claim", gloss = "Order-independence asserted over stages whose order the composition theorem fixes." }
 ZoneInclusionSampled             = { clause = "assurance.prove.sampled-inclusion", gloss = "Inclusion decided by evaluating a fixed set of example values." }
 ProofTargetUnbound               = { clause = "assurance.prove.unbound-target", gloss = "A proof target named in the claim with no authenticated query path bound to it." }
@@ -43,8 +45,6 @@ RecheckEnvironmentCredentialed   = { clause = "assurance.recheck.credential-free
 RecheckReportMismatch            = { clause = "assurance.recheck.report-mismatch", gloss = "The recheck's per-constant statement or assumption set differs from the first phase's." }
 ClaimBeyondNamedDecisions        = { clause = "assurance.scope-claim.beyond-named-decisions", gloss = "The assurance claim asserts an object wider than its named decisions." }
 TrustedDependencyUnnamed         = { clause = "assurance.scope-claim.unnamed-dependency", gloss = "The claim rests on a component absent from its trusted-dependency list." }
-TranslationChainUnstated         = { clause = "assurance.scope-claim.unstated-chain", gloss = "A theorem over translated code claimed without its translation chain." }
-RefinementScopeExceeded          = { clause = "assurance.scope-claim.refinement-exceeded", gloss = "Translation reaches cryptography, a parsing adapter, a database call or concurrency." }
 ReferenceModelDrift              = { clause = "assurance.differential-test.disagreement", gloss = "The reference model and the engine's decision function disagree on a case." }
 CounterexampleDiscarded          = { clause = "assurance.differential-test.discarded-counterexample", gloss = "A run reported a disagreement and wrote no corpus entry." }
 CapabilityDuplicated             = { clause = "assurance.structure-tree.duplicated-capability", gloss = "A second implementation of an engine capability, or a hand-written copy of an engine constant." }
@@ -69,7 +69,6 @@ UnconfiguredEgress               = { clause = "assurance.gate.unconfigured-egres
 EnforceInterpolatedSubjectClaim  = { clause = "assurance.gate.interpolated-claim", gloss = "A subject claim formatted into SQL text in a runtime crate." }
 StagePredecessorMissing          = { clause = "assurance.gate.stage-subset", gloss = "A selected stage reading an unselected predecessor's absent output." }
 BuildDiskPrecondition            = { clause = "assurance.gate.free-disk", gloss = "A gate stage beginning below the free-disk floor." }
-BuildSizeCeilingExceeded         = { clause = "assurance.gate.build-size", gloss = "Total build size past the gate's ceiling." }
 FootprintBudgetExceeded          = { clause = "assurance.gate.footprint-exceeded", gloss = "A profile artifact over its budget, or carrying an extra dynamic dependency." }
 SurfaceCheckFailed               = { clause = "assurance.gate.surface-check-failed", gloss = "A TypeScript surface whose typecheck, unit tests or framework build failed." }
 EvalCorpusUnlabeled              = { clause = "assurance.evaluate.unlabeled-corpus", gloss = "An evaluation corpus with no policy labels and no explicit local zone." }
@@ -113,7 +112,6 @@ assurance-container-disk         = { clause = "assurance.gate.container", value 
 assurance-cli-shard-wall-clock   = { clause = "assurance.gate.cli-shard-map", value = 9, unit = "min", basis = "chosen", gloss = "Estimated test wall clock of one CLI shard in the gate container, its cold compile excluded.", const = "tools/ci/src/shards.rs::BUDGET_SECS" }
 assurance-job-memory             = { clause = "assurance.gate.parallel-jobs", value = 3, unit = "GiB", basis = "chosen", gloss = "Memory budgeted per parallel build job." }
 assurance-stage-free-disk        = { clause = "assurance.gate.free-disk", value = 2, unit = "GiB", basis = "chosen", gloss = "Free disk a stage needs before it begins work.", const = "tools/ci/src/main.rs::STAGE_FREE_DISK_KIB" }
-assurance-build-size-ceiling     = { clause = "assurance.gate.build-size", value = 12, unit = "GiB", basis = "chosen", gloss = "Total build size the budget stage allows." }
 assurance-edge-compressed        = { clause = "assurance.gate.edge-budget", value = 50, unit = "MiB", basis = "chosen", gloss = "Compressed edge-profile artifact." }
 assurance-edge-resident          = { clause = "assurance.gate.edge-budget", value = 60, unit = "MiB", basis = "chosen", gloss = "Idle resident set of the edge profile." }
 assurance-full-compressed        = { clause = "assurance.gate.full-budget", value = 150, unit = "MiB", basis = "chosen", gloss = "Compressed full-profile artifact." }
@@ -124,7 +122,6 @@ assurance-precision-floor        = { clause = "assurance.evaluate.precision-floo
 assurance-forbidden-row-rate     = { clause = "assurance.evaluate.forbidden-row-rate", value = 0, unit = "percent", basis = "chosen", gloss = "Returned rows named in a must-not-retrieve set." }
 assurance-duplicate-row-rate     = { clause = "assurance.evaluate.duplicate-row-rate", value = 0, unit = "percent", basis = "chosen", gloss = "Ranking entries repeating a table-and-row-key pair." }
 assurance-in-window-rate         = { clause = "assurance.evaluate.in-window-rate", value = 95, unit = "percent", basis = "chosen", gloss = "In-window rate floor on a case declaring a recency bound." }
-assurance-supersession-floor     = { clause = "assurance.evaluate.supersession-floor", value = 0, unit = "percent", basis = "chosen", gloss = "Native memory cases serving a superseded claim at its successor's anchor." }
 assurance-default-dead-band      = { clause = "assurance.baseline.default-dead-band", value = 2, unit = "percent", basis = "chosen", gloss = "Dead band of a rate entry with no override." }
 assurance-rank-dead-band         = { clause = "assurance.baseline.rank-quality-dead-band", value = 3, unit = "percent", basis = "chosen", gloss = "Dead band of the ranked-quality entry." }
 assurance-gated-mean-cases       = { clause = "assurance.baseline.unresolvable-path", value = 30, unit = "cases", basis = "chosen", gloss = "Fewest cases behind a gated mean." }

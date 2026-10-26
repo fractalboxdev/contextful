@@ -284,7 +284,7 @@ fn bound(r: &Repo, value: &str, unit: &str, constant: &str) {
 const PREDICATE: &str = "crates/contextful-policy/src/enforce/mask.rs::PREDICATE_SIZE";
 
 /// A `[limit]` entry's `const = "<file>::<NAME>"` names a constant that file defines outside tests, its value the bound in its unit or another unit of its kind; a mismatch or an absent constant raises `BoundConstantDrift`.
-// spec: assurance.structure-tree.bound-constant@b1a9d0bc
+// spec: assurance.structure-tree.bound-constant@ee8313aa
 #[test]
 fn a_named_constant_off_its_bound_value_is_drift() {
     let r = engine();

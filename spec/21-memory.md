@@ -60,14 +60,6 @@ Memory table schemas, required columns, trust tiers, scopes and relation types.
   *A-read#memory-vocabulary-schedules*
 - `reserved-relations` — Reserved relation types are `supports`, `contradicts`, `supersedes`, `about` and `derived_from`. Deployments add types through `[relation].declared`. `contextful memory relations rename` rewrites stored edges before removing an old name.
   *A-read#memory-vocabulary-schedules*
-- `gleanings` — A claims table's `gleanings` declares at most 1 passes over each batch, 0 by default; any other value raises `MemoryGleaningsInvalid` when the declaration loads.
-  *A-read#gleaning-declared-single*
-- `serving-taint` — A claims table's `serving_taint` sets the minimum label under {{connector.infer.provenance-order}}. Missing `_taint` ranks as `operator`. Recall suppresses claims below that minimum and raises `MemoryClaimTaintBelowFloor`.
-  *A-read#agent-third-party*
-- `relation-traits` — Each `[relation].declared` entry specifies `direction` (`directed` or `undirected`), `cardinality` (`one` or `many` edges per source) and `walkable`. Reserved relations use the reserved-traits table under Shapes.
-  *A-read#edges-supersede-under*
-- `relation-string` — A bare string entry in `[relation].declared` declares a `directed`, `many`, non-walkable relation.
-  *because declarations naming relations as strings keep loading, and a walk crosses only a relation its author opted in*
 - `settlement-shapes` — The `predictions` shape carries one column per registration field, `deadline_at` resolved for a horizon; the `outcomes` shape carries one column per observation field. Both key on `prediction_id`.
   *because the label join reads these columns by name, and one row per prediction keeps one label per prediction*
 - `availability` — A shaped memory table accepts `[table.available_time]` under {{store.available-time.declaration}} and `content_hash_column` under {{store.declare.table-block}}, carrying both into every read and landing.
@@ -94,17 +86,7 @@ Claim extraction, entity resolution, consolidation, evidence, deduplication, aud
   *A-read#gleaning-declared-single*
 - `confidence-calibration` — Model-emitted confidence carries `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score. A validated map supplies the reported calibrated confidence.
   *A-read#memory-confidence-retention*
-- `gleaning` — Under {{read.declare.gleanings}}, synthesis re-prompts schema-valid batches for omitted claims up to the declared pass count. Gleaned claims carry `_pass = 'glean'` and commit with first-pass claims in one batch commit.
-  *A-read#gleaning-declared-single*
-- `gleaning-attempt` — A gleaning response gets one attempt and no re-prompt; {{read.synthesize.extract-attempts}} does not apply to it.
-  *A-read#gleaning-declared-single*
-- `gleaning-invalid` — A schema-invalid gleaning response discards the gleaned claims, commits the first-pass claims alone, advances the cursor, and the pass report counts the batch in `glean_failed`.
-  *A-read#gleaning-declared-single*
 - `extract-cache` — Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise fenced-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.
-  *A-read#extraction-cache-keys*
-- `cache-provenance` — A cache entry carries `_provenance` naming its batch's fenced rows, so {{disclosure.erase.cascade}} invalidates the entry when an erasure reaches any of them.
-  *A-read#extraction-cache-keys*
-- `cache-attribution` — A cache hit copies claims only; {{read.synthesize.attribution}} stamps `grant_id`, `agent` and `_authored_by` fresh, and the pass report counts the batch in `cached`.
   *A-read#extraction-cache-keys*
 
 One synthesis batch, from landed rows to a committed claim or the dead-letter table:
@@ -123,8 +105,6 @@ flowchart LR
   REL -->|"yes, consolidate and commit"| FACTS[("memory_facts")]
 ```
 
-unsettled: Does the gleaning prompt, the batch plus its first response, count against {{read.synthesize.prompt-bound}}? owner: read-path affects: read.synthesize
-
 unsettled: Which consolidation merges two claims of one dedup key, and what record does a coverage gap leave? owner: read-path affects: read.synthesize
 
 
@@ -134,8 +114,6 @@ Claim replacement within a validity interval, confidence decay, direct writes, t
 
 - `tier` — The writer assigns `tier` from write method and grounding, excluding payload values: synthesis uses `derived`, direct writes use `curated`, fetched results use `researched`. Mixed grounding takes the lowest tier.
   *A-read#claim-standing-derived*
-- `direct-tier` — A direct write substitutes `derived` for {{read.revise.tier}}'s `curated` if the credential has an agent member or a cited row has label `ingested:third-party`. Cited-row labels follow {{read.synthesize.claim-taint}}.
-  *A-read#agent-third-party*
 - `supersede` — An equal-or-higher-tier claim replaces a live prior matching subject, predicate and scope when both are open-ended or share valid-from, except {{read.revise.unscoped-collision}}. The prior ends at the successor's start and names the successor.
   *A-read#claim-standing-derived*
 - `direct-write` — The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through {{read.resolve-entity.entity-upsert}}.
@@ -147,8 +125,6 @@ Claim replacement within a validity interval, confidence decay, direct writes, t
   *because retiring the later claim at the earlier instant ends it before it starts, and it then answers at no instant*
 - `citation-live` — If a cited keyed-table row reads through the writer's session as a replaced key version, a direct write raises `MemoryCitationNotLive`. The write stores nothing.
   *because such a claim rests on a replaced version from its first read, while a citation no readable row carries lands undigested and recall withholds it*
-- `edge-supersede` — With `cardinality = one`, a new edge ends the source's live edge of that relation at the new edge's `valid_from`. The ended edge records the new edge in `superseded_by`.
-  *A-read#edges-supersede-under*
 - `unscoped-collision` — Unscoped direct writes sharing subject, predicate and valid-from but different objects record both claim ids in the dead-letter table. Neither claim replaces the other until an explicit revision resolves the conflict.
   *A-read#claim-standing-derived*
 - `retention-default` — Claims retain recorded validity until explicit expiry or erasure. With `decay_half_life`, ranked scores decrease by half per half-life since `valid_from`. Score decay neither deletes claims nor changes validity.
@@ -213,8 +189,6 @@ Ranked and keyed claim retrieval, read timestamps, tier ordering, scope and tomb
   *A-read#claim-standing-derived*
 - `usage-ledger` — `memory.recall`, `memory.explain` responses carrying claims, and `corpus.retrieve` responses containing `memory_facts` record returned claim ids as `contextful.memory.claims`. The read entry includes caller credential, subject and read instant.
   *A-read#memory-reads-expose*
-- `ranked-order` — Within one in-window flag value of {{read.rank.question-window-is-a-tier}}, claims order by tier, `curated`, then `derived`, then `researched`; claims of one tier keep {{read.rank.fusion}} order.
-  *A-read#claim-standing-derived*
 
 Evidence checks before returning a claim to the application:
 
@@ -246,8 +220,6 @@ Entity matching, aliases, identity cards, location relationships, edges and owne
   *A-read#memory-reads-expose*
 - `ownership-answer` — Ownership queries return targets of every caller-visible `owned_by` edge from the artifact. Results sort by newest `_ingested_at`, then principal id for equal timestamps.
   *A-read#memory-reads-expose*
-- `ownership-live` — The ownership answer omits an `owned_by` edge whose `valid_to` falls at or before the anchor.
-  *because an ended edge records a past owner, and returning it names that owner as current*
 - `knowledge-card` — `memory.explain` accepts `table`, `reference` and an optional `claims` table. The tool resolves `reference` against `table`'s names and aliases and returns the identity's `entity_id`, `kind`, `name` and `aliases`.
   *because a caller holding a name or an alias in any script needs the canonical record without knowing its opaque id*
 - `card-claims` — A card naming `claims` carries the claims {{read.recall.keyed}} returns at the call instant, under {{read.recall.keyed-gate}}, whose `subject` equals the identity's `entity_id` or its canonical `name`.

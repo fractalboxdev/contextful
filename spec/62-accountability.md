@@ -199,7 +199,7 @@ Chain verification, signed segment roots, lineage attestations, and the reach of
 
 ## erase
 
-The one erasure verb: subject tombstones, the bounded provenance cascade, the restaging gate, and the tenant rewrite.
+The one erasure verb: subject tombstones, the bounded provenance cascade, and the tenant rewrite.
 
 - `privilege` — Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.
   *A-read#memory-access-follows*
@@ -214,7 +214,7 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, the re
 - `atomic-publication` — Subject and key-set erasure select one committed frontier across every affected table; a failed transaction exposes none of its staged replacements.
   *A-disclosure#re-synthesis-after*
 - `reader-frontier` — Query, file, retrieval and cache responses resolve one erasure frontier and revalidate it before releasing bytes; an obsolete frontier releases no rows or files.
-  *A-disclosure#re-synthesis-after*
+  *A-disclosure#re-synthesis-after, A-read#extraction-cache-keys*
 - `shared-references` — A shared digest survives while any surviving declared reference names it; erasure collects a digest only after its last surviving reference disappears.
   *A-disclosure#re-synthesis-after*
 - `surviving-citations` — A citing table carrying the survival declaration of {{store.declare.erasure-metadata}} retains its rows; its references resolve through {{read.reference.erased-verdict}}.
@@ -247,10 +247,6 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, the re
   *A-disclosure#forced-rewrite-measured*
 - `physical-removal` — Within 24 h of the erasure's commit, every file holding an erased row — superseded snapshots inside {{store.fold.retention}} included — every {{read.synthesize.extract-cache}} entry whose batch held it, and every {{read.synthesize.dead-letter}} row holding its content is rewritten or collected.
   *A-disclosure#re-synthesis-after*
-- `restaging-gate` — `--fail-closed` writes a row-free `{subject_hash, executed_at}` marker at the store root after the cascade. While it stands, every fact read raises `ErasureRestagingRequired`, naming the owed re-synthesis and the clearing verb.
-  *A-disclosure#re-synthesis-after*
-- `restage-cache` — The re-synthesis that clears {{disclosure.erase.restaging-gate}} runs through the writing credential of {{read.synthesize.pass-cursor}}, replays each batch holding no erased row through {{read.synthesize.extract-cache}}, and its pass report names each restored claim.
-  *A-disclosure#re-synthesis-after*
 - `tenant-column-type` — A tenant column of a non-string type raises `PurgeTenantColumnType`.
   *A-disclosure#forced-rewrite-measured*
 - `tenant-undeclared` — A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.
@@ -276,17 +272,14 @@ flowchart LR
   FRONT -->|"working copies"| TABLES[("table directories")]
   FRONT -->|"collected within 24 h"| FILES[("retired run files")]
   FRONT -.->|"best-effort push"| BKT[("replication bucket")]
-  FRONT -->|"--fail-closed"| MARK["restaging marker"]
   BKT -->|"refreshed copies"| REP[("replicas")]
 ```
 
 unsettled: Is request-to-last-replica erasure within 72 h an engine bound or an operator objective, given the engine schedules no replica refresh? owner: disclosure affects: disclosure.erase
 
-unsettled: Does the free-form statement face fall under the restaging gate as a fact read does? owner: disclosure affects: disclosure.erase
+unsettled: Does an erasure refuse fact reads, the free-form statement face included, until re-synthesis restores the facts the cascade invalidated? owner: disclosure affects: disclosure.erase
 
-unsettled: Which record of a committed batch's member rows lets erasure find its cache entries and restaging repack untouched batches at their original boundaries? owner: read-path affects: disclosure.erase
-
-unsettled: Which credential restages a pass whose writing credential has since been revoked? owner: disclosure affects: disclosure.erase
+unsettled: Which record of a committed batch's member rows lets erasure find its cache entries? owner: read-path affects: disclosure.erase
 
 ## receipt
 
@@ -298,8 +291,6 @@ The signed artifact a tenant purge returns: its claim, its coverage block, its p
   *A-disclosure#forced-rewrite-measured*
 - `replayed` — Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.
   *A-disclosure#forced-rewrite-measured*
-- `no-rewrite-engine` — A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.
-  *because a receipt over a rewrite that did not run states a false claim*
 - `coverage` — A `receipt_version` 1 coverage block covers the canonical store and names replicas and the replication bucket as excluded.
   *because the object interface has no delete, so a claim over the replication bucket names a removal that never ran*
 - `chain-record` — A purge appends its receipt's `request_id` and SHA-256 digest to the audit chain after signing; a digest the chain already holds follows {{disclosure.receipt.replayed}}.
@@ -419,15 +410,4 @@ A purge receipt:
   "prior_request_id": null,
   "signature": { "payload_hash": "sha256:c0ff...", "signature": "3045a1...", "public_key": "ed25519:9a7d..." }
 }
-```
-
-The restaging gate:
-
-```mermaid
-stateDiagram-v2
-    [*] --> Open
-    Open --> Gated: cascade completes under --fail-closed
-    Gated --> Gated: fact read refused with ErasureRestagingRequired
-    Gated --> Restaged: synthesis re-runs over the post-erasure store
-    Restaged --> Open: --clear-stale removes the marker
 ```

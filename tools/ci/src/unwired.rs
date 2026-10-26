@@ -3,7 +3,8 @@
 //! reaches an item when another file names it, or when an item of its own file that is
 //! reached names it; `main` and trait-impl methods are reached. Such a clause performs
 //! through its test and through no binary. A `// entry: <clause id>` comment in non-test
-//! source clears the clause.
+//! source clears the clause. Items of the acceptance harness under `crates/acceptance` are
+//! test support and never count.
 
 use anyhow::{Context, Result};
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
@@ -184,7 +185,14 @@ fn entries(text: &str) -> Vec<String> {
 
 fn sources(root: &Path) -> Vec<Source> {
     let mut files = Vec::new();
-    let mut dirs: Vec<_> = std::fs::read_dir(root.join("crates")).into_iter().flatten().flatten().map(|e| e.path().join("src")).collect();
+    // The acceptance harness is test support: its items serve tests, not a binary.
+    let mut dirs: Vec<_> = std::fs::read_dir(root.join("crates"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path() != root.join(crate::ACCEPTANCE_DIR))
+        .map(|e| e.path().join("src"))
+        .collect();
     while let Some(dir) = dirs.pop() {
         for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             let p = e.path();
@@ -261,10 +269,24 @@ fn body_names(tokens: TokenStream, name: &str) -> Option<BTreeSet<String>> {
     None
 }
 
-/// `contextful-ci unwired [--contract <name>]…`: report every unwired item of a performed
-/// clause, of the named contracts or of all, and refuse when one exists.
-pub fn check(root: &Path, contracts: &[String]) -> Result<()> {
-    let text = std::fs::read_to_string(root.join(LOCK)).with_context(|| format!("reading {LOCK}"))?;
+/// The file holding the unwired count's ceiling, which only falls (`corpus.state.unwired-ceiling`).
+const CEILING: &str = "tools/ci/unwired.toml";
+
+/// The recorded ceiling; an absent file admits none.
+fn ceiling(root: &Path) -> Result<usize> {
+    let Ok(text) = std::fs::read_to_string(root.join(CEILING)) else { return Ok(0) };
+    let table: toml::Table = text.parse().with_context(|| format!("parsing {CEILING}"))?;
+    Ok(table.get("ceiling").and_then(toml::Value::as_integer).and_then(|n| usize::try_from(n).ok()).unwrap_or(0))
+}
+
+/// `contextful-ci unwired [--contract <name>]… [--lower]`: report every unwired item of a
+/// performed clause. With contracts named, refuse any of theirs; otherwise refuse a count
+/// over the ceiling, and with `--lower` set the ceiling to a lower live count.
+pub fn check(root: &Path, contracts: &[String], lower: bool) -> Result<()> {
+    let Ok(text) = std::fs::read_to_string(root.join(LOCK)) else {
+        println!("unwired: the tree holds no {LOCK}, so no clause performs");
+        return Ok(());
+    };
     let lock: serde_json::Value = serde_json::from_str(&text).with_context(|| format!("parsing {LOCK}"))?;
     let sources = sources(root);
     // Each public key's defining files, and each file's reached keys.
@@ -277,13 +299,17 @@ pub fn check(root: &Path, contracts: &[String]) -> Result<()> {
     let mut live: BTreeMap<usize, BTreeSet<String>> = BTreeMap::new();
     let entries: BTreeSet<&str> = sources.iter().flat_map(|s| s.entries.iter().map(String::as_str)).collect();
     let mut found = BTreeSet::new();
-    for (id, row) in lock["pins"].as_object().into_iter().flatten() {
+    // Each clause maps to its pins: `kind`, `path`, `name`, `line`, and the clause's `verdict`.
+    for (id, pins) in lock["pins"].as_object().into_iter().flatten() {
         let contract = id.split('.').next().unwrap_or_default();
-        if row["verdict"] != "performed" || entries.contains(id.as_str()) || !(contracts.is_empty() || contracts.iter().any(|c| c == contract)) {
+        let pins = pins.as_array().map(Vec::as_slice).unwrap_or_default();
+        let performed = pins.first().is_some_and(|p| p["verdict"] == "performed");
+        if !performed || entries.contains(id.as_str()) || !(contracts.is_empty() || contracts.iter().any(|c| c == contract)) {
             continue;
         }
-        for site in row["sites"].as_array().into_iter().flatten().filter_map(|s| s.as_str()) {
-            let Some((file, function)) = site.rsplit_once("::") else { continue };
+        for pin in pins.iter().filter(|p| p["kind"] == "test") {
+            let (Some(file), Some(function)) = (pin["path"].as_str(), pin["name"].as_str()) else { continue };
+            let site = format!("{file}::{function}");
             let Some(tokens) = file.ends_with(".rs").then(|| std::fs::read_to_string(root.join(file)).ok()).flatten().and_then(|t| t.parse::<TokenStream>().ok()) else {
                 continue;
             };
@@ -302,9 +328,20 @@ pub fn check(root: &Path, contracts: &[String]) -> Result<()> {
     for f in &found {
         eprintln!("SpecUnwired: {f}");
     }
-    if !found.is_empty() {
-        return Err(refuse("SpecUnwired", format!("{} item(s) only a performed pin's test calls", found.len())));
+    let limit = if contracts.is_empty() { ceiling(root)? } else { 0 };
+    if found.len() > limit {
+        return Err(refuse("SpecUnwired", format!("{} item(s) only a performed pin's test calls, over the ceiling of {limit} in {CEILING}", found.len())));
     }
-    println!("unwired: non-test source reaches every item a performed pin's test calls");
+    if lower && found.len() < limit {
+        let text = std::fs::read_to_string(root.join(CEILING)).unwrap_or_default();
+        let mut lines: Vec<String> = text.lines().filter(|l| !l.trim_start().starts_with("ceiling")).map(str::to_string).collect();
+        lines.push(format!("ceiling = {}", found.len()));
+        std::fs::write(root.join(CEILING), lines.join("\n") + "\n").with_context(|| format!("writing {CEILING}"))?;
+        println!("unwired: {CEILING} ceiling lowered from {limit} to {}", found.len());
+    } else if found.len() < limit {
+        println!("unwired: {} item(s) under the ceiling of {limit}; `contextful-ci unwired --lower` records the fall", found.len());
+    } else {
+        println!("unwired: {} item(s), at the ceiling of {limit}", found.len());
+    }
     Ok(())
 }

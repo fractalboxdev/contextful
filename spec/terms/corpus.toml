@@ -28,7 +28,7 @@ SpecUnsettled          = { clause = "corpus.rationale.unsettled-line", gloss = "
 SpecRecord             = { clause = "corpus.rationale.orphan-record", gloss = "An uncited or missing record, a bad Why, or a record out of anatomy." }
 SpecCoverageRegression = { clause = "corpus.state.coverage-floor", gloss = "Fewer performed pins than the floor." }
 SpecBrokenPin          = { clause = "corpus.state.bad-pin", gloss = "A pin that names no clause, mismatches its kind, does not resolve, or competes with a second test." }
-SpecUnwired            = { clause = "corpus.state.unwired", gloss = "A public item only a performed pin's test reaches." }
+SpecUnwired            = { clause = "corpus.state.unwired-ceiling", gloss = "More public items only a performed pin's test reaches than the recorded ceiling." }
 SpecProofObligationUnpinned = { clause = "corpus.state.proof-obligation", gloss = "A clause listed as a proof obligation that does not compute proved." }
 SpecStalePin           = { clause = "corpus.state.stale-pin", gloss = "A tag recording a statement revision the clause no longer carries." }
 SpecRoadmap            = { clause = "corpus.state.roadmap", gloss = "A roadmap name resolving to nothing, claimed twice, or a milestone missing its reach or acceptance line." }
@@ -85,28 +85,28 @@ corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "w
 [ceiling]
 registry-committed-sites = 3
 anatomy-long-lists = 15
-clause-unowned = 249
+clause-unowned = 98
 why-unscoped = 0
 
 [ceiling.contract-words]
-assurance = 10331
-authority = 7843
-connector = 11654
-corpus = 4094
-disclosure = 5500
-read = 10153
-run = 19180
-store = 10662
-surface = 6508
+assurance = 9860
+authority = 7792
+connector = 11055
+corpus = 4198
+disclosure = 5293
+read = 9504
+run = 19090
+store = 10559
+surface = 6428
 topology = 2646
 
 [ceiling.adr-words]
-A-assurance = 5633
+A-assurance = 5595
 A-authority = 4473
-A-connector = 3602
+A-connector = 3600
 A-corpus = 383
 A-disclosure = 3893
-A-read = 5373
+A-read = 5189
 A-run = 8375
 A-store = 6984
 A-surface = 3373

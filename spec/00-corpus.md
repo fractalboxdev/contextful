@@ -183,7 +183,7 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale*
 - `theorem-beside-test` — A clause carries at most one theorem pin beside its test pins. A theorem pin alone states a property of a model, and performs once its proof holds no `sorry`.
   *A-assurance#source-change-carries*
-- `bound-theorem` — Beside test pins, a theorem pin counts only when the `binding` of its row in a `formal/` inventory names one of those tests; an uncounted theorem leaves the clause's verdict to its tests.
+- `bound-theorem` — Beside test pins, a theorem pin counts only when the `binding` of its row in an `inventory.toml` under `formal/` names one of those tests; an uncounted theorem leaves the clause's verdict to its tests.
   *because a proof of a model the code never drives says nothing about the code the clause names*
 - `proved` — A performed clause computes `proved` when a counted theorem pin and a test pin of it both perform; `spec/status.md` counts proved clauses per contract and each card per operation.
   *because performed and proved are different strengths of evidence, and one count hides which a contract holds*
@@ -195,12 +195,16 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a conjunctive clause takes one test per conjunct, and one passing test of half a clause reads as the whole*
 - `unexercised` — A test pin of a refusal clause computes `broken` unless its function body names one of the clause's errors: the id itself, or a `::` variant path keeping at least two of the id's trailing words.
   *because a test that never observes the error demonstrates some other behavior*
+- `limit-const` — A named-bound entry may record the Rust const holding its bound as `const = "<crate path>"`; a test pin of its clause computes `broken` while that const resolves to nothing or no non-test source under `crates/*/src` or `tools/*/src` reads it.
+  *because a test of a bound the code never consults demonstrates a number, not a limit*
 - `module-path` — A path pin resolves only where its file or module part points: `<file>.rs::<fn>` to that file, `<crate>::<module>::<fn>` to a file of that package opening that module path, `A.B.<theorem>` to `A/B.lean`.
   *because a pin matching any same-named function elsewhere demonstrates nothing about the named one*
 - `test-pin-is-test` — A `test` pin naming a function that carries no `#[test]` attribute does not resolve.
   *because a helper or production function proves presence, not behavior*
-- `unwired` — `contextful-ci unwired` raises `SpecUnwired` for each public item under `crates/*/src` that a performed pin's test names and no non-test source reaches, unless an `// entry: <clause id>` comment names the clause.
+- `unwired` — `contextful-ci unwired` reports each public item under `crates/*/src` that a performed pin's test names and no non-test source reaches, unless an `// entry: <clause id>` comment names the clause.
   *because a clause performing through its test alone demonstrates code no binary runs*
+- `unwired-ceiling` — `tools/ci/unwired.toml` records a `ceiling` for the unwired count; a count above it raises `SpecUnwired`, and `contextful-ci unwired --lower` sets it to a lower live count, so the ceiling only falls.
+  *because the count starts above zero, and wiring each item belongs to its own contract's change*
 - `unfinished-test` — A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.
   *because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption*
 - `coverage-floor` — `spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.
@@ -246,7 +250,7 @@ The generated files, and the vocabulary no authored file carries.
 
 - `generated` — `contextful-spec state` regenerates `spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json`, and `contextful-spec extract` the lock file alone. A committed copy differing from regeneration raises `SpecStaleRender`.
   *P8, A-assurance#generated-artifacts-prove*
-- `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pin sites and verdict.
+- `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pins: kind, path, name, line, verdict, proof.
   *P8*
 - `card` — `contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.
   *A-corpus#teaching-reference-live*

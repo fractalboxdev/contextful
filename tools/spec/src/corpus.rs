@@ -46,8 +46,7 @@ pub struct LimitEntry {
     pub basis: String,
     #[serde(default)]
     pub gloss: String,
-    /// The constant holding the bound in code, `<file>::<NAME>`
-    /// (`assurance.structure-tree.bound-constant`).
+    /// The Rust const holding the bound, by crate path or as `<file>::<NAME>` (`corpus.state.limit-const`).
     #[serde(default, rename = "const", skip_serializing_if = "Option::is_none")]
     pub constant: Option<String>,
 }

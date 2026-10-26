@@ -94,15 +94,7 @@ The provider interface, adapter order, request-time resolution, credential buffe
 - `cache-ttl` — A cache entry lives at most 300 s.
 - `unresolved-name` — If no assembled adapter answers a reference, the resolver raises `SecretUnresolvedReference`, naming the reference. The error occurs at preflight for static bindings and at the call otherwise.
   *P2*
-- `posture` — Four credential configurations order by distance from the engine: inline environment values, request-time reference resolution, external manager using workload identity, and secretless broker sidecar. The workload-identity manager is the default.
-  *A-connector#credentials-references-workload*
-- `inline-outside-development` — A profile other than development binding plaintext material at a call site raises `SecretInlineCredential` naming the binding.
-  *A-connector#credentials-references-workload*
-- `forwarding-sidecar` — A sidecar that reads and forwards a stored long-lived credential raises `SecretForwardingBroker`. A sidecar minting a short-lived scoped credential is a lease provider.
-  *A-connector#credentials-references-workload*
 - `adapter-is-optional` — Each managed backend is one adapter holding opaque versioned ciphertext; a deployment links only the adapters it uses.
-- `know-how-in-an-adapter` — An adapter exposing a provider-specific exchange, refresh or lifetime entry point raises `SecretProviderKnowHowInBackend` at load.
-  *A-connector#credentials-references-workload*
 - `aws-secrets-manager` — The `aws-secrets-manager` backend answers `secret://<name>` with the `AWSCURRENT` value of secret id `CONTEXTFUL_AWS_SECRET_PREFIX` plus the name, signing under {{store.endpoint.role-credentials}}; an absent secret is a miss.
 
 ```mermaid
@@ -118,6 +110,8 @@ flowchart LR
   SH -->|"no"| W["redacting wrapper"]
   W -->|"cached up to 300 s"| C["resolved material"]
 ```
+
+unsettled: Does a profile other than development refuse plaintext credential material bound at a call site? owner: connector affects: connector.resolve
 
 ## lease
 
@@ -159,7 +153,6 @@ The first credential adapter: lease declarations, mint requests, expiry, failure
   *A-connector#credentials-references-workload*
 - `bootstrap-declared-leased` — Listing the bootstrap name among the leased scopes raises `SecretBootstrapLeased` at startup.
   *A-connector#credentials-references-workload*
-- `bootstrap-backend` — `CONTEXTFUL_LEASE_BOOTSTRAP_BACKEND` composes an operator-managed secret store behind the lease provider to hold the mint reference.
 - `mint-transport` — The mint client reaches its endpoint over TLS or loopback and ignores system proxy configuration.
   *A-connector#outbound-transport-origin*
 - `redirect` — A `3xx` from the mint endpoint raises `SecretLeaseRedirect`; the mint credential is not replayed at the target.
@@ -217,7 +210,6 @@ Host handling of outbound requests: network transport, permitted hosts and addre
   *because admitting the metadata or loopback range reopens the SSRF path the private-address check closes*
 - `bound-host` — A credential-bound source declares one non-wildcard host, checked at validation and session open. A wildcard entry or table-bound endpoint host beside a bound credential raises `SecretWildcardHost`.
   *A-connector#outbound-transport-origin*
-- `default-attachment` — Without an attachment declaration, the host writes `Authorization: Bearer <value>` from the single bound credential.
 - `attach-block` — An `[attach]` block maps a header name to a value template. The host hydrates it onto the permitted request, overriding the guest's header of that name.
 - `per-request-hydration` — A guest session stores hydration handles and plain static headers. The host calls each handle for every permitted request and releases the hydrated header when the request completes.
   *because session-held credential material outlives the request and delays rotation*
@@ -263,8 +255,6 @@ Credential rotation responsibilities and mechanisms.
 - `write-back-denied` — A refused put or answering adapter without a write method raises `SecretRotationWriteDenied`. The host discards the refreshed token without serving it, and the run fails closed.
   *A-connector#rotation-writes-forward*
 - `conditional-put` — If another writer stores a version first, the losing put rehydrates that version without raising an error.
-  *A-connector#rotation-writes-forward*
-- `connector-owns-meaning` — The connector's `[auth]`, `[rate_limit]` and `[retry]` blocks define token lifetime, exchange rules, refresh endpoint and scopes, expired-token codes and rate-limit headers. Connector id and version pin these blocks.
   *A-connector#rotation-writes-forward*
 - `no-master-key` — The engine holds references, and no single encryption key exists whose theft with a database copy yields every credential.
   *A-connector#credentials-references-workload*

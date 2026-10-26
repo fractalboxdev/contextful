@@ -29,7 +29,6 @@ ConnectionScopeDenied = { clause = "surface.connection.authority", gloss = "A co
 ConnectionIdConflict = { clause = "surface.connection.idempotent-create", gloss = "A connection id already binds a different declaration." }
 ConnectionRequestMalformed = { clause = "surface.connection.malformed", gloss = "A connection request body outside its route's exact fields." }
 ConnectionUnknown = { clause = "surface.connection.unknown", gloss = "A pause or delete naming no standing connection." }
-ConsoleRouteUngated           = { clause = "surface.open-console.ungated-route", gloss = "An anonymous hosted route serving content instead of its declared identity gate." }
 ConsolePageForbidden          = { clause = "surface.open-console.wrong-page", gloss = "A page or API call lacking verified identity and its page grant." }
 ConsoleAdminGrantMissing      = { clause = "surface.open-console.admin-grant", gloss = "An Admin edit or apply lacking a server-held admin capability." }
 ScheduleUnreadable            = { clause = "surface.arm.unreadable-schedule", gloss = "A schedule string the grammar or cron dialect cannot read." }
@@ -112,7 +111,6 @@ surface-daemon-drain       = { clause = "surface.fire.daemon-drain", value = 5, 
 surface-child-grace        = { clause = "surface.dispatch.children-reaped", value = 10, unit = "s", basis = "chosen", gloss = "Wait between a stopping serve's SIGTERM and SIGKILL to its children.", const = "crates/contextful-core/src/surface/dispatch.rs::CHILD_GRACE_SECS" }
 surface-fire-credential    = { clause = "surface.dispatch.fire-credential-lifetime", value = 600, unit = "s", basis = "chosen", gloss = "Lifetime of the credential serve mints for one store-driven fire.", const = "crates/contextful-cli/src/cadence.rs::FIRE_CREDENTIAL_SECS" }
 surface-region-entries     = { clause = "surface.reside.region-entries", value = 16, unit = "entries", basis = "chosen", gloss = "Largest residency allow-set.", const = "crates/contextful-core/src/surface/reside.rs::REGION_ENTRIES" }
-surface-listing-page       = { clause = "surface.visualize.listing-page", value = 1000, unit = "entries", basis = "chosen", gloss = "Entries one pack listing call answers." }
 surface-redactor-lookahead = { clause = "surface.speak.redactor-lookahead", value = 128, unit = "chars", basis = "chosen", gloss = "Characters the streaming redactor holds across a chunk boundary." }
 surface-sources-per-turn   = { clause = "surface.ground.sources-per-turn", value = 8, unit = "entries", basis = "chosen", gloss = "Entries in a turn's source list." }
 surface-code-path-rows     = { clause = "surface.plan-turn.code-path-bounds", value = 5000, unit = "rows", basis = "chosen", gloss = "Rows the code path reads per data table." }
