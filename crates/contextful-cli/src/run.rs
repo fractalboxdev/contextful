@@ -855,7 +855,7 @@ pub(crate) fn served_stop(project: &ProjectArgs, grants: &[Grant], run_id: &str,
 
 /// The wire snapshot of `run_id` for a credential whose read grant covers its recorded
 /// pipeline, recovered from the durable record; `None` for an unrecorded or uncovered run
-/// (`run.project.unauthenticated-upgrade`, `run.project.restart-discards`).
+/// (`run.project.unauthenticated-upgrade`, `run.project.best-effort`).
 pub(crate) fn served_snapshot(project: &ProjectArgs, grants: &[Grant], run_id: &str) -> Option<String> {
     let w = wire(project).ok()?;
     let row = w.engine.catalog.run(run_id).ok()??;

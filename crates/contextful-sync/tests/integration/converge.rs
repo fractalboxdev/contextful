@@ -63,8 +63,8 @@ fn a_push_never_uploads_a_copy_of_another_nodes_key() {
 }
 
 /// A table's `schema.json` commits by merging into the bucket's copy through the one-promotion lattice and
-/// replacing it on the ETag read; no copy overwrites another.
-// spec: store.push.schema-cas@02f1c0e1
+/// replacing it on the ETag read, so no copy overwrites another.
+// spec: store.push.schema-cas@cf67d251
 #[test]
 fn two_nodes_landing_different_columns_both_keep_them() {
     let dir = tempfile::tempdir().unwrap();
@@ -87,7 +87,7 @@ fn two_nodes_landing_different_columns_both_keep_them() {
 }
 
 /// A pull deletes the local copy of each key a tombstone names and no entry lists.
-// spec: store.pull.tombstone-applied@9891718f
+// spec: store.pull.tombstone-applied@71ca5d94
 #[test]
 fn a_pull_deletes_the_copy_a_tombstone_names() {
     let dir = tempfile::tempdir().unwrap();
@@ -129,9 +129,9 @@ fn unhex(text: &str) -> Vec<u8> {
     (0..text.len()).step_by(2).map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap()).collect()
 }
 
-/// Push signs each tombstone with the node's issuer key, recording `signer` and `signature` over the key, owner and
-/// `deleted_at`. A node without an issuer key writes unsigned tombstones.
-// spec: store.merge.tombstone-signed@a459a5a5
+/// Push signs each {{type:contextful_core::store::sync::Tombstone}} with the node's issuer key over the key it
+/// names, its owner and its deletion instant. A node without an issuer key writes unsigned tombstones.
+// spec: store.merge.tombstone-signed@4fadd6dd
 #[test]
 fn a_push_signs_each_tombstone_with_its_issuer_key() {
     use contextful_policy::issue::SignerKey;
@@ -228,9 +228,9 @@ fn publish(n: &crate::support::Node, table: &str, now: &str) -> String {
     snapshot_id
 }
 
-/// Pull advances pointers only to a higher fence, or the same fence with a later snapshot. Pull verifies every
+/// Pull advances a pointer only to a higher fence, or the same fence with a later snapshot, verifying every
 /// advancing table before writing any pointer.
-// spec: store.pull.pointer-advance@286cc4cd
+// spec: store.pull.pointer-advance@9f2101ca
 #[test]
 fn a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies() {
     let dir = tempfile::tempdir().unwrap();

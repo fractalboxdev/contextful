@@ -61,9 +61,9 @@ fn prefix_and_prefix_from_together_refuse() {
     assert!(matches!(c.resolve_prefix(|_| Some("x".into())), Err(StoreError::SyncPrefixOverspecified(_))));
 }
 
-/// A key names its owner through the node in its run directory, request-ledger filename, commit-log directory or run-
-/// state directory. Every other key is unowned and propagates no deletion.
-// spec: store.merge.ownership@0457be52
+/// A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state
+/// directory; any other key is unowned and propagates no deletion.
+// spec: store.merge.ownership@cd44833c
 #[test]
 fn a_keys_owner_is_read_off_the_key() {
     assert_eq!(owner_of(RUN_A).as_deref(), Some("ingest-a"));
@@ -350,9 +350,9 @@ fn credential_keys_bind_secret_or_environment_references() {
     assert_eq!(temporary.credential_refs().unwrap().session_token, Some(CredentialRef::Secret(SecretName::parse("sync-session").unwrap())));
 }
 
-/// S3 or R2 raises `SyncCredentialUnbound` when `[sync]` omits `access_key_id` or `secret_access_key`, supplies a non-
-/// reference credential, or names an unset variable. The error names the key.
-// spec: store.endpoint.credential-unbound@3f4efb9d
+/// An S3 or R2 `[sync]` omitting `access_key_id` or `secret_access_key`, supplying a non-reference credential, or
+/// naming an unset variable raises `SyncCredentialUnbound`, naming the key.
+// spec: store.endpoint.credential-unbound@769f258e
 #[test]
 fn an_unbound_or_literal_credential_key_is_refused_naming_the_key() {
     let bound = SyncConfig { access_key_id: Some("env://A".into()), secret_access_key: Some("env://B".into()), ..endpoint("s3://eu-west-1") };
@@ -376,7 +376,7 @@ fn an_unbound_or_literal_credential_key_is_refused_naming_the_key() {
 
 /// `credentials = "role"` beside `access_key_id`, `secret_access_key` or `session_token`, or on an R2 endpoint,
 /// raises `SyncCredentialConflict`, naming the endpoint; alone on an S3 or HTTPS endpoint it selects role signing.
-// spec: store.endpoint.role-conflict@0db7d718
+// spec: store.endpoint.role-conflict@ea998d83
 #[test]
 fn role_credentials_beside_a_key_or_on_r2_conflict_naming_the_endpoint() {
     let role = |e: &str| SyncConfig { credentials: Some("role".into()), ..endpoint(e) };

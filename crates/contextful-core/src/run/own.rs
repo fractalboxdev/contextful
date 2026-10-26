@@ -296,7 +296,7 @@ impl ExecutionOwner {
             OwnerPins::Plan(_) => ("plan", "execution"),
         };
         // A chunk owner is no rewind target, so its refusal names the restore alone
-        // (`run.own.pin-recovery`).
+        // (`run.own.pin-mismatch-recovery`).
         let rewind = match self.scope {
             OwnerScope::Chunk { .. } => String::new(),
             _ => format!(", or retire it with `contextful run rewind {} --reason <text>`", self.execution_id),

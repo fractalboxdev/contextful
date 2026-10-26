@@ -12,7 +12,7 @@ use contextful_core::store::StoreError;
 use serde_json::json;
 use std::fs;
 
-// spec: store.reconcile.variant@b554b919
+// spec: store.reconcile.variant@7a22bb15
 #[cfg(feature = "read")]
 #[test]
 fn one_variant_column_keeps_each_scalar_kind_through_land_fold_and_read() {
@@ -94,9 +94,9 @@ fn pinned_snapshot_footer_keeps_variant_type_at_every_depth() {
 }
 
 #[cfg(feature = "read")]
-/// Every read passes `read_parquet` an explicit sorted file list resolved from the pointer and manifests. Reads use no
-/// glob and exclude stray files.
-// spec: store.reconcile.explicit-file-list@96d7f7cd
+/// Every read passes `read_parquet` an explicit sorted file list of the parts the pointer's manifests name, with no
+/// glob, so stray files and `indexes/` stay out.
+// spec: store.reconcile.explicit-file-list@38646064
 #[test]
 fn a_read_hands_read_parquet_an_explicit_sorted_list() {
     let f = Fixture::new();
@@ -118,9 +118,9 @@ fn a_read_hands_read_parquet_an_explicit_sorted_list() {
 }
 
 #[cfg(feature = "read")]
-/// Every read passes `union_by_name=true`. Columns resolve to the common supertype across files carrying each column.
-/// The generated relation casts only vectors under {{store.reconcile.half-width}}.
-// spec: store.reconcile.union-by-name@fc89b082
+/// Every read passes `union_by_name=true`, resolving each column to the common supertype of the files carrying it;
+/// the generated relation casts only vectors, under {{store.reconcile.half-width}}.
+// spec: store.reconcile.union-by-name@edd97765
 #[test]
 fn a_column_resolves_to_the_supertype_of_its_files_with_no_cast() {
     let f = Fixture::new();
@@ -199,9 +199,9 @@ fn a_widening_key_refuses_at_the_write_and_at_the_fold() {
 }
 
 #[cfg(feature = "read")]
-/// Scans invent no columns. An ordering column absent from every file enters through a zero-row branch. A column added
-/// after the table's first rows projects as literal null.
-// spec: store.reconcile.no-invented-column@00b42661
+/// Scans invent no columns: an ordering column absent from every file enters through a zero-row branch, and a column
+/// added after the first rows projects as literal null.
+// spec: store.reconcile.no-invented-column@53959c45
 #[test]
 fn a_scan_invents_no_column() {
     let f = Fixture::new();
@@ -323,9 +323,9 @@ fn typed_columns() -> [(&'static str, ColumnType); 4] {
     ]
 }
 
-/// A producer declares these types. JSON batches carry bytes as padded base64 and vectors as number arrays matching
-/// the declared dimension. Other values meet {{store.reconcile.incompatible}}.
-// spec: store.reconcile.typed-landing@409f6ed7
+/// A producer declares these types; JSON batches carry bytes as padded base64 and vectors as number arrays of the
+/// declared dimension, other values meeting {{store.reconcile.incompatible}}.
+// spec: store.reconcile.typed-landing@1ee2190a
 #[test]
 fn a_typed_batch_lands_bytes_from_base64_and_vectors_from_arrays() {
     let f = Fixture::new();
@@ -380,9 +380,9 @@ fn a_typed_batch_lands_bytes_from_base64_and_vectors_from_arrays() {
 }
 
 #[cfg(feature = "read")]
-/// When `schema.json` records a binary, vector or nested type, later undeclared JSON values land in that type. Runs
-/// after the first require no declaration.
-// spec: store.reconcile.stored-type@9fd417b2
+/// Once `schema.json` records a binary, vector or nested type, later undeclared JSON values land in that type
+/// without a declaration.
+// spec: store.reconcile.stored-type@f040057f
 #[test]
 fn a_stored_binary_or_vector_column_types_a_later_undeclared_batch() {
     let f = Fixture::new();
@@ -409,10 +409,10 @@ fn a_stored_binary_or_vector_column_types_a_later_undeclared_batch() {
     }
 }
 
-/// A table block takes {{type:contextful_core::store::declare::TableDecl}}; canonical serialization omits unset
-/// keys. A key applies from the next read and rewrites no committed part; `columns` types every landing,
-/// pipeline runs included, under {{store.reconcile.typed-landing}}.
-// spec: store.declare.table-block@8cede22d
+/// A table block takes {{type:contextful_core::store::declare::TableDecl}}, canonical serialization omitting
+/// unset keys. A key applies from the next read, rewriting no committed part; `columns` types every landing
+/// under {{store.reconcile.typed-landing}}.
+// spec: store.declare.table-block@698a12a7
 #[test]
 fn a_declared_column_type_types_a_landing_that_declares_none() {
     let f = Fixture::new();
@@ -431,8 +431,8 @@ fn a_declared_column_type_types_a_landing_that_declares_none() {
 }
 
 #[cfg(feature = "read")]
-/// A `Float16` vector stores each element at half width in Parquet. The engine reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension through one relation cast.
-// spec: store.reconcile.half-width@b93ac02d
+/// A `Float16` vector stores elements at half width in Parquet; one relation cast reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension.
+// spec: store.reconcile.half-width@147b0f6a
 #[test]
 fn half_floats_store_at_half_width_and_read_as_float_arrays() {
     let f = Fixture::new();
@@ -486,9 +486,9 @@ fn events() -> ColumnType {
     ]))
 }
 
-/// Producers or declarations type columns `struct<…>`, `list<…>` or `map<utf8, …>`. JSON batches represent structs and
-/// maps as objects, lists as arrays. A struct key absent from its fields meets {{store.reconcile.incompatible}}.
-// spec: store.reconcile.nested-landing@a9b1b8e1
+/// Producers or declarations type columns `struct<…>`, `list<…>` or `map<utf8, …>`, which JSON batches carry as
+/// objects and arrays; a struct key outside its fields meets {{store.reconcile.incompatible}}.
+// spec: store.reconcile.nested-landing@4e2dea0f
 #[test]
 fn a_typed_batch_lands_nested_values_and_refuses_a_kind_change_by_path() {
     let f = Fixture::new();

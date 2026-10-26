@@ -93,7 +93,7 @@ Organization-approved Drive access and the principal whose authority each reques
 - `impersonated-principal` — Every delegated Drive request names one admitted Workspace user as its subject; the row and permission sweep retain that subject's identity.
 - `domain-boundary` — A delegated request for a subject outside its declared domain raises `ConnectorDriveDomainRejected` before token minting.
   *because administrator approval for one domain conveys no authority over another*
-- `organization-export` — A sanctioned organization-wide export declares its scope and disclosure posture explicitly under {{connector.source.twin-api}}; delegated user reads do not imply that export.
+- `organization-export` — A sanctioned organization-wide export declares its scope and disclosure posture explicitly; delegated user reads do not imply that export.
 
 #### Scenarios
 

@@ -45,7 +45,7 @@ fn init_writes_the_declaration_and_a_repeat_is_a_no_op() {
 }
 
 /// A command given no `--project` reads the nearest `contextful.toml` upward and bases its store root and declaration on that file's directory.
-// spec: store.init.default-declaration@40529f7b
+// spec: store.init.default-declaration@fe2f5d3b
 #[test]
 fn a_command_without_project_discovers_it_from_a_subdirectory() {
     let dir = tempfile::tempdir().unwrap();
@@ -77,10 +77,10 @@ fn a_command_without_project_discovers_it_from_a_subdirectory() {
     assert!(dir.path().join(".contextful/context/research/machine.sqlite").is_file());
 }
 
-/// Under `--project`, a command bases every project path {{store.init.discovery}} names on the working
-/// directory and runs no discovery. A command given no `--declaration` reads the discovered
-/// `contextful.toml`, or the working directory's under `--project`.
-// spec: store.init.default-declaration@40529f7b
+/// Under `--project`, a command runs no discovery and bases every path {{store.init.discovery}} names
+/// on the working directory. Without `--declaration`, it reads the discovered `contextful.toml`, or
+/// the working directory's under `--project`.
+// spec: store.init.default-declaration@fe2f5d3b
 #[test]
 fn an_explicit_project_uses_the_working_directory() {
     let dir = tempfile::tempdir().unwrap();
@@ -109,7 +109,7 @@ fn a_command_without_project_or_declaration_refuses() {
 }
 
 /// A derive pipeline fired from a subdirectory resolves the discovered declaration's `media_root` against the project directory.
-// spec: store.init.declaration-base@d87f1a9f
+// spec: store.init.declaration-base@64e3d57e
 #[test]
 fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
     let dir = tempfile::tempdir().unwrap();
@@ -151,7 +151,7 @@ fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
 
 /// An init declaring its authoring posture yields a project whose first write lands with no manifest edit; an init
 /// declaring none leaves every table write refused until one is declared.
-// spec: store.init.posture@dfd369cb
+// spec: store.init.posture@cc98d8e3
 #[test]
 fn an_init_with_a_posture_lands_its_first_write_unedited() {
     let land = ["context", "land", "filings", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "s", "--now", "2030-01-01T00:00:00Z"];

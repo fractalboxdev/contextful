@@ -14,10 +14,10 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 #[cfg(feature = "read")]
-/// The engine injects `_ingested_at` as non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id` and `_site_id`. Injection
-/// adds int32 `_batch_seq` within a batch scope and `_authored_by` for writes authorized by an authenticated subject.
-/// Injected values replace producer values.
-// spec: store.reserve.injected@1efd85ab
+/// The engine injects non-null `_ingested_at` as Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_site_id`, int32
+/// `_batch_seq` within a batch scope, and `_authored_by` for writes an authenticated subject authorized, replacing
+/// producer values.
+// spec: store.reserve.injected@99f4c73c
 #[test]
 fn the_engine_injects_provenance_and_replaces_producer_values() {
     let f = Fixture::new();
@@ -48,8 +48,8 @@ fn the_engine_injects_provenance_and_replaces_producer_values() {
 
 #[cfg(feature = "read")]
 /// On each row from model output, the engine injects `_taint` under {{connector.infer.provenance-order}}, replacing
-/// any producer value. Rows without model output omit `_taint`.
-// spec: store.reserve.taint@c48e7e7b
+/// any producer value; other rows omit `_taint`.
+// spec: store.reserve.taint@57b9451e
 #[test]
 fn a_model_output_row_carries_the_engine_taint_and_no_other_row_does() {
     let f = Fixture::new();
@@ -70,8 +70,8 @@ fn a_model_output_row_carries_the_engine_taint_and_no_other_row_does() {
 }
 
 #[cfg(feature = "read")]
-/// Where an authenticated subject carrying an agent member authorized the write, the engine injects `_authored_agent`, that agent, beside `_authored_by`, replacing any producer value.
-// spec: store.reserve.authored-agent@b1ffb4f9
+/// Where an authenticated subject with an agent member authorized the write, the engine injects that agent as `_authored_agent` beside `_authored_by`, replacing any producer value.
+// spec: store.reserve.authored-agent@ce5f2bea
 #[test]
 fn an_authored_write_carries_its_agent_beside_its_principal() {
     let f = Fixture::new();
@@ -113,7 +113,7 @@ fn a_reserved_producer_column_refuses_before_any_parquet() {
 /// A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
 /// `_lang` carries a BCP-47 tag; `_provenance` carries the evidence rows the row derives from, addressed by the
 /// identity the source table keys on.
-// spec: store.reserve.lang-and-provenance@011eedef
+// spec: store.reserve.optional@f48d8387
 #[test]
 fn a_producer_sets_the_optional_columns_and_modality_is_checked() {
     let f = Fixture::new();
@@ -186,9 +186,9 @@ fn injected_columns_stay_non_null_in_the_merged_schema() {
 }
 
 #[cfg(feature = "read")]
-/// The engine injects non-null int64 `_commit_seq`, assigned above every value held by the table. A run committing
-/// after a read carries a value above every returned row, regardless of `_ingested_at`.
-// spec: store.reserve.commit-seq@dd6b2f34
+/// The engine injects non-null int64 `_commit_seq` above every value the table holds, so a run committing after a
+/// read carries a value above every returned row, whatever its `_ingested_at`.
+// spec: store.reserve.commit-seq@02d99de4
 #[test]
 fn a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp() {
     let f = Fixture::new();
@@ -219,9 +219,9 @@ fn a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp(
 }
 
 #[cfg(feature = "read")]
-/// A commit publishes its manifest after every lower `_commit_seq` in the table publishes or ends landing. Readable
-/// runs therefore form a prefix of the table's commit sequence.
-// spec: store.reserve.commit-order@1d4d650c
+/// A commit publishes its manifest once every lower `_commit_seq` of the table publishes or ends landing, so
+/// readable runs form a prefix of the commit sequence.
+// spec: store.reserve.commit-order@1a899dc4
 #[test]
 fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
     let f = Fixture::new();
@@ -292,9 +292,9 @@ fn a_landing_writes_its_parts_outside_the_commit_lock_and_publishes_in_sequence_
 }
 
 #[cfg(feature = "read")]
-/// A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot. A
-/// pulled store or store without a counter therefore reuses no value.
-// spec: store.reserve.commit-seq-seed@d0cea012
+/// A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot,
+/// so a pulled or counterless store reuses no value.
+// spec: store.reserve.commit-seq-seed@9c1908c0
 #[test]
 fn a_store_holding_no_counter_continues_above_the_values_its_manifests_record() {
     let f = Fixture::new();

@@ -45,9 +45,8 @@ fn a_pass_folds_the_omitted_runs_into_one_snapshot() {
 }
 
 #[cfg(feature = "read")]
-/// A keyed table declaring `valid_time` partitions on both the key and valid-time line. The table keeps one row per
-/// line.
-// spec: store.fold.valid-time-line@756e6279
+/// A keyed table declaring `valid_time` partitions on the key and valid-time line, keeping one row per line.
+// spec: store.fold.valid-time-line@c5f61872
 #[test]
 fn a_valid_time_table_keeps_one_row_per_key_and_line() {
     let f = Fixture::new();
@@ -132,8 +131,8 @@ fn a_pass_reports_folded_or_nothing_landed() {
     assert!(FoldOutcome::Failed("x".into()).to_string().starts_with("failed"));
 }
 
-/// A pass naming a table no `schema.json` declares halts the command with {{store.lay-out.unknown-table}}.
-// spec: store.fold.unknown-table@a3fe0968
+/// A table name absent from every `schema.json` raises `StoreUnknownTable` rather than returning an empty result.
+// spec: store.lay-out.unknown-table@3272cbb8
 #[test]
 fn a_pass_over_an_unknown_table_halts() {
     let f = Fixture::new();
@@ -376,9 +375,9 @@ fn an_idle_table_still_collects_what_retention_allows() {
 }
 
 #[cfg(feature = "read")]
-/// A collection failure reports beside `folded` if the pass published; the snapshot stays published. Otherwise the
-/// pass reports `failed`. Both cases exit non-zero.
-// spec: store.fold.collection-failed@0dc2145e
+/// A collection failure reports beside `folded` when the pass published, the snapshot staying published, and as
+/// `failed` otherwise; both exit non-zero.
+// spec: store.fold.collection-failed@c6394226
 #[test]
 fn a_failed_collection_does_not_unpublish_the_snapshot() {
     let f = Fixture::new();

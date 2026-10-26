@@ -105,7 +105,7 @@ pub struct ObjectConfig {
     pub access_key_id: Option<Template>,
     pub secret_access_key: Option<Template>,
     /// The session token reference a temporary credential signs with, beside the key pair
-    /// (`connector.source.object-session-token`).
+    /// (`connector.source.object-credentials`).
     pub session_token: Option<Template>,
     /// `credentials = "role"`: sign with workload-role credentials in place of the key pair
     /// (`connector.source.object-role`).
@@ -341,7 +341,7 @@ pub trait Presign: Send + Sync {
 }
 
 /// The key material one signed read hydrates: the key pair, and the session token of a
-/// temporary credential (`connector.source.object-session-token`).
+/// temporary credential (`connector.source.object-credentials`).
 pub struct ObjectKeys {
     pub access_key_id: Hydrated,
     pub secret_access_key: Hydrated,

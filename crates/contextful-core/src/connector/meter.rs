@@ -138,7 +138,7 @@ pub fn require_binding<'a>(declaration: &LimiterDeclaration, bindings: &'a BTree
 }
 
 /// The acquire body: quota, class and permit count, and nothing priced
-/// (`connector.meter.acquire`, `connector.meter.counting-not-pricing`).
+/// (`connector.meter.acquire`, `connector.meter.reservation-point`).
 pub fn acquire_body(quota: &str, class: &str, permits: u32) -> serde_json::Value {
     serde_json::json!({ "quota": quota, "class": class, "permits": permits })
 }
@@ -303,7 +303,7 @@ pub struct Report {
 
 impl Report {
     /// The wire form: counts and verbatim vendor headers, nothing priced
-    /// (`connector.meter.counting-not-pricing`).
+    /// (`connector.meter.reservation-point`).
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "quota": self.quota,

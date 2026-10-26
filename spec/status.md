@@ -7,19 +7,19 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 4 | 18 | 343 | 76 | 24 | 4 | 339 | 1 | 0 | 339 |
 | `authority` | 2 | 16 | 290 | 79 | 28 | 8 | 290 | 4 | 0 | 290 |
-| `connector` | 3 | 19 | 400 | 87 | 23 | 15 | 335 | 2 | 0 | 335 |
+| `connector` | 3 | 19 | 347 | 83 | 23 | 14 | 318 | 2 | 0 | 318 |
 | `corpus` | 1 | 11 | 125 | 50 | 13 | 0 | 125 | 0 | 0 | 125 |
 | `disclosure` | 3 | 17 | 184 | 64 | 14 | 5 | 172 | 0 | 0 | 172 |
 | `read` | 2 | 20 | 302 | 53 | 29 | 16 | 291 | 0 | 0 | 291 |
-| `run` | 3 | 29 | 609 | 128 | 49 | 19 | 591 | 4 | 0 | 591 |
-| `store` | 6 | 20 | 316 | 67 | 23 | 13 | 313 | 13 | 0 | 313 |
+| `run` | 3 | 29 | 566 | 128 | 49 | 19 | 560 | 4 | 0 | 560 |
+| `store` | 6 | 20 | 310 | 67 | 23 | 13 | 310 | 13 | 0 | 310 |
 | `surface` | 2 | 22 | 194 | 69 | 24 | 2 | 191 | 0 | 0 | 191 |
 | `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 91 | 0 | 0 | 91 |
-| **total** | 27 | 178 | 2855 | 699 | 235 | 85 | 2738 | 24 | 0 | |
+| **total** | 27 | 178 | 2753 | 695 | 235 | 84 | 2687 | 24 | 0 | |
 
 Decision records: 18.
 
-Clauses restating a code type: 46.
+Clauses restating a code type: 9.
 
 ## Milestones
 
@@ -29,16 +29,16 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 21 | 20 | passing | closed |
 | 1 — The authority core | 14 | 260 | 260 | passing | closed |
-| 2 — The store | 9 | 183 | 180 | passing | closed |
-| 3 — The run path | 12 | 317 | 312 | passing | closed |
-| 4 — Ingest | 25 | 624 | 581 | passing | closed |
+| 2 — The store | 9 | 177 | 177 | passing | closed |
+| 3 — The run path | 12 | 293 | 293 | passing | closed |
+| 4 — Ingest | 25 | 553 | 553 | passing | closed |
 | 5 — The read face under enforcement | 17 | 301 | 301 | passing | closed |
 | 6 — Sync and replicas | 9 | 119 | 119 | passing | closed |
 | 7 — Memory | 6 | 86 | 86 | passing | closed |
 | 8 — Accountability | 5 | 93 | 93 | passing | closed |
 | 9 — Visibility | 6 | 49 | 49 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 119 | 118 | passing | closed |
-| 11 — The derive tier | 7 | 97 | 97 | passing | closed |
+| 11 — The derive tier | 7 | 96 | 96 | passing | closed |
 | 12 — The operator console | 12 | 64 | 64 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
 | 14 — Assurance | 7 | 176 | 173 | passing | closed |

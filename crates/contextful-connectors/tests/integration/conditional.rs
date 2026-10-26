@@ -18,9 +18,10 @@ fn pull(s: &mut contextful_connectors::http::HttpSource, position: Option<Value>
     serde_json::from_slice(&s.pull(&request(position), &Never).unwrap()).unwrap()
 }
 
-/// `conditional = true` sends the position's `etag` as `If-None-Match` and `last_modified` as `If-Modified-Since`.
-/// A `304` lands no rows and holds the position; a `2xx` commits the validators it serves.
-// spec: connector.source.conditional-get@847ddbc8
+/// `conditional = true` issues one request sending the position's `etag` as `If-None-Match` and `last_modified` as
+/// `If-Modified-Since`, and those validators are the whole position. A `304` lands no rows and holds it; a `2xx`
+/// commits the validators served.
+// spec: connector.source.conditional-get@53381a82
 #[test]
 fn a_not_modified_feed_lands_nothing_and_holds_the_validators() {
     let vendor = Server::start(|r| {
@@ -76,9 +77,10 @@ fn an_empty_conditional_success_completes_the_snapshot() {
     assert_eq!(out["snapshot_complete"], json!(true));
 }
 
-/// A conditional pull issues one request, and the validators are its whole position: no page token or watermark
-/// rides beside them, and the pull reports no further page.
-// spec: connector.source.conditional-position@67dec9d6
+/// `conditional = true` issues one request sending the position's `etag` as `If-None-Match` and `last_modified`
+/// as `If-Modified-Since`, and those validators are the whole position. A `304` lands no rows and holds it; a
+/// `2xx` commits the validators served.
+// spec: connector.source.conditional-get@53381a82
 #[test]
 fn a_conditional_pull_commits_the_validators_alone() {
     let vendor = Server::start(|_| Response {

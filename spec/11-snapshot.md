@@ -6,17 +6,15 @@ owns:
 
 # Snapshot corpora
 
-A snapshot corpus stores copies of external documents for local ranking under a reading horizon.
-Implementers use this contract to record captures and bind evaluation cases to a stored snapshot.
-Pipelines store the documents through the ordinary write path. Reads follow {{read.horizon.local-rank}} without querying the live web.
+A snapshot corpus stores copies of external documents, landed through the ordinary write path, for local ranking under {{read.horizon.local-rank}}.
 
 ## snapshot
 
 Document capture records, snapshot identifiers for evaluation cases and access to documents captured after the reading horizon.
 
-- `capture` — `[pipeline.tables.snapshot]` names each document's `url`, `captured_at`, `digest` and `source` columns. Each capture commits as one store snapshot. An evaluation case pins the capture by `snapshot` id.
+- `capture` — `[pipeline.tables.snapshot]` declares {{type:contextful_core::store::declare::SnapshotDecl}}, the columns describing each captured document. Each capture commits as one store snapshot, and an evaluation case pins it by `snapshot` id.
   *A-store#snapshot-corpus-declared*
-- `post-horizon-capture` — A document captured after the reading horizon carries `_available_reconstructed` true under {{store.available-time.live-since}}. A horizon read admits the document only when the block's `leak_score` column holds 0.
+- `post-horizon-capture` — A document captured after the reading horizon carries `_available_reconstructed` true under {{store.available-time.live-since}}, and a horizon read admits it only while the block's `leak_score` column holds 0.
   *A-store#snapshot-corpus-declared*
 
 #### Scenarios

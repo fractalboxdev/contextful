@@ -58,10 +58,9 @@ fn a_retried_land_acknowledges_the_replay_and_refuses_other_rows() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("StoreRunConflict"), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
-/// A pass reports folded, `indexes-built`, nothing-landed or failed on one line per table. `indexes-built` names
-/// sidecars built without folding runs. Nothing-landed means no pending runs and every declared sidecar current; the
-/// pass continues.
-// spec: store.fold.result@67b753db
+/// A pass reports one line per table, folded, `indexes-built` for sidecars built without folding runs, failed, or
+/// nothing-landed when no run is pending and every declared sidecar is current, and continues.
+// spec: store.fold.result@1b7ffb16
 #[test]
 fn a_scheduled_pass_reports_every_table_and_continues_past_nothing_landed() {
     let p = project();
@@ -119,8 +118,9 @@ fn a_scheduled_pass_skips_a_table_whose_trigger_has_not_fired() {
     assert!(report.starts_with("filings: folded"), "{report}");
 }
 
-/// `contextful context land --session` reads one JSON object per stdin line — `run_id`, `rows`, optional `now` — lands each as its own run through one landing session, and prints that run's outcome before reading the next line.
-// spec: run.land.session-input@1795c1dd
+/// `contextful context land --session` reads one {{type:contextful_cli::context::SessionBatch}} per stdin line, lands
+/// each as its own run through one landing session, and prints that run's outcome before reading the next line.
+// spec: run.land.session-input@2f874260
 #[test]
 fn a_session_land_commits_each_stdin_batch_as_its_own_run() {
     use std::io::Write;
@@ -240,9 +240,9 @@ fn scan_reports_the_column_count_and_files_but_no_row_count() {
     assert!(fields.keys().all(|k| !k.contains("row")), "{v}");
 }
 
-/// `derived.sqlite` is a cache. `contextful context rebuild-catalog` reconstructs the cache from pointers, reachable
-/// manifests, every committed run manifest and every `schema.json`. Sync excludes the cache, which commits nothing.
-// spec: store.lay-out.derived-catalog@710435ba
+/// `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from pointers, reachable
+/// manifests, committed run manifests and every `schema.json`, and sync excludes it.
+// spec: store.lay-out.derived-catalog@ac912292
 #[test]
 fn rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree() {
     use contextful_core::store::catalog::{DerivedCatalog, DerivedRows};

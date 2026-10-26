@@ -1777,9 +1777,10 @@ fn the_served_stop_route_marks_the_run_and_answers_its_ids() {
     assert_eq!(control(&addr, "POST", "/runs/live-a/stop", Some(&execute), "[1]").0, 400);
 }
 
-/// Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises
-/// `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.
-// spec: run.cancel.not-in-flight@285fe285
+/// Only a row holding a non-terminal {{type:contextful_core::run::record::RunStatus}} accepts a
+/// mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and
+/// exiting non-zero at the terminal.
+// spec: run.cancel.not-in-flight@df4eae70
 #[test]
 fn a_stop_on_a_finished_run_answers_409_and_exits_non_zero() {
     let (dir, public) = project();

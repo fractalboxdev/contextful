@@ -147,7 +147,7 @@ fn absent_structural_identity_preserves_the_legacy_plan_reference_and_owner_pins
     assert_eq!(serde_json::to_vec(&input.pins()).unwrap(), serde_json::to_vec(&legacy).unwrap());
 }
 
-// spec: run.journal.host-structure-pin@55e09c9b
+// spec: run.journal.input-pin@cd86371e
 #[test]
 fn structural_identity_binds_the_plan_and_pending_owner_without_changing_input_text() {
     use contextful_core::run::own::OwnerPins;

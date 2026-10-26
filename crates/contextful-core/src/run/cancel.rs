@@ -37,7 +37,7 @@ impl Scope {
 
 /// Write a stop onto `row`. Only an in-flight row accepts a mark; marking an already
 /// marked row overwrites it with the newer request (`run.cancel.not-in-flight`,
-/// `run.cancel.re-mark`).
+/// `run.cancel.catalog-channel`).
 pub fn mark(row: &mut RunRow, scope: Scope, reason: Option<String>, requested_at: Instant) -> Result<(), RunError> {
     if !row.status.is_in_flight() {
         return Err(RunError::CancelTargetNotInFlight(format!(

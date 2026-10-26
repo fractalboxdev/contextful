@@ -195,8 +195,10 @@ fn include_and_exclude_globs_select_root_relative_paths() {
     }
 }
 
-/// A `file` table other than `documents` refuses as {{connector.source.table-unmatched}}, ahead of the walk.
-// spec: connector.source.file-table-unmatched@5f152df5
+/// A table not matching the declared pattern, binding `.` or `..` into a placeholder, a `file` table other
+/// than `documents`, or a drive table other than `files` or `pages` raises `ConnectorTableUnmatched` ahead
+/// of any request or walk.
+// spec: connector.source.table-unmatched@0508c73f
 #[test]
 fn a_table_other_than_documents_refuses() {
     let config = FileConfig::parse(&json!({"root": "nowhere"})).unwrap();
@@ -205,9 +207,9 @@ fn a_table_other_than_documents_refuses() {
     assert!(matches!(refused, ConnectorError::ConnectorTableUnmatched(_)), "{refused}");
 }
 
-/// A document source lands one row per page, or one row per heading past a length threshold. With a base URL, each
-/// row links to its own page anchor.
-// spec: connector.source.document-grain@efa4b1d0
+/// A document source lands one row per page, or one row per heading past a length threshold, each identified by a
+/// slug plus an ordinal, chunked or not. With a base URL, each row links to its own page anchor.
+// spec: connector.source.document-grain@ca92763c
 // spec: connector.source.document-url@b05b719f
 #[test]
 fn a_note_lands_whole_or_by_heading_and_a_pdf_by_page_each_linked_to_its_anchor() {
@@ -258,8 +260,10 @@ fn a_note_splits_by_heading_only_past_the_threshold() {
     assert_eq!(row(&rows, "over", 2)["text"], json!("# Two\nend"));
 }
 
-/// A document row's identity is a slug plus an ordinal, chunked or not.
-// spec: connector.source.document-identity@714866a2
+/// A document source lands one row per page, or one row per heading past a length threshold, each
+/// identified by a slug plus an ordinal, chunked or not. With a base URL, each row links to its own
+/// page anchor.
+// spec: connector.source.document-grain@ca92763c
 #[test]
 fn a_note_crossing_the_threshold_keeps_its_first_rows_identity() {
     let dir = tempfile::tempdir().unwrap();

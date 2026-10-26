@@ -29,7 +29,7 @@ sha2 = { version = "0.10", optional = true }
 # an embedder supplies its own `egress::Transport`.
 transport-ureq = ["dep:ureq"]
 # The `aws-secrets-manager` adapter, signing under the workload role. A build without it
-# links no Secrets Manager client (`connector.resolve.adapter-is-optional`).
+# links no Secrets Manager client (`connector.resolve.provider-chain`).
 aws-secrets-manager = ["transport-ureq", "sigv4"]
 # The `aws-sqs` adapter behind the `Queue` port, signing under the workload role
 # (`topology.compose.queue-sqs`). A build without it links no SQS client.

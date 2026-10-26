@@ -118,9 +118,9 @@ fn imds_answers_last_under_a_session_token() {
     assert_eq!(imds.requests.lock().unwrap().len(), 3, "a disabled metadata source sends nothing");
 }
 
-/// Role credentials refresh 300 s before their stated expiry, and no request signs with expired
-/// credentials. A failed refresh keeps still-valid credentials and retries at the next request.
-// spec: store.endpoint.role-refresh@932b0a79
+/// Role credentials refresh 300 s before their stated expiry and never sign once expired; a failed
+/// refresh keeps still-valid credentials and retries at the next request.
+// spec: store.endpoint.role-refresh@28641ec0
 #[test]
 fn role_credentials_refresh_ahead_of_expiry_and_a_failed_refresh_keeps_valid_ones() {
     let _env = proxy_env();

@@ -50,6 +50,22 @@ fn the_adopted_manifest_reads_every_declared_capability() {
     assert_eq!(probe.expect, ["reports.read", "accounts.read"]);
 }
 
+/// An adopted manifest carries a digest from the fixed builder platform. A template manifest carries a pin requirement
+/// and placeholder. The parser accepts a template; the loader refuses it.
+// spec: connector.package.manifest-posture@c17c9a82
+#[test]
+fn a_template_manifest_parses_and_its_placeholder_pin_refuses_at_load() {
+    let adopted = Manifest::parse(ADOPTED).unwrap();
+    assert!(adopted.pin().unwrap().is_some(), "an adopted manifest carries its digest");
+    let template = ADOPTED.replace("9f2c1b7ad0e49f2c1b7ad0e49f2c1b7ad0e49f2c1b7ad0e49f2c1b7ad0e4abcd", "<written by connector pin>");
+    let m = Manifest::parse(&template).unwrap();
+    assert!(m.require_wasm_pin, "a template carries the pin requirement");
+    match m.pin() {
+        Err(e @ ConnectorError::ConnectorManifestRejected(_)) => assert!(e.to_string().contains("wasm_sha256"), "{e}"),
+        other => panic!("expected ConnectorManifestRejected, got {other:?}"),
+    }
+}
+
 #[test]
 fn a_manifest_with_no_capabilities_declares_nothing() {
     let m = Manifest::parse("name = \"probe\"\n").unwrap();

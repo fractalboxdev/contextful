@@ -79,8 +79,8 @@ fn run(rig: &Rig, f: &SweepFire<'_>, asked: &Mutex<Vec<Asked>>) -> Swept {
     rig.engine.sweep(f, &mut read, &mut land).unwrap()
 }
 
-/// A store-driven `[[job]]` declaring `sweep = { start, end, step, state }` opens one run per origin from `start` through `end` at each `step`, a `<n><unit>` interval in {{surface.arm.grammar}} units, each reading with `available_as_of` equal to its origin.
-// spec: run.sweep.origins@ee93e0d3
+/// A store-driven `[[job]]` declaring {{type:contextful_core::run::sweep::Sweep}} opens one run per origin from its start through its end at each step in {{surface.arm.grammar}} units, each reading with `available_as_of` equal to its origin.
+// spec: run.sweep.origins@44d60b8e
 #[test]
 fn a_sweep_opens_one_run_per_origin_each_bounded_by_its_origin() {
     let rig = Rig::new();
@@ -233,8 +233,9 @@ fn each_origin_runs_under_its_own_execution_id_and_bound() {
     assert_eq!(bounds.len(), 12, "each origin carries its own availability bound");
 }
 
-/// A sweep origin's run row carries, beside {{run.record.input-bounds}}, its `available_as_of`, any `valid_as_of` it read under, the sweep id and the origin.
-// spec: run.record.sweep-bounds@d3edfb11
+/// A store-driven run's row carries its input as {{type:contextful_core::run::record::InputBounds}}: the resolved `as_of`, snapshot ids and row
+/// count, and for a sweep origin the bounds it read under, the sweep id and the origin.
+// spec: run.record.sweep-bounds@afe792ba
 #[test]
 fn an_origin_row_names_its_bounds_sweep_and_origin() {
     let rig = Rig::new();

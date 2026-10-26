@@ -154,7 +154,7 @@ The struct at `crates/contextful-cli/src/connection.rs:59`, named by `surface.co
 
 ### `contextful_core::surface::delegate::Answer`
 
-The enum at `crates/contextful-core/src/surface/delegate.rs:221`, named by `surface.delegate.outcome`.
+The enum at `crates/contextful-core/src/surface/delegate.rs:221`, named by `run.items.delegated-item`, `surface.delegate.outcome`.
 
 | Key | Doc |
 | --- | --- |
@@ -210,7 +210,7 @@ The struct at `crates/contextful-core/src/surface/external.rs:46`, named by `sur
 | `A-surface#native-model-builds` | `surface.fire.model-snapshot`, `surface.fire.scheduled-build` |
 | `A-surface#query-admin-use` | `surface.open-console.identity-gate`, `surface.open-console.page-grants`, `surface.open-console.engine-faces`, `surface.open-console.wrong-page`, `surface.open-console.admin-grant` |
 | `A-surface#residency-divergence-detected` | `surface.reside.region-entries`, `surface.reside.site-regions` |
-| `A-surface#store-driven-job` | `run.journal.store-input`, `run.journal.input-pin`, `run.journal.host-structure-pin` |
+| `A-surface#store-driven-job` | `run.journal.store-input`, `run.journal.input-pin` |
 | `A-surface#synced-control-head` | `store.push.control-artifact`, `store.push.control-diverged`, `store.pull.control-head`, `surface.reconcile.pulled-control`, `surface.apply.synced-attestation`, `surface.apply.receipt-message`, `surface.apply.receipt-digest`, `surface.apply.receipt-file`, `surface.apply.attestation-unavailable` |
 | `A-surface#turn-compatibility-preserves` | `surface.package.owner-flag`, `surface.plan-turn.overlay-audience` |
 | `A-surface#workers-reach-orchestrator` | `surface.dispatch.heartbeat-beat`, `surface.dispatch.worker-target`, `surface.visualize.workflow-canvas` |

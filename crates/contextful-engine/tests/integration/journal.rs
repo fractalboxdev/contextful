@@ -207,9 +207,9 @@ fn concurrent_blob_writers_converge_on_one_file() {
     assert_eq!(std::fs::read(j.blob_path(&sha)).unwrap(), value);
 }
 
-/// Every step kind follows {{run.journal.inline-cutoff}}: pulls, recorded effects, input steps and awakeable payloads.
-/// No step kind overrides the cutoff.
-// spec: run.journal.one-cutoff@5282a42b
+/// Every step kind follows {{run.journal.inline-cutoff}}: pulls, recorded effects, input steps and awakeable payloads,
+/// whose pending row references an offloaded blob. No step kind overrides the cutoff.
+// spec: run.journal.one-cutoff@cb049a23
 #[test]
 fn every_step_kind_places_its_value_by_the_one_cutoff() {
     let dir = tempfile::tempdir().unwrap();

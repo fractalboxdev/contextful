@@ -92,9 +92,9 @@ fn a_from_only_declaration_reads_each_row_valid_from_its_instant_onward() {
 }
 
 #[cfg(feature = "read")]
-/// A keyed table declaring `valid_time` stores one row per key and valid-time interval. The table deduplicates on its
-/// primary key and `from`, so a fold keeps every interval.
-// spec: store.bound-time.interval-rows@948c8598
+/// A keyed table declaring `valid_time` stores one row per key and valid-time interval, deduplicating on its primary
+/// key and `from`, so a fold keeps every interval.
+// spec: store.bound-time.interval-rows@3138b0c7
 #[test]
 fn a_keyed_valid_time_read_reaches_the_version_valid_then() {
     let f = Fixture::new();

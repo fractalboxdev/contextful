@@ -69,6 +69,7 @@ fn an_aes_gcm_file_round_trips_without_plaintext_or_key_reuse() {
     assert!(cipher.open(&tampered).is_err());
 }
 
+// spec: store.encrypt.metadata-envelope@b9749bcc
 #[test]
 fn sealed_metadata_files_round_trip_without_plaintext_or_fallback() {
     use contextful_context::encrypt::{AesGcmFileCipher, MetadataFiles};
@@ -202,9 +203,9 @@ fn tree(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
     out
 }
 
-/// For unencrypted projects, readers memory-map sidecars read-only. For encrypted projects, readers decrypt each
-/// sealed sidecar file into anonymous process memory without writing cleartext to disk.
-// spec: store.encrypt.sidecar-reader@e36492a8
+/// Unencrypted projects' readers memory-map sidecars read-only; encrypted projects' readers decrypt each sealed
+/// sidecar into anonymous process memory, writing no cleartext to disk.
+// spec: store.encrypt.sidecar-reader@b57b38c0
 #[test]
 fn a_plaintext_sidecar_is_mapped_and_a_sealed_one_opens_into_memory_alone() {
     use arrow_array::builder::{FixedSizeListBuilder, Float32Builder};
@@ -401,7 +402,7 @@ fn encrypted_parquet_has_no_plaintext_canary_and_decrypts() {
 }
 
 /// Persistent adapters share the opened store's cipher without receiving key material.
-// spec: store.encrypt.key-binding@447c159e
+// spec: store.encrypt.key-binding@9cd657b8
 #[test]
 fn a_bound_store_shares_one_opaque_cipher_with_persistent_adapters() {
     let key_var = "CONTEXTFUL_TEST_KEY_74_SHARED_BINDING";
@@ -420,7 +421,7 @@ fn a_bound_store_shares_one_opaque_cipher_with_persistent_adapters() {
 
 /// A table naming `bloom_filter` in an encrypted project carries no bloom filter in a run
 /// part or a fold snapshot, since Parquet would store it outside the encryption.
-// spec: store.index.bloom-encrypted@b02178bf
+// spec: store.index.bloom-encrypted@d92ec8fa
 #[test]
 fn an_encrypted_project_writes_no_bloom_filter() {
     use contextful_context::land::{Batch, RunContext};
@@ -551,6 +552,7 @@ max_lag = "1d"
     }
 }
 
+// spec: store.encrypt.metadata-envelope@b9749bcc
 #[test]
 fn a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload() {
     use contextful_context::land::{land, Batch, RunContext};
@@ -637,7 +639,7 @@ fn a_bound_store_seals_its_request_ledger() {
 
 /// A bound store writes Parquet under an encrypted footer and seals each sidecar and ledger file
 /// under its own data key, opened by the project key alone.
-// spec: store.encrypt.cipher@1c8139d4
+// spec: store.encrypt.cipher@439bd822
 #[test]
 fn a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_file() {
     use contextful_context::encrypt::AesGcmFileCipher;

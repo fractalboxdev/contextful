@@ -141,9 +141,10 @@ fn a_leased_entry_retires_by_the_tighter_bound() {
     }
 }
 
-/// The provider answers `POST <provider-url>/leases` carrying a bearer mint credential and body `{ "scope":
-/// "<lease scope>" }`.
-// spec: connector.lease.endpoint@421208bc
+/// The provider answers `POST <provider-url>/leases`, carrying a bearer mint credential and body `{
+/// "scope": "<lease scope>" }`, with `value` and one expiry, `expires_in` seconds, `expires_at` epoch
+/// seconds or an RFC 3339 instant, at top level or under `lease`.
+// spec: connector.lease.endpoint@7e6dca49
 #[test]
 fn a_mint_is_a_bearer_post_naming_the_scope() {
     let _env = proxy_env();
@@ -253,9 +254,9 @@ fn one_mint_per_name_per_window() {
     assert_eq!(mints(&server), 2 * MINT_CALLS_PER_WINDOW as usize, "one per declared name");
 }
 
-/// The lease provider holds the chain as assembled before it joined, so the mint reference hydrates only through
-/// adapters behind it.
-// spec: connector.lease.bootstrap-non-recursion@072ce297
+/// The engine authenticates to the mint endpoint with one standing `secret://` credential, hydrated only through the
+/// adapters the chain held before the lease provider joined.
+// spec: connector.lease.bootstrap-credential@e25e4b53
 #[test]
 fn the_mint_credential_comes_from_the_adapters_behind_the_provider() {
     let _env = proxy_env();

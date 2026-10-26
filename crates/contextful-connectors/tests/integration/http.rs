@@ -104,7 +104,7 @@ fn expansion_lands_detail_on_the_source_pull() {
 }
 
 /// Both expansion pointer forms refuse at build without issuing a request.
-// spec: connector.source.pointer-ambiguity@d4d52bad
+// spec: connector.source.pagination-ambiguity@e8c781bd
 #[test]
 fn expansion_rejects_two_pointer_forms() {
     let cfg = json!({"endpoint":"https://api.vendor.example/index", "expansion":{"pointer_column":"url", "url_template":"https://api.vendor.example/{id}", "target_column":"detail"}});
@@ -426,8 +426,9 @@ fn each_pagination_shape_walks_to_its_end() {
     assert_eq!(ids(&s.walk(&request(None), &Never).unwrap()), ["l1", "l2"]);
 }
 
-/// Declaring two pagination shapes raises `ConnectorPaginationAmbiguous`.
-// spec: connector.source.pagination-ambiguity@7124b478
+/// Declaring two pagination shapes raises `ConnectorPaginationAmbiguous`, and declaring both
+/// expansion pointer forms raises `ConnectorPointerAmbiguous`.
+// spec: connector.source.pagination-ambiguity@e8c781bd
 #[test]
 fn two_pagination_shapes_are_refused() {
     for extra in [json!({"page_param": "p", "link_header": true}), json!({"next_cursor_path": "/n", "next_url_path": "/u"})] {
@@ -591,9 +592,10 @@ fn a_credentialed_endpoint_host_is_never_bound_from_a_table_name() {
     assert!(HttpConfig::parse(&json!({"endpoint": "https://{table}.vendor.example/v1"})).is_ok());
 }
 
-/// A table not matching the declared pattern, or binding `.` or `..` into a placeholder, raises `ConnectorTableUnmatched`
-/// ahead of any request.
-// spec: connector.source.table-unmatched@8c1761ac
+/// A table not matching the declared pattern, binding `.` or `..` into a placeholder, a `file` table other than
+/// `documents`, or a drive table other than `files` or `pages` raises `ConnectorTableUnmatched` ahead of any request or
+/// walk.
+// spec: connector.source.table-unmatched@0508c73f
 #[test]
 fn a_table_off_the_pattern_is_refused_before_any_request() {
     let vendor = Server::start(|_| Response::json(200, "[{\"id\":\"a\"}]"));

@@ -33,6 +33,6 @@ pub trait VersionedStore: Send + Sync {
     /// The adapter's name, as attribution records it.
     fn adapter(&self) -> &str;
     /// Store `value` for `name` when the current version is `if_version`, with an opaque
-    /// expiry hint beside it (`connector.rotate.expiry-hint`).
+    /// expiry hint beside it (`connector.rotate.division-of-labor`).
     fn put(&self, name: &SecretName, value: &Hydrated, if_version: Option<&str>, expires_hint: Option<Instant>) -> Result<Version, PutError>;
 }

@@ -325,9 +325,10 @@ fn a_moved_fingerprint_refuses_and_an_absent_one_skips_with_a_warning() {
     assert_eq!(sink.commits.len(), 1);
 }
 
-/// Seeded rows travel {{run.land.stage-order}} unchanged; attribution survives only in the load id and a run recorded
-/// under the `seeding` phase.
-// spec: run.seed.one-land-path@e297356e
+/// Seeded rows travel {{run.land.stage-order}} unchanged, landing availability and `_ingested_at` as
+/// {{run.backfill.available-instant}} does; attribution survives only in the load id and a run recorded under the
+/// `seeding` phase.
+// spec: run.seed.one-land-path@9ba6a62e
 #[test]
 fn a_seed_chunk_lands_in_the_live_table_under_the_seeding_phase() {
     let rig = Rig::new();

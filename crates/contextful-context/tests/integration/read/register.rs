@@ -196,7 +196,7 @@ fn every_bare_name_resolves_to_the_callers_relation() {
     assert_eq!(previewed, acme);
 }
 
-// spec: store.bound-time.beneath-enforcement@d2c06cd4
+// spec: store.bound-time.beneath-enforcement@9e6bbc99
 #[test]
 fn historical_retrieval_keeps_row_and_column_enforcement() {
     let r = Reads::new();
@@ -504,9 +504,8 @@ fn a_tenant_scoped_read_naming_the_ledger_is_refused() {
     assert!(message.contains("`research/contacts`") && message.contains("row policy"), "{message}");
 }
 
-/// An append locks its run's ledger file to serialize writes. The append returns after syncing its rows and the rename
-/// to disk.
-// spec: store.reserve.ledger-append@befb2af2
+/// An append locks its run's ledger file and returns after syncing its rows and the rename to disk.
+// spec: store.reserve.ledger-append@ac81fcec
 #[test]
 fn concurrent_flushes_of_one_run_keep_every_row() {
     let r = Reads::new();
@@ -560,10 +559,10 @@ fn reference_is_a_bounded_read_tool_over_registered_relations() {
     assert!(tool["inputSchema"]["properties"].get("max_response_bytes").is_some());
 }
 
-/// `available_as_of` filters the inner source with `<column> <= available_as_of` beneath access controls, under
-/// {{store.bound-time.beneath-enforcement}}, and combines with {{store.bound-time.as-of}} and
-/// {{store.bound-time.valid-as-of}} when the read supplies those bounds.
-// spec: store.available-time.available-as-of@01cafb83
+/// `available_as_of` filters the inner source with `<column> <= available_as_of` under
+/// {{store.bound-time.beneath-enforcement}}, combining with {{store.bound-time.as-of}} and
+/// {{store.bound-time.valid-as-of}} when the read supplies them.
+// spec: store.available-time.available-as-of@c0b32e59
 #[test]
 fn an_availability_bound_narrows_the_tenant_restricted_rows() {
     const FILINGS: &str = "\n[[pipeline.tables]]\nname = \"research/filings\"\nprimary_key = [\"filing_id\"]\npartition_by = [\"tenant\"]\ncontent_hash_column = \"digest\"\n\n[pipeline.tables.policy.columns]\nanalyst = { strategy = \"drop\" }\n\n[pipeline.tables.available_time]\ncolumn = \"accepted_at\"\n";

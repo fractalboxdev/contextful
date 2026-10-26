@@ -761,9 +761,10 @@ fn a_file_row_carries_its_metadata_and_names_its_bytes_by_digest() {
     assert_eq!((plan["export_mime_type"].clone(), plan["md5_checksum"].clone()), (json!("application/pdf"), Value::Null), "Drive supplies no checksum for a native file");
 }
 
-/// A drive table other than `files` or `pages` refuses as {{connector.source.table-unmatched}}, ahead of any
-/// request.
-// spec: connector.source.drive-table-unmatched@f63a2d97
+/// A table not matching the declared pattern, binding `.` or `..` into a placeholder, a `file` table other
+/// than `documents`, or a drive table other than `files` or `pages` raises `ConnectorTableUnmatched` ahead
+/// of any request or walk.
+// spec: connector.source.table-unmatched@0508c73f
 #[test]
 fn a_table_the_source_does_not_serve_refuses_before_any_request() {
     let fake = Fake::start();

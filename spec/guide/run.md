@@ -52,8 +52,8 @@ owner** binds the pending work to its scope, connector build and plan hash
 ({{run.record.owner-lease}}).
 
 The pull admits rows at or after the stored position, so each poll re-reads the boundary
-instant ({{run.advance.inclusive-boundary}}). `records` declares a key, which makes those
-repeats idempotent; a keyless table accumulates them ({{run.advance.declared-key-required}}).
+instant. `records` declares a key, which makes those repeats idempotent; a keyless table
+accumulates them ({{run.advance.inclusive-boundary}}).
 
 The **journal** records each pulled page exactly once, although the request behind it
 runs at least once ({{run.journal.step-output}}). Each outbound request carries an
@@ -68,7 +68,7 @@ commit marker newer than the cached position, so the pending owner stays
 
 The plan hash matches, so the run replays. The journal hands the recorded page to the
 land path byte for byte ({{run.journal.replay-lands}}), and the replay sends no request
-to the vendor ({{connector.meter.replay-reservation}}).
+to the vendor ({{run.retry.no-double-spend}}).
 
 The remaining pages pull live. The commit publishes the rows and the new position
 together ({{run.advance.commit-with-rows}}), and `success` releases the owner

@@ -311,7 +311,7 @@ fn a_child_declared_first_derives_its_parents_new_rows_in_one_tick() {
     assert_eq!(select(p, "SELECT copy FROM \"echo_copies\" WHERE kind = 'passage' ORDER BY copy"), [["alpha"], ["beta"], ["gamma"]]);
 }
 
-// spec: run.select.derive-failed-parent@219b4497
+// spec: run.select.parent-outcome@b69fd40a
 #[test]
 fn a_child_reads_committed_parent_rows_after_its_parent_fails() {
     let host = host_binary();
@@ -343,7 +343,7 @@ fn a_failed_parent_runs_its_derive_child_past_an_explicit_after_sibling() {
     assert!(vendor.targets().is_empty(), "an explicit after sibling ran after the parent failed");
 }
 
-// spec: run.select.parent-outcome@418ee978
+// spec: run.select.parent-outcome@b69fd40a
 #[cfg(unix)]
 #[test]
 fn a_derived_child_stops_when_the_parent_process_cannot_start() {

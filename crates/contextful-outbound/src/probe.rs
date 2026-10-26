@@ -15,7 +15,7 @@ fn refuse(e: contextful_core::connector::ConnectorError) -> Failure {
 /// Call `probe`'s endpoint with the bound credential and judge the grant it reports.
 /// Answers the granted scopes. The request takes a client on the manifest's allowlist,
 /// so the probe's host and transport meet the rules of every credentialed request
-/// (`connector.declare-capability.probe-transport`); a `401`, `403`, `429` or `5xx`
+/// (`connector.declare-capability.scope-probe`); a `401`, `403`, `429` or `5xx`
 /// classifies as any vendor answer does.
 pub fn probe(allow: &Allowlist, probe: &ScopeProbe, credential: (&str, Hydrated)) -> Result<Vec<String>, Failure> {
     // The grant rides a header, so the identity body is never read.

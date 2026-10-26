@@ -185,9 +185,10 @@ fn urls(answer: &Value) -> Vec<String> {
     out
 }
 
-/// `[pipeline.tables.snapshot]` names each document's `url`, `captured_at`, `digest` and `source` columns. Each
-/// capture commits as one store snapshot. An evaluation case pins the capture by `snapshot` id.
-// spec: store.snapshot.capture@bbab83d6
+/// `[pipeline.tables.snapshot]` declares {{type:contextful_core::store::declare::SnapshotDecl}}, the columns
+/// describing each captured document. Each capture commits as one store snapshot, and an evaluation case pins
+/// it by `snapshot` id.
+// spec: store.snapshot.capture@1b5ecf0e
 #[test]
 fn each_capture_commits_one_snapshot_a_read_pins_by_id() {
     let mut ids = Vec::new();
@@ -206,9 +207,10 @@ fn each_capture_commits_one_snapshot_a_read_pins_by_id() {
     assert!(unknown.contains("PinnedBuildUnavailable") && unknown.contains("research/pages"), "{unknown}");
 }
 
-/// A document captured after the reading horizon carries `_available_reconstructed` true under {{store.available-
-/// time.live-since}}. A horizon read admits the document only when the block's `leak_score` column holds 0.
-// spec: store.snapshot.post-horizon-capture@81e4608c
+/// A document captured after the reading horizon carries `_available_reconstructed` true under
+/// {{store.available-time.live-since}}, and a horizon read admits it only while the block's `leak_score` column
+/// holds 0.
+// spec: store.snapshot.post-horizon-capture@680a9ba6
 #[test]
 fn a_capture_after_the_horizon_answers_only_at_a_leak_score_of_zero() {
     let mut ids = Vec::new();

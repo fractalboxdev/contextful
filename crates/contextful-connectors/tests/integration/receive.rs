@@ -5,7 +5,7 @@ use serde_json::json;
 
 /// A `receive` source declares `format = "jsonl"`, a positive `max_batch_bytes`, a positive `max_queue_depth` and a
 /// positive `key_retention_secs`, none defaulted.
-// spec: connector.source.receive-form@ddcc77a1
+// spec: connector.source.receive-form@f82146e2
 #[test]
 fn a_receive_source_declares_both_ceilings_and_the_jsonl_format() {
     assert_eq!(NAME, "receive");
