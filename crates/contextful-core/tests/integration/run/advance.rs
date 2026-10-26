@@ -8,10 +8,9 @@ fn rows(values: &[Value]) -> Vec<Map<String, Value>> {
     values.iter().map(|v| json!({ "updated_at": v }).as_object().unwrap().clone()).collect()
 }
 
-/// A cursor declares `monotonic` for a timestamp, autoincrement or watermark, `opaque-token` for a vendor
-/// continuation token, or `snapshot-id` for a log sequence number or version id. An undeclared kind resolves to
+/// A cursor declares a {{type:contextful_core::run::advance::CursorKind}}. An undeclared kind resolves to
 /// `opaque-token`.
-// spec: run.advance.cursor-kind@eb822467
+// spec: run.advance.cursor-kind@41b09b99
 #[test]
 fn three_kinds_and_an_undeclared_one_reads_opaque_token() {
     assert_eq!(CursorKind::resolve(Some("monotonic")).unwrap(), CursorKind::Monotonic);

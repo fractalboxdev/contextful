@@ -111,10 +111,10 @@ fn select(p: &Path, sql: &str) -> Vec<Vec<String>> {
     v["rows"].as_array().unwrap().iter().map(|r| r.as_array().unwrap().iter().map(|c| c.as_str().map(str::to_string).unwrap_or_else(|| c.to_string())).collect()).collect()
 }
 
-/// Under a delegated body, each call ordinal is one request under the envelope, its `ok`, `defer` or
-/// `permanent` answer recorded under the item's entry key, so a resume replays every recorded answer and sends
-/// only the unrecorded call.
-// spec: run.items.delegated-item@680ef9d2
+/// Under a delegated body, each call ordinal is one request under {{surface.delegate.envelope}}, its
+/// {{type:contextful_core::surface::delegate::Answer}} recorded under the item's entry key, so a resume
+/// replays every recorded answer and sends only the unrecorded call.
+// spec: run.items.delegated-item@72101468
 #[test]
 fn a_call_delegate_takes_one_signed_envelope_per_item_and_a_later_fire_sends_nothing() {
     let delegate = Server::start(|request| {

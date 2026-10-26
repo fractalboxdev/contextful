@@ -521,7 +521,7 @@ fn raw_item_publication_refuses_a_fence_transferred_during_staging() {
     assert!(sink.commits.is_empty());
 }
 
-// spec: run.items.terminal-input@9ceb7e46
+// spec: run.items.completion@080e93f0
 #[test]
 fn terminal_sibling_failure_does_not_pin_later_fires_to_old_input() {
     let rig = Rig::new();

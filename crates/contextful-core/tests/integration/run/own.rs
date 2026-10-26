@@ -67,9 +67,10 @@ fn receive_refusals_name_their_identifiers() {
     assert!(RunError::ReceivePipelineUnknown("x".into()).to_string().starts_with("ReceivePipelineUnknown: "));
 }
 
-/// The {{run.own.pinned-plan-changed}} refusal names restoring the recorded build or plan and, under a host or table scope,
-/// {{run.own.rewind}} with the pending execution id; it names no recovery the command line lacks.
-// spec: run.own.pin-mismatch-recovery@fabd7b09
+/// Restoring the recorded build and resuming to completion clears a pending owner; {{run.own.rewind}} retires a host or
+/// table owner, a chunk rewind those its window covers. The {{run.own.pinned-plan-changed}} refusal names these recoveries
+/// with the pending execution id, and no other.
+// spec: run.own.pin-mismatch-recovery@2f4d1610
 #[test]
 fn a_pin_mismatch_names_only_recoveries_the_command_line_provides() {
     use contextful_core::run::own::{ConnectorPin, ExecutionOwner, OwnerPins, OwnerScope, Pins, PlanPins};

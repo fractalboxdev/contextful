@@ -233,7 +233,7 @@ impl InputSet {
         Ok(InputSet { as_of: as_of.to_string(), snapshots, rows })
     }
 
-    /// The bounds the run row carries (`run.record.input-bounds`).
+    /// The bounds the run row carries (`run.record.sweep-bounds`).
     pub fn bounds(&self) -> InputBounds {
         InputBounds { as_of: self.as_of.clone(), snapshots: self.snapshots.clone(), rows: self.rows.len() as u64, ..InputBounds::default() }
     }

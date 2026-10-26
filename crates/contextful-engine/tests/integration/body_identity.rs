@@ -205,7 +205,7 @@ fn dependency_only_changes_refuse_and_unchanged_resume_reuses_paid_calls() {
     }
 }
 
-// spec: run.own.body-compatibility@f41f65b1
+// spec: run.own.body-admission@4653579f
 #[test]
 fn owners_without_implementation_pins_refuse_before_input_or_body() {
     let rig = Rig::new();
@@ -234,7 +234,7 @@ fn owners_without_implementation_pins_refuse_before_input_or_body() {
     assert_eq!(entered.load(Ordering::SeqCst), 0);
 }
 
-// spec: run.own.body-admission@b05de6ed
+// spec: run.own.body-admission@4653579f
 #[test]
 fn isolated_items_pin_semantic_dependencies_before_replaying_the_input_set() {
     use contextful_engine::drive::ItemPolicy;

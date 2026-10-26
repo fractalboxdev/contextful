@@ -11,9 +11,9 @@ use contextful_core::run::failure::{CALL_DEADLINE, LINEAR_MEMORY};
 use contextful_core::run::record::{BoundHit, RunRow};
 use contextful_core::run::{Failure, FailureTag, RunError};
 
-/// A run status is `pending`, `running`, `waiting`, `success`, `partial_failure`, `failed` or `canceled`, spelled
-/// identically on the record and the wire snapshot; every surface classifying a run covers all seven.
-// spec: run.record.status-set@0d803c11
+/// A run status is a {{type:contextful_core::run::record::RunStatus}}, spelled identically on the record and the
+/// wire snapshot; every surface classifying a run covers all seven.
+// spec: run.record.status-set@4c8411a6
 #[test]
 fn seven_statuses_spelled_once_for_record_and_wire() {
     let names: Vec<&str> = RunStatus::ALL.iter().map(|s| s.name()).collect();
@@ -191,8 +191,8 @@ fn a_bound_is_a_date_or_a_zulu_instant() {
 }
 
 /// A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than
-/// the ceiling returned.
-// spec: run.record.truncation-flag@7daa39b3
+/// the ceiling returned; an empty window answers `[]` and raises nothing.
+// spec: run.record.truncation-flag@e9fc765a
 #[test]
 fn history_echoes_its_window_and_flags_truncation() {
     let rows: Vec<_> = (0..4).map(|i| row(&format!("run-{i}"), &format!("2030-01-01T00:00:0{i}Z"))).collect();
@@ -207,7 +207,7 @@ fn history_echoes_its_window_and_flags_truncation() {
 }
 
 /// An empty window answers `[]` and raises nothing.
-// spec: run.record.empty-window@6549694a
+// spec: run.record.truncation-flag@e9fc765a
 #[test]
 fn an_empty_window_answers_an_empty_list() {
     let rows = vec![row("run-0", "2030-01-01T00:00:00Z")];
@@ -238,9 +238,8 @@ fn a_recorded_error_is_masked_and_capped_at_2_kib() {
     assert_eq!(cap_error("short"), "short");
 }
 
-/// A run row carries run id, pipeline id, site id, status, owner, start and end instants, row and byte counts,
-/// error kind and message, connector id, version and hash, trace id and phase.
-// spec: run.record.columns@facc3543
+/// A run row is a {{type:contextful_core::run::record::RunRow}}.
+// spec: run.record.columns@dc4c8292
 #[test]
 fn a_run_row_carries_every_column() {
     let v = serde_json::to_value(row("run-1", "2030-01-01T00:00:00Z")).unwrap();

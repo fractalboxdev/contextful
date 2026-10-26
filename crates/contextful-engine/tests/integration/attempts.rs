@@ -1,4 +1,4 @@
-//! `run.retry.attempt-counter`: an in-flight schedule's attempt counter on its step's
+//! `run.retry.not-before`: an in-flight schedule's attempt counter on its step's
 //! journal row.
 
 use crate::support::Rig;
@@ -29,7 +29,7 @@ fn open(run_id: &str) -> OpenExecution {
 
 /// An in-flight schedule's attempt counter persists on its step's journal row, so a crash mid-backoff resumes the
 /// remaining budget instead of restarting it.
-// spec: run.retry.attempt-counter@c00bb878
+// spec: run.retry.not-before@bb80cde6
 #[test]
 fn a_crash_mid_schedule_resumes_the_remaining_attempts() {
     let rig = Rig::new();

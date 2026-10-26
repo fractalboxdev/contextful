@@ -52,8 +52,8 @@ owner** binds the pending work to its scope, connector build and plan hash
 ({{run.record.owner-lease}}).
 
 The pull admits rows at or after the stored position, so each poll re-reads the boundary
-instant ({{run.advance.inclusive-boundary}}). `records` declares a key, which makes those
-repeats idempotent; a keyless table accumulates them ({{run.advance.declared-key-required}}).
+instant. `records` declares a key, which makes those repeats idempotent; a keyless table
+accumulates them ({{run.advance.inclusive-boundary}}).
 
 The **journal** records each pulled page exactly once, although the request behind it
 runs at least once ({{run.journal.step-output}}). Each outbound request carries an

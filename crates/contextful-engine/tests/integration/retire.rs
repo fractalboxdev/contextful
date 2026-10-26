@@ -1,4 +1,4 @@
-//! `run.journal.retire-order`: a journal store apart from the catalog deletes a retired
+//! `run.journal.collection`: a journal store apart from the catalog deletes a retired
 //! owner's rows after the catalog commits, and the scope's next open deletes them again.
 
 use crate::support::{SetClock, T0};
@@ -80,7 +80,7 @@ fn open(run_id: &str) -> OpenExecution {
 
 /// A journal store apart from the catalog deletes a retired owner's rows after the catalog commits the
 /// retirement, and the next open under that scope repeats the delete.
-// spec: run.journal.retire-order@0cf4769a
+// spec: run.journal.collection@8142a7ac
 #[test]
 fn a_delete_the_catalog_commit_outran_repeats_at_the_next_open() {
     let dir = tempfile::tempdir().unwrap();
