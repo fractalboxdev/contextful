@@ -63,8 +63,8 @@ fn a_push_never_uploads_a_copy_of_another_nodes_key() {
 }
 
 /// A table's `schema.json` commits by merging into the bucket's copy through the one-promotion lattice and
-/// replacing it on the ETag read; no copy overwrites another.
-// spec: store.push.schema-cas@02f1c0e1
+/// replacing it on the ETag read, so no copy overwrites another.
+// spec: store.push.schema-cas@cf67d251
 #[test]
 fn two_nodes_landing_different_columns_both_keep_them() {
     let dir = tempfile::tempdir().unwrap();
@@ -228,9 +228,9 @@ fn publish(n: &crate::support::Node, table: &str, now: &str) -> String {
     snapshot_id
 }
 
-/// Pull advances pointers only to a higher fence, or the same fence with a later snapshot. Pull verifies every
+/// Pull advances a pointer only to a higher fence, or the same fence with a later snapshot, verifying every
 /// advancing table before writing any pointer.
-// spec: store.pull.pointer-advance@286cc4cd
+// spec: store.pull.pointer-advance@9f2101ca
 #[test]
 fn a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies() {
     let dir = tempfile::tempdir().unwrap();

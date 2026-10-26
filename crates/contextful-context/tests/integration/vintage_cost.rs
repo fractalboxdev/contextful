@@ -123,7 +123,7 @@ fn a_one_day_append_reads_no_stored_vintage() {
 /// Day 50 restated for every symbol: half with a new digest, half re-pulling the stored
 /// digest under a later publication instant. The rows its vintage comparison reads
 /// (ledger `vintage-restate-day-scan`).
-// spec: store.available-time.vintage-scope@9e236004
+// spec: store.available-time.vintage-scope@d80fd9be
 #[test]
 fn a_one_day_restatement_reads_only_that_days_vintages() {
     const SEED: u64 = 0x5eed_7101;

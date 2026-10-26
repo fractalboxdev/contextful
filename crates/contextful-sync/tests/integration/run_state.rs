@@ -32,7 +32,7 @@ fn version_bound_source_fires_travel_with_the_run_state_and_old_states_remain_re
     assert!(serde_json::to_value(old).unwrap().get("sources").is_none());
 }
 
-// spec: store.encrypt.run-state-envelope@b9f7aaa5
+// spec: store.encrypt.run-state-envelope@789f8ab4
 #[test]
 fn a_bound_run_state_stays_sealed_across_record_and_read() {
     let dir = tempfile::tempdir().unwrap();

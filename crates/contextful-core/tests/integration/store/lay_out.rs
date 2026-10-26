@@ -148,8 +148,8 @@ fn a_manifest_missing_later_fields_decodes_with_defaults() {
     assert_eq!(snap.row_count, 0);
 }
 
-/// A node id longer than 64 chars or outside `^[A-Za-z0-9._-]+$` raises `StoreNodeIdInvalid` at process start, before any path, key or lease carries it.
-// spec: store.lay-out.node-id-shape@9672e912
+/// A node id over 64 chars or outside `^[A-Za-z0-9._-]+$` raises `StoreNodeIdInvalid` at process start, before any path, key or lease carries it.
+// spec: store.lay-out.node-id-shape@3a07b5bd
 #[test]
 fn a_node_id_outside_the_shape_is_invalid() {
     let longest = "a".repeat(NODE_ID_MAX_LEN);

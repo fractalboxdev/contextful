@@ -233,8 +233,8 @@ fn mcp_query(dir: &Path) -> Output {
 }
 
 /// With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every bucket table before
-/// their first read. A failed pull stops the command.
-// spec: store.pull.before-run@d42e1584
+/// their first read, a failed pull stopping the command.
+// spec: store.pull.before-run@dc46032c
 #[test]
 fn a_cold_node_pulls_the_bucket_before_its_run_reads() {
     let bucket = tempfile::tempdir().unwrap();
@@ -479,9 +479,9 @@ fn bucket_run_states(bucket: &Path) -> Vec<Value> {
     out
 }
 
-/// With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, and
-/// a failed push fails the command.
-// spec: store.push.after-run@59c1d209
+/// With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, a
+/// failed push failing the command.
+// spec: store.push.after-run@c7cce442
 /// The bucket push runs on the failure arm as on the success arm, for every failure past run open.
 // spec: run.record.failure-publishes@a9b84cbe
 #[test]

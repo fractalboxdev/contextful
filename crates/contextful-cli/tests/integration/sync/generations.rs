@@ -5,7 +5,7 @@ use super::{cf, file_sync, ok, project, STORE};
 /// Each generation lists its commit time, its pushing node and the project's entry and tombstone
 /// counts, so an operator finds the last generation before a push tombstoned the run history.
 // spec: store.pull.generation-list@42baae85
-// spec: store.push.commit-stamp@911f68c8
+// spec: store.push.commit-stamp@7b3fd2fe
 #[test]
 fn generations_list_commit_time_pushing_node_and_tombstones() {
     let bucket = tempfile::tempdir().unwrap();

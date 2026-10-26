@@ -189,7 +189,7 @@ fn a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it() {
 }
 
 /// A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.
-// spec: store.pull.digest-mismatch@9b767ebe
+// spec: store.pull.digest-mismatch@71aac8a4
 #[test]
 fn an_object_whose_digest_differs_from_its_entry_is_refused_and_discarded() {
     let (dir, b, _a) = pushed();
@@ -202,9 +202,9 @@ fn an_object_whose_digest_differs_from_its_entry_is_refused_and_discarded() {
     assert!(!c.root().join("tables/filings/data/runs/run-1/ingest-a/part-00000.parquet").exists());
 }
 
-/// When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3
+/// A named key disappearing mid-download makes the pull re-fetch the manifest and retry the shortfall, up to 3
 /// attempts.
-// spec: store.pull.convergence@554ef6af
+// spec: store.pull.convergence@896d51ea
 #[test]
 fn a_key_moving_mid_download_refetches_the_manifest_and_retries_the_shortfall() {
     assert_eq!(contextful_core::store::sync::PULL_CONVERGENCE, 3);
@@ -326,9 +326,9 @@ fn a_replica_pull_writes_its_descriptor_beside_the_catalog() {
     assert!(!m.entries.keys().any(|k| k.ends_with(DESCRIPTOR_FILE)));
 }
 
-/// A pull writes a table's pointer only after every Parquet part in the named snapshot exists locally. Readers
-/// therefore encounter no pointer before its data.
-// spec: store.pull.pointer-last@fba21a30
+/// A pull writes a table's pointer only once every Parquet part of the named snapshot exists locally, so no
+/// reader meets a pointer before its data.
+// spec: store.pull.pointer-last@5b82b5a1
 #[test]
 fn a_pointer_is_written_only_once_its_snapshot_is_home() {
     let (_dir, b, a) = pushed();
@@ -471,9 +471,9 @@ fn a_replica_refuses_a_write_verb_naming_the_canonical_store() {
     assert_eq!(files(&r).len(), 1);
 }
 
-/// If a replica lacks any of a snapshot's Parquet files, refresh raises `ReplicaPartialParquet` and leaves that
-/// snapshot unpublished.
-// spec: store.replicate.partial-parquet@d6294216
+/// A replica lacking any of a snapshot's Parquet files makes refresh raise `ReplicaPartialParquet` and leave
+/// that snapshot unpublished.
+// spec: store.replicate.partial-parquet@facc48d3
 #[test]
 fn a_replica_missing_a_snapshot_part_refuses_and_leaves_it_unpublished() {
     let (_dir, b, a) = pushed();

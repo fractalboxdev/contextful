@@ -22,9 +22,9 @@ fn open(server: &S3Server) -> S3Bucket {
     S3Bucket::open(&server.endpoint, "us-east-1", BUCKET, credentials(SECRET_KEY)).unwrap()
 }
 
-/// S3 and R2 use path-style `<endpoint>/<bucket>/<key>`, percent-encoding every key segment. Every request uses AWS
-/// Signature Version 4 for service `s3` at the endpoint's region.
-// spec: store.endpoint.addressing@bab3ffaf
+/// S3 and R2 address `<endpoint>/<bucket>/<key>` path-style, percent-encoding each key segment, and sign every
+/// request with AWS Signature Version 4 for service `s3` at the endpoint's region.
+// spec: store.endpoint.addressing@40e7cbb9
 #[test]
 fn an_s3_bucket_signs_and_addresses_every_request() {
     let server = S3Server::start(BUCKET);
@@ -100,9 +100,9 @@ fn a_missing_bucket_answers_no_absent_object() {
     assert!(server.keys().is_empty());
 }
 
-/// A list follows continuation tokens until the backend reports completion. The list returns every key under the
-/// prefix in sorted order.
-// spec: store.endpoint.list-pages@39735d29
+/// A list follows continuation tokens until the backend reports completion, returning every key under the prefix
+/// in sorted order.
+// spec: store.endpoint.list-pages@6f43d263
 #[test]
 fn a_list_follows_every_continuation_token() {
     let server = S3Server::start_paged(BUCKET, 2);

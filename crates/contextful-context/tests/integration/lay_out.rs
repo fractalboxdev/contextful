@@ -92,8 +92,8 @@ fn a_relanded_run_with_equal_rows_answers_the_committed_manifest() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), vec![vec![s("2")]]);
 }
 
-/// Any other landing using a run id already committed on its node raises `StoreRunConflict` and changes nothing.
-// spec: store.lay-out.run-conflict@338cb448
+/// Any other landing under a run id committed on its node raises `StoreRunConflict` and changes nothing.
+// spec: store.lay-out.run-conflict@d0645711
 #[test]
 fn a_relanded_run_with_other_rows_or_a_logged_position_conflicts() {
     use contextful_context::land::{land_batches, Batch, Position, RunContext};
@@ -132,9 +132,9 @@ fn a_relanded_run_with_other_rows_or_a_logged_position_conflicts() {
 }
 
 #[cfg(feature = "read")]
-/// A node directory without `_manifest.json` holds an uncommitted run. File lists exclude its parts. A leased
-/// pipeline's run also waits for its commit-log entry.
-// spec: store.lay-out.uncommitted-run@d9615bd8
+/// A node directory without `_manifest.json` holds an uncommitted run, whose parts file lists exclude; a
+/// leased pipeline's run also waits for its commit-log entry.
+// spec: store.lay-out.uncommitted-run@13274494
 #[test]
 fn a_run_without_its_manifest_joins_no_file_list() {
     let f = Fixture::new();
@@ -163,9 +163,9 @@ fn a_staged_snapshot_joins_no_file_list() {
     assert_eq!(files, ["tables/filings/data/runs/run-1/ingest-a/part-00000.parquet"]);
 }
 
-/// `tables/<t>/_pointer.json` names the table's current snapshot and its commit fence. Readers access only snapshots
-/// reachable from the pointer directly or through `parent` links.
-// spec: store.lay-out.table-pointer@9ae3ed1e
+/// `tables/<t>/_pointer.json` names the table's current snapshot and commit fence; readers reach only snapshots
+/// reachable from it directly or through `parent` links.
+// spec: store.lay-out.table-pointer@23f0a512
 #[test]
 fn only_the_pointer_chain_makes_a_snapshot_readable() {
     let f = Fixture::new();
@@ -239,10 +239,9 @@ fn format_of(path: &std::path::Path) -> serde_json::Value {
     serde_json::from_slice::<serde_json::Value>(&fs::read(path).unwrap()).unwrap()["format_version"].clone()
 }
 
-/// Run and snapshot manifests carry `format_version` as `<major>.<minor>`. Snapshots referencing parts or segments use
-/// `2.0`; other manifests use `1.0`. An absent version reads as `1.0`. Readers parse newer minor versions as their
-/// own.
-// spec: store.lay-out.format-version@103f377a
+/// Run and snapshot manifests carry `format_version` as `<major>.<minor>`: `2.0` for snapshots referencing parts or
+/// segments, else `1.0`, which an absent version reads as. Readers parse a newer minor as their own.
+// spec: store.lay-out.format-version@d4995730
 #[test]
 fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     let f = Fixture::new();
@@ -275,9 +274,9 @@ fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
     assert_eq!(f.scan(&d, Bounds::default()).unwrap().files.len(), 2);
 }
 
-/// A run or snapshot manifest with a newer `format_version` major raises `StoreManifestFormatNewer`, naming the file
-/// and both versions. The table refuses reads until a newer build reads the manifest.
-// spec: store.lay-out.format-newer@1e4b3249
+/// A run or snapshot manifest of a newer `format_version` major raises `StoreManifestFormatNewer`, naming the file
+/// and both versions, and the table refuses reads until a newer build reads it.
+// spec: store.lay-out.format-newer@b8e4ab45
 #[test]
 fn a_newer_major_refuses_the_table_naming_the_file_and_both_versions() {
     let f = Fixture::new();
@@ -341,8 +340,8 @@ fn a_one_point_x_snapshot_reads_whole_and_its_next_pass_carries_it() {
     assert_eq!(fs::read(&old).unwrap(), legacy, "the 1.0 manifest is never rewritten");
 }
 
-/// A table's schema is `schema.json` in Arrow JSON form; each arriving batch's schema merges into it and the merged result replaces it.
-// spec: store.lay-out.schema-file@14b75c3f
+/// A table's schema is `schema.json` in Arrow JSON form, which each arriving batch's schema merges into and the merged result replaces.
+// spec: store.lay-out.schema-file@ca898f6f
 #[test]
 fn each_batch_merges_into_schema_json() {
     let f = Fixture::new();
@@ -373,9 +372,9 @@ fn each_batch_merges_into_schema_json() {
     );
 }
 
-/// The store writes each run file once without editing the file. Snapshot directories are immutable. A fold writes a
-/// separate snapshot.
-// spec: store.lay-out.immutable-files@d00d0818
+/// The store writes each run file once and edits none; snapshot directories are immutable, so a fold writes a new
+/// snapshot.
+// spec: store.lay-out.immutable-files@66c76789
 #[test]
 fn a_fold_writes_a_new_snapshot_and_edits_nothing_published() {
     let f = Fixture::new();
@@ -417,9 +416,9 @@ fn a_table_no_schema_declares_is_unknown() {
 }
 
 #[cfg(feature = "read")]
-/// The `<node-id>` segment in run directories and ledger filenames separates files from two machines writing the same
-/// logical run id.
-// spec: store.lay-out.node-segment@ecd8b42a
+/// The `<node-id>` segment of run directories and ledger filenames keeps apart two machines writing one logical run
+/// id.
+// spec: store.lay-out.node-segment@f7b174d9
 #[test]
 fn two_nodes_writing_one_run_id_land_in_disjoint_files() {
     let f = Fixture::new();
@@ -437,8 +436,8 @@ fn two_nodes_writing_one_run_id_land_in_disjoint_files() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t ORDER BY id"), [[s("a")], [s("b")]]);
 }
 
-/// The host id, a random `node-<8 hex>` generated once, persists under `$CONTEXTFUL_STATE_DIR`, else `$XDG_STATE_HOME/contextful`, else the platform user-state directory, outside the store root.
-// spec: store.lay-out.node-id-state-path@83cd89ab
+/// The host id, a random `node-<8 hex>` generated once, persists outside the store root under `$CONTEXTFUL_STATE_DIR`, else `$XDG_STATE_HOME/contextful`, else the platform user-state directory.
+// spec: store.lay-out.node-id-state-path@3f6f98f0
 #[test]
 fn a_generated_node_id_persists_in_the_state_directory() {
     let env = |pairs: &'static [(&'static str, &'static str)]| move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string());

@@ -18,7 +18,7 @@ Bucket endpoint schemes, transport, request addressing and signing, credentials 
   *because an unreachable bucket refuses when it opens, before a push uploads anything*
 - `plaintext` — An `http://` endpoint opens on a loopback host alone; any other host raises `SyncEndpointInsecure`, naming it.
   *because plaintext objects and signed requests are readable and replayable by anyone on the path*
-- `addressing` — S3 and R2 use path-style `<endpoint>/<bucket>/<key>`, percent-encoding every key segment. Every request uses AWS Signature Version 4 for service `s3` at the endpoint's region.
+- `addressing` — S3 and R2 address `<endpoint>/<bucket>/<key>` path-style, percent-encoding each key segment, and sign every request with AWS Signature Version 4 for service `s3` at the endpoint's region.
 - `credentials` — `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each bind `secret://<name>`, hydrated as {{connector.reference.whole-value-reference}}, or `env://NAME`, read whole from the process environment, as the bucket opens.
 - `credential-unbound` — An S3 or R2 `[sync]` omitting `access_key_id` or `secret_access_key`, supplying a non-reference credential, or naming an unset variable raises `SyncCredentialUnbound`, naming the key.
   *because a literal key in `config.toml` sits in plaintext on every disk and backup of the store root*
@@ -37,4 +37,4 @@ Bucket endpoint schemes, transport, request addressing and signing, credentials 
 - `throttled` — S3 requests retry within 5 attempts after `429` or `503`, or `500` except on conditional puts. Each retry waits a uniform draw below a ceiling doubling from 100 ms to 5 s.
   *because a throttled request never applied, a conditional put answered `500` may have, and jitter spreads throttled clients*
 - `unavailable` — A request unanswered within {{store.endpoint.transport}}, or answered `429` or `5xx` past {{store.endpoint.throttled}}, fails as unavailable, naming the request and claiming nothing about the bucket's content.
-- `list-pages` — A list follows continuation tokens until the backend reports completion. The list returns every key under the prefix in sorted order.
+- `list-pages` — A list follows continuation tokens until the backend reports completion, returning every key under the prefix in sorted order.

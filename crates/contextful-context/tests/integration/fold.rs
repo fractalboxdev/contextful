@@ -45,9 +45,8 @@ fn a_pass_folds_the_omitted_runs_into_one_snapshot() {
 }
 
 #[cfg(feature = "read")]
-/// A keyed table declaring `valid_time` partitions on both the key and valid-time line. The table keeps one row per
-/// line.
-// spec: store.fold.valid-time-line@756e6279
+/// A keyed table declaring `valid_time` partitions on the key and valid-time line, keeping one row per line.
+// spec: store.fold.valid-time-line@c5f61872
 #[test]
 fn a_valid_time_table_keeps_one_row_per_key_and_line() {
     let f = Fixture::new();

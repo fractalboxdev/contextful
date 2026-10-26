@@ -196,7 +196,7 @@ fn every_bare_name_resolves_to_the_callers_relation() {
     assert_eq!(previewed, acme);
 }
 
-// spec: store.bound-time.beneath-enforcement@d2c06cd4
+// spec: store.bound-time.beneath-enforcement@9e6bbc99
 #[test]
 fn historical_retrieval_keeps_row_and_column_enforcement() {
     let r = Reads::new();

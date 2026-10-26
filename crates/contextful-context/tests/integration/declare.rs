@@ -11,7 +11,7 @@ use std::fs;
 
 #[cfg(feature = "read")]
 /// An unkeyed append table reads the byte-identical union of its visible committed runs.
-// spec: store.declare.unkeyed-union@f30dc41a
+// spec: store.declare.unkeyed-union@901343b8
 #[test]
 fn an_unkeyed_table_reads_as_the_union_of_its_runs() {
     let f = Fixture::new();
@@ -117,10 +117,9 @@ fn an_empty_keyed_table_registers_its_declared_columns() {
 }
 
 #[cfg(feature = "read")]
-/// A table block takes {{type:contextful_core::store::declare::TableDecl}}; canonical serialization omits unset keys. A key applies from
-/// the next read and rewrites no committed part; `columns` types every landing, pipeline runs included, under
-/// {{store.reconcile.typed-landing}}.
-// spec: store.declare.table-block@8cede22d
+/// A table block takes {{type:contextful_core::store::declare::TableDecl}}, canonical serialization omitting unset keys. A key applies
+/// from the next read, rewriting no committed part; `columns` types every landing under {{store.reconcile.typed-landing}}.
+// spec: store.declare.table-block@698a12a7
 #[test]
 fn a_key_added_after_rows_land_applies_at_the_next_read() {
     let f = Fixture::new();

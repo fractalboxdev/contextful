@@ -219,7 +219,7 @@ fn fold_excludes_expired_rows_and_reports_cutoff_and_drops() {
     assert_eq!(raw, [[s("fresh")]]);
 }
 
-// spec: store.fold.row-retention@b4a4d6f7
+// spec: store.fold.row-retention@1288dce5
 #[cfg(feature = "read")]
 #[test]
 fn an_idle_fold_removes_an_expired_snapshot_partition() {

@@ -195,9 +195,9 @@ fn a_generation_file_holding_another_commit_refuses_and_the_next_push_numbers_pa
     assert_eq!(a.syncer.push(at(NOW)).unwrap().generation, 4);
 }
 
-/// Before each manifest commit, a push finding no `gen-<N>.json` for the generation of the manifest it read creates it
-/// from the bytes it read.
-// spec: store.push.generation-heal@e4a13c43
+/// Before each manifest commit, a push finding no `gen-<N>.json` for the read manifest's generation creates it from
+/// the bytes it read.
+// spec: store.push.generation-heal@579e28ef
 #[test]
 fn a_generation_committed_under_a_concurrent_push_is_written_before_the_next_commit() {
     let dir = tempfile::tempdir().unwrap();

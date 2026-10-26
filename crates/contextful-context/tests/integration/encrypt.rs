@@ -69,7 +69,7 @@ fn an_aes_gcm_file_round_trips_without_plaintext_or_key_reuse() {
     assert!(cipher.open(&tampered).is_err());
 }
 
-// spec: store.encrypt.metadata-envelope@2b39f8f0
+// spec: store.encrypt.metadata-envelope@b9749bcc
 #[test]
 fn sealed_metadata_files_round_trip_without_plaintext_or_fallback() {
     use contextful_context::encrypt::{AesGcmFileCipher, MetadataFiles};
@@ -402,7 +402,7 @@ fn encrypted_parquet_has_no_plaintext_canary_and_decrypts() {
 }
 
 /// Persistent adapters share the opened store's cipher without receiving key material.
-// spec: store.encrypt.key-binding@447c159e
+// spec: store.encrypt.key-binding@9cd657b8
 #[test]
 fn a_bound_store_shares_one_opaque_cipher_with_persistent_adapters() {
     let key_var = "CONTEXTFUL_TEST_KEY_74_SHARED_BINDING";
@@ -421,7 +421,7 @@ fn a_bound_store_shares_one_opaque_cipher_with_persistent_adapters() {
 
 /// A table naming `bloom_filter` in an encrypted project carries no bloom filter in a run
 /// part or a fold snapshot, since Parquet would store it outside the encryption.
-// spec: store.index.bloom-encrypted@b02178bf
+// spec: store.index.bloom-encrypted@d92ec8fa
 #[test]
 fn an_encrypted_project_writes_no_bloom_filter() {
     use contextful_context::land::{Batch, RunContext};
@@ -552,7 +552,7 @@ max_lag = "1d"
     }
 }
 
-// spec: store.encrypt.metadata-envelope@2b39f8f0
+// spec: store.encrypt.metadata-envelope@b9749bcc
 #[test]
 fn a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload() {
     use contextful_context::land::{land, Batch, RunContext};

@@ -75,9 +75,9 @@ fn each_sidecar_kind_declares_its_column_identifier_and_builder_parameters() {
     assert!(plain.indexes().is_empty() && !plain.canonical().contains("indexes"));
 }
 
-/// Without `valid_time`, a sidecar's `id_column` defaults to the table's single-column primary key. All sidecars of a
-/// table share `id_column`; keyed, composite-key and unkeyed tables each use one.
-// spec: store.index.id-column@c54eba92
+/// Without `valid_time`, `id_column` defaults to the table's single-column primary key; a table's sidecars share one
+/// `id_column`, whether it is keyed, composite-keyed or unkeyed.
+// spec: store.index.id-column@e00cf19e
 #[test]
 fn the_identifier_defaults_to_a_single_key_and_serves_every_table_shape() {
     let keyed = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));
@@ -199,9 +199,9 @@ fn a_vector_of_another_width_or_an_unreadable_identifier_is_refused() {
     assert!(matches!(f.validate_indexes(&absent), Err(StoreError::StoreIndexColumnAbsent(m)) if m.contains("body")));
 }
 
-/// The default `unicode` tokenizer indexes each lowercased alphanumeric run as one term. The `cjk` tokenizer indexes
-/// each Han, Kana or Hangul stretch within a run as overlapping character bigrams.
-// spec: store.index.tokenizer@6fd1dc85
+/// The default `unicode` tokenizer indexes each lowercased alphanumeric run as one term; `cjk` indexes each Han,
+/// Kana or Hangul stretch within a run as overlapping character bigrams.
+// spec: store.index.tokenizer@8f241374
 #[test]
 fn the_cjk_tokenizer_indexes_unspaced_stretches_as_bigrams() {
     let strings = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
@@ -222,8 +222,8 @@ fn the_cjk_tokenizer_indexes_unspaced_stretches_as_bigrams() {
     }
 }
 
-/// Two sidecar declarations of one table resolving to one path under `store.index.paths` raise `StoreIndexPathCollision`, naming both, at manifest validation and before the fold builds either.
-// spec: store.index.path-collision@458056c1
+/// Two sidecar declarations of one table resolving to one path under {{store.index.paths}} raise `StoreIndexPathCollision`, naming both, at manifest validation before either builds.
+// spec: store.index.path-collision@bb9a56c8
 #[test]
 fn two_declarations_resolving_to_one_path_are_refused() {
     let vector = |column: &str, model: &str, m: u32| {

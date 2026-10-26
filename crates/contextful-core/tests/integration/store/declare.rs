@@ -52,10 +52,10 @@ on_erase = "survive"
     }
 }
 
-/// A table block takes {{type:contextful_core::store::declare::TableDecl}}; canonical serialization omits unset
-/// keys. A key applies from the next read and rewrites no committed part; `columns` types every landing, pipeline
-/// runs included, under {{store.reconcile.typed-landing}}.
-// spec: store.declare.table-block@8cede22d
+/// A table block takes {{type:contextful_core::store::declare::TableDecl}}, canonical serialization omitting
+/// unset keys. A key applies from the next read, rewriting no committed part; `columns` types every landing under
+/// {{store.reconcile.typed-landing}}.
+// spec: store.declare.table-block@698a12a7
 #[test]
 fn a_table_block_parses_its_keys_and_omits_unset_ones() {
     let t = &TableDecl::parse_pipeline(SPEC_EXAMPLE).unwrap()[0];

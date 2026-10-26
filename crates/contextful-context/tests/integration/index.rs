@@ -17,9 +17,9 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 #[cfg(feature = "read")]
-/// `cluster_by` sorts file rows lexicographically by columns in declared order. Zone maps then skip row groups with no
-/// manifest entry and no sidecar.
-// spec: store.index.clustering@f0331f51
+/// `cluster_by` sorts file rows lexicographically by its columns in order, so zone maps skip row groups with no
+/// manifest entry or sidecar.
+// spec: store.index.clustering@b67f03fd
 #[test]
 fn cluster_by_sorts_rows_within_a_file_in_declared_order() {
     let f = Fixture::new();
@@ -63,9 +63,9 @@ fn partitioning_is_off_unless_declared() {
 }
 
 #[cfg(feature = "read")]
-/// Five index kinds exist: Parquet footer zone maps, sorted-Parquet sparse-map primary-key lookups, HNSW vector
-/// graphs, positional full-text indexes and opt-in per-column bloom filters.
-// spec: store.index.kinds@14cbf239
+/// Five index kinds exist: footer zone maps, sorted-Parquet sparse-map primary-key lookups, HNSW vector graphs,
+/// positional full-text indexes and opt-in per-column bloom filters.
+// spec: store.index.kinds@61af7dd6
 #[test]
 fn a_snapshot_carries_each_of_the_five_index_kinds() {
     let f = Fixture::new();
@@ -417,9 +417,9 @@ fn a_reader_opens_only_its_own_builder_version() {
     }
 }
 
-/// A vector or full-text entry records `extensions`, counting segment-adding passes since its last full build. A pass
-/// finding 16 extensions rebuilds the sidecar in full and records 0.
-// spec: store.index.graph-extensions@8763ffd2
+/// A vector or full-text entry counts in `extensions` the segment-adding passes since its last full build; a pass
+/// finding 16 extensions rebuilds in full and records 0.
+// spec: store.index.graph-extensions@44610c99
 #[test]
 fn a_pass_finding_sixteen_extensions_rebuilds_the_graph_in_full() {
     use contextful_core::store::fold::FoldOutcome;
@@ -448,8 +448,8 @@ fn a_pass_finding_sixteen_extensions_rebuilds_the_graph_in_full() {
 }
 
 /// A sidecar copies only `id_column`, the indexed column, and the tenant column, zone label and availability instant
-/// needed for filtered traversal. Every other filter applies at {{store.index.candidate-ids}}.
-// spec: store.index.filter-copies@9e47966d
+/// filtered traversal needs; every other filter applies at {{store.index.candidate-ids}}.
+// spec: store.index.filter-copies@0744981a
 #[test]
 fn a_sidecar_copies_no_other_column_value() {
     let f = Fixture::new();
@@ -750,9 +750,9 @@ fn the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms() {
     assert!(matches!(err.store(), Some(StoreError::StoreIndexColumnType(_))), "{err}");
 }
 
-/// Each full-text segment is one file with a sorted term dictionary and each term's row identifiers and positions.
-/// Readers binary-search the mapped or decrypted bytes.
-// spec: store.index.postings@1b3db2bd
+/// Each full-text segment is one file holding a sorted term dictionary and each term's row identifiers and
+/// positions, which readers binary-search mapped or decrypted.
+// spec: store.index.postings@324f3dc3
 #[test]
 fn one_row_set_lays_out_one_postings_file_a_probe_reads_by_term() {
     const N: usize = 2000;
@@ -800,9 +800,9 @@ fn one_row_set_lays_out_one_postings_file_a_probe_reads_by_term() {
     assert!(contextful_context::fulltext::postings::Layout::parse(b"CFHNSW01").is_none());
 }
 
-/// If the delta replaces and removes no stored row, a pass adds a delta segment to each current sidecar, referencing
-/// earlier segments. Probes read every segment and score full text using their summed statistics.
-// spec: store.index.sidecar-segments@67f731ec
+/// A delta replacing and removing no stored row adds a segment to each current sidecar, referencing earlier ones;
+/// probes read every segment, scoring full text over their summed statistics.
+// spec: store.index.sidecar-segments@4875d648
 #[test]
 fn a_pass_of_new_identifiers_extends_each_sidecar_by_a_segment() {
     let row = |i: usize| {

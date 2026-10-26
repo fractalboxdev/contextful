@@ -31,8 +31,8 @@ fn the_lattice_holds_one_promotion_and_json_absorbs_text() {
     assert_eq!(promoted.get("n").unwrap().ty, Float64);
 }
 
-/// Any other pair of types observed for one column raises `StoreSchemaIncompatible` at the write, naming the column, the stored type and the arriving type.
-// spec: store.reconcile.incompatible@f1e8fc0a
+/// Any other pair of types observed for one column raises `StoreSchemaIncompatible` at the write, naming the column, stored type and arriving type.
+// spec: store.reconcile.incompatible@9b8da9bf
 #[test]
 fn any_other_pair_is_incompatible() {
     let all = [Boolean, Int32, Int64, Float64, Utf8, Json, Timestamp];

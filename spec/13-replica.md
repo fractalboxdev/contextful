@@ -14,7 +14,7 @@ Replica refreshes, required snapshot files, local snapshot records and refused r
 
 - `write-refused` — A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store.
   *A-store#replica-read-whole*
-- `partial-parquet` — If a replica lacks any of a snapshot's Parquet files, refresh raises `ReplicaPartialParquet` and leaves that snapshot unpublished.
+- `partial-parquet` — A replica lacking any of a snapshot's Parquet files makes refresh raise `ReplicaPartialParquet` and leave that snapshot unpublished.
   *A-store#replica-read-whole*
 - `descriptor` — A replica's pull writes `replica.json` beside `derived.sqlite`, naming per table every held snapshot whose parts and sidecar paths exist on disk; push excludes the file.
   *A-store#replica-read-whole, A-store#replica-advertises-descriptor*

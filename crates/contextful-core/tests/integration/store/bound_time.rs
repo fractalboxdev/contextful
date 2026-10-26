@@ -162,9 +162,9 @@ fn valid_as_of_on_a_table_declaring_no_pair_is_refused() {
     }
 }
 
-/// Transaction time is `_ingested_at`. Valid time uses a declared pair of table columns. The engine infers no valid-
-/// time pair and stamps no second transaction timestamp.
-// spec: store.bound-time.two-clocks@12aa5421
+/// Transaction time is `_ingested_at`; valid time is a declared pair of table columns, which the engine never
+/// infers, and it stamps no second transaction timestamp.
+// spec: store.bound-time.two-clocks@6f41b729
 #[test]
 fn transaction_time_is_ingested_at_and_valid_time_is_declared() {
     // A table with timestamp columns named like a pair still declares none.

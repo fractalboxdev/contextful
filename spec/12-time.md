@@ -14,7 +14,7 @@ Each bound resolves before access controls select rows.
 
 Transaction-time and valid-time columns, their read parameters and the snapshots or rows each parameter selects.
 
-- `two-clocks` — Transaction time is `_ingested_at`. Valid time uses a declared pair of table columns. The engine infers no valid-time pair and stamps no second transaction timestamp.
+- `two-clocks` — Transaction time is `_ingested_at`; valid time is a declared pair of table columns, which the engine never infers, and it stamps no second transaction timestamp.
 - `valid-time-declaration` — `[pipeline.tables.valid_time]` declares `from` and an optional `to`; a table declaring `from` alone treats each row as valid from that instant onward.
 - `valid-time-type` — A declared valid-time column whose type is not a timestamp raises `StoreValidTimeNotTimestamp` at declaration.
   *P1*
@@ -30,7 +30,7 @@ Transaction-time and valid-time columns, their read parameters and the snapshots
   *P1*
 - `pin-bound` — A read carrying `as_of` and a build pin resolves each table named by both by {{read.resolve-pin.earlier-bound-wins}}.
 - `unbounded-latest` — A read carrying neither bound resolves each table to its current snapshot plus the committed runs it omits.
-- `beneath-enforcement` — Both bounds apply before the row predicate, column mask and tenant filter. The bounds only narrow the rows access controls admit.
+- `beneath-enforcement` — Both bounds apply before the row predicate, column mask and tenant filter, so they only narrow the rows access controls admit.
   *P5*
 - `covering-versions` — For an unkeyed table, a valid-time bound returns every version whose interval contains the requested instant.
 - `interval-rows` — A keyed table declaring `valid_time` stores one row per key and valid-time interval, deduplicating on its primary key and `from`, so a fold keeps every interval.
@@ -60,7 +60,7 @@ The source availability timestamp, its value at landing and row selection under 
   *because without a hash a re-pulled row reads as a restatement, and a row-age cutoff shrinks a past answer*
 - `vintage-dedup-key` — A vintage table reads through {{store.declare.dedup-view}}, or {{store.bound-time.interval-rows}} under `valid_time`, and folds under {{store.declare.dedup-view}} or {{store.fold.valid-time-line}}, each adding the availability column to the key and keeping every vintage; an unclustered `valid_time` fold sorts by `from`, then primary key.
   *A-store#restatement-vintage-row, A-store#validity-interval-row, A-store#adjustment-factors-apply*
-- `vintage-scope` — A vintage landing compares only its own keys' stored vintages. Landing skips row groups excluded by text or signed-integer key bloom filters or footer bounds on text, integer or temporal keys or temporal valid time.
+- `vintage-scope` — A vintage landing compares only its own keys' stored vintages, skipping row groups that text or signed-integer key bloom filters, or footer bounds on text, integer or temporal keys or temporal valid time, exclude.
   *A-store#vintage-landing-reads*
 - `adjustment-factors` — `available_time.adjustment` keeps stored values raw; an `available_as_of` read multiplies each `adjust_columns` column by the product of `factor_column` vintages available by the bound, over factor rows sharing its factor-table `primary_key` values with a later valid-time `from`.
   *because applying a correction published later exposes information unavailable at an earlier read bound*
@@ -68,8 +68,7 @@ The source availability timestamp, its value at landing and row selection under 
 #### Scenarios
 
 - `store.available-time.available-as-of`: WHEN a 2026 backfill lands a first-quarter measurement with availability date `2014-04-30`, THEN `available_as_of` `2014-05-01` returns the row and `available_as_of` `2014-04-29` returns none.
-- `store.available-time.vintage-rows`: WHEN a first-quarter measurement lands at 17149.6 available `2014-04-30`, 17101.3 available `2014-05-29` and 17016.0 available `2014-06-25`, THEN `available_as_of` `2014-06-01` returns 17101.3 and an unbounded read returns 17016.0, before and after a fold.
-- `store.available-time.vintage-rows`: WHEN those three measurement vintages have landed, THEN a read carrying `vintage = "first"` returns 17149.6.
+- `store.available-time.vintage-rows`: WHEN a first-quarter measurement lands at 17149.6 available `2014-04-30`, 17101.3 available `2014-05-29` and 17016.0 available `2014-06-25`, THEN `available_as_of` `2014-06-01` returns 17101.3, an unbounded read returns 17016.0 before and after a fold, and `vintage = "first"` returns 17149.6.
 - `store.available-time.vintage-hash`: WHEN a re-pull lands the measurement at 17016.0 with an unchanged content hash, THEN the table still holds three measurement vintages.
 - `store.available-time.vintage-scope`: WHEN day 101 of 100 entities lands over 100 stored daily runs, THEN its comparison decodes no stored row; WHEN a revision of day 50 lands, THEN the comparison decodes only day 50's 100 rows.
 

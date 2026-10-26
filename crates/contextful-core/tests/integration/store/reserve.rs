@@ -61,8 +61,8 @@ fn a_producer_column_in_the_namespace_is_refused() {
     }
 }
 
-/// `_modality` takes one of text, image, audio, structured or mixed; another value fails validation of its batch.
-// spec: store.reserve.modality@f5d94c7f
+/// `_modality` takes text, image, audio, structured or mixed; another value fails its batch's validation.
+// spec: store.reserve.modality@aef5a726
 #[test]
 fn modality_takes_five_values() {
     for ok in ["text", "image", "audio", "structured", "mixed"] {
@@ -129,9 +129,9 @@ fn the_run_record_validates_as_a_table_while_its_name_refuses() {
     assert!(matches!(TableDecl::named("_visibility").validate(&schema(&["id"])), Err(StoreError::StoreReservedTableName(_))));
 }
 
-/// The engine reserves table names ending in `__requests` for request-ledger relations. Other declarations using that
-/// suffix refuse under {{store.reserve.table-name}}.
-// spec: store.reserve.ledger-suffix@a3bb2d9a
+/// Table names ending `__requests` name request-ledger relations; any other declaration with that suffix refuses
+/// under {{store.reserve.table-name}}.
+// spec: store.reserve.ledger-suffix@343c54f7
 #[test]
 fn a_table_named_like_a_ledger_is_refused() {
     for bad in ["notes__requests", "research/notes__requests"] {

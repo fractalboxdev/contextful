@@ -35,7 +35,7 @@ fn fire(dir: &Path, run: &str, now: &str) -> String {
 /// each pipeline's newest run and each cursor row with its commit marker. A run opening where a pulled run state records a commit marker for its pipeline and table newer than
 /// every local one resumes from that marker's cursor.
 // spec: store.push.run-state@4d667f36
-// spec: store.pull.run-state-cursor@ef07439d
+// spec: store.pull.run-state-cursor@e07f589f
 #[test]
 fn a_cold_node_resumes_the_cursor_a_push_carried() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"s1\",\"at\":5},{\"id\":\"s2\",\"at\":9}]".into()));

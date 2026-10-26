@@ -48,8 +48,8 @@ fn the_engine_injects_provenance_and_replaces_producer_values() {
 
 #[cfg(feature = "read")]
 /// On each row from model output, the engine injects `_taint` under {{connector.infer.provenance-order}}, replacing
-/// any producer value. Rows without model output omit `_taint`.
-// spec: store.reserve.taint@c48e7e7b
+/// any producer value; other rows omit `_taint`.
+// spec: store.reserve.taint@57b9451e
 #[test]
 fn a_model_output_row_carries_the_engine_taint_and_no_other_row_does() {
     let f = Fixture::new();
@@ -186,9 +186,9 @@ fn injected_columns_stay_non_null_in_the_merged_schema() {
 }
 
 #[cfg(feature = "read")]
-/// The engine injects non-null int64 `_commit_seq`, assigned above every value held by the table. A run committing
-/// after a read carries a value above every returned row, regardless of `_ingested_at`.
-// spec: store.reserve.commit-seq@dd6b2f34
+/// The engine injects non-null int64 `_commit_seq` above every value the table holds, so a run committing after a
+/// read carries a value above every returned row, whatever its `_ingested_at`.
+// spec: store.reserve.commit-seq@02d99de4
 #[test]
 fn a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp() {
     let f = Fixture::new();
@@ -219,9 +219,9 @@ fn a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp(
 }
 
 #[cfg(feature = "read")]
-/// A commit publishes its manifest after every lower `_commit_seq` in the table publishes or ends landing. Readable
-/// runs therefore form a prefix of the table's commit sequence.
-// spec: store.reserve.commit-order@1d4d650c
+/// A commit publishes its manifest once every lower `_commit_seq` of the table publishes or ends landing, so
+/// readable runs form a prefix of the commit sequence.
+// spec: store.reserve.commit-order@1a899dc4
 #[test]
 fn concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read() {
     let f = Fixture::new();

@@ -14,7 +14,7 @@ Document capture records, snapshot identifiers for evaluation cases and access t
 
 - `capture` — `[pipeline.tables.snapshot]` declares {{type:contextful_core::store::declare::SnapshotDecl}}, the columns describing each captured document. Each capture commits as one store snapshot, and an evaluation case pins it by `snapshot` id.
   *A-store#snapshot-corpus-declared*
-- `post-horizon-capture` — A document captured after the reading horizon carries `_available_reconstructed` true under {{store.available-time.live-since}}. A horizon read admits the document only when the block's `leak_score` column holds 0.
+- `post-horizon-capture` — A document captured after the reading horizon carries `_available_reconstructed` true under {{store.available-time.live-since}}, and a horizon read admits it only while the block's `leak_score` column holds 0.
   *A-store#snapshot-corpus-declared*
 
 #### Scenarios

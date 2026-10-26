@@ -61,9 +61,9 @@ fn prefix_and_prefix_from_together_refuse() {
     assert!(matches!(c.resolve_prefix(|_| Some("x".into())), Err(StoreError::SyncPrefixOverspecified(_))));
 }
 
-/// A key names its owner through the node in its run directory, request-ledger filename, commit-log directory or run-
-/// state directory. Every other key is unowned and propagates no deletion.
-// spec: store.merge.ownership@0457be52
+/// A key names its owner by the node in its run directory, request-ledger filename, commit-log directory or run-state
+/// directory; any other key is unowned and propagates no deletion.
+// spec: store.merge.ownership@cd44833c
 #[test]
 fn a_keys_owner_is_read_off_the_key() {
     assert_eq!(owner_of(RUN_A).as_deref(), Some("ingest-a"));

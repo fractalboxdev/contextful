@@ -23,7 +23,7 @@ fn an_init_writes_the_declaration_and_the_store_root() {
     assert!(dir.path().join(".contextful/context/research").is_dir());
 }
 
-// spec: store.init.store-identity@78e6af95
+// spec: store.init.store-identity@368b8bab
 #[test]
 fn init_persists_a_distinct_store_uuid_across_repetition_and_recreation() {
     let dir = tempfile::tempdir().unwrap();
