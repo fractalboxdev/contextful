@@ -70,16 +70,11 @@ fn cargo_build(host: Host, profile: &str) -> Vec<String> {
     args.iter().map(|a| a.to_string()).chain([host.triple()]).collect()
 }
 
-/// Memory one build job may take: the SQL engine's C++ units peak near it at `-O3`.
-const JOB_MEMORY: u64 = 3 << 30;
-
-/// Parallel build jobs: the memory the build sees divided by [`JOB_MEMORY`], at least one
-/// and at most the processors available.
-// mirrors: assurance.gate.parallel-jobs
+/// Parallel build jobs over the memory the build sees and the processors available.
 fn jobs(host: Host) -> u64 {
     let memory = if host.native() { linux_memory() } else { builder_memory() };
     let cpus = std::thread::available_parallelism().map(|n| n.get() as u64).unwrap_or(1);
-    memory.map_or(1, |m| m / JOB_MEMORY).clamp(1, cpus)
+    crate::jobs::parallel(memory, cpus)
 }
 
 /// The cgroup memory ceiling, else the physical memory, in bytes.

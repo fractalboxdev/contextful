@@ -116,7 +116,8 @@ The crate-graph stage holds the dependency graph and runtime source to their rul
 
 Build resources and each profile's artifact size stay within their bounds.
 
-- `parallel-jobs` — Parallel build jobs number the memory ceiling divided by 3 GiB.
+- `parallel-jobs` — A footprint build's parallel job count is its build memory — the cgroup memory ceiling, else the physical or container-engine memory — divided by 3 GiB, at least one and at most the processor count.
+  *because one optimized C++ unit of the SQL engine peaks near 3 GiB*
 - `free-disk` — A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.
   *P7*
 - `edge-budget` — The edge profile compresses to at most 50 MiB.

@@ -31943,8 +31943,8 @@
       "operation": "gate",
       "subject": "parallel-jobs",
       "kind": "limit",
-      "statement": "Parallel build jobs number the memory ceiling divided by 3 GiB.",
-      "why": "",
+      "statement": "A footprint build's parallel job count is its build memory — the cgroup memory ceiling, else the physical or container-engine memory — divided by 3 GiB, at least one and at most the processor count.",
+      "why": "because one optimized C++ unit of the SQL engine peaks near 3 GiB",
       "file": "spec/83-gate.md",
       "line": 119,
       "group": "footprint"
@@ -31958,7 +31958,7 @@
       "statement": "A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 120,
+      "line": 121,
       "group": "footprint"
     },
     {
@@ -31970,7 +31970,7 @@
       "statement": "The edge profile compresses to at most 50 MiB.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 122,
+      "line": 123,
       "group": "footprint"
     },
     {
@@ -31982,7 +31982,7 @@
       "statement": "The full profile compresses to at most 150 MiB.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 123,
+      "line": 124,
       "group": "footprint"
     },
     {
@@ -31994,7 +31994,7 @@
       "statement": "The control profile compresses to at most 60 MiB.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 124,
+      "line": 125,
       "group": "footprint"
     },
     {
@@ -32006,7 +32006,7 @@
       "statement": "Per nightly run and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 125,
+      "line": 126,
       "group": "footprint"
     },
     {
@@ -32018,7 +32018,7 @@
       "statement": "The budget stage runs {{assurance.gate.footprint}} over every profile, in one nightly-tier part per profile, and the evaluate stage builds no profile.",
       "why": "because one link-time-optimized release build of the full profile fills most of one stage's wall clock",
       "file": "spec/83-gate.md",
-      "line": 127,
+      "line": 128,
       "group": "footprint"
     },
     {
@@ -32030,7 +32030,7 @@
       "statement": "An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 129,
+      "line": 130,
       "group": "footprint"
     },
     {
@@ -32042,7 +32042,7 @@
       "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 140
+      "line": 141
     },
     {
       "id": "assurance.measure.unresolved-entry",
@@ -32053,7 +32053,7 @@
       "statement": "An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 141,
+      "line": 142,
       "scenarios": [
         "WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs."
       ]
@@ -32067,7 +32067,7 @@
       "statement": "An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 143,
+      "line": 144,
       "scenarios": [
         "WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it."
       ]
@@ -32081,7 +32081,7 @@
       "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry decides nothing, and `contextful-ci measure` runs the gate tier alone unless `--tier` names `trend`, `scheduled` or `all`.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 144
+      "line": 145
     },
     {
       "id": "assurance.measure.judged-tier",
@@ -32092,7 +32092,7 @@
       "statement": "An entry whose metric names a judged figure is scheduled-tier; on another tier it resolves to nothing under {{assurance.measure.unresolved-entry}}.",
       "why": "because a judged figure costs a model call per item and moves with the judge, not with the change",
       "file": "spec/83-gate.md",
-      "line": 145
+      "line": 146
     },
     {
       "id": "assurance.measure.count-first",
@@ -32103,7 +32103,7 @@
       "statement": "A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.",
       "why": "because a shared container moves wall-clock figures past any band narrow enough to catch a regression",
       "file": "spec/83-gate.md",
-      "line": 147
+      "line": 148
     },
     {
       "id": "assurance.measure.record",
@@ -32114,7 +32114,7 @@
       "statement": "A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.",
       "why": "P7",
       "file": "spec/83-gate.md",
-      "line": 149
+      "line": 150
     },
     {
       "id": "assurance.measure.seeded",
@@ -32125,7 +32125,7 @@
       "statement": "Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.",
       "why": "because a failure that cannot replay cannot be fixed",
       "file": "spec/83-gate.md",
-      "line": 151
+      "line": 152
     },
     {
       "id": "assurance.measure.seed-mismatch",
@@ -32136,7 +32136,7 @@
       "statement": "A gate or scheduled record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch` and counts as red; a trend mismatch leaves no comparable record.",
       "why": "because a figure measured under another seed replays nothing the ledger names",
       "file": "spec/83-gate.md",
-      "line": 153
+      "line": 154
     },
     {
       "id": "assurance.measure.timing-iterations",
@@ -32147,7 +32147,7 @@
       "statement": "A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 155
+      "line": 156
     },
     {
       "id": "assurance.measure.timing-batches",
@@ -32158,7 +32158,7 @@
       "statement": "A timed figure is the median of 5 repeats of its timed batch.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 156
+      "line": 157
     },
     {
       "id": "assurance.measure.trend-direction",
@@ -32169,7 +32169,7 @@
       "statement": "Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/83-gate.md",
-      "line": 157
+      "line": 158
     },
     {
       "id": "assurance.measure.trend-baseline",
@@ -32180,7 +32180,7 @@
       "statement": "A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/83-gate.md",
-      "line": 159,
+      "line": 160,
       "scenarios": [
         "WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes."
       ]
@@ -32194,7 +32194,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 161,
+      "line": 162,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -32208,7 +32208,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 162
+      "line": 163
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -32219,7 +32219,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 163
+      "line": 164
     },
     {
       "id": "assurance.measure.threshold-cost",
@@ -32230,7 +32230,7 @@
       "statement": "A gate-tier target that rises under `<=`, falls under `>=` or moves under `==` carries a `# cost:` comment above its entry that its entry at `<rev>` lacks, or `contextful-ci measure --since <rev>` raises `MeasureThresholdLoosened`.",
       "why": "because a loosened gate otherwise reads as a changed number, and the cost it accepts goes unrecorded",
       "file": "spec/83-gate.md",
-      "line": 164
+      "line": 165
     },
     {
       "id": "assurance.measure.history",
@@ -32241,7 +32241,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/83-gate.md",
-      "line": 166
+      "line": 167
     },
     {
       "id": "assurance.measure.run-report",
@@ -32252,7 +32252,7 @@
       "statement": "`contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — with an integer run id, and reads back every earlier note whatever its run id's JSON type.",
       "why": "because earlier notes on `refs/notes/measures` carry text run ids, and an unreadable note hides every older baseline",
       "file": "spec/83-gate.md",
-      "line": 168,
+      "line": 169,
       "scenarios": [
         "WHEN the baseline note's run id is the text `contextful-measures_2026-10-14` and the run's is `42`, THEN the report writes `42` and its annotation names that text run id as its baseline."
       ]
@@ -32266,7 +32266,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/83-gate.md",
-      "line": 170
+      "line": 171
     },
     {
       "id": "assurance.release.version",
@@ -32277,7 +32277,7 @@
       "statement": "A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 184,
+      "line": 185,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -32291,7 +32291,7 @@
       "statement": "A commit's store format is the `FormatVersion::CURRENT` constant in its `crates/contextful-core/src/store/lay_out.rs`, and `1.0` where that constant is absent; a constant that does not parse raises `TagStoreFormatUnread`.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 186,
+      "line": 187,
       "scenarios": [
         "WHEN 16 milestones compute `closed`, `v0.16.1` declares store format `1.0` and `HEAD` declares `2.0`, THEN the computed version is `v0.17.0` and its message carries `Store format 1.0 → 2.0`."
       ]
@@ -32305,7 +32305,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 188
+      "line": 189
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -32316,7 +32316,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/83-gate.md",
-      "line": 190
+      "line": 191
     },
     {
       "id": "assurance.release.off-branch",
@@ -32327,7 +32327,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 192
+      "line": 193
     },
     {
       "id": "assurance.release.version-regressed",
@@ -32338,7 +32338,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 194,
+      "line": 195,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -32352,7 +32352,7 @@
       "statement": "A computed `<minor>` equal to the highest existing tag's, while `HEAD`'s store format major differs from that tag's, raises `TagFormatBreakPatch`, naming both formats.",
       "why": "A-assurance#store-format-major",
       "file": "spec/83-gate.md",
-      "line": 196,
+      "line": 197,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0` while the store format moves from `1.0` to `2.0`, THEN the computed `v0.9.1` raises `TagFormatBreakPatch`."
       ]
@@ -32366,7 +32366,7 @@
       "statement": "A tag whose store format major exceeds the highest existing tag's carries the message line `Store format <old> → <new>: upgrade every reader, then every writer together.`",
       "why": "because an older reader refuses a manifest of the newer major, and an older writer refuses the table once a newer writer commits",
       "file": "spec/83-gate.md",
-      "line": 198
+      "line": 199
     },
     {
       "id": "assurance.release.workspace-version",
@@ -32377,7 +32377,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 200
+      "line": 201
     },
     {
       "id": "assurance.release.gate-failed",
@@ -32388,7 +32388,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/83-gate.md",
-      "line": 202
+      "line": 203
     },
     {
       "id": "assurance.release.release-tag-version",
@@ -32399,7 +32399,7 @@
       "statement": "`contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.",
       "why": "because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version",
       "file": "spec/83-gate.md",
-      "line": 204
+      "line": 205
     }
   ],
   "owns": {
@@ -38708,7 +38708,8 @@
             "value": 3,
             "unit": "GiB",
             "basis": "chosen",
-            "gloss": "Memory budgeted per parallel build job."
+            "gloss": "Memory budgeted per parallel build job.",
+            "const": "tools/ci/src/jobs.rs::JOB_MEMORY"
           },
           "assurance-precision-floor": {
             "clause": "assurance.evaluate.precision-floor",
@@ -46648,6 +46649,16 @@
         "path": "tools/ci/tests/integration/workflow.rs",
         "name": "the_nightly_tier_holds_the_features_formal_unwired_and_budget_parts",
         "line": 102,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.gate.parallel-jobs": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/footprint.rs",
+        "name": "parallel_jobs_number_the_build_memory_divided_by_three_gib",
+        "line": 48,
         "verdict": "performed",
         "proved": false
       }

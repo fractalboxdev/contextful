@@ -22,6 +22,7 @@ mod prose;
 mod stage;
 mod tag;
 mod footprint;
+mod jobs;
 mod image;
 mod topology;
 mod unwired;
