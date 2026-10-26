@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 349 | 74 | 25 | 3 | 310 | 1 | 0 | 310 |
+| `assurance` | 3 | 18 | 350 | 75 | 25 | 3 | 311 | 1 | 0 | 311 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 278 | 0 | 0 | 278 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 318 | 2 | 0 | 318 |
 | `corpus` | 1 | 10 | 105 | 43 | 9 | 0 | 105 | 0 | 0 | 105 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 333 | 0 | 0 | 333 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 176 | 0 | 0 | 176 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 89 | 0 | 0 | 89 |
-| **total** | 26 | 177 | 2950 | 718 | 237 | 82 | 2640 | 3 | 0 | |
+| **total** | 26 | 177 | 2951 | 719 | 237 | 82 | 2641 | 3 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 67 | 57 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 190 | 158 | passing | closed |
+| 14 — Assurance | 7 | 191 | 159 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |

@@ -30491,6 +30491,17 @@
       "line": 53
     },
     {
+      "id": "assurance.structure-tree.bound-constant",
+      "contract": "assurance",
+      "operation": "structure-tree",
+      "subject": "bound-constant",
+      "kind": "refusal",
+      "statement": "A `[limit]` entry's `const = \"<file>::<NAME>\"` names a constant that file defines outside tests, holding the bound in its unit or another unit of its kind; a mismatch or an absent constant raises `BoundConstantDrift`.",
+      "why": "because the fragment is the one home of a bound's value, and a constant drifting from it changes behavior while the clause states the old number",
+      "file": "spec/81-engineering.md",
+      "line": 55
+    },
+    {
       "id": "assurance.structure-tree.cross-language",
       "contract": "assurance",
       "operation": "structure-tree",
@@ -30499,7 +30510,7 @@
       "statement": "The crate-graph stage matches Rust, TypeScript, JavaScript and Python functions, types and constants outside a home by name folded to lowercase without separators, against its symbols and its literal constants' names and values.",
       "why": "A-assurance#duplicated-capabilities-match",
       "file": "spec/81-engineering.md",
-      "line": 55
+      "line": 57
     },
     {
       "id": "assurance.structure-tree.decision-module",
@@ -30510,7 +30521,7 @@
       "statement": "One module owns the enforcement decision; a gateway and the engine reaching the same verdict execute it, compiled native and to WebAssembly from one pinned source.",
       "why": "P5, A-assurance#decision-module-compiles",
       "file": "spec/81-engineering.md",
-      "line": 57
+      "line": 59
     },
     {
       "id": "assurance.structure-tree.adapter",
@@ -30521,7 +30532,7 @@
       "statement": "A surface with no engine process on its request path implements an adapter against the engine's ports.",
       "why": "P5",
       "file": "spec/81-engineering.md",
-      "line": 59
+      "line": 61
     },
     {
       "id": "assurance.structure-tree.derivation-check",
@@ -30532,7 +30543,7 @@
       "statement": "A generated artifact declares the check that fails once its source moves, and the gate's schema stage runs that check.",
       "why": "P5, A-assurance#generated-artifacts-prove",
       "file": "spec/81-engineering.md",
-      "line": 61
+      "line": 63
     },
     {
       "id": "assurance.structure-tree.mirror-exemption",
@@ -30543,7 +30554,7 @@
       "statement": "A review-time restatement of a build-time rule is admitted where its site carries a `mirrors: <clause id>` comment naming the clause it restates; an unannotated restatement stays {{assurance.structure-tree.duplicated-capability}}.",
       "why": "because a reviewer-facing check sometimes restates a rule, and the annotation keeps the engine its one home and the copy traceable to it",
       "file": "spec/81-engineering.md",
-      "line": 63
+      "line": 65
     },
     {
       "id": "assurance.structure-tree.mirror-unresolved",
@@ -30554,7 +30565,7 @@
       "statement": "A `mirrors:` comment in a tracked file under `crates/`, `tools/` or `apps/` naming no clause of `spec/spec.lock.json` raises `MirrorUnresolved` in the schema stage, naming the file and line.",
       "why": "because an annotation naming nothing exempts a copy while tying it to no rule it could drift from",
       "file": "spec/81-engineering.md",
-      "line": 65
+      "line": 67
     },
     {
       "id": "assurance.automate.typed-subcommand",
@@ -30565,7 +30576,7 @@
       "statement": "An automation step carrying a branch, a loop or a retry, or running past 5 lines, is a typed subcommand shelling out to compiled binaries.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 72
+      "line": 74
     },
     {
       "id": "assurance.automate.subcommand-surface",
@@ -30576,7 +30587,7 @@
       "statement": "A subcommand exposes typed options, generated help and an entry point a test calls directly.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 74
+      "line": 76
     },
     {
       "id": "assurance.automate.one-path",
@@ -30587,7 +30598,7 @@
       "statement": "The gate invokes the subcommand a contributor invokes.",
       "why": "because a local reproduction and a gate run then execute one code path",
       "file": "spec/81-engineering.md",
-      "line": 75
+      "line": 77
     },
     {
       "id": "assurance.automate.unchecked-shell",
@@ -30598,7 +30609,7 @@
       "statement": "A shell file in the tree that `shellcheck` rejects raises `ShellCheckFailed` in the toolchain stage.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 77
+      "line": 79
     },
     {
       "id": "assurance.automate.test-shellcheck",
@@ -30609,7 +30620,7 @@
       "statement": "A gate stage starting a test process over a tree tracking a shell file puts the `shellcheck` {{assurance.automate.unchecked-shell}} runs first on that process's `PATH`.",
       "why": "because a suite asserting a script passes `shellcheck` otherwise depends on whether the sandbox image ships the linter",
       "file": "spec/81-engineering.md",
-      "line": 79
+      "line": 81
     },
     {
       "id": "assurance.automate.build-time-toolchain",
@@ -30620,7 +30631,7 @@
       "statement": "The automation toolchain links into no build profile and enters no release artifact.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 81
+      "line": 83
     },
     {
       "id": "assurance.test.presence-before-absence",
@@ -30631,7 +30642,7 @@
       "statement": "A test whose central claim is an absence first constructs the condition it names and verifies that condition obtains.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 87
+      "line": 89
     },
     {
       "id": "assurance.test.vacuous-exclusion",
@@ -30642,7 +30653,7 @@
       "statement": "An exclusion assertion — `all`, or a negated `any` — in a tracked test file under `crates/` or `tools/`, over a collection no earlier statement of its function shows non-empty, raises `VacuousAssertion` in the test-first stage.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 89
+      "line": 91
     },
     {
       "id": "assurance.test.guard-fires-both-ways",
@@ -30653,7 +30664,7 @@
       "statement": "A guard is validated against the fixture that motivated it and against the state it stands against, passing on the first and failing on the second.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 91
+      "line": 93
     },
     {
       "id": "assurance.test.one-integration-binary",
@@ -30664,7 +30675,7 @@
       "statement": "A crate's integration tests compile in one target, `tests/integration/main.rs`, which declares each suite as a module selected by path.",
       "why": "because each file directly under `tests/` links its own static binary, hundreds of MiB for an engine-linked crate",
       "file": "spec/81-engineering.md",
-      "line": 92
+      "line": 94
     },
     {
       "id": "assurance.test.feature-gated-suite",
@@ -30675,7 +30686,7 @@
       "statement": "A feature-gated suite carries a module-level `cfg` attribute at the head of its module file and compiles to nothing while its feature is off.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 94
+      "line": 96
     },
     {
       "id": "assurance.test.global-state-lock",
@@ -30686,7 +30697,7 @@
       "statement": "A suite contending process-global state acquires a named lock the integration binary's root module owns; every suite touching that state takes the same lock.",
       "why": "because a lock declared inside one suite leaves another suite free to race the same state",
       "file": "spec/81-engineering.md",
-      "line": 95
+      "line": 97
     },
     {
       "id": "assurance.test.own-process",
@@ -30697,7 +30708,7 @@
       "statement": "A test needing its own process sits in a top-level file stating why at its site; a thread-scoped log capture is such a test.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 97
+      "line": 99
     },
     {
       "id": "assurance.test.connector-kit",
@@ -30708,7 +30719,7 @@
       "statement": "The connector authoring toolkit ships a conformance suite — discovery returns valid schemas, an opened table yields a finite stream, a position round-trips — plus recorded-HTTP fixture replay and property tests over position monotonicity.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 98
+      "line": 100
     },
     {
       "id": "assurance.test.test-first",
@@ -30719,7 +30730,7 @@
       "statement": "A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`.",
       "why": "A-assurance#source-change-carries",
       "file": "spec/81-engineering.md",
-      "line": 99
+      "line": 101
     },
     {
       "id": "assurance.test.test-first-scope",
@@ -30730,7 +30741,7 @@
       "statement": "The test-first stage builds each changed test file's target against the base source with every feature enabled, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 101
+      "line": 103
     },
     {
       "id": "assurance.test.comparison-base",
@@ -30741,7 +30752,7 @@
       "statement": "Test-first resolves the supplied comparison revision to one commit and uses that commit for source selection, changed-test selection and base replay; each report records that commit and the tested head.",
       "why": "A-assurance#gate-repair-evidence",
       "file": "spec/81-engineering.md",
-      "line": 102,
+      "line": 104,
       "scenarios": [
         "WHEN linear or divergent history supplies a comparison revision, THEN source selection, changed-test selection and replay use the same resolved commit."
       ]
@@ -30755,7 +30766,7 @@
       "statement": "Test-first includes source introduced by merge resolutions; refactor exemptions apply only to source attributable to exempt commits and preserve obligations from behavior changes elsewhere in the comparison.",
       "why": "A-assurance#gate-repair-evidence",
       "file": "spec/81-engineering.md",
-      "line": 104,
+      "line": 106,
       "scenarios": [
         "WHEN a merge resolution introduces source behavior without a changed test, THEN the change fails {{assurance.test.test-first}}.",
         "WHEN a comparison combines refactor and behavior commits, THEN the behavior changes retain their failing-test obligation."
@@ -30770,7 +30781,7 @@
       "statement": "Test-first reports assertion failures, compilation failures and bounded test executions separately; infrastructure faults follow {{assurance.test.base-unrunnable}} and supply no failing-test evidence.",
       "why": "A-assurance#gate-repair-evidence",
       "file": "spec/81-engineering.md",
-      "line": 106,
+      "line": 108,
       "scenarios": [
         "WHEN a base assertion fails, THEN its diagnostic identifies test failure independently of infrastructure output.",
         "WHEN base execution fails through infrastructure, THEN the failure supplies no failing-test evidence."
@@ -30785,7 +30796,7 @@
       "statement": "One test-first execution against the base, its build excluded, runs for at most 300 s; a run past the bound is killed with its process group and counts as failing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 108
+      "line": 110
     },
     {
       "id": "assurance.test.base-unrunnable",
@@ -30796,7 +30807,7 @@
       "statement": "A base invocation whose output reports a full disk, an unloadable manifest or an unfetchable dependency raises `TestFirstBaseUnrunnable` instead of a verdict.",
       "why": "because such a fault fails at base whatever the tests assert, and reading it as red admits an untested change",
       "file": "spec/81-engineering.md",
-      "line": 109
+      "line": 111
     },
     {
       "id": "assurance.test.refactor-trailer",
@@ -30807,7 +30818,7 @@
       "statement": "A commit carrying the trailer `Test-First: refactor` exempts the source it alters from {{assurance.test.test-first}}; the rest of the range stays held, and the workspace stage alone holds that commit.",
       "why": "because a behavior-preserving change has no failing test to write, and the existing suite is its specification",
       "file": "spec/81-engineering.md",
-      "line": 111
+      "line": 113
     },
     {
       "id": "assurance.test.acceptance-surface",
@@ -30818,7 +30829,7 @@
       "statement": "An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`.",
       "why": "A-assurance#source-change-carries",
       "file": "spec/81-engineering.md",
-      "line": 113
+      "line": 115
     },
     {
       "id": "assurance.build.target-dir-per-stage",
@@ -30829,7 +30840,7 @@
       "statement": "Each cargo stage builds into a target directory of its own, reclaimed once the stage passes.",
       "why": "because stages under different feature unification share no artifacts, and peak disk is then one stage",
       "file": "spec/81-engineering.md",
-      "line": 142
+      "line": 144
     },
     {
       "id": "assurance.build.checkout-artifacts",
@@ -30840,7 +30851,7 @@
       "statement": "`.cargo/config.toml` names the checkout root, and every workspace package's build script folds its canonical path into the package fingerprint, so a shared target directory recompiles workspace packages per checkout while unchanged dependencies stay fresh.",
       "why": "A-assurance#gate-repair-evidence",
       "file": "spec/81-engineering.md",
-      "line": 144,
+      "line": 146,
       "scenarios": [
         "WHEN checkout A and checkout B build different source into one target directory, THEN B's integration tests, doctests and binary execute B's behavior on cold and warm builds, and their shared dependency stays fresh."
       ]
@@ -30854,7 +30865,7 @@
       "statement": "Reusable test helpers resolve the workspace root and tested binary from explicit runtime inputs bound to the invocation; cached helpers carry no compile-time checkout path deciding which source or binary runs.",
       "why": "A-assurance#gate-repair-evidence",
       "file": "spec/81-engineering.md",
-      "line": 146,
+      "line": 148,
       "scenarios": [
         "WHEN a helper cached from checkout A receives checkout B's runtime inputs, THEN its workspace operations and binary execution reach B alone."
       ]
@@ -30868,7 +30879,7 @@
       "statement": "The workspace stage builds every engine-linked package in one cargo invocation over the union of their features, and the store adapter's suites resolved without `read` link no SQL engine, so the features stage compiles one copy.",
       "why": "because one cargo invocation compiles the engine once, and a store-adapter suite asserting through SQL links a second copy into the no-`read` features run",
       "file": "spec/81-engineering.md",
-      "line": 148
+      "line": 150
     },
     {
       "id": "assurance.build.staged-feature-runs",
@@ -30879,7 +30890,7 @@
       "statement": "A defect appearing under one feature combination alone is reached by a staged nightly run, one command per container.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 150
+      "line": 152
     },
     {
       "id": "assurance.build.linked-query-functions",
@@ -30890,7 +30901,7 @@
       "statement": "Columnar file reading and statement serialization link into every build linking the SQL engine, and the read path loads no extension while serving.",
       "why": "A-assurance#columnar-read-statement",
       "file": "spec/81-engineering.md",
-      "line": 151
+      "line": 153
     },
     {
       "id": "assurance.build.runtime-extension-load",
@@ -30901,7 +30912,7 @@
       "statement": "A read path loading an extension into a binary that statically links the SQL engine raises `ExtensionAutoloadRefused`.",
       "why": "A-assurance#columnar-read-statement",
       "file": "spec/81-engineering.md",
-      "line": 153
+      "line": 155
     },
     {
       "id": "assurance.build.debug-info",
@@ -30912,7 +30923,7 @@
       "statement": "Development and test profiles carry line-tables-only debug information for workspace code and none for dependencies.",
       "why": "because every engine-linked test binary embeds the bundled engine, and full debug information multiplies each past a sandbox's disk",
       "file": "spec/81-engineering.md",
-      "line": 155
+      "line": 157
     },
     {
       "id": "assurance.build.release-profile",
@@ -30923,7 +30934,7 @@
       "statement": "Release builds compile with thin link-time optimization, one codegen unit per crate and symbols stripped, and unwind on panic.",
       "why": "because the run keeper survives a panicking job only by unwinding to its guard",
       "file": "spec/81-engineering.md",
-      "line": 157
+      "line": 159
     },
     {
       "id": "assurance.build.profile-build",
@@ -30934,7 +30945,7 @@
       "statement": "The features stage tests each package under every feature set its manifest lists in `feature-runs`: each other package has its own nightly check; each binary feature run has separate nightly checks for differential tests and all remaining tests.",
       "why": "because one cold build of the binary under one feature set fills most of a stage's wall clock, and a listed set reaches what none and all miss",
       "file": "spec/81-engineering.md",
-      "line": 159
+      "line": 161
     },
     {
       "id": "assurance.build.container-image",
@@ -30945,7 +30956,7 @@
       "statement": "The repository's `Dockerfile` builds one profile, `contextful-full` by default, as a static binary for the `PLATFORM` and `RUST_TARGET` its arguments name, and ships it in a shell-free runtime image as a non-root user over a declared store volume.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 161
+      "line": 163
     },
     {
       "id": "assurance.build.release-image",
@@ -30956,7 +30967,7 @@
       "statement": "Each profile's release image is an OCI index of a `linux/amd64` and a `linux/arm64` manifest; `contextful-ci image` assembles each from the profile's `x86_64` or `aarch64` musl release binary, with the `Dockerfile`'s runtime user, volume and entrypoint.",
       "why": "because arm64 hosts pull the same tag natively, and each release cell already holds its target's binary, so no image compiles twice",
       "file": "spec/81-engineering.md",
-      "line": 162
+      "line": 164
     },
     {
       "id": "assurance.build.image-binary-mismatch",
@@ -30967,7 +30978,7 @@
       "statement": "A binary whose ELF machine differs from its target's, or whose program headers name a dynamic interpreter, raises `ImageBinaryMismatch`, naming the target.",
       "why": "because a mislabelled layer runs only under emulation, and a dynamic binary finds no C library in the static runtime",
       "file": "spec/81-engineering.md",
-      "line": 164
+      "line": 166
     },
     {
       "id": "assurance.build.targets",
@@ -30978,7 +30989,7 @@
       "statement": "All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.",
       "why": "A-assurance#windows-release-support",
       "file": "spec/81-engineering.md",
-      "line": 166
+      "line": 168
     },
     {
       "id": "assurance.build.windows-target",
@@ -30989,7 +31000,7 @@
       "statement": "Windows targets are excluded from the release matrix; no profile publishes Windows artifacts.",
       "why": "A-assurance#windows-release-support",
       "file": "spec/81-engineering.md",
-      "line": 168
+      "line": 170
     },
     {
       "id": "assurance.build.wasi-probe",
@@ -31000,7 +31011,7 @@
       "statement": "No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.",
       "why": "A-assurance#edge-profile-ships",
       "file": "spec/81-engineering.md",
-      "line": 170
+      "line": 172
     },
     {
       "id": "assurance.build.release-artifact",
@@ -31011,7 +31022,7 @@
       "statement": "Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.",
       "why": "A-assurance#edge-profile-ships",
       "file": "spec/81-engineering.md",
-      "line": 172
+      "line": 174
     },
     {
       "id": "assurance.build.release-builder",
@@ -31022,7 +31033,7 @@
       "statement": "The release command uses `cargo build` by default and `cargo zigbuild` under `--builder zigbuild`, forwarding the selected target and profile features.",
       "why": "because Cloudflare Linux builds Darwin targets through Zig while the local release command keeps its native build path",
       "file": "spec/81-engineering.md",
-      "line": 174,
+      "line": 176,
       "scenarios": [
         "WHEN a Darwin cell selects `--builder zigbuild`, THEN the release command invokes `cargo zigbuild` for that profile and target."
       ]
@@ -31036,7 +31047,7 @@
       "statement": "Each release cell writes a JSON record naming its profile, target, archive, SHA-256 digest and SBOM.",
       "why": "because distributed release cells need a small authenticated input for formula generation",
       "file": "spec/81-engineering.md",
-      "line": 176,
+      "line": 178,
       "scenarios": [
         "WHEN a release cell packages an archive, THEN its JSON metadata names the archive, digest and SBOM."
       ]
@@ -31050,7 +31061,7 @@
       "statement": "The formula command accepts a manifest covering every release matrix cell once, with matching asset names and SHA-256 digests, and writes formulas and SHA256SUMS without local archives.",
       "why": "because one aggregation sandbox need not download every archive to produce formulas",
       "file": "spec/81-engineering.md",
-      "line": 178,
+      "line": 180,
       "scenarios": [
         "WHEN every cell's metadata is present without local archives, THEN formula generation writes the profile formulae and SHA256SUMS."
       ]
@@ -31064,7 +31075,7 @@
       "statement": "Every workspace package under `crates/` or `tools/` declares `license = \"Apache-2.0\"`, inherited from `[workspace.package]`; a package declaring another value or none raises `PackageLicenceMissing`, naming its manifest.",
       "why": "because cargo-deny, cargo-about and SBOM generators read the manifest field, not the `LICENSE` file, so an unlicensed package fails a consumer's licence check",
       "file": "spec/81-engineering.md",
-      "line": 180
+      "line": 182
     },
     {
       "id": "assurance.build.dependency-allowlist",
@@ -31075,7 +31086,7 @@
       "statement": "The connector authoring dependency allowlist carries `regex` and `serde_json` at its depth limit; a profile graph reaching `fancy-regex`, `pcre2`, `onig` or `serde_json`'s `unbounded_depth` feature raises `DependencyAllowlistViolation`, naming the profile and path.",
       "why": "because a backtracking matcher or a parser without a depth limit lets one hostile record pin a core or exhaust the stack",
       "file": "spec/81-engineering.md",
-      "line": 182
+      "line": 184
     },
     {
       "id": "assurance.gate.stage-sequence",
@@ -31086,7 +31097,7 @@
       "statement": "The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — all of both tiers when none is named, else the named subset, which `--plan` prints unrun.",
       "why": "A-assurance#stage-subset-runs",
       "file": "spec/81-engineering.md",
-      "line": 197
+      "line": 199
     },
     {
       "id": "assurance.gate.nightly-tier",
@@ -31097,7 +31108,7 @@
       "statement": "`contextful-ci stages --parts --tier nightly` prints the features, formal and budget parts in run order; `stages --parts` prints the remaining parts, those a change runs before merge, and `gate --stage` runs a part of either tier.",
       "why": "A-assurance#feature-runs-formal",
       "file": "spec/81-engineering.md",
-      "line": 199
+      "line": 201
     },
     {
       "id": "assurance.gate.stage-subset",
@@ -31108,7 +31119,7 @@
       "statement": "A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.",
       "why": "A-assurance#stage-subset-runs",
       "file": "spec/81-engineering.md",
-      "line": 201
+      "line": 203
     },
     {
       "id": "assurance.gate.affected-parts",
@@ -31119,7 +31130,7 @@
       "statement": "`contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including `preflight`.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/81-engineering.md",
-      "line": 203
+      "line": 205
     },
     {
       "id": "assurance.gate.affected-every",
@@ -31130,7 +31141,7 @@
       "statement": "A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every part of either tier.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/81-engineering.md",
-      "line": 205
+      "line": 207
     },
     {
       "id": "assurance.gate.affected-spec",
@@ -31141,7 +31152,7 @@
       "statement": "A change under `spec/` or `references/` reaches test-first validation, one under `spec/` the foundation workspace part, and each clause whose statement or `spec/pins.toml` entry changed the parts running its pinned test or theorem.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/81-engineering.md",
-      "line": 207
+      "line": 209
     },
     {
       "id": "assurance.gate.affected-spec-inputs",
@@ -31152,7 +31163,7 @@
       "statement": "A change to `spec/01-topology.md` or `spec/capabilities.toml` reaches crate-graph, to `spec/adr/A-assurance.md` the formal stage, and to `spec/terms/assurance.toml` every budget part.",
       "why": "because those stages read the file directly, apart from any clause pin",
       "file": "spec/81-engineering.md",
-      "line": 209
+      "line": 211
     },
     {
       "id": "assurance.gate.affected-removed",
@@ -31163,7 +31174,7 @@
       "statement": "A clause the merge base's lock holds and HEAD's lacks reaches the evaluate stage.",
       "why": "because the evaluate stage refuses a ledger entry naming a clause the lock lacks",
       "file": "spec/81-engineering.md",
-      "line": 211
+      "line": 213
     },
     {
       "id": "assurance.gate.affected-unplaced",
@@ -31174,7 +31185,7 @@
       "statement": "An unreadable spec lock or pins file, or a changed clause pinned outside every workspace package, reaches every required part.",
       "why": "because a pin the listing cannot place runs on a part the listing cannot name",
       "file": "spec/81-engineering.md",
-      "line": 213
+      "line": 215
     },
     {
       "id": "assurance.gate.affected-surfaces",
@@ -31185,7 +31196,7 @@
       "statement": "A change under `apps/` or `packages/` reaches the TypeScript surfaces, acceptance and crate-graph parts.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/81-engineering.md",
-      "line": 215
+      "line": 217
     },
     {
       "id": "assurance.gate.affected-formal",
@@ -31196,7 +31207,7 @@
       "statement": "A change under `formal/` other than a `lean-toolchain` file reaches the formal and evaluate stages, the foundation, CLI and CLI differential workspace parts, and every feature part.",
       "why": "A-assurance#pull-request-runs",
       "file": "spec/81-engineering.md",
-      "line": 217
+      "line": 219
     },
     {
       "id": "assurance.gate.windows-checks",
@@ -31207,7 +31218,7 @@
       "statement": "Windows native checks run only as optional diagnostics and contribute no required merge or release verdict.",
       "why": "A-assurance#windows-release-support",
       "file": "spec/81-engineering.md",
-      "line": 219
+      "line": 221
     },
     {
       "id": "assurance.gate.test-first-parts",
@@ -31218,7 +31229,7 @@
       "statement": "The test-first parts require a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package's part checks only its own changed tests against the base.",
       "why": "because one base build per package fits the sandbox's wall clock more reliably",
       "file": "spec/81-engineering.md",
-      "line": 221
+      "line": 223
     },
     {
       "id": "assurance.gate.workspace-parts",
@@ -31229,7 +31240,7 @@
       "statement": "The workspace parts compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.",
       "why": "A-assurance#workspace-fits-stage",
       "file": "spec/81-engineering.md",
-      "line": 223
+      "line": 225
     },
     {
       "id": "assurance.gate.cli-shard-map",
@@ -31240,7 +31251,7 @@
       "statement": "`tools/ci/cli-shards.toml` assigns each remaining CLI test, a nested-build group whole, one shard by recorded duration within 9 min per shard; an unmapped test, reported as drift, joins its group or the least-loaded shard, which adds unit tests and doctests.",
       "why": "A-assurance#workspace-fits-stage",
       "file": "spec/81-engineering.md",
-      "line": 225
+      "line": 227
     },
     {
       "id": "assurance.gate.folded-parts",
@@ -31251,7 +31262,7 @@
       "statement": "`stages --parts` folds pins, toolchain, schema and test-first validation into `preflight`; each package group's workspace and evaluate parts into `suite.<group>`, probes into `suite.ci`; crate graph, connectors and surfaces into `perimeter`; members stay runnable alone.",
       "why": "because every part pays its own sandbox setup and compile, and a fold pays it once for every member",
       "file": "spec/81-engineering.md",
-      "line": 227
+      "line": 229
     },
     {
       "id": "assurance.gate.compile-only",
@@ -31262,7 +31273,7 @@
       "statement": "`gate --stage <part> --compile-only` runs each `cargo test` invocation the part runs, in its own target directory with `--no-run` and without its `--` arguments, and nothing else; a CLI shard compiles every shard's invocations.",
       "why": "because a compile cache serves a part only when the warming build's cargo arguments, environment and target directory match the part's",
       "file": "spec/81-engineering.md",
-      "line": 229
+      "line": 231
     },
     {
       "id": "assurance.gate.compile-groups",
@@ -31273,7 +31284,7 @@
       "statement": "`stages --parts --compile-groups` lists, in run order, the first part of each distinct compile signature — its ordered `--compile-only` invocations and target directory — across both tiers unless `--tier` names one.",
       "why": "because the eight CLI shards share one signature, and warming each compiles it eight times",
       "file": "spec/81-engineering.md",
-      "line": 231
+      "line": 233
     },
     {
       "id": "assurance.gate.fold-verdicts",
@@ -31284,7 +31295,7 @@
       "statement": "A fold runs each member after an earlier member fails, skips a member reading a failed member's output, and fails when any member fails.",
       "why": "because one fold check replaces a check per member, and one run reports every member's verdict",
       "file": "spec/81-engineering.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "assurance.gate.stage-reports",
@@ -31295,7 +31306,7 @@
       "statement": "Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.",
       "why": "because memory exhaustion is silent, and a kill then reads as a number in the log",
       "file": "spec/81-engineering.md",
-      "line": 235
+      "line": 237
     },
     {
       "id": "assurance.gate.stage-timings",
@@ -31306,7 +31317,7 @@
       "statement": "Each part records queue, setup, compilation and test durations separately, alongside its commit, feature set, runner identity and cold or warm cache state.",
       "why": "A-assurance#gate-repair-evidence",
       "file": "spec/81-engineering.md",
-      "line": 237,
+      "line": 239,
       "scenarios": [
         "WHEN a part queues and then executes, THEN its report distinguishes queue, setup, compilation and test durations."
       ]
@@ -31320,7 +31331,7 @@
       "statement": "Every part completes within {{assurance.gate.container}} on cold and warm builds; oversized work splits into locally runnable parts retaining every required suite and predecessor obligation.",
       "why": "A-assurance#gate-parts-run",
       "file": "spec/81-engineering.md",
-      "line": 239,
+      "line": 241,
       "scenarios": [
         "WHEN every part runs with empty caches and then warm caches, THEN each completes within {{assurance.gate.container}} and the union preserves required coverage."
       ]
@@ -31334,7 +31345,7 @@
       "statement": "The runner admits concurrent builds only within available build slots and {{assurance.gate.parallel-jobs}}; excess builds queue before setup and compilation.",
       "why": "A-assurance#gate-repair-evidence",
       "file": "spec/81-engineering.md",
-      "line": 241,
+      "line": 243,
       "scenarios": [
         "WHEN occupied build slots reach the admission limit, THEN another build queues without starting setup or compilation."
       ]
@@ -31348,7 +31359,7 @@
       "statement": "A timed-out part retains phase timings and stdout/stderr diagnostics, terminates its owned process tree, verifies descendant exit and reports a failed verdict before releasing its build slot.",
       "why": "A-assurance#gate-repair-evidence",
       "file": "spec/81-engineering.md",
-      "line": 243,
+      "line": 245,
       "scenarios": [
         "WHEN a forced hang leaves a descendant holding output pipes, THEN timeout diagnostics survive, the descendant exits and the part fails before its slot is released."
       ]
@@ -31362,7 +31373,7 @@
       "statement": "The pins stage resolves every pinned artifact identity a run depends on before any compilation.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "assurance.gate.evaluate-stage",
@@ -31373,7 +31384,7 @@
       "statement": "The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 246
+      "line": 248
     },
     {
       "id": "assurance.gate.schema-stage",
@@ -31384,7 +31395,7 @@
       "statement": "The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 247
+      "line": 249
     },
     {
       "id": "assurance.gate.secret-ciphertext",
@@ -31395,7 +31406,7 @@
       "statement": "In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file other than `.env.example` holding a value without the `encrypted:` prefix, or a tracked `.env.keys`, raises `SecretPlaintext`, naming file and key.",
       "why": "because a tracked file reaches every clone, and only dotenvx ciphertext is safe there while its private key stays untracked",
       "file": "spec/81-engineering.md",
-      "line": 248
+      "line": 250
     },
     {
       "id": "assurance.gate.secret-scope",
@@ -31406,7 +31417,7 @@
       "statement": "In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file whose block — the assignments above it, up to the first blank line — opens with no comment carrying text raises `SecretScopeMissing`, naming file and key.",
       "why": "because a provider token cannot report its own grants, so the comment above it is the one record of what it reaches",
       "file": "spec/81-engineering.md",
-      "line": 250
+      "line": 252
     },
     {
       "id": "assurance.gate.crate-graph",
@@ -31417,7 +31428,7 @@
       "statement": "The crate-graph stage holds run-path crates to reaching read-path crates through the three crossing crates alone; another edge raises `CrateGraphViolation`, naming both crates.",
       "why": "P5",
       "file": "spec/81-engineering.md",
-      "line": 252
+      "line": 254
     },
     {
       "id": "assurance.gate.locked-resolve",
@@ -31428,7 +31439,7 @@
       "statement": "The crate-graph stage resolves every graph `--locked` against the committed `Cargo.lock`, so a lock behind its manifests, or one rewritten before the stage starts, fails the stage before any rule runs; the stage never rewrites it.",
       "why": "because a rule held over a graph the lock file does not record passes a build that resolves another",
       "file": "spec/81-engineering.md",
-      "line": 254
+      "line": 256
     },
     {
       "id": "assurance.gate.row-token",
@@ -31439,7 +31450,7 @@
       "statement": "Every row-returning function of the store crate takes the enforcement token type, whose constructor is private to the enforcement module; a row path outside a registered relation raises `EnforceUnmediatedPath`, naming the function.",
       "why": "P5",
       "file": "spec/81-engineering.md",
-      "line": 256
+      "line": 258
     },
     {
       "id": "assurance.gate.dependency-deny",
@@ -31450,7 +31461,7 @@
       "statement": "The crate-graph stage runs pinned cargo-deny `check bans` over each profile's resolved graph, denying every crate a profile-wide dependency refusal names; a hit raises that refusal's error, naming the profile and the path.",
       "why": "A-assurance#profile-graphs-answer",
       "file": "spec/81-engineering.md",
-      "line": 258
+      "line": 260
     },
     {
       "id": "assurance.gate.deny-profile-graph",
@@ -31461,7 +31472,7 @@
       "statement": "A profile's graph is the binary resolved with default features off and the profile's feature on, across every target, excluding development dependencies; the stage prints each profile the binary declares no feature for.",
       "why": "A-assurance#profile-graphs-answer",
       "file": "spec/81-engineering.md",
-      "line": 260
+      "line": 262
     },
     {
       "id": "assurance.gate.deny-list",
@@ -31472,7 +31483,7 @@
       "statement": "`deny.toml` holds one `[bans]` entry per crate or feature a profile-wide dependency refusal names, its reason that refusal's clause id; an entry missing or extra raises `DenyListDrift`, naming it.",
       "why": "because a refusal whose crate the list omits passes every profile graph linking it",
       "file": "spec/81-engineering.md",
-      "line": 262
+      "line": 264
     },
     {
       "id": "assurance.gate.unconfigured-egress",
@@ -31483,7 +31494,7 @@
       "statement": "An outbound call reachable under the default configuration — usage ping, license check, update probe — raises `UnconfiguredEgress` in the crate-graph stage, naming the call site.",
       "why": "because some deployments run with no external reach, and a call nobody configured moves data outside every grant, zone and audit record",
       "file": "spec/81-engineering.md",
-      "line": 264
+      "line": 266
     },
     {
       "id": "assurance.gate.interpolated-claim",
@@ -31494,7 +31505,7 @@
       "statement": "A source lint over the runtime crates finding a subject claim formatted into SQL text raises `EnforceInterpolatedSubjectClaim`, naming the file and line.",
       "why": "P1",
       "file": "spec/81-engineering.md",
-      "line": 266
+      "line": 268
     },
     {
       "id": "assurance.gate.formal-stage",
@@ -31505,7 +31516,7 @@
       "statement": "The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}}, {{assurance.model.protocol-check}} and the protocol differential over 10000 generated cases on both lease paths; a non-zero exit from any reds the run.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 268
+      "line": 270
     },
     {
       "id": "assurance.gate.container",
@@ -31516,7 +31527,7 @@
       "statement": "The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a 45 min per-stage wall clock — and a run dies on any one.",
       "why": "A-assurance#gate-parts-run",
       "file": "spec/81-engineering.md",
-      "line": 270
+      "line": 272
     },
     {
       "id": "assurance.gate.parallel-jobs",
@@ -31527,7 +31538,7 @@
       "statement": "Parallel build jobs number the memory ceiling divided by 3 GiB.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "assurance.gate.free-disk",
@@ -31538,7 +31549,7 @@
       "statement": "A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 273
+      "line": 275
     },
     {
       "id": "assurance.gate.build-size",
@@ -31549,7 +31560,7 @@
       "statement": "The nightly budget stage holds total build size to 12 GiB, printing that size, the free space and the largest artifacts; a larger build raises `BuildSizeCeilingExceeded`, naming the head of that list.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 275
+      "line": 277
     },
     {
       "id": "assurance.gate.edge-budget",
@@ -31560,7 +31571,7 @@
       "statement": "The edge profile holds to 50 MiB compressed and 60 MiB idle resident set.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 277
+      "line": 279
     },
     {
       "id": "assurance.gate.full-budget",
@@ -31571,7 +31582,7 @@
       "statement": "The full profile holds to 150 MiB compressed and 180 MiB idle resident set.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 278
+      "line": 280
     },
     {
       "id": "assurance.gate.control-budget",
@@ -31582,7 +31593,7 @@
       "statement": "The control profile holds to 60 MiB compressed and 80 MiB idle resident set.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 279
+      "line": 281
     },
     {
       "id": "assurance.gate.footprint",
@@ -31593,7 +31604,7 @@
       "statement": "Per nightly run and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 280
+      "line": 282
     },
     {
       "id": "assurance.gate.budget-stage",
@@ -31604,7 +31615,7 @@
       "statement": "The budget stage runs {{assurance.gate.footprint}} over every profile, in one nightly-tier part per profile, and the evaluate stage builds no profile.",
       "why": "because one link-time-optimized release build of the full profile fills most of one stage's wall clock",
       "file": "spec/81-engineering.md",
-      "line": 282
+      "line": 284
     },
     {
       "id": "assurance.gate.footprint-exceeded",
@@ -31615,7 +31626,7 @@
       "statement": "An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 284
+      "line": 286
     },
     {
       "id": "assurance.gate.typescript-surfaces",
@@ -31626,7 +31637,7 @@
       "statement": "The TypeScript surfaces run each declared typecheck, test and build script in one stage; an absent script skips only that script.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 286
+      "line": 288
     },
     {
       "id": "assurance.gate.native-test-files",
@@ -31637,7 +31648,7 @@
       "statement": "The surfaces stage runs every regular native `.test.ts` file under a direct TypeScript surface's `test/` or `tests/` tree through Node's TypeScript strip runner, and refuses absent passing tests or pinned names.",
       "why": "because a package script can omit a pinned test while reporting success",
       "file": "spec/81-engineering.md",
-      "line": 287
+      "line": 289
     },
     {
       "id": "assurance.gate.surface-check-failed",
@@ -31648,7 +31659,7 @@
       "statement": "A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 289
+      "line": 291
     },
     {
       "id": "assurance.evaluate.real-read-path",
@@ -31659,7 +31670,7 @@
       "statement": "An evaluation run ingests, indexes, retrieves, reads, judges and scores through the surfaces a caller uses, and the harness adds no storage or runtime primitive.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 337
+      "line": 339
     },
     {
       "id": "assurance.evaluate.through-the-store",
@@ -31670,7 +31681,7 @@
       "statement": "The corpus loads through the real store, and the retriever under test calls {{read.retrieve.ranked-call}} with the options a caller passes.",
       "why": "because an unordered full-scan retriever cannot go red when ranking breaks",
       "file": "spec/81-engineering.md",
-      "line": 338
+      "line": 340
     },
     {
       "id": "assurance.evaluate.policy-labels",
@@ -31681,7 +31692,7 @@
       "statement": "An evaluation corpus carries zone and row-policy labels in its table declarations, and a run reads it through the access-control path under one admitted credential.",
       "why": "A-assurance#evaluation-data-follows",
       "file": "spec/81-engineering.md",
-      "line": 340,
+      "line": 342,
       "scenarios": [
         "WHEN a regression case names a row another agent owns under `owner = subject.agent`, THEN no leg returns it and the hybrid forbidden-row rate reads 0."
       ]
@@ -31695,7 +31706,7 @@
       "statement": "A run over a corpus whose tables declare no zone or row policy, with no `local:` zone passed as `--zone`, raises `EvalCorpusUnlabeled` before any row lands.",
       "why": "A-assurance#evaluation-data-follows",
       "file": "spec/81-engineering.md",
-      "line": 342,
+      "line": 344,
       "scenarios": [
         "WHEN a corpus's tables declare no policy and the run passes no `--zone`, THEN the run raises `EvalCorpusUnlabeled` and lands no row."
       ]
@@ -31709,7 +31720,7 @@
       "statement": "A case carries an id, a corpus path relative to its case file, a question, tags, and an expected block of answer, artifacts, edges, entities, must-cite, must-abstain, must-not-retrieve, time anchor and recency bound.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 344
+      "line": 346
     },
     {
       "id": "assurance.evaluate.row-reference",
@@ -31720,7 +31731,7 @@
       "statement": "A case names a row as `<table>#<key>`, the key joining the row's declared primary-key values with commas, and the runner keys each returned row the same way.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 345
+      "line": 347
     },
     {
       "id": "assurance.evaluate.regression-case",
@@ -31731,7 +31742,7 @@
       "statement": "A case tagged `regression` is a regression case, and its must-not-retrieve set scores {{assurance.evaluate.forbidden-row-rate}}.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 346
+      "line": 348
     },
     {
       "id": "assurance.evaluate.corpus-layout",
@@ -31742,7 +31753,7 @@
       "statement": "A corpus is a directory holding `contextful.toml`, its table declarations and policy labels, and one `rows/<table>.jsonl` per table.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 347
+      "line": 349
     },
     {
       "id": "assurance.evaluate.run-command",
@@ -31753,7 +31764,7 @@
       "statement": "`contextful eval run --goldens <file>` loads the case file, lands and folds each referenced corpus into a scratch store at `--landed-at`, the Unix epoch by default, reads every case, and writes the run report.",
       "why": "because an undated row landed at the epoch predates every question's window, so a replay scores alike on any day",
       "file": "spec/81-engineering.md",
-      "line": 348
+      "line": 350
     },
     {
       "id": "assurance.evaluate.entity-command",
@@ -31764,7 +31775,7 @@
       "statement": "`contextful eval entity-evidence --manifest <file>` loads versioned synthetic or licensed adjudicated fixtures through {{assurance.evaluate.through-the-store}}, resolving mentions through knowledge cards, following requested predicates through keyed recall, and comparing ordinary ranked evidence retrieval.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 350
+      "line": 352
     },
     {
       "id": "assurance.evaluate.entity-eligibility",
@@ -31775,7 +31786,7 @@
       "statement": "Both entity-evidence arms receive identical evidence admitted by keyed recall under the case anchor and one reader credential; fixed adjudicated tuples grant no answer credit to later, expired, superseded, inaccessible or unresolved evidence.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 351
+      "line": 353
     },
     {
       "id": "assurance.evaluate.entity-metrics",
@@ -31786,7 +31797,7 @@
       "statement": "Entity-evidence reports canonical entity accuracy, eligible-claim recall, ordered relationship-path correctness, citation resolution and appropriate abstention independently under deterministic labels; model judgments occupy separate labels.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 352
+      "line": 354
     },
     {
       "id": "assurance.evaluate.entity-baseline",
@@ -31797,7 +31808,7 @@
       "statement": "Entity-evidence baselines bind fixture version, manifest digest, corpus digest and run configuration, extending {{assurance.baseline.metric-path}} with `entity_evidence.<arm>.<metric>`; versioned ledger entries collect {{assurance.measure.record}} records.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 353
+      "line": 355
     },
     {
       "id": "assurance.evaluate.legs",
@@ -31808,7 +31819,7 @@
       "statement": "Each case calls {{read.retrieve.ranked-call}} three times at limit k: the lexical leg with the question alone, the vector leg with an embedding and an empty query, the hybrid leg with both.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 354
+      "line": 356
     },
     {
       "id": "assurance.evaluate.stub-embedder",
@@ -31819,7 +31830,7 @@
       "statement": "The deterministic tier embeds every row and question with a seeded feature-hashing stub embedder; a corpus row or a case carrying its own embedding keeps it.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 355
+      "line": 357
     },
     {
       "id": "assurance.evaluate.semantic-cache",
@@ -31830,7 +31841,7 @@
       "statement": "`--semantic-manifest` hashes corpus, held-out labels, development queries, configuration, and the model's license, embedding configuration and artifacts at an immutable revision; a changed, unhashed or symbolically linked input or a second table raises `EvalSemanticCacheUnverified` before {{assurance.evaluate.through-the-store}}.",
       "why": "because model quality needs real vectors whose provenance and inputs survive offline replay",
       "file": "spec/81-engineering.md",
-      "line": 356
+      "line": 358
     },
     {
       "id": "assurance.evaluate.semantic-inputs",
@@ -31841,7 +31852,7 @@
       "statement": "A missing, non-finite, zero-norm or mismatched vector, a relocated held-out file, an overlapping development query or a configuration difference raises `EvalSemanticInputRejected` before retrieval; every leg consumes the same verified cases and corpus.",
       "why": "because a cache fallback or corpus substitution changes the experiment while preserving its name",
       "file": "spec/81-engineering.md",
-      "line": 358
+      "line": 360
     },
     {
       "id": "assurance.evaluate.semantic-report",
@@ -31852,7 +31863,7 @@
       "statement": "Semantic reports carry {{assurance.evaluate.deterministic-tier}} with sample counts and case-bootstrap uncertainty; a comparable baseline reports overall and per-slice regressions under the pinned tolerance.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 360
+      "line": 362
     },
     {
       "id": "assurance.evaluate.semantic-separate",
@@ -31863,7 +31874,7 @@
       "statement": "Semantic quality reports use their own tier and input identity, exclude answer judging and deterministic mechanics verdicts, and compare baselines only for matching corpus, labels, model and configuration identities.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 361
+      "line": 363
     },
     {
       "id": "assurance.evaluate.run-verdict",
@@ -31874,7 +31885,7 @@
       "statement": "A run holds its report to the floors and, given `--baseline`, to that file; either red verdict exits non-zero, and `--update-baseline` applies {{assurance.baseline.raise-only}} on green alone.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 362
+      "line": 364
     },
     {
       "id": "assurance.evaluate.converter",
@@ -31885,7 +31896,7 @@
       "statement": "Each benchmark and application ground truth converts once into the case format through its own converter, and the runner reads nothing else.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 363
+      "line": 365
     },
     {
       "id": "assurance.evaluate.deterministic-tier",
@@ -31896,7 +31907,7 @@
       "statement": "Recall@k, R-precision, hit-rate@k, reciprocal rank and nDCG@k run with no model call, reported per leg — lexical, vector, hybrid — and per slice.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 364
+      "line": 366
     },
     {
       "id": "assurance.evaluate.distinct-top-k",
@@ -31907,7 +31918,7 @@
       "statement": "Membership in the top k is distinct, and a repeated id counts once.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 365
+      "line": 367
     },
     {
       "id": "assurance.evaluate.absent-truth",
@@ -31918,7 +31929,7 @@
       "statement": "A ranked metric over a case with no relevant set is NaN and drops out of every aggregate; an empty ranking against a non-empty relevant set scores zero.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 366
+      "line": 368
     },
     {
       "id": "assurance.evaluate.precision-floor",
@@ -31929,7 +31940,7 @@
       "statement": "Precision at rank min(k, R), R being the relevant-set size, holds at or above 60 percent.",
       "why": "because precision@k caps at R/k, below the floor whenever R is small",
       "file": "spec/81-engineering.md",
-      "line": 367
+      "line": 369
     },
     {
       "id": "assurance.evaluate.forbidden-row-rate",
@@ -31940,7 +31951,7 @@
       "statement": "A row named in a must-not-retrieve set holds at 0 percent of a regression case's returned rows.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 369
+      "line": 371
     },
     {
       "id": "assurance.evaluate.duplicate-row-rate",
@@ -31951,7 +31962,7 @@
       "statement": "A repeated table-and-row-key pair holds at 0 percent of the ranking.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 370
+      "line": 372
     },
     {
       "id": "assurance.evaluate.in-window-rate",
@@ -31962,7 +31973,7 @@
       "statement": "A case declaring a recency bound holds its in-window rate at or above 95 percent.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 371
+      "line": 373
     },
     {
       "id": "assurance.evaluate.abstention",
@@ -31973,7 +31984,7 @@
       "statement": "A must-abstain case returns zero rows.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 372
+      "line": 374
     },
     {
       "id": "assurance.evaluate.truth-per-surface",
@@ -31984,7 +31995,7 @@
       "statement": "Expected artifacts score the artifact retriever and expected edges score the edge retriever, reported apart; edge truth with no edge surface configured counts in an unscored tally.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 373
+      "line": 375
     },
     {
       "id": "assurance.evaluate.memory-legs",
@@ -31995,7 +32006,7 @@
       "statement": "Beside {{assurance.evaluate.legs}}, a run naming an admitted reranker adds a hybrid leg passing it as `rerank_with` under {{read.rank.rerank}}, and a memory case adds a keyed leg calling {{read.recall.keyed}} at its time anchor.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 374
+      "line": 376
     },
     {
       "id": "assurance.evaluate.edge-surface",
@@ -32006,7 +32017,7 @@
       "statement": "The edge retriever of {{assurance.evaluate.truth-per-surface}} runs one {{read.traverse.call}} walk per expected entity, over every walkable declared relation at {{read.traverse.hop-bound}}; a case's expected edges score the union of returned edges.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 375
+      "line": 377
     },
     {
       "id": "assurance.evaluate.memory-tags",
@@ -32017,7 +32028,7 @@
       "statement": "A memory case carries one or more tags of `knowledge-update`, `temporal-reasoning`, `abstention` and `selective-forgetting`; a temporal case anchors at `observed_at`, and a forgetting case erases its subject under {{disclosure.erase.privilege}} before reading.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 376
+      "line": 378
     },
     {
       "id": "assurance.evaluate.supersession-correctness",
@@ -32028,7 +32039,7 @@
       "statement": "A run reports, per leg, the rate of memory cases serving a superseded claim at its successor's anchor.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 377
+      "line": 379
     },
     {
       "id": "assurance.evaluate.supersession-floor",
@@ -32039,7 +32050,7 @@
       "statement": "The {{assurance.evaluate.supersession-correctness}} rate holds at 0 percent across native memory cases.",
       "why": "because a retired belief served beside its successor is the distractor memory exists to remove",
       "file": "spec/81-engineering.md",
-      "line": 378
+      "line": 380
     },
     {
       "id": "assurance.evaluate.recall-under-suppression",
@@ -32050,7 +32061,7 @@
       "statement": "A memory case reports recall@k with the claims {{read.recall.suppression-count}} counts excluded from its judged relevant set.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 380
+      "line": 382
     },
     {
       "id": "assurance.evaluate.evidence-cap-rate",
@@ -32061,7 +32072,7 @@
       "statement": "A memory case reports the share of its served claims whose `evidence_omitted` count under {{read.recall.evidence-references}} is above 0.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 381
+      "line": 383
     },
     {
       "id": "assurance.evaluate.memory-converters",
@@ -32072,7 +32083,7 @@
       "statement": "Beside {{assurance.evaluate.converter}}, LongMemEval and MemoryAgentBench each convert into tagged memory cases, and their scores report beside the native set as {{assurance.baseline.native-gate}} holds.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 382
+      "line": 384
     },
     {
       "id": "assurance.evaluate.filtered-recall",
@@ -32083,7 +32094,7 @@
       "statement": "Each run reports restricted recall@k against an exact scan at three restriction selectivities drawn from the zone and row-policy labels of {{assurance.evaluate.policy-labels}}.",
       "why": "because an approximate index loses recall as a filter narrows, and one unfiltered figure hides that loss",
       "file": "spec/81-engineering.md",
-      "line": 383
+      "line": 385
     },
     {
       "id": "assurance.evaluate.judged-dimensions",
@@ -32094,7 +32105,7 @@
       "statement": "The reading stage adds four judged dimensions: answer accuracy; abstention, as correct-refusal and hallucination-on-unknown rates; citation faithfulness; and temporal correctness against the bitemporal columns.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 385
+      "line": 387
     },
     {
       "id": "assurance.evaluate.grounded-reader",
@@ -32105,7 +32116,7 @@
       "statement": "The harness reader answers from retrieved rows alone, and the deterministic tier substitutes a stub reader.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 386
+      "line": 388
     },
     {
       "id": "assurance.evaluate.model-endpoint",
@@ -32116,7 +32127,7 @@
       "statement": "The judge and the reader reach a model through {{connector.infer.model-endpoint}}, and the harness holds no credential.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 387
+      "line": 389
     },
     {
       "id": "assurance.evaluate.judge",
@@ -32127,7 +32138,7 @@
       "statement": "The judge is one pinned open-weights instruct model, called once per judged item at temperature zero; a judge swap is a full re-baseline.",
       "why": "because a majority vote at temperature zero samples one mode and adds cost without reducing variance",
       "file": "spec/81-engineering.md",
-      "line": 388
+      "line": 390
     },
     {
       "id": "assurance.evaluate.judged-run",
@@ -32138,7 +32149,7 @@
       "statement": "`contextful eval run --tier judged` reads and judges every case through the endpoint and model `--endpoint` and `--model` name, stamping that model in the run block; the deterministic tier judges with the stubs.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 390
+      "line": 392
     },
     {
       "id": "assurance.evaluate.cutoff-flags",
@@ -32149,7 +32160,7 @@
       "statement": "`contextful eval run` takes `--snapshot`, `--pretrain-cutoff` and `--posttrain-cutoff` for the reader and `--judge-snapshot`, `--judge-pretrain-cutoff` and `--judge-posttrain-cutoff` for the judge, each cutoff value a month and its tag, as `2024-10:documented`.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 391,
+      "line": 393,
       "scenarios": [
         "WHEN a run passes `--pretrain-cutoff 2024-10:documented` and no `--posttrain-cutoff`, THEN the reader's post-training cutoff compares as each call's own instant."
       ]
@@ -32163,7 +32174,7 @@
       "statement": "A judged run block stamps the reader's and the judge's snapshot ids and their {{connector.infer.cutoffs}}.",
       "why": "because a score from a model trained past a case's resolution measures recall, not reading",
       "file": "spec/81-engineering.md",
-      "line": 392,
+      "line": 394,
       "scenarios": [
         "WHEN a judged run passes `--judge-posttrain-cutoff 2025-03:estimated`, THEN the run block carries that cutoff tagged `estimated` beside the judge's snapshot id."
       ]
@@ -32177,7 +32188,7 @@
       "statement": "Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 394
+      "line": 396
     },
     {
       "id": "assurance.evaluate.checkpoint",
@@ -32188,7 +32199,7 @@
       "statement": "A run appends each case's result as JSONL, and a crash re-runs the in-flight case.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 395
+      "line": 397
     },
     {
       "id": "assurance.evaluate.run-report",
@@ -32199,7 +32210,7 @@
       "statement": "A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 396
+      "line": 398
     },
     {
       "id": "assurance.baseline.file",
@@ -32210,7 +32221,7 @@
       "statement": "A baseline file carries a reserved run block `{k, tier, model, samples}` and one entry per gated metric: a bare number at the run's dead band, or an object overriding the band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 409
+      "line": 411
     },
     {
       "id": "assurance.baseline.default-dead-band",
@@ -32221,7 +32232,7 @@
       "statement": "A rate-valued entry with no override gates at a 2 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 410
+      "line": 412
     },
     {
       "id": "assurance.baseline.rank-quality-dead-band",
@@ -32232,7 +32243,7 @@
       "statement": "The ranked-quality entry gates at a 3 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 411
+      "line": 413
     },
     {
       "id": "assurance.baseline.band-units",
@@ -32243,7 +32254,7 @@
       "statement": "A band carries its metric's own units, and a count entry is pinned at zero with no band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 412
+      "line": 414
     },
     {
       "id": "assurance.baseline.metric-path",
@@ -32254,7 +32265,7 @@
       "statement": "An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`, `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `latency_ms`, `n_cases`, or `slices.<tag>.` before a bare `<metric>` or any of these but `latency_ms`.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 413
+      "line": 415
     },
     {
       "id": "assurance.baseline.sample-count",
@@ -32265,7 +32276,7 @@
       "statement": "Every mean-valued path takes a `.n` suffix naming its sample count.",
       "why": "because blanking one case's truth lifts a NaN-filtered mean without moving the case count",
       "file": "spec/81-engineering.md",
-      "line": 414
+      "line": 416
     },
     {
       "id": "assurance.baseline.unresolvable-path",
@@ -32276,7 +32287,7 @@
       "statement": "A path resolving to nothing, a mean over fewer than 30 cases, a malformed entry or a non-finite band raises `BaselinePathUnresolved` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 416
+      "line": 418
     },
     {
       "id": "assurance.baseline.run-stamp-drift",
@@ -32287,7 +32298,7 @@
       "statement": "A run block differing from the run's own configuration raises `BaselineRunStampMismatch` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 418
+      "line": 420
     },
     {
       "id": "assurance.baseline.cutoff-block",
@@ -32298,7 +32309,7 @@
       "statement": "A judged baseline's run block carries the reader's and the judge's snapshot ids and {{connector.infer.cutoffs}}, so {{assurance.baseline.run-stamp-drift}} refuses a run under a changed snapshot or cutoff.",
       "why": "because a score from a model trained later measures more recall, not better reading",
       "file": "spec/81-engineering.md",
-      "line": 420
+      "line": 422
     },
     {
       "id": "assurance.baseline.interval",
@@ -32309,7 +32320,7 @@
       "statement": "Each judged figure reports a 95 percent percentile-bootstrap interval over cases from 1000 resamples.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 422
+      "line": 424
     },
     {
       "id": "assurance.baseline.raise-only",
@@ -32320,7 +32331,7 @@
       "statement": "A baseline update runs after every gate and floor passes, moves each improved entry to its measured value, moves none in the worse direction, and adds no path.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 423
+      "line": 425
     },
     {
       "id": "assurance.baseline.floors-are-absolute",
@@ -32331,7 +32342,7 @@
       "statement": "An absolute floor gates independently of every committed value.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 424
+      "line": 426
     },
     {
       "id": "assurance.baseline.floor-coverage",
@@ -32342,7 +32353,7 @@
       "statement": "A report lacking a floor's figure on any leg of its `retrieval` surface breaches that floor; only a forbidden-row or in-window rate over no case holds.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 425
+      "line": 427
     },
     {
       "id": "assurance.baseline.offline",
@@ -32353,7 +32364,7 @@
       "statement": "The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 426
+      "line": 428
     },
     {
       "id": "assurance.baseline.trace-store",
@@ -32364,7 +32375,7 @@
       "statement": "A trace store records run history and curation staging, and decides no verdict.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 427
+      "line": 429
     },
     {
       "id": "assurance.baseline.golden-custody",
@@ -32375,7 +32386,7 @@
       "statement": "Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree.",
       "why": "A-assurance#evaluation-data-follows",
       "file": "spec/81-engineering.md",
-      "line": 428
+      "line": 430
     },
     {
       "id": "assurance.baseline.answer-key-in-the-store",
@@ -32386,7 +32397,7 @@
       "statement": "An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`.",
       "why": "A-assurance#evaluation-data-follows",
       "file": "spec/81-engineering.md",
-      "line": 430
+      "line": 432
     },
     {
       "id": "assurance.baseline.generated-redaction",
@@ -32397,7 +32408,7 @@
       "statement": "A golden mined from a live query or promoted from a labeled outcome passes {{authority.redact.write-time}} before commit; a case it cannot redact raises `GoldenRedactionFailed`.",
       "why": "A-assurance#evaluation-data-follows",
       "file": "spec/81-engineering.md",
-      "line": 432
+      "line": 434
     },
     {
       "id": "assurance.baseline.promotion-source",
@@ -32408,7 +32419,7 @@
       "statement": "Only an adjudicated outcome label promotes into a golden set; a self-rated row does not.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 434
+      "line": 436
     },
     {
       "id": "assurance.baseline.generators",
@@ -32419,7 +32430,7 @@
       "statement": "Three generators draft candidate cases from the deployment's store — entity-to-fact-to-edge walks, composed edge chains, and questions about absent entities — and a human approves each before commit.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 435
+      "line": 437
     },
     {
       "id": "assurance.baseline.draft-command",
@@ -32430,7 +32441,7 @@
       "statement": "`contextful eval draft` reads the declared entity, fact and edge tables through one admitted session, runs the three generators, and writes their candidates as case lines; it commits nothing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 436
+      "line": 438
     },
     {
       "id": "assurance.baseline.commit-command",
@@ -32441,7 +32452,7 @@
       "statement": "`contextful eval commit` appends each draft an `--approve <id>=<reviewer>` names, redacted under the declaration's removal rules, to the named case file; an id the file already holds refuses the commit.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 437
+      "line": 439
     },
     {
       "id": "assurance.baseline.held-out",
@@ -32452,7 +32463,7 @@
       "statement": "Retrieval and synthesis are tuned on no gate input.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 438
+      "line": 440
     },
     {
       "id": "assurance.baseline.rotation",
@@ -32463,7 +32474,7 @@
       "statement": "The native set rotates on a cadence, a sample of its truth is reviewed on each rotation, and a comparison across generations resolves through the pinned run stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 439
+      "line": 441
     },
     {
       "id": "assurance.baseline.native-gate",
@@ -32474,7 +32485,7 @@
       "statement": "A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 440
+      "line": 442
     },
     {
       "id": "assurance.baseline.public-corpora",
@@ -32485,7 +32496,7 @@
       "statement": "A public benchmark corpus enters through a fetch-manifest entry naming its URL, its dataset's terms and a SHA-256 digest, and is never committed; fetched bytes under another digest raise `PublicCorpusDigestMismatch`.",
       "why": "because a corpus whose bytes drift scores another benchmark under the same name",
       "file": "spec/81-engineering.md",
-      "line": 441
+      "line": 443
     },
     {
       "id": "assurance.baseline.trace-export",
@@ -32496,7 +32507,7 @@
       "statement": "A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.",
       "why": "A-assurance#evaluation-data-follows",
       "file": "spec/81-engineering.md",
-      "line": 443
+      "line": 445
     },
     {
       "id": "assurance.backtest.bounded-case",
@@ -32507,7 +32518,7 @@
       "statement": "A bounded case carries a horizon, an instant each of its reads passes as {{store.available-time.available-as-of}}; its trajectory is the ordered tool calls, queries and retrieved documents its run records.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 451
+      "line": 453
     },
     {
       "id": "assurance.backtest.checkpoint-route",
@@ -32518,7 +32529,7 @@
       "statement": "A reader, derive engine or embedder naming a checkpoint family resolves each bounded case to the newest family checkpoint whose post-training {{connector.infer.cutoffs}} precedes the case's horizon.",
       "why": "because date-bounded checkpoints remove memorized outcomes at the source",
       "file": "spec/81-engineering.md",
-      "line": 452
+      "line": 454
     },
     {
       "id": "assurance.backtest.cutoff-slice",
@@ -32529,7 +32540,7 @@
       "statement": "A backtest report places each case by its resolution instant minus the reader's post-training cutoff and states leakage against a declared reference, a cutoff discontinuity or a clean control model, never a bare pre/post gap.",
       "why": "A-assurance#backtests-estimate-leakage, A-assurance#case-s-judge",
       "file": "spec/81-engineering.md",
-      "line": 454
+      "line": 456
     },
     {
       "id": "assurance.backtest.cutoff-sensitivity",
@@ -32540,7 +32551,7 @@
       "statement": "The report repeats {{assurance.backtest.cutoff-slice}} with each `estimated` cutoff moved across its declared uncertainty interval, and states the minimum detectable effect.",
       "why": "because finding no leakage bounds it and does not certify its absence",
       "file": "spec/81-engineering.md",
-      "line": 456
+      "line": 458
     },
     {
       "id": "assurance.backtest.latest-arm",
@@ -32551,7 +32562,7 @@
       "statement": "A case set run under a checkpoint family also runs the family's latest checkpoint as a paired arm, and the report states the latest-minus-routed difference.",
       "why": "because the latest-minus-dated gap isolates the leakage premium",
       "file": "spec/81-engineering.md",
-      "line": 458
+      "line": 460
     },
     {
       "id": "assurance.backtest.answer-key-only",
@@ -32562,7 +32573,7 @@
       "statement": "A judge scores a case resolved before the judge's post-training cutoff against the case's stored expected answer alone.",
       "why": "because a judge reasoning about an outcome may remember it",
       "file": "spec/81-engineering.md",
-      "line": 460
+      "line": 462
     },
     {
       "id": "assurance.backtest.run-stamp",
@@ -32573,7 +32584,7 @@
       "statement": "Beyond {{assurance.evaluate.judged-cutoffs}}, taken through {{assurance.evaluate.cutoff-flags}}, a backtest run block stamps the derive engine's and embedder's snapshot ids and cutoffs, the temperature, seed, prompt digest and tool-schema version.",
       "why": "because two runs differing in any of these are two trials, and a report cannot slice on a value it never recorded",
       "file": "spec/81-engineering.md",
-      "line": 462
+      "line": 464
     },
     {
       "id": "assurance.backtest.label-interval",
@@ -32584,7 +32595,7 @@
       "statement": "Every bounded case declares its label interval `[t0, t1]`, the span its outcome is observed over; a bounded case without one raises `EvalLabelIntervalMissing` before any of its reads.",
       "why": "because purge and embargo need each label's span, and a label observed past the horizon is the leak itself",
       "file": "spec/81-engineering.md",
-      "line": 464,
+      "line": 466,
       "scenarios": [
         "WHEN a bounded case declares a horizon and no label interval, THEN the run raises `EvalLabelIntervalMissing` and reads nothing for that case."
       ]
@@ -32598,7 +32609,7 @@
       "statement": "A split purges each training case whose label interval overlaps a test case's, and embargoes each training case starting within a declared span after a test fold ends.",
       "why": "because serially correlated labels carry a test fold's outcome into adjacent training cases",
       "file": "spec/81-engineering.md",
-      "line": 466
+      "line": 468
     },
     {
       "id": "assurance.backtest.trial-ledger",
@@ -32609,7 +32620,7 @@
       "statement": "A financial return-series profile records each run against its case set as a trial row and computes the deflated Sharpe ratio from trial count, Sharpe variance, series length, skew and kurtosis.",
       "why": "because the deflated Sharpe needs every trial's Sharpe, not a reported count",
       "file": "spec/81-engineering.md",
-      "line": 468
+      "line": 470
     },
     {
       "id": "assurance.backtest.seed-repeats",
@@ -32620,7 +32631,7 @@
       "statement": "A configuration runs its declared repeat count; its repeats count as one trial, and the report shows their spread.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 470
+      "line": 472
     },
     {
       "id": "assurance.backtest.universe-table",
@@ -32631,7 +32642,7 @@
       "statement": "A case evaluating changing membership names a membership table declaring valid time and `available_time`; a case naming literal identifiers reports under a separate `fixed-universe` slice.",
       "why": "because a fixed identifier list names only the members known when the case was written",
       "file": "spec/81-engineering.md",
-      "line": 471
+      "line": 473
     },
     {
       "id": "assurance.backtest.fill-instant",
@@ -32642,7 +32653,7 @@
       "statement": "A financial execution profile fills each decision at the first price available strictly after the decision's recorded instant.",
       "why": "A-assurance#backtests-estimate-leakage",
       "file": "spec/81-engineering.md",
-      "line": 473
+      "line": 475
     },
     {
       "id": "assurance.backtest.execution-component",
@@ -32653,7 +32664,7 @@
       "statement": "A backtest report stamps its declared execution component's digest and parameters under {{topology.bound-application.domain-neutral}}; a report without one raises `EvalExecutionUndeclared`.",
       "why": "A-assurance#backtests-estimate-leakage",
       "file": "spec/81-engineering.md",
-      "line": 475
+      "line": 477
     },
     {
       "id": "assurance.backtest.planted-future",
@@ -32664,7 +32675,7 @@
       "statement": "Each bounded case plants a row available after its horizon in every table it reads; a planted row in the case's trajectory fails the case.",
       "why": "because a planted row proves the bound held on the path the case took, not only in its configuration",
       "file": "spec/81-engineering.md",
-      "line": 477,
+      "line": 479,
       "scenarios": [
         "WHEN a bounded case's trajectory returns the row planted one day after its horizon, THEN the case fails and the report names the call that returned it."
       ]
@@ -32678,7 +32689,7 @@
       "statement": "A financial universe profile plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.",
       "why": "because survivorship shows as a missing delisting return, which no aggregate figure reveals",
       "file": "spec/81-engineering.md",
-      "line": 479
+      "line": 481
     },
     {
       "id": "assurance.backtest.leak-score",
@@ -32689,7 +32700,7 @@
       "statement": "The case's judge model scores each retrieved document 0 to 4 against a reference answer from rows available before the horizon, landing one row per document and case horizon; the report gives Brier per leak tier.",
       "why": "A-assurance#case-s-judge",
       "file": "spec/81-engineering.md",
-      "line": 481
+      "line": 483
     },
     {
       "id": "assurance.backtest.trajectory-check",
@@ -32700,7 +32711,7 @@
       "statement": "A bounded case fails when a call in its trajectory lacks the {{disclosure.record.bound-entry}} attributes, or a retrieved document scores at or above the case's declared leak threshold.",
       "why": "because a bound proves the configuration, and leaked page content passes the bound",
       "file": "spec/81-engineering.md",
-      "line": 483
+      "line": 485
     },
     {
       "id": "assurance.backtest.query-finding",
@@ -32711,7 +32722,7 @@
       "statement": "A recorded query naming an entity first available after the case's horizon lands a finding naming the call.",
       "why": "because a model that remembers the outcome steers its queries toward it",
       "file": "spec/81-engineering.md",
-      "line": 485
+      "line": 487
     },
     {
       "id": "assurance.backtest.trajectory-replay",
@@ -32722,7 +32733,7 @@
       "statement": "`contextful eval replay <run>` re-serves each recorded response without reading the store and reproduces the run report's digest.",
       "why": "because a backtest a third party cannot re-score is a claim, not evidence",
       "file": "spec/81-engineering.md",
-      "line": 487
+      "line": 489
     },
     {
       "id": "assurance.backtest.replay-root",
@@ -32733,7 +32744,7 @@
       "statement": "A backtest run report carries the signed audit-chain root covering its run's {{disclosure.record.bound-entry}} entries.",
       "why": "because the root lets a verifier prove each replayed response is the one the run recorded",
       "file": "spec/81-engineering.md",
-      "line": 489
+      "line": 491
     },
     {
       "id": "assurance.forecast.forecast-case",
@@ -32744,7 +32755,7 @@
       "statement": "A forecast case carries a freeze instant, a resolution statement naming its vintage, a resolution instant and a probability answer; a backtest forecast case is a {{assurance.backtest.bounded-case}} whose horizon is its freeze instant.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 501
+      "line": 503
     },
     {
       "id": "assurance.forecast.resolved-before-freeze",
@@ -32755,7 +32766,7 @@
       "statement": "A backtest forecast case whose resolution instant precedes its freeze instant raises `EvalCaseResolvedBeforeFreeze`.",
       "why": "because a question picked after its answer is known leaks through its own existence",
       "file": "spec/81-engineering.md",
-      "line": 502,
+      "line": 504,
       "scenarios": [
         "WHEN a backtest forecast case freezes on `2014-06-01` and resolved on `2014-05-20`, THEN the run raises `EvalCaseResolvedBeforeFreeze` before reading the case."
       ]
@@ -32769,7 +32780,7 @@
       "statement": "A forecast case settles through the label join within {{read.settle.grace-window}}, and its scores report as {{read.settle.calibration-report}} groups them.",
       "why": "because one settlement path keeps a forecast's Brier score comparable with an application's calibration",
       "file": "spec/81-engineering.md",
-      "line": 504
+      "line": 506
     },
     {
       "id": "assurance.forecast.lead-time",
@@ -32780,7 +32791,7 @@
       "statement": "An answer recorded less than the case's declared minimum lead before resolution scores on a separate track.",
       "why": "because an answer given near resolution reads the outcome rather than forecasting it",
       "file": "spec/81-engineering.md",
-      "line": 506
+      "line": 508
     },
     {
       "id": "assurance.forecast.market-context",
@@ -32791,7 +32802,7 @@
       "statement": "A prediction-market profile supplies freeze-instant probability prices as available rows, and the report shows each forecaster's score improvement over that baseline.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 508
+      "line": 510
     },
     {
       "id": "assurance.forecast.imputed",
@@ -32802,7 +32813,7 @@
       "statement": "A missing answer scores as probability 0.5 for a dataset case; a prediction-market profile instead uses its freeze-instant probability price.",
       "why": "because dropping a missing answer rewards abstaining on hard questions",
       "file": "spec/81-engineering.md",
-      "line": 509
+      "line": 511
     },
     {
       "id": "assurance.forecast.coverage-floor",
@@ -32813,7 +32824,7 @@
       "statement": "A forecaster answering below 95 percent of a round's cases is reported unranked.",
       "why": "because imputation alone still lets a forecaster pick its questions",
       "file": "spec/81-engineering.md",
-      "line": 511
+      "line": 513
     },
     {
       "id": "assurance.forecast.no-evidence-baseline",
@@ -32824,7 +32835,7 @@
       "statement": "Each round also scores a forecaster given the question text alone, and the report subtracts its Brier score from each forecaster's.",
       "why": "because which questions exist can reveal their answers without any retrieval",
       "file": "spec/81-engineering.md",
-      "line": 513
+      "line": 515
     },
     {
       "id": "assurance.forecast.tracks-separate",
@@ -32835,7 +32846,7 @@
       "statement": "Backtest, prospective, tool-free and tool-using scores never pool into one figure.",
       "why": "A-assurance#backtests-estimate-leakage",
       "file": "spec/81-engineering.md",
-      "line": 515
+      "line": 517
     },
     {
       "id": "assurance.measure.ledger",
@@ -32846,7 +32857,7 @@
       "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 528
+      "line": 530
     },
     {
       "id": "assurance.measure.unresolved-entry",
@@ -32857,7 +32868,7 @@
       "statement": "An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 529,
+      "line": 531,
       "scenarios": [
         "WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs."
       ]
@@ -32871,7 +32882,7 @@
       "statement": "An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 531,
+      "line": 533,
       "scenarios": [
         "WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it."
       ]
@@ -32885,7 +32896,7 @@
       "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry decides nothing, and `contextful-ci measure` runs the gate tier alone unless `--tier` names `trend`, `scheduled` or `all`.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 532
+      "line": 534
     },
     {
       "id": "assurance.measure.judged-tier",
@@ -32896,7 +32907,7 @@
       "statement": "An entry whose metric names a judged figure is scheduled-tier; on another tier it resolves to nothing under {{assurance.measure.unresolved-entry}}.",
       "why": "because a judged figure costs a model call per item and moves with the judge, not with the change",
       "file": "spec/81-engineering.md",
-      "line": 533
+      "line": 535
     },
     {
       "id": "assurance.measure.count-first",
@@ -32907,7 +32918,7 @@
       "statement": "A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.",
       "why": "because a shared container moves wall-clock figures past any band narrow enough to catch a regression",
       "file": "spec/81-engineering.md",
-      "line": 535
+      "line": 537
     },
     {
       "id": "assurance.measure.record",
@@ -32918,7 +32929,7 @@
       "statement": "A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 537
+      "line": 539
     },
     {
       "id": "assurance.measure.seeded",
@@ -32929,7 +32940,7 @@
       "statement": "Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.",
       "why": "because a failure that cannot replay cannot be fixed",
       "file": "spec/81-engineering.md",
-      "line": 539
+      "line": 541
     },
     {
       "id": "assurance.measure.seed-mismatch",
@@ -32940,7 +32951,7 @@
       "statement": "A gate or scheduled record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch` and counts as red; a trend mismatch leaves no comparable record.",
       "why": "because a figure measured under another seed replays nothing the ledger names",
       "file": "spec/81-engineering.md",
-      "line": 541
+      "line": 543
     },
     {
       "id": "assurance.measure.timing-iterations",
@@ -32951,7 +32962,7 @@
       "statement": "A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 543
+      "line": 545
     },
     {
       "id": "assurance.measure.timing-batches",
@@ -32962,7 +32973,7 @@
       "statement": "A timed figure is the median of 5 repeats of its timed batch.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 544
+      "line": 546
     },
     {
       "id": "assurance.measure.trend-direction",
@@ -32973,7 +32984,7 @@
       "statement": "Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/81-engineering.md",
-      "line": 545
+      "line": 547
     },
     {
       "id": "assurance.measure.trend-baseline",
@@ -32984,7 +32995,7 @@
       "statement": "A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/81-engineering.md",
-      "line": 547,
+      "line": 549,
       "scenarios": [
         "WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes."
       ]
@@ -32998,7 +33009,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 549,
+      "line": 551,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -33012,7 +33023,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 550
+      "line": 552
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -33023,7 +33034,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 551
+      "line": 553
     },
     {
       "id": "assurance.measure.threshold-cost",
@@ -33034,7 +33045,7 @@
       "statement": "A gate-tier target that rises under `<=`, falls under `>=` or moves under `==` carries a `# cost:` comment above its entry that its entry at `<rev>` lacks, or `contextful-ci measure --since <rev>` raises `MeasureThresholdLoosened`.",
       "why": "because a loosened gate otherwise reads as a changed number, and the cost it accepts goes unrecorded",
       "file": "spec/81-engineering.md",
-      "line": 552
+      "line": 554
     },
     {
       "id": "assurance.measure.history",
@@ -33045,7 +33056,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance#tracked-targets-gate",
       "file": "spec/81-engineering.md",
-      "line": 554
+      "line": 556
     },
     {
       "id": "assurance.measure.run-report",
@@ -33056,7 +33067,7 @@
       "statement": "`contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — with an integer run id, and reads back every earlier note whatever its run id's JSON type.",
       "why": "because earlier notes on `refs/notes/measures` carry text run ids, and an unreadable note hides every older baseline",
       "file": "spec/81-engineering.md",
-      "line": 556,
+      "line": 558,
       "scenarios": [
         "WHEN the baseline note's run id is the text `contextful-measures_2026-10-14` and the run's is `42`, THEN the report writes `42` and its annotation names that text run id as its baseline."
       ]
@@ -33070,7 +33081,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 558
+      "line": 560
     },
     {
       "id": "assurance.release.version",
@@ -33081,7 +33092,7 @@
       "statement": "A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.",
       "why": "A-assurance#store-format-major",
       "file": "spec/81-engineering.md",
-      "line": 586,
+      "line": 588,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -33095,7 +33106,7 @@
       "statement": "A commit's store format is the `FormatVersion::CURRENT` constant in its `crates/contextful-core/src/store/lay_out.rs`, and `1.0` where that constant is absent; a constant that does not parse raises `TagStoreFormatUnread`.",
       "why": "A-assurance#store-format-major",
       "file": "spec/81-engineering.md",
-      "line": 588,
+      "line": 590,
       "scenarios": [
         "WHEN 16 milestones compute `closed`, `v0.16.1` declares store format `1.0` and `HEAD` declares `2.0`, THEN the computed version is `v0.17.0` and its message carries `Store format 1.0 → 2.0`."
       ]
@@ -33109,7 +33120,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/81-engineering.md",
-      "line": 590
+      "line": 592
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -33120,7 +33131,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/81-engineering.md",
-      "line": 592
+      "line": 594
     },
     {
       "id": "assurance.release.off-branch",
@@ -33131,7 +33142,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/81-engineering.md",
-      "line": 594
+      "line": 596
     },
     {
       "id": "assurance.release.version-regressed",
@@ -33142,7 +33153,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance#store-format-major",
       "file": "spec/81-engineering.md",
-      "line": 596,
+      "line": 598,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -33156,7 +33167,7 @@
       "statement": "A computed `<minor>` equal to the highest existing tag's, while `HEAD`'s store format major differs from that tag's, raises `TagFormatBreakPatch`, naming both formats.",
       "why": "A-assurance#store-format-major",
       "file": "spec/81-engineering.md",
-      "line": 598,
+      "line": 600,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0` while the store format moves from `1.0` to `2.0`, THEN the computed `v0.9.1` raises `TagFormatBreakPatch`."
       ]
@@ -33170,7 +33181,7 @@
       "statement": "A tag whose store format major exceeds the highest existing tag's carries the message line `Store format <old> → <new>: upgrade every reader, then every writer together.`",
       "why": "because an older reader refuses a manifest of the newer major, and an older writer refuses the table once a newer writer commits",
       "file": "spec/81-engineering.md",
-      "line": 600
+      "line": 602
     },
     {
       "id": "assurance.release.workspace-version",
@@ -33181,7 +33192,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/81-engineering.md",
-      "line": 602
+      "line": 604
     },
     {
       "id": "assurance.release.gate-failed",
@@ -33192,7 +33203,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance#version-tag-names",
       "file": "spec/81-engineering.md",
-      "line": 604
+      "line": 606
     },
     {
       "id": "assurance.release.release-tag-version",
@@ -33203,7 +33214,7 @@
       "statement": "`contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.",
       "why": "because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version",
       "file": "spec/81-engineering.md",
-      "line": 606
+      "line": 608
     },
     {
       "id": "assurance.release.release-run",
@@ -33214,7 +33225,7 @@
       "statement": "The operator pushes the tag, runs `contextful-ci release` per {{assurance.build.targets}} matrix cell, `contextful-ci formula` over their metadata and `contextful-ci image` per profile, then publishes the GitHub release from that tag.",
       "why": "because every packaging command then reads one tag identity, and each runs on the operator's machine",
       "file": "spec/81-engineering.md",
-      "line": 608
+      "line": 610
     },
     {
       "id": "assurance.consumer.suite",
@@ -38905,6 +38916,10 @@
             "clause": "assurance.baseline.run-stamp-drift",
             "gloss": "A baseline run block differing from the run's configuration."
           },
+          "BoundConstantDrift": {
+            "clause": "assurance.structure-tree.bound-constant",
+            "gloss": "A bound constant whose value differs from its registry entry, or that its named file does not define."
+          },
           "BuildDiskPrecondition": {
             "clause": "assurance.gate.free-disk",
             "gloss": "A gate stage beginning below the free-disk floor."
@@ -39213,7 +39228,8 @@
             "value": 9,
             "unit": "min",
             "basis": "chosen",
-            "gloss": "Estimated test wall clock of one CLI shard in the gate container, its cold compile excluded."
+            "gloss": "Estimated test wall clock of one CLI shard in the gate container, its cold compile excluded.",
+            "const": "tools/ci/src/shards.rs::BUDGET_SECS"
           },
           "assurance-container-disk": {
             "clause": "assurance.gate.container",
@@ -39262,7 +39278,8 @@
             "value": 120,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Life of a suite's D1 admission lease past its last renewal."
+            "gloss": "Life of a suite's D1 admission lease past its last renewal.",
+            "const": "crates/acceptance/src/conformance/remote.rs::ADMISSION_TTL_SECS"
           },
           "assurance-default-dead-band": {
             "clause": "assurance.baseline.default-dead-band",
@@ -39402,7 +39419,8 @@
             "value": 2,
             "unit": "GiB",
             "basis": "chosen",
-            "gloss": "Free disk a stage needs before it begins work."
+            "gloss": "Free disk a stage needs before it begins work.",
+            "const": "tools/ci/src/main.rs::STAGE_FREE_DISK_KIB"
           },
           "assurance-supersession-floor": {
             "clause": "assurance.evaluate.supersession-floor",
@@ -39416,7 +39434,8 @@
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Wall clock one test-first execution against the base runs for, its build excluded."
+            "gloss": "Wall clock one test-first execution against the base runs for, its build excluded.",
+            "const": "tools/ci/src/main.rs::BASE_RUN_BOUND_SECS"
           },
           "assurance-timing-batches": {
             "clause": "assurance.measure.timing-batches",
@@ -39836,189 +39855,216 @@
             "value": 1,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Least groups-per-query ceiling an aggregate grant declares."
+            "gloss": "Least groups-per-query ceiling an aggregate grant declares.",
+            "const": "crates/contextful-core/src/grant.rs::AGGREGATE_GROUP_CEILING_FLOOR"
           },
           "bearer-lifetime-ceiling": {
             "clause": "authority.verify.bearer-lifetime",
             "value": 3600,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Longest issue-to-expiry span of a bearer a network checkpoint admits."
+            "gloss": "Longest issue-to-expiry span of a bearer a network checkpoint admits.",
+            "const": "crates/contextful-policy/src/verify.rs::BEARER_LIFETIME_SECS"
           },
           "evaluator-fact-ceiling": {
             "clause": "authority.profile.fact-ceiling",
             "value": 1000,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Facts one authorization holds."
+            "gloss": "Facts one authorization holds.",
+            "const": "crates/contextful-policy/src/profile.rs::EVALUATOR_FACT_CEILING"
           },
           "evaluator-iteration-ceiling": {
             "clause": "authority.profile.iteration-ceiling",
             "value": 100,
             "unit": "iterations",
             "basis": "chosen",
-            "gloss": "Evaluator iterations per authorization."
+            "gloss": "Evaluator iterations per authorization.",
+            "const": "crates/contextful-policy/src/profile.rs::EVALUATOR_ITERATION_CEILING"
           },
           "exchange-body-ceiling": {
             "clause": "authority.exchange.body-ceiling",
             "value": 64,
             "unit": "KiB",
             "basis": "chosen",
-            "gloss": "Largest exchange request body parsed."
+            "gloss": "Largest exchange request body parsed.",
+            "const": "crates/contextful-policy/src/exchange.rs::EXCHANGE_BODY_BYTES"
           },
           "exchange-lifetime-ceiling": {
             "clause": "authority.exchange.lifetime-ceiling",
             "value": 3600,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Ceiling a configured minted lifetime clamps to."
+            "gloss": "Ceiling a configured minted lifetime clamps to.",
+            "const": "crates/contextful-core/src/exchange.rs::EXCHANGE_LIFETIME_CEILING_SECS"
           },
           "exchange-lifetime-default": {
             "clause": "authority.exchange.lifetime-default",
             "value": 900,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Minted lifetime where the policy declares none."
+            "gloss": "Minted lifetime where the policy declares none.",
+            "const": "crates/contextful-core/src/exchange.rs::EXCHANGE_LIFETIME_DEFAULT_SECS"
           },
           "hash-output-width": {
             "clause": "authority.mask.hash-width",
             "value": 32,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Output width of a keyed hash."
+            "gloss": "Output width of a keyed hash.",
+            "const": "crates/contextful-policy/src/enforce/mask.rs::HASH_OUTPUT_WIDTH"
           },
           "issuance-lifetime-ceiling": {
             "clause": "authority.issue.ceiling",
             "value": 24,
             "unit": "h",
             "basis": "chosen",
-            "gloss": "Longest lifetime a persisted issuance policy permits."
+            "gloss": "Longest lifetime a persisted issuance policy permits.",
+            "const": "crates/contextful-core/src/issue.rs::ISSUANCE_LIFETIME_CEILING_SECS"
           },
           "issuer-key-rotation-cadence": {
             "clause": "authority.issue.key-rotation",
             "value": 90,
             "unit": "d",
             "basis": "chosen",
-            "gloss": "Rotation interval of the issuer signing key."
+            "gloss": "Rotation interval of the issuer signing key.",
+            "const": "crates/contextful-core/src/issue.rs::ISSUER_KEY_ROTATION_CADENCE_SECS"
           },
           "key-set-refresh-interval": {
             "clause": "authority.verify.key-set-refresh",
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Lifetime of a fetched published key set."
+            "gloss": "Lifetime of a fetched published key set.",
+            "const": "crates/contextful-policy/src/keyset.rs::KEY_SET_REFRESH_INTERVAL_SECS"
           },
           "key-set-stale-ceiling": {
             "clause": "authority.verify.key-set-stale",
             "value": 1,
             "unit": "h",
             "basis": "chosen",
-            "gloss": "Age past which a last-known-good key set stops serving."
+            "gloss": "Age past which a last-known-good key set stops serving.",
+            "const": "crates/contextful-policy/src/keyset.rs::KEY_SET_STALE_CEILING_SECS"
           },
           "mask-crowd-floor": {
             "clause": "authority.mask.crowd",
             "value": 1000,
             "unit": "values",
             "basis": "chosen",
-            "gloss": "Fewest inputs one masked output covers."
+            "gloss": "Fewest inputs one masked output covers.",
+            "const": "crates/contextful-policy/src/enforce/mask.rs::MASK_CROWD_FLOOR"
           },
           "masks-per-table": {
             "clause": "authority.mask.masks-per-table",
             "value": 128,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Column masks one table declares."
+            "gloss": "Column masks one table declares.",
+            "const": "crates/contextful-policy/src/enforce/mask.rs::MASKS_PER_TABLE"
           },
           "membership-list-entries": {
             "clause": "authority.filter-rows.membership-list",
             "value": 512,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Literals in one membership list."
+            "gloss": "Literals in one membership list.",
+            "const": "crates/contextful-policy/src/enforce/predicate.rs::MEMBERSHIP_LIST_ENTRIES"
           },
           "nonce-cache-entries": {
             "clause": "authority.verify.nonce-cache",
             "value": 100000,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Nonces one checkpoint retains."
+            "gloss": "Nonces one checkpoint retains.",
+            "const": "crates/contextful-policy/src/possession.rs::NONCE_CACHE_ENTRIES"
           },
           "proof-clock-skew": {
             "clause": "authority.verify.clock-skew",
             "value": 30,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Furthest a proof issue instant runs ahead of the checkpoint clock."
+            "gloss": "Furthest a proof issue instant runs ahead of the checkpoint clock.",
+            "const": "crates/contextful-policy/src/possession.rs::PROOF_CLOCK_SKEW_SECS"
           },
           "proof-replay-window": {
             "clause": "authority.verify.replay-window",
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Oldest proof issue instant a checkpoint admits, and nonce retention."
+            "gloss": "Oldest proof issue instant a checkpoint admits, and nonce retention.",
+            "const": "crates/contextful-policy/src/possession.rs::PROOF_REPLAY_WINDOW_SECS"
           },
           "redaction-compiled-size": {
             "clause": "authority.redact.compiled-pattern-size",
             "value": 1,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Each Thompson NFA of one removal pattern."
+            "gloss": "Each Thompson NFA of one removal pattern.",
+            "const": "crates/contextful-core/src/redaction.rs::COMPILED_PATTERN_SIZE"
           },
           "redaction-pattern-bytes": {
             "clause": "authority.redact.pattern-bytes",
             "value": 4,
             "unit": "KiB",
             "basis": "chosen",
-            "gloss": "Source text of one removal pattern."
+            "gloss": "Source text of one removal pattern.",
+            "const": "crates/contextful-core/src/redaction.rs::PATTERN_BYTES"
           },
           "redaction-rules-per-pipeline": {
             "clause": "authority.redact.rules-per-pipeline",
             "value": 256,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Removal rules one pipeline declares."
+            "gloss": "Removal rules one pipeline declares.",
+            "const": "crates/contextful-core/src/redaction.rs::RULES_PER_PIPELINE"
           },
           "refusal-payload": {
             "clause": "authority.refuse.payload",
             "value": 512,
             "unit": "B",
             "basis": "chosen",
-            "gloss": "Bytes one refusal payload carries."
+            "gloss": "Bytes one refusal payload carries.",
+            "const": "crates/contextful-policy/src/enforce/refuse.rs::REFUSAL_PAYLOAD"
           },
           "relations-per-session": {
             "clause": "authority.compose.relations-per-session",
             "value": 1024,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Registered relations one session holds."
+            "gloss": "Registered relations one session holds.",
+            "const": "crates/contextful-policy/src/enforce/session.rs::RELATIONS_PER_SESSION"
           },
           "row-predicate-size": {
             "clause": "authority.filter-rows.predicate-size",
             "value": 4,
             "unit": "KiB",
             "basis": "chosen",
-            "gloss": "Source text of one row predicate."
+            "gloss": "Source text of one row predicate.",
+            "const": "crates/contextful-policy/src/enforce/predicate.rs::PREDICATE_SIZE"
           },
           "scope-guard-walk": {
             "clause": "authority.refuse.guard-walk",
             "value": 4096,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Parse-tree nodes the scope guard visits."
+            "gloss": "Parse-tree nodes the scope guard visits.",
+            "const": "crates/contextful-policy/src/enforce/scope.rs::SCOPE_GUARD_WALK"
           },
           "stale-object-report": {
             "clause": "authority.bound-redistribution.report",
             "value": 100,
             "unit": "files",
             "basis": "chosen",
-            "gloss": "Objects a left-behind report names."
+            "gloss": "Objects a left-behind report names.",
+            "const": "crates/contextful-sync/src/sync.rs::STALE_OBJECT_REPORT"
           },
           "subject-value-bytes": {
             "clause": "authority.identify.value-hygiene",
             "value": 256,
             "unit": "B",
             "basis": "chosen",
-            "gloss": "Longest subject value the mint accepts."
+            "gloss": "Longest subject value the mint accepts.",
+            "const": "crates/contextful-core/src/identify.rs::SUBJECT_VALUE_BYTES"
           },
           "summarize-only-quote": {
             "clause": "authority.mask.verbatim-quote",
@@ -40032,28 +40078,32 @@
             "value": 15,
             "unit": "min",
             "basis": "chosen",
-            "gloss": "Lifetime of a per-query tenant-scoped child."
+            "gloss": "Lifetime of a per-query tenant-scoped child.",
+            "const": "crates/contextful-core/src/grant.rs::TENANT_CHILD_LIFETIME_MINUTES"
           },
           "token-output-width": {
             "clause": "authority.mask.token-width",
             "value": 20,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Output width of a tokenization."
+            "gloss": "Output width of a tokenization.",
+            "const": "crates/contextful-policy/src/enforce/mask.rs::TOKEN_OUTPUT_WIDTH"
           },
           "zone-allow-set-entries": {
             "clause": "authority.place.allow-set-entries",
             "value": 32,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Patterns one zone allow-set holds."
+            "gloss": "Patterns one zone allow-set holds.",
+            "const": "crates/contextful-core/src/place.rs::ALLOW_SET_ENTRIES"
           },
           "zone-identifier-length": {
             "clause": "authority.place.identifier-length",
             "value": 128,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Characters in a zone identifier."
+            "gloss": "Characters in a zone identifier.",
+            "const": "crates/contextful-core/src/place.rs::ZONE_IDENTIFIER_LENGTH"
           }
         }
       },
@@ -40556,21 +40606,24 @@
             "value": 8192,
             "unit": "B",
             "basis": "chosen",
-            "gloss": "Note body bytes past which a note lands one row per heading section."
+            "gloss": "Note body bytes past which a note lands one row per heading section.",
+            "const": "crates/contextful-connectors/src/file.rs::CHUNK_BYTES"
           },
           "connector-document-file-bytes": {
             "clause": "connector.source.file-cap",
             "value": 64,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Bytes one file under a `file` root carries before the walk declines it."
+            "gloss": "Bytes one file under a `file` root carries before the walk declines it.",
+            "const": "crates/contextful-connectors/src/file.rs::MAX_FILE_BYTES"
           },
           "connector-drive-file-bytes": {
             "clause": "connector.source.drive-file-cap",
             "value": 64,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Default body bytes one drive file carries before it is skipped."
+            "gloss": "Default body bytes one drive file carries before it is skipped.",
+            "const": "crates/contextful-connectors/src/drive.rs::MAX_FILE_BYTES"
           },
           "connector-drive-file-selection": {
             "clause": "connector.drive-picks.file-selection-limit",
@@ -40584,7 +40637,8 @@
             "value": 16,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Distinct selected folder roots in one Drive source."
+            "gloss": "Distinct selected folder roots in one Drive source.",
+            "const": "crates/contextful-connectors/src/drive.rs::MAX_ROOTS"
           },
           "connector-expansion-buffer": {
             "clause": "connector.source.expansion-budget",
@@ -40612,7 +40666,8 @@
             "value": 200,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Provenance label on one data-block marker."
+            "gloss": "Provenance label on one data-block marker.",
+            "const": "crates/contextful-core/src/connector/infer.rs::LABEL_CHARS"
           },
           "connector-fence-token": {
             "clause": "connector.infer.marker-derivation",
@@ -40626,7 +40681,8 @@
             "value": 64,
             "unit": "KiB",
             "basis": "chosen",
-            "gloss": "Serialized guest configuration table."
+            "gloss": "Serialized guest configuration table.",
+            "const": "crates/contextful-core/src/connector/package.rs::GUEST_CONFIG_BYTES"
           },
           "connector-in-flight": {
             "clause": "connector.package.session-budget",
@@ -40640,7 +40696,8 @@
             "value": 1,
             "unit": "calls",
             "basis": "chosen",
-            "gloss": "Mint calls per resolver per declared name per lease window."
+            "gloss": "Mint calls per resolver per declared name per lease window.",
+            "const": "crates/contextful-core/src/connector/lease.rs::MINT_CALLS_PER_WINDOW"
           },
           "connector-lease-retire-cap": {
             "clause": "connector.lease.retirement-margin",
@@ -40654,7 +40711,8 @@
             "value": 10,
             "unit": "percent",
             "basis": "chosen",
-            "gloss": "Share of a lease window a cached entry retires early."
+            "gloss": "Share of a lease window a cached entry retires early.",
+            "const": "crates/contextful-core/src/connector/lease.rs::RETIRE_SHARE_PERCENT"
           },
           "connector-lease-vendor-requests": {
             "clause": "connector.lease.vendor-requests-on-failure",
@@ -40689,14 +40747,16 @@
             "value": 256,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Decompressed bytes of one object an object source reads."
+            "gloss": "Decompressed bytes of one object an object source reads.",
+            "const": "crates/contextful-connectors/src/body.rs::EXPANSION_CEILING"
           },
           "connector-office-decompression": {
             "clause": "connector.source.decompression-budget",
             "value": 64,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Decompressed bytes across one multi-part office read."
+            "gloss": "Decompressed bytes across one multi-part office read.",
+            "const": "crates/contextful-decode/src/ooxml.rs::INFLATE_BUDGET"
           },
           "connector-read-deadline": {
             "clause": "connector.package.call-deadline",
@@ -40710,7 +40770,8 @@
             "value": 30,
             "unit": "d",
             "basis": "chosen",
-            "gloss": "Window within which the inventory marks an expiring credential."
+            "gloss": "Window within which the inventory marks an expiring credential.",
+            "const": "crates/contextful-core/src/connector/record.rs::EXPIRY_WARNING_DAYS"
           },
           "connector-request-body": {
             "clause": "connector.package.request-body",
@@ -40724,14 +40785,16 @@
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Longest life of a hydrated value in a resolver cache."
+            "gloss": "Longest life of a hydrated value in a resolver cache.",
+            "const": "crates/contextful-core/src/connector/lease.rs::CACHE_TTL_SECS"
           },
           "connector-secret-name": {
             "clause": "connector.reference.reference-scheme",
             "value": 128,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Longest logical credential name."
+            "gloss": "Longest logical credential name.",
+            "const": "crates/contextful-core/src/connector/reference.rs::NAME_MAX"
           },
           "connector-session-log": {
             "clause": "connector.package.session-budget",
@@ -40745,28 +40808,32 @@
             "value": 1000,
             "unit": "requests",
             "basis": "chosen",
-            "gloss": "Requests one paginated walk issues, under a watermark since its clock last strictly advanced."
+            "gloss": "Requests one paginated walk issues, under a watermark since its clock last strictly advanced.",
+            "const": "crates/contextful-connectors/src/http.rs::PAGE_CAP"
           },
           "connector-worksheet-entry": {
             "clause": "connector.source.worksheet-landing",
             "value": 32,
             "unit": "B",
             "basis": "chosen",
-            "gloss": "Charge for each shared string and stored cell beside its text."
+            "gloss": "Charge for each shared string and stored cell beside its text.",
+            "const": "crates/contextful-decode/src/workbook.rs::ENTRY_CHARGE"
           },
           "connector-worksheet-rows": {
             "clause": "connector.source.worksheet-landing",
             "value": 1048576,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Rows landed from one worksheet."
+            "gloss": "Rows landed from one worksheet.",
+            "const": "crates/contextful-decode/src/workbook.rs::ROW_CAP"
           },
           "connector-worksheet-text": {
             "clause": "connector.source.worksheet-landing",
             "value": 64,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Cell text, keys and entry charges one worksheet read holds."
+            "gloss": "Cell text, keys and entry charges one worksheet read holds.",
+            "const": "crates/contextful-decode/src/workbook.rs::TEXT_BUDGET"
           }
         }
       },
@@ -41520,7 +41587,8 @@
             "value": 65536,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Largest segment size a chain header names."
+            "gloss": "Largest segment size a chain header names.",
+            "const": "crates/contextful-policy/src/audit.rs::AUDIT_SEGMENT_MAX"
           },
           "audit-segment-open-syncs": {
             "clause": "disclosure.record.segment-open",
@@ -41611,21 +41679,24 @@
             "value": 10000,
             "unit": "nodes",
             "basis": "chosen",
-            "gloss": "Largest group closure one request walks."
+            "gloss": "Largest group closure one request walks.",
+            "const": "crates/contextful-core/src/disclosure/reach.rs::MAX_CLOSURE_NODES"
           },
           "visibility-group-depth": {
             "clause": "disclosure.reach.closure-walk",
             "value": 8,
             "unit": "hops",
             "basis": "chosen",
-            "gloss": "Default depth of the group-closure walk."
+            "gloss": "Default depth of the group-closure walk.",
+            "const": "crates/contextful-core/src/disclosure/reach.rs::MAX_GROUP_DEPTH"
           },
           "visibility-reach-cache": {
             "clause": "disclosure.reach.cache-capacity",
             "value": 100000,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Capacity of the reachable-set cache."
+            "gloss": "Capacity of the reachable-set cache.",
+            "const": "crates/contextful-core/src/disclosure/reach.rs::REACH_CACHE_ENTRIES"
           }
         }
       },
@@ -41952,21 +42023,24 @@
             "value": 4096,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Evidence entries one claim names before recall suppresses it."
+            "gloss": "Evidence entries one claim names before recall suppresses it.",
+            "const": "crates/contextful-core/src/memory/recall.rs::EVIDENCE_GATE"
           },
           "memory-evidence-references": {
             "clause": "read.recall.evidence-references",
             "value": 256,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Evidence entries recall serves per claim; the rest count in `evidence_omitted`."
+            "gloss": "Evidence entries recall serves per claim; the rest count in `evidence_omitted`.",
+            "const": "crates/contextful-core/src/memory/recall.rs::EVIDENCE_REFERENCES"
           },
           "memory-extract-attempts": {
             "clause": "read.synthesize.extract-attempts",
             "value": 3,
             "unit": "attempts",
             "basis": "chosen",
-            "gloss": "Extract attempts per batch, feedback included."
+            "gloss": "Extract attempts per batch, feedback included.",
+            "const": "crates/contextful-core/src/memory/synthesize.rs::EXTRACT_ATTEMPTS"
           },
           "memory-gleanings": {
             "clause": "read.declare.gleanings",
@@ -41980,14 +42054,16 @@
             "value": 32,
             "unit": "KiB",
             "basis": "chosen",
-            "gloss": "Fenced row bytes one extraction batch packs."
+            "gloss": "Fenced row bytes one extraction batch packs.",
+            "const": "crates/contextful-memory/src/synthesize.rs::PROMPT_BYTES"
           },
           "memory-row-chars": {
             "clause": "read.synthesize.row-cap",
             "value": 16384,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Characters of one fenced row before the truncation mark cuts it."
+            "gloss": "Characters of one fenced row before the truncation mark cuts it.",
+            "const": "crates/contextful-memory/src/synthesize.rs::VALUE_CHARS"
           },
           "memory-traverse-fan-out": {
             "clause": "read.traverse.fan-out",
@@ -42015,105 +42091,120 @@
             "value": 86400,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Inclusive window past a deadline within which an observation is scored."
+            "gloss": "Inclusive window past a deadline within which an observation is scored.",
+            "const": "crates/contextful-core/src/memory/settle.rs::GRACE_WINDOW_SECS"
           },
           "outcome-statement-bytes": {
             "clause": "read.settle.statement-bound",
             "value": 4096,
             "unit": "B",
             "basis": "chosen",
-            "gloss": "Longest registration statement."
+            "gloss": "Longest registration statement.",
+            "const": "crates/contextful-core/src/memory/settle.rs::STATEMENT_MAX_BYTES"
           },
           "read-bytes-per-token": {
             "clause": "read.register.size-estimate",
             "value": 4,
             "unit": "B",
             "basis": "chosen",
-            "gloss": "Serialized bytes counted as one estimated token in a table description."
+            "gloss": "Serialized bytes counted as one estimated token in a table description.",
+            "const": "crates/contextful-core/src/read/face.rs::BYTES_PER_TOKEN"
           },
           "read-candidate-window-factor": {
             "clause": "read.retrieve.candidate-window",
             "value": 8,
             "unit": "times",
             "basis": "chosen",
-            "gloss": "Multiple of the requested limit forming the candidate window."
+            "gloss": "Multiple of the requested limit forming the candidate window.",
+            "const": "crates/contextful-core/src/read/rank.rs::CANDIDATE_WINDOW_FACTOR"
           },
           "read-candidate-window-floor": {
             "clause": "read.retrieve.candidate-window",
             "value": 200,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Smallest candidate window of a ranked read."
+            "gloss": "Smallest candidate window of a ranked read.",
+            "const": "crates/contextful-core/src/read/rank.rs::CANDIDATE_WINDOW_FLOOR"
           },
           "read-content-token-cap": {
             "clause": "read.retrieve.token-cap",
             "value": 12,
             "unit": "tokens",
             "basis": "chosen",
-            "gloss": "Largest content-token set from one query."
+            "gloss": "Largest content-token set from one query.",
+            "const": "crates/contextful-core/src/read/tokens.rs::CONTENT_TOKEN_CAP"
           },
           "read-face-row-ceiling": {
             "clause": "read.respond.face-ceiling",
             "value": 10000,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Most rows one read delivers on any face, whatever its other ceilings declare."
+            "gloss": "Most rows one read delivers on any face, whatever its other ceilings declare.",
+            "const": "crates/contextful-core/src/read/respond.rs::FACE_ROW_CEILING"
           },
           "read-filter-bytes": {
             "clause": "read.retrieve.filter-budget",
             "value": 16,
             "unit": "KiB",
             "basis": "chosen",
-            "gloss": "Serialized JSON size of one ranked read's filter and `kinds`."
+            "gloss": "Serialized JSON size of one ranked read's filter and `kinds`.",
+            "const": "crates/contextful-core/src/read/filter.rs::FILTER_BYTES"
           },
           "read-filter-conditions": {
             "clause": "read.retrieve.filter-budget",
             "value": 32,
             "unit": "conditions",
             "basis": "chosen",
-            "gloss": "Conditions in one ranked read's filter, `kinds` counting as one."
+            "gloss": "Conditions in one ranked read's filter, `kinds` counting as one.",
+            "const": "crates/contextful-core/src/read/filter.rs::FILTER_CONDITIONS"
           },
           "read-filter-values": {
             "clause": "read.retrieve.filter-budget",
             "value": 256,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Values in one filter membership list."
+            "gloss": "Values in one filter membership list.",
+            "const": "crates/contextful-core/src/read/filter.rs::FILTER_VALUES"
           },
           "read-fulltext-sealed-cap": {
             "clause": "read.retrieve.fulltext-sealed-cap",
             "value": 256,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Sealed full-text sidecar size past which it stays unopened."
+            "gloss": "Sealed full-text sidecar size past which it stays unopened.",
+            "const": "crates/contextful-core/src/read/rank.rs::FULLTEXT_SEALED_CAP_BYTES"
           },
           "read-fusion-lexical-weight": {
             "clause": "read.rank.fusion",
             "value": 40,
             "unit": "percent",
             "basis": "chosen",
-            "gloss": "Default weight of the reciprocal-rank BM25 leg in fusion."
+            "gloss": "Default weight of the reciprocal-rank BM25 leg in fusion.",
+            "const": "crates/contextful-core/src/read/rank.rs::FUSION_LEXICAL_WEIGHT_PERCENT"
           },
           "read-fusion-vector-weight": {
             "clause": "read.rank.fusion",
             "value": 60,
             "unit": "percent",
             "basis": "chosen",
-            "gloss": "Default weight of the clamped cosine leg in fusion."
+            "gloss": "Default weight of the clamped cosine leg in fusion.",
+            "const": "crates/contextful-core/src/read/rank.rs::FUSION_VECTOR_WEIGHT_PERCENT"
           },
           "read-http-request-body": {
             "clause": "read.register.request-body",
             "value": 1,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Largest request body the network transport reads."
+            "gloss": "Largest request body the network transport reads.",
+            "const": "crates/contextful-agent/src/http.rs::REQUEST_BODY_BYTES"
           },
           "read-http-retry-after": {
             "clause": "read.register.past-ceiling",
             "value": 1,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "The `Retry-After` a request shed past the in-flight ceiling carries."
+            "gloss": "The `Retry-After` a request shed past the in-flight ceiling carries.",
+            "const": "crates/contextful-agent/src/http.rs::RETRY_AFTER_SECS"
           },
           "read-http-stop-drain": {
             "clause": "read.register.stop-drain",
@@ -42127,14 +42218,16 @@
             "value": 64,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "FIFO capacity of opened full-text sidecars."
+            "gloss": "FIFO capacity of opened full-text sidecars.",
+            "const": "crates/contextful-core/src/read/rank.rs::LEXICAL_INDEX_CACHE_ENTRIES"
           },
           "read-over-fetch-rounds": {
             "clause": "read.retrieve.adaptive-over-fetch",
             "value": 4,
             "unit": "rounds",
             "basis": "chosen",
-            "gloss": "Most probe rounds one sidecar arm runs while visible rows under-fill the limit."
+            "gloss": "Most probe rounds one sidecar arm runs while visible rows under-fill the limit.",
+            "const": "crates/contextful-core/src/read/rank.rs::OVER_FETCH_ROUNDS"
           },
           "read-part-wait": {
             "clause": "read.cache.miss-wait",
@@ -42148,28 +42241,32 @@
             "value": 4,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Token length below which no plural suffix is matched."
+            "gloss": "Token length below which no plural suffix is matched.",
+            "const": "crates/contextful-core/src/read/tokens.rs::PLURAL_SUFFIX_FLOOR"
           },
           "read-relevance-floor-narrow": {
             "clause": "read.retrieve.relevance-floor",
             "value": 1,
             "unit": "tokens",
             "basis": "chosen",
-            "gloss": "Lexical-score floor for a query below the threshold."
+            "gloss": "Lexical-score floor for a query below the threshold.",
+            "const": "crates/contextful-core/src/read/tokens.rs::RELEVANCE_FLOOR_NARROW"
           },
           "read-relevance-floor-split": {
             "clause": "read.retrieve.relevance-floor",
             "value": 3,
             "unit": "tokens",
             "basis": "chosen",
-            "gloss": "Content-token count at which the wider floor applies."
+            "gloss": "Content-token count at which the wider floor applies.",
+            "const": "crates/contextful-core/src/read/tokens.rs::RELEVANCE_FLOOR_SPLIT"
           },
           "read-relevance-floor-wide": {
             "clause": "read.retrieve.relevance-floor",
             "value": 2,
             "unit": "tokens",
             "basis": "chosen",
-            "gloss": "Lexical-score floor for a query of at least the threshold's content tokens."
+            "gloss": "Lexical-score floor for a query of at least the threshold's content tokens.",
+            "const": "crates/contextful-core/src/read/tokens.rs::RELEVANCE_FLOOR_WIDE"
           },
           "read-rerank-window": {
             "clause": "read.rank.rerank",
@@ -42183,77 +42280,88 @@
             "value": 1,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Rows fetched past the row ceiling, whose presence sets `truncated`."
+            "gloss": "Rows fetched past the row ceiling, whose presence sets `truncated`.",
+            "const": "crates/contextful-core/src/read/respond.rs::ROW_CEILING_OVERFETCH"
           },
           "read-session-pool-connections": {
             "clause": "read.cache.pool-connections",
             "value": 4,
             "unit": "connections",
             "basis": "chosen",
-            "gloss": "Idle connections one pooled session keeps."
+            "gloss": "Idle connections one pooled session keeps.",
+            "const": "crates/contextful-core/src/read/cache.rs::SESSION_POOL_CONNECTIONS"
           },
           "read-session-pool-entries": {
             "clause": "read.cache.pool-entries",
             "value": 16,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Resolved sessions one read face pools."
+            "gloss": "Resolved sessions one read face pools.",
+            "const": "crates/contextful-core/src/read/cache.rs::SESSION_POOL_ENTRIES"
           },
           "read-sidecar-node-mark": {
             "clause": "read.retrieve.sidecar-size-cap",
             "value": 4,
             "unit": "B",
             "basis": "chosen",
-            "gloss": "Resident bytes a vector sidecar counts per graph node, its probe's visited mark."
+            "gloss": "Resident bytes a vector sidecar counts per graph node, its probe's visited mark.",
+            "const": "crates/contextful-core/src/read/rank.rs::SIDECAR_NODE_MARK_BYTES"
           },
           "read-sidecar-probe-factor": {
             "clause": "read.retrieve.sidecar-oversampling",
             "value": 4,
             "unit": "times",
             "basis": "chosen",
-            "gloss": "Multiple of the limit one sidecar probe requests."
+            "gloss": "Multiple of the limit one sidecar probe requests.",
+            "const": "crates/contextful-core/src/read/rank.rs::SIDECAR_PROBE_FACTOR"
           },
           "read-sidecar-probe-floor": {
             "clause": "read.retrieve.sidecar-oversampling",
             "value": 64,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Smallest candidate count one sidecar probe requests."
+            "gloss": "Smallest candidate count one sidecar probe requests.",
+            "const": "crates/contextful-core/src/read/rank.rs::SIDECAR_PROBE_FLOOR"
           },
           "read-sidecar-restricted-factor": {
             "clause": "read.retrieve.sidecar-oversampling",
             "value": 4,
             "unit": "times",
             "basis": "chosen",
-            "gloss": "Further multiple applied when the request carries restriction context."
+            "gloss": "Further multiple applied when the request carries restriction context.",
+            "const": "crates/contextful-core/src/read/rank.rs::SIDECAR_RESTRICTED_FACTOR"
           },
           "read-sidecar-size-cap": {
             "clause": "read.retrieve.sidecar-size-cap",
             "value": 64,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Resident bytes past which a vector sidecar stays unloaded."
+            "gloss": "Resident bytes past which a vector sidecar stays unloaded.",
+            "const": "crates/contextful-core/src/read/rank.rs::SIDECAR_SIZE_CAP_BYTES"
           },
           "read-subscribe-queue": {
             "clause": "read.subscribe.overrun",
             "value": 1000,
             "unit": "notifications",
             "basis": "chosen",
-            "gloss": "Most notifications a subscription holds undelivered before its terminal overrun message."
+            "gloss": "Most notifications a subscription holds undelivered before its terminal overrun message.",
+            "const": "crates/contextful-core/src/read/subscribe.rs::QUEUE_BOUND"
           },
           "read-token-length-floor": {
             "clause": "read.retrieve.token-length-floor",
             "value": 2,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Shortest ASCII run kept in the content-token set."
+            "gloss": "Shortest ASCII run kept in the content-token set.",
+            "const": "crates/contextful-core/src/read/tokens.rs::TOKEN_LENGTH_FLOOR"
           },
           "read-window-anchor-tolerance": {
             "clause": "read.rank.window-anchor-tolerance",
             "value": 24,
             "unit": "h",
             "basis": "chosen",
-            "gloss": "How far past the anchor a publication instant still counts in-window."
+            "gloss": "How far past the anchor a publication instant still counts in-window.",
+            "const": "crates/contextful-core/src/read/rank.rs::WINDOW_ANCHOR_TOLERANCE_HOURS"
           }
         }
       },
@@ -42900,63 +43008,72 @@
             "value": 0,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Re-read window a table declaring no `allowed_lateness` takes."
+            "gloss": "Re-read window a table declaring no `allowed_lateness` takes.",
+            "const": "crates/contextful-core/src/run/advance.rs::ALLOWED_LATENESS_DEFAULT_SECS"
           },
           "blob-sweep-grace": {
             "clause": "run.journal.blob-sweep",
             "value": 1,
             "unit": "h",
             "basis": "chosen",
-            "gloss": "Age below which an unreferenced blob survives a sweep."
+            "gloss": "Age below which an unreferenced blob survives a sweep.",
+            "const": "crates/contextful-core/src/run/journal.rs::BLOB_SWEEP_GRACE_SECS"
           },
           "blob-sweep-interval": {
             "clause": "run.journal.blob-sweep",
             "value": 24,
             "unit": "h",
             "basis": "chosen",
-            "gloss": "Cadence of the blob mark-and-sweep pass."
+            "gloss": "Cadence of the blob mark-and-sweep pass.",
+            "const": "crates/contextful-core/src/run/journal.rs::BLOB_SWEEP_INTERVAL_SECS"
           },
           "broadcast-ring-entries": {
             "clause": "run.project.broadcast-ring",
             "value": 256,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Snapshots the per-run broadcast holds."
+            "gloss": "Snapshots the per-run broadcast holds.",
+            "const": "crates/contextful-engine/src/project.rs::BROADCAST_RING_ENTRIES"
           },
           "cancel-poll-interval": {
             "clause": "run.cancel.poll-interval",
             "value": 500,
             "unit": "ms",
             "basis": "chosen",
-            "gloss": "Cadence of the catalog read feeding the cancellation token."
+            "gloss": "Cadence of the catalog read feeding the cancellation token.",
+            "const": "crates/contextful-core/src/run/cancel.rs::POLL_INTERVAL_MS"
           },
           "channel-eviction-delay": {
             "clause": "run.project.channel-eviction",
             "value": 60,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Time a run's channel outlives its folded terminal event."
+            "gloss": "Time a run's channel outlives its folded terminal event.",
+            "const": "crates/contextful-engine/src/project.rs::CHANNEL_EVICTION_SECS"
           },
           "checkpoint-bytes": {
             "clause": "run.own.checkpoint-commit",
             "value": 512,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Bytes one run stages before it commits a checkpoint and keeps pulling."
+            "gloss": "Bytes one run stages before it commits a checkpoint and keeps pulling.",
+            "const": "crates/contextful-engine/src/runner.rs::CHECKPOINT_BYTES"
           },
           "chunk-lease-renewal": {
             "clause": "run.backfill.chunk-lease",
             "value": 60,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Renewal cadence of a held chunk lease."
+            "gloss": "Renewal cadence of a held chunk lease.",
+            "const": "crates/contextful-core/src/run/backfill.rs::CHUNK_LEASE_RENEWAL_SECS"
           },
           "chunk-lease-ttl": {
             "clause": "run.backfill.chunk-lease",
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Life of an unrenewed chunk lease."
+            "gloss": "Life of an unrenewed chunk lease.",
+            "const": "crates/contextful-core/src/run/backfill.rs::CHUNK_LEASE_TTL_SECS"
           },
           "d1-group-row-bytes": {
             "clause": "run.export.group-d1-spill",
@@ -42984,35 +43101,40 @@
             "value": 3,
             "unit": "attempts",
             "basis": "chosen",
-            "gloss": "Total attempts of a D1 request whose repetition changes nothing."
+            "gloss": "Total attempts of a D1 request whose repetition changes nothing.",
+            "const": "crates/contextful-d1/src/lib.rs::TRANSPORT_ATTEMPTS"
           },
           "derive-attempts-per-unit": {
             "clause": "run.select.attempts-per-unit",
             "value": 3,
             "unit": "attempts",
             "basis": "chosen",
-            "gloss": "Attempts one unit receives before its marker settles."
+            "gloss": "Attempts one unit receives before its marker settles.",
+            "const": "crates/contextful-core/src/run/derive/config.rs::ATTEMPTS_PER_UNIT"
           },
           "derive-audit-entries": {
             "clause": "run.exec.audit-entries",
             "value": 64,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Captured-output entries one chain adds to the run record."
+            "gloss": "Captured-output entries one chain adds to the run record.",
+            "const": "crates/contextful-core/src/run/derive/exec.rs::AUDIT_ENTRIES"
           },
           "derive-captured-output": {
             "clause": "run.exec.captured-output",
             "value": 8,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Captured output one step may produce."
+            "gloss": "Captured output one step may produce.",
+            "const": "crates/contextful-core/src/run/derive/exec.rs::CAPTURED_OUTPUT_BYTES"
           },
           "derive-chain-deadline": {
             "clause": "run.exec.chain-deadline",
             "value": 1800,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Wall clock one unit's chain runs for."
+            "gloss": "Wall clock one unit's chain runs for.",
+            "const": "crates/contextful-core/src/run/derive/exec.rs::CHAIN_DEADLINE_SECS"
           },
           "derive-document-prefix": {
             "clause": "run.fetch.document-prefix",
@@ -43026,14 +43148,16 @@
             "value": 1,
             "unit": "attempts",
             "basis": "chosen",
-            "gloss": "Attempts an established-empty unit receives."
+            "gloss": "Attempts an established-empty unit receives.",
+            "const": "crates/contextful-core/src/run/derive/emit.rs::EMPTY_ATTEMPTS"
           },
           "derive-engine-id-prefix": {
             "clause": "run.exec.engine-id",
             "value": 12,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Digest characters in an exec engine id."
+            "gloss": "Digest characters in an exec engine id.",
+            "const": "crates/contextful-core/src/run/derive/exec.rs::ENGINE_ID_PREFIX"
           },
           "derive-hop-timeout": {
             "clause": "run.fetch.hop-timeout",
@@ -43047,35 +43171,40 @@
             "value": 1000000,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Parent rows selection scans in memory before streaming."
+            "gloss": "Parent rows selection scans in memory before streaming.",
+            "const": "crates/contextful-core/src/run/derive/config.rs::PARENT_SCAN_ROWS"
           },
           "derive-passage-bytes": {
             "clause": "run.parse-cues.passage-bytes",
             "value": 8,
             "unit": "KiB",
             "basis": "chosen",
-            "gloss": "Text one passage holds."
+            "gloss": "Text one passage holds.",
+            "const": "crates/contextful-core/src/run/derive/cues.rs::PASSAGE_BYTES"
           },
           "derive-passage-chars": {
             "clause": "run.parse-cues.passage-chars",
             "value": 600,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Length at which an open passage closes."
+            "gloss": "Length at which an open passage closes.",
+            "const": "crates/contextful-core/src/run/derive/cues.rs::PASSAGE_CHARS"
           },
           "derive-passage-span": {
             "clause": "run.parse-cues.passage-span",
             "value": 60,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Span at which an open passage closes."
+            "gloss": "Span at which an open passage closes.",
+            "const": "crates/contextful-core/src/run/derive/cues.rs::PASSAGE_SPAN_MS"
           },
           "derive-passages-per-doc": {
             "clause": "run.parse-cues.passages-per-document",
             "value": 2000,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Passages one caption document yields."
+            "gloss": "Passages one caption document yields.",
+            "const": "crates/contextful-core/src/run/derive/cues.rs::PASSAGES_PER_DOCUMENT"
           },
           "derive-probe-prefix": {
             "clause": "run.fetch.probe-prefix",
@@ -43103,70 +43232,80 @@
             "value": 25,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Units one derive run attempts."
+            "gloss": "Units one derive run attempts.",
+            "const": "crates/contextful-core/src/run/derive/config.rs::ROWS_PER_RUN"
           },
           "derive-seconds-per-run": {
             "clause": "run.select.seconds-per-run",
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Wall clock the unit loop holds for a socket-opening task."
+            "gloss": "Wall clock the unit loop holds for a socket-opening task.",
+            "const": "crates/contextful-core/src/run/derive/config.rs::LINK_SECONDS_PER_RUN"
           },
           "derive-step-error-excerpt": {
             "clause": "run.exec.step-error-excerpt",
             "value": 4,
             "unit": "KiB",
             "basis": "chosen",
-            "gloss": "Standard error a failing step's error carries."
+            "gloss": "Standard error a failing step's error carries.",
+            "const": "crates/contextful-core/src/run/derive/exec.rs::STEP_ERROR_EXCERPT_BYTES"
           },
           "derive-upstream-excerpt": {
             "clause": "run.bind.upstream-excerpt",
             "value": 4,
             "unit": "KiB",
             "basis": "chosen",
-            "gloss": "Vendor response text an upstream error carries."
+            "gloss": "Vendor response text an upstream error carries.",
+            "const": "crates/contextful-core/src/run/derive/engine.rs::UPSTREAM_EXCERPT_BYTES"
           },
           "describe-history-ceiling": {
             "clause": "run.record.describe-window",
             "value": 500,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Highest ceiling the describe surface honors."
+            "gloss": "Highest ceiling the describe surface honors.",
+            "const": "crates/contextful-core/src/run/record.rs::DESCRIBE_CEILING_ROWS"
           },
           "describe-history-default": {
             "clause": "run.record.describe-window",
             "value": 5,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Runs the describe surface returns unasked."
+            "gloss": "Runs the describe surface returns unasked.",
+            "const": "crates/contextful-core/src/run/record.rs::DESCRIBE_DEFAULT_ROWS"
           },
           "export-batch-rows": {
             "clause": "run.export.batch-rows",
             "value": 500,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Rows one OTLP delivery batch holds."
+            "gloss": "Rows one OTLP delivery batch holds.",
+            "const": "crates/contextful-core/src/export.rs::EXPORT_BATCH_ROWS"
           },
           "export-history-ceiling": {
             "clause": "run.record.export-ceiling",
             "value": 5000,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Highest ceiling the export honors, per pipeline."
+            "gloss": "Highest ceiling the export honors, per pipeline.",
+            "const": "crates/contextful-core/src/run/record.rs::EXPORT_CEILING_ROWS"
           },
           "export-history-default": {
             "clause": "run.record.export-ceiling",
             "value": 500,
             "unit": "rows",
             "basis": "chosen",
-            "gloss": "Runs the export returns unasked."
+            "gloss": "Runs the export returns unasked.",
+            "const": "crates/contextful-core/src/run/record.rs::EXPORT_DEFAULT_ROWS"
           },
           "journal-inline-cutoff": {
             "clause": "run.journal.inline-cutoff",
             "value": 1,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Largest journaled value held inline in its row."
+            "gloss": "Largest journaled value held inline in its row.",
+            "const": "crates/contextful-core/src/run/journal.rs::INLINE_CUTOFF_BYTES"
           },
           "llm-candidate-min-tail": {
             "clause": "run.guard-secrets.llm-admission",
@@ -43180,21 +43319,24 @@
             "value": 5,
             "unit": "levels",
             "basis": "chosen",
-            "gloss": "Nesting `native` keeps before a subtree lands as `Json`."
+            "gloss": "Nesting `native` keeps before a subtree lands as `Json`.",
+            "const": "crates/contextful-core/src/pipeline/normalize.rs::DEFAULT_NESTING_DEPTH"
           },
           "owner-lease-renewal": {
             "clause": "run.record.owner-lease",
             "value": 10,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Renewal cadence of a run row's owner lease."
+            "gloss": "Renewal cadence of a run row's owner lease.",
+            "const": "crates/contextful-core/src/run/record.rs::OWNER_LEASE_RENEWAL_SECS"
           },
           "owner-lease-ttl": {
             "clause": "run.record.owner-lease",
             "value": 30,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Life of an unrenewed run owner lease."
+            "gloss": "Life of an unrenewed run owner lease.",
+            "const": "crates/contextful-core/src/run/record.rs::OWNER_LEASE_TTL_SECS"
           },
           "parse-child-deadline": {
             "clause": "run.land.parse-deadline",
@@ -43215,14 +43357,16 @@
             "value": 16,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Hash characters forming a plan's version."
+            "gloss": "Hash characters forming a plan's version.",
+            "const": "crates/contextful-core/src/run/nodes.rs::PLAN_VERSION_CHARS"
           },
           "projection-coalesce-window": {
             "clause": "run.project.coalescing",
             "value": 100,
             "unit": "ms",
             "basis": "chosen",
-            "gloss": "Window snapshot broadcasts collapse into."
+            "gloss": "Window snapshot broadcasts collapse into.",
+            "const": "crates/contextful-core/src/run/project.rs::COALESCE_WINDOW_MS"
           },
           "publication-completions": {
             "clause": "run.export.group-source-latest",
@@ -43236,42 +43380,48 @@
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Longest a coordinated export waits for its publication intent and inputs."
+            "gloss": "Longest a coordinated export waits for its publication intent and inputs.",
+            "const": "crates/contextful-cli/src/export/publication.rs::QUIESCE_WAIT_SECS"
           },
           "receive-group-bytes": {
             "clause": "run.land.receive-group",
             "value": 64,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Spooled body bytes one receive group lands."
+            "gloss": "Spooled body bytes one receive group lands.",
+            "const": "crates/contextful-cli/src/receive.rs::GROUP_BYTES"
           },
           "receive-push-wait": {
             "clause": "run.land.receive-push-wait",
             "value": 30,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Longest wait a delivered batch spends on the push guard before answering retryable."
+            "gloss": "Longest wait a delivered batch spends on the push guard before answering retryable.",
+            "const": "crates/contextful-cli/src/receive.rs::PUSH_WAIT_SECS"
           },
           "receive-retry-after": {
             "clause": "run.land.receive-retry-after",
             "value": 1,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Interval a backpressured sender waits before resending."
+            "gloss": "Interval a backpressured sender waits before resending.",
+            "const": "crates/contextful-connectors/src/receive.rs::RETRY_AFTER_MS"
           },
           "retry-after-ceiling": {
             "clause": "run.retry.retry-after",
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Longest remaining retry wait a step sleeps in process before closing waiting."
+            "gloss": "Longest remaining retry wait a step sleeps in process before closing waiting.",
+            "const": "crates/contextful-core/src/run/retry.rs::RETRY_AFTER_CEILING_SECS"
           },
           "retry-base-delay": {
             "clause": "run.retry.default-policy",
             "value": 100,
             "unit": "ms",
             "basis": "chosen",
-            "gloss": "First delay of the default schedule."
+            "gloss": "First delay of the default schedule.",
+            "const": "crates/contextful-core/src/run/retry.rs::DEFAULT_BASE_MS"
           },
           "retry-default-attempts": {
             "clause": "run.retry.default-policy",
@@ -43299,42 +43449,48 @@
             "value": 1,
             "unit": "attempts",
             "basis": "chosen",
-            "gloss": "Total attempts of the no-retry schedule."
+            "gloss": "Total attempts of the no-retry schedule.",
+            "const": "crates/contextful-core/src/run/retry.rs::SINGLE_ATTEMPT"
           },
           "run-error-cap": {
             "clause": "run.record.error-cap",
             "value": 2,
             "unit": "KiB",
             "basis": "chosen",
-            "gloss": "Size a recorded run error is clipped to."
+            "gloss": "Size a recorded run error is clipped to.",
+            "const": "crates/contextful-core/src/run/record.rs::ERROR_CAP_BYTES"
           },
           "run-metadata-bytes": {
             "clause": "run.project.metadata-too-large",
             "value": 16384,
             "unit": "B",
             "basis": "chosen",
-            "gloss": "Serialized bound on snapshot application metadata."
+            "gloss": "Serialized bound on snapshot application metadata.",
+            "const": "crates/contextful-core/src/run/project.rs::METADATA_MAX_BYTES"
           },
           "site-id-max-length": {
             "clause": "run.record.site-id-length",
             "value": 64,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Longest site id."
+            "gloss": "Longest site id.",
+            "const": "crates/contextful-core/src/run/record.rs::SITE_ID_MAX_LEN"
           },
           "site-id-min-length": {
             "clause": "run.record.site-id-length",
             "value": 1,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Shortest site id."
+            "gloss": "Shortest site id.",
+            "const": "crates/contextful-core/src/run/record.rs::SITE_ID_MIN_LEN"
           },
           "staged-bytes-per-run": {
             "clause": "run.own.staged-bytes",
             "value": 1,
             "unit": "GiB",
             "basis": "chosen",
-            "gloss": "Bytes one run stages between two of its commits."
+            "gloss": "Bytes one run stages between two of its commits.",
+            "const": "crates/contextful-core/src/run/ports.rs::STAGED_BYTES_PER_RUN"
           },
           "typed-export-request-bytes": {
             "clause": "run.export.typed-byte-limit",
@@ -43724,35 +43880,40 @@
             "value": 30,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Largest clock difference between two machines coordination assumes."
+            "gloss": "Largest clock difference between two machines coordination assumes.",
+            "const": "crates/contextful-core/src/store/lease.rs::CLOCK_SKEW_SECS"
           },
           "store-commit-lock-wait": {
             "clause": "store.reserve.commit-wait",
             "value": 30,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Longest a commit waits for its table's commit lock or a lower value's publication."
+            "gloss": "Longest a commit waits for its table's commit lock or a lower value's publication.",
+            "const": "crates/contextful-core/src/store/reserve.rs::COMMIT_LOCK_WAIT_SECS"
           },
           "store-compaction-interval": {
             "clause": "store.fold.triggers",
             "value": 6,
             "unit": "h",
             "basis": "chosen",
-            "gloss": "Elapsed time after a table's previous pass that fires the next."
+            "gloss": "Elapsed time after a table's previous pass that fires the next.",
+            "const": "crates/contextful-core/src/store/fold.rs::COMPACTION_INTERVAL_SECS"
           },
           "store-compaction-run-count": {
             "clause": "store.fold.triggers",
             "value": 50,
             "unit": "runs",
             "basis": "chosen",
-            "gloss": "Runs committed on a table since its previous pass that fire the next."
+            "gloss": "Runs committed on a table since its previous pass that fire the next.",
+            "const": "crates/contextful-core/src/store/fold.rs::COMPACTION_RUN_COUNT"
           },
           "store-drain-deadline": {
             "clause": "store.drain.deadline",
             "value": 15,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Longest push a stopping serve attempts before it exits."
+            "gloss": "Longest push a stopping serve attempts before it exits.",
+            "const": "crates/contextful-cli/src/sync.rs::DRAIN_SECS"
           },
           "store-endpoint-answer": {
             "clause": "store.endpoint.transport",
@@ -43780,7 +43941,8 @@
             "value": 3,
             "unit": "attempts",
             "basis": "chosen",
-            "gloss": "Total attempts of an S3 request whose repetition changes nothing."
+            "gloss": "Total attempts of an S3 request whose repetition changes nothing.",
+            "const": "crates/contextful-sync/src/s3_retry.rs::TRANSPORT_ATTEMPTS"
           },
           "store-endpoint-backoff-base": {
             "clause": "store.endpoint.throttled",
@@ -43794,7 +43956,8 @@
             "value": 5,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Highest ceiling a throttled resend's backoff reaches."
+            "gloss": "Highest ceiling a throttled resend's backoff reaches.",
+            "const": "crates/contextful-sync/src/s3_retry.rs::THROTTLED_ATTEMPTS"
           },
           "store-endpoint-connect": {
             "clause": "store.endpoint.transport",
@@ -43808,28 +43971,32 @@
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Lead time before expiry at which workload-role credentials refresh."
+            "gloss": "Lead time before expiry at which workload-role credentials refresh.",
+            "const": "crates/contextful-outbound/src/role.rs::REFRESH_LEAD_SECS"
           },
           "store-endpoint-throttled": {
             "clause": "store.endpoint.throttled",
             "value": 5,
             "unit": "attempts",
             "basis": "chosen",
-            "gloss": "Total attempts of an S3 request the backend answers throttled."
+            "gloss": "Total attempts of an S3 request the backend answers throttled.",
+            "const": "crates/contextful-sync/src/s3_retry.rs::THROTTLED_ATTEMPTS"
           },
           "store-fold-merge-fanout": {
             "clause": "store.fold.tiered-merge",
             "value": 4,
             "unit": "parts",
             "basis": "chosen",
-            "gloss": "Parts of one size tier in one partition at which a pass merges them into one."
+            "gloss": "Parts of one size tier in one partition at which a pass merges them into one.",
+            "const": "crates/contextful-core/src/store/fold.rs::FOLD_MERGE_FANOUT"
           },
           "store-graph-extensions": {
             "clause": "store.index.graph-extensions",
             "value": 16,
             "unit": "extensions",
             "basis": "chosen",
-            "gloss": "Segment extensions after which a pass rebuilds a vector or full-text sidecar in full."
+            "gloss": "Segment extensions after which a pass rebuilds a vector or full-text sidecar in full.",
+            "const": "crates/contextful-core/src/store/index.rs::GRAPH_EXTENSIONS_MAX"
           },
           "store-kdf-iterations": {
             "clause": "store.encrypt.password-kdf",
@@ -43857,56 +44024,64 @@
             "value": 200,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Interval at which a holder renews, a third of the grant."
+            "gloss": "Interval at which a holder renews, a third of the grant.",
+            "const": "crates/contextful-core/src/store/lease.rs::RENEWAL_SECS"
           },
           "store-lease-ttl": {
             "clause": "store.lease.ttl",
             "value": 10,
             "unit": "min",
             "basis": "chosen",
-            "gloss": "Granted life of a lease."
+            "gloss": "Granted life of a lease.",
+            "const": "crates/contextful-core/src/store/lease.rs::TTL_SECS"
           },
           "store-ledger-retention": {
             "clause": "store.reserve.ledger-retention",
             "value": 365,
             "unit": "d",
             "basis": "chosen",
-            "gloss": "Age at which a request-ledger row is collected."
+            "gloss": "Age at which a request-ledger row is collected.",
+            "const": "crates/contextful-core/src/store/reserve.rs::LEDGER_RETENTION_SECS"
           },
           "store-node-id-length": {
             "clause": "store.lay-out.node-id-shape",
             "value": 64,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Longest node id, which is interpolated into paths and keys."
+            "gloss": "Longest node id, which is interpolated into paths and keys.",
+            "const": "crates/contextful-core/src/store/lay_out.rs::NODE_ID_MAX_LEN"
           },
           "store-part-cache": {
             "clause": "store.pull.part-cache",
             "value": 8,
             "unit": "GiB",
             "basis": "chosen",
-            "gloss": "Default bound on the fetched parts a lazy store holds locally."
+            "gloss": "Default bound on the fetched parts a lazy store holds locally.",
+            "const": "crates/contextful-core/src/store/sync.rs::PART_CACHE_BYTES"
           },
           "store-partition-count": {
             "clause": "store.index.partition-warnings",
             "value": 1000,
             "unit": "partitions",
             "basis": "chosen",
-            "gloss": "Projected partition count above which planning warns."
+            "gloss": "Projected partition count above which planning warns.",
+            "const": "crates/contextful-core/src/store/index.rs::PARTITION_COUNT_WARN"
           },
           "store-partition-median": {
             "clause": "store.index.partition-warnings",
             "value": 16,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Projected median partition size below which planning warns."
+            "gloss": "Projected median partition size below which planning warns.",
+            "const": "crates/contextful-core/src/store/index.rs::PARTITION_MEDIAN_WARN_BYTES"
           },
           "store-pull-convergence": {
             "clause": "store.pull.convergence",
             "value": 3,
             "unit": "attempts",
             "basis": "chosen",
-            "gloss": "Manifest re-fetches a pull performs against keys moving beneath it."
+            "gloss": "Manifest re-fetches a pull performs against keys moving beneath it.",
+            "const": "crates/contextful-core/src/store/sync.rs::PULL_CONVERGENCE"
           },
           "store-pull-serve-refresh": {
             "clause": "store.pull.serve-refresh",
@@ -43920,21 +44095,24 @@
             "value": 5,
             "unit": "attempts",
             "basis": "chosen",
-            "gloss": "Default consecutive re-commit rounds meeting no newer generation on a lost bucket manifest compare-and-set."
+            "gloss": "Default consecutive re-commit rounds meeting no newer generation on a lost bucket manifest compare-and-set.",
+            "const": "crates/contextful-core/src/store/sync.rs::PUSH_RETRIES"
           },
           "store-push-round-ceiling": {
             "clause": "store.merge.round-ceiling",
             "value": 64,
             "unit": "rounds",
             "basis": "chosen",
-            "gloss": "Manifest commit rounds one push makes, whatever generations they meet."
+            "gloss": "Manifest commit rounds one push makes, whatever generations they meet.",
+            "const": "crates/contextful-core/src/store/sync.rs::PUSH_ROUND_CEILING"
           },
           "store-push-wait": {
             "clause": "store.push.in-flight",
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Default wait for the push guard another push of the store holds."
+            "gloss": "Default wait for the push guard another push of the store holds.",
+            "const": "crates/contextful-core/src/store/sync.rs::PUSH_WAIT_SECS"
           },
           "store-run-id-length": {
             "clause": "store.lay-out.run-id-shape",
@@ -43948,35 +44126,40 @@
             "value": 7,
             "unit": "d",
             "basis": "chosen",
-            "gloss": "Default `retain_runs` window, past which a folded run or a snapshot superseded by ordinary writes is collected."
+            "gloss": "Default `retain_runs` window, past which a folded run or a snapshot superseded by ordinary writes is collected.",
+            "const": "crates/contextful-core/src/store/declare.rs::DEFAULT_RETAIN_RUNS_SECS"
           },
           "store-snapshot-ancestors": {
             "clause": "store.lay-out.ancestors",
             "value": 256,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Most ancestors a snapshot manifest records."
+            "gloss": "Most ancestors a snapshot manifest records.",
+            "const": "crates/contextful-core/src/store/lay_out.rs::SNAPSHOT_ANCESTORS_MAX"
           },
           "store-snapshot-id-width": {
             "clause": "store.lay-out.snapshot-id",
             "value": 20,
             "unit": "chars",
             "basis": "chosen",
-            "gloss": "Width of the zero-padded nanosecond field of a snapshot id."
+            "gloss": "Width of the zero-padded nanosecond field of a snapshot id.",
+            "const": "crates/contextful-core/src/store/lay_out.rs::SNAPSHOT_ID_WIDTH"
           },
           "store-tombstone-ttl": {
             "clause": "store.merge.tombstone-ttl",
             "value": 30,
             "unit": "d",
             "basis": "chosen",
-            "gloss": "Age at which a tombstone leaves the bucket manifest."
+            "gloss": "Age at which a tombstone leaves the bucket manifest.",
+            "const": "crates/contextful-core/src/store/sync.rs::TOMBSTONE_TTL_SECS"
           },
           "store-transfer-width": {
             "clause": "store.pull.transfer-width",
             "value": 16,
             "unit": "requests",
             "basis": "chosen",
-            "gloss": "Object requests a pull or a push keeps in flight at once."
+            "gloss": "Object requests a pull or a push keeps in flight at once.",
+            "const": "crates/contextful-core/src/store/sync.rs::TRANSFER_WIDTH"
           }
         }
       },
@@ -44370,7 +44553,8 @@
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Largest callback timestamp skew the relay accepts."
+            "gloss": "Largest callback timestamp skew the relay accepts.",
+            "const": "crates/contextful-core/src/surface/worker.rs::CALLBACK_SKEW_SECS"
           },
           "surface-card-subjects": {
             "clause": "surface.brief.card-subjects",
@@ -44391,7 +44575,8 @@
             "value": 10,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Wait between a stopping serve's SIGTERM and SIGKILL to its children."
+            "gloss": "Wait between a stopping serve's SIGTERM and SIGKILL to its children.",
+            "const": "crates/contextful-core/src/surface/dispatch.rs::CHILD_GRACE_SECS"
           },
           "surface-code-path-rows": {
             "clause": "surface.plan-turn.code-path-bounds",
@@ -44412,28 +44597,32 @@
             "value": 5,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Wait between one daemon queue drain ending and the next starting."
+            "gloss": "Wait between one daemon queue drain ending and the next starting.",
+            "const": "crates/contextful-cli/src/cadence.rs::DAEMON_DRAIN_SECS"
           },
           "surface-delegate-call-ceiling": {
             "clause": "surface.delegate.call-timeout-ceiling",
             "value": 3600,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Longest call-mode timeout a delegate binding declares."
+            "gloss": "Longest call-mode timeout a delegate binding declares.",
+            "const": "crates/contextful-core/src/surface/delegate.rs::CALL_TIMEOUT_CEILING_SECS"
           },
           "surface-delegate-call-timeout": {
             "clause": "surface.delegate.call-timeout",
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Default time a call-mode request stays open before the attempt closes."
+            "gloss": "Default time a call-mode request stays open before the attempt closes.",
+            "const": "crates/contextful-core/src/surface/delegate.rs::CALL_TIMEOUT_SECS"
           },
           "surface-fire-credential": {
             "clause": "surface.dispatch.fire-credential-lifetime",
             "value": 600,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Lifetime of the credential serve mints for one store-driven fire."
+            "gloss": "Lifetime of the credential serve mints for one store-driven fire.",
+            "const": "crates/contextful-cli/src/cadence.rs::FIRE_CREDENTIAL_SECS"
           },
           "surface-fire-pool": {
             "clause": "surface.dispatch.pool-bound",
@@ -44447,14 +44636,16 @@
             "value": 15,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Interval between worker heartbeats."
+            "gloss": "Interval between worker heartbeats.",
+            "const": "crates/contextful-core/src/surface/worker.rs::HEARTBEAT_BEAT_SECS"
           },
           "surface-heartbeat-lapse": {
             "clause": "surface.dispatch.heartbeat-lapse",
             "value": 60,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Heartbeat lapse that reschedules in-flight work."
+            "gloss": "Heartbeat lapse that reschedules in-flight work.",
+            "const": "crates/contextful-core/src/surface/worker.rs::HEARTBEAT_LAPSE_SECS"
           },
           "surface-learnings-per-turn": {
             "clause": "surface.learn.distillation",
@@ -44510,7 +44701,8 @@
             "value": 16,
             "unit": "entries",
             "basis": "chosen",
-            "gloss": "Largest residency allow-set."
+            "gloss": "Largest residency allow-set.",
+            "const": "crates/contextful-core/src/surface/reside.rs::REGION_ENTRIES"
           },
           "surface-sample-labels": {
             "clause": "surface.set-vantage.sample-labels",
@@ -44531,14 +44723,16 @@
             "value": 1,
             "unit": "MiB",
             "basis": "chosen",
-            "gloss": "Largest checkpointed step result."
+            "gloss": "Largest checkpointed step result.",
+            "const": "crates/contextful-core/src/surface/worker.rs::STEP_RESULT_CAP"
           },
           "surface-tick-interval": {
             "clause": "surface.arm.tick-interval",
             "value": 500,
             "unit": "ms",
             "basis": "chosen",
-            "gloss": "In-process evaluation interval."
+            "gloss": "In-process evaluation interval.",
+            "const": "crates/contextful-core/src/surface/arm.rs::TICK_INTERVAL_MS"
           },
           "surface-topic-tier-tokens": {
             "clause": "surface.brief.topic-tier",
@@ -44552,7 +44746,8 @@
             "value": 25,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Longest a wake holds its request before answering."
+            "gloss": "Longest a wake holds its request before answering.",
+            "const": "crates/contextful-core/src/surface/arm.rs::WAKE_ANSWER_SECS"
           }
         }
       },
@@ -44695,14 +44890,16 @@
             "value": 90,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Granted life of a cadence lease, three renewal intervals."
+            "gloss": "Granted life of a cadence lease, three renewal intervals.",
+            "const": "crates/contextful-core/src/coordinate.rs::CADENCE_LEASE_TTL_SECS"
           },
           "topology-cadence-renewal": {
             "clause": "topology.coordinate.cadence-lease-renewal",
             "value": 30,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Interval at which the reconciler renews a cadence lease."
+            "gloss": "Interval at which the reconciler renews a cadence lease.",
+            "const": "crates/contextful-core/src/coordinate.rs::CADENCE_LEASE_RENEWAL_SECS"
           },
           "topology-container-readiness": {
             "clause": "topology.publish-hostname.container-readiness",
@@ -44730,28 +44927,32 @@
             "value": 10,
             "unit": "messages",
             "basis": "standard:aws-sqs-receive-message",
-            "gloss": "Messages one SQS receive call asks for, the most SQS answers."
+            "gloss": "Messages one SQS receive call asks for, the most SQS answers.",
+            "const": "crates/contextful-outbound/src/aws_sqs.rs::BATCH"
           },
           "topology-queue-sqs-cap": {
             "clause": "topology.compose.queue-sqs-cap",
             "value": 1,
             "unit": "MiB",
             "basis": "standard:aws-sqs-quotas",
-            "gloss": "Largest SQS message; a receive body past it spills to the store bucket."
+            "gloss": "Largest SQS message; a receive body past it spills to the store bucket.",
+            "const": "crates/contextful-outbound/src/aws_sqs.rs::MESSAGE_CAP"
           },
           "topology-queue-sqs-visibility": {
             "clause": "topology.compose.queue-sqs-visibility",
             "value": 300,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Window a received SQS message stays hidden before it redelivers."
+            "gloss": "Window a received SQS message stays hidden before it redelivers.",
+            "const": "crates/contextful-outbound/src/aws_sqs.rs::VISIBILITY_SECS"
           },
           "topology-queue-sqs-wait": {
             "clause": "topology.compose.queue-sqs-wait",
             "value": 20,
             "unit": "s",
             "basis": "standard:aws-sqs-receive-message",
-            "gloss": "Long poll of the first SQS receive call, the most SQS waits."
+            "gloss": "Long poll of the first SQS receive call, the most SQS waits.",
+            "const": "crates/contextful-outbound/src/aws_sqs.rs::WAIT_SECS"
           }
         }
       }
@@ -46774,6 +46975,13 @@
     "assurance.structure-tree.adapter": {
       "sites": [
         "tools/ci/tests/integration/capability.rs::an_adapter_implementing_an_engine_port_passes_where_a_restatement_is_refused"
+      ],
+      "verdict": "performed",
+      "proved": false
+    },
+    "assurance.structure-tree.bound-constant": {
+      "sites": [
+        "tools/ci/tests/integration/capability.rs::a_named_constant_off_its_bound_value_is_drift"
       ],
       "verdict": "performed",
       "proved": false

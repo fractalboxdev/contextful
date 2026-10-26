@@ -272,3 +272,51 @@ fn the_repository_tree_holds_one_home_per_capability() {
     passed(&out);
     assert!(String::from_utf8_lossy(&out.stdout).contains("capabilities: 5 homes"), "{}", String::from_utf8_lossy(&out.stdout));
 }
+
+/// A fragment with one `[limit]` entry for `PREDICATE_SIZE` in the enforcement home, at `value` `unit`.
+fn bound(r: &Repo, value: &str, unit: &str, constant: &str) {
+    r.write(
+        "spec/terms/authority.toml",
+        &format!("[limit]\npredicate-size = {{ clause = \"authority.mask.predicate-size\", value = {value}, unit = \"{unit}\", basis = \"chosen\", gloss = \"Largest predicate.\", const = \"{constant}\" }}\n"),
+    );
+}
+
+const PREDICATE: &str = "crates/contextful-policy/src/enforce/mask.rs::PREDICATE_SIZE";
+
+/// A `[limit]` entry's `const = "<file>::<NAME>"` names a constant that file defines outside tests, its value the bound in its unit or another unit of its kind; a mismatch or an absent constant raises `BoundConstantDrift`.
+// spec: assurance.structure-tree.bound-constant@b1a9d0bc
+#[test]
+fn a_named_constant_off_its_bound_value_is_drift() {
+    let r = engine();
+    bound(&r, "4", "KiB", PREDICATE);
+    passed(&lint(&r));
+    bound(&r, "4096", "B", PREDICATE);
+    passed(&lint(&r));
+
+    bound(&r, "5", "KiB", PREDICATE);
+    let err = refused(&lint(&r), "BoundConstantDrift");
+    assert!(err.contains("`predicate-size` is 5 KiB, and crates/contextful-policy/src/enforce/mask.rs::PREDICATE_SIZE holds 4096"), "{err}");
+
+    bound(&r, "4", "KiB", "crates/contextful-policy/src/enforce/mask.rs::NO_SUCH");
+    let err = refused(&lint(&r), "BoundConstantDrift");
+    assert!(err.contains("defines no constant `NO_SUCH`"), "{err}");
+
+    r.write("crates/contextful-policy/tests/integration/mask.rs", "pub const PREDICATE_SIZE: usize = 4096;\n");
+    bound(&r, "4", "KiB", "crates/contextful-policy/tests/integration/mask.rs::PREDICATE_SIZE");
+    let err = refused(&lint(&r), "BoundConstantDrift");
+    assert!(err.contains("names a test file"), "{err}");
+}
+
+#[test]
+fn a_duration_constant_matches_its_bound_in_any_time_unit() {
+    let r = engine();
+    r.write("crates/contextful-core/src/lease.rs", "use std::time::Duration;\npub const RENEWAL: Duration = Duration::from_secs(120);\npub const WAIT_MS: u64 = 30_000;\n");
+    r.write(
+        "spec/terms/store.toml",
+        "[limit]\nrenewal = { clause = \"store.lease.renewal\", value = 2, unit = \"min\", basis = \"chosen\", gloss = \"Renewal.\", const = \"crates/contextful-core/src/lease.rs::RENEWAL\" }\nwait = { clause = \"store.lease.wait\", value = 30, unit = \"s\", basis = \"chosen\", gloss = \"Wait.\", const = \"crates/contextful-core/src/lease.rs::WAIT_MS\" }\n",
+    );
+    passed(&lint(&r));
+    r.write("crates/contextful-core/src/lease.rs", "use std::time::Duration;\npub const RENEWAL: Duration = Duration::from_millis(119_000);\npub const WAIT_MS: u64 = 30_000;\n");
+    let err = refused(&lint(&r), "BoundConstantDrift");
+    assert!(err.contains("`renewal` is 2 min"), "{err}");
+}

@@ -52,6 +52,8 @@ One home per capability, the one enforcement decision module, adapters, mirror a
   *P5*
 - `capability-registry` — `spec/capabilities.toml` names each capability of {{assurance.structure-tree.one-home}} with one home path and one or more defining symbols; an absent registry, a missing or doubled capability, an absent home or an undefined symbol raises `CapabilityHomeUnresolved`.
   *A-assurance#duplicated-capabilities-match*
+- `bound-constant` — A `[limit]` entry's `const = "<file>::<NAME>"` names a constant that file defines outside tests, holding the bound in its unit or another unit of its kind; a mismatch or an absent constant raises `BoundConstantDrift`.
+  *because the fragment is the one home of a bound's value, and a constant drifting from it changes behavior while the clause states the old number*
 - `cross-language` — The crate-graph stage matches Rust, TypeScript, JavaScript and Python functions, types and constants outside a home by name folded to lowercase without separators, against its symbols and its literal constants' names and values.
   *A-assurance#duplicated-capabilities-match*
 - `decision-module` — One module owns the enforcement decision; a gateway and the engine reaching the same verdict execute it, compiled native and to WebAssembly from one pinned source.
