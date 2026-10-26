@@ -1726,9 +1726,10 @@ fn recorded(pages: [&str; 2]) -> String {
     serde_json::to_string(&rows).unwrap()
 }
 
-/// `recipes/github.toml` keys issues on `id` and commits on `sha`, so the boundary row each poll re-serves lands as
-/// one row.
-// spec: connector.source.github-recipe-keys@f99fe817
+/// `recipes/github.toml` lands issues without pull requests, keyed on `id`, and commits, keyed on `sha`, per
+/// `<owner>/<repo>` table, following the `Link` header, stamping `repo_full_name`, and clocking commits at
+/// `/commit/committer/date`.
+// spec: connector.source.github-recipe@bdd2cd39
 #[test]
 fn the_github_recipe_lands_one_row_per_key_across_polls() {
     let issues = recorded([

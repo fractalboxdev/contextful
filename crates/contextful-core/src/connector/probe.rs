@@ -40,7 +40,7 @@ impl ScopeProbe {
     }
 
     /// Hold the probe to the manifest's allowlist and to TLS or loopback, ahead of any
-    /// I/O (`connector.declare-capability.probe-transport`). The probe carries the bound
+    /// I/O (`connector.declare-capability.scope-probe`). The probe carries the bound
     /// credential in `header`.
     pub fn check_transport(&self, allow: &Allowlist, header: &str) -> Result<(), ConnectorError> {
         if !allow.permits(self.endpoint.host_str().unwrap_or_default()) {

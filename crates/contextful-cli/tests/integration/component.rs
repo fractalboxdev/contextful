@@ -175,6 +175,7 @@ impl Vendor {
 /// run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
 // spec: connector.package.component-load@43f09e4a
 // spec: connector.import.config-hashing@1a312bfb
+// spec: connector.export.authoring-path@7c54aef3
 #[test]
 fn pipeline_run_lands_a_pinned_component_and_records_its_digest() {
     let pin = digest(PROBE);
@@ -370,9 +371,9 @@ fn validate_loads_a_local_component_and_runs_discovery() {
     refused(&fire(dir.path(), "run-2", &["--declaration", "conf/contextful.toml"], &[]), "reading component artifact `connectors/probe.wasm`");
 }
 
-/// `incremental` beside a component source raises `ConnectorPositionOwned` at validation; the guest's opaque cursor is
-/// the run's position.
-// spec: connector.package.component-position@8a1f439a
+/// `incremental` beside a component source, the `file` or drive source, or the `s3` source under `skip_unchanged =
+/// true` raises `ConnectorPositionOwned` at validation; the source's own position is the run's position.
+// spec: connector.package.component-position@a87bf129
 #[test]
 fn an_incremental_field_beside_a_component_source_is_refused() {
     let text = format!("{}\n", manifest("connectors/probe.wasm", &["items"], "")).replace("tables = [\"items\"]", "tables = [\"items\"]\nincremental = \"id\"");
@@ -449,7 +450,7 @@ fn the_interpreted_target_is_selected_by_flag_or_environment() {
 
 /// A component source naming no `manifest`, or a manifest carrying an unread key, refuses by name before anything
 /// loads or runs.
-// spec: connector.package.manifest-keys@5ef98ed0
+// spec: connector.package.manifest-keys@031e63b9
 #[test]
 fn a_component_source_without_a_manifest_or_with_an_unread_key_refuses() {
     let dir = project(&bare("connectors/probe.wasm", &["items"], ""));
@@ -518,8 +519,8 @@ fn a_wall_clock_import_without_the_clock_grant_fails_to_load() {
 }
 
 /// A manifest may declare an identity endpoint, the response header carrying granted scopes, and the grant it expects.
-/// The host calls it with the bound credential ahead of the first read.
-// spec: connector.declare-capability.scope-probe@058eafc8
+/// Ahead of the first read, the host calls it with the bound credential over TLS or loopback on an allowlisted host.
+// spec: connector.declare-capability.scope-probe@2af5833f
 #[test]
 fn a_component_scope_probe_refuses_an_exceeded_grant_before_any_vendor_request() {
     let identity = Vendor::answering("HTTP/1.1 200 OK\r\nX-Granted-Scopes: reports.read, admin\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");

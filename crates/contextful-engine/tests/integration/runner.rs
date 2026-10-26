@@ -1477,7 +1477,7 @@ fn a_position_round_trips_untouched_and_each_table_keeps_its_own() {
 
 /// A delivered batch runs under the owner scope its batch key fixes: a resend under the key resumes that owner's
 /// recorded pull, and another key's batch runs under a fresh execution that leaves it pending.
-// spec: connector.source.receive-recorded@dd100cb0
+// spec: connector.source.receive-recorded@708ab628
 #[test]
 fn a_receive_batch_key_resumes_its_own_owner_and_no_other_keys() {
     use contextful_core::run::own::OwnerScope;

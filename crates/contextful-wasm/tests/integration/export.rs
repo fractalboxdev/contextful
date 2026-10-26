@@ -177,6 +177,7 @@ fn optional_interfaces_are_probed_and_a_base_guest_instantiates_untouched() {
 
 /// Failure attribution carries at most 512 entries per session, each value at most 512 B.
 // spec: connector.export.attribution-budget@804fe299
+// spec: connector.export.partition-attribution@4a0ce835
 #[test]
 fn attribution_keeps_512_values_of_at_most_512_bytes() {
     let mut s = open_with(loopback(), &Limits::default(), Some(&json!({ "flood": true }))).unwrap();
@@ -230,6 +231,7 @@ impl contextful_wasm::Hydrate for Unresolvable {
 /// A read failing under `auth-expired`, or during which the host failed to hydrate or lease a credential, fails
 /// unattributed; the host discards the guest's failure attribution for that session.
 // spec: connector.export.shared-failure@d3dd61a3
+// spec: connector.export.partition-attribution@4a0ce835
 #[test]
 fn a_credential_failure_discards_the_guests_failure_attribution() {
     // The vendor rejects a credential that hydrated fine, and the guest reports `auth-expired`.

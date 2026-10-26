@@ -50,9 +50,10 @@ fn source(spec: &PipelineSpec, server: &Server) -> HttpSource {
     HttpSource::new(HttpConfig::parse(&config).unwrap(), TABLE, resolver(vec![("github-token", "ghp_recorded")])).unwrap()
 }
 
-/// `recipes/github.toml` lands issues without pull requests and commits per `<owner>/<repo>` table, following the
-/// `Link` header, stamping `repo_full_name`, and clocking commits at `/commit/committer/date`.
-// spec: connector.source.github-recipe@6d93e2d8
+/// `recipes/github.toml` lands issues without pull requests, keyed on `id`, and commits, keyed on `sha`, per
+/// `<owner>/<repo>` table, following the `Link` header, stamping `repo_full_name`, and clocking commits at
+/// `/commit/committer/date`.
+// spec: connector.source.github-recipe@bdd2cd39
 #[test]
 fn the_recipe_lands_issues_without_pull_requests_and_stamps_the_repository() {
     let spec = recipe().into_iter().find(|s| s.id == "github_issues").unwrap();

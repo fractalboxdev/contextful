@@ -247,8 +247,10 @@ fn a_drive_fire_lands_files_and_pages_then_only_what_changed() {
     }
 }
 
-/// `incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.
-// spec: connector.source.drive-position-owned@2834aee3
+/// `incremental` beside a component source, the `file` or drive source, or the `s3` source under
+/// `skip_unchanged = true` raises `ConnectorPositionOwned` at validation; the source's own position is the
+/// run's position.
+// spec: connector.package.component-position@a87bf129
 #[test]
 fn an_incremental_field_beside_the_drive_source_refuses_at_validation() {
     let fake = Fake::start();

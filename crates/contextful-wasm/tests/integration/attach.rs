@@ -27,6 +27,7 @@ fn bearer() -> Vec<(String, Arc<dyn Hydrate>)> {
 
 /// No host import hands credential bytes to guest code; a guest names a request and receives a response.
 // spec: connector.attach.no-material-to-a-guest@643f937c
+// spec: connector.attach.mediation-covers-every-egress@38e925ca
 #[test]
 fn the_host_attaches_the_credential_and_the_guest_sees_only_the_response() {
     let server = Server::start(|r| Response::text(200, if r.header("authorization").is_some() { "attached" } else { "bare" }));
@@ -84,6 +85,7 @@ fn minted() -> Vec<(String, Arc<dyn Hydrate>)> {
 /// Material enters the process per request, while the request is built: a session holds no hydrated value between
 /// requests, so each request carries what the provider answers at that moment.
 // spec: connector.attach.per-request-hydration@93cdb614
+// spec: connector.resolve.hydration-is-just-in-time@d63a022b
 #[test]
 fn a_hydrated_header_renders_afresh_for_each_request() {
     let server = Server::start(|_| Response::text(200, "ok"));

@@ -34,9 +34,8 @@ when an admitted host already covers it ({{connector.widen.host-inclusion}}).
 
 ## What crosses the interface
 
-The component imports outgoing HTTP, logging and a wall clock, and nothing else
-({{connector.import.three-imports}}). It receives credentials by reference, a position
-and its run id, but no store handle ({{connector.export.store-blindness}}). Batches cross
+The component imports outgoing HTTP, logging and a wall clock, and its standard library
+sees no files, environment or arguments ({{connector.import.empty-context}}). Batches cross
 the interface as Arrow IPC, a binary columnar format ({{connector.export.batch-encoding}}).
 
 ## One request, end to end
@@ -50,7 +49,7 @@ fails ({{connector.attach.private-address}}).
 The credential binding allows one exact host, `api.vendor.example`
 ({{connector.attach.bound-host}}). An `[attach]` block maps the `Authorization` header to
 the template `Bearer ${secret://vendor-token}` ({{connector.reference.value-template}}).
-The host fills that template only on the admitted request ({{connector.attach.attach-block}}).
+The host fills that template afresh for each admitted request ({{connector.attach.per-request-hydration}}).
 
 A redirect keeps the credential only at the configured host and port
 ({{connector.attach.redirect-pinning}}).
