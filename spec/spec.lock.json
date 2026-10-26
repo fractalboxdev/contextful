@@ -8604,7 +8604,7 @@
       "operation": "synthesize",
       "subject": "prompt-bound",
       "kind": "limit",
-      "statement": "A batch packs fenced rows up to 32 KiB; a fenced row over that bound travels in a batch of its own.",
+      "statement": "A batch packs marked rows up to 32 KiB; a marked row over that bound travels in a batch of its own.",
       "why": "because one oversized row neither stalls the pass nor drags its neighbours past the bound",
       "file": "spec/21-memory.md",
       "line": 85
@@ -8615,7 +8615,7 @@
       "operation": "synthesize",
       "subject": "row-cap",
       "kind": "limit",
-      "statement": "Synthesis fences each row at 16384 chars under {{connector.infer.value-cap}}. Truncated rows reach the model; their batch commits and advances the cursor. The pass report counts these rows in `truncated`.",
+      "statement": "Synthesis marks each row, capped at 16384 chars under {{connector.infer.value-cap}}. Truncated rows reach the model; their batch commits and advances the cursor. The pass report counts these rows in `truncated`.",
       "why": "because a silent cut hides that a conclusion rests on a partial row",
       "file": "spec/21-memory.md",
       "line": 87
@@ -8703,7 +8703,7 @@
       "operation": "synthesize",
       "subject": "extract-cache",
       "kind": "behavior",
-      "statement": "Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise fenced-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.",
+      "statement": "Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise marked-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 103
@@ -8714,7 +8714,7 @@
       "operation": "synthesize",
       "subject": "cache-provenance",
       "kind": "behavior",
-      "statement": "A cache entry carries `_provenance` naming its batch's fenced rows, so {{disclosure.erase.cascade}} invalidates the entry when an erasure reaches any of them.",
+      "statement": "A cache entry carries `_provenance` naming its batch's marked rows, so {{disclosure.erase.cascade}} invalidates the entry when an erasure reaches any of them.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 105
