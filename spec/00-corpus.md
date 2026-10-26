@@ -157,8 +157,14 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a test that cannot demonstrate an assertion demonstrates no clause*
 - `lean-tag` — A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}.
   *because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale*
-- `theorem-beside-test` — A clause carries at most one theorem pin beside its test pins, and computes `performed` when all perform: the theorem proves the model, the tests tie the model to the code.
+- `theorem-beside-test` — A clause carries at most one theorem pin beside its test pins. A theorem pin alone states a property of a model, and performs once its proof holds no `sorry`.
   *A-assurance*
+- `bound-theorem` — Beside test pins, a theorem pin counts only when the `binding` of its row in a `formal/` inventory names one of those tests; an uncounted theorem leaves the clause's verdict to its tests.
+  *because a proof of a model the code never drives says nothing about the code the clause names*
+- `proved` — A performed clause computes `proved` when a counted theorem pin and a test pin of it both perform; `spec/status.md` counts proved clauses per contract and each card per operation.
+  *because performed and proved are different strengths of evidence, and one count hides which a contract holds*
+- `proof-obligation` — `formal/obligations.toml` lists clause ids under `clauses`; a listed clause that does not compute `proved` raises `SpecProofObligationUnpinned`, so an entry joins once its theorem counts and stays while it does.
+  *because a proof dropped silently reads as a clause still proved*
 - `stale-pin` — A tag whose `<rev>` differs from the digest of its clause's current statement raises `SpecStalePin`, and its clause computes `broken`.
   *because a reworded clause no longer says what its test was written to demonstrate*
 - `several-tests` — A clause takes any number of test pins and computes `performed` only when every one of them performs.

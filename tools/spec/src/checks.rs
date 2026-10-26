@@ -871,6 +871,9 @@ pub enum PinState {
     Stale,
     /// A refusal clause's test whose body names none of the clause's errors.
     Unexercised,
+    /// A finished theorem beside test pins whose inventory row binds none of them: it
+    /// neither performs nor breaks the clause.
+    Unbound,
 }
 
 /// Every `// spec:` tag under Rust, Lean and TypeScript surface roots, in path and line order.
@@ -1161,16 +1164,91 @@ pub fn pinned_theorems(pins: &[Pin]) -> BTreeSet<&str> {
     pins.iter().filter_map(Pin::theorem_name).collect()
 }
 
-/// `performed` when every pin of the clause performs and at most one theorem pins it;
-/// `broken` otherwise. A clause takes any number of test pins.
+/// The tests each `formal/**/inventory.toml` constant's `binding` names, as file and
+/// function, keyed by the constant's last name segment.
+pub fn bindings(c: &Corpus) -> BTreeMap<String, Vec<(String, String)>> {
+    static TEST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\btest\s+(\S+?)::([A-Za-z0-9_]+)").unwrap());
+    let mut out: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let walk = walkdir::WalkDir::new(c.root.join("formal")).sort_by_file_name().into_iter().filter_entry(|e| {
+        let n = e.file_name().to_string_lossy();
+        n != ".lake" && n != "target"
+    });
+    for e in walk.flatten().filter(|e| e.file_name() == "inventory.toml") {
+        let Some(table) = std::fs::read_to_string(e.path()).ok().and_then(|t| t.parse::<toml::Table>().ok()) else { continue };
+        for (key, row) in table.get("constant").and_then(toml::Value::as_table).into_iter().flatten() {
+            let name = key.rsplit('.').next().unwrap_or(key).to_string();
+            let binding = row.get("binding").and_then(toml::Value::as_str).unwrap_or_default();
+            out.entry(name).or_default().extend(TEST.captures_iter(binding).map(|m| (m[1].to_string(), m[2].to_string())));
+        }
+    }
+    out
+}
+
+/// Each pin's state within its clause (`corpus.state.bound-theorem`): a finished theorem
+/// beside test pins computes `Unbound` unless its inventory row binds one of them.
+pub fn pin_states(c: &Corpus, pins: &[Pin]) -> Vec<PinState> {
+    let mut states: Vec<PinState> = pins.iter().map(|p| pin_state(c, p)).collect();
+    let tests: Vec<(String, String)> = pins
+        .iter()
+        .filter(|p| p.kind == "test")
+        .filter_map(|p| match &p.tag {
+            Some(t) => Some((p.file.clone(), t.function.clone()?)),
+            None => crate::pins::locate(c, "test", &p.path, &PIN_ROOTS).first().map(|site| (site.file.clone(), p.path.rsplit("::").next().unwrap_or_default().to_string())),
+        })
+        .collect();
+    if tests.is_empty() || !pins.iter().any(|p| p.kind == "theorem") {
+        return states;
+    }
+    let bound = bindings(c);
+    for (p, state) in pins.iter().zip(states.iter_mut()) {
+        let Some(name) = p.theorem_name().filter(|_| *state == PinState::Performed) else { continue };
+        let name = name.rsplit('.').next().unwrap_or(name);
+        if !bound.get(name).is_some_and(|b| b.iter().any(|t| tests.contains(t))) {
+            *state = PinState::Unbound;
+        }
+    }
+    states
+}
+
+/// `performed` when every counted pin of the clause performs and at most one theorem pins
+/// it; `broken` otherwise. A clause takes any number of test pins; an `Unbound` theorem is
+/// not counted.
 pub fn clause_verdict(c: &Corpus, pins: &[Pin]) -> &'static str {
     let single = pinned_theorems(pins).len() <= 1;
-    if single && pins.iter().all(|p| pin_state(c, p) == PinState::Performed) {
+    let states = pin_states(c, pins);
+    if single && states.iter().all(|s| matches!(s, PinState::Performed | PinState::Unbound)) && states.contains(&PinState::Performed) {
         "performed"
     } else {
         "broken"
     }
 }
+
+/// `corpus.state.proved`: the clause performs and a counted theorem pin and a test pin of
+/// it both perform.
+pub fn proved(c: &Corpus, pins: &[Pin]) -> bool {
+    let states = pin_states(c, pins);
+    let performing = |kind: &str| pins.iter().zip(&states).any(|(p, s)| p.kind == kind && *s == PinState::Performed);
+    clause_verdict(c, pins) == "performed" && performing("theorem") && performing("test")
+}
+
+/// The clause ids `formal/obligations.toml` lists, each with its line.
+pub fn obligations(c: &Corpus) -> Vec<(String, usize)> {
+    let text = std::fs::read_to_string(c.root.join(OBLIGATIONS)).unwrap_or_default();
+    let ids: Vec<String> = text
+        .parse::<toml::Table>()
+        .ok()
+        .and_then(|t| t.get("clauses").and_then(toml::Value::as_array).cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_string))
+        .collect();
+    ids.into_iter().map(|id| {
+        let line = text.lines().position(|l| l.contains(&format!("\"{id}\""))).map_or(0, |n| n + 1);
+        (id, line)
+    }).collect()
+}
+
+pub const OBLIGATIONS: &str = "formal/obligations.toml";
 
 /// A milestone's `Reach:` and `Acceptance:` lines: heading, heading line, reach text, acceptance test path.
 pub struct MilestoneLines {
@@ -1285,12 +1363,12 @@ fn state(c: &Corpus) -> Vec<Finding> {
             }
             continue;
         };
-        for p in group {
+        for (p, state) in group.iter().zip(pin_states(c, group)) {
             if p.kind == "item" && cl.kind != "behavior" {
                 out.push(f("state", &p.file, p.line, "SpecBrokenPin", format!("{} `{id}` takes a test or theorem, not an item", cl.kind)));
             }
-            let msg = match pin_state(c, p) {
-                PinState::Performed => continue,
+            let msg = match state {
+                PinState::Performed | PinState::Unbound => continue,
                 PinState::Ignored => format!("pin for `{id}` names a test carrying `#[ignore]`"),
                 PinState::Unfinished if p.kind == "test" => format!("pin for `{id}` names a test whose body still opens a line with `todo!`"),
                 PinState::Unfinished => format!("pin for `{id}` names a declaration still holding `sorry`"),
@@ -1322,6 +1400,11 @@ fn state(c: &Corpus) -> Vec<Finding> {
         }
         if !c.reg.contracts.contains_key(contract) {
             out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("floor names unknown contract `{contract}`")));
+        }
+    }
+    for (id, line) in obligations(c) {
+        if !all.get(&id).is_some_and(|group| proved(c, group)) {
+            out.push(f("state", OBLIGATIONS, line, "SpecProofObligationUnpinned", format!("`{id}` is listed as a proof obligation but does not compute proved")));
         }
     }
     let (claim, found) = expand_roadmap(c);

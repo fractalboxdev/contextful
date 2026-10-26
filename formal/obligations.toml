@@ -1,0 +1,9 @@
+# Proof obligations: clauses whose proof is kept. A listed clause that does not compute
+# `proved` raises SpecProofObligationUnpinned (`corpus.state.proof-obligation`), so an
+# entry joins once its theorem pin counts beside a test pin, and stays while it does.
+
+clauses = [
+    "assurance.prove.restriction-preservation",
+    "connector.widen.host-inclusion",
+    "connector.widen.host-witness",
+]
