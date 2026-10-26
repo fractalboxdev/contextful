@@ -578,6 +578,11 @@ The engine builds model tables from SQL over store tables, validates contracts a
   *because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader*
 - `materialized` — `materialized` is `table`, the default: each build replaces the model's rows whole.
 - `unique-key` — `unique_key` defines the model's row identity. A build with duplicate key values or a null in a key column refuses as {{run.publish.contract-mismatch}}.
+
+### contracts
+
+A published model declares a versioned column contract, and a contract change publishes only under its version bump.
+
 - `contract-block` — `[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a `name`, a `type` spelled as {{store.reconcile.typed-landing}} reads it, and `nullable`, default true.
 - `contract-required` — A model whose `publish` is true, the default, and which declares no `[model.contract]` raises `ModelContractUndeclared` at validation.
   *because a published table without a declared contract has no identity a reader can pin against*
@@ -587,6 +592,11 @@ The engine builds model tables from SQL over store tables, validates contracts a
 - `contract-minor` — Under the published build's major, a contract that only adds nullable columns or makes nullable ones non-null publishes once its minor exceeds the published one, else refuses as {{run.publish.contract-mismatch}}, naming the added or tightened column and the bumped minor.
   *A-run#minor-contract-bump*
 - `injected-columns` — A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.
+
+### builds
+
+A build stages the model, checks its contract and tests, and records a watermark over its inputs.
+
 - `freshness-block` — `[model.freshness]` declares `max_lag` as an integer followed by `s`, `m`, `h` or `d`; a model declaring none publishes a null `max_lag` and never computes stale.
 - `test-block` — A `[[model.test]]` carries a `name` and one `SELECT` over the staged rows, registered under the model's id, and the store's tables; a test returning any row fails.
   *because a test must inspect the candidate build before its rows become visible to readers*
@@ -610,6 +620,11 @@ The engine builds model tables from SQL over store tables, validates contracts a
   *because a manifest committed with listed runs stays readable*
 - `build-horizon` — `contextful build <model> --available-as-of <t>` reads every input at `available_as_of` equal to `t` and records `t` as the watermark's `horizon`; a build without the flag records a null horizon.
   *because a build is reused across horizons only when its own bound is recorded beside it*
+
+### holds and status
+
+A hold keeps one build from collection, and status reads the last attempt beside the published build.
+
 - `hold-verb` — `build hold --for <n>[smhd] <model> <build>` commits a hold until now plus the duration and prints `Held`, or `Renewed` over an unexpired hold; `--json` prints the receipt as an object.
 - `status-verb` — `build status <model>` reports the last attempt separately from the published build; `--json` carries their ids, status, freshness and staleness computed at the requested instant.
 - `hold-unknown-build` — A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.
