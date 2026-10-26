@@ -114,7 +114,7 @@ corpus-guide-pointer-words = { clause = "corpus.guide.pointer-density", value = 
 [ceiling]
 registry-committed-sites = 3
 anatomy-long-lists = 6
-clause-unowned = 55
+clause-unowned = 54
 why-unscoped = 0
 term-first-use = 0
 

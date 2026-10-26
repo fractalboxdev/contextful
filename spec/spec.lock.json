@@ -71607,6 +71607,16 @@
         "proved": false
       }
     ],
+    "topology.bound-application.domain-neutral": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/domain.rs",
+        "name": "sector_vocabulary_appears_only_where_a_profile_connector_or_consumer_supplies_it",
+        "line": 116,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "topology.bound-application.restated-case": [
       {
         "kind": "test",
@@ -72282,7 +72292,7 @@
         "kind": "test",
         "path": "tools/ci/tests/integration/domain.rs",
         "name": "the_domain_crate_performs_no_io_and_links_into_every_profile",
-        "line": 38,
+        "line": 39,
         "verdict": "performed",
         "proved": false
       }
