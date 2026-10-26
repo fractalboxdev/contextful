@@ -89,13 +89,26 @@ Revisit: the read path releases a row outside a statement; the model gains SQL s
 Consequences: the report names its case classes — malformed, boundary, well-formed.
 Revisit: a pinned, reproducible translation toolchain exists; a production divergence falls outside all three classes; keeping the artifacts in step costs more than the divergences caught.
 
-## The store protocol is modelled in Lean 4
+## The executed reference model is the proved definitions
 
-`assurance.model` holds the lease, compare-and-swap and fence protocol as an executable Lean 4 state machine in a second package; its four invariants are audited theorems, and a bounded check over three nodes and four lease generations raises `ProtocolInvariantViolated`. `assurance.differential-test` drives the model's compiled executable and the Rust store through generated operation sequences and interleavings; a disagreement raises `ProtocolConformanceDrift`.
+`assurance.differential-test.reference-model` builds the reference binary from the policy package's definitions: the binary adds JSON case decoding and decision rendering, and declares no grant, pattern or zone type of its own. A disagreement therefore implicates the proved definitions directly, and every theorem over `Authority.Grant` speaks about the function the harness executes.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Lean 4 executable model, conformance through the differential harness *(chosen)* | — | Invariant proofs are hand-written until SMT automation is proven; generated interleavings are samples, and exhaustiveness holds only inside the bounded check. |
+| One set of definitions, proved and executed *(chosen)* | — | No second reading of the specification checks the first; a definition that misreads a clause passes its proofs and its differential alike. |
+| A second Lean rendering written from the specification text | Proof reach | No theorem links the executed types to the proved ones, so a green differential says nothing about the proved model. |
+| A refinement proof between the two renderings | Maintenance cost | Every dimension added to a grant needs a simulation lemma across two type families. |
+
+Consequences: the policy package's artifact budget bounds the definitions the differential exercises; the narrowing decision's refusal order and named dimension are proved in the reference package, which carries no artifact budget.
+Revisit: a misreading of a clause reaches a release through a definition both proofs and differential accepted.
+
+## The store protocol is modelled in Lean 4
+
+`assurance.model` holds the lease, compare-and-swap and fence protocol as an executable Lean 4 state machine over both lease paths: the compaction lease guarding a table pointer and the run lease guarding a commit log. Acquisition is a grant, then a raise. Safety is no lost update and no commit after a successor's acquisition; a commit between a successor's grant and raise lands below the highest grant, losing nothing. Five invariants are audited theorems; a bounded check over three nodes and four lease generations raises `ProtocolInvariantViolated`. `assurance.differential-test` drives the executable and the store's lease calls through generated sequences; a disagreement raises `ProtocolConformanceDrift`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Lean 4 executable model, conformance through the differential harness *(chosen)* | — | Invariant proofs are hand-written; generated interleavings are samples, exhaustive only inside the bounded check. |
 | Quint with quint-connect | One formal language | A second specification language, and a v0.1 bridge crate from one young vendor. |
 | TLA+ with a harness over ITF traces | Maintained Rust bridge | We build and keep action dispatch, state projection and comparison, in a second language. |
 | TLA+ trace validation of an instrumented store | Java-only instrumentation | A Rust logging API is built from scratch, and a run checks only the interleavings it provokes. |

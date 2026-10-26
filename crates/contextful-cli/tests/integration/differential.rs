@@ -382,10 +382,20 @@ fn agreeing_entry(n: usize) -> Value {
     json!({"case": case, "engine": decision, "reference": decision})
 }
 
-/// The reference model is an executable Lean rendering of the decision functions, built to a binary that reads one case on standard input and prints one decision.
-// spec: assurance.differential-test.reference-model@837f2377
+/// The reference model is the policy package's proved decision definitions, compiled with JSON case decoding and decision rendering into a binary that reads one case on standard input and prints one decision.
+// spec: assurance.differential-test.reference-model@7685ff56
 #[test]
 fn the_reference_binary_reads_one_case_and_prints_one_decision() {
+    // The decoding modules declare no grant, pattern or zone type: each decodes into the
+    // policy package's definitions.
+    for module in ["Coverage", "Narrowing", "Placement"] {
+        let path = reference_root().join(format!("Reference/{module}.lean"));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.lines().any(|l| l.starts_with("import Contextful.")), "{module} imports no policy module");
+        let declared: Vec<&str> =
+            text.lines().filter(|l| l.starts_with("inductive ") || l.starts_with("structure ")).collect();
+        assert!(declared.is_empty(), "{module} declares its own types: {declared:?}");
+    }
     let exe = lean_or_skip!();
     let covered = |pattern: &str, name: &str| {
         let d = decide(&exe, &[], &json!({"op": "covers_name", "pattern": pattern, "name": name}));

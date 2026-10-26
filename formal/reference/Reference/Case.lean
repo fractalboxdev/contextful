@@ -1,4 +1,5 @@
 import Contextful.Allowlist
+import Reference.Decision
 import Reference.Coverage
 import Reference.Narrowing
 import Reference.Placement
@@ -79,41 +80,44 @@ def isObject : Json → Bool
   | .obj _ => true
   | _ => false
 
-def decodeTenant (j : Json) : Decode Tenant := do
+def decodeTenant (j : Json) : Decode Authority.Tenant := do
   unless isObject j do malformed
   let table ← str (← required j "table")
   let value ← str (← required j "value")
-  pure { table, value }
+  pure (table.toList, value.toList)
 
-def decodeAggregate (j : Json) : Decode Aggregate := do
+def decodeAggregate (j : Json) : Decode Authority.Aggregate := do
   unless isObject j do malformed
   let minGroupSize ← nat64 (← required j "min_group_size")
   let share ← number (← required j "max_contributor_share")
   let functions ← strs (← required j "functions")
   let maxGroups ← nat64 (← required j "max_groups")
   let maxRows ← optional j "max_rows" nat64
-  pure { minGroupSize, share, functions, maxGroups, maxRows }
+  pure { minGroupSize, share := ⟨share.mantissa, share.exponent⟩, functions := functions.map String.toList,
+         maxGroups, maxRows }
 
-def decodeGrant (j : Json) : Decode Grant := do
+/-- A grant. A `horizon` key is not decoded: the decision module's narrowing case carries none. -/
+def decodeGrant (j : Json) : Decode Authority.Grant := do
   unless isObject j do malformed
   let actionWords ← strs (← required j "actions")
   let tableWords ← strs (← required j "tables")
   let tenant ← optional j "tenant" decodeTenant
   let templates ← optional j "templates" strs
   let aggregate ← optional j "aggregate" decodeAggregate
-  let _ ← optional j "max_rows" nat64
+  let maxRows ← optional j "max_rows" nat64
   let actions ← actionWords.mapM fun w =>
-    match Action.parse w with
+    match parseAction w with
     | some a => pure a
     | none => throw "GrantActionUnknown"
   let tables ← tableWords.mapM fun w =>
-    match Pattern.parse w with
+    match parsePattern w with
     | some p => pure p
     | none => throw "GrantPatternMalformed"
-  pure { actions, tables, tenant, templates, aggregate }
+  pure { actions, tables, tenant, templates := templates.map (·.map String.toList), aggregate, maxRows,
+         horizon := none }
 
-def pattern (s : String) : Decode Pattern :=
-  match Pattern.parse s with
+def pattern (s : String) : Decode Authority.Pattern :=
+  match parsePattern s with
   | some p => pure p
   | none => throw "GrantPatternMalformed"
 
@@ -127,12 +131,12 @@ def boolean : Json → Decode Bool
   | _ => malformed
 
 def entry (s : String) : Decode Entry :=
-  match Entry.parse s with
+  match parseEntry s with
   | some e => pure e
   | none => throw "EnforceZonePatternUnparsed"
 
-def placed (verdict : String) (z : Zone) : Decision :=
-  { verdict, zone := some z.label }
+def placed (verdict : String) (z : Placement) : Decision :=
+  { verdict, zone := some (zoneLabel z) }
 
 def coverage (b : Bool) : Decision :=
   { verdict := if b then "covered" else "not_covered" }
@@ -175,25 +179,25 @@ def decide (j : Json) : Decode Decision := do
     let p ← str (← required j "pattern")
     let n ← str (← required j "name")
     let p ← pattern p
-    pure (coverage (p.coversName n))
+    pure (coverage (p.covers n.toList))
   | "covers_pattern" =>
     let p ← str (← required j "pattern")
     let q ← str (← required j "other")
     let p ← pattern p
     let q ← pattern q
-    pure (coverage (p.covers q))
+    pure (coverage (p.subsumes q))
   | "narrow" =>
     let parent ← grantArray (← required j "parent")
     let child ← grantArray (← required j "child")
     let parent ← parent.mapM decodeGrant
     let child ← child.mapM decodeGrant
-    pure (narrow parent child)
+    pure (narrow parent 0 child none)
   | "zone_admits" =>
     let z ← str (← required j "zone")
     let allow ← strs (← required j "allow")
     let entries ← allow.mapM entry
-    let z := Zone.parse z
-    pure (placed (if admits entries z then "admitted" else "excluded") z)
+    let z := parseZone z
+    pure (placed (if allowSetOf entries z then "admitted" else "excluded") z)
   | "session_zone" =>
     let asserted ← optional j "asserted" str
     let signed ← optional j "signed" str

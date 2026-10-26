@@ -1049,17 +1049,18 @@ fn the_protocol_package_sits_beside_the_policy_package() {
     );
 }
 
-/// {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_below_granted`.
-// spec: assurance.model.protocol-pins@aaeebf1d
+/// {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_after_successor_acquire`.
+// spec: assurance.model.protocol-pins@fb56be7c
 #[test]
 fn the_store_fence_clauses_pin_to_the_protocol_invariant() {
     let text = std::fs::read_to_string(repo().join("formal/protocol/Protocol/Invariants.lean")).unwrap();
-    let at = text.find("theorem no_commit_below_granted").expect("the invariant theorem");
+    let at = text.find("theorem no_commit_after_successor_acquire").expect("the invariant theorem");
     let above: Vec<&str> = text[..at].lines().rev().take_while(|l| l.starts_with("--")).collect();
     for clause in ["store.lease.stale-fence@", "store.lease.pointer-fence@"] {
         assert!(above.iter().any(|l| l.starts_with(&format!("-- spec: {clause}"))), "{clause} above the theorem: {above:?}");
     }
-    assert!(repo_inventory("formal/protocol")["constant"].as_table().unwrap().contains_key("Protocol.no_commit_below_granted"));
+    assert!(repo_inventory("formal/protocol")["constant"].as_table().unwrap().contains_key("Protocol.no_commit_after_successor_acquire"));
+    assert!(!text.contains("no_commit_below_granted"), "the split acquisition breaks the old invariant, which no theorem states");
 }
 
 /// A cold elaboration of the package completes within 60 s and writes at most 2048 KiB of artifacts.
@@ -1246,7 +1247,8 @@ fn the_protocol_invariants_pass_the_same_audit() {
     for invariant in [
         "Protocol.one_holder_per_fence",
         "Protocol.fences_only_increase",
-        "Protocol.no_commit_below_granted",
+        "Protocol.no_commit_after_successor_acquire",
+        "Protocol.no_lost_update",
         "Protocol.release_keeps_lease",
     ] {
         assert!(out.contains(invariant), "{out}");
@@ -1268,12 +1270,13 @@ fn the_bounded_check_covers_three_nodes_and_four_generations() {
     }
     let ok = Command::new("lake").args(["exe", "protocol", "check"]).current_dir(&root).output().unwrap();
     let out = passed(&ok);
-    assert!(out.contains("4 invariants hold") && out.contains("over 3 nodes and 4 lease generations"), "{out}");
+    assert!(out.contains("5 invariants hold") && out.contains("over 3 nodes and 4 lease generations on 2 lease paths"), "{out}");
 
-    // The variant whose grant leaves the guarded fences untouched breaks an invariant, and
-    // the check prints the shortest sequence reaching the break.
+    // The variant whose raise leaves the guarded object's fence untouched breaks an
+    // invariant, and the check prints the path and the shortest sequence reaching the break.
     let broken = Command::new("lake").args(["exe", "protocol", "check", "--unfenced"]).current_dir(&root).output().unwrap();
     let err = refused(&broken, "ProtocolInvariantViolated");
+    assert!(err.contains("no commit after a successor's acquisition") && err.contains("path"), "{err}");
     let steps: Vec<&str> = err.lines().filter(|l| l.starts_with("  ")).collect();
     let claimed: usize = err.split("after ").nth(1).unwrap().split(' ').next().unwrap().parse().unwrap();
     assert!(!steps.is_empty() && steps.len() <= claimed, "{err}");

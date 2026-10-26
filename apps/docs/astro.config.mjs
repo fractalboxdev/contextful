@@ -2,6 +2,7 @@ import { defineConfig } from "astro/config";
 import rehypeMerlion from "@fractalboxdev/merlion-rehype";
 import { diagramGate, remarkTopologyTargets, remarkCorpus, rehypeCorpus } from "./src/lib/markdown.mjs";
 import { legacyRedirects } from "./src/lib/corpus.mjs";
+import { searchIndex } from "./src/lib/search.mjs";
 
 // The dev server answers localhost alone. DOCS_ALLOWED_HOSTS names the exact
 // hosts, comma-separated, that may reach it: it serves the repository root, and a
@@ -12,7 +13,7 @@ export default defineConfig({
   site: "https://contextful.fractalbox.dev",
   trailingSlash: "always",
   redirects: legacyRedirects(),
-  integrations: [diagramGate],
+  integrations: [diagramGate, searchIndex],
   markdown: {
     syntaxHighlight: { type: "shiki", excludeLangs: ["mermaid"] },
     shikiConfig: { themes: { light: "github-light", dark: "github-dark" } },
