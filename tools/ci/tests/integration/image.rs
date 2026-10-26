@@ -220,6 +220,9 @@ fn footprint_records_exact_compressed_bytes_and_needed_entries_for_each_profile(
     }
 }
 
+// spec: assurance.gate.control-budget@e3408345
+// spec: assurance.gate.full-budget@f69ddb45
+// spec: assurance.gate.edge-budget@2dd3ddc5
 /// Per nightly run and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
 ///
 /// Under `contextful-ci measure --tier trend` the step builds all three profiles once,

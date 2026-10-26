@@ -346,26 +346,6 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
 - `identifier-length` — A zone identifier holds at most 128 chars.
   *A-authority#placement-breadth*
 
-Resolving one served row against the session's zone:
-
-```mermaid
-flowchart LR
-  CZ["caller zone"] -- "per request" --> INC{"incognito?"}
-  INC -- "no" --> Z["session zone"]
-  INC -- "yes" --> PIN{"asserted zone too wide?"}
-  PIN -- "yes, wider than local" --> E1["refused session"]
-  PIN -- "no" --> Z
-  TS["table allow-set"] -- "fail-closed pair if undeclared" --> FL["phi floor"]
-  FL -- "floored allow-set" --> TE{"table set admits zone?"}
-  Z -- "zone" --> TE
-  TE -- "no, author's set narrows" --> DROP["dropped row"]
-  TE -- "yes" --> CE{"column set admits zone?"}
-  CE -- "no" --> NUL["nulled cell"]
-  CE -- "yes" --> SRV["served masked cell"]
-  DROP -- "removed count" --> ENV["response envelope"]
-  NUL -- "masked column" --> ENV
-```
-
 unsettled: Does the restriction block also carry the rows a row predicate removes and the column names a mask policy nulls, given both disclose how much of a table the caller's scope withholds? owner: authority affects: authority.place
 
 ## resist

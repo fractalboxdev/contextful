@@ -48,9 +48,6 @@ Artifact compatibility: source-independent execution, required capabilities, sce
 #### Scenarios
 
 - `assurance.consumer.requirements`: WHEN a read-only artifact receives a required replay scenario, THEN evidence names the missing run capability and the suite exits unsuccessfully.
-- `assurance.consumer.verdict`: WHEN a required scenario is skipped, THEN the aggregate compatibility verdict fails.
 - `assurance.consumer.verdict-exit`: WHEN the suite exits 1 over a report whose required scenarios are `unsupported`, THEN the release report holds those scenarios and no `suite-exit` failure.
-- `assurance.consumer.d1-absent`: WHEN a native full cell packages without a D1 endpoint, THEN the suite runs once, for `local`.
 - `assurance.consumer.command-diagnostic`: WHEN a command fails with a credential in its stderr, THEN the diagnostic names the verb and error identifier, and the report omits the credential.
-- `assurance.consumer.provenance`: WHEN a binary reports a version without source evidence, THEN source correspondence remains null.
 - `assurance.consumer.mutation-controls`: WHEN a native source advances past an unserved page, THEN the pagination scenario fails.

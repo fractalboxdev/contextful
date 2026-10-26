@@ -531,29 +531,3 @@ templates = ["quarterly_rollup"]
 actions = ["write"]
 tables  = ["workspace/documents"]
 ```
-
-Admission, from transmitted bytes to the value an effect acts under:
-
-```mermaid
-flowchart LR
-  A["transmitted bytes"] -- "presented" --> B
-  subgraph CPZ["checkpoint"]
-    B{"every block signature verifies?"}
-    B -- "no: SignatureInvalid" --> R["refused credential"]
-    B -- "yes" --> C{"profile names every element?"}
-    C -- "no: ProfileElementUnrecognized" --> R
-    C -- "yes" --> D{"audience matches?"}
-    D -- "no: AudienceMismatch" --> R
-    D -- "yes" --> E{"expiry after now?"}
-    E -- "no: AuthorityExpired" --> R
-    E -- "yes" --> F{"possession proof checks?"}
-    F -- "no: PossessionProofInvalid" --> R
-    F -- "yes" --> G{"credential still current?"}
-    G -- "no: AuthorityRevoked" --> R
-    G -- "yes" --> H["admitted authority"]
-  end
-  subgraph SESS["scoped session"]
-    J["per-effect recheck"]
-  end
-  H -- "expiry, epoch, policy version" --> J
-```

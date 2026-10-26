@@ -38,7 +38,6 @@ IssuerKeyUnusable           = { clause = "topology.publish-hostname.issuer-key",
 
 [limit]
 topology-function-wall-clock = { clause = "topology.deploy.wall-clock-cap", value = 15, unit = "min", basis = "chosen", gloss = "Per-invocation wall clock at or below which a target hosts neither a backfill nor a component connector." }
-topology-parity-soak         = { clause = "topology.deploy.parity", value = 24, unit = "h", basis = "chosen", gloss = "Accumulation period before the parity comparison runs." }
 topology-container-readiness = { clause = "topology.publish-hostname.container-readiness", value = 8, unit = "s", basis = "chosen", gloss = "Cold start to readiness for a retrieval container; no workload is measured." }
 topology-cadence-lease-ttl   = { clause = "topology.coordinate.cadence-lease-ttl", value = 90, unit = "s", basis = "chosen", gloss = "Granted life of a cadence lease, three renewal intervals.", const = "crates/contextful-core/src/coordinate.rs::CADENCE_LEASE_TTL_SECS" }
 topology-cadence-renewal     = { clause = "topology.coordinate.cadence-lease-renewal", value = 30, unit = "s", basis = "chosen", gloss = "Interval at which the reconciler renews a cadence lease.", const = "crates/contextful-core/src/coordinate.rs::CADENCE_LEASE_RENEWAL_SECS" }

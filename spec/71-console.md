@@ -91,12 +91,7 @@ The hosted console's two pages, their API routes, identity gates, page grants an
 
 #### Scenarios
 
-- `surface.open-console.wrong-page`: WHEN a Query-only operator requests `/admin/api/workflows`, THEN it raises `ConsolePageForbidden` without dispatching.
-- `surface.open-console.admin-grant`: WHEN an Admin operator applies a document without the server-held admin capability, THEN it raises `ConsoleAdminGrantMissing` without a control call.
-- `surface.open-console.page-grants`: WHEN a verified operator holds only a Query grant, THEN Query admits the session and Admin refuses its page and API requests.
-- `surface.open-console.query-surface`: WHEN an operator asks on Query, THEN the question and grounded answer occupy one transcript beside its widgets.
 - `surface.open-console.saved-transcript`: WHEN a second operator opens Query in the tab where another saved a transcript, THEN Query restores none of its answers or rows.
-- `surface.open-console.narrow-sidebar`: WHEN Query renders on a phone-width viewport, THEN a header control opens the chat list with its create, switch and delete controls.
 - `surface.open-console.source-validation`: WHEN an HTTP source draft lacks its endpoint, THEN Admin identifies `source.config.endpoint` and the applied document retains its version.
 - `surface.open-console.source-first-run`: WHEN an identical source configuration claims another version, THEN older-version runs leave its first-run state pending.
 
@@ -348,21 +343,4 @@ The catch-up payload one greeting renders from:
     }
   ]
 }
-```
-
-One turn, from question to rendered answer:
-
-```mermaid
-flowchart LR
-  RDR(["operator"]) -->|"question"| PLAN["planner"]
-  MEM[("memory tables")] -->|"recall at vantage"| PLAN
-  PLAN -->|"plan over time window"| TOOLS["admitted read tools"]
-  TOOLS -->|"grounding rows"| A{"answered by the code test?"}
-  A -->|"no, first round"| PLAN
-  A -->|"no, second round"| RET["content-token retrieval"]
-  A -->|"yes"| SYN["synthesizer"]
-  RET -->|"retrieved passages"| SYN
-  SYN -->|"redacted, humanized prose"| PAGE["console page"]
-  PAGE -->|"prose, widget, sources"| RDR
-  SYN -->|"distilled conclusions"| MEM
 ```

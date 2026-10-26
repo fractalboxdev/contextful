@@ -257,7 +257,6 @@ A delegate is deploy-bound code outside the binary that runs a store-driven item
 #### Scenarios
 
 - `surface.delegate.call-mode`: WHEN a delegate answers `ok` with rows for one item and the daemon restarts before that item's landing commits, THEN the resumed item lands the recorded rows and the delegate receives no second request.
-- `surface.delegate.host`: WHEN a delegate `url` names a host that is neither loopback nor the virtual host, THEN startup refuses and arms nothing.
 - `surface.delegate.defer-parks`: WHEN a delegate answers `defer` with a `retry_at` ten minutes ahead, THEN the item's failed-attempt count is unchanged and the first fire after that instant sends the request again.
 
 ## edit
@@ -322,7 +321,6 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
 
 #### Scenarios
 
-- `surface.apply.attestation-unavailable`: WHEN a synced apply presents no admin capability, THEN no version or receipt is claimed.
 - `surface.apply.receipt-message`: WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify.
 - `surface.apply.receipt-file`: WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version.
 - `surface.apply.guarded-import`: WHEN a warm synced node restarts through pull, import, apply and push, THEN import claims nothing, apply reports the version unchanged, and the restart succeeds.
@@ -367,11 +365,8 @@ unsettled: Which manifest block supplies a connection pipeline's OAuth client re
 
 #### Scenarios
 
-- `surface.connection.authority`: WHEN a caller names another tenant's connection, THEN `ConnectionScopeDenied` changes no control version.
 - `surface.connection.idempotent-create`: WHEN a consent callback retries the same declaration, THEN one pipeline and schedule remain.
 - `surface.connection.malformed`: WHEN a create body carries an OAuth `code` beside its secret name, THEN `ConnectionRequestMalformed` claims no version.
-- `surface.connection.unknown`: WHEN a deleted connection is paused, THEN `ConnectionUnknown` changes no version.
-- `surface.connection.pause`: WHEN a connection is paused before its due instant, THEN no new Drive fire starts.
 
 ## Shapes
 

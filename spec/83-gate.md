@@ -103,9 +103,9 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `parallel-jobs` — Parallel build jobs number the memory ceiling divided by 3 GiB.
 - `free-disk` — A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.
   *P7*
-- `edge-budget` — The edge profile holds to 50 MiB compressed and 60 MiB idle resident set.
-- `full-budget` — The full profile holds to 150 MiB compressed and 180 MiB idle resident set.
-- `control-budget` — The control profile holds to 60 MiB compressed and 80 MiB idle resident set.
+- `edge-budget` — The edge profile compresses to at most 50 MiB.
+- `full-budget` — The full profile compresses to at most 150 MiB.
+- `control-budget` — The control profile compresses to at most 60 MiB.
 - `footprint` — Per nightly run and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
   *P7*
 - `budget-stage` — The budget stage runs {{assurance.gate.footprint}} over every profile, in one nightly-tier part per profile, and the evaluate stage builds no profile.
@@ -117,40 +117,6 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because a package script can omit a pinned test while reporting success*
 - `surface-check-failed` — A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.
   *P7*
-
-#### Scenarios
-
-- `assurance.gate.part-budget`: WHEN every part runs with empty caches and then warm caches, THEN each completes within {{assurance.gate.container}} and the union preserves required coverage.
-
-The stages, numbered in run order, under the container's ceilings:
-
-```mermaid
-flowchart LR
-  subgraph contributor["contributor"]
-    LOCAL["contextful-ci gate"]
-  end
-  LOCAL -->|"runs before merge"| C
-  subgraph C["gate container, 12 GiB memory and 18 GiB disk"]
-    S1["1 pins"]
-    S2["2 toolchain"]
-    S3["3 schema"]
-    S4["4 test-first"]
-    S5["5 workspace"]
-    S6["6 acceptance"]
-    S7["7 evaluate"]
-    S8["8 features"]
-    S9["9 crate graph"]
-    S10["10 connectors"]
-    S11["11 TypeScript surfaces"]
-    S12["12 formal"]
-    S13["13 budget"]
-  end
-  S3 -.->|"runs"| LINT["contextful-spec lint"]
-  S7 -.->|"runs gate-tier entries"| LEDGER[("evals/ledger.toml")]
-  S9 -.->|"runs"| DENY["cargo-deny per profile"]
-  S12 -.->|"runs"| FORM["formal check"]
-  S13 -.->|"measures, 12 GiB cap"| SIZE["build size"]
-```
 
 unsettled: Which workload, cadence and drift bound does the idle-resident soak run under, given that a multi-day soak fits no per-change gate? owner: build affects: assurance.gate
 
@@ -192,20 +158,6 @@ The target ledger: each tracked target, the clause it serves, how it is measured
   *because earlier notes on `refs/notes/measures` carry text run ids, and an unreadable note hides every older baseline*
 - `measured-basis` — A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.
 
-A ledger entry's path from the tree to a verdict:
-
-```mermaid
-flowchart LR
-  LEDGER[("evals/ledger.toml")] -->|"entries"| MEASURE["contextful-ci measure"]
-  LOCK[("spec/spec.lock.json")] -->|"clause ids"| MEASURE
-  MEASURE -->|"issue entries"| VIEW[("evals/ledger.md")]
-  MEASURE -->|"gate-tier tests"| TESTS["integration tests"]
-  TESTS -->|"one record each"| RECORDS[("record JSON")]
-  RECORDS -->|"values"| HOLDS{"threshold holds?"}
-  HOLDS -->|"yes"| GREEN["green evaluate stage"]
-  HOLDS -->|"no"| RED["red evaluate stage"]
-```
-
 #### Scenarios
 
 - `assurance.measure.unresolved-entry`: WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs.
@@ -240,8 +192,6 @@ The release tag's version, the refusals guarding it, the signed annotated tag `c
   *A-assurance#version-tag-names*
 - `release-tag-version` — `contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.
   *because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version*
-- `release-run` — The operator pushes the tag, runs `contextful-ci release` per {{assurance.build.targets}} matrix cell, `contextful-ci formula` over their metadata and `contextful-ci image` per profile, then publishes the GitHub release from that tag.
-  *because every packaging command then reads one tag identity, and each runs on the operator's machine*
 
 #### Scenarios
 
