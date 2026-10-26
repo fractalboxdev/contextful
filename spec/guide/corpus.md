@@ -33,8 +33,9 @@ contract's decisions with the options each rejected
 ({{corpus.rationale.why-cell}}, {{corpus.rationale.contract-adr}}). Read the record when
 you want to know what else was on the table.
 
-Nobody labels a clause's kind; the checker computes it. A clause that names an error
-is a refusal, one that owns a named number is a limit, and everything else is behavior
+Nobody labels a clause's kind; the checker computes it. An error case describes when
+an operation returns a named error; the machine export calls this kind `refusal`.
+A clause owning a named number is a limit, and everything else is behavior
 ({{corpus.anatomy.kind-is-computed}}). Each error and each number belongs to exactly
 one clause; anywhere else in the corpus reaches it by writing `{{`, the clause id and
 `}}` ({{corpus.registry.one-error-one-clause}}, {{corpus.reference.pointer}}).
@@ -66,15 +67,15 @@ the spec by operation name ({{corpus.reference.no-literature}}).
   every rule by pointer, so it is never a second home for one
   ({{corpus.guide.non-normative}}).
 - **The card** under `spec/cards/` is generated: each operation with its lede, each
-  refusal with its trigger, each bound with its value and basis
+  error case with its trigger, each bound with its value and basis
   ({{corpus.render.card}}).
 
 ## Worked example
 
-To add a refusal to the store's fold: write one item under `## fold`, naming the error
+To add an error case to the store's fold: write one item under `## fold`, naming the error
 in the statement; register the error in `spec/terms/store.toml` against that clause
 ({{corpus.registry.fragment}}); give the item a Why. Run the checker. It computes the
-kind as refusal and writes the clause into the lock file. The next `state` run lists it
+kind as `refusal` and writes the clause into the lock file. The next `state` run lists it
 as `committed` and adds the error to the store card. A qualifying test tagged with the
 clause id and its statement digest supplies its test pin ({{corpus.state.tag-pin}});
 the verdict follows {{corpus.state.verdict}} and {{corpus.state.theorem-beside-test}}.

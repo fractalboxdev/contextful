@@ -89,7 +89,7 @@ public key alone ({{disclosure.attest.inclusion-proof}}). A keyless node appends
 until anchored ({{disclosure.attest.anchor-verb}}); a held chain stays held
 ({{disclosure.record.unanchored-over-signed}}); replicas expose truncation
 ({{disclosure.attest.replica-verify}}). `audit query` answers who read what
-({{disclosure.record.reads-view}}), refusals too ({{disclosure.record.refused-read}}).
+({{disclosure.record.reads-view}}), rejected reads too ({{disclosure.record.refused-read}}).
 
 ## Worked example
 

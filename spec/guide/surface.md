@@ -70,7 +70,7 @@ delegate ({{surface.delegate.binding}}), its answer landing as rows
 ({{surface.delegate.outcome}}). Reside refuses to serve from a region the policy omits
 ({{surface.reside.region-mismatch}}).
 
-Synced apply records an admin-attested snapshot ({{surface.apply.synced-attestation}}). Cold reconciliation verifies receipts under locally pinned issuer keys ({{surface.reconcile.issuer-pin}}) and checks local declarations ({{surface.reconcile.pulled-control}}); refusals name their reason ({{surface.reconcile.pulled-control-untrusted}}).
+Synced apply records an admin-attested snapshot ({{surface.apply.synced-attestation}}). Cold reconciliation verifies receipts under locally pinned issuer keys ({{surface.reconcile.issuer-pin}}) and checks local declarations ({{surface.reconcile.pulled-control}}); errors name their reason ({{surface.reconcile.pulled-control-untrusted}}).
 
 Each page and API route verifies the operator's identity assertion and that page's grant
 ({{surface.open-console.page-routes}}, {{surface.open-console.wrong-page}}).

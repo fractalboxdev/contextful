@@ -6,37 +6,42 @@ contract: connector
 
 ## What it is for
 
-A connector knows a vendor's paging, authentication and cursor. The host checks each
-request against its declaration, reserves quota, attaches the credential and vets the
-destination; the connector never holds credential bytes.
+A **vendor** is an external service provider, such as GitHub. A **connector** reads its
+data and tracks where reads resume. The **host** runs connectors, checks destinations,
+reserves quota, and attaches credentials
+({{connector.export.store-blindness}}, {{connector.attach.mediation-covers-every-egress}}).
 
 ## How it works
 
-Every connector implements one trait, as a sandboxed component or a compiled-in sibling,
-and dispatch never branches on which ({{connector.export.authoring-path}}). A component
-imports outgoing HTTP, logging and a wall clock and nothing else
-({{connector.import.three-imports}}), and no connector receives a store handle
-({{connector.export.store-blindness}}).
+A **sandboxed component** is a **WebAssembly (Wasm) component** implementing the
+host-owned connector interface; compiled-in connectors implement the same interface
+({{connector.export.authoring-path}}, {{connector.export.world-authorship}}). The component
+runs under memory limits and per-call deadlines ({{connector.package.linear-memory}},
+{{connector.package.call-deadline}}) and reaches the network only through the host.
+Its only imports are outgoing HTTP, logging and a wall clock
+({{connector.import.three-imports}}); connectors receive no store handle
+({{connector.export.store-blindness}}). Data batches cross the interface as **Arrow IPC**,
+a binary format for columnar data ({{connector.export.batch-encoding}}).
 
-A connector resolves from one of four forms ({{connector.package.distribution-form}}). A
+Connectors resolve from four distribution forms ({{connector.package.distribution-form}}). A
 remote artifact carries a content pin ({{connector.package.remote-unpinned}}), the host
-re-hashes the bytes ({{connector.package.digest-mismatch}}), reuses compatible host output ({{connector.package.artifact-cache}}), and a run keeps its
-admitted build ({{run.own.admission-pin}}).
-HTTPS and OCI artifact requests use a client restricted to the reference authority
+re-hashes the bytes ({{connector.package.digest-mismatch}}), reuses compatible host output ({{connector.package.artifact-cache}}), and runs retain
+admitted builds ({{run.own.admission-pin}}).
+HTTPS and OCI downloads stay within the reference's host and port
 ({{connector.package.remote-transport}}).
 An OCI reference selects one component layer ({{connector.package.oci-component-layer}}),
-checks its descriptor ({{connector.package.oci-layer-integrity}}), and takes an optional
-registry bearer from the project's credential binding ({{connector.package.oci-registry-bearer}}).
+checks its descriptor ({{connector.package.oci-layer-integrity}}), and optionally uses a
+project-bound registry bearer ({{connector.package.oci-registry-bearer}}).
 Admitted bytes enter a digest-keyed project cache ({{connector.package.remote-cache}});
 damaged cached bytes refuse ({{connector.package.remote-cache-corrupt}}).
 
-A manifest names its keys, its artifact pin and one build input
+A manifest declares keys, an artifact pin and one build input
 ({{connector.package.manifest-keys}}, {{connector.package.manifest-pin}},
 {{connector.package.build-source}}). `connector pin` writes the pin from the fixed platform
 ({{connector.package.pin-verb}}); `--local` writes nothing ({{connector.package.host-built-pin}}),
 and `--verify` reproduces ({{connector.package.path-remap}}).
 
-Host access is declared, not requested. The manifest lists hosts and the clock, and the host decides the grant at load ({{connector.declare-capability.declared-grant}});
+The manifest declares hosts and clock access; the host grants access at load ({{connector.declare-capability.declared-grant}});
 code reaching past it fails to load ({{connector.declare-capability.undeclared-access}}). An
 optional scope probe checks the bound credential's grant before the first read
 ({{connector.declare-capability.scope-probe}}).
@@ -57,21 +62,21 @@ one pre-send hook ({{connector.meter.pre-send-hook}}) before host resolution
 destination ({{connector.attach.attach-block}}). Redirects stay on the configured origin
 ({{connector.attach.redirect-pinning}}).
 
-Credentials use `secret://<name>` references ({{connector.reference.credential-plane}}).
-The provider chain answers a name once ({{connector.resolve.first-hit-wins}}) and refuses
-shadowing ({{connector.resolve.shadowed-name}}). Material hydrates per read
-({{connector.resolve.hydration-is-just-in-time}}); rotation keeps the name
-({{connector.rotate.turnover-preserves-the-name}}). An outside rotation reaches a run within
-{{connector.resolve.cache-ttl}}. Optional operator descriptions follow
-{{connector.record.operator-record}} ({{connector.record.record-table}}); provider custody follows
-{{connector.record.provider-custody}}. The inventory starts from configured bindings
-({{connector.record.inventory}}), reads metadata through value-free observe halves
-({{connector.record.observe-port}}), distinguishes assertions from observations
-({{connector.record.observation-provenance}}), and exposes missing expiry through
-{{connector.record.expiry-unknown}}. Runtime attribution follows
-{{connector.record.provider-attribution}}.
+Credentials use `secret://<name>` ({{connector.reference.credential-plane}}). The provider
+chain answers each name once ({{connector.resolve.first-hit-wins}}) and rejects shadowing
+({{connector.resolve.shadowed-name}}). Values resolve per read
+({{connector.resolve.hydration-is-just-in-time}}); rotation preserves names
+({{connector.rotate.turnover-preserves-the-name}}) and reaches runs within
+{{connector.resolve.cache-ttl}}. Inventory follows configured bindings
+({{connector.record.inventory}}), optional operator descriptions
+({{connector.record.operator-record}}, {{connector.record.record-table}}), and provider custody
+({{connector.record.provider-custody}}). It reads metadata without secret values
+({{connector.record.observe-port}}), separates assertions from observations
+({{connector.record.observation-provenance}}), reports unknown expiry
+({{connector.record.expiry-unknown}}), and attributes runtime resolution
+({{connector.record.provider-attribution}}).
 
-Model calls leave through one configured endpoint ({{connector.infer.model-endpoint}}).
+Model calls use one configured endpoint ({{connector.infer.model-endpoint}}).
 Ingested values travel fenced; the fence lowers injection odds and bounds nothing
 ({{connector.infer.fence-is-not-a-boundary}}), and output inherits its least-trusted input's
 label ({{connector.infer.output-taint}}).
@@ -79,8 +84,8 @@ label ({{connector.infer.output-taint}}).
 ## Worked example
 
 The `vendor-metrics` component reads reports with a bearer token named `vendor-token`, which
-the deployment lists as a leased scope ({{connector.lease.scope-declaration}}). Because it
-binds a credential, its allowlist holds one exact host, `api.vendor.example`
+the deployment lists as a leased scope ({{connector.lease.scope-declaration}}). Its
+credential binding allows one exact host, `api.vendor.example`
 ({{connector.attach.bound-host}}).
 
 The host re-hashes the artifact, checks the allowlist

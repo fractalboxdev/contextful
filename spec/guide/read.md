@@ -27,7 +27,7 @@ sequenceDiagram
   T->>V: register one view per table
   T->>G: parse and walk the statement
   alt write, table function or unregistered name
-    G-->>A: refusal naming only the request
+    G-->>A: error naming only the request
   else one read-only SELECT
     G->>V: run over restricted relations
     V->>S: scan committed parts
@@ -128,7 +128,7 @@ sequenceDiagram
 An agent with a capability token wants one resource's current status.
 
 - It calls `context.describe` and learns row counts, declared indexes and the published row ceiling ({{read.register.describe-payload}}), which the engine applies exactly as published ({{read.register.advertised-is-enforced}}).
-- It sends SQL that joins `documents` to a `read_parquet` call, and the guard refuses the table function ({{read.guard.table-function}}). It retries with a join to `restricted_records`, which it holds no grant on; the refusal echoes only what it asked for ({{read.guard.unregistered-relation}}).
+- It sends SQL that joins `documents` to a `read_parquet` call, and the guard rejects the table function ({{read.guard.table-function}}). It retries with a join to `restricted_records`, which it holds no grant on; the error echoes only what it asked for ({{read.guard.unregistered-relation}}).
 - It switches to `corpus.retrieve` with the query "resource status" and a filter on `resource_id`. A table lacking `resource_id` drops its arm instead of running unfiltered ({{read.retrieve.unsatisfiable-arm-drops}}). The `documents` vector sidecar sits under its size cap ({{read.retrieve.sidecar-size-cap}}), so the probe adds candidates, each re-joined through enforcement ({{authority.compose.vector-arm}}).
 - Rows keep one copy per table and row key ({{read.retrieve.row-key-dedup}}), sort in-window first, and return with the `contextful.retrieval` block ({{read.rank.retrieval-block}}). Counts reflect delivered rows ({{read.rank.delivered-counts}}). Rows carry integer scores; the lexical engine's float score stays inside ({{read.rank.internal-score-stays-internal}}).
 - To report that no document mentions a status change, the agent counts rows, never trusting a low top score ({{read.respond.coverage-is-a-count}}).

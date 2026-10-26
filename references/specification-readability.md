@@ -47,6 +47,9 @@ sees it as explanation.
 These editorial checks inform `corpus.guide`; semantic fidelity remains a review
 concern alongside the checker's structural rules.
 
+The [technical writing brief](./technical-writing.md) supplies explanatory structures,
+wording examples and a reading set for applying these checks.
+
 | Check | What the reader sees | Example |
 | --- | --- | --- |
 | Domain meanings belong to consumers | Core contracts name declared data and capabilities; industry rules, units and scoring appear within selected adapters or evaluation profiles. | `topology.bound-application` fixes this boundary; historical evaluation accepts source records, while a financial profile supplies return-series scoring. |

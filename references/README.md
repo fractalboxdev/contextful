@@ -53,5 +53,6 @@ names it by title.
 | [formal-methods.md](./formal-methods.md) | Model checking, verification-guided development, Rust verification | `assurance.prove`, `assurance.differential-test`, `assurance.scope-claim`, `store.lease`, `run.journal` |
 | [specification-practice.md](./specification-practice.md) | Decision records, requirement syntax and quality, spec-to-test traceability | `corpus.rationale`, `corpus.address`, `corpus.anatomy`, `corpus.state`, `corpus.reference` |
 | [specification-readability.md](./specification-readability.md) | Readable specifications with addressed, test-linked sentences; rendered views, guide layers, one-page cards | `corpus.anatomy`, `corpus.guide`, `corpus.render` |
+| [technical-writing.md](./technical-writing.md) | Agent writing brief with eight Vitalik Buterin readings, explanatory structures, examples and review questions | `corpus.guide`, `corpus.anatomy`, `corpus.rationale` |
 | [diagrams.md](./diagrams.md) | Flowchart, sequence and state diagram notation; the cognitive limits behind label and size bounds | `corpus.diagram` |
 | [deployment-runtimes.md](./deployment-runtimes.md) | Linux containers, macOS virtualization, port publishing and CPU architecture | `topology.deploy`, `topology.package` |

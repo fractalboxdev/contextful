@@ -239,6 +239,7 @@ figure.merlion-figure {
   border: 1px solid var(--border);
 }
 figure.merlion-figure > merlion-view { display: block; width: 100%; }
+figure.merlion-figure .merlion-edge-text { --merlion-fg: var(--accent); }
 figure.merlion-figure svg { max-width: 100%; height: auto; }
 
 .index-list { list-style: none; padding: 0; }

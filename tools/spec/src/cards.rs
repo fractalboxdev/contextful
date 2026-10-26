@@ -41,7 +41,7 @@ fn page(c: &Corpus, contract: &str) -> String {
     let mut errors: Vec<(&String, &ErrorEntry)> = fr.error.iter().collect();
     errors.sort_by_key(|(id, e)| (order(&e.clause), id.as_str()));
     if !errors.is_empty() {
-        s.push_str("## Refusals\n\n| Error | When | Clause |\n| --- | --- | --- |\n");
+        s.push_str("## Error cases\n\n| Error | When | Clause |\n| --- | --- | --- |\n");
         for (id, e) in errors {
             let _ = writeln!(s, "| `{id}` | {} | `{}` |", e.gloss, e.clause);
         }

@@ -189,6 +189,11 @@ automation, test placement, and the gate's resource budget.
 
 ## Writing
 
+Before writing or revising guides and technical explanations, read the
+[technical writing brief](./references/technical-writing.md). Its reading examples,
+editorial practices and review questions govern explanatory prose; contract clauses
+retain the grammar under `spec/00-corpus.md`.
+
 ### Domain neutrality
 
 Contextful's application boundary is specified by
@@ -212,3 +217,10 @@ industry schema.
 Affirmative present tense — the system does the thing, now, as a standing fact.
 Every sentence carries a number, a name, a constraint or a refusal. No narration
 of how a change was produced, in any file, at any time.
+
+Guides explain concepts in plain language throughout, defining technical terms at
+first use. Their headings name the topic; no separate "In plain words" section
+duplicates the explanation. Plain language preserves technology names, data formats,
+interfaces, security boundaries and limits, with explanations at first use.
+Reader-facing prose calls a condition that returns a
+named error an **error case**; `refusal` remains the machine-export kind.

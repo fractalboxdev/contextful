@@ -647,11 +647,11 @@ packages:
     version: 0.2.0
 
   '@fractalboxdev/merlion-view@file:vendor/merlion/fractalboxdev-merlion-view-0.2.0.tgz':
-    resolution: {integrity: sha512-yqZgUhQvF22w/JPVGLsr/8ICtLJlfVgvDYg5NiHXAvyCpL1EGhWZ9Q3z4SZuNNPAi9u1Y8TJNdOyP3yit6tqcw==, tarball: file:vendor/merlion/fractalboxdev-merlion-view-0.2.0.tgz}
+    resolution: {integrity: sha512-Kw8z1F0JCywS3H9KzM8JXsIMpfOPN2aweefcfQs4fbN/691+jgng0Q1nNSxweLnkdjXmAgFT2RDdhjJCF2JpEg==, tarball: file:vendor/merlion/fractalboxdev-merlion-view-0.2.0.tgz}
     version: 0.2.0
 
   '@fractalboxdev/merlion-wasm@file:vendor/merlion/fractalboxdev-merlion-wasm-0.2.0.tgz':
-    resolution: {integrity: sha512-ALJ6SwK90gwTPSNn8DRtCeHqU9dzzbU3jsYWTNkTpZoCIZq77Ey/m1NyBVeDnCexdpbsN2/PBtR4umCen8j2aw==, tarball: file:vendor/merlion/fractalboxdev-merlion-wasm-0.2.0.tgz}
+    resolution: {integrity: sha512-kU7xRDw+J6v2Jo1G4xclYyzcQIHqyji9RIrclN2ooLbcZzJ+bnmMIaiNaBIGxNT2OjSI+uYqMRIUcwD+wd0DvQ==, tarball: file:vendor/merlion/fractalboxdev-merlion-wasm-0.2.0.tgz}
     version: 0.2.0
     engines: {node: '>=18'}
 

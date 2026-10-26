@@ -6,6 +6,17 @@ use crate::{codes, Scratch};
 const GUIDE: &str = "spec/guide/store.md";
 const STORE: &str = "spec/10-store.md";
 
+#[test]
+fn state_labels_error_cases_in_cards_and_status() {
+    let s = Scratch::copy();
+    assert!(s.cmd(&["state"]).status.success());
+    let card = s.read("spec/cards/store.md");
+    assert!(card.contains("## Error cases\n\n| Error | When | Clause |"), "{card}");
+    assert!(card.contains("`StorePartialSnapshot`"));
+    let status = s.read("spec/status.md");
+    assert!(status.contains("| Clauses | Error cases | Limits |"), "{status}");
+}
+
 /// The `code` findings of the `render` check after appending `line` to `rel`.
 fn appended(rel: &str, line: &str, code: &str) -> Vec<String> {
     let s = Scratch::copy();

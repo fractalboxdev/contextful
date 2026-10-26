@@ -18,10 +18,10 @@ Consequences: `slice` and the lock file keep their shape; a subject rename is st
 
 ## Teaching and reference live on separate pages
 
-Contract files are reference, and each contract also has a guide under `spec/guide/` that teaches the flow and reaches rules only by `{{id}}`. A card generated per contract gathers the operations, refusals and bounds on one page.
+Contract files are reference, and each contract also has a guide under `spec/guide/` that teaches the flow in plain language and reaches rules only by `{{id}}`. Technical terms are explained at first use throughout the guide. A card generated per contract gathers the operations, error cases and bounds on one page.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Guide by pointer, generated card *(chosen)* | — | Ten guides to keep current; a guide over its length or naming an error fails the gate. |
 | Explanatory prose inside contract files | One home per fact | Teaching sentences restate rules and drift from the rules they restate. |
-| No guide, card only | Understanding | An index of refusals does not teach the model those refusals protect. |
+| No guide, card only | Understanding | An index of error cases does not explain the model or the flow. |

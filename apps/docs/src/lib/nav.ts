@@ -54,10 +54,17 @@ export const companions = async (contract: string | undefined) => {
 
 const byRecordOrder = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true });
 
+const guideReadingOrder = new Map([
+  "topology", "store", "connector", "run", "read", "authority", "disclosure", "surface", "assurance", "corpus",
+].map((id, index) => [id, index]));
+
 export const navigation = async (): Promise<NavGroup[]> => {
   const spec = (await getCollection("spec")).sort((a, b) => a.id.localeCompare(b.id));
   const adr = (await getCollection("adr")).sort((a, b) => byRecordOrder(a.id, b.id));
-  const guides = (await getCollection("guide")).sort((a, b) => a.id.localeCompare(b.id));
+  const guides = (await getCollection("guide")).sort((a, b) =>
+    (guideReadingOrder.get(a.id) ?? guideReadingOrder.size) - (guideReadingOrder.get(b.id) ?? guideReadingOrder.size)
+    || a.id.localeCompare(b.id),
+  );
   const cards = (await getCollection("cards")).sort((a, b) => a.id.localeCompare(b.id));
   const contracts = contractsByFile();
   const item = (base: string) => (e: Entry): NavItem => ({ href: collectionRoute(base, e.id), label: titleOf(e) });

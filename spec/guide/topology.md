@@ -24,7 +24,7 @@ Choose a build profile for the process's job ({{topology.package.profile}}):
 | `contextful-edge` | Sync stored files and serve read-only queries ({{topology.package.edge-profile}}). |
 | `contextful-control` | Edit team configuration and apply canonical TOML ({{topology.package.control-profile}}). |
 
-Profiles select capabilities at compilation ({{topology.package.fixed-at-build}}). An unavailable capability returns a typed refusal ({{topology.package.capability-absent}}). `contextful --version` identifies the selected profile ({{topology.package.version-profile}}).
+Profiles select capabilities at compilation ({{topology.package.fixed-at-build}}). An unavailable capability returns a named error ({{topology.package.capability-absent}}). `contextful --version` identifies the selected profile ({{topology.package.version-profile}}).
 
 The [deployment maps](../targets.md) identify Linux processes, macOS native execution, Docker's Linux VM and provider services. Cloudflare uses a Linux Container, D1 execution metadata and R2 files ({{topology.coordinate.backends}}). Deployment checks compare output against the reference deployment ({{topology.deploy.parity}}) and probe each hostname's access policy ({{topology.publish-hostname.posture-mismatch}}).
 

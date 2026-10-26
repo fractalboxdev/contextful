@@ -6,10 +6,10 @@ contract: authority
 
 ## What it is for
 
-Every row **Contextful** returns or lands answers to one question: who asked, on whose
-behalf, and what did they hold? The contract splits that question in two. Admission turns a
-presented credential into a verified value once; enforcement rewrites every read so that
-value decides which rows and cells survive.
+**Admission** verifies a caller's credential. A **checkpoint** is the code that performs
+admission in a command, server or gateway, producing verified permissions for reads and
+writes ({{authority.verify.admitted-authority}}). **Enforcement** applies those permissions
+to each read, deciding which rows and cells the caller receives.
 
 ## How it works
 
