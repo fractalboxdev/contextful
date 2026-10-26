@@ -464,9 +464,13 @@ fn the_reference_lists_the_operations_the_harness_accounts_for() {
 
 /// The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
 // spec: assurance.differential-test.harness@0f6edc10
+// spec: authority.attenuate.narrowing@d61d3afa
+// spec: authority.attenuate.widens@e63a5c30
+// spec: authority.grant.pattern-forms@8bb6d690
+// spec: authority.grant.template-allowlist@417f09a0
 #[test]
 fn the_engine_and_the_lean_reference_agree_over_generated_cases() {
-    let _ = lean_or_skip!();
+    let exe = lean_or_skip!();
     let s = Scratch::new(wasm_args_or_skip!());
     std::fs::copy(reference_root().join("corpus/counterexamples.jsonl"), s.corpus()).unwrap();
     let out = Command::new(BIN)
@@ -481,6 +485,13 @@ fn the_engine_and_the_lean_reference_agree_over_generated_cases() {
     assert_eq!(line_value(&report, "generated"), "400");
     assert_eq!(line_value(&report, "disagreements"), "0");
     assert!(line_value(&report, "compared fields").contains("verdict, error, dimension"), "{report}");
+    // A child broader on one dimension only: both name it, the refusal the proved decision states.
+    let widen = json!({"op": "narrow",
+        "parent": [{"actions": ["read"], "tables": ["research/*"], "horizon": 10}],
+        "child": [{"actions": ["read"], "tables": ["research/filings"], "horizon": 11}]});
+    let engine_decision = engine(&widen);
+    assert_eq!(engine_decision, json!({"verdict": "refused", "error": "AttenuationWidens", "dimension": "horizon"}));
+    assert_eq!(decide(&exe, &[], &widen), engine_decision);
 }
 
 /// Each run generates malformed inputs, boundary values and well-formed requests, and its report names the classes it drew from.

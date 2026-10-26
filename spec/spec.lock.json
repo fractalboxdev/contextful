@@ -44943,11 +44943,12 @@
     },
     "authority.attenuate.narrowing": {
       "sites": [
+        "crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases",
         "crates/contextful-core/tests/integration/attenuate.rs::narrowing",
         "formal/reference/Reference/Narrowing.lean::narrowing_every_dimension_every_hop"
       ],
       "verdict": "performed",
-      "proved": false
+      "proved": true
     },
     "authority.attenuate.offline": {
       "sites": [
@@ -44979,11 +44980,12 @@
     },
     "authority.attenuate.widens": {
       "sites": [
+        "crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases",
         "crates/contextful-core/tests/integration/attenuate.rs::widens",
         "formal/reference/Reference/Narrowing.lean::narrow_widens_nearest"
       ],
       "verdict": "performed",
-      "proved": false
+      "proved": true
     },
     "authority.bound-redistribution.before-diff": {
       "sites": [
@@ -45400,11 +45402,12 @@
     },
     "authority.grant.pattern-forms": {
       "sites": [
+        "crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases",
         "crates/contextful-core/tests/integration/grant.rs::pattern_forms",
         "formal/Contextful/Authority.lean::pattern_covers_forms"
       ],
       "verdict": "performed",
-      "proved": false
+      "proved": true
     },
     "authority.grant.pipeline-not-covered": {
       "sites": [
@@ -45443,11 +45446,12 @@
     },
     "authority.grant.template-allowlist": {
       "sites": [
+        "crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases",
         "crates/contextful-core/tests/integration/grant.rs::template_allowlist",
         "formal/Contextful/Authority.lean::template_allowlist"
       ],
       "verdict": "performed",
-      "proved": false
+      "proved": true
     },
     "authority.grant.template-not-allowed": {
       "sites": [
