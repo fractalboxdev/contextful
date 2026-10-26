@@ -231,3 +231,12 @@ fn a_count_off_its_ceiling_is_a_finding_until_ceilings_lowers_it() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("a ceiling never rises"), "{}", String::from_utf8_lossy(&out.stderr));
     assert!(s.read("spec/terms/corpus.toml").lines().any(|l| l == "registry-committed-sites = 0"));
 }
+
+#[test]
+fn the_lock_file_records_the_constant_a_bound_names() {
+    let s = Scratch::copy();
+    assert!(s.cmd(&["extract"]).status.success());
+    let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
+    let cutoff = &lock["registry"]["fragments"]["run"]["limit"]["journal-inline-cutoff"];
+    assert_eq!(cutoff["const"], "crates/contextful-core/src/run/journal.rs::INLINE_CUTOFF_BYTES", "{cutoff}");
+}

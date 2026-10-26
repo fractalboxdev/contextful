@@ -15,9 +15,9 @@ Against Indirect Prompt Injection Attacks With Spotlighting." arXiv:2403.14720,
 
 - **Priority:** must-read
 - **Informs:** `connector.infer`, `authority.resist`, `surface.plan-turn`
-- **Question:** What residue does the data fence leave? The fence and marker
+- **Question:** What residue do data boundary markers leave? The markers and their
   derivation are spotlighting (delimiting and datamarking), which cuts attack success
-  from over 50% to under 2%, not to zero. The fence is therefore not a security
+  from over 50% to under 2%, not to zero. The markers are therefore not a security
   boundary, and model output that re-lands as data inherits the least-trusted label
   among its inputs.
 

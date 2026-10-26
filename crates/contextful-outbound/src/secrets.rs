@@ -4,7 +4,7 @@
 
 use crate::client::{Client, HeaderValue};
 use contextful_core::connector::attach::{is_loopback_host, scrub, Allowlist};
-use contextful_core::connector::lease::{classify, read_response, retires_at, Scopes};
+use contextful_core::connector::lease::{classify, read_response, retires_at, Scopes, MINT_CALLS_PER_WINDOW};
 use contextful_core::connector::record::{Expiry, Observation, Observe, Unavailable};
 use contextful_core::connector::reference::{Hydrated, SecretName, Template};
 use contextful_core::connector::resolve::{Answer, Provider};
@@ -169,6 +169,9 @@ struct Cached {
     retires_at: Instant,
 }
 
+// The per-name gate lets one caller mint while the others wait for its cached answer.
+const _: () = assert!(MINT_CALLS_PER_WINDOW == 1, "the single-flight gate admits one mint per name per window");
+
 /// One resolver per source: the chain, a cache, a single-flight gate per name, and the
 /// adapter that answered each name.
 pub struct Resolver {
@@ -178,6 +181,8 @@ pub struct Resolver {
     cache: Mutex<HashMap<SecretName, Cached>>,
     gates: Mutex<HashMap<SecretName, Arc<Mutex<()>>>>,
     answered_by: Mutex<BTreeMap<String, String>>,
+    /// The names the lease provider mints (`connector.lease.calls-per-resolver`).
+    leased: Vec<SecretName>,
 }
 
 impl Resolver {
@@ -186,7 +191,7 @@ impl Resolver {
             static WARN: Once = Once::new();
             WARN.call_once(|| eprintln!("warning: {ALLOW_ENV_TEMPLATES}=1 admits the process environment to template hydration"));
         }
-        Resolver { chain, allow_env_templates, clock, cache: Mutex::default(), gates: Mutex::default(), answered_by: Mutex::default() }
+        Resolver { chain, allow_env_templates, clock, cache: Mutex::default(), gates: Mutex::default(), answered_by: Mutex::default(), leased: Vec::new() }
     }
 
     /// Which adapter answered each name, by logical name (`connector.record.provider-attribution`).
@@ -253,9 +258,13 @@ impl Resolver {
     /// Hydrate `name` bound whole, outside any template: every assembled adapter serves, the
     /// process environment included (`connector.reference.whole-value-reference`). The
     /// earliest answering adapter wins and one behind it answering too refuses as shadowing.
-    /// The answer stays out of the cache, so no template ever reads a value the
-    /// environment served this way.
+    /// An unleased answer stays out of the cache, so no template ever reads a value the
+    /// environment served this way. A leased name resolves through the gated cache, so it
+    /// mints once per window (`connector.lease.calls-per-resolver`).
     pub fn resolve(&self, name: &SecretName) -> Result<Hydrated, Failure> {
+        if self.leased.contains(name) {
+            return self.hydrate(name).map(|v| Hydrated::new(v.reveal().to_string()));
+        }
         for (at, p) in self.chain.iter().enumerate() {
             let Some(answer) = p.answer(name)? else { continue };
             for behind in &self.chain[at + 1..] {
@@ -351,6 +360,7 @@ pub fn assemble_all(vars: &BTreeMap<String, String>, clock: Arc<dyn Clock + Send
     }
     let mut chain: Vec<Arc<dyn Provider>> = Vec::new();
     let mut bootstrap_name = None;
+    let mut leased = Vec::new();
     if backends.iter().any(|b| b == "lease") {
         let scopes = Scopes::parse(vars.get(LEASE_SCOPES).map(String::as_str).unwrap_or_default()).map_err(config)?;
         let bootstrap = SecretName::parse(vars.get(LEASE_BOOTSTRAP).map(String::as_str).unwrap_or("lease-mint")).map_err(config)?;
@@ -358,13 +368,15 @@ pub fn assemble_all(vars: &BTreeMap<String, String>, clock: Arc<dyn Clock + Send
             .get(LEASE_PROVIDER_URL)
             .ok_or_else(|| Failure::deterministic(FailureTag::Config, format!("the lease backend is selected and `{LEASE_PROVIDER_URL}` is unset")))?;
         bootstrap_name = Some(bootstrap.clone());
+        leased = scopes.0.iter().map(|(n, _)| n.clone()).collect();
         let lease = Arc::new(LeaseProvider::new(base, scopes, bootstrap, behind.clone(), clock.clone())?);
         chain.push(lease.clone());
         observers.insert(0, lease);
     }
     chain.extend(behind);
     let allow = vars.get(ALLOW_ENV_TEMPLATES).is_some_and(|v| v == "1");
-    Ok(Assembly { resolver: Resolver::new(chain, allow, clock), observers, writers, bootstrap: bootstrap_name })
+    let resolver = Resolver { leased, ..Resolver::new(chain, allow, clock) };
+    Ok(Assembly { resolver, observers, writers, bootstrap: bootstrap_name })
 }
 
 /// Turnover of a refreshed credential: the new version is put to the adapter that answered

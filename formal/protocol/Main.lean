@@ -169,6 +169,8 @@ def main (args : List String) : IO UInt32 := do
         return 1
     IO.println s!"ok: 5 invariants hold on {total} states over {nodes.length} nodes and {generations} lease generations on {paths.length} lease paths"
     return 0
+  | "journal" :: rest => Protocol.Journal.main rest
+  | "merge" :: rest => Protocol.Merge.main rest
   | _ =>
-    IO.eprintln "usage: protocol [check [--unfenced] | run <compaction|run> | steps]"
+    IO.eprintln "usage: protocol [check [--unfenced] | run <compaction|run> | steps | journal (check | run) [--no-grace] | merge run]"
     return 2

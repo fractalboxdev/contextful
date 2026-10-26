@@ -15,9 +15,9 @@ Pipelines store the documents through the ordinary write path. Reads follow {{re
 Document capture records, snapshot identifiers for evaluation cases and access to documents captured after the reading horizon.
 
 - `capture` — `[pipeline.tables.snapshot]` names each document's `url`, `captured_at`, `digest` and `source` columns. Each capture commits as one store snapshot. An evaluation case pins the capture by `snapshot` id.
-  *because a corpus re-captured between two runs of one case answers each run from different pages*
+  *A-store#snapshot-corpus-declared*
 - `post-horizon-capture` — A document captured after the reading horizon carries `_available_reconstructed` true under {{store.available-time.live-since}}. A horizon read admits the document only when the block's `leak_score` column holds 0.
-  *A-store*
+  *A-store#snapshot-corpus-declared*
 
 #### Scenarios
 

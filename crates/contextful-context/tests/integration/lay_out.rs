@@ -163,9 +163,9 @@ fn a_staged_snapshot_joins_no_file_list() {
     assert_eq!(files, ["tables/filings/data/runs/run-1/ingest-a/part-00000.parquet"]);
 }
 
-/// `tables/<t>/_pointer.json` names the table's current snapshot and publishing fence. Readers access only snapshots
+/// `tables/<t>/_pointer.json` names the table's current snapshot and its commit fence. Readers access only snapshots
 /// reachable from the pointer directly or through `parent` links.
-// spec: store.lay-out.table-pointer@bf454085
+// spec: store.lay-out.table-pointer@9ae3ed1e
 #[test]
 fn only_the_pointer_chain_makes_a_snapshot_readable() {
     let f = Fixture::new();

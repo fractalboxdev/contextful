@@ -5,19 +5,21 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 4 | 18 | 329 | 72 | 24 | 4 | 319 | 1 | 0 | 319 |
+| `assurance` | 4 | 18 | 341 | 76 | 24 | 4 | 331 | 1 | 0 | 331 |
 | `authority` | 2 | 16 | 298 | 80 | 28 | 8 | 286 | 4 | 0 | 286 |
 | `connector` | 3 | 19 | 400 | 87 | 23 | 15 | 335 | 2 | 0 | 335 |
-| `corpus` | 1 | 10 | 110 | 46 | 9 | 0 | 110 | 0 | 0 | 110 |
+| `corpus` | 1 | 11 | 125 | 50 | 13 | 0 | 125 | 0 | 0 | 125 |
 | `disclosure` | 3 | 17 | 185 | 64 | 14 | 5 | 167 | 0 | 0 | 167 |
 | `read` | 2 | 20 | 303 | 53 | 29 | 16 | 286 | 0 | 0 | 286 |
-| `run` | 3 | 29 | 609 | 128 | 49 | 19 | 590 | 0 | 0 | 590 |
-| `store` | 6 | 20 | 339 | 72 | 23 | 12 | 336 | 2 | 0 | 336 |
+| `run` | 3 | 29 | 609 | 128 | 49 | 19 | 590 | 4 | 0 | 590 |
+| `store` | 6 | 20 | 315 | 67 | 23 | 13 | 311 | 7 | 0 | 311 |
 | `surface` | 2 | 22 | 199 | 70 | 24 | 2 | 186 | 0 | 0 | 186 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 90 | 0 | 0 | 90 |
-| **total** | 27 | 177 | 2864 | 698 | 232 | 84 | 2705 | 9 | 0 | |
+| **total** | 27 | 178 | 2867 | 701 | 236 | 85 | 2707 | 18 | 0 | |
 
 Decision records: 18.
+
+Clauses restating a code type: 64.
 
 ## Milestones
 
@@ -26,12 +28,12 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 21 | 20 | passing | closed |
-| 1 — The authority core | 14 | 247 | 246 | passing | closed |
-| 2 — The store | 9 | 195 | 192 | passing | closed |
+| 1 — The authority core | 14 | 258 | 257 | passing | closed |
+| 2 — The store | 9 | 183 | 180 | passing | closed |
 | 3 — The run path | 12 | 317 | 312 | passing | closed |
 | 4 — Ingest | 25 | 624 | 580 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 296 | passing | closed |
-| 6 — Sync and replicas | 9 | 118 | 118 | passing | closed |
+| 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
 | 7 — Memory | 6 | 87 | 85 | passing | closed |
 | 8 — Accountability | 5 | 93 | 91 | passing | closed |
 | 9 — Visibility | 6 | 50 | 46 | passing | closed |
@@ -39,8 +41,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 97 | 97 | passing | closed |
 | 12 — The operator console | 12 | 65 | 62 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 176 | 169 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 79 | 79 | passing | closed |
+| 14 — Assurance | 7 | 177 | 170 | passing | closed |
+| 15 — Point-in-time evaluation | 7 | 67 | 67 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 15 | 12 | passing | closed |
 | 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
@@ -50,4 +52,4 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 22 — Drive change cursor | 1 | 6 | 0 | absent | open |
 | 23 — Workspace delegation | 1 | 4 | 0 | absent | open |
 
-Unscheduled operations: 13.
+Unscheduled operations: 14.

@@ -1,0 +1,15 @@
+extends: substitution
+message: "Use %s instead of '%s' — casual motion metaphor; name the mechanism with the literature's term (workspace voice rules)."
+level: warning
+ignorecase: true
+# Warning, not error: the field's defined term is fine (IP "hop count", "register spill").
+swap:
+  hops?: "'round trip', 'request' or 'level of indirection'"
+  legs?: "'stage', 'step' or 'segment'"
+  spill(?:s|ed|ing|over)?: "'overflow', 'fall back' or 'evict'"
+  bounc(?:e|es|ed|ing): "'redirect', 'forward' or 'retry'"
+  punt(?:s|ed|ing)?: "'defer', 'delegate' or 'return to the caller'"
+  plumb(?:s|ed|ing)?: "'pass', 'propagate' or 'integration code'"
+  land(?:s|ed)?: "'merge', 'is written to', 'is stored in' or 'convey'"
+  knobs?: "'configuration parameter' or 'setting'"
+  bak(?:e|es|ed|ing)[- ]in: "'hard-code' or 'embed at build time'"

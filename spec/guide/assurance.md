@@ -84,8 +84,7 @@ next run.
 
 The claim stays within its evidence. A composition proof offered as a mediation proof
 fails, because composition says nothing about whether every read passes the filter
-({{assurance.prove.mediation-from-composition}}). A claim that the whole engine is
-verified, beyond the named decisions, fails as well ({{assurance.scope-claim.beyond-named-decisions}}).
+({{assurance.prove.mediation-from-composition}}).
 
 ## Engineering checks
 

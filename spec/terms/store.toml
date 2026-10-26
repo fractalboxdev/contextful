@@ -30,19 +30,19 @@ StoreManifestFormatNewer     = { clause = "store.lay-out.format-newer", gloss = 
 StoreUnknownTable            = { clause = "store.lay-out.unknown-table", gloss = "A table name resolves to no `schema.json` in the tree." }
 StoreNodeIdInvalid           = { clause = "store.lay-out.node-id-shape", gloss = "A resolved node id is too long or outside the path-safe pattern." }
 StoreCommitLockTimeout       = { clause = "store.reserve.commit-wait", gloss = "A commit outwaited its table's commit lock or a lower value's publication." }
-StoreProjectNameInvalid      = { clause = "store.init.name-shape", gloss = "A project name is not path-safe `/`-separated segments." }
+StoreProjectNameInvalid      = { clause = "store.init.name-conflict", gloss = "A project name is not path-safe `/`-separated segments." }
 StoreIdentityInvalid         = { clause = "store.init.identity-invalid", gloss = "A store UUID is malformed or owner mint names no initialized root." }
 StoreIdentityConflict        = { clause = "store.pull.identity-conflict", gloss = "A pull would replace one store UUID with another." }
 StoreProjectConflict         = { clause = "store.init.name-conflict", gloss = "An init meets a `contextful.toml` declaring another project, or a project with no name." }
 StoreProjectUndiscovered     = { clause = "store.init.undiscovered", gloss = "A command given no `--project` finds no `contextful.toml` naming a project from its working directory up." }
 StoreNodeIdShared            = { clause = "store.lay-out.node-id-shared", gloss = "A node id is declared in a control-plane configuration applied to many machines." }
-StoreOrderByUnknownColumn    = { clause = "store.declare.order-by-unknown", gloss = "An `order_by` names a column neither declared nor injected." }
+StoreOrderByUnknownColumn    = { clause = "store.declare.key-unknown", gloss = "An `order_by` names a column neither declared nor injected." }
 StoreKeyUnknownColumn        = { clause = "store.declare.key-unknown", gloss = "A `primary_key` names a column neither declared nor injected." }
 StoreReservedColumnName      = { clause = "store.reserve.column-name", gloss = "A producer column is spelled inside the reserved namespace and outside the optional set." }
 StoreReservedTableName       = { clause = "store.reserve.table-name", gloss = "A declared table collides with a reserved table namespace." }
 StoreSchemaIncompatible      = { clause = "store.reconcile.incompatible", gloss = "Two observed types for one column have no supertype in the lattice." }
 StoreKeyWidened              = { clause = "store.reconcile.key-widening", gloss = "A primary-key column takes the float promotion." }
-StoreNestedKeyColumn         = { clause = "store.declare.nested-key", gloss = "A struct, list or map column takes a key, ordering, clustering, partition or valid-time role." }
+StoreNestedKeyColumn         = { clause = "store.declare.key-unknown", gloss = "A struct, list or map column takes a key, ordering, clustering, partition or valid-time role." }
 StorePartitionColumnType     = { clause = "store.index.partition-type", gloss = "A `partition_by` column is typed binary or vector." }
 StoreRunConflict             = { clause = "store.lay-out.run-conflict", gloss = "A run id already committed on its node lands again as other than its replay." }
 StorePartialSnapshot         = { clause = "store.fold.partial-snapshot", gloss = "A commit would expose snapshot data without its declared sidecars, or the reverse." }
@@ -54,9 +54,9 @@ StoreValidTimeNotTimestamp   = { clause = "store.bound-time.valid-time-type", gl
 StoreAsOfUnretained          = { clause = "store.bound-time.as-of-unretained", gloss = "An `as_of` precedes the oldest retained snapshot of a table whose history was collected." }
 StoreValidTimeUndeclared     = { clause = "store.bound-time.valid-time-undeclared", gloss = "A valid-time-bounded read names a table declaring no pair." }
 StoreAvailableTimeUndeclared = { clause = "store.available-time.undeclared", gloss = "An availability-bounded read names a table declaring no availability time." }
-StoreAvailableTimeNull       = { clause = "store.available-time.null", gloss = "A landing row resolves to a null availability instant." }
-StoreVintageHashUndeclared   = { clause = "store.available-time.vintage-hash-undeclared", gloss = "A vintage table declares no `content_hash_column`." }
-StoreVintageRetainRows       = { clause = "store.available-time.vintage-retain-rows", gloss = "A vintage table declares a row-age retention cutoff." }
+StoreAvailableTimeNull       = { clause = "store.available-time.undeclared", gloss = "A landing row resolves to a null availability instant." }
+StoreVintageHashUndeclared   = { clause = "store.available-time.vintage-validation", gloss = "A vintage table declares no `content_hash_column`." }
+StoreVintageRetainRows       = { clause = "store.available-time.vintage-validation", gloss = "A vintage table declares a row-age retention cutoff." }
 StoreEncryptionKeyUnbound    = { clause = "store.encrypt.key-unbound", gloss = "A declared key source names a binding the process lacks." }
 StoreIndexOverRedactedColumn = { clause = "store.encrypt.redacted-index", gloss = "An index is declared over a column redacted at write time." }
 StoreIndexPathCollision      = { clause = "store.index.path-collision", gloss = "Two sidecar declarations of one table resolve to one path." }
@@ -98,37 +98,55 @@ ReplicaMissingIndex          = { clause = "store.replicate.missing-index", gloss
 ReplicaSensitiveTable        = { clause = "store.replicate.sensitive-refused", gloss = "A refresh requested a replicate-off table." }
 
 [limit]
-store-endpoint-attempts     = { clause = "store.endpoint.transport", value = 3, unit = "attempts", basis = "chosen", gloss = "Total attempts of an S3 request whose repetition changes nothing." }
+store-endpoint-attempts     = { clause = "store.endpoint.transport", value = 3, unit = "attempts", basis = "chosen", gloss = "Total attempts of an S3 request whose repetition changes nothing.", const = "crates/contextful-sync/src/s3_retry.rs::TRANSPORT_ATTEMPTS" }
 store-endpoint-connect      = { clause = "store.endpoint.transport", value = 5, unit = "s", basis = "chosen", gloss = "Longest an S3 request attempt waits to connect." }
 store-endpoint-answer       = { clause = "store.endpoint.transport", value = 10, unit = "s", basis = "chosen", gloss = "Longest a sent S3 request attempt waits for its answer to begin." }
 store-endpoint-answer-first = { clause = "store.endpoint.transport", value = 2, unit = "s", basis = "standard:aws-s3-performance", gloss = "Answer window of the first attempt of an S3 request that may resend." }
 store-endpoint-answer-second = { clause = "store.endpoint.transport", value = 4, unit = "s", basis = "standard:aws-s3-performance", gloss = "Answer window of the second attempt of an S3 request that may resend." }
-store-endpoint-role-refresh = { clause = "store.endpoint.role-refresh", value = 300, unit = "s", basis = "chosen", gloss = "Lead time before expiry at which workload-role credentials refresh." }
-store-endpoint-throttled    = { clause = "store.endpoint.throttled", value = 5, unit = "attempts", basis = "chosen", gloss = "Total attempts of an S3 request the backend answers throttled." }
+store-endpoint-role-refresh = { clause = "store.endpoint.role-refresh", value = 300, unit = "s", basis = "chosen", gloss = "Lead time before expiry at which workload-role credentials refresh.", const = "crates/contextful-outbound/src/role.rs::REFRESH_LEAD_SECS" }
+store-endpoint-throttled    = { clause = "store.endpoint.throttled", value = 5, unit = "attempts", basis = "chosen", gloss = "Total attempts of an S3 request the backend answers throttled.", const = "crates/contextful-sync/src/s3_retry.rs::THROTTLED_ATTEMPTS" }
 store-endpoint-backoff-base = { clause = "store.endpoint.throttled", value = 100, unit = "ms", basis = "chosen", gloss = "Ceiling of the backoff before the first throttled resend, doubling per resend." }
-store-endpoint-backoff-cap  = { clause = "store.endpoint.throttled", value = 5, unit = "s", basis = "chosen", gloss = "Highest ceiling a throttled resend's backoff reaches." }
-store-snapshot-id-width     = { clause = "store.lay-out.snapshot-id", value = 20, unit = "chars", basis = "chosen", gloss = "Width of the zero-padded nanosecond field of a snapshot id." }
-store-snapshot-ancestors    = { clause = "store.lay-out.ancestors", value = 256, unit = "entries", basis = "chosen", gloss = "Most ancestors a snapshot manifest records." }
+store-endpoint-backoff-cap  = { clause = "store.endpoint.throttled", value = 5, unit = "s", basis = "chosen", gloss = "Highest ceiling a throttled resend's backoff reaches.", const = "crates/contextful-sync/src/s3_retry.rs::THROTTLED_ATTEMPTS" }
+store-snapshot-id-width     = { clause = "store.lay-out.snapshot-id", value = 20, unit = "chars", basis = "chosen", gloss = "Width of the zero-padded nanosecond field of a snapshot id.", const = "crates/contextful-core/src/store/lay_out.rs::SNAPSHOT_ID_WIDTH" }
+store-snapshot-ancestors    = { clause = "store.lay-out.ancestors", value = 256, unit = "entries", basis = "chosen", gloss = "Most ancestors a snapshot manifest records.", const = "crates/contextful-core/src/store/lay_out.rs::SNAPSHOT_ANCESTORS_MAX" }
 store-run-id-length         = { clause = "store.lay-out.run-id-shape", value = 128, unit = "chars", basis = "chosen", gloss = "Longest run id, which is interpolated into run directories and ledger filenames." }
-store-node-id-length        = { clause = "store.lay-out.node-id-shape", value = 64, unit = "chars", basis = "chosen", gloss = "Longest node id, which is interpolated into paths and keys." }
-store-commit-lock-wait      = { clause = "store.reserve.commit-wait", value = 30, unit = "s", basis = "chosen", gloss = "Longest a commit waits for its table's commit lock or a lower value's publication." }
-store-ledger-retention      = { clause = "store.reserve.ledger-retention", value = 365, unit = "d", basis = "chosen", gloss = "Age at which a request-ledger row is collected." }
-store-compaction-interval   = { clause = "store.fold.triggers", value = 6, unit = "h", basis = "chosen", gloss = "Elapsed time after a table's previous pass that fires the next." }
-store-compaction-run-count  = { clause = "store.fold.triggers", value = 50, unit = "runs", basis = "chosen", gloss = "Runs committed on a table since its previous pass that fire the next." }
-store-run-retention         = { clause = "store.fold.retention", value = 7, unit = "d", basis = "chosen", gloss = "Default `retain_runs` window, past which a folded run or a snapshot superseded by ordinary writes is collected." }
-store-partition-count       = { clause = "store.index.partition-warnings", value = 1000, unit = "partitions", basis = "chosen", gloss = "Projected partition count above which planning warns." }
-store-graph-extensions      = { clause = "store.index.graph-extensions", value = 16, unit = "extensions", basis = "chosen", gloss = "Segment extensions after which a pass rebuilds a vector or full-text sidecar in full." }
-store-fold-merge-fanout     = { clause = "store.fold.tiered-merge", value = 4, unit = "parts", basis = "chosen", gloss = "Parts of one size tier in one partition at which a pass merges them into one." }
-store-partition-median      = { clause = "store.index.partition-warnings", value = 16, unit = "MiB", basis = "chosen", gloss = "Projected median partition size below which planning warns." }
-store-clock-skew            = { clause = "store.lease.clock-skew", value = 30, unit = "s", basis = "chosen", gloss = "Largest clock difference between two machines coordination assumes." }
-store-part-cache            = { clause = "store.pull.part-cache", value = 8, unit = "GiB", basis = "chosen", gloss = "Default bound on the fetched parts a lazy store holds locally." }
+store-node-id-length        = { clause = "store.lay-out.node-id-shape", value = 64, unit = "chars", basis = "chosen", gloss = "Longest node id, which is interpolated into paths and keys.", const = "crates/contextful-core/src/store/lay_out.rs::NODE_ID_MAX_LEN" }
+store-commit-lock-wait      = { clause = "store.reserve.commit-wait", value = 30, unit = "s", basis = "chosen", gloss = "Longest a commit waits for its table's commit lock or a lower value's publication.", const = "crates/contextful-core/src/store/reserve.rs::COMMIT_LOCK_WAIT_SECS" }
+store-ledger-retention      = { clause = "store.reserve.ledger-retention", value = 365, unit = "d", basis = "chosen", gloss = "Age at which a request-ledger row is collected.", const = "crates/contextful-core/src/store/reserve.rs::LEDGER_RETENTION_SECS" }
+store-compaction-interval   = { clause = "store.fold.triggers", value = 6, unit = "h", basis = "chosen", gloss = "Elapsed time after a table's previous pass that fires the next.", const = "crates/contextful-core/src/store/fold.rs::COMPACTION_INTERVAL_SECS" }
+store-compaction-run-count  = { clause = "store.fold.triggers", value = 50, unit = "runs", basis = "chosen", gloss = "Runs committed on a table since its previous pass that fire the next.", const = "crates/contextful-core/src/store/fold.rs::COMPACTION_RUN_COUNT" }
+store-run-retention         = { clause = "store.fold.retention", value = 7, unit = "d", basis = "chosen", gloss = "Default `retain_runs` window, past which a folded run or a snapshot superseded by ordinary writes is collected.", const = "crates/contextful-core/src/store/declare.rs::DEFAULT_RETAIN_RUNS_SECS" }
+store-partition-count       = { clause = "store.index.partition-warnings", value = 1000, unit = "partitions", basis = "chosen", gloss = "Projected partition count above which planning warns.", const = "crates/contextful-core/src/store/index.rs::PARTITION_COUNT_WARN" }
+store-graph-extensions      = { clause = "store.index.graph-extensions", value = 16, unit = "extensions", basis = "chosen", gloss = "Segment extensions after which a pass rebuilds a vector or full-text sidecar in full.", const = "crates/contextful-core/src/store/index.rs::GRAPH_EXTENSIONS_MAX" }
+store-fold-merge-fanout     = { clause = "store.fold.tiered-merge", value = 4, unit = "parts", basis = "chosen", gloss = "Parts of one size tier in one partition at which a pass merges them into one.", const = "crates/contextful-core/src/store/fold.rs::FOLD_MERGE_FANOUT" }
+store-partition-median      = { clause = "store.index.partition-warnings", value = 16, unit = "MiB", basis = "chosen", gloss = "Projected median partition size below which planning warns.", const = "crates/contextful-core/src/store/index.rs::PARTITION_MEDIAN_WARN_BYTES" }
+store-clock-skew            = { clause = "store.lease.clock-skew", value = 30, unit = "s", basis = "chosen", gloss = "Largest clock difference between two machines coordination assumes.", const = "crates/contextful-core/src/store/lease.rs::CLOCK_SKEW_SECS" }
+store-part-cache            = { clause = "store.pull.part-cache", value = 8, unit = "GiB", basis = "chosen", gloss = "Default bound on the fetched parts a lazy store holds locally.", const = "crates/contextful-core/src/store/sync.rs::PART_CACHE_BYTES" }
 store-pull-serve-refresh    = { clause = "store.pull.serve-refresh", value = 30, unit = "s", basis = "chosen", gloss = "Interval between `serve` pulls of every bucket table under `pull_before_run`." }
-store-pull-convergence      = { clause = "store.pull.convergence", value = 3, unit = "attempts", basis = "chosen", gloss = "Manifest re-fetches a pull performs against keys moving beneath it." }
-store-transfer-width        = { clause = "store.pull.transfer-width", value = 16, unit = "requests", basis = "chosen", gloss = "Object requests a pull or a push keeps in flight at once." }
-store-tombstone-ttl         = { clause = "store.merge.tombstone-ttl", value = 30, unit = "d", basis = "chosen", gloss = "Age at which a tombstone leaves the bucket manifest." }
-store-push-retries          = { clause = "store.merge.retries", value = 5, unit = "attempts", basis = "chosen", gloss = "Default consecutive re-commit rounds meeting no newer generation on a lost bucket manifest compare-and-set." }
-store-push-round-ceiling    = { clause = "store.merge.round-ceiling", value = 64, unit = "rounds", basis = "chosen", gloss = "Manifest commit rounds one push makes, whatever generations they meet." }
-store-push-wait             = { clause = "store.push.in-flight", value = 300, unit = "s", basis = "chosen", gloss = "Default wait for the push guard another push of the store holds." }
-store-drain-deadline        = { clause = "store.drain.deadline", value = 15, unit = "s", basis = "chosen", gloss = "Longest push a stopping serve attempts before it exits." }
-store-lease-ttl             = { clause = "store.lease.ttl", value = 10, unit = "min", basis = "chosen", gloss = "Granted life of a lease." }
+store-pull-convergence      = { clause = "store.pull.convergence", value = 3, unit = "attempts", basis = "chosen", gloss = "Manifest re-fetches a pull performs against keys moving beneath it.", const = "crates/contextful-core/src/store/sync.rs::PULL_CONVERGENCE" }
+store-transfer-width        = { clause = "store.pull.transfer-width", value = 16, unit = "requests", basis = "chosen", gloss = "Object requests a pull or a push keeps in flight at once.", const = "crates/contextful-core/src/store/sync.rs::TRANSFER_WIDTH" }
+store-tombstone-ttl         = { clause = "store.merge.tombstone-ttl", value = 30, unit = "d", basis = "chosen", gloss = "Age at which a tombstone leaves the bucket manifest.", const = "crates/contextful-core/src/store/sync.rs::TOMBSTONE_TTL_SECS" }
+store-push-retries          = { clause = "store.merge.retries", value = 5, unit = "attempts", basis = "chosen", gloss = "Default consecutive re-commit rounds meeting no newer generation on a lost bucket manifest compare-and-set.", const = "crates/contextful-core/src/store/sync.rs::PUSH_RETRIES" }
+store-push-round-ceiling    = { clause = "store.merge.round-ceiling", value = 64, unit = "rounds", basis = "chosen", gloss = "Manifest commit rounds one push makes, whatever generations they meet.", const = "crates/contextful-core/src/store/sync.rs::PUSH_ROUND_CEILING" }
+store-push-wait             = { clause = "store.push.in-flight", value = 300, unit = "s", basis = "chosen", gloss = "Default wait for the push guard another push of the store holds.", const = "crates/contextful-core/src/store/sync.rs::PUSH_WAIT_SECS" }
+store-drain-deadline        = { clause = "store.drain.deadline", value = 15, unit = "s", basis = "chosen", gloss = "Longest push a stopping serve attempts before it exits.", const = "crates/contextful-cli/src/sync.rs::DRAIN_SECS" }
+store-lease-ttl             = { clause = "store.lease.ttl", value = 10, unit = "min", basis = "chosen", gloss = "Granted life of a lease.", const = "crates/contextful-core/src/store/lease.rs::TTL_SECS" }
 store-lease-renewal         = { clause = "store.lease.renewal", value = 200, unit = "s", basis = "chosen", gloss = "Interval at which a holder renews, a third of the grant." }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"writer lease"         = { clause = "store.lease.ttl", gloss = "Time-bounded exclusive ownership of a pipeline, partition or table compaction, held by one node and renewed by conditional replace.", avoid = ["ownership lease"] }
+"commit fence"         = { clause = "store.lease.acquire", gloss = "The integer each writer lease acquisition raises by one; a commit carrying a lower commit fence loses its condition.", avoid = ["fencing token", "fencing value"] }
+"commit lock"          = { clause = "store.reserve.commit-lock-span", gloss = "A table's lock held while a commit assigns its commit sequence and writes its manifest." }
+"commit log"           = { clause = "store.lease.commit-log", gloss = "The `cursors/` objects through which a run under a machine writer lease commits." }
+"compaction lease"     = { clause = "store.fold.compaction-lease", gloss = "The writer lease a compaction pass holds on one table, stamped into its snapshot and pointer." }
+"node id"              = { clause = "store.lay-out.node-id-order", gloss = "The path-safe name of one writing process, keying its run directories and writer leases." }
+"store identity"       = { clause = "store.init.store-identity", gloss = "The UUID naming one store across its synced copies." }
+"run manifest"         = { clause = "store.lay-out.run-manifest", gloss = "The `_manifest.json` whose conditional create commits one run's parts." }
+"snapshot"             = { clause = "store.lay-out.snapshot-id", gloss = "An immutable compacted version of a table, named by its creation instant." }
+"snapshot manifest"    = { clause = "store.lay-out.snapshot-manifest", gloss = "The `_manifest.json` listing a snapshot's parts and indexes with their key versions." }
+"table pointer"        = { clause = "store.lay-out.table-pointer", gloss = "`_pointer.json`, naming a table's current snapshot; readers reach only snapshots it reaches." }
+"sidecar"              = { clause = "store.index.declaration", gloss = "An index file beside a snapshot's parts: a vector graph, full-text index or key map, built at compaction." }
+"replacement frontier" = { clause = "store.declare.replace-frontier", gloss = "The newest run carrying a `replace` source's complete state; reads cover it and every later run." }
+"replica"              = { clause = "store.replicate.descriptor", gloss = "A read-only copy of a store pulled from its bucket, refusing every write verb." }
+"retention window"     = { clause = "store.fold.retention", gloss = "How long folded runs and superseded snapshots stay before collection removes them." }

@@ -1,0 +1,11 @@
+extends: existence
+message: "'%s' is an absolute no test can prove. State the bound (rate, window, percentile)."
+level: suggestion
+ignorecase: true
+tokens:
+  - always
+  - never
+  - 100%
+  - all cases
+  - instantly
+  - immediately

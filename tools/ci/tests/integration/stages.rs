@@ -420,8 +420,8 @@ fn formal_repo(bin: &Bin) -> Repo {
     r
 }
 
-/// The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}}, {{assurance.model.protocol-check}} and the protocol differential over 10000 generated cases on both lease paths; a non-zero exit from any reds the run.
-// spec: assurance.gate.formal-stage@eec77ee7
+/// The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}}, {{assurance.model.protocol-check}}, the protocol differential over 10000 generated cases on both lease paths, and {{assurance.model.journal-check}}; a non-zero exit from any reds the run.
+// spec: assurance.gate.formal-stage@a31f4c51
 #[test]
 fn the_formal_stage_runs_the_audit_the_differential_and_the_protocol_check() {
     let bin = Bin::new();
@@ -441,6 +441,7 @@ fn the_formal_stage_runs_the_audit_the_differential_and_the_protocol_check() {
             format!("{cli} differential"),
             "lake exe protocol check in protocol with 1".to_string(),
             format!("{cli} protocol-differential --cases 10000"),
+            "lake exe protocol journal check in protocol with 1".to_string(),
         ]
     );
 

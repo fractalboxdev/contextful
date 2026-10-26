@@ -24,7 +24,7 @@ Bucket endpoint schemes, transport, request addressing and signing, credentials 
 - `credential-unbound` — S3 or R2 raises `SyncCredentialUnbound` when `[sync]` omits `access_key_id` or `secret_access_key`, supplies a non-reference credential, or names an unset variable. The error names the key.
   *because a literal key in `config.toml` sits in plaintext on every disk and backup holding the store root*
 - `role-credentials` — `[sync] credentials = "role"` on an `s3://` or `https://` endpoint signs with workload-role credentials in place of both keys: the ECS container credential endpoint, then a web identity token exchanged through STS, then IMDSv2.
-  *because a task role or service account supplies short-lived keys, and a long-lived key in a secret store is the posture a regulated account refuses*
+  *because a task role or service account supplies short-lived keys, and a long-lived key in a secret store is the credential posture a regulated account refuses*
 - `role-unavailable` — Under {{store.endpoint.role-credentials}}, a bucket open that no role source answers raises `SyncRoleUnavailable`, naming each source tried.
   *because an unsigned request otherwise reaches the bucket and fails as forbidden, hiding the missing role*
 - `role-conflict` — `credentials = "role"` beside `access_key_id`, `secret_access_key` or `session_token`, or on an R2 endpoint, raises `SyncCredentialConflict`, naming the endpoint.

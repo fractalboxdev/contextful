@@ -42,9 +42,9 @@ fn a_lease_reads_three_expiry_spellings_at_two_levels() {
     }
 }
 
-/// A lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient
-/// failure.
-// spec: connector.lease.malformed-lease@2aa55848
+/// A credential lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as
+/// a transient failure.
+// spec: connector.lease.malformed-lease@bf722143
 #[test]
 fn a_lease_without_a_future_expiry_is_malformed_and_transient() {
     let now = at(NOW);

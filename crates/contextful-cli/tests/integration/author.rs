@@ -143,7 +143,7 @@ fn per_request_leaves_an_unaccompanied_write_unauthored_and_session_authors_ever
 }
 
 /// A manifest's missing or unknown `authoring_posture` refuses every table write verb before its first effect.
-// spec: authority.issue.posture-key@4a2c649f
+// spec: authority.issue.posture-key@6f744c4e
 #[test]
 fn an_undeclared_posture_refuses_every_write_verb() {
     for posture in ["", "authoring_posture = \"shared\""] {

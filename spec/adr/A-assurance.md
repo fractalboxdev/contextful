@@ -332,22 +332,6 @@ Decision: `assurance.build.windows-target` defines the Windows exclusion. The su
 Consequences: Windows source and regression fixtures remain available for porting; support claims cover the declared release matrix alone.
 Revisit: an explicit Windows support decision carries passing real MSVC lifetime, filesystem and bundled read-engine evidence for each admitted architecture within the gate budget.
 
-## store-adapter-s — The store adapter's write suites assert without the SQL engine
-
-**Status:** accepted.
-
-Context: a store-adapter suite asserting through SQL links the bundled engine as a dev-dependency, so the no-`read` run in the features stage compiles a second copy, about 282 MB of rlib, beside the read-enabled one. Criteria: the no-`read` graph, tests included, holds to `topology.package.store-write-engine-free`; the features stage compiles the engine once.
-
-Decision: a suite asserting through SQL runs on the adapter's own read engine and compiles only under `read`; the write suites assert on files, manifests and returned values, and the package declares no engine dev-dependency.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Write suites without the engine *(chosen)* | — | The no-`read` run covers fewer tests; a fold's SQL relation is asserted only with `read` on. |
-| Keep the engine dev-dependency | One engine copy | A second engine build per features stage, in disk and wall clock. |
-| A second Parquet reader for every assertion | One home | A parallel evaluator of the scan relation drifts from the one reads execute. |
-
-Consequences: the accepted cost is that a defect in the relation a scan resolves surfaces only in the read-enabled runs.
-
 ## stage-subset-runs — A stage subset runs in sequence order and refuses a missing predecessor
 
 **Status:** accepted
@@ -442,3 +426,20 @@ Decision: `assurance.gate.affected-parts` lists the required parts the diff from
 | Every part on every change | Gate wall clock | A spec-only change waits on hours of builds. |
 
 Consequences: a change confined to `spec/`, `references/`, `apps/`, `packages/` or `formal/` runs a fraction of the parts. A part the map omits wrongly stays green until a change under `crates/` or `tools/` runs it.
+
+## protocol-package-holds — The protocol package holds the journal and merge machines
+
+**Status:** accepted
+
+Context: `run.journal` and `store.merge` carry the engine's concurrency risk. Criteria: one toolchain and audit, a differential driving the engine's own code, and five policy modules.
+
+Decision: `formal/protocol` holds the journal as port-call steps and the merge per key. The journal harness runs `Journal::step` over gated adapters; the merge harness calls `merge_verified`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Both machines in `formal/protocol` *(chosen)* | — | The bounded checks share the formal stage's wall clock. |
+| One Lean package per machine | One audit | Three inventories, toolchain pins and executables. |
+| Machines in `formal/Contextful` | Scope | The policy package gains IO-shaped state. |
+| Interleaving tests without a model | Proof | A sample shows no property for every state. |
+
+Consequences: `no_dangling_blob` holds under the grace hypothesis; `--no-grace` reproduces `BlobMissing` on every adapter.

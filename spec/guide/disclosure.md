@@ -60,9 +60,7 @@ reader ({{disclosure.reach.closure-walk}}). The registered view admits a row onl
 its resource holds a grant in that reachable set ({{disclosure.reach.semi-join}}).
 
 **Fidelity** states how closely a table follows its source, and the source family caps
-the claim ({{disclosure.declare-fidelity.family-bound}}). A federated table, queried live
-under a reader's delegated credential, never registers on a read face
-({{disclosure.declare-fidelity.federated-registered}}).
+the claim ({{disclosure.declare-fidelity.family-bound}}).
 
 ## When permission state goes stale
 

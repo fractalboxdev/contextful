@@ -68,7 +68,7 @@ The journal records step values, returns those values on replay and deletes reco
   *because a vendor honoring the key turns an at-least-once effect into one billed call*
 - `inline-cutoff` — The journal stores values of 1 MiB or smaller inline as row bytes. For larger values, the journal stores a content-addressed blob named by its sha256 and a reference in the row.
 - `blob-write` — Concurrent writers of one blob hash converge on one stored value and none errors on another's write; no partial write survives beside it.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `missing-blob` — If a row references a missing blob, the journal raises `BlobMissing` carrying the reference. The journal returns no empty replacement value.
   *P6*
 - `collection` — Retiring an execution owner deletes its journal rows in the retiring transaction.
@@ -107,35 +107,35 @@ A journaled pull records its guarded batch, and a journal hit hands that batch t
 Journal rows, blobs and awakeables persist through storage ports that SQLite, PostgreSQL and D1 serve.
 
 - `substrate-port` — One execution interface provides: open or resume under a scope and content-hashed plan reference; record step output; commit a cursor; suspend on an awakeable with timeout; attach a retry schedule; describe capabilities.
-  *A-run*
+  *A-run#run-substrate-storage, A-run#host-opens-execution*
 - `storage-ports` — Journal rows, blobs and awakeables persist through a journal store, a blob store and an awakeable store; every `run.journal` and `run.suspend` clause holds for each adapter, the file tree included.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `sqlite-stores` — `contextful-sqlite` serves the journal, blob and awakeable stores from one SQLite file in write-ahead-log mode over one connection, a blob as a row keyed by its sha256; an awakeable update commits with the journal writes inside it.
   *because a resolution recording its payload through a second connection waits on the write lock its own update holds*
 - `sqlite-write-lock` — Every `contextful-sqlite` store write opens an immediate transaction, so concurrent writers of one key across connections to one file serialize: one record lands, and every other returns the standing value instead of a locked-database failure.
   *because under write-ahead logging a deferred read upgrading to a write fails on the lock at once instead of waiting through the busy timeout*
 - `postgres-stores` — `contextful-pg` serves journal rows, blobs and awakeables through {{run.journal.storage-ports}} in the catalog's PostgreSQL database; conditional journal writes serialize across connections, and recorded values survive replacement of every local disk.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `container-profile` — `CONTEXTFUL_STORAGE_PROFILE=postgres` selects {{run.journal.postgres-stores}} with shared owners, cadence and {{run.export.remote-state}}; corpus objects use a remote S3-compatible bucket with pull-before-run and push-after-run enabled.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `d1-profile` — `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1` selects D1 for catalog, journal, awakeables and export state through a private Worker outbound binding; R2 holds blob content and corpus objects.
-  *A-run, A-topology#cloudflare-d1*
+  *A-run#run-substrate-storage, A-topology#cloudflare-d1, A-run#d1-execution-state*
 - `d1-blob` — D1 stores each blob digest, whose R2 object key is `blobs/<sha256>`; the R2 write precedes its D1 reference, and a read verifies the content digest.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `d1-transport` — A D1 read, health probe or content-addressed blob request left without an HTTP answer resends, within 3 attempts of at most 15 s each; a writing statement outside {{run.journal.d1-initialize}} goes once over a fresh connection and raises `StorageBindingUnavailable`.
   *because a write whose answer is lost may have committed, and resending it could apply it twice*
 - `d1-initialize` — Storage initialization's D1 batch, every statement `IF NOT EXISTS` DDL or an insert or update guarded to apply once, resends after a lost answer as a read does under {{run.journal.d1-transport}}.
   *because a second application of that batch leaves the state its first application left*
 - `d1-atomicity` — D1 commits metadata atomically. An interrupted R2 upload may leave an unreferenced object. R2 deletion follows removal of every D1 reference.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `d1-guard` — A committed D1 guard prevents owner or lease transfer throughout an admitted external callback; a crash guard requires recorded receipt or idempotency evidence before takeover.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `d1-recovery` — The D1 recovery identity binds one project and schema to an R2 object frontier; a missing object or mismatched generation follows {{run.journal.execution-recovery}}.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `d1-backup` — A D1 recovery captures the execution database with its guard and export rows, the R2 blob and corpus frontier, project recovery identity and executable schema before writers resume.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `storage-incomplete` — Missing profile bindings, corpus state, strict execution guards or a supported outbox raises `StorageCapabilityMissing` before execution admission; absent compiled adapters follow {{topology.package.capability-absent}}.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `corpus-unavailable` — If a storage preflight's corpus request fails as {{store.endpoint.unavailable}}, preflight raises `StorageCorpusUnavailable`, naming the bucket or object. The failure does not raise {{run.journal.storage-incomplete}}'s refusal.
   *because an unanswered bucket says nothing of whether a capability is absent, and a transient outage must not read as an unsupported profile*
 - `storage-unsupported` — An unknown storage profile or an encrypted corpus paired with an unsealed execution adapter raises `StorageProfileUnsupported` before execution admission.
@@ -143,13 +143,13 @@ Journal rows, blobs and awakeables persist through storage ports that SQLite, Po
 - `execution-schema` — An execution database whose schema differs from the executable's supported schema raises `ExecutionSchemaIncompatible` before execution admission; preflight creates no missing execution table.
   *because creating an empty replacement for a missing table erases the evidence of a partial restore*
 - `execution-recovery` — Missing execution tables or a mismatched project recovery identity raise `ExecutionRecoveryMismatch`. Normal startup provisions no recovery identity. A corpus-only restore admits no paid or effectful work.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `execution-backup` — An execution backup contains owners, leases, cadence run history, journal rows, blobs, awakeables and export state from one quiesced PostgreSQL snapshot, together with the corpus object frontier, project recovery identity and executable schema.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `current-owner` — An execution checks its durable owner, admitted pins and active attempt immediately before effect dispatch and publication; a superseded attempt enters neither boundary, and a late stop still follows {{run.cancel.land-path-uncut}}.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `durable-dispatch` — PostgreSQL admission holds shared owner and unexpired lease locks through each bounded provider or destination callback, including item ancestors and entity fences; owner replacement, retirement and takeover serialize after admitted callbacks.
-  *A-run*
+  *A-run#run-substrate-storage*
 - `guard-callback` — A guarded callback may update run metadata; mutating its admitted owner or lease refuses. Nested callbacks retain only scopes and leases their caller already admits. Local adapters expose cooperative checks without strict execution-guard capability.
   *because nested lock expansion and owner mutation can deadlock the admission that invokes them*
 
@@ -159,13 +159,13 @@ A store-driven run records its input once and runs its registered body once per 
 
 - `plan-pin` — A run resolves the plan reference it started against for its whole life.
 - `store-input` — A store-driven run reads its statement once, through the read face under the job's grant at its `as_of`, and records the resolved snapshot id per table and the ordered input rows as its first step.
-  *A-surface*
+  *A-surface#store-driven-job*
 - `input-replay` — A resumed run iterates recorded input without re-reading the statement. Rows landed after the pinned `as_of`, or folded since, do not enter the input set.
 - `open-as-of` — A store-driven job declaring no `as_of` resolves it to the instant its execution opens, recorded in the input step, so every resume reads that instant.
 - `input-pin` — A store-driven run's plan reference hashes its body name, statement and declared `as_of`, so a resume under a changed one meets {{run.own.pinned-plan-changed}} before any step replays.
-  *A-surface*
+  *A-surface#store-driven-job*
 - `host-structure-pin` — A host-supplied structural identity joins the input plan and owner pins through {{run.own.pinned-plan-changed}}; without one, the plan reference hashes body, statement and `as_of` alone, as {{run.journal.input-pin}} states.
-  *A-surface*
+  *A-surface#store-driven-job*
 - `input-truncated` — An input statement whose response the face truncates at its row ceiling raises `RunInputTruncated` before any row runs.
   *because a silently shortened input set closes `success` as though every row ran*
 - `row-step` — Each input row runs the registered body under a row key, its ordinal in the recorded input; every step the body records carries a label scoped to that key, and a paid call carries {{run.journal.idempotency-key}}.
@@ -215,15 +215,15 @@ The engine executes isolated input items with independent completion receipts, b
 - `fence` — Recorded effects and output publication check their execution owner and entity fence immediately before dispatch; a superseded owner sends no provider request and publishes no output.
   *because an owner that resumes after transfer cannot authorize another effect*
 - `delegated-item` — Under a delegated body, each call ordinal is one request under {{surface.delegate.envelope}}, its `ok`, `defer` or `permanent` answer recorded under the item's entry key, so a resume replays every recorded answer and sends only the unrecorded call.
-  *A-surface*
+  *A-surface#delegated-body-deploy*
 - `outcome-record` — Each terminal item appends one row to the reserved `_items` table once its receipt commits: job, logical key, entity namespace and key, attempt count, terminal outcome, reason, attempt run id, execution id and end instant.
-  *A-run*
+  *A-run#terminal-item-s*
 - `terminal-outcome` — An item row's outcome is `succeeded`, `failed` for a failure no retry changes, or `exhausted` for a retryable failure on the attempt spending {{run.items.retry-budget}}; its reason carries the failure tag and {{run.record.error-cap}} message.
-  *A-run*
+  *A-run#terminal-item-s*
 - `waiting-item` — Under `isolated_items`, every retry wait closes its item {{run.retry.waiting-state}} and frees its slot; once the pass ends, an item whose instant falls within {{run.retry.retry-after}}'s ceiling re-enters in the same fire.
   *because one throttled item sleeping in a slot delays every sibling queued behind it*
 - `served-key` — An item row carries its logical and entity keys as the job's input relation served them, so a key its source masks or classes lands under that rule, never in the clear.
-  *A-run*
+  *A-run#terminal-item-s*
 
 #### Scenarios
 
@@ -253,20 +253,20 @@ The engine commits source positions according to cursor kind and re-reads rows a
 - `declared-key-required` — The boundary re-land is idempotent on a table declaring a key; on a keyless table the repeats accumulate in its union view.
 - `watermark-shape` — A watermark position serializes as `{"field": "<name>", "at": <value>}`. `field` names the column whose values determine the watermark.
 - `field-rename` — Opening a position whose stored field differs from the declared `incremental` field raises `CursorFieldMismatch` before any request leaves the host.
-  *A-run*
+  *A-run#incremental-position-bound*
 - `frontier` — The frontier counts every fetched row, landed or not. A committed position advances or stays unchanged. An empty or older window does not rewind the position.
 - `walk-position` — Under a `monotonic` cursor, a pull reporting more and carrying a position other than the one it asked continues its walk: the next pull asks that position and admits rows from the walk's floor, and the run commits the frontier.
-  *A-run*
+  *A-run#incremental-position-bound*
 - `unorderable-position` — A row with no orderable value in the clock field, or a stream switching between text and numeric positions mid-pass, raises `CursorPositionUnorderable`, terminal for the pull.
-  *A-run*
+  *A-run#incremental-position-bound*
 - `allowed-lateness` — A table declares `allowed_lateness`, default 0 s; a `monotonic` poll re-reads from its stored position minus that window, so a row arriving that late still lands.
   *because lateness belongs to the source feeding a table, and a position records only where the frontier stands*
 - `turning-incremental-on` — Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current window once.
 - `skip-unchanged` — A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false.
 - `snapshot-completion` — A snapshot source reports complete inventory or unchanged skip independently of row count; a replacing run carries only complete inventory into its manifest.
-  *A-store*
+  *A-store#empty-complete-snapshot*
 - `zero-row-commit` — A complete empty snapshot of a replacing table commits {{store.declare.empty-replacement}}; a skipped unchanged input holds the frontier and position, and a failed pull publishes neither.
-  *A-store*
+  *A-store#empty-complete-snapshot*
 
 #### Scenarios
 
@@ -280,21 +280,21 @@ The engine commits source positions according to cursor kind and re-reads rows a
 The engine suspends runs durably until an external callback resolves an awakeable or its deadline expires.
 
 - `awakeable` — An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row through the awakeable store; an external party resumes by posting the token back.
-  *A-run*
+  *A-run#awakeable-resumes-credentialed*
 - `resume-is-a-step-output` — The journal records a resume payload as the awaited step's output under key `sha256("awakeable:" + token)`. A run that resumes and then crashes reads the payload back without suspending again.
 - `deadline` — A deadline is the creation instant plus a time-to-live, both caller-supplied RFC3339 Zulu strings; the core reads no wall clock.
 - `timeout-is-sticky` — The engine evaluates expiry against an injected instant. A suspension past its deadline becomes `timed_out` and keeps that state under any later instant.
 - `idempotent-resolution` — Resolving a token again with the identical payload returns the recorded value.
 - `conflicting-resolution` — A second resolution with a different payload raises `AwakeableAlreadyResolved` and leaves the recorded value untouched.
-  *A-run*
+  *A-run#external-signals-single*
 - `expired-token` — Resolving a token past its deadline raises `AwakeableTimedOut`.
-  *A-run*
+  *A-run#external-signals-single*
 - `unknown-token` — A token with no row raises `AwakeableUnknown` and allocates no state.
   *P2*
 - `resume-route` — `POST /awake/:token` on the served face answers `200` with the recorded payload, `404` for {{run.suspend.unknown-token}}, `409` for {{run.suspend.conflicting-resolution}} and `410` for {{run.suspend.expired-token}}. `GET /awake/:token` reports state without resuming.
-  *A-run*
+  *A-run#awakeable-resumes-credentialed*
 - `resume-authenticates` — The resume route admits the request's credential before reading the registry, answering `401` without one, and passes the credential's verified `on_behalf_of` as the caller subject.
-  *A-run*
+  *A-run#awakeable-resumes-credentialed*
 - `caller-binding` — An awakeable may bind a verified caller subject at mint; resolving it then takes the token and a credential for that subject, and any other caller answers as {{run.suspend.unknown-token}}. An unbound token is its whole authority.
   *because a token leaked through a log otherwise resumes a run, and answering unknown discloses nothing to the wrong holder*
 - `payload-offload` — A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it.
@@ -375,9 +375,9 @@ The runner classifies failures and schedules step retries through one retry laye
   *because a budget restarting at each crash retries a failing vendor without bound*
 - `pressure-is-local` — Rate-limit pressure against one source paces only that source's runs.
 - `bound-hit-is-transient` — A connector striking {{connector.package.linear-memory}} or {{connector.package.call-deadline}} fails the attempt `Transient`, the failure naming the bound it struck.
-  *A-run*
+  *A-run#bound-hit-rides*
 - `bound-hit-recorded` — The run record lists every bound hit with its step label, attempt and bound, a hit a later attempt recovered from included.
-  *A-run*
+  *A-run#bound-hit-rides*
 
 ## own
 
@@ -385,11 +385,11 @@ An execution owner binds pending work to a scope, connector build and plan ident
 
 - `execution-owner` — One durable execution owner exists per scope; a table or chunk owner holds the connector identity with its component world, the pipeline `content_hash` and the input hash.
 - `host-scope` — The catalog keys every owner on its scope — live table, backfill chunk or host-declared id — a table owner keeping its stored key byte for byte, and a host owner pinning the plan reference and identities the host supplies.
-  *A-run*
+  *A-run#host-registered-derive, A-run#host-opens-execution*
 - `body-implementation` — Store-driven owner pins include the host-verified digest of its executing binary and concrete registered body type; configuration selects a body name and supplies no implementation identity.
-  *A-run*
+  *A-run#host-registered-derive, A-run#registered-bodies-pin*
 - `body-dependencies` — Registration declares prompt/template, public provider/model configuration and policy identities affecting execution; owner pins carry their digests independently of structural input and output declarations.
-  *A-run*
+  *A-run#host-registered-derive, A-run#registered-bodies-pin*
 - `body-admission` — Body implementation and dependency pins bind before input reads, recorded-call replay or body entry; unavailable or changed pins follow {{run.own.pinned-plan-changed}}.
 - `body-compatibility` — Registrations without dependency declarations declare none and receive the verified host implementation pin; pending owners without implementation pins refuse before input reads or body entry under {{run.own.pinned-plan-changed}}.
   *because an unversioned record cannot establish which executable produced its paid calls*
@@ -401,12 +401,12 @@ An execution owner binds pending work to a scope, connector build and plan ident
 - `marker-reconciles` — At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced it before any replay.
   *because a crash between marker and catalog otherwise replays a recorded pull into rows already committed*
 - `pinned-plan-changed` — While an owner is pending, a changed pin — connector identity, component world, pipeline `content_hash`, or a host's plan reference or identities — raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the scope and both pin sets.
-  *A-connector*
+  *A-connector#executables-content-pinned*
 - `pin-recovery` — Restoring the recorded build and resuming to completion clears a pending owner; {{run.own.rewind}} retires a host or table owner, and an explicit chunk rewind retires the owners its window covers.
 - `pin-mismatch-recovery` — The {{run.own.pinned-plan-changed}} refusal names restoring the recorded build or plan and, under a host or table scope, {{run.own.rewind}} with the pending execution id; it names no recovery the command line lacks.
   *because an operator acts on the refusal's text, and a recovery no verb provides leaves the scope refusing every fire*
 - `rewind` — `contextful run rewind <execution-id> --reason <text>` retires the pending host or table owner holding that execution and leaves the scope's committed position alone, so the scope's next fire claims a fresh execution.
-  *A-run*
+  *A-run#host-registered-derive*
 - `rewind-record` — A retirement under {{run.own.rewind}} or {{run.own.apply-retires-superseded}} writes one `canceled` run row under the scope carrying the retired execution id, its pinned plan reference and the reason, started at the owner's open.
   *because a row started at the retirement reads as the job's latest start and postpones its next due fire*
 - `rewind-not-pending` — A rewind naming an execution no pending host or table owner holds raises `ExecutionRewindNotPending`.
@@ -414,30 +414,30 @@ An execution owner binds pending work to a scope, connector build and plan ident
 - `rewind-plan-current` — If no attempt or refused open requested another plan reference, rewinding the owner raises `ExecutionRewindPlanCurrent`. The operator may override this refusal with `--force`.
   *because such an owner resumes on its next fire, and retiring it discards its recorded work*
 - `rewind-unsafe` — Retiring an owner with an attempt on an unexpired {{run.record.owner-lease}}, a `waiting` attempt, or an awakeable pending before its deadline raises `ExecutionRewindUnsafe` naming it; `--force` overrides none.
-  *A-run*
+  *A-run#host-registered-derive*
 - `apply-retires-superseded` — A claimed `pipeline apply` retires a build or sweepless store-driven job's pending owner when the applied snapshot produces no matching declared plan reference: a verified body's `input` identity, otherwise its plan reference.
-  *A-run*
+  *A-run#host-registered-derive, A-run#superseded-owner-retires*
 - `apply-retire-refused` — An applied retirement meeting {{run.own.rewind-unsafe}} leaves the owner pending and the snapshot claimed, and the apply names the execution and {{run.own.rewind}} on standard error.
-  *A-run*
+  *A-run#host-registered-derive, A-run#superseded-owner-retires*
 - `scope-independence` — A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity.
 - `unclosed-execution` — An execution handle dropped without close records no status; its owner stays pending, and the next open under its scope resumes it once {{run.record.owner-lease}} lapses.
-  *A-run*
+  *A-run#host-registered-derive*
 - `live-owner` — An open under a host scope whose pending owner has an attempt on an unexpired {{run.record.owner-lease}} fails `Transient` naming that attempt, and its run row closes `failed` without joining the owner.
   *because two live handles on one owner share its journal, and either one retiring it strands the other*
 - `pin-release` — `success`, a failure that wrote no batch, and replay-stable failures under {{run.own.staged-bytes}}, {{run.land.late-type}}, or {{run.own.source-stage-schema}} release the owner; every other status holds it.
 - `admission-pin` — A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run.
-  *A-connector*
+  *A-connector#executables-content-pinned*
 - `backpressure` — The runner stages each shaped batch through the destination as one part before its next pull, so a run holds one pulled batch in memory; the commit names the staged parts.
   *because holding every batch until the commit sizes a run's memory by the sum of its pulls*
 - `one-commit-per-run` — One run produces one atomic commit per table, plus one per {{run.own.checkpoint-commit}}; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step or commit.
 - `staged-bytes` — A stage carrying the parts a run staged since its last commit past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run commits nothing more and retires its owner, so the next fire pulls afresh from the stored cursor.
   *because a replay of the run's recorded pulls stages the same bytes past the bound and fails identically, holding the table's owner indefinitely*
 - `checkpoint-commit` — When the parts a run of a position-addressed source staged since its last commit reach 512 MiB, the run commits them with the position after its last staged pull before staging more rows, then keeps pulling under the same execution.
-  *A-run*
+  *A-run#host-registered-derive*
 - `checkpoint-frontier` — Under a `monotonic` cursor, a checkpoint commits only before a pull whose every clock passes the run's frontier, so no commit's position splits the rows of one instant.
-  *A-run*
+  *A-run#host-registered-derive*
 - `checkpoint-resume` — A checkpoint caches its position and marker in the catalog cursor while the owner stays pending, and collects the journal's recorded pulls, so a resumption pulls afresh from that position.
-  *A-run*
+  *A-run#host-registered-derive*
 - `checkpoint-run-id` — A run's first commit lands under its run id and each later one under `<run id>.<n>`, `n` its zero-padded six-digit ordinal, so every commit names its own parts.
   *because the store holds one manifest per run id, and a later commit naming an earlier one's directory finds it committed*
 - `checkpoint-id-length` — A checkpoint whose next `<run id>.<n>` passes {{store.lay-out.run-id-shape}} raises `RunCheckpointIdTooLong` before it commits; the run commits nothing and retires its owner.
@@ -445,7 +445,7 @@ An execution owner binds pending work to a scope, connector build and plan ident
 - `checkpoint-landed` — A run failing after a checkpoint's commit lands records on its row the rows and bytes every landed checkpoint commit carried, including one whose cursor update then fails.
   *because the checkpoints stay committed, and a failed row counting no rows hides rows every read returns*
 - `checkpoint-scope` — A source is position-addressed when each pull's position names a watermark, page token or stable offset. A {{connector.source.http-url-walk}}, a replacing table, a body's prepared landing, and a seeding or receiving scope commit once.
-  *A-run*
+  *A-run#host-registered-derive*
 - `stage-schema` — A stage refuses against `schema.json` and the run's earlier stages, then merges its columns into the run's own staged schema; only the commit merges them into `schema.json`.
   *because otherwise rows no commit publishes fix a column's type in the table's schema*
 - `source-stage-schema` — A deterministic `SchemaIncompatible` from staging an ordinary source batch, raw or prepared, retires its owner unless another live attempt holds it; the failed run changes neither committed cursor nor published rows. This exception excludes prepared body-emission staging.
@@ -510,20 +510,20 @@ The engine stops work at run or pipeline scope through a shared cancellation tok
   *because a stop observed only at the pull leaves sleeps and child processes running after the record reads canceled*
 - `poll-interval` — The engine updates the token from one catalog read before the run's first await, then every 500 ms. Each await evaluates cancellation before work.
 - `engine-keeper` — One keeper per engine renews every registered execution's owner lease and feeds its token, sleeping until the earliest deadline; opening an execution registers it, and close or drop deregisters it.
-  *A-run*
+  *A-run#unclosed-execution-recovers*
 - `keeper-panic` — A keeper job that panics warns and leaves the keeper running: every other registration keeps its cadence, the panicking one retries at its next deadline, and dropping it returns.
   *because the keeper is shared, so one adapter's panic that ended its thread lapses every open execution's lease under a live run*
 - `land-path-uncut` — A table run's own stop does not interrupt landing. The engine finishes landing bytes already received and records the unfulfilled stop. Prepared body outputs additionally require {{run.own.body-parent}}.
 - `abandoned-work` — Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone.
-  *A-run*
+  *A-run#unclosed-execution-recovers*
 - `child-reaped` — A stop signals a running subprocess chain's process group. The engine records `canceled` only after reaping the group.
   *because a record reading canceled while a child still runs misstates what the machine is doing*
 - `storage-blip` — A failed poll read warns and keeps polling.
 - `not-in-flight` — Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.
-  *A-run*
+  *A-run#external-signals-single*
 - `re-mark` — Marking an already-marked row overwrites it with the newer request.
 - `distinct-terminal-status` — `canceled` is a terminal status apart from `failed`, and upstream health observations skip it.
-  *A-run*
+  *A-run#external-signals-single*
 - `resumable-remains` — A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position.
 - `authority-from-the-record` — A stop authorizes against the pipeline read off the run record, never off the request.
 - `stop-unauthorized` — A credentialed stop needs an `execute` grant covering the pipeline read off the run record; an uncovered or unrecorded run raises `CancelUnauthorized` without naming the pipeline, answering `403` over HTTP.
@@ -573,7 +573,7 @@ The store records run status, owner leases and execution history. History reques
   *because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading*
 - `row-at-open` — The engine writes a run row at open, before the first pull. Readers distinguish zero-row `success`, `failed` with an error kind, and no run row.
 - `record-folds` — An append to {{run.record.reserved-table}} runs a pass on it once {{store.fold.triggers}} fires; a pass that fails leaves the row appended and the append succeeding, and the next append retries it.
-  *A-run*
+  *A-run#run-record-folds*
 - `rebuild-restores-history` — A catalog rebuild restores run history from {{run.record.reserved-table}}, so a rebuilt catalog lists every run the store recorded instead of starting empty.
   *because the catalog is a cache, and a rebuild dropping history loses the only record of failed runs*
 - `time-travel` — Run history inherits the store's transaction-time bound, so one as-of selector rewinds it with every other table.
@@ -597,6 +597,7 @@ The store records run status, owner leases and execution history. History reques
 - `error-cap` — The shared run projection masks credential-shaped spans in recorded errors and caps each error at 2 KiB with an ellipsis marker. Every surface serves that projection.
 - `failure-publishes` — The bucket push runs on the failure arm as on the success arm, for every failure past run open.
 - `per-table-accounting` — A table failing inside a multi-table fire leaves one row with its error kind, a step-failure and a run-failure event, and a position where the next run resumes, under either `on_table_error` setting.
+  *A-run#run-record-folds*
 - `counts-at-destination` — The engine measures row and byte counts at the destination rather than at the source.
 - `skipped-count` — A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.
   *because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows*
@@ -605,9 +606,9 @@ The store records run status, owner leases and execution history. History reques
   *because a score reported per origin is auditable only when each run names the bounds it read under*
 - `plan-identity` — A run row retains its admitted plan reference after owner retirement; a record lacking that field decodes with no plan identity.
 - `schema-diff-home` — A table's run manifest holds its committed downgrade events with its parts and cursor; run history reads them under that run id.
-  *A-run*
+  *A-run#table-commit-owns*
 - `schema-diff-shape` — Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not commit contributes none.
-  *A-run*
+  *A-run#table-commit-owns*
 
 unsettled: Does a run the engine drives for a job continue the trace of the job's submitter, or start a fresh one? owner: run-path affects: run.record
 
@@ -640,7 +641,7 @@ The runner publishes a best-effort live view of run progress to subscribers.
 - `channel-eviction` — The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the durable record as after {{run.project.restart-discards}}.
   *because a channel allocated per run otherwise grows a long-lived process by every run it has seen*
 - `unauthenticated-upgrade` — The run-stream socket, `GET /runs/:run_id/stream`, authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.
-  *A-read*
+  *A-read#networked-read-transport*
 - `read-only-socket` — A subscription permits reads only. Stop requests use an authenticated route.
 - `restart-discards` — A restart discards in-memory snapshots; a subscriber recovers history from the durable record.
 
@@ -652,13 +653,13 @@ The scheduler runs one store-driven job per origin across a declared span. Each 
   *because an origin reading rows published after it scores a forecast against its own answer*
 - `sweep-id` — A sweep's id is the execution id of the fire that opens it; every origin's run records it, so run history groups one sweep's origins.
 - `frozen-as-of` — Every origin of one sweep reads at one `as_of`: the job's declared `as_of`, else the instant the sweep opens, recorded once as {{run.journal.open-as-of}} records it for resumes.
-  *A-run*
+  *A-run#sweep-freezes-transaction*
 - `origin-after-open` — A sweep whose `end` is later than its `as_of` raises `RunSweepOriginAfterOpen`, at validation for a declared `as_of` and at sweep open otherwise, and opens no origin.
   *because an origin past the frozen corpus reads nothing newer than it, and that empty answer looks like a forecast*
 - `carried-state` — Under `state = "carried"`, origins run in ascending order one at a time, each reading the job's output `tables` at the commit of the preceding origin and every other table at the sweep's `as_of`.
-  *A-run*
+  *A-run#sweep-freezes-transaction*
 - `fresh-state` — Under `state = "fresh"`, the default, every table an origin reads, its output tables included, resolves at the sweep's `as_of`, so no origin reads a row another origin wrote.
-  *A-run*
+  *A-run#sweep-freezes-transaction*
 - `simulated-write` — A row an origin lands into a table declaring `available_time` carries the origin as its availability instant, so a later origin reads it and an earlier origin never does.
   *because notes an agent wrote at a 2014 origin were available in 2014, not at the instant they committed*
 - `origin-pin` — An origin's plan reference hashes the sweep declaration and its origin beside the fields {{run.journal.input-pin}} hashes, so a resume under a changed sweep meets {{run.own.pinned-plan-changed}}.
@@ -678,11 +679,11 @@ unsettled: Does a carried-state sweep resume from the last committed origin or r
 Each deployment supplies a durable orchestrator implementing the execution interface. This section specifies provider steps and the engine behavior inside each step.
 
 - `role` — A target's orchestrator implements every operation in {{run.journal.substrate-port}}. The engine runner over {{run.journal.storage-ports}} is the reference implementation.
-  *A-run*
+  *A-run#orchestrator-role-port*
 - `provider-step` — A provider adapter runs one provider step per table pull or backfill chunk, recording that table's or chunk's commit pointer. The engine's journal entries under {{run.journal.entry-key}} remain inside the provider step.
-  *A-run*
+  *A-run#orchestrator-role-port*
 - `semantics` — Every `run.journal`, `run.retry`, `run.suspend` and `run.cancel` clause holds inside a provider step. An adapter's conformance suite demonstrates these clauses before a target profile names the adapter.
-  *A-run*
+  *A-run#orchestrator-role-port*
 - `resume` — A provider replay of a completed step returns its recorded commit pointer and re-enters nothing; a crash inside a step resumes under the engine's entry keys, so the parts land byte-identical to an uninterrupted run under {{run.journal.replay-lands}}.
   *because a replay the provider owns below the commit pointer lands per-target bytes, and the proofs over the journal then cover no managed target*
 - `one-retry-layer` — A provider adapter disables provider per-step retries. The schedule in {{run.retry.one-layer}} is the only retry layer. A failed step closes its table or chunk as the engine closes it.

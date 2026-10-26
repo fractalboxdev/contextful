@@ -171,9 +171,9 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
 - `row-ceiling` — A read's row ceiling is the least of the grant's, the request's, the template's, each touched table's published ceiling and {{read.respond.face-ceiling}}; an undeclared component imposes none, and the face ceiling is always declared.
   *A-authority#query-templates*
 - `duration-ceiling` — A statement's `max_duration_ms` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.
-  *A-read*
+  *A-read#statement-owns-deadline*
 - `byte-ceiling` — A response's `max_response_bytes` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.
-  *A-read*
+  *A-read#statement-owns-deadline*
 - `horizon` — A grant may carry `horizon`, an instant bounding the availability time and `since` of every read its holder makes, under {{read.horizon.inherited-bound}} and {{read.horizon.exceeds-horizon}}; an absent horizon leaves availability unbounded.
   *A-authority#horizon*
 - `aggregate` — An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.
@@ -254,7 +254,7 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority#one-credential*
 - `authoring-posture` — Every table write verb {{authority.verify.write-verbs}} runs under its manifest's authoring posture. `session` authors every write by one verified ambient credential's principal; `per_request` holds no ambient principal, leaving an unaccompanied write unauthored.
   *A-authority#one-credential*
-- `posture-key` — A manifest declares its posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.
+- `posture-key` — A manifest declares its authoring posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.
   *A-authority#one-credential*
 - `session-credential` — Under `session`, a table write verb run with no credential raises `AuthoringCredentialMissing` before its first effect.
   *A-authority#one-credential*
@@ -298,7 +298,7 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
 - `bearer-cap-fixed` — No issuance policy, face or command setting raises the cap {{authority.verify.bearer-lifetime}} sets; a credential living longer admits over a network only bound to a holder key.
   *A-authority#issuance-ceiling*
 
-unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manifest declaring no `authoring_posture`, or does the posture bind table write verbs alone? owner: authority affects: authority.issue
+unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manifest declaring no `authoring_posture`, or does the authoring posture bind table write verbs alone? owner: authority affects: authority.issue
 
 ## verify
 

@@ -7,7 +7,9 @@
 //! implementation of a port trait is an adapter (`assurance.structure-tree.adapter`); a
 //! site under a comment line opening with the mirror tag is admitted
 //! (`assurance.structure-tree.mirror-exemption`); `contextful-ci mirrors` resolves the
-//! same lines through [`mirror_tag`].
+//! same lines through [`mirror_tag`]. A `[limit]` entry naming its constant as
+//! `const = "<file>::<NAME>"` holds that constant to the bound's value
+//! (`assurance.structure-tree.bound-constant`).
 
 use anyhow::{Context, Result};
 use proc_macro2::Span;
@@ -150,8 +152,121 @@ pub fn check(root: &Path) -> Result<()> {
         duplicated.iter().for_each(|d| eprintln!("CapabilityDuplicated: {d}"));
         return Err(refuse("CapabilityDuplicated", format!("{} definition(s) restate an engine capability", duplicated.len())));
     }
-    println!("capabilities: {} homes, {} files scanned", registry.capability.len(), files.len());
+    let bounds = bound_constants(root)?;
+    println!("capabilities: {} homes, {} files scanned, {bounds} bound constants", registry.capability.len(), files.len());
     Ok(())
+}
+
+/// Every unit of time or size, in its kind's smallest unit: milliseconds or bytes.
+const SCALE: [(&str, f64, &str); 9] = [
+    ("ms", 1.0, "time"),
+    ("s", 1e3, "time"),
+    ("min", 6e4, "time"),
+    ("h", 3.6e6, "time"),
+    ("d", 8.64e7, "time"),
+    ("B", 1.0, "size"),
+    ("KiB", 1024.0, "size"),
+    ("MiB", 1_048_576.0, "size"),
+    ("GiB", 1_073_741_824.0, "size"),
+];
+
+/// The numbers a bound of `value` `unit` may be written as: itself, or the same quantity
+/// in another unit of its kind.
+fn spellings(value: f64, unit: &str) -> Vec<f64> {
+    let mut out = vec![value];
+    if let Some((_, scale, kind)) = SCALE.iter().find(|(u, _, _)| *u == unit) {
+        out.extend(SCALE.iter().filter(|(_, _, k)| k == kind).map(|(_, s, _)| value * scale / s));
+    }
+    out
+}
+
+/// `assurance.structure-tree.bound-constant`: each `[limit]` entry of `spec/terms/*.toml`
+/// carrying `const = "<file>::<NAME>"` names a non-test constant equal to its bound.
+fn bound_constants(root: &Path) -> Result<usize> {
+    let Ok(dir) = std::fs::read_dir(root.join("spec/terms")) else { return Ok(0) };
+    let mut fragments: Vec<_> = dir.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
+    fragments.sort();
+    let (mut checked, mut drift) = (0, Vec::new());
+    for path in fragments {
+        let text = std::fs::read_to_string(&path)?;
+        let Ok(doc) = text.parse::<toml::Table>() else { continue };
+        let Some(limits) = doc.get("limit").and_then(toml::Value::as_table) else { continue };
+        for (id, entry) in limits {
+            let Some(named) = entry.get("const").and_then(toml::Value::as_str) else { continue };
+            checked += 1;
+            let value = entry.get("value").and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)));
+            let unit = entry.get("unit").and_then(toml::Value::as_str).unwrap_or_default();
+            let Some((file, name)) = named.rsplit_once("::") else {
+                drift.push(format!("`{id}` names `{named}`, not `<file>::<NAME>`"));
+                continue;
+            };
+            if !scanned(file) {
+                drift.push(format!("`{id}` names a test file, {file}"));
+                continue;
+            }
+            let held = match root.join(file).is_file() {
+                false => None,
+                true => const_value(&parse(root, file)?.items, name),
+            };
+            let Some(held) = held else {
+                drift.push(format!("`{id}`: {file} defines no constant `{name}` with a numeric value"));
+                continue;
+            };
+            let Some(value) = value else {
+                drift.push(format!("`{id}` names a constant but carries no numeric value"));
+                continue;
+            };
+            if !spellings(value, unit).iter().any(|v| (v - held).abs() < 1e-9 * v.abs().max(1.0)) {
+                drift.push(format!("`{id}` is {value} {unit}, and {named} holds {held}"));
+            }
+        }
+    }
+    if !drift.is_empty() {
+        drift.iter().for_each(|d| eprintln!("BoundConstantDrift: {d}"));
+        return Err(refuse("BoundConstantDrift", format!("{} bound constant(s) differ from their registry value", drift.len())));
+    }
+    Ok(checked)
+}
+
+/// The numeric value of constant `name` among `items`, inside modules and impls too; a
+/// `Duration::from_*` initializer reads in milliseconds.
+fn const_value(items: &[syn::Item], name: &str) -> Option<f64> {
+    for item in items {
+        let found = match item {
+            syn::Item::Const(c) if c.ident == name => duration_or_number(&c.expr),
+            syn::Item::Static(st) if st.ident == name => duration_or_number(&st.expr),
+            syn::Item::Mod(m) if !cfg_test(&m.attrs) => m.content.as_ref().and_then(|(_, items)| const_value(items, name)),
+            syn::Item::Impl(i) => i.items.iter().find_map(|ii| match ii {
+                syn::ImplItem::Const(c) if c.ident == name => duration_or_number(&c.expr),
+                _ => None,
+            }),
+            _ => None,
+        };
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
+}
+
+fn duration_or_number(expr: &syn::Expr) -> Option<f64> {
+    let as_f64 = |n: Number| match n {
+        Number::Int(i) => i as f64,
+        Number::Float(f) => f,
+    };
+    if let syn::Expr::Call(call) = expr {
+        let syn::Expr::Path(p) = &*call.func else { return None };
+        let scale = match p.path.segments.last()?.ident.to_string().as_str() {
+            "from_millis" => 1.0,
+            "from_secs" => 1e3,
+            "from_mins" => 6e4,
+            "from_hours" => 3.6e6,
+            _ => return None,
+        };
+        let [arg] = call.args.iter().collect::<Vec<_>>()[..] else { return None };
+        return rust_number(arg).map(|n| as_f64(n) * scale);
+    }
+    rust_number(expr).map(as_f64)
 }
 
 /// A name lowercased with `_` and `-` removed, so `single_statement` and `singleStatement` meet.

@@ -176,15 +176,15 @@ Criteria: bounded model spend per batch, fixed; then recall of supported claims.
 Consequences: a failed gleaning never dead-letters a batch or holds its cursor.
 Revisit: gleaned claims superseded or contradicted at a rate above first-pass claims.
 
-## extraction-cache-keys — An extraction cache keys responses on fenced bytes, template and model
+## extraction-cache-keys — An extraction cache keys responses on marked bytes, template and model
 
 Context: re-running synthesis over unchanged rows, after a rebuild or an erasure's restaging, repeats model calls whose answer is already known.
-Decision: `read.synthesize` keeps each schema-valid response in an enforced, tenant-scoped table keyed on the fenced batch bytes' digest, the template hash, the model identifier and its cutoffs. Keying on fenced bytes keeps two credentials with different masks apart. A hit copies claims and stamps attribution fresh. The cache is a table, never a side file, under "The store holds nothing a user could not see". It holds model responses and never evidence verdicts, because "Resolve evidence once at write time and cache it" stays rejected.
+Decision: `read.synthesize` keeps each schema-valid response in an enforced, tenant-scoped table keyed on the marked batch bytes' digest, the template hash, the model identifier and its cutoffs. Keying on fenced bytes keeps two credentials with different masks apart. A hit copies claims and stamps attribution fresh. The cache is a table, never a side file, under "The store holds nothing a user could not see". It holds model responses and never evidence verdicts, because "Resolve evidence once at write time and cache it" stays rejected.
 Criteria: no response crosses a mask or tenant, fixed; then repeated model spend.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Enforced table keyed on fenced bytes, template and model *(chosen)* | — | Cached responses occupy store space, and each entry's provenance must name its batch's rows for an erasure to reach it. |
+| Enforced table keyed on marked bytes, template and model *(chosen)* | — | Cached responses occupy store space, and each entry's provenance must name its batch's rows for an erasure to reach it. |
 | Key on source row identity | Containment | Two sessions masking one row differently share a response one of them never saw. |
 | A side file outside the store | Enforcement | Its bytes escape grants, masks, replication rules and erasure. |
 | No cache | Model spend | Every re-run repays every call. |
@@ -336,19 +336,6 @@ A memory read's audit entry records the claim ids it returned under the caller's
 Consequences: a multi-hop question answers from edges the caller reads, and a walk cut by fan-out or frontier reports a non-zero `edges_omitted`, the walk's incompleteness signal.
 Revisit: a graph arm seeded from the query's entities earns a place in fusion; truncation dominates native multi-hop cases.
 
-## edges-supersede-under — Edges supersede under one-cardinality relations
-
-Each declared relation carries a direction, a cardinality of `one` or `many` edges per source, and a walkable flag; the engine fixes the traits of the reserved core. Under a `one` relation, a new edge from a source ends that source's live edge at the new edge's valid-from instant and names it as successor, so `reports_to` answers one manager at any instant while the prior edge keeps its interval. A `many` relation accumulates edges. A producer's valid-from stands, so a backfilled edge keeps its history; an absent one takes the row's availability instant, else its commit instant.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Declared cardinality, superseding under `one` *(chosen)* | — | Every declared relation states its traits; a misdeclared cardinality retires a live edge. |
-| Dead-letter the second edge | Currency | A changed manager is refused instead of recorded. |
-| Newest edge wins and the prior is deleted | History | What held at an earlier instant is lost. |
-| Keep every edge live | Answer | A one-valued relation answers two values at once. |
-
-Consequences: edges share the claims' validity-line discipline, and history answers through the ended edge's interval.
-
 ## join-matches-availability — The as-of join matches on availability time, not valid time
 
 `read.as-of-join` matches a driving row to the right relation's latest row whose declared availability instant precedes the driving instant. Valid time says when a value held; availability time says when anyone could see it. A restated figure keeps its original valid time, and a resource's new label can be published after its effective date, so a valid-time match hands a backtest a value published after its decision. The join runs inside one statement over registered relations, so restriction, masks and the three bounds compose as they do for any read; a right relation declaring no availability time refuses rather than falling back.
@@ -359,16 +346,6 @@ Consequences: edges share the claims' validity-line discipline, and history answ
 | Match on valid time | Leakage | A restatement published after the event joins as if known then. |
 | Match on the transaction stamp | Backfill | A history landed in one commit joins nothing before that commit. |
 | A dedicated join tool | Composition | The tool restates each relation's restriction outside the statement guard. |
-
-## horizon-withholds-load — A horizon withholds load stamps and keeps citation stamps
-
-Under a horizon `read.horizon.engine-stamps` drops `_ingested_at` and `_commit_seq` from the projection: each dates a row's load, and a 2026 backfill read under a 2014 horizon would reveal the present. `_run_id` and `_row_seq` stay, because `context.reference` cites a row by them and neither orders rows in time across runs.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Drop load stamps, keep citation stamps *(chosen)* | — | A run identifier can still name its date when an operator spells it so. |
-| Drop every engine stamp | Citation | A horizon read returns rows no reference can name. |
-| Drop every stamp and add an opaque citation token | Simplicity | A second identity scheme beside the one the store already records. |
 
 ## sidecar-serves-past — A sidecar serves a past horizon by filtered traversal
 

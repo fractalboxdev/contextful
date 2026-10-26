@@ -74,8 +74,8 @@ contributes no rows instead of running unfiltered ({{read.retrieve.unsatisfiable
 
 Ranking fuses vector cosine with lexical BM25 scores ({{read.rank.fusion}}). A
 question's timeframe orders rows but drops none ({{read.rank.question-window-is-a-tier}}).
-Each stored vector sits beside an `embedding_model` column naming the model that
-produced it ({{read.embed.model-identifier}}).
+Each stored vector sits beside the name of the model that produced it
+({{read.embed.model-identifier}}), so the rows themselves record how they were embedded.
 
 To report that no document mentions a status change, the agent counts rows. A low top
 score proves no absence ({{read.respond.coverage-is-a-count}}).

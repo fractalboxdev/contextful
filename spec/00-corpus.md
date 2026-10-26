@@ -11,6 +11,7 @@ owns:
   - diagram
   - targets
   - guide
+  - topic
 ---
 
 # Corpus law
@@ -29,6 +30,8 @@ spec/
                         and one <contract>.toml fragment per contract
   adr/                  P<n>-<slug>.md principles, A-<contract>.md decisions
   guide/                <contract>.md, one teaching page per contract
+  topics/               <slug>.md, one page per cross-contract question
+  glossary.md           generated
   cards/                <contract>.md, generated
   pins.toml             clause id -> demonstrating artifact, plus the coverage floor
   roadmap.md            milestone -> operation set
@@ -44,7 +47,7 @@ formal/                 Lean 4 models and theorems, pinned like tests
 The three segments of a clause id and what makes each legal.
 
 - `clause-id` — A clause id is three dot-separated segments — contract, operation, subject — each matching `[a-z0-9-]+`. A clause item writes the subject alone; its file and section supply the rest.
-  *A-corpus*
+  *A-corpus#clause-addressed-sentence*
 - `contract-segment` — The first segment is the file's front-matter `contract`, which names an entry of `spec/terms/contract.toml` listing that file.
   *P8*
 - `operation-segment` — The second segment is the `## ` section holding the item: an operation registered in the contract's fragment and listed in the front-matter `owns` of exactly one of the contract's files.
@@ -65,9 +68,9 @@ The section order of a contract file, the lede, clause list and groups of each o
 - `file-headings` — A contract file carries front matter with `contract` and `owns`, one `# ` title matching its contract entry, one `## <operation>` section per owned operation in `owns` order, then an optional `## Shapes`.
   *P8*
 - `lede` — An operation section opens with a lede: one paragraph stating what the operation covers. The lede is the operation's only description; its fragment entry carries no gloss.
-  *A-corpus*
+  *A-corpus#clause-addressed-sentence*
 - `clause-list` — After the lede, one contiguous list holds the section's ungrouped clauses, each item `` - `<subject>` — <statement> `` on one line, optionally followed by its Why on a two-space-indented `*…*` line.
-  *A-corpus*
+  *A-corpus#clause-addressed-sentence*
 - `group` — After an operation's clause list, each `### <group>` section holds a one-sentence lede and its own contiguous clause list. A group names no segment of a clause id and follows no content after a list.
   *because a long operation reads as named parts, and a group renames no clause*
 - `group-clauses` — A clause list, an operation's or a group's, holds at most 30 clauses; each list past it counts toward the `anatomy-long-lists` ceiling.
@@ -77,7 +80,7 @@ The section order of a contract file, the lede, clause list and groups of each o
 - `long-operation` — `contextful-spec state` prints an advisory naming each operation holding more than 30 clauses; the advisory refuses nothing.
   *because a long operation is a grouping candidate, and the grouping is a reader's judgment no checker makes*
 - `after-list` — Prose, diagrams, tables, scenarios and unsettled lines follow the clause list and state no obligation.
-  *A-corpus*
+  *A-corpus#clause-addressed-sentence*
 - `scenario` — A `#### Scenarios` list under an operation holds items `` - `<clause id>`: WHEN <trigger>, THEN <outcome> `` or a backticked `tests/fixtures/` path; the lock file attaches each to its clause.
   *because an example is the test an implementer writes first, and a rule without one leaves the agent to invent it*
 - `bad-scenario` — A scenario naming a clause outside its operation, or holding neither a WHEN/THEN sentence nor a fixture path, raises `SpecScenario`.
@@ -106,7 +109,7 @@ unsettled: Does a replica that has never pulled report an empty store or refuse 
 
 ## registry
 
-Where a spelling is registered, the single owner of an error or a bound, the collision test, the source sites checked against each error, and the ratchets the registry records.
+Where a spelling is registered, the single owner of an error or a bound, the collision test, the source sites checked against each error, the ratchets the registry records, and the term table with the glossary and first-use rule it drives.
 
 - `fragment` — Each contract owns `spec/terms/<contract>.toml`, holding its operations, and its errors and named bounds each with a gloss.
   *P8*
@@ -126,15 +129,33 @@ Where a spelling is registered, the single owner of an error or a bound, the col
   *because a ratchet that only refuses growth leaves a reduction unrecorded, and the next change spends it unseen*
 - `drift` — A breach of {{corpus.registry.variant-shape}} or {{corpus.registry.variant-gloss}}, a performed refusal whose error has no defining site, and committed refusals with one past the `registry-committed-sites` ceiling raise `SpecRegistryDrift`.
   *because a committed clause with code is work status cannot see, and a performed refusal with no code passes on its test alone*
+- `term` — A fragment's `[term]` table maps a lowercase term to the clause of its own contract that defines it, a gloss of at most 25 words, and optional `avoid` spellings the term replaces.
+  *because a reader assumes two words name two things, and one registered spelling per meaning makes that assumption hold*
+- `bad-term` — A term registered in two fragments, a term naming a missing clause or another contract's clause, an empty or longer gloss, and an `avoid` spelling that is itself a term raise `SpecTerm`.
+  *because one spelling naming two meanings is the homonym the term table exists to refuse*
+- `glossary` — `contextful-spec state` renders `spec/glossary.md`: every registered term in alphabetical order with its gloss and its defining clause as a pointer; a committed copy differing from regeneration counts under {{corpus.render.generated}}.
+  *because a definition a reader cannot find by name serves only its writer*
+- `vale-terms` — `contextful-spec state` writes `.vale/styles/WriteTechnically/Terms.yml`, a Vale substitution rule mapping each `avoid` spelling to its term; a committed copy differing from regeneration counts under {{corpus.render.generated}}.
+  *because the registry decides each term, and a hand-edited copy of its list drifts from it*
+- `term-first-use` — A guide's first use of a registered term, in any case or inflection, sits in a paragraph carrying the term's defining clause as a pointer; first uses without one past the `term-first-use` ceiling raise `SpecTermFirstUse`.
+  *because a reader meets a term at its first use, and a definition reached later arrives after the misreading*
+- `prose-report` — `contextful-ci prose` runs Vale 3.25.1 with `.vale/vale.ini` over `spec/guide/` and `references/`, prints each alert and their count, and exits 0, naming an absent or other Vale version instead of refusing.
+  *because Vale finds candidates a reviewer decides, and a check that cannot judge an alert refuses nothing*
 
 ## reference
 
-The one legal way a statement reaches a fact another clause owns, and the ban on restatement and literature.
+The one legal way a statement reaches a fact another clause or a code type owns, and the ban on restatement and literature.
 
 - `pointer` — `{{<clause id>}}` is the one way a statement reaches a fact another clause owns. The lock file records every pointer as an edge.
   *P8*
 - `dangling` — A `{{id}}` naming no clause raises `SpecDanglingReference`.
   *P8*
+- `type-pointer` — `{{type:<crate>::<module>::<Type>}}` names a Rust struct or enum in place of its keys; the lock file records its file, line and each field or variant with its `serde` spelling and doc comment, and the contract's card lists them.
+  *because a key list copied from code drifts from the code, and the type already holds every key with its gloss*
+- `type-unresolved` — A type pointer whose crate and module part names no file defining that struct or enum raises `SpecTypeUnresolved`.
+  *because a pointer to a moved or renamed type shows the reader no keys*
+- `restates-code` — `contextful-spec state` prints a `SpecRestatesCode` advisory naming each clause that backticks three or more keys of one deserialized struct or enum and carries no pointer to it; `spec/status.md` records their count.
+  *because a key list in a clause is a second home for its type, and which list a pointer replaces is a reviewer's judgment*
 - `no-literature` — A spec file carries no hyperlink to an external document and no path under `references/`; either raises `SpecExternalLink`. Literature lives in `references/`, which cites clause ids.
   *because the contract is judged by behavior, and a citation invites arguing from authority*
 
@@ -182,7 +203,7 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
 - `lean-tag` — A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}.
   *because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale*
 - `theorem-beside-test` — A clause carries at most one theorem pin beside its test pins. A theorem pin alone states a property of a model, and performs once its proof holds no `sorry`.
-  *A-assurance*
+  *A-assurance#source-change-carries*
 - `bound-theorem` — Beside test pins, a theorem pin counts only when the `binding` of its row in an `inventory.toml` under `formal/` names one of those tests; an uncounted theorem leaves the clause's verdict to its tests.
   *because a proof of a model the code never drives says nothing about the code the clause names*
 - `proved` — A performed clause computes `proved` when a counted theorem pin and a test pin of it both perform; `spec/status.md` counts proved clauses per contract and each card per operation.
@@ -234,11 +255,11 @@ Roadmap names, acceptance tests, milestone verdicts and the clauses no milestone
 - `roadmap` — `spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.
   *P8*
 - `acceptance` — A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored or holding a body line that opens with `todo!`, and `passing` otherwise.
-  *A-assurance*
+  *A-assurance#source-change-carries*
 - `closed` — A milestone computes `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause, and `open` otherwise.
   *because one passing acceptance test drives one path through a milestone, and an operation without a performed clause demonstrates nothing*
 - `acceptance-first` — A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.
-  *A-assurance*
+  *A-assurance#source-change-carries*
 - `unowned` — An unpinned clause outside every operation an open milestone names, and named in backticks by no `unsettled:` line of its operation, is unowned; unowned clauses past the `clause-unowned` ceiling raise `SpecClauseUnowned`.
   *because a clause no test pins, no milestone schedules and no open question names is a promise nobody keeps*
 - `deferred-depth` — A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.
@@ -249,11 +270,11 @@ Roadmap names, acceptance tests, milestone verdicts and the clauses no milestone
 The generated files, and the vocabulary no authored file carries.
 
 - `generated` — `contextful-spec state` regenerates `spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json`, and `contextful-spec extract` the lock file alone. A committed copy differing from regeneration raises `SpecStaleRender`.
-  *P8*
+  *P8, A-assurance#generated-artifacts-prove*
 - `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pins: kind, path, name, line, verdict, proof.
   *P8*
 - `card` — `contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.
-  *A-corpus*
+  *A-corpus#teaching-reference-live*
 - `dated-prose` — The words `planned`, `not yet`, `currently`, `today`, `shipped`, `implemented`, `previously`, `used to`, `legacy`, `TODO`, `FIXME` and `WIP`, and an ISO date, raise `SpecDatedProse` in any authored file.
   *because build state is computed, and a dated sentence is stale the day it lands*
 - `counterfactual` — The words `will`, `would` and `shall` raise `SpecCounterfactual` in a contract file or a guide.
@@ -316,7 +337,7 @@ Per-provider deployment target files, the roles each shape fills, and the page r
 A non-normative teaching page per contract, and what keeps it from becoming a second home for a rule.
 
 - `file` — Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose outside diagrams of at most 400 words plus 20 words per operation its contract's fragment registers.
-  *A-corpus*
+  *A-corpus#teaching-reference-live*
 - `non-normative` — A guide holds no clause item and names no registered error. It reaches a rule by `{{<clause id>}}` and an operation by `{{<contract>.<operation>}}`, which resolves against that contract's fragment. No contract file links a guide.
   *because a rule restated in teaching prose is a second home that drifts from the first*
 - `reach` — Each operation a contract's fragment registers appears in the contract's guide as an operation pointer or a pointer to one of its clauses; an operation the guide misses raises `SpecGuideReach`, naming it.
@@ -326,4 +347,21 @@ A non-normative teaching page per contract, and what keeps it from becoming a se
 - `bound` — A guide sentence holding a number equal to a bound value in its contract's fragment also holds the pointer to a clause owning a bound of that value; a sentence without one raises `SpecGuideBound`.
   *because a restated number drifts when its bound changes, and the pointer names the one place to change it*
 - `bad-guide` — A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.
+  *P8*
+
+## topic
+
+A non-normative page answering one question that spans contracts, the clauses it answers, and the bounds that keep it a route into the contracts.
+
+- `file` — A topic page `spec/topics/<slug>.md` carries front matter `topic`, one `# ` title equal to its entry's `title` in `spec/terms/topic.toml`, then prose of at most 600 words outside diagrams.
+  *because a topic routes a reader to the clauses, and a page past one screen of reading starts restating them*
+- `pages` — The corpus holds at most 8 pages under `spec/topics/`.
+  *because each topic answers a question the contracts split, and a growing set of them becomes a second corpus*
+- `answers` — A topic entry lists under `answers` the clause ids its page answers; the page reaches each within one pointer step, by pointing at it or at a clause whose statement points at it.
+  *because a reader of a topic follows one link to the rule, and a longer path is the search the page exists to save*
+- `contract-pointers` — A topic page holds at most 3 pointers into any one contract, counting a repeated pointer once.
+  *because a page pointing at most of one contract is that contract's guide, and a topic crosses contracts*
+- `non-normative` — A topic page holds no clause item and names no registered error, reaching each rule by `{{id}}`; no contract file links a topic page.
+  *because a rule restated on a topic page is a second home that drifts from the first*
+- `bad-topic` — A page without an entry or an entry without a page, a page off its shape, words, pointer bound or {{corpus.topic.non-normative}}, more pages than {{corpus.topic.pages}}, and an unreachable or missing answer raise `SpecTopic`.
   *P8*

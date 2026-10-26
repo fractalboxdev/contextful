@@ -28,9 +28,9 @@ limit and a per-call deadline ({{connector.package.call-deadline}}).
 
 Its manifest lists the hosts it reaches, and the host decides that grant at load
 ({{connector.declare-capability.declared-grant}}). Code reaching past the list fails to
-load ({{connector.declare-capability.undeclared-access}}). When a new version asks for
-another host, the reload compares the two manifests and reports each widened host as a
-witness the old manifest refuses ({{connector.widen.host-witness}}).
+load ({{connector.declare-capability.undeclared-access}}). When a new version lists
+another host, the reload compares the two manifests: a candidate host succeeds only
+when an admitted host already covers it ({{connector.widen.host-inclusion}}).
 
 ## What crosses the interface
 
@@ -89,9 +89,12 @@ returns to the step's schedule.
 ## Model calls
 
 Every model call resolves to one operator-configured endpoint
-({{connector.infer.model-endpoint}}). Ingested values travel inside a data fence, which
-lowers the success rate of injected instructions but bounds nothing
-({{connector.infer.fence-is-not-a-boundary}}). Model output carries the least-trusted
+({{connector.infer.model-endpoint}}). Data boundary markers enclose each ingested value
+({{connector.infer.data-fence}}). The markers lower the success rate of injected instructions but
+bound nothing
+({{connector.infer.fence-is-not-a-boundary}}).
+
+Model output carries the least-trusted
 label among its inputs ({{connector.infer.output-taint}}).
 
 ## Built-in sources and Drive

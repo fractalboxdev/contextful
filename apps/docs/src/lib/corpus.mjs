@@ -54,7 +54,7 @@ export const collectionRoute = (collection, id) => {
  */
 export const legacyRedirects = () => Object.fromEntries([
   ["/docs/guide/", "/docs/"],
-  ...["spec", "guide", "cards", "adr"].flatMap((collection) =>
+  ...["spec", "guide", "topics", "cards", "adr"].flatMap((collection) =>
     mdFiles(collection === "spec" ? SPEC_DIR : join(SPEC_DIR, collection)).map((file) => {
       const id = basename(file, ".md");
       return [`/${collection}/${id}/`, collectionRoute(collection, id)];
@@ -63,12 +63,12 @@ export const legacyRedirects = () => Object.fromEntries([
 ]);
 
 export const sitePaths = () => [...new Set([
-  "/", "/docs/", "/docs/specs/", "/docs/specs/contracts/", "/docs/specs/cards/", "/docs/specs/adr/",
+  "/", "/docs/", "/docs/specs/", "/docs/specs/contracts/", "/docs/specs/topics/", "/docs/specs/cards/", "/docs/specs/adr/",
   ...Object.values(legacyRedirects()).map((route) => route.split("#")[0]),
 ])];
 
 /** Machine-readable exports read the same Markdown as the content collections. */
-export const sourceDocuments = () => ["spec", "guide", "cards", "adr"].flatMap((collection) => {
+export const sourceDocuments = () => ["spec", "guide", "topics", "cards", "adr"].flatMap((collection) => {
   const directory = collection === "spec" ? SPEC_DIR : join(SPEC_DIR, collection);
   return mdFiles(directory).map((file) => ({
     route: collectionRoute(collection, basename(file, ".md")),
@@ -83,7 +83,7 @@ export const routeFor = (absPath) => {
   const stem = rel.slice(0, -3);
   if (!stem.includes("/")) return collectionRoute("spec", stem);
   const [dir, name, ...rest] = stem.split("/");
-  if (rest.length === 0 && ["adr", "guide", "cards"].includes(dir)) return collectionRoute(dir, name);
+  if (rest.length === 0 && ["adr", "guide", "topics", "cards"].includes(dir)) return collectionRoute(dir, name);
   return undefined;
 };
 
@@ -97,7 +97,11 @@ const frontMatter = (src) => {
 
 /** A statement as plain text: code ticks and emphasis dropped, a `{{pointer}}` shown as its last segment. */
 const plainStatement = (s) =>
-  s.replace(/\{\{(?:[a-z0-9-]+\.)+([a-z0-9-]+)\}\}/g, "$1").replace(/[`*]/g, "").trim();
+  s
+    .replace(/\{\{(?:[a-z0-9-]+\.)+([a-z0-9-]+)\}\}/g, "$1")
+    .replace(/\{\{type:(?:\w+::)*(\w+)\}\}/g, "$1")
+    .replace(/[`*]/g, "")
+    .trim();
 
 /**
  * The clause items and operation ledes of one contract file. Under each `## <operation>`,
@@ -201,9 +205,10 @@ export const lockPins = (lock) => {
 
 /**
  * Clause id → `{ route, statement, pins }`, `contract.operation` → `{ url, lede }` of the
- * owning section, record id → route, error identifier → `{ clause, gloss }`, and ADR
- * section `A-<contract>#<slug>` → the ids of the clauses citing it. Read fresh on
- * every call so `astro dev` tracks edits. `lock` stands in for `spec/spec.lock.json`.
+ * owning section, record id → route, error identifier → `{ clause, gloss }`, ADR
+ * section `A-<contract>#<slug>` → the ids of the clauses citing it, and a type pointer's
+ * Rust path → `{ href, kind }` from the lock's `types`. Read fresh on every call so
+ * `astro dev` tracks edits. `lock` stands in for `spec/spec.lock.json`.
  */
 export const corpusIndex = (lock = readLock()) => {
   const clauses = new Map();
@@ -223,5 +228,11 @@ export const corpusIndex = (lock = readLock()) => {
   }
   const records = new Map();
   for (const f of mdFiles(ADR_DIR)) records.set(recordId(f), routeFor(join(ADR_DIR, f)));
-  return { clauses, operations, records, errors: registeredErrors(), sections: new Map(Object.entries(lock.sections ?? {})) };
+  const types = new Map(
+    Object.entries(lock.types ?? {}).map(([path, { file, line, kind }]) => [
+      path,
+      { kind, href: `${REPOSITORY}/blob/main/${file}${line ? `#L${line}` : ""}` },
+    ]),
+  );
+  return { clauses, operations, records, errors: registeredErrors(), sections: new Map(Object.entries(lock.sections ?? {})), types };
 };

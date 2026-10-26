@@ -34,6 +34,9 @@ zeroize = { version = "1", features = ["derive"] }
 schema = ["dep:schemars"]
 
 [dev-dependencies]
+# Model-based merge tests draw writer histories as state machines.
+proptest = "1.10"
+proptest-state-machine = "0.8"
 trybuild = "1"
 
 [[test]]

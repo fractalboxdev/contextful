@@ -76,6 +76,9 @@ carries prose between its pointers, so a guide never collapses into an index
 ({{corpus.guide.pointer-density}}). A number equal to a bound value travels with that
 bound's pointer ({{corpus.guide.bound}}).
 
+A question that spans contracts gets a topic page under `spec/topics/`: at most 600 words
+that point at the clauses answering it ({{corpus.topic.file}}).
+
 The spec cites no literature; `references/` points into the spec instead
 ({{corpus.reference.no-literature}}).
 

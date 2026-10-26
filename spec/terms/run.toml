@@ -163,66 +163,74 @@ DeriveTestEngineUnsupported    = { clause = "run.test-engine.unsupported-driver"
 
 [limit]
 llm-candidate-min-tail = { clause = "run.guard-secrets.llm-admission", value = 32, unit = "B", basis = "chosen", gloss = "Minimum LLM candidate tail; bare candidates require this many initial ASCII alphanumerics." }
-journal-inline-cutoff      = { clause = "run.journal.inline-cutoff", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest journaled value held inline in its row." }
-blob-sweep-interval        = { clause = "run.journal.blob-sweep", value = 24, unit = "h", basis = "chosen", gloss = "Cadence of the blob mark-and-sweep pass." }
-blob-sweep-grace           = { clause = "run.journal.blob-sweep", value = 1, unit = "h", basis = "chosen", gloss = "Age below which an unreferenced blob survives a sweep." }
-retry-base-delay           = { clause = "run.retry.default-policy", value = 100, unit = "ms", basis = "chosen", gloss = "First delay of the default schedule." }
+journal-inline-cutoff      = { clause = "run.journal.inline-cutoff", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest journaled value held inline in its row.", const = "crates/contextful-core/src/run/journal.rs::INLINE_CUTOFF_BYTES" }
+blob-sweep-interval        = { clause = "run.journal.blob-sweep", value = 24, unit = "h", basis = "chosen", gloss = "Cadence of the blob mark-and-sweep pass.", const = "crates/contextful-core/src/run/journal.rs::BLOB_SWEEP_INTERVAL_SECS" }
+blob-sweep-grace           = { clause = "run.journal.blob-sweep", value = 1, unit = "h", basis = "chosen", gloss = "Age below which an unreferenced blob survives a sweep.", const = "crates/contextful-core/src/run/journal.rs::BLOB_SWEEP_GRACE_SECS" }
+retry-base-delay           = { clause = "run.retry.default-policy", value = 100, unit = "ms", basis = "chosen", gloss = "First delay of the default schedule.", const = "crates/contextful-core/src/run/retry.rs::DEFAULT_BASE_MS" }
 retry-max-delay            = { clause = "run.retry.default-policy", value = 30, unit = "s", basis = "chosen", gloss = "Clamp on one computed delay." }
 retry-default-attempts     = { clause = "run.retry.default-policy", value = 5, unit = "attempts", basis = "chosen", gloss = "Total attempts of the default schedule." }
 retry-jitter-ceiling       = { clause = "run.retry.default-policy", value = 250, unit = "ms", basis = "chosen", gloss = "Upper bound of the seeded additive jitter." }
-retry-single-attempt       = { clause = "run.retry.single-attempt", value = 1, unit = "attempts", basis = "chosen", gloss = "Total attempts of the no-retry schedule." }
-retry-after-ceiling        = { clause = "run.retry.retry-after", value = 300, unit = "s", basis = "chosen", gloss = "Longest remaining retry wait a step sleeps in process before closing waiting." }
+retry-single-attempt       = { clause = "run.retry.single-attempt", value = 1, unit = "attempts", basis = "chosen", gloss = "Total attempts of the no-retry schedule.", const = "crates/contextful-core/src/run/retry.rs::SINGLE_ATTEMPT" }
+retry-after-ceiling        = { clause = "run.retry.retry-after", value = 300, unit = "s", basis = "chosen", gloss = "Longest remaining retry wait a step sleeps in process before closing waiting.", const = "crates/contextful-core/src/run/retry.rs::RETRY_AFTER_CEILING_SECS" }
 d1-request-timeout         = { clause = "run.journal.d1-transport", value = 15, unit = "s", basis = "chosen", gloss = "Wall clock of one D1 request attempt, transfer included." }
-d1-transport-attempts      = { clause = "run.journal.d1-transport", value = 3, unit = "attempts", basis = "chosen", gloss = "Total attempts of a D1 request whose repetition changes nothing." }
-cancel-poll-interval       = { clause = "run.cancel.poll-interval", value = 500, unit = "ms", basis = "chosen", gloss = "Cadence of the catalog read feeding the cancellation token." }
-normalize-nesting-depth    = { clause = "run.normalize.nesting-depth", value = 5, unit = "levels", basis = "chosen", gloss = "Nesting `native` keeps before a subtree lands as `Json`." }
+d1-transport-attempts      = { clause = "run.journal.d1-transport", value = 3, unit = "attempts", basis = "chosen", gloss = "Total attempts of a D1 request whose repetition changes nothing.", const = "crates/contextful-d1/src/lib.rs::TRANSPORT_ATTEMPTS" }
+cancel-poll-interval       = { clause = "run.cancel.poll-interval", value = 500, unit = "ms", basis = "chosen", gloss = "Cadence of the catalog read feeding the cancellation token.", const = "crates/contextful-core/src/run/cancel.rs::POLL_INTERVAL_MS" }
+normalize-nesting-depth    = { clause = "run.normalize.nesting-depth", value = 5, unit = "levels", basis = "chosen", gloss = "Nesting `native` keeps before a subtree lands as `Json`.", const = "crates/contextful-core/src/pipeline/normalize.rs::DEFAULT_NESTING_DEPTH" }
 parse-child-deadline       = { clause = "run.land.parse-deadline", value = 60, unit = "s", basis = "chosen", gloss = "Wall clock one input's decoder child may run." }
 parse-child-memory         = { clause = "run.land.parse-memory", value = 512, unit = "MiB", basis = "chosen", gloss = "Memory one input's decoder child may consume." }
-receive-group-bytes        = { clause = "run.land.receive-group", value = 64, unit = "MiB", basis = "chosen", gloss = "Spooled body bytes one receive group lands." }
-receive-retry-after        = { clause = "run.land.receive-retry-after", value = 1, unit = "s", basis = "chosen", gloss = "Interval a backpressured sender waits before resending." }
-receive-push-wait          = { clause = "run.land.receive-push-wait", value = 30, unit = "s", basis = "chosen", gloss = "Longest wait a delivered batch spends on the push guard before answering retryable." }
-staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages between two of its commits." }
-checkpoint-bytes           = { clause = "run.own.checkpoint-commit", value = 512, unit = "MiB", basis = "chosen", gloss = "Bytes one run stages before it commits a checkpoint and keeps pulling." }
-owner-lease-renewal        = { clause = "run.record.owner-lease", value = 10, unit = "s", basis = "chosen", gloss = "Renewal cadence of a run row's owner lease." }
-owner-lease-ttl            = { clause = "run.record.owner-lease", value = 30, unit = "s", basis = "chosen", gloss = "Life of an unrenewed run owner lease." }
-site-id-min-length         = { clause = "run.record.site-id-length", value = 1, unit = "chars", basis = "chosen", gloss = "Shortest site id." }
-site-id-max-length         = { clause = "run.record.site-id-length", value = 64, unit = "chars", basis = "chosen", gloss = "Longest site id." }
-describe-history-default   = { clause = "run.record.describe-window", value = 5, unit = "rows", basis = "chosen", gloss = "Runs the describe surface returns unasked." }
-describe-history-ceiling   = { clause = "run.record.describe-window", value = 500, unit = "rows", basis = "chosen", gloss = "Highest ceiling the describe surface honors." }
-export-history-default     = { clause = "run.record.export-ceiling", value = 500, unit = "rows", basis = "chosen", gloss = "Runs the export returns unasked." }
-export-history-ceiling     = { clause = "run.record.export-ceiling", value = 5000, unit = "rows", basis = "chosen", gloss = "Highest ceiling the export honors, per pipeline." }
-export-batch-rows          = { clause = "run.export.batch-rows", value = 500, unit = "rows", basis = "chosen", gloss = "Rows one OTLP delivery batch holds." }
+receive-group-bytes        = { clause = "run.land.receive-group", value = 64, unit = "MiB", basis = "chosen", gloss = "Spooled body bytes one receive group lands.", const = "crates/contextful-cli/src/receive.rs::GROUP_BYTES" }
+receive-retry-after        = { clause = "run.land.receive-retry-after", value = 1, unit = "s", basis = "chosen", gloss = "Interval a backpressured sender waits before resending.", const = "crates/contextful-connectors/src/receive.rs::RETRY_AFTER_MS" }
+receive-push-wait          = { clause = "run.land.receive-push-wait", value = 30, unit = "s", basis = "chosen", gloss = "Longest wait a delivered batch spends on the push guard before answering retryable.", const = "crates/contextful-cli/src/receive.rs::PUSH_WAIT_SECS" }
+staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages between two of its commits.", const = "crates/contextful-core/src/run/ports.rs::STAGED_BYTES_PER_RUN" }
+checkpoint-bytes           = { clause = "run.own.checkpoint-commit", value = 512, unit = "MiB", basis = "chosen", gloss = "Bytes one run stages before it commits a checkpoint and keeps pulling.", const = "crates/contextful-engine/src/runner.rs::CHECKPOINT_BYTES" }
+owner-lease-renewal        = { clause = "run.record.owner-lease", value = 10, unit = "s", basis = "chosen", gloss = "Renewal cadence of a run row's owner lease.", const = "crates/contextful-core/src/run/record.rs::OWNER_LEASE_RENEWAL_SECS" }
+owner-lease-ttl            = { clause = "run.record.owner-lease", value = 30, unit = "s", basis = "chosen", gloss = "Life of an unrenewed run owner lease.", const = "crates/contextful-core/src/run/record.rs::OWNER_LEASE_TTL_SECS" }
+site-id-min-length         = { clause = "run.record.site-id-length", value = 1, unit = "chars", basis = "chosen", gloss = "Shortest site id.", const = "crates/contextful-core/src/run/record.rs::SITE_ID_MIN_LEN" }
+site-id-max-length         = { clause = "run.record.site-id-length", value = 64, unit = "chars", basis = "chosen", gloss = "Longest site id.", const = "crates/contextful-core/src/run/record.rs::SITE_ID_MAX_LEN" }
+describe-history-default   = { clause = "run.record.describe-window", value = 5, unit = "rows", basis = "chosen", gloss = "Runs the describe surface returns unasked.", const = "crates/contextful-core/src/run/record.rs::DESCRIBE_DEFAULT_ROWS" }
+describe-history-ceiling   = { clause = "run.record.describe-window", value = 500, unit = "rows", basis = "chosen", gloss = "Highest ceiling the describe surface honors.", const = "crates/contextful-core/src/run/record.rs::DESCRIBE_CEILING_ROWS" }
+export-history-default     = { clause = "run.record.export-ceiling", value = 500, unit = "rows", basis = "chosen", gloss = "Runs the export returns unasked.", const = "crates/contextful-core/src/run/record.rs::EXPORT_DEFAULT_ROWS" }
+export-history-ceiling     = { clause = "run.record.export-ceiling", value = 5000, unit = "rows", basis = "chosen", gloss = "Highest ceiling the export honors, per pipeline.", const = "crates/contextful-core/src/run/record.rs::EXPORT_CEILING_ROWS" }
+export-batch-rows          = { clause = "run.export.batch-rows", value = 500, unit = "rows", basis = "chosen", gloss = "Rows one OTLP delivery batch holds.", const = "crates/contextful-core/src/export.rs::EXPORT_BATCH_ROWS" }
 typed-export-request-bytes = { clause = "run.export.typed-byte-limit", value = 65536, unit = "B", basis = "chosen", gloss = "Largest typed export request body." }
 d1-group-state-bytes       = { clause = "run.export.group-storage", value = 8, unit = "MiB", basis = "chosen", gloss = "Largest coordinated sender state the D1 profile stages." }
-publication-quiesce-wait   = { clause = "run.export.group-quiesce-wait", value = 300, unit = "s", basis = "chosen", gloss = "Longest a coordinated export waits for its publication intent and inputs." }
+publication-quiesce-wait   = { clause = "run.export.group-quiesce-wait", value = 300, unit = "s", basis = "chosen", gloss = "Longest a coordinated export waits for its publication intent and inputs.", const = "crates/contextful-cli/src/export/publication.rs::QUIESCE_WAIT_SECS" }
 d1-group-row-bytes         = { clause = "run.export.group-d1-spill", value = 64, unit = "KiB", basis = "chosen", gloss = "Largest sender body one D1 row holds inline." }
 publication-completions    = { clause = "run.export.group-source-latest", value = 1, unit = "completion", basis = "chosen", gloss = "Producer completions a publication ledger keeps per publication." }
-run-error-cap              = { clause = "run.record.error-cap", value = 2, unit = "KiB", basis = "chosen", gloss = "Size a recorded run error is clipped to." }
-projection-coalesce-window = { clause = "run.project.coalescing", value = 100, unit = "ms", basis = "chosen", gloss = "Window snapshot broadcasts collapse into." }
-run-metadata-bytes         = { clause = "run.project.metadata-too-large", value = 16384, unit = "B", basis = "chosen", gloss = "Serialized bound on snapshot application metadata." }
-broadcast-ring-entries     = { clause = "run.project.broadcast-ring", value = 256, unit = "entries", basis = "chosen", gloss = "Snapshots the per-run broadcast holds." }
-channel-eviction-delay     = { clause = "run.project.channel-eviction", value = 60, unit = "s", basis = "chosen", gloss = "Time a run's channel outlives its folded terminal event." }
-allowed-lateness-default   = { clause = "run.advance.allowed-lateness", value = 0, unit = "s", basis = "chosen", gloss = "Re-read window a table declaring no `allowed_lateness` takes." }
-plan-version-prefix        = { clause = "run.compile.plan-version", value = 16, unit = "chars", basis = "chosen", gloss = "Hash characters forming a plan's version." }
-chunk-lease-ttl            = { clause = "run.backfill.chunk-lease", value = 300, unit = "s", basis = "chosen", gloss = "Life of an unrenewed chunk lease." }
-chunk-lease-renewal        = { clause = "run.backfill.chunk-lease", value = 60, unit = "s", basis = "chosen", gloss = "Renewal cadence of a held chunk lease." }
-derive-rows-per-run        = { clause = "run.select.rows-per-run", value = 25, unit = "rows", basis = "chosen", gloss = "Units one derive run attempts." }
-derive-attempts-per-unit   = { clause = "run.select.attempts-per-unit", value = 3, unit = "attempts", basis = "chosen", gloss = "Attempts one unit receives before its marker settles." }
-derive-seconds-per-run     = { clause = "run.select.seconds-per-run", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock the unit loop holds for a socket-opening task." }
-derive-memory-scan-rows    = { clause = "run.select.parent-scan", value = 1000000, unit = "rows", basis = "chosen", gloss = "Parent rows selection scans in memory before streaming." }
-derive-upstream-excerpt    = { clause = "run.bind.upstream-excerpt", value = 4, unit = "KiB", basis = "chosen", gloss = "Vendor response text an upstream error carries." }
-derive-chain-deadline      = { clause = "run.exec.chain-deadline", value = 1800, unit = "s", basis = "chosen", gloss = "Wall clock one unit's chain runs for." }
-derive-captured-output     = { clause = "run.exec.captured-output", value = 8, unit = "MiB", basis = "chosen", gloss = "Captured output one step may produce." }
-derive-audit-entries       = { clause = "run.exec.audit-entries", value = 64, unit = "entries", basis = "chosen", gloss = "Captured-output entries one chain adds to the run record." }
-derive-step-error-excerpt  = { clause = "run.exec.step-error-excerpt", value = 4, unit = "KiB", basis = "chosen", gloss = "Standard error a failing step's error carries." }
-derive-engine-id-prefix    = { clause = "run.exec.engine-id", value = 12, unit = "chars", basis = "chosen", gloss = "Digest characters in an exec engine id." }
+run-error-cap              = { clause = "run.record.error-cap", value = 2, unit = "KiB", basis = "chosen", gloss = "Size a recorded run error is clipped to.", const = "crates/contextful-core/src/run/record.rs::ERROR_CAP_BYTES" }
+projection-coalesce-window = { clause = "run.project.coalescing", value = 100, unit = "ms", basis = "chosen", gloss = "Window snapshot broadcasts collapse into.", const = "crates/contextful-core/src/run/project.rs::COALESCE_WINDOW_MS" }
+run-metadata-bytes         = { clause = "run.project.metadata-too-large", value = 16384, unit = "B", basis = "chosen", gloss = "Serialized bound on snapshot application metadata.", const = "crates/contextful-core/src/run/project.rs::METADATA_MAX_BYTES" }
+broadcast-ring-entries     = { clause = "run.project.broadcast-ring", value = 256, unit = "entries", basis = "chosen", gloss = "Snapshots the per-run broadcast holds.", const = "crates/contextful-engine/src/project.rs::BROADCAST_RING_ENTRIES" }
+channel-eviction-delay     = { clause = "run.project.channel-eviction", value = 60, unit = "s", basis = "chosen", gloss = "Time a run's channel outlives its folded terminal event.", const = "crates/contextful-engine/src/project.rs::CHANNEL_EVICTION_SECS" }
+allowed-lateness-default   = { clause = "run.advance.allowed-lateness", value = 0, unit = "s", basis = "chosen", gloss = "Re-read window a table declaring no `allowed_lateness` takes.", const = "crates/contextful-core/src/run/advance.rs::ALLOWED_LATENESS_DEFAULT_SECS" }
+plan-version-prefix        = { clause = "run.compile.plan-version", value = 16, unit = "chars", basis = "chosen", gloss = "Hash characters forming a plan's version.", const = "crates/contextful-core/src/run/nodes.rs::PLAN_VERSION_CHARS" }
+chunk-lease-ttl            = { clause = "run.backfill.chunk-lease", value = 300, unit = "s", basis = "chosen", gloss = "Life of an unrenewed chunk lease.", const = "crates/contextful-core/src/run/backfill.rs::CHUNK_LEASE_TTL_SECS" }
+chunk-lease-renewal        = { clause = "run.backfill.chunk-lease", value = 60, unit = "s", basis = "chosen", gloss = "Renewal cadence of a held chunk lease.", const = "crates/contextful-core/src/run/backfill.rs::CHUNK_LEASE_RENEWAL_SECS" }
+derive-rows-per-run        = { clause = "run.select.rows-per-run", value = 25, unit = "rows", basis = "chosen", gloss = "Units one derive run attempts.", const = "crates/contextful-core/src/run/derive/config.rs::ROWS_PER_RUN" }
+derive-attempts-per-unit   = { clause = "run.select.attempts-per-unit", value = 3, unit = "attempts", basis = "chosen", gloss = "Attempts one unit receives before its marker settles.", const = "crates/contextful-core/src/run/derive/config.rs::ATTEMPTS_PER_UNIT" }
+derive-seconds-per-run     = { clause = "run.select.seconds-per-run", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock the unit loop holds for a socket-opening task.", const = "crates/contextful-core/src/run/derive/config.rs::LINK_SECONDS_PER_RUN" }
+derive-memory-scan-rows    = { clause = "run.select.parent-scan", value = 1000000, unit = "rows", basis = "chosen", gloss = "Parent rows selection scans in memory before streaming.", const = "crates/contextful-core/src/run/derive/config.rs::PARENT_SCAN_ROWS" }
+derive-upstream-excerpt    = { clause = "run.bind.upstream-excerpt", value = 4, unit = "KiB", basis = "chosen", gloss = "Vendor response text an upstream error carries.", const = "crates/contextful-core/src/run/derive/engine.rs::UPSTREAM_EXCERPT_BYTES" }
+derive-chain-deadline      = { clause = "run.exec.chain-deadline", value = 1800, unit = "s", basis = "chosen", gloss = "Wall clock one unit's chain runs for.", const = "crates/contextful-core/src/run/derive/exec.rs::CHAIN_DEADLINE_SECS" }
+derive-captured-output     = { clause = "run.exec.captured-output", value = 8, unit = "MiB", basis = "chosen", gloss = "Captured output one step may produce.", const = "crates/contextful-core/src/run/derive/exec.rs::CAPTURED_OUTPUT_BYTES" }
+derive-audit-entries       = { clause = "run.exec.audit-entries", value = 64, unit = "entries", basis = "chosen", gloss = "Captured-output entries one chain adds to the run record.", const = "crates/contextful-core/src/run/derive/exec.rs::AUDIT_ENTRIES" }
+derive-step-error-excerpt  = { clause = "run.exec.step-error-excerpt", value = 4, unit = "KiB", basis = "chosen", gloss = "Standard error a failing step's error carries.", const = "crates/contextful-core/src/run/derive/exec.rs::STEP_ERROR_EXCERPT_BYTES" }
+derive-engine-id-prefix    = { clause = "run.exec.engine-id", value = 12, unit = "chars", basis = "chosen", gloss = "Digest characters in an exec engine id.", const = "crates/contextful-core/src/run/derive/exec.rs::ENGINE_ID_PREFIX" }
 derive-redirect-chain      = { clause = "run.fetch.redirect-chain", value = 5, unit = "hops", basis = "chosen", gloss = "Redirect hops one fetch follows." }
 derive-document-prefix     = { clause = "run.fetch.document-prefix", value = 1, unit = "MiB", basis = "chosen", gloss = "Document prefix the head scanner reads." }
 derive-probe-prefix        = { clause = "run.fetch.probe-prefix", value = 64, unit = "KiB", basis = "chosen", gloss = "Bytes one picture range request reads." }
 derive-hop-timeout         = { clause = "run.fetch.hop-timeout", value = 20, unit = "s", basis = "chosen", gloss = "Wall clock one fetch hop holds." }
 derive-retry-after-default = { clause = "run.fetch.retry-after-default", value = 60, unit = "s", basis = "chosen", gloss = "Rate-limit wait when a response gives no usable header." }
-derive-empty-ceiling       = { clause = "run.emit.attempts", value = 1, unit = "attempts", basis = "chosen", gloss = "Attempts an established-empty unit receives." }
-derive-passage-chars       = { clause = "run.parse-cues.passage-chars", value = 600, unit = "chars", basis = "chosen", gloss = "Length at which an open passage closes." }
-derive-passage-span        = { clause = "run.parse-cues.passage-span", value = 60, unit = "s", basis = "chosen", gloss = "Span at which an open passage closes." }
-derive-passage-bytes       = { clause = "run.parse-cues.passage-bytes", value = 8, unit = "KiB", basis = "chosen", gloss = "Text one passage holds." }
-derive-passages-per-doc    = { clause = "run.parse-cues.passages-per-document", value = 2000, unit = "rows", basis = "chosen", gloss = "Passages one caption document yields." }
+derive-empty-ceiling       = { clause = "run.emit.attempts", value = 1, unit = "attempts", basis = "chosen", gloss = "Attempts an established-empty unit receives.", const = "crates/contextful-core/src/run/derive/emit.rs::EMPTY_ATTEMPTS" }
+derive-passage-chars       = { clause = "run.parse-cues.passage-chars", value = 600, unit = "chars", basis = "chosen", gloss = "Length at which an open passage closes.", const = "crates/contextful-core/src/run/derive/cues.rs::PASSAGE_CHARS" }
+derive-passage-span        = { clause = "run.parse-cues.passage-span", value = 60, unit = "s", basis = "chosen", gloss = "Span at which an open passage closes.", const = "crates/contextful-core/src/run/derive/cues.rs::PASSAGE_SPAN_MS" }
+derive-passage-bytes       = { clause = "run.parse-cues.passage-bytes", value = 8, unit = "KiB", basis = "chosen", gloss = "Text one passage holds.", const = "crates/contextful-core/src/run/derive/cues.rs::PASSAGE_BYTES" }
+derive-passages-per-doc    = { clause = "run.parse-cues.passages-per-document", value = 2000, unit = "rows", basis = "chosen", gloss = "Passages one caption document yields.", const = "crates/contextful-core/src/run/derive/cues.rs::PASSAGES_PER_DOCUMENT" }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"journal"         = { clause = "run.journal.step-output", gloss = "The durable record of each step's value, written once, so a resumed run replays recorded steps." }
+"entry key"       = { clause = "run.journal.entry-key", gloss = "The `(execution_id, step_label, input_hash)` triple keying one journal entry." }
+"idempotency key" = { clause = "run.journal.idempotency-key", gloss = "The key an outbound request carries, derived from its entry key, identical on every re-entry." }
+"awakeable"       = { clause = "run.suspend.awakeable", gloss = "A single-use token that suspends a run until a caller resolves it or its deadline passes." }
+"execution owner" = { clause = "run.own.execution-owner", gloss = "The one durable owner of a scope's executions, holding its connector identity and pins." }

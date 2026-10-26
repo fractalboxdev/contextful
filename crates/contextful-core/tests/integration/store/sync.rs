@@ -172,8 +172,8 @@ fn differing_copies_of_a_commit_log_entry_refuse() {
     assert!(merge(&remote, &same, "ingest-a", at("2030-01-01T00:00:00Z")).is_ok());
 }
 
-/// A lease grants ownership for 10 min.
-// spec: store.lease.ttl@10aa496e
+/// A writer lease grants ownership for 10 min.
+// spec: store.lease.ttl@742eaac5
 #[test]
 fn a_lease_is_granted_for_10_minutes() {
     assert_eq!(TTL_SECS, 600);
@@ -184,7 +184,7 @@ fn a_lease_is_granted_for_10_minutes() {
 
 /// Acquisition creates the lease object under `If-None-Match`, or replaces an expired or released one under `If-
 /// Match` on its ETag, the fence one past the object's.
-// spec: store.lease.acquire@deadc41c
+// spec: store.lease.acquire@0a8044ac
 #[test]
 fn acquisition_creates_or_replaces_on_the_etag_with_the_next_fence() {
     let now = at("2030-01-01T00:00:00Z");
@@ -200,7 +200,6 @@ fn acquisition_creates_or_replaces_on_the_etag_with_the_next_fence() {
 }
 
 /// A holder renews every 200 s by `If-Match` replace on the ETag it holds.
-// spec: store.lease.renewal@86e363e5
 #[test]
 fn a_holder_renews_every_200_seconds_on_the_etag_it_holds() {
     assert_eq!(RENEWAL_SECS, 200);

@@ -20,7 +20,7 @@ fn spelled_types<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<BTreeM
 /// Default `retain_runs` window: 7 d (`store.fold.retention`).
 pub const DEFAULT_RETAIN_RUNS_SECS: u64 = 7 * 24 * 60 * 60;
 
-/// How a run's rows relate to the rows before it (`store.declare.write-mode`).
+/// How a run's rows relate to the rows before it (`store.declare.replace-frontier`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
@@ -48,7 +48,7 @@ pub struct ValidTime {
 #[serde(deny_unknown_fields)]
 pub struct AvailableTime {
     pub column: String,
-    /// The zone a date-typed value resolves in; UTC when unset (`store.available-time.date-end`).
+    /// The zone a date-typed value resolves in; UTC when unset (`store.available-time.live-since`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zone: Option<String>,
     /// The duration filling a null instant from valid time (`store.available-time.lag-fill`).
@@ -89,7 +89,7 @@ pub struct SnapshotDecl {
     pub leak_score: Option<String>,
 }
 
-/// A duration per row class, read from `class_column` (`store.available-time.lag-class`).
+/// A duration per row class, read from `class_column` (`store.available-time.lag-fill`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -151,7 +151,7 @@ pub struct TableDecl {
     pub visibility: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub valid_time: Option<ValidTime>,
-    /// The availability instant an `available_as_of` read compares (`store.available-time.table-key`).
+    /// The availability instant an `available_as_of` read compares (`store.available-time.declaration`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available_time: Option<AvailableTime>,
     /// A snapshot corpus's capture columns (`store.snapshot.capture`).
@@ -180,7 +180,7 @@ pub struct TableDecl {
     /// (`run.emit.version-retained`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retain_versions: Option<bool>,
-    /// Column types every landing reads (`store.declare.column-types`), spelled as
+    /// Column types every landing reads (`store.declare.table-block`), spelled as
     /// [`ColumnType::parse`] reads them; an unreadable spelling refuses the block.
     #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "spelled_types")]
     #[cfg_attr(feature = "schema", schemars(with = "BTreeMap<String, String>"))]
@@ -530,7 +530,7 @@ impl TableDecl {
 
     /// The columns a keyed table keeps one row per: the key, valid-time `from` where
     /// declared, and the availability column on a vintage table
-    /// (`store.available-time.vintage-dedup-key`, `store.available-time.vintage-interval-key`).
+    /// (`store.available-time.vintage-dedup-key`).
     pub fn dedup_line(&self) -> Vec<String> {
         let mut line = self.primary_key().to_vec();
         line.extend(self.valid_time.as_ref().map(|vt| vt.from.clone()));
@@ -562,7 +562,7 @@ impl TableDecl {
         self.partition_by.as_deref().unwrap_or(&[])
     }
 
-    /// The declared column types (`store.declare.column-types`).
+    /// The declared column types (`store.declare.table-block`).
     pub fn column_types(&self) -> BTreeMap<String, ColumnType> {
         self.columns.iter().flatten().filter_map(|(c, t)| Some((c.clone(), ColumnType::parse(t)?))).collect()
     }
@@ -603,7 +603,7 @@ impl TableDecl {
 
     /// Refuse a struct, list or map column, as the schema holds it or `columns` declares
     /// it, in a key, ordering, clustering, partition or valid-time role
-    /// (`store.declare.nested-key`).
+    /// (`store.declare.key-unknown`).
     fn check_nested_roles(&self, schema: &Schema) -> Result<(), StoreError> {
         let declared = self.column_types();
         let mut roles: Vec<(&str, &str)> = self.primary_key().iter().map(|c| ("keys on", c.as_str())).collect();

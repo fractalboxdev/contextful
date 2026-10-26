@@ -62,6 +62,17 @@ impl LimitEntry {
     }
 }
 
+/// A `[term]` entry (`corpus.registry.term`): the clause defining the term, its gloss, and
+/// the spellings it replaces.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct TermEntry {
+    pub clause: String,
+    #[serde(default)]
+    pub gloss: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub avoid: Vec<String>,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct Fragment {
     #[serde(default)]
@@ -70,6 +81,8 @@ pub struct Fragment {
     pub error: BTreeMap<String, ErrorEntry>,
     #[serde(default)]
     pub limit: BTreeMap<String, LimitEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub term: BTreeMap<String, TermEntry>,
     /// Ratchets (`corpus.registry.ceiling`): a count, or a table of counts by name.
     #[serde(default, skip_serializing)]
     pub ceiling: BTreeMap<String, toml::Value>,
@@ -153,6 +166,7 @@ pub enum Role {
     Record,
     Plan,
     Guide,
+    Topic,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -439,6 +453,20 @@ impl Corpus {
             let text = std::fs::read_to_string(root.join(&rel))?;
             docs.push(parse(&rel, Role::Guide, &text));
         }
+        let mut topics: Vec<String> = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(spec.join("topics")) {
+            for e in rd {
+                let p = e?.path();
+                if p.extension().map(|x| x == "md").unwrap_or(false) {
+                    topics.push(format!("spec/topics/{}", p.file_name().unwrap().to_string_lossy()));
+                }
+            }
+        }
+        topics.sort();
+        for rel in topics {
+            let text = std::fs::read_to_string(root.join(&rel))?;
+            docs.push(parse(&rel, Role::Topic, &text));
+        }
         if let Ok(text) = std::fs::read_to_string(spec.join("roadmap.md")) {
             docs.push(parse("spec/roadmap.md", Role::Plan, &text));
         }
@@ -539,6 +567,10 @@ impl Corpus {
             .collect()
     }
 
+    pub fn topics(&self) -> impl Iterator<Item = &Doc> {
+        self.docs.iter().filter(|d| d.role == Role::Topic)
+    }
+
     pub fn records(&self) -> impl Iterator<Item = &Doc> {
         self.docs.iter().filter(|d| d.role == Role::Record)
     }
@@ -595,8 +627,21 @@ pub fn strip_pointers(s: &str, with: &str) -> String {
     out
 }
 
-/// Every `{{id}}` in a string.
+/// Every `{{id}}` clause pointer in a string; a `{{type:<path>}}` pointer is no clause pointer.
 pub fn pointers(s: &str) -> Vec<String> {
+    spans(s).into_iter().filter(|p| !p.starts_with(TYPE_POINTER)).collect()
+}
+
+/// The prefix of a `{{type:<rust path>}}` pointer (`corpus.reference.type-pointer`).
+pub const TYPE_POINTER: &str = "type:";
+
+/// The path of every `{{type:<path>}}` pointer in a string.
+pub fn type_pointers(s: &str) -> Vec<String> {
+    spans(s).into_iter().filter_map(|p| p.strip_prefix(TYPE_POINTER).map(|t| t.trim().to_string())).collect()
+}
+
+/// The text inside every `{{...}}` span.
+fn spans(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut rest = s;
     while let Some(a) = rest.find("{{") {

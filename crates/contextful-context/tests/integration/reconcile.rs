@@ -409,9 +409,10 @@ fn a_stored_binary_or_vector_column_types_a_later_undeclared_batch() {
     }
 }
 
-/// `columns` maps column names to type spellings under {{store.reconcile.typed-landing}}. Every landing into the
-/// table, including pipeline runs, uses the declared type for that column.
-// spec: store.declare.column-types@856517f1
+/// A table block takes {{type:contextful_core::store::declare::TableDecl}}; canonical serialization omits unset
+/// keys. A key applies from the next read and rewrites no committed part; `columns` types every landing,
+/// pipeline runs included, under {{store.reconcile.typed-landing}}.
+// spec: store.declare.table-block@8cede22d
 #[test]
 fn a_declared_column_type_types_a_landing_that_declares_none() {
     let f = Fixture::new();

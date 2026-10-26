@@ -1,0 +1,28 @@
+extends: existence
+message: "'%s' is not testable. Give a number and a unit, or name the exact set."
+link: https://reqi.io/articles/incose-requirements-quality-42-rule-guide
+level: warning
+ignorecase: true
+tokens:
+  - some
+  - several
+  - many
+  - few
+  - approximately
+  - large
+  - small
+  - fast
+  - slow
+  - quickly
+  - soon
+  - appropriate
+  - appropriately
+  - reasonable
+  - reasonably
+  - sufficient
+  - adequate
+  - user-friendly
+  - robust
+  - seamless
+  - as needed
+  - as required

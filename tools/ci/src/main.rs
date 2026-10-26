@@ -18,6 +18,7 @@ mod source_lint;
 mod vacuous;
 mod parity;
 mod probe;
+mod prose;
 mod stage;
 mod tag;
 mod footprint;
@@ -132,6 +133,8 @@ enum Cmd {
     Secrets,
     /// Resolve every `mirrors:` comment under crates/, tools/, apps/ and packages/ to a clause id.
     Mirrors,
+    /// Print Vale's `WriteTechnically` alerts over spec/guide/ and references/; advisory, exits 0.
+    Prose,
     /// Refuse more public items that only a performed pin's test calls than the ceiling in
     /// `tools/ci/unwired.toml` admits (`corpus.state.unwired`).
     Unwired {
@@ -399,6 +402,7 @@ fn main() {
         }
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
+        Cmd::Prose => repo_root().and_then(|root| prose::report(&root)),
         Cmd::Unwired { contract, lower } => repo_root().and_then(|root| unwired::check(&root, &contract, lower)),
         Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
         Cmd::Shellcheck => repo_root().and_then(|root| shell::check(&root)),
