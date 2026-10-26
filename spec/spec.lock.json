@@ -48553,7 +48553,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/visibility.rs",
         "name": "every_agent_acting_for_a_principal_reaches_that_principal_set_and_no_more",
-        "line": 267,
+        "line": 268,
         "verdict": "performed",
         "proved": false
       }
@@ -48573,7 +48573,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/visibility.rs",
         "name": "links_come_from_the_directory_read_alone",
-        "line": 205,
+        "line": 206,
         "verdict": "performed",
         "proved": false
       }
@@ -48663,7 +48663,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/visibility.rs",
         "name": "a_subject_with_no_link_reaches_only_the_public_resources_of_the_source",
-        "line": 228,
+        "line": 229,
         "verdict": "performed",
         "proved": false
       }
@@ -55361,7 +55361,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/visibility.rs",
         "name": "a_read_past_the_budget_refuses_through_the_face",
-        "line": 166,
+        "line": 167,
         "verdict": "performed",
         "proved": false
       }
@@ -55401,7 +55401,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/visibility.rs",
         "name": "a_public_only_table_past_its_budget_serves_its_public_rows_marked_degraded",
-        "line": 313,
+        "line": 314,
         "verdict": "performed",
         "proved": false
       }
@@ -55451,7 +55451,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/declare.rs",
         "name": "a_block_naming_no_family_is_refused",
-        "line": 121,
+        "line": 124,
         "verdict": "performed",
         "proved": false
       }
@@ -55461,7 +55461,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/visibility.rs",
         "name": "a_federated_table_registers_on_no_read_face",
-        "line": 195,
+        "line": 196,
         "verdict": "performed",
         "proved": false
       }
@@ -55831,7 +55831,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/visibility.rs",
         "name": "a_sweep_lands_all_seven_access_tables_as_ordinary_rows",
-        "line": 169,
+        "line": 170,
         "verdict": "performed",
         "proved": false
       }
@@ -55951,7 +55951,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/visibility.rs",
         "name": "a_closure_overflow_refuses_only_reads_of_its_table",
-        "line": 236,
+        "line": 237,
         "verdict": "performed",
         "proved": false
       }
@@ -56721,7 +56721,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_bare_resource_line_withdraws_every_grant_a_webhook_names",
-        "line": 299,
+        "line": 297,
         "verdict": "performed",
         "proved": false
       }
@@ -56741,7 +56741,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_full_run_missing_a_governed_resource_is_refused_and_the_watermark_holds",
-        "line": 233,
+        "line": 231,
         "verdict": "performed",
         "proved": false
       }
@@ -56761,7 +56761,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/visibility.rs",
         "name": "an_empty_webhook_delivery_lands_nothing_and_holds_the_watermark",
-        "line": 306,
+        "line": 307,
         "verdict": "performed",
         "proved": false
       }
@@ -56771,7 +56771,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_full_run_replaces_resources_and_grants_and_tombstones_the_withdrawn",
-        "line": 148,
+        "line": 146,
         "verdict": "performed",
         "proved": false
       }
@@ -56791,7 +56791,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "an_incremental_run_replaces_only_the_grants_of_resources_it_read",
-        "line": 172,
+        "line": 170,
         "verdict": "performed",
         "proved": false
       }
@@ -56801,7 +56801,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_grant_with_no_resource_row_or_of_the_unknown_class_is_refused",
-        "line": 351,
+        "line": 349,
         "verdict": "performed",
         "proved": false
       }
@@ -56811,7 +56811,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/visibility.rs",
         "name": "a_run_collects_every_superseded_run_of_the_current_state_tables",
-        "line": 255,
+        "line": 256,
         "verdict": "performed",
         "proved": false
       }
@@ -56831,7 +56831,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "each_committed_run_advances_the_source_epoch_by_one",
-        "line": 220,
+        "line": 218,
         "verdict": "performed",
         "proved": false
       }
@@ -56841,7 +56841,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_webhook_run_from_a_stream_not_declared_gap_detectable_is_refused",
-        "line": 331,
+        "line": 329,
         "verdict": "performed",
         "proved": false
       }
@@ -56851,7 +56851,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_run_reading_every_governed_resource_moves_the_watermark_to_its_start",
-        "line": 194,
+        "line": 192,
         "verdict": "performed",
         "proved": false
       }
@@ -56861,7 +56861,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_webhook_run_replaces_the_grants_of_the_resources_it_names",
-        "line": 272,
+        "line": 270,
         "verdict": "performed",
         "proved": false
       }
@@ -66671,7 +66671,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/fold.rs",
         "name": "a_failed_collection_does_not_unpublish_the_snapshot",
-        "line": 378,
+        "line": 381,
         "verdict": "performed",
         "proved": false
       }
@@ -66727,7 +66727,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/fold.rs",
         "name": "a_pass_losing_the_pointer_publishes_nothing",
-        "line": 254,
+        "line": 257,
         "verdict": "performed",
         "proved": true
       },
@@ -66885,7 +66885,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/fold.rs",
         "name": "the_next_pass_collects_staging_and_unreachable_snapshots",
-        "line": 282,
+        "line": 285,
         "verdict": "performed",
         "proved": true
       },
@@ -66911,7 +66911,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/fold.rs",
         "name": "a_new_snapshot_supersedes_without_deleting",
-        "line": 299,
+        "line": 302,
         "verdict": "performed",
         "proved": true
       },
