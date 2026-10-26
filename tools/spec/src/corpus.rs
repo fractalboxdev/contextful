@@ -592,8 +592,21 @@ pub fn strip_pointers(s: &str, with: &str) -> String {
     out
 }
 
-/// Every `{{id}}` in a string.
+/// Every `{{id}}` clause pointer in a string; a `{{type:<path>}}` pointer is no clause pointer.
 pub fn pointers(s: &str) -> Vec<String> {
+    spans(s).into_iter().filter(|p| !p.starts_with(TYPE_POINTER)).collect()
+}
+
+/// The prefix of a `{{type:<rust path>}}` pointer (`corpus.reference.type-pointer`).
+pub const TYPE_POINTER: &str = "type:";
+
+/// The path of every `{{type:<path>}}` pointer in a string.
+pub fn type_pointers(s: &str) -> Vec<String> {
+    spans(s).into_iter().filter_map(|p| p.strip_prefix(TYPE_POINTER).map(|t| t.trim().to_string())).collect()
+}
+
+/// The text inside every `{{...}}` span.
+fn spans(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut rest = s;
     while let Some(a) = rest.find("{{") {

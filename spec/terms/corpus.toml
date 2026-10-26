@@ -24,6 +24,7 @@ SpecRegistry           = { clause = "corpus.registry.unregistered", gloss = "A s
 SpecRegistryDrift      = { clause = "corpus.registry.drift", gloss = "A defining variant out of step with its registry entry, or a refusal whose code site and pin disagree." }
 SpecDanglingReference  = { clause = "corpus.reference.dangling", gloss = "A pointer to no clause." }
 SpecExternalLink       = { clause = "corpus.reference.no-literature", gloss = "A link out of the spec, or into references/." }
+SpecTypeUnresolved     = { clause = "corpus.reference.type-unresolved", gloss = "A type pointer to no struct or enum." }
 SpecUnsettled          = { clause = "corpus.rationale.unsettled-line", gloss = "A malformed unknown, or an appendix heading." }
 SpecRecord             = { clause = "corpus.rationale.orphan-record", gloss = "An uncited or missing record, a bad Why, or a record out of anatomy." }
 SpecCoverageRegression = { clause = "corpus.state.coverage-floor", gloss = "Fewer performed pins than the floor." }
@@ -92,7 +93,7 @@ why-unscoped = 806
 assurance = 10245
 authority = 7843
 connector = 11653
-corpus = 4093
+corpus = 4244
 disclosure = 5476
 read = 10127
 run = 19201

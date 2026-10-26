@@ -14,6 +14,7 @@ mod size;
 mod slice;
 mod targets;
 mod scaffold;
+mod types;
 mod util;
 
 use anyhow::Result;
@@ -109,6 +110,9 @@ fn main() -> Result<()> {
             for advisory in size::advisories(&c) {
                 eprintln!("{advisory}");
             }
+            for (clause, path) in types::restatements(&c) {
+                eprintln!("advisory: SpecRestatesCode `{clause}` backticks the keys of `{path}`; point with {{{{type:{path}}}}}");
+            }
             std::fs::write(root.join("spec/spec.lock.json"), lock_text(&c))?;
             Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?)
         }
@@ -199,6 +203,9 @@ pub fn lock_text(c: &Corpus) -> String {
         #[serde(skip_serializing_if = "BTreeMap::is_empty")]
         sections: BTreeMap<String, Vec<String>>,
         pointers: Vec<(&'a str, String)>,
+        /// Each `{{type:<path>}}` pointer's struct or enum, keyed by its path.
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        types: &'a BTreeMap<String, types::TypeRecord>,
         registry: &'a Registry,
         pins: BTreeMap<String, PinRow>,
     }
@@ -215,6 +222,7 @@ pub fn lock_text(c: &Corpus) -> String {
         groups: c.group_ledes(),
         sections: records::cited_by(c),
         pointers,
+        types: types::records(c),
         registry: &c.reg,
         pins: pin_rows(c).clone(),
     })
@@ -296,6 +304,8 @@ pub fn status_text(c: &Corpus) -> String {
     );
     let records = c.records().count();
     let _ = writeln!(s, "\nDecision records: {records}.\n");
+    let restated = types::restatements(c).len();
+    let _ = writeln!(s, "Clauses restating a code type: {restated}.\n");
     let (claim, _) = checks::expand_roadmap(c);
     if !claim.is_empty() {
         s.push_str("## Milestones\n\nA milestone reads `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause.\n\n");
