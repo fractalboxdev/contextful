@@ -66,7 +66,7 @@ fn a_filter_or_cast_over_an_absent_column_is_refused() {
 }
 
 /// A cast rewrites one column's type and keeps its name and position.
-// spec: run.transform.cast@4530b2c2
+// spec: run.transform.typed-cast@de5be8b1
 #[test]
 fn a_cast_rewrites_the_type_in_place() {
     let batch = rows(json!([{"a": 1, "n": "42", "z": true}, {"a": 2, "n": "x", "z": false}]));
@@ -89,9 +89,9 @@ fn select_fixes_the_column_set_and_rename_maps_a_name() {
     assert_eq!(out, rows(json!([{"id": 1, "title": "a"}])));
 }
 
-/// A cast to `binary`, `binary(n)`, `float32[n]` or `float16[n]` keeps a value that type's JSON form reads, nulls
-/// any other, and lands the column in that type.
-// spec: run.transform.typed-cast@9c74c021
+/// A cast rewrites one column's type and keeps its name and position; a cast to `binary`, `binary(n)`, `float32[n]`
+/// or `float16[n]` keeps a value that type's JSON form reads and nulls any other.
+// spec: run.transform.typed-cast@de5be8b1
 #[test]
 fn a_cast_to_a_binary_or_vector_type_keeps_readable_values_and_types_the_column() {
     use contextful_core::store::reconcile::{ColumnType, FloatItem};

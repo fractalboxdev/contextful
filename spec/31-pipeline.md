@@ -81,11 +81,9 @@ Pipeline declarations: fields, manifest loading, content hashes, table names and
 - `plan-externals` — `plan` reports added, removed, changed and unchanged external steps against the applied snapshot in text and under `externals` in `--json`, with the same change fields as other declaration kinds.
   *because external-only edits affect the applied snapshot and need a visible diff*
 - `apply-fires-nothing` — Applying a manifest triggers no run by itself. Repeating `apply` over unchanged sources performs no work except for elapsed schedules.
-- `table-error` — `on_table_error = abort`, the default, halts the fire at the first failing table. `continue` lands every other table and reports failed run ids through {{run.declare.table-error-exit}}.
-- `table-error-exit` — Under continue, `run` exits non-zero naming the failed runs, and a scheduled fire appends its failure count to its log line.
+- `table-error` — `on_table_error = abort`, the default, halts the fire at the first failing table. Under `continue` every other table lands, `run` exits non-zero naming the failed runs, and a scheduled fire appends its failure count to its log line.
 - `chunked-load` — `on_table_error` governs the single-pass live pull alone; a seed or backfill chunk plan halts the fire on failure under either setting.
-- `incremental-field` — `incremental = "<field>"` names the pipeline's stream clock. With this declaration, the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}. Without this declaration, the source refetches in full.
-- `incremental-pointer` — An `incremental` value opening with `/` is an RFC 6901 pointer read from each fetched row, so a nested clock such as `/commit/committer/date` orders the stream and names its watermark.
+- `incremental-field` — `incremental = "<field>"` names the stream clock, an RFC 6901 pointer into each fetched row when it opens with `/`; with it the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}, and without it the source refetches in full.
 
 unsettled: What retires a key a source stops serving under `append`: a run declaring itself complete state, or a per-connector delete signal? owner: pipeline affects: run.declare
 
@@ -123,8 +121,7 @@ The engine applies declared transforms in order to rewrite a batch in place.
   *because a child landing under a parent id no surviving row carries is a dangling reference*
 - `column-missing` — A value filter or cast naming a column the batch does not carry raises `PipelineTransformColumnMissing`, printing the column and the table.
   *because a cast over an absent column otherwise lands the batch untransformed*
-- `cast` — A cast rewrites one column's type and keeps its name and position.
-- `typed-cast` — A cast to `binary`, `binary(n)`, `float32[n]` or `float16[n]` keeps a value that type's JSON form reads, nulls any other, and lands the column in that type.
+- `typed-cast` — A cast rewrites one column's type and keeps its name and position; a cast to `binary`, `binary(n)`, `float32[n]` or `float16[n]` keeps a value that type's JSON form reads and nulls any other.
 - `type-carry` — A `rename` carries a pulled column type to the new name, a `select` drops it with its column, and a cast to a scalar type drops it.
 - `extract` — `extract` copies the value at an RFC 6901 pointer into a named column, null where the pointer names nothing, keeps the source column, and lands the new column with no pulled type.
 - `presence-filter` — A `filter` naming `absent` keeps the rows whose column is missing or null, and one naming `present` keeps the rest; neither requires the batch to carry the column.
@@ -141,9 +138,8 @@ The engine normalizes nested data, assigns identity columns and converts nesting
 - `mode-resolution` — Mode resolves per stream per sink: explicit declaration, then sink capability, then `native`.
 - `mode-unknown` — A mode outside the two raises `PipelineNormalizeModeUnknown`, printing both spellings.
   *A-run#nested-arrow-canonical*
-- `identity-columns` — Normalize injects a content-hash row id on every table, a load id on the root, a parent id and list index on each child, and a root id on a child nested deeper than one level.
+- `identity-columns` — Normalize injects a content-hash row id, byte-identical across re-runs of one input, on every table; a load id on the root; a parent id and list index on each child; and a root id below the first child level.
 - `field-collision` — A relational source field flattening onto an occupied column takes the first free `source_`-prefixed name, preserving injected identity columns and the source value.
-- `row-id` — The row id hashes the row's own content, so a re-run of one input emits byte-identical ids.
 - `list-index-missing` — A relational child table emitted without the list index that makes its projection reversible raises `PipelineListIndexMissing`, naming the parent and the list.
   *A-run#nested-arrow-canonical*
 - `native-store` — On the store sink, `native` lands each undeclared column of objects and arrays as a struct or list column inferred over the batch; a column mixing kinds, or one `schema.json` holds as a scalar, lands as `Json`.
@@ -167,8 +163,7 @@ The secret guard masks credential-shaped text in pulled batches, dead letters an
 - `llm-admission` — An LLM candidate needs 32 B of tail: a `proj-`, `svcacct-`, `service-`, `admin-` or `ant-` prefix permits the whole tail; otherwise its first 32 bytes are ASCII alphanumerics.
   *A-run#secret-guard-has*
 - `assignment-key` — An assignment key qualifies when it is a keyword or ends in one after `_`, `-` or `.`, reading `-` as `_`, so `client_secret`, `x-api-key` and `db.password` qualify and `clientsecret` does not.
-- `mask-span` — The replacement covers only the matched byte ranges, widened to character boundaries; overlapping spans merge under the higher-priority pattern.
-- `mask-replacement` — The replacement is the fixed `[REDACTED:secret]` marker, never a shape-preserving transform; an assignment keeps its `key=` prefix.
+- `mask-replacement` — The replacement is the fixed `[REDACTED:secret]` marker, never a shape-preserving transform, over only the matched byte ranges widened to character boundaries; overlapping spans merge under the higher-priority pattern, and an assignment keeps its `key=` prefix.
 - `mask-only` — The guard is on by default and blocks no run; each pull logs the count of masked cells per column.
   *A-run#secret-guard-has*
 - `coverage` — The guard reads pre-normalize string cells for plaintext shapes; encoded material and a credential split across two cells pass through.
@@ -405,10 +400,8 @@ A typed export publishes keyed `changes-v1` events from a staged outbox and ackn
   *because a consumer needs stable row identity and a delivery cadence*
 - `typed-state` — A typed export compares the latest stable committed table read through {{run.export.post-commit-read}} with its last acknowledged state; commits between reads coalesce into one publication.
   *because a scheduled state export promises the observed frontier rather than every intermediate write*
-- `typed-view-recheck` — A typed export re-reads its admitted table even without a source commit frontier change. The exporter stages a publication when its key, schema, policy or visible state changes.
-  *because a commit hash alone cannot identify the view delivered to a consumer*
-- `typed-publication-id` — A typed publication identifier covers the source frontier, read identity and visible keyed state, so distinct delivered views carry distinct identifiers without requiring another source commit.
-  *because a receiver must not mistake a changed view for a retry of the prior publication*
+- `typed-view-recheck` — A typed export re-reads its admitted table even without a source commit frontier change, and stages a publication when its key, schema, policy or visible state changes; the publication identifier covers the source frontier, read identity and visible keyed state.
+  *because a commit hash alone cannot identify the view delivered to a consumer, and a receiver must not mistake a changed view for a retry*
 - `typed-events` — Each changed key yields a versioned upsert with its visible row or a deletion with its key; unchanged keys yield no event.
   *because a generic consumer applies the same keyed operations regardless of table shape*
 - `typed-order` — Typed events order by encoded key and carry consecutive sequences and stable ids; a repeat delivery carries the same bytes and ids.
@@ -518,8 +511,7 @@ unsettled: How long does the retention window keep files under a path with no do
 A seed source bulk-loads history below a declared ordering ceiling before live ingestion.
 
 - `block` — `[pipeline.seed]` attaches a bulk-load source with a ceiling `below` expressed on the seeded table's `order_by` scale.
-- `one-land-path` — Seeded rows travel {{run.land.stage-order}} unchanged; attribution survives only in the load id and a run recorded under the `seeding` phase.
-- `available-instant` — A seeded row lands its availability instant and `_ingested_at` as {{run.backfill.available-instant}} lands a backfilled row's.
+- `one-land-path` — Seeded rows travel {{run.land.stage-order}} unchanged, landing availability and `_ingested_at` as {{run.backfill.available-instant}} does; attribution survives only in the load id and a run recorded under the `seeding` phase.
 - `declaration-missing` — A seeded table without `primary_key`, or with `order_by` left at the ingest stamp, raises `PipelineSeedDeclarationMissing` at plan and validate.
   *A-run#incremental-position-bound*
 - `ceiling-breached` — A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped.
@@ -607,9 +599,6 @@ A hold keeps one build from collection, and status reads the last attempt beside
 - `status-verb` — `build status <model>` reports the last attempt separately from the published build; `--json` carries their ids, status, freshness and staleness computed at the requested instant.
 - `hold-unknown-build` — A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.
   *because a hold on a build that does not exist protects nothing and reads as protection*
-- `hold-manifest` — A hold commits as the hold manifest `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build.
-  *A-run#model-declared-sql*
-- `log-regeneration` — The history logs sit in the model's table directory; each build and hold rewrites them, replacing an entry a manifest disagrees with and keeping entries of collected builds.
 
 unsettled: Does a model materialize incrementally, merging each build into its prior one on `unique_key`? owner: pipeline affects: run.model
 
@@ -635,7 +624,7 @@ Published tables: contract identity, snapshot publication, build history, freshn
   *P4*
 - `staging` — A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.
   *P4*
-- `history-logs` — `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` contain append-only history derived from committed manifests and build-attempt records. If a log disagrees with a source record, the engine regenerates the log from that record.
+- `history-logs` — `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` in the model's table directory hold append-only history derived from committed manifests and build-attempt records; each build and hold regenerates them, replacing an entry a source record disagrees with and keeping collected builds' entries.
 - `build-entry` — A `builds.jsonl` entry is a {{type:contextful_core::pipeline::model::BuildEntry}}, its status published, refused, partial or failed.
 - `failed-attempt` — A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.
   *because a process killed before publication cannot write its own failure, while its attempt record and released lock survive*
@@ -651,7 +640,8 @@ Published tables: contract identity, snapshot publication, build history, freshn
   *A-run#build-stale-landings*
 - `staleness-collected-run` — A waiting run whose manifest retention collected counts as committed before `t` minus `max_lag`.
   *A-run#build-stale-landings*
-- `hold` — A hold is a {{type:contextful_core::pipeline::model::HoldRecord}}; collection skips a held build, and a hold confers no other authority.
+- `hold` — A hold is a {{type:contextful_core::pipeline::model::HoldRecord}} committed as `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build; collection skips a held build, and a hold confers no other authority.
+  *A-run#model-declared-sql*
 - `manifest-section` — The manifest section is the newest publishing build's {{type:contextful_core::pipeline::model::PublishSection}}, its `watermark` as {{run.model.watermark}}; freshness reads off it, and staleness follows {{run.publish.staleness}}, never stored.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
 - `disclosure-digest` — A build records a digest over its table's {{type:contextful_core::store::declare::TableDecl}} `class`, `policy` and `visibility`, sorting set-valued fields; the manifest and build log carry it, and any declaration sets `withheld_cells`.

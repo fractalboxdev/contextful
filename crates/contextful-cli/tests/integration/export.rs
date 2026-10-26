@@ -360,7 +360,7 @@ fn typed_export_sends_deletion_after_a_replace_publication() {
     assert_eq!(second.last().unwrap()["kind"], "publication_complete");
 }
 
-// spec: run.export.typed-view-recheck@bf34aca7
+// spec: run.export.typed-view-recheck@12bbd9ec
 #[test]
 fn typed_export_republishes_a_changed_read_policy_without_a_new_commit() {
     let collector = Collector::start();
@@ -405,7 +405,7 @@ fn typed_export_rekeys_without_a_new_commit() {
     assert_eq!(events.last().unwrap()["kind"], "publication_complete");
 }
 
-// spec: run.export.typed-publication-id@1de87934
+// spec: run.export.typed-view-recheck@12bbd9ec
 #[test]
 fn typed_export_marks_a_schema_change_without_a_new_commit() {
     let collector = Collector::start();

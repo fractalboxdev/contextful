@@ -545,10 +545,10 @@ fn a_build_entry_is_read_off_each_committed_section() {
     assert_eq!(serde_json::to_value(BuildStatus::Failed).unwrap(), "failed");
 }
 
-/// `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` contain append-only history derived from committed
-/// manifests and build-attempt records. If a log disagrees with a source record, the engine regenerates the log from
-/// that record.
-// spec: run.publish.history-logs@41de128c
+/// `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` in the model's table directory hold append-only history
+/// derived from committed manifests and build-attempt records; each build and hold regenerates them, replacing an
+/// entry a source record disagrees with and keeping collected builds' entries.
+// spec: run.publish.history-logs@4e77d8b0
 #[test]
 fn a_log_is_regenerated_from_committed_manifests_and_keeps_collected_history() {
     let a = snapshot("2030-01-01T00:00:00Z", None, Some(section("", "1.0.0", "fa", "2030-01-01T00:00:00Z")));

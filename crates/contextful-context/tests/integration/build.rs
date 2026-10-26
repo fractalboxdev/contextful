@@ -532,9 +532,10 @@ fn a_model_reading_a_model_ages_by_its_rebuilds() {
     assert_eq!(status(&p.fx.store, "weekly", at("2030-05-01T00:00:00Z")).unwrap()["stale_inputs"], json!([]));
 }
 
-/// A hold is a {{type:contextful_core::pipeline::model::HoldRecord}}; collection skips a held build, and a hold
+/// A hold is a {{type:contextful_core::pipeline::model::HoldRecord}} committed as `holds/<build id>.json` in the
+/// model's table directory, replacing any earlier hold on that build; collection skips a held build, and a hold
 /// confers no other authority.
-// spec: run.publish.hold@e8aeb770
+// spec: run.publish.hold@8b09a8b1
 #[test]
 fn collection_skips_a_held_build() {
     let p = Project::new();
@@ -555,7 +556,7 @@ fn collection_skips_a_held_build() {
 }
 
 /// A hold commits as the hold manifest `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build.
-// spec: run.model.hold-manifest@49450f19
+// spec: run.publish.hold@8b09a8b1
 #[test]
 fn a_hold_commits_one_manifest_per_build() {
     let p = Project::new();
@@ -597,7 +598,7 @@ fn the_logs_follow_the_committed_manifests() {
 }
 
 /// The history logs sit in the model's table directory; each build and hold rewrites them, replacing an entry a manifest disagrees with and keeping entries of collected builds.
-// spec: run.model.log-regeneration@fda3ed75
+// spec: run.publish.history-logs@4e77d8b0
 #[test]
 fn a_tampered_log_is_rewritten_and_collected_history_kept() {
     let p = Project::new();
