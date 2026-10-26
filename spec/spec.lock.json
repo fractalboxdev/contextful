@@ -28982,7 +28982,7 @@
       "subject": "build-cost",
       "kind": "limit",
       "statement": "A cold elaboration of the package completes within 60 s and writes at most 2048 KiB of artifacts.",
-      "why": "because the check runs on every change",
+      "why": "because the nightly formal stage elaborates it cold on every run",
       "file": "spec/80-formal.md",
       "line": 71
     },

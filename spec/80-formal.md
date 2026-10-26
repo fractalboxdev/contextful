@@ -13,7 +13,7 @@ owns:
 
 Two Lean 4 packages stand beside the engine: one specifying the policy core, and one holding
 an executable state machine of the store's lease, compare-and-swap and fence protocol, its
-invariants stated as theorems. The gate checks both on every change, and one differential
+invariants stated as theorems. The nightly formal stage checks both, and one differential
 harness ties each model to the code it describes: the policy model to both builds of the
 decision module, the protocol model to the Rust store.
 
@@ -69,7 +69,7 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `toolchain-drift` — A build whose resolved toolchain string differs from the pinned one raises `ProofToolchainDrift`, printing both strings.
   *A-assurance*
 - `build-cost` — A cold elaboration of the package completes within 60 s and writes at most 2048 KiB of artifacts.
-  *because the check runs on every change*
+  *because the nightly formal stage elaborates it cold on every run*
 - `build-command` — `lake build` at the package root elaborates every declaration and writes the environment the audit reads.
 - `module-layout` — Five modules carry the package — the layer algebra, placement with the floor, the authority mapping, connector host containment and statement execution — and the library root re-exports all five.
 - `layer` — A layer is a total function from a row identifier to `Bool`; `composed` folds a list of layers by conjunction, admitting a row when every member admits it.
