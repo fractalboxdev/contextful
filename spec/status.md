@@ -430,13 +430,13 @@ Unscheduled operations: 13.
 | `authority.grant.horizon` | `crates/contextful-core/tests/integration/read/horizon.rs::a_grant_carries_a_horizon_and_an_absent_one_bounds_nothing` | performed |
 | `authority.grant.malformed-pattern` | `crates/contextful-core/tests/integration/grant.rs::malformed_pattern` | performed |
 | `authority.grant.one-matcher` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_refresh_selects_tables_through_the_grant_pattern_matcher` | performed |
-| `authority.grant.pattern-forms` | `crates/contextful-core/tests/integration/grant.rs::pattern_forms` | performed |
+| `authority.grant.pattern-forms` | `crates/contextful-core/tests/integration/grant.rs::pattern_forms`, `formal/Contextful/Authority.lean::pattern_covers_forms` | performed |
 | `authority.grant.pipeline-not-covered` | `crates/contextful-cli/tests/integration/run.rs::run_history_lists_covered_pipelines_and_refuses_an_uncovered_one` | performed |
 | `authority.grant.pipeline-resource` | `crates/contextful-core/tests/integration/grant.rs::pipeline_resource` | performed |
 | `authority.grant.row-ceiling` | `crates/contextful-core/tests/integration/grant.rs::row_ceiling` | performed |
 | `authority.grant.run-trace-denied` | `crates/contextful-cli/tests/integration/run.rs::run_show_gates_on_the_pipeline_its_run_record_names` | performed |
 | `authority.grant.star` | `crates/contextful-policy/tests/integration/grant.rs::a_star_grant_is_bounded_by_actions_audience_and_expiry_and_names_itself` | performed |
-| `authority.grant.template-allowlist` | `crates/contextful-core/tests/integration/grant.rs::template_allowlist` | performed |
+| `authority.grant.template-allowlist` | `crates/contextful-core/tests/integration/grant.rs::template_allowlist`, `formal/Contextful/Authority.lean::template_allowlist` | performed |
 | `authority.grant.template-not-allowed` | `crates/contextful-core/tests/integration/grant.rs::template_not_allowed` | performed |
 | `authority.grant.template-tables` | `crates/contextful-context/tests/integration/read/enforce.rs::a_covered_template_reads_its_tables_in_its_own_session_alone` | performed |
 | `authority.grant.tenant-bytes` | `crates/contextful-core/tests/integration/grant.rs::tenant_bytes` | performed |
