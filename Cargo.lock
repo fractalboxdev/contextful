@@ -979,6 +979,8 @@ name = "contextful-core"
 version = "0.17.1"
 dependencies = [
  "base64 0.22.1",
+ "proptest",
+ "proptest-state-machine",
  "regex-automata",
  "regex-syntax",
  "schemars",
