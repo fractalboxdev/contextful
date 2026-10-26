@@ -393,7 +393,7 @@ impl Client {
                 return Err(Failure::new(FailureTag::Transient, format!("`{}` exceeded the outbound call's wall-clock budget", scrub(url))));
             }
             // A request the allowlist refuses never reaches the hook or the limiter
-            // (`connector.meter.allowlist-precedence`).
+            // (`connector.meter.hook-composition`).
             self.permit(&current, headers)?;
             let intent = self.intent(method, &current, body);
             if let Err((f, operator_admitted)) = self.admit(&intent) {

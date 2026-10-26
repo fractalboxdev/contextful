@@ -55,7 +55,7 @@ pub enum TransportFault {
 
 /// The network port of the mediated client (`connector.attach.transport-port`).
 pub trait Transport: Send + Sync {
-    /// Every address `host` answers at `port` (`connector.attach.resolve-half`).
+    /// Every address `host` answers at `port` (`connector.attach.resolve-once`).
     fn resolve(&self, host: &str, port: u16) -> Result<Vec<SocketAddr>, String>;
     /// Deliver one request to one of its vetted addresses, following no redirect.
     fn send(&self, request: &Outbound<'_>) -> Result<Inbound, TransportFault>;
