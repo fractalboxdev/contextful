@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 4 | 18 | 329 | 72 | 24 | 4 | 319 | 1 | 0 | 319 |
+| `assurance` | 4 | 18 | 340 | 75 | 24 | 4 | 330 | 1 | 0 | 330 |
 | `authority` | 2 | 16 | 298 | 80 | 28 | 8 | 286 | 4 | 0 | 286 |
 | `connector` | 3 | 19 | 400 | 87 | 23 | 15 | 335 | 2 | 0 | 335 |
 | `corpus` | 1 | 11 | 125 | 50 | 13 | 0 | 125 | 0 | 0 | 125 |
 | `disclosure` | 3 | 17 | 185 | 64 | 14 | 5 | 167 | 0 | 0 | 167 |
 | `read` | 2 | 20 | 303 | 53 | 29 | 16 | 286 | 0 | 0 | 286 |
-| `run` | 3 | 29 | 609 | 128 | 49 | 19 | 590 | 0 | 0 | 590 |
-| `store` | 6 | 20 | 315 | 67 | 23 | 13 | 311 | 2 | 0 | 311 |
+| `run` | 3 | 29 | 609 | 128 | 49 | 19 | 590 | 4 | 0 | 590 |
+| `store` | 6 | 20 | 315 | 67 | 23 | 13 | 311 | 7 | 0 | 311 |
 | `surface` | 2 | 22 | 199 | 70 | 24 | 2 | 186 | 0 | 0 | 186 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 90 | 0 | 0 | 90 |
-| **total** | 27 | 178 | 2855 | 697 | 236 | 85 | 2695 | 9 | 0 | |
+| **total** | 27 | 178 | 2866 | 700 | 236 | 85 | 2706 | 18 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 21 | 20 | passing | closed |
-| 1 — The authority core | 14 | 247 | 246 | passing | closed |
+| 1 — The authority core | 14 | 258 | 257 | passing | closed |
 | 2 — The store | 9 | 183 | 180 | passing | closed |
 | 3 — The run path | 12 | 317 | 312 | passing | closed |
 | 4 — Ingest | 25 | 624 | 580 | passing | closed |

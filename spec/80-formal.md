@@ -92,6 +92,15 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
   *P7*
 - `protocol-pins` — {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_after_successor_acquire`.
   *because the model's guarded objects are the table pointer and the commit log; the catalog cursor row and a snapshot's sidecars lie outside it*
+- `journal-model` — The journal model is a total, computable step function over three callers and two keys; each journal-store and blob-store port call, effect, lapse, crash, sweep and retirement is one step.
+  *A-assurance#protocol-package-holds*
+- `journal-safety` — Seven journal properties are Lean theorems over every reachable state: recorded values stay, journaled resolutions agree, one record per key, effects under a claim or lapsed lease, takeover from a lapsed holder, no dangling blob, no {{run.journal.missing-blob}}.
+- `journal-grace` — `no_dangling_blob` assumes an aged sweep spares a blob between its put and its record; `protocol journal check --no-grace` prints the shortest sequence reaching {{run.journal.missing-blob}}.
+- `journal-check` — `protocol journal check` evaluates every journal property on each state three callers reach on one key; a breaking state raises `JournalInvariantViolated`, printing the shortest sequence reaching it.
+  *P7*
+- `merge-model` — The merge model decides each key from its local entry, remote entry, remote tombstone, held flag and verification flag; one differing commit-log copy refuses the whole merge.
+  *A-assurance#protocol-package-holds*
+- `merge-theorems` — Six merge properties are Lean theorems over every input: the scoped union, a foreign or unverified tombstone keeping its entry, only live tombstones listed, the commit-log refusal, and one writer's convergence at a fixed `now`.
 
 ## prove
 
@@ -233,6 +242,14 @@ The executable reference models, the case generators, the minimized counterexamp
   *A-assurance*
 - `protocol-vocabulary` — Before any case, the harness reads the protocol executable's step listing; a step kind one of the model and the harness lists and the other lacks raises `ProtocolVocabularyDrift`, printing both lists.
   *because the step type and the harness enum spell the vocabulary twice, and a step one side lacks is never compared*
+- `journal-harness` — The journal harness runs each caller's `Journal::step` on a thread over gated memory, file and SQLite adapters, one port call per step, comparing rows, blobs and caller phases with the model.
+  *A-assurance#protocol-package-holds*
+- `journal-drift` — A step after which the journal model and an adapter differ raises `JournalConformanceDrift`, printing the adapter, the minimized sequence and both states.
+  *A-assurance#protocol-package-holds*
+- `journal-command` — `contextful formal journal-differential` replays `formal/protocol/journal-regressions.jsonl` in each entry's grace mode, then generated cases; `--no-grace` replays and saves the model's sequence to {{run.journal.missing-blob}}.
+- `merge-harness` — `contextful formal merge-differential` compares the merge model with `merge_verified` key by key on each generated case: entry, tombstone and refusal, or {{store.merge.cursor-recency}}.
+- `merge-drift` — A case on which the merge model and `merge_verified` differ raises `MergeConformanceDrift`, printing the minimized case and both merges.
+  *A-assurance#protocol-package-holds*
 - `command` — `contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.
 
 One differential run:
@@ -291,8 +308,15 @@ formal/
     Protocol/
       Step.lean            state, steps, the total step function
       Invariants.lean      the four invariant theorems
+      Journal.lean         journal state, port-call steps, the step function
+      JournalInvariants.lean  the seven journal theorems
+      JournalCheck.lean    the journal check and replay
+      Merge.lean           one writer's merge, decided per key
+      MergeTheorems.lean   the six merge theorems
+      MergeCheck.lean      the merge replay
     Main.lean              executable: one step sequence in, one state per step out
     inventory.toml         the invariant theorems and their expected statements
+    journal-regressions.jsonl  saved journal sequences and their grace mode
 ```
 
 One inventory row:

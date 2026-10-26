@@ -37,6 +37,9 @@ contextful-fs = { path = "../contextful-fs" }
 # Ledger measures record their figures (`assurance.measure.record`).
 contextful-eval = { path = "../../tools/eval" }
 tempfile = "3"
+# Model-based journal tests draw interleaved callers as state machines.
+proptest = "1.10"
+proptest-state-machine = "0.8"
 
 [[test]]
 name = "integration"

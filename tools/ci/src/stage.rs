@@ -637,8 +637,8 @@ fn inventoried(root: &Path) -> Vec<PathBuf> {
 pub const PROTOCOL_CASES: usize = 10_000;
 
 /// The formal stage's commands (`assurance.gate.formal-stage`): the assumption audit over
-/// each inventoried package, the differential run, the protocol model's bounded check, and
-/// the protocol differential over both lease paths.
+/// each inventoried package, the differential run, the protocol model's bounded check, the
+/// protocol differential over both lease paths, and the journal model's bounded check.
 pub fn formal_commands(root: &Path) -> Result<Vec<(PathBuf, String, Vec<String>)>> {
     let base = ["run", "--locked", "-q", "-p", "contextful-cli", "--bin", "contextful", "--", "formal"];
     let cli = |rest: &[&str]| base.iter().chain(rest).map(|s| s.to_string()).collect::<Vec<_>>();
@@ -652,8 +652,9 @@ pub fn formal_commands(root: &Path) -> Result<Vec<(PathBuf, String, Vec<String>)
     if !protocol.join("lakefile.toml").is_file() {
         bail!("the formal stage finds no protocol model at formal/protocol");
     }
-    out.push((protocol, "lake".to_string(), vec!["exe".into(), "protocol".into(), "check".into()]));
+    out.push((protocol.clone(), "lake".to_string(), vec!["exe".into(), "protocol".into(), "check".into()]));
     out.push((root.to_path_buf(), "cargo".to_string(), cli(&["protocol-differential", "--cases", &PROTOCOL_CASES.to_string()])));
+    out.push((protocol, "lake".to_string(), ["exe", "protocol", "journal", "check"].map(String::from).to_vec()));
     Ok(out)
 }
 

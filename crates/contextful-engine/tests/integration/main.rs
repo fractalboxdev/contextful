@@ -21,6 +21,7 @@ mod execution;
 mod guarded_callback;
 mod guard;
 mod journal;
+mod journal_model;
 mod lateness;
 mod ledger;
 mod nodes;
