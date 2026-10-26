@@ -158,10 +158,6 @@ The fidelity level a table claims, the source family bounding the claim, and liv
   *A-disclosure*
 - `federated-registered` — Registering a `federated` table on a read face raises `VisibilityFederatedRegistered`.
   *A-disclosure*
-- `federated-credential` — A federated leg runs under a credential the read obtains by token exchange for the reader's subject, never under the sweep's `credential` or the store owner's.
-  *A-disclosure*
-- `federated-citation` — A federated result with no store row cites the source URL it fetched and the instant of that fetch.
-  *A-disclosure*
 
 unsettled: Does a grants mapping refuse a roster read from content, a sharing engine's inputs, or a federated result cached without its subject? owner: disclosure affects: disclosure.declare-fidelity
 

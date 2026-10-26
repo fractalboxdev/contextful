@@ -111,7 +111,6 @@ surface-daemon-drain       = { clause = "surface.fire.daemon-drain", value = 5, 
 surface-child-grace        = { clause = "surface.dispatch.children-reaped", value = 10, unit = "s", basis = "chosen", gloss = "Wait between a stopping serve's SIGTERM and SIGKILL to its children." }
 surface-fire-credential    = { clause = "surface.dispatch.fire-credential-lifetime", value = 600, unit = "s", basis = "chosen", gloss = "Lifetime of the credential serve mints for one store-driven fire." }
 surface-region-entries     = { clause = "surface.reside.region-entries", value = 16, unit = "entries", basis = "chosen", gloss = "Largest residency allow-set." }
-surface-listing-page       = { clause = "surface.visualize.listing-page", value = 1000, unit = "entries", basis = "chosen", gloss = "Entries one pack listing call answers." }
 surface-redactor-lookahead = { clause = "surface.speak.redactor-lookahead", value = 128, unit = "chars", basis = "chosen", gloss = "Characters the streaming redactor holds across a chunk boundary." }
 surface-sources-per-turn   = { clause = "surface.ground.sources-per-turn", value = 8, unit = "entries", basis = "chosen", gloss = "Entries in a turn's source list." }
 surface-code-path-rows     = { clause = "surface.plan-turn.code-path-bounds", value = 5000, unit = "rows", basis = "chosen", gloss = "Rows the code path reads per data table." }

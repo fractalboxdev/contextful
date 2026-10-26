@@ -290,7 +290,7 @@ Consequences: the accepted cost is that a WASI host stays unserved until the pro
 
 Context: workspace artifacts retain checkout paths, merge history changes test selection, and a stage timeout without phase evidence obscures whether compilation or tests exhaust the budget. Criteria: each verdict identifies its source, comparison and failure class.
 
-Decision: `assurance.build.checkout-artifacts` and `assurance.build.runtime-checkout` bind builds and helpers to invocation identity. `assurance.test.comparison-base`, `assurance.test.merge-source` and `assurance.test.base-evidence` bind test-first obligations to one comparison and distinguish infrastructure from regression evidence. `assurance.gate.part-budget` binds resource evidence to parts.
+Decision: `assurance.build.checkout-artifacts` and `assurance.build.runtime-checkout` bind builds and helpers to invocation identity. `assurance.test.base-evidence` separates infrastructure faults from regression evidence. `assurance.gate.part-budget` binds resource evidence to parts.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

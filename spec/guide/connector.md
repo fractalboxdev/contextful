@@ -15,7 +15,7 @@ reserves quota, and attaches credentials
 
 A **sandboxed component** is a **WebAssembly (Wasm) component** implementing the
 host-owned connector interface; compiled-in connectors implement the same interface
-({{connector.export.authoring-path}}, {{connector.export.world-authorship}}). The component
+({{connector.export.authoring-path}}). The component
 runs under memory limits and per-call deadlines ({{connector.package.linear-memory}},
 {{connector.package.call-deadline}}) and reaches the network only through the host.
 Its only imports are outgoing HTTP, logging and a wall clock
@@ -46,9 +46,8 @@ code reaching past it fails to load ({{connector.declare-capability.undeclared-a
 optional scope probe checks the bound credential's grant before the first read
 ({{connector.declare-capability.scope-probe}}).
 
-A reload compares complete declarations ({{connector.widen.comparison}}). Narrowing needs no
-widening review ({{connector.widen.narrowing}}); an operator approval of additional access
-is bound to both manifests ({{connector.widen.approval-binding}}). A host witness is a request both matchers replay
+A reload compares the candidate's hosts with the admitted manifest's
+({{connector.widen.host-inclusion}}). A host witness is a request both matchers replay
 ({{connector.widen.host-witness}}).
 
 Every outbound request uses the host's mediated client

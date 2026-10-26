@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 4 | 18 | 338 | 70 | 25 | 4 | 316 | 0 | 316 |
-| `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 285 | 0 | 285 |
-| `connector` | 3 | 19 | 416 | 87 | 23 | 15 | 334 | 0 | 334 |
+| `assurance` | 4 | 18 | 326 | 70 | 24 | 4 | 316 | 0 | 316 |
+| `authority` | 2 | 16 | 298 | 80 | 28 | 8 | 285 | 0 | 285 |
+| `connector` | 3 | 19 | 400 | 87 | 23 | 15 | 334 | 0 | 334 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
-| `disclosure` | 3 | 17 | 187 | 64 | 14 | 5 | 167 | 0 | 167 |
-| `read` | 2 | 20 | 319 | 53 | 30 | 16 | 286 | 0 | 286 |
-| `run` | 3 | 29 | 612 | 128 | 49 | 19 | 588 | 0 | 588 |
-| `store` | 6 | 20 | 342 | 72 | 24 | 12 | 336 | 0 | 336 |
-| `surface` | 2 | 22 | 201 | 70 | 25 | 2 | 184 | 0 | 184 |
+| `disclosure` | 3 | 17 | 185 | 64 | 14 | 5 | 167 | 0 | 167 |
+| `read` | 2 | 20 | 303 | 53 | 29 | 16 | 286 | 0 | 286 |
+| `run` | 3 | 29 | 609 | 128 | 49 | 19 | 588 | 0 | 588 |
+| `store` | 6 | 20 | 339 | 72 | 23 | 12 | 336 | 0 | 336 |
+| `surface` | 2 | 22 | 199 | 70 | 24 | 2 | 184 | 0 | 184 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 90 | 0 | 90 |
-| **total** | 27 | 177 | 2888 | 687 | 235 | 84 | 2666 | 0 | |
+| **total** | 27 | 177 | 2831 | 687 | 230 | 84 | 2666 | 0 | |
 
 Decision records: 18.
 
@@ -25,24 +25,24 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
-| 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
+| 0 — The test-first gate | 2 | 21 | 20 | passing | closed |
 | 1 — The authority core | 14 | 244 | 243 | passing | closed |
-| 2 — The store | 9 | 198 | 192 | passing | closed |
-| 3 — The run path | 12 | 318 | 310 | passing | closed |
-| 4 — Ingest | 25 | 641 | 580 | passing | closed |
-| 5 — The read face under enforcement | 17 | 318 | 295 | passing | closed |
+| 2 — The store | 9 | 195 | 192 | passing | closed |
+| 3 — The run path | 12 | 317 | 310 | passing | closed |
+| 4 — Ingest | 25 | 624 | 580 | passing | closed |
+| 5 — The read face under enforcement | 17 | 308 | 295 | passing | closed |
 | 6 — Sync and replicas | 9 | 118 | 118 | passing | closed |
-| 7 — Memory | 6 | 95 | 85 | passing | closed |
+| 7 — Memory | 6 | 87 | 85 | passing | closed |
 | 8 — Accountability | 5 | 93 | 91 | passing | closed |
-| 9 — Visibility | 6 | 52 | 46 | passing | closed |
+| 9 — Visibility | 6 | 50 | 46 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 121 | 114 | passing | closed |
-| 11 — The derive tier | 7 | 98 | 97 | passing | closed |
-| 12 — The operator console | 12 | 66 | 61 | passing | closed |
+| 11 — The derive tier | 7 | 97 | 97 | passing | closed |
+| 12 — The operator console | 12 | 65 | 61 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 185 | 169 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
+| 14 — Assurance | 7 | 176 | 169 | passing | closed |
+| 15 — Point-in-time evaluation | 7 | 79 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
-| 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
+| 17 — Delegated bodies | 1 | 15 | 12 | passing | closed |
 | 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
 | 19 — Drive connections | 2 | 22 | 12 | open | open |
 | 20 — Drive permission custody | 2 | 11 | 0 | absent | open |

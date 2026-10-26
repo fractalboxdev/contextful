@@ -80,7 +80,7 @@ Both worlds import WASI 0.2 interfaces, and every export is a synchronous call. 
 | WASI 0.3 native async | Runtime maturity | The host runtime gates the 0.3 interfaces as experimental, and three performed clauses change meaning at once. |
 | Both worlds side by side | One implementation per capability | Dispatch branches on the world, which `connector.export.authoring-path` forbids. |
 
-Consequences: native async changes the meaning of `call-deadline` (a task and its subtasks), `session-budget` (concurrent requests reserving at the one pre-send hook) and `wait-primitive` (a guest can await), so adopting 0.3 is a major world bump under `connector.package.world-drain`.
+Consequences: native async changes the meaning of `call-deadline` (a task and its subtasks), `session-budget` (concurrent requests reserving at the one pre-send hook) and `wait-primitive` (a guest can await), so adopting 0.3 is a major world bump.
 Revisit: the host runtime ships the 0.3 interfaces without an experimental gate.
 
 ## Untrusted input decodes off-process and fails whole

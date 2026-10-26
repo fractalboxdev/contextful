@@ -163,7 +163,6 @@ The Admin page's operational views.
   *because one name labelling two graph nodes leaves the reader to guess which one ran*
 - `operational-record` — Admin's inspector, pack file surface and learnings view present the store-published operational record.
   *A-surface*
-- `listing-page` — One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve.
 
 ## package
 
