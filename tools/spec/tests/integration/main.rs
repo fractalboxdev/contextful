@@ -46,7 +46,7 @@ impl Scratch {
         let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
         for record in lock["types"].as_object().into_iter().flat_map(|t| t.values()) {
             let file = Path::new(record["file"].as_str().unwrap());
-            s.write(&file.to_string_lossy(), &std::fs::read_to_string(live.join(file)).unwrap());
+            s.write(&file.to_string_lossy(), &undefine_errors(&std::fs::read_to_string(live.join(file)).unwrap()));
             let package = file.ancestors().find(|p| live.join(p).join("Cargo.toml").is_file()).unwrap();
             let manifest = package.join("Cargo.toml");
             s.write(&manifest.to_string_lossy(), &std::fs::read_to_string(live.join(&manifest)).unwrap());
@@ -171,6 +171,24 @@ impl Scratch {
             .find(|id| id.starts_with(&format!("{operation}.")))
             .unwrap_or_else(|| panic!("no clause under {operation}"))
     }
+}
+
+/// A type file with each `"<Id>:` literal opening rewritten to `"_:`, so a file copied for
+/// its type defines no registered error and a source-site ratchet starts at zero.
+fn undefine_errors(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find('"') {
+        out.push_str(&rest[..=i]);
+        rest = &rest[i + 1..];
+        let id = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(rest.len());
+        if id > 0 && rest.starts_with(|c: char| c.is_ascii_uppercase()) && rest[id..].starts_with(':') {
+            out.push('_');
+            rest = &rest[id..];
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn copy_dir(from: &Path, to: &Path) {
