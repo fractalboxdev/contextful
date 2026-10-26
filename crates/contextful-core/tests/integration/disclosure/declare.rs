@@ -93,6 +93,9 @@ fn a_level_the_family_does_not_permit_is_refused() {
                     Err(DeclareError::Visibility(e @ VisibilityError::FamilyBound { .. })) => {
                         assert_eq!(e.identifier(), "VisibilityFamilyBound");
                         assert!(e.to_string().contains("wiki/pages"), "{e}");
+                        // The refusal names the levels the family permits.
+                        let permits = Fidelity::ALL.into_iter().filter(|f| permitted(family, *f)).map(Fidelity::as_str).collect::<Vec<_>>().join(", ");
+                        assert!(e.to_string().ends_with(&format!("; it permits {permits}")), "{e}");
                     }
                     other => panic!("{} at {} loaded as {other:?}", family.as_str(), fidelity.as_str()),
                 }
@@ -125,6 +128,7 @@ fn a_block_naming_no_family_is_refused() {
         let e = visibility(&table(&block(fidelity.as_str(), None, "15m")));
         assert_eq!(e, VisibilityError::FamilyUndeclared { table: "wiki/pages".into() });
         assert!(e.to_string().starts_with("VisibilityFamilyUndeclared"), "{e}");
+        assert!(e.to_string().ends_with("; declare one of container-roster, item-exception, person-container, directory"), "{e}");
         load_refused(&block(fidelity.as_str(), None, "15m"), "VisibilityFamilyUndeclared");
     }
     assert!(matches!(Binding::of(&TableDecl::named("wiki/pages")), Ok(None)));
