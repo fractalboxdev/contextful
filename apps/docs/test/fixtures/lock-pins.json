@@ -1,0 +1,6 @@
+{
+  "store.reserve.commit-wait": [
+    { "kind": "test", "path": "crates/contextful-context/tests/integration/commit.rs", "name": "commit_waits_for_the_table_lock", "line": 42 },
+    { "kind": "theorem", "path": "formal/protocol/Commit.lean", "name": "commit_order" }
+  ]
+}

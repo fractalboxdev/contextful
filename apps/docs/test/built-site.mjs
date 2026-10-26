@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
-import { legacyRedirects, sitePaths } from "../src/lib/corpus.mjs";
+import { legacyRedirects, readLock, registeredErrors, routeFor, sitePaths, SPEC_DIR } from "../src/lib/corpus.mjs";
 
 const origin = "https://contextful.fractalbox.dev";
 const fileFor = (path) => join("dist", path.endsWith("/") ? `${path}index.html` : path);
@@ -78,4 +78,67 @@ test("redirects, sitemap and machine-readable exports cover the canonical routes
   assert.ok(full.includes(`Source: ${origin}/docs/specs/contracts/01-topology/#deployment-targets`));
   assert.ok(full.includes("Fargate Linux tasks"), "deployment target tables appear in the full Markdown export");
   assert.ok(readFileSync("dist/robots.txt", "utf8").includes(`${origin}/sitemap.xml`));
+});
+
+const lock = readLock();
+const pages = () => sitePaths().filter((path) => path.startsWith("/docs/"));
+
+test("each contract page folds every Why into details and addresses every clause", () => {
+  const byRoute = Map.groupBy(lock.clauses, (clause) => routeFor(resolve(SPEC_DIR, "..", clause.file)));
+  assert.ok(byRoute.size > 20);
+  for (const [route, clauses] of byRoute) {
+    const html = htmlFor(route);
+    assert.equal(html.match(/<li class="clause" id="/g)?.length ?? 0, clauses.length, `clauses: ${route}`);
+    assert.equal(html.match(/<details class="clause-why">/g)?.length ?? 0, clauses.filter((c) => c.why).length, `whys: ${route}`);
+  }
+});
+
+test("every clause and error reference carries a server-rendered statement preview", () => {
+  let refs = 0;
+  for (const path of pages()) {
+    for (const [ref, inner] of htmlFor(path).matchAll(/<a\b[^>]*class="(?:clause-ref|error-ref)[^"]*"[^>]*>([\s\S]*?)<\/a>/g)) {
+      refs++;
+      assert.ok(inner.includes('class="clause-preview"'), `${path}: ${ref.slice(0, 120)}`);
+      assert.ok(/\btitle="/.test(ref), `${path}: title fallback`);
+    }
+  }
+  assert.ok(refs > 1000, `${refs} references`);
+});
+
+test("every error code span links to its owning clause outside that clause", () => {
+  const errors = registeredErrors();
+  const failures = [];
+  for (const path of pages()) {
+    const html = htmlFor(path);
+    for (const m of html.matchAll(/<code>([A-Z][A-Za-z0-9]+)<\/code>/g)) {
+      const owner = errors.get(m[1])?.clause;
+      if (!owner) continue;
+      // A title may hold a literal `>`, so the link is read from its start to the span.
+      const open = html.lastIndexOf("<a ", m.index);
+      const link = html.slice(open, m.index);
+      if (link.endsWith('class="error-ref">') && link.startsWith(`<a href="`) && link.includes(`#${owner}"`)) continue;
+      const item = html.lastIndexOf('<li class="clause" id="', m.index);
+      const inOwner = item >= 0 && html.lastIndexOf("</li>", m.index) < item
+        && html.startsWith(`<li class="clause" id="${owner}"`, item);
+      const inHeading = /<h[1-6][^>]*>[^<]*$/.test(html.slice(Math.max(0, m.index - 200), m.index));
+      if (!inOwner && !inHeading) failures.push(`${path}: ${m[1]}`);
+    }
+  }
+  assert.deepEqual(failures, []);
+});
+
+test("pinned clauses show their pins beside the id", { skip: !lock.pins && "the lock carries no pins" }, () => {
+  for (const id of Object.keys(lock.pins ?? {})) {
+    const clause = lock.clauses.find((c) => c.id === id);
+    if (!clause) continue;
+    const html = htmlFor(routeFor(resolve(SPEC_DIR, "..", clause.file)));
+    const at = html.indexOf(`<li class="clause" id="${id}">`);
+    assert.ok(at >= 0 && html.slice(at, html.indexOf("</li>", at)).includes('class="clause-pins"'), id);
+  }
+});
+
+test("the glossary renders as a page when spec/glossary.md exists", { skip: !existsSync(join(SPEC_DIR, "glossary.md")) && "spec/glossary.md is absent" }, () => {
+  assert.ok(sitePaths().includes("/docs/specs/glossary/"));
+  assert.ok(htmlFor("/docs/specs/glossary/").includes('<article class="prose"'));
+  assert.ok(htmlFor("/docs/").includes('href="/docs/specs/glossary/"'));
 });
