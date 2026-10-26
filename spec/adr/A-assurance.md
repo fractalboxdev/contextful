@@ -167,16 +167,6 @@ The feature-unified workspace suite exceeds the 1800 s sandbox cap on a cold bui
 | Four name-hashed shards | Stage wall clock | Each shard rebuilt both nested examples; three exceeded 2700 s. |
 | One CLI test build handed to every shard | Operability | A part in a fresh checkout receives no executable another part built. |
 
-## gate-parts-run — Gate parts run under a 45 min exec deadline
-
-A part building the binary cold and running its CLI suite takes 1250–1750 s, so a 1800 s deadline ends the slowest without a verdict. The slowest passing part uses about 65% of 45 min.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| A 45 min exec deadline *(chosen)* | — | A hung part reports 15 min later. |
-| Splitting each long part by test module | Gate wall clock | Each extra part adds a cold build of 550–760 s. |
-| A shared build cache | Operability | A cache bucket and credential become part of the gate. |
-
 ## feature-runs-formal — Feature runs, formal checks and profile budgets run in a nightly tier
 
 The features, formal and budget parts each need a cold build of their own feature set or profile. P7 keeps a nightly cadence for a check too costly per change, naming the change range.

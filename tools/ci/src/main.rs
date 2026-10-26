@@ -533,8 +533,8 @@ fn repo_root() -> Result<PathBuf> {
 }
 
 /// The stages whose work splits into parts, each runnable alone, so each part fits one
-/// stage's wall clock (`assurance.gate.part-budget`, `assurance.build.profile-build`,
-/// `assurance.gate.budget-stage`).
+/// stage's wall clock (`assurance.gate.test-first-parts`, `assurance.gate.workspace-parts`,
+/// `assurance.build.profile-build`, `assurance.gate.budget-stage`).
 const SPLIT: [&str; 5] = ["test-first", "workspace", "evaluate", "features", "budget"];
 
 /// A package's name with the workspace prefix `contextful-` removed.
