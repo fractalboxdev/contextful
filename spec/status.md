@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 4 | 18 | 343 | 76 | 24 | 4 | 337 | 1 | 0 | 334 |
+| `assurance` | 4 | 18 | 343 | 76 | 24 | 4 | 339 | 1 | 0 | 334 |
 | `authority` | 2 | 16 | 290 | 79 | 28 | 8 | 290 | 4 | 0 | 286 |
 | `connector` | 3 | 19 | 400 | 87 | 23 | 15 | 335 | 2 | 0 | 335 |
 | `corpus` | 1 | 11 | 125 | 50 | 13 | 0 | 125 | 0 | 0 | 125 |
@@ -15,11 +15,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 315 | 67 | 23 | 13 | 311 | 13 | 0 | 311 |
 | `surface` | 2 | 22 | 194 | 69 | 24 | 2 | 190 | 0 | 0 | 186 |
 | `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 91 | 0 | 0 | 90 |
-| **total** | 27 | 178 | 2854 | 699 | 235 | 85 | 2731 | 24 | 0 | |
+| **total** | 27 | 178 | 2854 | 699 | 235 | 85 | 2733 | 24 | 0 | |
 
 Decision records: 18.
 
-Clauses restating a code type: 46.
+Clauses restating a code type: 45.
 
 ## Milestones
 

@@ -48,8 +48,8 @@ const DIRECTORY: &str = r#"
 {"group": "g-finance", "member": "u-1001", "member_kind": "user"}
 "#;
 
-/// A `--directory` file is the identity provider's directory read, one JSON object per line: a {{type:contextful_core::disclosure::sweep::LinkLine}}, or a membership carrying `group`, `member` and `member_kind`; a run without one keeps the current rows.
-// spec: disclosure.sweep.directory-file@a345d324
+/// A `--directory` file is the identity provider's directory read, one JSON object per line: a {{type:contextful_core::disclosure::sweep::LinkLine}} or a {{type:contextful_core::disclosure::sweep::Membership}}; a run without one keeps the current rows.
+// spec: disclosure.sweep.directory-file@fa38c938
 #[test]
 fn a_directory_file_carries_links_and_memberships_and_a_run_without_one_keeps_them() {
     let d = parse_directory("drive", DIRECTORY).unwrap();

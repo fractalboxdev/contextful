@@ -24497,7 +24497,7 @@
       "operation": "sweep",
       "subject": "directory-file",
       "kind": "behavior",
-      "statement": "A `--directory` file is the identity provider's directory read, one JSON object per line: a {{type:contextful_core::disclosure::sweep::LinkLine}}, or a membership carrying `group`, `member` and `member_kind`; a run without one keeps the current rows.",
+      "statement": "A `--directory` file is the identity provider's directory read, one JSON object per line: a {{type:contextful_core::disclosure::sweep::LinkLine}} or a {{type:contextful_core::disclosure::sweep::Membership}}; a run without one keeps the current rows.",
       "why": "",
       "file": "spec/60-visibility.md",
       "line": 88
@@ -37322,6 +37322,25 @@
         "disclosure.sweep.directory-file"
       ]
     },
+    "contextful_core::disclosure::sweep::Membership": {
+      "file": "crates/contextful-core/src/disclosure/sweep.rs",
+      "line": 319,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "group"
+        },
+        {
+          "name": "member"
+        },
+        {
+          "name": "member_kind"
+        }
+      ],
+      "clauses": [
+        "disclosure.sweep.directory-file"
+      ]
+    },
     "contextful_core::disclosure::sweep::RawBlock": {
       "file": "crates/contextful-core/src/disclosure/sweep.rs",
       "line": 102,
@@ -45427,6 +45446,16 @@
         "proved": false
       }
     ],
+    "assurance.consumer.artifact-stability": [
+      {
+        "kind": "test",
+        "path": "crates/acceptance/tests/integration/conformance_pg.rs",
+        "name": "an_artifact_whose_bytes_change_during_the_run_earns_no_compatibility_verdict",
+        "line": 99,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "assurance.consumer.command-diagnostic": [
       {
         "kind": "test",
@@ -45563,6 +45592,16 @@
         "path": "crates/acceptance/tests/integration/conformance.rs",
         "name": "the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution",
         "line": 421,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "assurance.consumer.storage-profile": [
+      {
+        "kind": "test",
+        "path": "crates/acceptance/tests/integration/conformance_pg.rs",
+        "name": "unexpected_storage_initialization_errors_fail_without_exporting_credentials",
+        "line": 33,
         "verdict": "performed",
         "proved": false
       }

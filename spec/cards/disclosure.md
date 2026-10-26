@@ -171,6 +171,16 @@ The struct at `crates/contextful-core/src/disclosure/sweep.rs:337`, named by `di
 | `method` |  |
 | `confidence` |  |
 
+### `contextful_core::disclosure::sweep::Membership`
+
+The struct at `crates/contextful-core/src/disclosure/sweep.rs:319`, named by `disclosure.sweep.directory-file`.
+
+| Key | Doc |
+| --- | --- |
+| `group` |  |
+| `member` |  |
+| `member_kind` |  |
+
 ### `contextful_core::disclosure::sweep::RawBlock`
 
 The struct at `crates/contextful-core/src/disclosure/sweep.rs:102`, named by `disclosure.sweep.sweep-block`.
