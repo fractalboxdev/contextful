@@ -105,12 +105,6 @@ pub enum ConnectorError {
     /// An allowlist that is empty or bare-wildcard, or an entry carrying a scheme, port or path. (`connector.declare-capability.allowlist-shape`)
     #[error("ConnectorAllowlistRejected: {0}")]
     ConnectorAllowlistRejected(String),
-    /// An environment binding not supplied, or supplied off its declared shape. (`connector.declare-capability.binding-unbound`)
-    #[error("ConnectorBindingUnbound: {0}")]
-    ConnectorBindingUnbound(String),
-    /// An environment binding on a key the connector does not read. (`connector.declare-capability.binding-unsupported`)
-    #[error("ConnectorBindingUnsupported: {0}")]
-    ConnectorBindingUnsupported(String),
     /// A fetched row already carrying a column the source binds from the table name. (`connector.source.bound-column-occupied`)
     #[error("ConnectorBoundColumnOccupied: {0}")]
     ConnectorBoundColumnOccupied(String),

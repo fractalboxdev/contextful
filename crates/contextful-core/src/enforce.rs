@@ -32,9 +32,6 @@ pub enum EnforceError {
     /// A mask naming a column the schema omits. (`authority.mask.absent-column`)
     #[error("EnforceMaskOnAbsentColumn: {0}")]
     MaskOnAbsentColumn(String),
-    /// A wildcard zone default in a store with several principals. (`authority.place.permissive-default`)
-    #[error("EnforcePermissiveZoneDefault: {0}")]
-    PermissiveZoneDefault(String),
     /// A row predicate node outside the typed subset. (`authority.filter-rows.outside-grammar`)
     #[error("EnforcePredicateOutsideGrammar: {0}")]
     PredicateOutsideGrammar(String),
@@ -95,7 +92,6 @@ impl EnforceError {
             EnforceError::IncognitoWidening(_) => "EnforceIncognitoWidening",
             EnforceError::KeyMaterialInRelation(_) => "EnforceKeyMaterialInRelation",
             EnforceError::MaskOnAbsentColumn(_) => "EnforceMaskOnAbsentColumn",
-            EnforceError::PermissiveZoneDefault(_) => "EnforcePermissiveZoneDefault",
             EnforceError::PredicateOutsideGrammar(_) => "EnforcePredicateOutsideGrammar",
             EnforceError::ProtectedFloorWidened(_) => "EnforceProtectedFloorWidened",
             EnforceError::RemovalWithPublicCloud(_) => "EnforceRemovalWithPublicCloud",
