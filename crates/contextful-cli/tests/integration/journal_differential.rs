@@ -1,4 +1,5 @@
 //! The executable journal model and the journal adapters agree after each interleaved step.
+#![cfg(feature = "data-plane")]
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
