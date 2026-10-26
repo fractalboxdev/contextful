@@ -6571,7 +6571,7 @@
       "statement": "CLI JSON output, HTTP and the tool protocol serialize the same response: `columns`, `rows`, `truncated`, and optional restriction, resolved-build, provenance, retrieval and time-bound blocks.",
       "why": "because a guarantee landing on one transport and missing on another is worse than a guarantee on none",
       "file": "spec/20-read.md",
-      "line": 202
+      "line": 179
     },
     {
       "id": "read.respond.row-ceiling",
@@ -6582,7 +6582,7 @@
       "statement": "The executor applies each table's `limits.max_rows` to delivered rows. Truncation detection uses an extra-row probe (1 rows). This ceiling limits no work performed.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 204
+      "line": 181
     },
     {
       "id": "read.respond.face-ceiling",
@@ -6593,7 +6593,7 @@
       "statement": "Every read interface, including `corpus.retrieve`, delivers at most 10000 rows. This ceiling contributes to {{authority.grant.row-ceiling}} without requiring a declaration and bounds the candidate window.",
       "why": "because an undeclared ceiling otherwise streams a whole table into one response, and a caller learns of the cut from `truncated` rather than from memory exhaustion",
       "file": "spec/20-read.md",
-      "line": 205
+      "line": 182
     },
     {
       "id": "read.respond.engine-composed-ceiling",
@@ -6604,7 +6604,7 @@
       "statement": "Engine-composed table reads, derive sources and memory reads apply the least declared grant or table row ceiling, excluding the interface ceiling. Without declared ceilings, these reads deliver every row.",
       "why": "because a derive or memory pass over a silently cut table records partial input as complete",
       "file": "spec/20-read.md",
-      "line": 207
+      "line": 184
     },
     {
       "id": "read.respond.truncation-is-exact",
@@ -6615,7 +6615,7 @@
       "statement": "For a row ceiling, the serializer sets `truncated` exactly when the extra probe row exists. Comparing returned counts with requested limits does not determine truncation.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 209
+      "line": 186
     },
     {
       "id": "read.respond.cell-encoding",
@@ -6626,7 +6626,7 @@
       "statement": "SQL NULL is JSON `null` and nothing else is. Non-finite floats are `\"NaN\"`, `\"inf\"`, `\"-inf\"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; a union is its text form.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 211
+      "line": 188
     },
     {
       "id": "read.respond.bytes-and-vectors",
@@ -6637,7 +6637,7 @@
       "statement": "The serializer encodes binary as padded base64. Fixed-size float arrays, including vector columns, become JSON arrays whose elements use float-cell encoding.",
       "why": "A-store#binary-fixed-size",
       "file": "spec/20-read.md",
-      "line": 212
+      "line": 189
     },
     {
       "id": "read.respond.nested-values",
@@ -6648,7 +6648,7 @@
       "statement": "Lists encode as JSON arrays. Structs and maps encode as JSON objects keyed by field name or key text. Each item, field or value uses cell encoding.",
       "why": "A-store#struct-list-map",
       "file": "spec/20-read.md",
-      "line": 214
+      "line": 191
     },
     {
       "id": "read.respond.wide-number-shape",
@@ -6659,7 +6659,7 @@
       "statement": "SQL type alone determines JSON encoding. Integers up to 32 bits, finite floats and decimals up to 15 digits encode as numbers. Wider integers and decimals encode as exact decimal strings.",
       "why": "because a wire type that varies with the values on one page breaks a typed client on the next",
       "file": "spec/20-read.md",
-      "line": 216
+      "line": 193
     },
     {
       "id": "read.respond.type-is-the-cell",
@@ -6670,7 +6670,7 @@
       "statement": "The response carries no separate type list. Each cell's JSON type declares its type.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 218
+      "line": 195
     },
     {
       "id": "read.respond.one-response-shape",
@@ -6681,7 +6681,7 @@
       "statement": "Every read answers with one complete result set in one response; no read tool streams partial rows.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 219
+      "line": 196
     },
     {
       "id": "read.respond.zero-rows-is-success",
@@ -6692,7 +6692,7 @@
       "statement": "Fewer rows than the requested limit, zero included, is a success.",
       "why": "P2",
       "file": "spec/20-read.md",
-      "line": 221
+      "line": 198
     },
     {
       "id": "read.respond.match-count",
@@ -6703,7 +6703,7 @@
       "statement": "Match counts report the number of matching rows scored by the ranker in that call. These counts require no diagnostic metadata.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 223
+      "line": 200
     },
     {
       "id": "read.respond.coverage-is-a-count",
@@ -6714,7 +6714,7 @@
       "statement": "A claim of missing corpus coverage requires a table count after the full-scan fallback, without recency truncation. The highest ranked score supplies no coverage conclusion.",
       "why": "because the calibrated lexical leg scores the best row 1.0 and IDF lifts one incidental rare-term mention",
       "file": "spec/20-read.md",
-      "line": 224
+      "line": 201
     },
     {
       "id": "read.respond.internals-opt-in",
@@ -6725,7 +6725,7 @@
       "statement": "With `internals: true`, every read tool and HTTP response includes a separate object containing executed SQL, engine name, applied limit, row count and elapsed milliseconds. Otherwise, the response omits that object.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 226
+      "line": 203
     },
     {
       "id": "read.respond.query-internals-parameters",
@@ -6736,7 +6736,7 @@
       "statement": "Under `internals: true`, {{read.guard.query-binding}} includes the validated typed parameter map beside executed SQL in the internals object.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 227
+      "line": 204
     },
     {
       "id": "read.respond.duration-ceiling",
@@ -6747,7 +6747,7 @@
       "statement": "Under {{authority.grant.duration-ceiling}}, the engine interrupts the statement's connection at its deadline. `ReadDurationExceeded` names the ceiling, source and elapsed milliseconds. The response contains no rows; other statements continue running.",
       "why": "A-read#statement-owns-deadline",
       "file": "spec/20-read.md",
-      "line": 228
+      "line": 205
     },
     {
       "id": "read.respond.byte-ceiling",
@@ -6758,7 +6758,7 @@
       "statement": "Under {{authority.grant.byte-ceiling}}, the serialized response includes only whole rows within the selected ceiling. An envelope or first row exceeding that ceiling raises `ReadResponseTooLarge` and returns no rows.",
       "why": "A-read#statement-owns-deadline",
       "file": "spec/20-read.md",
-      "line": 230
+      "line": 207
     },
     {
       "id": "read.respond.truncation-cause",
@@ -6769,7 +6769,7 @@
       "statement": "A truncated response carries `contextful.truncation` with `by`, `ceiling` and `source`: `rows` admits grant, table, request, template or face; `bytes` admits grant, table or request.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 232
+      "line": 209
     },
     {
       "id": "read.respond.truncation-tie",
@@ -6780,7 +6780,7 @@
       "statement": "If both ceilings cut the same next row, bytes takes precedence. Equal ceilings within one dimension choose the first eligible source: grant, table, request, template, face.",
       "why": "because one cut needs one deterministic cause for a client to branch on",
       "file": "spec/20-read.md",
-      "line": 233
+      "line": 210
     },
     {
       "id": "read.respond.operator-metadata",
@@ -6791,7 +6791,7 @@
       "statement": "Operator table metadata includes column count and backing files. A row count comes from a count query rather than a stored field.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 235
+      "line": 212
     },
     {
       "id": "read.respond.restriction-block",
@@ -6802,7 +6802,7 @@
       "statement": "The restriction block includes session zone, incognito flag and an entry per touched relation excluded or column-masked by zone: `table`, `excluded`, `rows_dropped`, `columns_masked`. Reads withholding no touched relation omit the block.",
       "why": "A-read#zone-withheld-relation",
       "file": "spec/20-read.md",
-      "line": 237
+      "line": 214
     },
     {
       "id": "read.respond.in-band-error",
@@ -6813,7 +6813,7 @@
       "statement": "On the tool protocol a refusal arrives in-band, as a protocol error object or a result flagged as an error under transport success.",
       "why": "P2",
       "file": "spec/20-read.md",
-      "line": 239
+      "line": 216
     },
     {
       "id": "read.respond.paths-stay-inside",
@@ -6824,7 +6824,7 @@
       "statement": "An ordinary read's result carries no store path. Provenance arrives as columns naming table, run, connector version, ingestion instant and authoring subject.",
       "why": "A-read#read-surface-admits",
       "file": "spec/20-read.md",
-      "line": 241
+      "line": 218
     },
     {
       "id": "read.query.operator-verb",
@@ -6835,7 +6835,7 @@
       "statement": "`contextful query --json [--project <name>] [--declaration <path>] [--limit <n>] [--incognito] <sql>` runs one raw operator statement under {{read.guard.statement-provenance}}. The command prints {{read.respond.one-projection}} as one JSON line on standard output.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 248
+      "line": 225
     },
     {
       "id": "read.query.one-statement",
@@ -6846,7 +6846,7 @@
       "statement": "Text the engine's parser splits into other than exactly one statement raises `QueryNotOneStatement` before any statement runs.",
       "why": "because preparing multi-statement text executes every statement but the last and answers only the last, dropping the earlier results and side effects unseen",
       "file": "spec/20-read.md",
-      "line": 249
+      "line": 226
     },
     {
       "id": "read.query.project-relations",
@@ -6857,7 +6857,7 @@
       "statement": "Within a project, outside {{read.query.incognito}}, all stored or manifest-declared tables register under bare names as unrestricted base relations at latest committed state. Quiet tables follow {{read.register.quiet-table}}.",
       "why": "because operator text is the store owner's own, and a restriction bounds a capability-token caller",
       "file": "spec/20-read.md",
-      "line": 251
+      "line": 228
     },
     {
       "id": "read.query.incognito",
@@ -6868,7 +6868,7 @@
       "statement": "With `--incognito` or `[project.zone]` setting `incognito_default = true`, each relation passes the zone step at `local:device`. Excluded tables return no rows; excluded columns return null. {{read.respond.restriction-block}} reports both.",
       "why": "because incognito pins the uncredentialed local owner's reads to the fail-closed pair, and this verb is that owner's read",
       "file": "spec/20-read.md",
-      "line": 253
+      "line": 230
     },
     {
       "id": "read.query.discovered-project",
@@ -6879,7 +6879,7 @@
       "statement": "Without `--project`, the project {{store.init.discovery}} finds is the verb's project. When discovery finds none, or the found project's store is absent, no relation registers and the statement runs over no store.",
       "why": "because every other verb reads the nearest `contextful.toml`, and a statement over files or literals needs no store",
       "file": "spec/20-read.md",
-      "line": 255
+      "line": 232
     },
     {
       "id": "read.query.project-store",
@@ -6890,7 +6890,7 @@
       "statement": "A `--project` whose `.contextful/context/<project>/` store is absent raises `QueryProjectAbsent`.",
       "why": "because every declared table of an absent store registers as quiet, and an operator reads its zero rows as an answer",
       "file": "spec/20-read.md",
-      "line": 257
+      "line": 234
     },
     {
       "id": "read.query.declaration-default",
@@ -6901,7 +6901,7 @@
       "statement": "`--declaration <path>` names the manifest whose declared tables register; without it, the {{store.init.default-declaration}} file does when present, and no manifest otherwise. With no project, `--declaration` refuses by {{store.init.undiscovered}}.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 259
+      "line": 236
     },
     {
       "id": "read.query.limit-truncates",
@@ -6912,7 +6912,7 @@
       "statement": "`--limit <n>` bounds delivered rows using the over-fetch of {{read.respond.row-ceiling}} and sets `truncated` under {{read.respond.truncation-is-exact}}. Without this flag, the query returns every row {{read.query.raw-row-ceiling}} admits.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 260
+      "line": 237
     },
     {
       "id": "read.query.raw-row-ceiling",
@@ -6923,7 +6923,7 @@
       "statement": "An operator's raw read delivers at most the least `limits.max_rows` among the relations its parsed statement names, and at most `--limit` beside it.",
       "why": "because a published bound the owner's own verb ignores advertises a guarantee one face breaks",
       "file": "spec/20-read.md",
-      "line": 261
+      "line": 238
     },
     {
       "id": "read.query.json-only",
@@ -6934,7 +6934,7 @@
       "statement": "The verb prints the JSON projection alone; it carries no text rendering, and a call omitting `--json` is a usage error.",
       "why": "because a second rendering is a second projection a script must reconcile with the first",
       "file": "spec/20-read.md",
-      "line": 263
+      "line": 240
     },
     {
       "id": "read.query.engine-fault",
@@ -6945,7 +6945,7 @@
       "statement": "A statement the engine rejects exits non-zero with the engine's message on standard error and nothing on standard output.",
       "why": "because a caller parsing standard output never mistakes a partial or empty envelope for an answer",
       "file": "spec/20-read.md",
-      "line": 265
+      "line": 242
     },
     {
       "id": "read.reference.call",
@@ -6956,7 +6956,7 @@
       "statement": "`context.reference` accepts one table, run identifier and row sequence. `contextful context reference` uses the same resolver under Read admission, returning {{read.respond.one-projection}} without selecting a filesystem path.",
       "why": "A-read#result-reused-under",
       "file": "spec/20-read.md",
-      "line": 273
+      "line": 250
     },
     {
       "id": "read.reference.admission",
@@ -6967,7 +6967,7 @@
       "statement": "Resolution applies {{read.guard.unregistered-relation}}, the caller's registered row and column restrictions, and {{read.respond.duration-ceiling}}, {{read.respond.byte-ceiling}} and {{disclosure.record.read-entry}} before publishing its verdict.",
       "why": "A-read#read-surface-admits",
       "file": "spec/20-read.md",
-      "line": 275
+      "line": 252
     },
     {
       "id": "read.reference.erased-verdict",
@@ -6978,7 +6978,7 @@
       "statement": "An admitted reference in the independently verified cumulative erasure index returns `available: false` and `reason: erased`. An absent reference outside that index returns `reason: missing` without source payload.",
       "why": "A-read#result-reused-under",
       "file": "spec/20-read.md",
-      "line": 277
+      "line": 254
     },
     {
       "id": "read.reference.index-visibility",
@@ -6989,7 +6989,7 @@
       "statement": "A tenant-scoped, row-policy-restricted, zone-excluded or column-masked caller receives an unreadable verdict before erasure-index access; only the owner metadata eligibility of {{read.register.scoped-ledger}} admits an erased verdict.",
       "why": "A-read#read-surface-admits",
       "file": "spec/20-read.md",
-      "line": 279
+      "line": 256
     },
     {
       "id": "read.reference.frontier",
@@ -7000,7 +7000,7 @@
       "statement": "Before resolution and response publication, the resolver validates the same signed store frontier. The frontier's erasure index binds store identity and cumulative reference versions through {{disclosure.erase.store-binding}}.",
       "why": "A-read#result-reused-under",
       "file": "spec/20-read.md",
-      "line": 281
+      "line": 258
     },
     {
       "id": "read.retrieve.ranked-call",
@@ -7011,7 +7011,7 @@
       "statement": "`corpus.retrieve({prefix, tables?, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns ranked rows across item and artifact genres under `prefix` and `tables`, each with a snippet and provenance, composing the query surface and memory recall, storing nothing.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 288
+      "line": 265
     },
     {
       "id": "read.retrieve.table-list",
@@ -7022,7 +7022,7 @@
       "statement": "Retrieval queries session relations matching both `tables` and `prefix`. Names outside the session raise `RetrieveTableUnavailable`, listing every unavailable name in input order. Absent and ungranted tables receive identical errors under {{authority.filter-rows.default-deny}}.",
       "why": "because one identical refusal for an absent and an ungranted table confirms neither exists, and a silently skipped typo answers a different question",
       "file": "spec/20-read.md",
-      "line": 289
+      "line": 266
     },
     {
       "id": "read.retrieve.relevance-floor",
@@ -7033,7 +7033,7 @@
       "statement": "A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 291
+      "line": 268
     },
     {
       "id": "read.retrieve.content-tokens",
@@ -7044,7 +7044,7 @@
       "statement": "The tokenizer lowercases query text and splits at non-alphanumeric characters. The tokenizer removes stop tokens, keeps non-ASCII runs of two or more characters, and deduplicates tokens in order.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 292
+      "line": 269
     },
     {
       "id": "read.retrieve.token-length-floor",
@@ -7055,7 +7055,7 @@
       "statement": "An ASCII run shorter than 2 chars leaves the content-token set.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 293
+      "line": 270
     },
     {
       "id": "read.retrieve.token-cap",
@@ -7066,7 +7066,7 @@
       "statement": "The content-token set holds at most 12 tokens. An empty set omits the relevance predicate.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 294
+      "line": 271
     },
     {
       "id": "read.retrieve.script-split-matching",
@@ -7077,7 +7077,7 @@
       "statement": "An all-lowercase-alphanumeric token matches on an ASCII word boundary with an optional plural suffix; a token with any non-ASCII character matches by containment.",
       "why": "because no ASCII word boundary occurs beside an ideograph",
       "file": "spec/20-read.md",
-      "line": 295
+      "line": 272
     },
     {
       "id": "read.retrieve.plural-suffix-floor",
@@ -7088,7 +7088,7 @@
       "statement": "A token under 4 chars takes no optional plural suffix.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 297
+      "line": 274
     },
     {
       "id": "read.retrieve.scored-text",
@@ -7099,7 +7099,7 @@
       "statement": "Under {{store.declare.table-block}}, `retrieve.text` optionally lists columns for lexical scoring and {{read.retrieve.relevance-floor}}, excluding session-classed or masked columns. Without `retrieve.text`, scoring uses the table's snippet columns.",
       "why": "because a snippet is chosen for display, so a match in a long body misses the floor and a categorical label in the snippet matches every row",
       "file": "spec/20-read.md",
-      "line": 298
+      "line": 275
     },
     {
       "id": "read.retrieve.empty-scored-text",
@@ -7110,7 +7110,7 @@
       "statement": "If declared `retrieve.text` leaves no column, retrieval skips that table's full-text probe. For queries containing a content token, only positive vector scores admit its rows.",
       "why": "because a null lexical score passes the floor, so a text-only query otherwise returns such a table's newest rows whatever it asks",
       "file": "spec/20-read.md",
-      "line": 300
+      "line": 277
     },
     {
       "id": "read.retrieve.text-free-table-scores-null",
@@ -7121,7 +7121,7 @@
       "statement": "A table without scored text columns has a null lexical score rather than zero. Only vector scores admit that table's rows.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 302
+      "line": 279
     },
     {
       "id": "read.retrieve.candidate-window",
@@ -7132,7 +7132,7 @@
       "statement": "The candidate window is 8 times the requested limit or 200 rows, whichever is larger. Candidates equal to the window report that the ranking saw a recency-ordered slice.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 304
+      "line": 281
     },
     {
       "id": "read.retrieve.reserved-columns-project-null",
@@ -7143,7 +7143,7 @@
       "statement": "Reserved projected columns — modality, language, prompt hash, kind — render null for a table lacking them, and its rows stay in the union.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 306
+      "line": 283
     },
     {
       "id": "read.retrieve.unsatisfiable-arm-drops",
@@ -7154,7 +7154,7 @@
       "statement": "In `filter`, a scalar tests column equality; a value list tests membership. Rows match every condition. A table lacking a named column contributes no rows, including unfiltered rows.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 307
+      "line": 284
     },
     {
       "id": "read.retrieve.filter-values",
@@ -7165,7 +7165,7 @@
       "statement": "Filter values are strings, numbers or booleans; membership lists contain at least one value. Nulls, nested objects, nested lists and empty lists are malformed conditions.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 309
+      "line": 286
     },
     {
       "id": "read.retrieve.kinds",
@@ -7176,7 +7176,7 @@
       "statement": "`kinds` lists artifact kind strings as one membership condition on `kind`. A table without that column contributes no rows under {{read.retrieve.unsatisfiable-arm-drops}}.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 310
+      "line": 287
     },
     {
       "id": "read.retrieve.engine-resolved-date",
@@ -7187,7 +7187,7 @@
       "statement": "The engine resolves each table's publication column itself, outside the caller's filter.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 311
+      "line": 288
     },
     {
       "id": "read.retrieve.since",
@@ -7198,7 +7198,7 @@
       "statement": "`since` is the inclusive lower bound of the question's timeframe over the publication instant {{read.retrieve.engine-resolved-date}} resolves; the anchor is `as_of`, else the read's clock. A date-only value means midnight UTC, and omitting `since` leaves every row in window.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 312,
+      "line": 289,
       "scenarios": [
         "WHEN `corpus.retrieve` carries `since: \"2030-01-01\"` and a matching row's publication column holds `2029-12-31`, THEN the row still returns, its in-window flag false, ordered below every in-window row."
       ]
@@ -7212,7 +7212,7 @@
       "statement": "A filter holds at most 32 conditions, each membership list at most 256 entries, and its serialized JSON, `kinds` included, at most 16 KiB.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 313
+      "line": 290
     },
     {
       "id": "read.retrieve.filter-budget-refusal",
@@ -7223,7 +7223,7 @@
       "statement": "Before building per-table queries, retrieval checks the entire filter's budget. An oversized or malformed condition raises `FilterBudgetExceeded` for the whole read.",
       "why": "A-read#restricted-sidecar-probe",
       "file": "spec/20-read.md",
-      "line": 314
+      "line": 291
     },
     {
       "id": "read.retrieve.row-key-dedup",
@@ -7234,7 +7234,7 @@
       "statement": "Ranked reads keep only the newest ingestion per `(table, row key)`. If that version misses the relevance floor, no older copy substitutes. The key uses the declared content-hash column, otherwise null; projected values supply no digest.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 316
+      "line": 293
     },
     {
       "id": "read.retrieve.row-key-under-mask",
@@ -7245,7 +7245,7 @@
       "statement": "For content-hash columns masked by `drop`, `truncate`, `bucket`, `range` or any combine, every row key is null. Masking by `hash` or `tokenize` alone uses the digest as key.",
       "why": "because a mask merging distinct hashes lets a reader's grants decide which rows a table holds",
       "file": "spec/20-read.md",
-      "line": 317
+      "line": 294
     },
     {
       "id": "read.retrieve.row-key-stays-internal",
@@ -7256,7 +7256,7 @@
       "statement": "The row key is absent from the outer projection.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 319
+      "line": 296
     },
     {
       "id": "read.retrieve.dedup-is-gated",
@@ -7267,7 +7267,7 @@
       "statement": "The deduplicating window function runs under the same condition as the relevance floor, and a browse-shaped read skips it.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 320
+      "line": 297
     },
     {
       "id": "read.retrieve.excluded-arm",
@@ -7278,7 +7278,7 @@
       "statement": "An arm whose table the session's zone excludes contributes no candidate, and the ranked response names that table in {{read.respond.restriction-block}}.",
       "why": "A-read#restricted-sidecar-probe",
       "file": "spec/20-read.md",
-      "line": 321
+      "line": 298
     },
     {
       "id": "read.retrieve.snippet",
@@ -7289,7 +7289,7 @@
       "statement": "A snippet concatenates up to three text columns, using `retrieve.text` when declared. Label-priority columns, such as title, summary, description and thesis, come first; prose-worthy columns follow in schema order.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 323
+      "line": 300
     },
     {
       "id": "read.retrieve.identifiers-never-snippet",
@@ -7300,7 +7300,7 @@
       "statement": "Snippets exclude content hashes, URLs, identifiers and instant-valued columns.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 324
+      "line": 301
     },
     {
       "id": "read.retrieve.sidecar-generates-candidates",
@@ -7311,7 +7311,7 @@
       "statement": "Vector probes use query embeddings; full-text probes use content tokens. Each probe adds its top results to the recency window and rejoins through {{authority.compose.vector-arm}}. Per-row scores equal exact-scan scores.",
       "why": "P5",
       "file": "spec/20-read.md",
-      "line": 325
+      "line": 302
     },
     {
       "id": "read.retrieve.fulltext-probe",
@@ -7322,7 +7322,7 @@
       "statement": "Full-text probes rank the entire snapshot by BM25 with one should-clause per content token. Tokens split by the sidecar tokenizer match resulting terms at consecutive positions. ASCII word tokens match plurals under {{read.retrieve.script-split-matching}}.",
       "why": "because a term outside the recency window is found only by a probe that reads every row's postings",
       "file": "spec/20-read.md",
-      "line": 327
+      "line": 304
     },
     {
       "id": "read.retrieve.sidecar-oversampling",
@@ -7333,7 +7333,7 @@
       "statement": "One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 329
+      "line": 306
     },
     {
       "id": "read.retrieve.adaptive-over-fetch",
@@ -7344,7 +7344,7 @@
       "statement": "The probe runs at most 4 rounds in total, doubling its size while readable rows fall below the requested limit. The retrieval block reports any remaining shortfall.",
       "why": "A-read#restricted-sidecar-probe",
       "file": "spec/20-read.md",
-      "line": 330
+      "line": 307
     },
     {
       "id": "read.retrieve.sidecar-size-cap",
@@ -7355,7 +7355,7 @@
       "statement": "A vector sidecar exceeding 64 MiB resident memory stays unloaded; retrieval uses an exact scan. Resident memory includes each graph node's 4 B probe mark and, for sealed sidecars, the graph file.",
       "why": "A-store#sidecar-memory-mapped",
       "file": "spec/20-read.md",
-      "line": 332
+      "line": 309
     },
     {
       "id": "read.retrieve.fulltext-sealed-cap",
@@ -7366,7 +7366,7 @@
       "statement": "A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.",
       "why": "A-store#sidecar-memory-mapped",
       "file": "spec/20-read.md",
-      "line": 334
+      "line": 311
     },
     {
       "id": "read.retrieve.sidecar-falls-back",
@@ -7377,7 +7377,7 @@
       "statement": "Retrieval uses an exact scan for missing snapshots, missing matching sidecars, masked or zone-withheld identifiers or indexed columns, classed text columns, dimension or manifest mismatches, or unreadable dumps.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 336
+      "line": 313
     },
     {
       "id": "read.retrieve.gain-never-loss",
@@ -7388,7 +7388,7 @@
       "statement": "For each reader, accelerated retrieval returns a superset of the exact scan's rows. Different readers querying one snapshot may receive different rows.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 338
+      "line": 315
     },
     {
       "id": "read.rank.three-legs",
@@ -7399,7 +7399,7 @@
       "statement": "Ranking runs exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 375
+      "line": 331
     },
     {
       "id": "read.rank.fusion",
@@ -7410,7 +7410,7 @@
       "statement": "Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · rrf(bm25)`. Weights are 60 percent and 40 percent. `rrf` maps BM25 rank `r` to `61 / (60 + r)`. Absent documents score zero per leg; identifiers break ties.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 376
+      "line": 332
     },
     {
       "id": "read.rank.lexical-leg-matches-only",
@@ -7421,7 +7421,7 @@
       "statement": "BM25 ranks documents matching at least one should-clause. Documents matching no term are absent. An empty query, candidate set or result produces an empty ranking and uses recency order.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 377
+      "line": 333
     },
     {
       "id": "read.rank.flat-window-full-credit",
@@ -7432,7 +7432,7 @@
       "statement": "A lexical window with no score spread awards every present document full credit.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 378
+      "line": 334
     },
     {
       "id": "read.rank.question-window-is-a-tier",
@@ -7443,7 +7443,7 @@
       "statement": "A question's timeframe projects a per-row in-window flag against the resolved publication column, and the flag leads the ordering. An out-of-window row sorts down and stays.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 379
+      "line": 335
     },
     {
       "id": "read.rank.window-anchor-tolerance",
@@ -7454,7 +7454,7 @@
       "statement": "A publication instant more than 24 h past the question's anchor sets the in-window flag false. A null or uncastable value sets it false too, and a basis field names which case applied.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 381
+      "line": 337
     },
     {
       "id": "read.rank.ordering-casts-first",
@@ -7465,7 +7465,7 @@
       "statement": "Ordering compares publication values as `TIMESTAMPTZ` instants, casting a text value before any comparison.",
       "why": "because a text comparison of two date spellings orders strings, not instants",
       "file": "spec/20-read.md",
-      "line": 382
+      "line": 338
     },
     {
       "id": "read.rank.retrieval-block",
@@ -7476,7 +7476,7 @@
       "statement": "The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries `_score`, the count of content tokens its {{read.retrieve.scored-text}} matches, the in-window flag and the basis label.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 384
+      "line": 340
     },
     {
       "id": "read.rank.delivered-counts",
@@ -7487,7 +7487,7 @@
       "statement": "The retrieval block's returned count equals delivered rows; its in_window count equals delivered rows with a true in-window flag, after byte truncation.",
       "why": "because aggregate counts describe the rows the caller receives",
       "file": "spec/20-read.md",
-      "line": 385
+      "line": 341
     },
     {
       "id": "read.rank.internal-score-stays-internal",
@@ -7498,7 +7498,7 @@
       "statement": "Responses omit the lexical engine's internal floating-point score.",
       "why": "because a corpus-relative number drifts under a consumer's threshold as the corpus changes",
       "file": "spec/20-read.md",
-      "line": 387
+      "line": 343
     },
     {
       "id": "read.rank.absent-block",
@@ -7509,7 +7509,7 @@
       "statement": "Non-ranked statements and builds without a ranker omit the retrieval block. An absent block differs from a block reporting zero matches.",
       "why": "P2",
       "file": "spec/20-read.md",
-      "line": 389
+      "line": 345
     },
     {
       "id": "read.rank.degradation-not-error",
@@ -7520,7 +7520,7 @@
       "statement": "Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the {{read.retrieve.scored-text}}, recency breaking ties. The result differs in order and still answers.",
       "why": "A-topology#build-profiles",
       "file": "spec/20-read.md",
-      "line": 391
+      "line": 347
     },
     {
       "id": "read.rank.fallback-counts-tokens",
@@ -7531,7 +7531,7 @@
       "statement": "Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 393
+      "line": 349
     },
     {
       "id": "read.rank.caller-embedding",
@@ -7542,7 +7542,7 @@
       "statement": "A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.",
       "why": "A-topology#build-profiles",
       "file": "spec/20-read.md",
-      "line": 394
+      "line": 350
     },
     {
       "id": "read.rank.lexical-index-cache",
@@ -7553,7 +7553,7 @@
       "statement": "The opened full-text sidecar cache holds at most 64 entries in FIFO order, keyed by table, snapshot, path and key-version fingerprint. Repeated reads reuse sidecars; a different snapshot requires opening another.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 396
+      "line": 352
     },
     {
       "id": "read.rank.widened-window-statistics",
@@ -7564,7 +7564,7 @@
       "statement": "Lexical term statistics use the widened candidate window. Accelerated retrieval may therefore order rows differently from the exact scan.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 397
+      "line": 353
     },
     {
       "id": "read.rank.calibration-gate",
@@ -7575,7 +7575,7 @@
       "statement": "A lexical-leg calibration replaces the one {{read.rank.fusion}} names only when the native evaluation scores it at or above that one on every tracked measure.",
       "why": "A-read#reciprocal-rank-calibrates",
       "file": "spec/20-read.md",
-      "line": 398
+      "line": 354
     },
     {
       "id": "read.cache.hot-local-parquet",
@@ -7586,7 +7586,7 @@
       "statement": "The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 423
+      "line": 365
     },
     {
       "id": "read.cache.cold-start",
@@ -7597,7 +7597,7 @@
       "statement": "A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 424
+      "line": 366
     },
     {
       "id": "read.cache.warming-read",
@@ -7608,7 +7608,7 @@
       "statement": "A request other than `GET /health` reaching a retrieval container whose snapshot-set hydration is incomplete answers as {{read.register.past-ceiling}}; `/health` names the hydration state.",
       "why": "because a container ready before hydration completes otherwise answers a read from a partial snapshot set",
       "file": "spec/20-read.md",
-      "line": 425
+      "line": 367
     },
     {
       "id": "read.cache.miss-wait",
@@ -7619,7 +7619,7 @@
       "statement": "Under {{store.pull.lazy-parts}}, each absent part has a 30 s acquisition deadline covering manifest lookup, GET attempts and backoff sleeps. Expiry raises `ReadPartUnavailable`, naming the part.",
       "why": "A-store#cold-store-boots",
       "file": "spec/20-read.md",
-      "line": 427
+      "line": 369
     },
     {
       "id": "read.cache.result-key",
@@ -7630,7 +7630,7 @@
       "statement": "Result keys include token id, revocation epoch, grants, subject, session zone and incognito state. Keys also include touched relations and files, bounds, statement, parameter values and applied row ceiling.",
       "why": "A-read#result-reused-under",
       "file": "spec/20-read.md",
-      "line": 429
+      "line": 371
     },
     {
       "id": "read.cache.cache-is-opt-in",
@@ -7641,7 +7641,7 @@
       "statement": "Results enter the cache only if every touched table declares `result_cache` with a time to live and none declares `private = true`. Entries expire at the shortest declared time to live.",
       "why": "A-read#result-reused-under",
       "file": "spec/20-read.md",
-      "line": 431
+      "line": 373
     },
     {
       "id": "read.cache.volatile-bypasses",
@@ -7652,7 +7652,7 @@
       "statement": "Statements execute uncached if they call functions the engine marks inconsistent across queries, including `now()`, `current_timestamp` and `random()`. Macros calling these functions also bypass caching.",
       "why": "because such a call answers differently under an unchanged key, and a hit returns its first answer frozen until the entry expires",
       "file": "spec/20-read.md",
-      "line": 433
+      "line": 375
     },
     {
       "id": "read.cache.frontier-invalidates",
@@ -7663,7 +7663,7 @@
       "statement": "Commits, folds and request-ledger appends change a touched table's read frontier: its snapshot and runs. Earlier cache entries stop matching. Statements executing during a fold read under {{store.fold.non-blocking}}.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 435
+      "line": 377
     },
     {
       "id": "read.cache.budget",
@@ -7674,7 +7674,7 @@
       "statement": "The result cache stays within its process's declared byte budget and evicts the least recently used entry first. Without a declared budget, the server caches nothing.",
       "why": "A-read#result-reused-under",
       "file": "spec/20-read.md",
-      "line": 437
+      "line": 379
     },
     {
       "id": "read.cache.hit-identical",
@@ -7685,7 +7685,7 @@
       "statement": "Cache hits return responses byte-identical to the original miss, including the restriction block. With `internals: true`, diagnostic metadata reports `cache` as `hit` or `miss`.",
       "why": "because a reused answer differing from a computed one is a second projection a caller must reconcile",
       "file": "spec/20-read.md",
-      "line": 439
+      "line": 381
     },
     {
       "id": "read.cache.session-pool",
@@ -7696,7 +7696,7 @@
       "statement": "`Face` reuses sessions and connections while the key matches: admitted authority, token id, revocation epoch, request zone, bounds, pin map and table set. Each granted table contributes schema digest, pointer, run set and ledger files.",
       "why": "A-read#result-reused-under",
       "file": "spec/20-read.md",
-      "line": 441
+      "line": 383
     },
     {
       "id": "read.cache.change-misses",
@@ -7707,7 +7707,7 @@
       "statement": "Committed runs, snapshots, schema edits, new tables, request-ledger files and tokens with different ids or epochs cause pool misses. The next statement reads the changed state through a new connection.",
       "why": "A-read#result-reused-under",
       "file": "spec/20-read.md",
-      "line": 443
+      "line": 385
     },
     {
       "id": "read.cache.pool-entries",
@@ -7718,7 +7718,7 @@
       "statement": "The pool holds at most 16 entries, oldest evicted first; a miss evicts the same principal's entries under an older store state.",
       "why": "because connections hold memory per authority, and an entry under a superseded store state is never hit again",
       "file": "spec/20-read.md",
-      "line": 445
+      "line": 387
     },
     {
       "id": "read.cache.pool-connections",
@@ -7729,7 +7729,7 @@
       "statement": "One pool entry keeps at most 4 connections idle; a concurrent statement past them opens its own and closes it afterwards.",
       "why": "because concurrency on one session is bursty, and an idle connection holds its footer cache in memory",
       "file": "spec/20-read.md",
-      "line": 447
+      "line": 389
     },
     {
       "id": "read.resolve-pin.pin-parameter",
@@ -7740,7 +7740,7 @@
       "statement": "Every read tool admits `pin`, mapping a table name to a build identifier, and resolves that table to the files its build's committed manifest names. An unnamed table resolves to the latest published state.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 456
+      "line": 398
     },
     {
       "id": "read.resolve-pin.pinned-schema",
@@ -7751,7 +7751,7 @@
       "statement": "A pinned table registers the columns stored in that build's parts. Later builds neither add, remove nor retype columns in the pinned read or description.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 457
+      "line": 399
     },
     {
       "id": "read.resolve-pin.null-pin",
@@ -7762,7 +7762,7 @@
       "statement": "A `pin` entry with value `null` resolves as an unnamed table. Pin maps differing only in null entries are equivalent.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 458
+      "line": 400
     },
     {
       "id": "read.resolve-pin.unknown-build",
@@ -7773,7 +7773,7 @@
       "statement": "An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.",
       "why": "because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states",
       "file": "spec/20-read.md",
-      "line": 459
+      "line": 401
     },
     {
       "id": "read.resolve-pin.unregistered-pin",
@@ -7784,7 +7784,7 @@
       "statement": "Pins on absent or ungranted tables raise {{read.resolve-pin.unknown-build}} as for a table publishing no build. Both cases return identical text.",
       "why": "because an answer differing between an absent and an ungranted table discloses the ungranted table's existence",
       "file": "spec/20-read.md",
-      "line": 461
+      "line": 403
     },
     {
       "id": "read.resolve-pin.earlier-bound-wins",
@@ -7795,7 +7795,7 @@
       "statement": "A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 463
+      "line": 405
     },
     {
       "id": "read.resolve-pin.resolved-echo",
@@ -7806,7 +7806,7 @@
       "statement": "Responses touching published models include `contextful.resolved`, mapping each model table to `{build_id, watermark}`. This includes unpinned and empty results. Watermarks follow {{run.model.watermark}}.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 464
+      "line": 406
     },
     {
       "id": "read.resolve-pin.absent-watermark",
@@ -7817,7 +7817,7 @@
       "statement": "The watermark is null for a materialization carrying none, distinct from a watermark of zero.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 465
+      "line": 407
     },
     {
       "id": "read.resolve-pin.consumer-comparison",
@@ -7828,7 +7828,7 @@
       "statement": "A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 467
+      "line": 409
     },
     {
       "id": "read.embed.default-embedder",
@@ -7839,7 +7839,7 @@
       "statement": "The default embedding implementation deterministically hashes token term frequencies into an L2-normalized vector. This implementation performs no I/O and requires no download, key or network call.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 474
+      "line": 416
     },
     {
       "id": "read.embed.default-embedder-reach",
@@ -7850,7 +7850,7 @@
       "statement": "The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 475
+      "line": 417
     },
     {
       "id": "read.embed.model-identifier",
@@ -7861,7 +7861,7 @@
       "statement": "Every stored vector uses a {{store.reconcile.binary-and-vector}} column beside `embedding_model`, which names the producing model. Rows alone determine index identity and provenance.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 476
+      "line": 418
     },
     {
       "id": "read.embed.build-identity",
@@ -7872,7 +7872,7 @@
       "statement": "The handshake reports linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and interfaces (`http`, `eval`, `otlp`). These names derive from the same feature declarations as version output.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 477
+      "line": 419
     },
     {
       "id": "read.embed.required-face",
@@ -7883,7 +7883,7 @@
       "statement": "Before the first read, the server rejects a client's `require: [...]` with `RequiredFaceAbsent` for any unreported name. An engine reporting no set satisfies no requirement.",
       "why": "A-topology#build-profiles",
       "file": "spec/20-read.md",
-      "line": 479
+      "line": 421
     },
     {
       "id": "read.embed.absent-read-backend",
@@ -7894,7 +7894,7 @@
       "statement": "Without the embedded SQL engine linked, every read tool raises `ReadBackendAbsent` rather than answering from a narrower path.",
       "why": "A-topology#build-profiles",
       "file": "spec/20-read.md",
-      "line": 481
+      "line": 423
     },
     {
       "id": "read.as-of-join.per-row-bound",
@@ -7905,7 +7905,7 @@
       "statement": "Per equality key, `ASOF JOIN` selects the right row with latest declared availability at or before the driving instant named by the inequality. If given, `max_age` bounds that row's valid-time `from`.",
       "why": "A-read#join-matches-availability",
       "file": "spec/20-read.md",
-      "line": 488,
+      "line": 430,
       "scenarios": [
         "WHEN a resource directory maps stable id `resource-1` to label `alpha` available `2012-05-18` and to `beta` available `2022-06-09`, THEN an event for `resource-1` on `2021-03-01` joins `alpha` and one on `2022-07-01` joins `beta`."
       ]
@@ -7919,7 +7919,7 @@
       "statement": "Under `available_as_of`, each driving row's instant is the earlier of the instant its inequality names and `available_as_of`, so no right row past the bound joins.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 490
+      "line": 432
     },
     {
       "id": "read.as-of-join.join-undeclared",
@@ -7930,7 +7930,7 @@
       "statement": "An `ASOF JOIN` whose right relation declares no `available_time` refuses as {{store.available-time.undeclared}} does, naming the table, whether or not the read carries `available_as_of`.",
       "why": "because joining on valid time picks a restatement published after the event",
       "file": "spec/20-read.md",
-      "line": 491
+      "line": 433
     },
     {
       "id": "read.horizon.inherited-bound",
@@ -7941,7 +7941,7 @@
       "statement": "Under a horizon, read tools default absent `available_as_of` to that horizon, cap {{read.as-of-join.horizon-caps-row}} and echo {{store.available-time.bound-echo}}. `context.subscribe` instead raises {{read.subscribe.horizon-refusal}}.",
       "why": "because a per-call bound is a bound the agent can omit",
       "file": "spec/20-read.md",
-      "line": 504
+      "line": 446
     },
     {
       "id": "read.horizon.exceeds-horizon",
@@ -7952,7 +7952,7 @@
       "statement": "A call supplying `available_as_of` or `since` later than its credential's horizon raises `ReadBoundExceedsHorizon`, naming the argument; `as_of`, `valid_as_of` and `observed_at` pass unbounded by it.",
       "why": "because a cutoff the agent can widen is advisory, while a valid-time question about a known future effective date stays legitimate",
       "file": "spec/20-read.md",
-      "line": 506,
+      "line": 448,
       "scenarios": [
         "WHEN a credential carries horizon `2014-05-01` and `corpus.retrieve` supplies `since: \"2015-01-01\"`, THEN the call raises `ReadBoundExceedsHorizon` naming `since`, and a call supplying `valid_as_of: \"2015-01-01\"` answers."
       ]
@@ -7966,7 +7966,7 @@
       "statement": "Under a horizon, {{read.recall.keyed}} defaults absent `observed_at` to that horizon and reads claims at the same `available_as_of`. A table without declared availability time raises {{store.available-time.undeclared}}.",
       "why": "because a claim lands at its commit instant, and one concluded after the horizon otherwise answers inside it",
       "file": "spec/20-read.md",
-      "line": 508
+      "line": 450
     },
     {
       "id": "read.horizon.engine-stamps",
@@ -7977,7 +7977,7 @@
       "statement": "Under a horizon, responses omit `_ingested_at` and `_commit_seq` but retain citation fields `_run_id` and `_row_seq`. `context.describe` computes row count, size, lexicon and example values from the horizon-bounded relation.",
       "why": "because load stamps date a row's arrival and reveal the present under a past horizon, while `_run_id` and `_row_seq` cite a row without ordering rows in time",
       "file": "spec/20-read.md",
-      "line": 510
+      "line": 452
     },
     {
       "id": "read.horizon.late-columns",
@@ -7988,7 +7988,7 @@
       "statement": "A column's first merge sets `schema.json`'s `first_landed_at` once to the batch's earliest availability instant, otherwise commit instant. Columns with `first_landed_at` after the horizon are absent from registered schemas and describe payloads.",
       "why": "A-store#column-records-commit",
       "file": "spec/20-read.md",
-      "line": 512
+      "line": 454
     },
     {
       "id": "read.horizon.egress-hook",
@@ -7999,7 +7999,7 @@
       "statement": "Under a horizon, a pre-send hook rejects requests to every host except the configured model endpoint. Rejection follows {{connector.meter.hook-refusal}} with reason `horizon`.",
       "why": "because one attachment point already sees every egress, so a per-tool list restates it",
       "file": "spec/20-read.md",
-      "line": 514
+      "line": 456
     },
     {
       "id": "read.horizon.local-rank",
@@ -8010,7 +8010,7 @@
       "statement": "Under a horizon, `corpus.retrieve` ranks stored rows through local indexes; search sources read their pinned {{store.snapshot.capture}} corpus. Live search reaches no host through {{read.horizon.egress-hook}}.",
       "why": "because a live result order postdates the snapshot, and filtering it afterwards keeps the order",
       "file": "spec/20-read.md",
-      "line": 516
+      "line": 458
     },
     {
       "id": "read.horizon.rank-statistics",
@@ -8021,7 +8021,7 @@
       "statement": "Under a horizon, sidecar probes return only entries available at or before that horizon. Full-text scoring derives document count, average length and document frequency solely from those entries.",
       "why": "A-read#sidecar-serves-past",
       "file": "spec/20-read.md",
-      "line": 518,
+      "line": 460,
       "scenarios": [
         "WHEN a full-text sidecar indexes stories published `2014-11-01` and `2015-06-01` and `corpus.retrieve` runs under horizon `2015-01-01`, THEN the 2014 story ranks with the score a sidecar over it alone gives, and the 2015 story is absent."
       ]
@@ -8035,7 +8035,7 @@
       "statement": "Under a horizon, an embedder declaring a checkpoint family selects its newest checkpoint whose {{connector.infer.cutoffs}} post-training cutoff precedes that horizon. The response names the selected checkpoint.",
       "why": "because an embedder trained after the horizon places documents by later events",
       "file": "spec/20-read.md",
-      "line": 520
+      "line": 462
     },
     {
       "id": "read.horizon.build-resolution",
@@ -8046,7 +8046,7 @@
       "statement": "Under a horizon, model tables select the newest build whose {{run.model.build-horizon}} is at or before the credential's horizon. If none qualifies, resolution raises `ReadNoBuildWithinHorizon`, naming the table.",
       "why": "because a build over current inputs carries later rows into every horizon",
       "file": "spec/20-read.md",
-      "line": 522
+      "line": 464
     },
     {
       "id": "read.subscribe.durable-source",
@@ -8057,7 +8057,7 @@
       "statement": "Subscriptions read on-disk run manifests and commit logs rather than the {{run.project.emission-never-blocks}} channel. Subscribers receive runs committed by other processes.",
       "why": "because an in-process hub ties every reader to the landing process and loses its state on restart",
       "file": "spec/20-read.md",
-      "line": 538
+      "line": 480
     },
     {
       "id": "read.subscribe.after-commit",
@@ -8068,7 +8068,7 @@
       "statement": "Subscriptions notify only runs committed under {{store.lay-out.uncommitted-run}}. Runs without manifests and logged runs absent from their node's commit log produce no notification.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 540,
+      "line": 482,
       "scenarios": [
         "WHEN a leased pipeline's run writes its manifest and its commit-log entry is absent, THEN no subscription notifies it."
       ]
@@ -8079,10 +8079,10 @@
       "operation": "subscribe",
       "subject": "notification",
       "kind": "behavior",
-      "statement": "A notification carries `table`, `run_id`, `node_id`, `committed_at` and `frontier`, the pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows carry.",
+      "statement": "A notification is {{type:contextful_core::read::subscribe::Notification}}; its `frontier` is the pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows carry.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 542
+      "line": 484
     },
     {
       "id": "read.subscribe.frontier-covers-run",
@@ -8093,7 +8093,7 @@
       "statement": "A read of the table bounded `as_of` a notification's frontier covers the notified run's files.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 543
+      "line": 485
     },
     {
       "id": "read.subscribe.commit-order",
@@ -8104,7 +8104,7 @@
       "statement": "Notifications of one table arrive in ascending `commit_seq`, the order {{store.reserve.commit-order}} makes runs readable, and each committed run notifies exactly once per subscription.",
       "why": "because a subscriber applying notifications in order rebuilds the table's commit sequence",
       "file": "spec/20-read.md",
-      "line": 545,
+      "line": 487,
       "scenarios": [
         "WHEN a relational run commits `events` at `commit_seq` 5 before its group marker lands and a plain run commits at 6, THEN a subscription sends neither until the marker lands, then 5 before 6."
       ]
@@ -8118,7 +8118,7 @@
       "statement": "A notification carries no row content and no row count.",
       "why": "because a count over a table under row policy or tenant scope discloses rows the reader cannot see",
       "file": "spec/20-read.md",
-      "line": 547
+      "line": 489
     },
     {
       "id": "read.subscribe.resume",
@@ -8129,7 +8129,7 @@
       "statement": "`after` maps tables to `<run-id>/<node-id>` positions. Subscriptions replay each table's later committed runs once, then continue live. An intervening fold leaves the replay unchanged.",
       "why": "because a fold leaves run manifests in place until retention collects them",
       "file": "spec/20-read.md",
-      "line": 549,
+      "line": 491,
       "scenarios": [
         "WHEN runs `r1`, `r2` and `r3` commit to `events` and a subscription names `after` `events=r1/ingest-a`, THEN it sends `r2` then `r3`, and a fold before the call changes neither."
       ]
@@ -8143,7 +8143,7 @@
       "statement": "An `after` position naming no committed run of its table raises `SubscriptionPositionUnavailable`, naming the table's oldest resolvable position.",
       "why": "because a replay from a collected position cannot tell which later runs retention also removed",
       "file": "spec/20-read.md",
-      "line": 551
+      "line": 493
     },
     {
       "id": "read.subscribe.overrun",
@@ -8154,7 +8154,7 @@
       "statement": "A subscription holding more than 1000 notifications undelivered sends 1000, then a terminal `overrun` message naming each table's last delivered position, and ends.",
       "why": "because a bounded queue never drops a notification silently, and the terminal position resumes the stream",
       "file": "spec/20-read.md",
-      "line": 553
+      "line": 495
     },
     {
       "id": "read.subscribe.operator-verb",
@@ -8165,7 +8165,7 @@
       "statement": "`contextful context subscribe <table>... [--after <table>=<run-id>/<node-id>] [--follow]` prints one JSON notification per line. Without `--follow`, the command ends after sending the replay.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 555
+      "line": 497
     },
     {
       "id": "read.subscribe.tool-poll",
@@ -8176,7 +8176,7 @@
       "statement": "`context.subscribe` accepts `tables` and optional `after`. One response page includes `messages` under {{read.subscribe.resume}} and {{read.subscribe.overrun}}, plus `after` with each table's last delivered position for the next call.",
       "why": "because the tool protocol's request and response hold no stream, and a returned position resumes a poll exactly as it resumes a stream",
       "file": "spec/20-read.md",
-      "line": 556
+      "line": 498
     },
     {
       "id": "read.subscribe.ungranted-table",
@@ -8187,7 +8187,7 @@
       "statement": "Before resolving `after`, the tool rejects subscriptions naming tables outside the session's relations under {{authority.refuse.ungranted-table}}, whether the table exists or not.",
       "why": "because a position refusal or a notification on an ungranted table discloses that the table exists and commits",
       "file": "spec/20-read.md",
-      "line": 558
+      "line": 500
     },
     {
       "id": "read.subscribe.horizon-refusal",
@@ -8198,7 +8198,7 @@
       "statement": "On the tool protocol, a subscription under a credential carrying a horizon raises `SubscriptionUnderHorizon` before any table or `after` position resolves.",
       "why": "because a notification carries the run's commit instant and sequence, which {{read.horizon.engine-stamps}} withholds, and runs committed after the horizon",
       "file": "spec/20-read.md",
-      "line": 560
+      "line": 502
     },
     {
       "id": "read.declare.canonical-column",
@@ -8355,26 +8355,15 @@
       "line": 87
     },
     {
-      "id": "read.synthesize.extract-cache",
-      "contract": "read",
-      "operation": "synthesize",
-      "subject": "extract-cache",
-      "kind": "behavior",
-      "statement": "Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise marked-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.",
-      "why": "A-read#extraction-cache-keys",
-      "file": "spec/21-memory.md",
-      "line": 89
-    },
-    {
       "id": "read.revise.tier",
       "contract": "read",
       "operation": "revise",
       "subject": "tier",
       "kind": "behavior",
-      "statement": "The writer assigns `tier` from write method and grounding, excluding payload values: synthesis uses `derived`, direct writes use `curated`, fetched results use `researched`. Mixed grounding takes the lowest tier.",
+      "statement": "The writer assigns `tier`, a {{type:contextful_core::memory::revise::Tier}}, from write method and grounding, excluding payload values: synthesis uses `derived`, direct writes use `curated`, fetched results use `researched`. Mixed grounding takes the lowest tier.",
       "why": "A-read#claim-standing-derived",
       "file": "spec/21-memory.md",
-      "line": 115
+      "line": 97
     },
     {
       "id": "read.revise.supersede",
@@ -8385,7 +8374,7 @@
       "statement": "An equal-or-higher-tier claim replaces a live prior matching subject, predicate and scope when both are open-ended or share valid-from, except {{read.revise.unscoped-collision}}. The prior ends at the successor's start and names the successor.",
       "why": "A-read#claim-standing-derived",
       "file": "spec/21-memory.md",
-      "line": 117
+      "line": 99
     },
     {
       "id": "read.revise.direct-write",
@@ -8396,7 +8385,7 @@
       "statement": "The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through {{read.resolve-entity.entity-upsert}}.",
       "why": "A-read#agent-third-party",
       "file": "spec/21-memory.md",
-      "line": 119
+      "line": 101
     },
     {
       "id": "read.revise.observed-at",
@@ -8407,7 +8396,7 @@
       "statement": "`contextful memory write --observed-at <instant>` lands the claim with `valid_from` at that instant; without it, `valid_from` is the write's own instant.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 121
+      "line": 103
     },
     {
       "id": "read.revise.dedup-key",
@@ -8418,7 +8407,7 @@
       "statement": "`--dedup-key <key>` derives `claim_id` from the key beside the subject, predicate, object and scope, and a write whose `claim_id` the table already holds lands nothing.",
       "why": "because a retried write restates one observation, while one fact observed twice under two keys keeps two validity intervals",
       "file": "spec/21-memory.md",
-      "line": 122
+      "line": 104
     },
     {
       "id": "read.revise.observed-order",
@@ -8429,7 +8418,7 @@
       "statement": "For matching subject, predicate and scope with a different object, a write whose `valid_from` precedes an unsuperseded claim's `valid_from` raises `MemoryObservationOutOfOrder`. The write stores nothing.",
       "why": "because retiring the later claim at the earlier instant ends it before it starts, and it then answers at no instant",
       "file": "spec/21-memory.md",
-      "line": 124
+      "line": 106
     },
     {
       "id": "read.revise.citation-live",
@@ -8440,7 +8429,7 @@
       "statement": "If a cited keyed-table row reads through the writer's session as a replaced key version, a direct write raises `MemoryCitationNotLive`. The write stores nothing.",
       "why": "because such a claim rests on a replaced version from its first read, while a citation no readable row carries lands undigested and recall withholds it",
       "file": "spec/21-memory.md",
-      "line": 126
+      "line": 108
     },
     {
       "id": "read.revise.unscoped-collision",
@@ -8451,7 +8440,7 @@
       "statement": "Unscoped direct writes sharing subject, predicate and valid-from but different objects record both claim ids in the dead-letter table. Neither claim replaces the other until an explicit revision resolves the conflict.",
       "why": "A-read#claim-standing-derived",
       "file": "spec/21-memory.md",
-      "line": 128
+      "line": 110
     },
     {
       "id": "read.revise.retention-default",
@@ -8462,7 +8451,7 @@
       "statement": "Claims retain recorded validity until explicit expiry or erasure. With `decay_half_life`, ranked scores decrease by half per half-life since `valid_from`. Score decay neither deletes claims nor changes validity.",
       "why": "A-read#memory-confidence-retention",
       "file": "spec/21-memory.md",
-      "line": 130
+      "line": 112
     },
     {
       "id": "read.revise.served-write",
@@ -8473,7 +8462,7 @@
       "statement": "A writable HTTP server accepts `POST /memory/claims` under per-request network credentials and stores declared claims through the direct-write operation. The read MCP tool set remains closed.",
       "why": "A-read#served-claim-write",
       "file": "spec/21-memory.md",
-      "line": 132
+      "line": 114
     },
     {
       "id": "read.revise.served-scope",
@@ -8484,7 +8473,7 @@
       "statement": "A claim write raises `MemoryClaimScopeRefused` if `actor` differs from admitted `on_behalf_of`, `session` differs from admitted `task`, or `session` contains a colon. Accepted claims take scope from credential members rather than payload values.",
       "why": "A-read#served-claim-write",
       "file": "spec/21-memory.md",
-      "line": 134
+      "line": 116
     },
     {
       "id": "read.revise.browser-request",
@@ -8495,7 +8484,7 @@
       "statement": "An `Origin` header on the served claim-write route raises `MemoryClaimBrowserRefused` before credential admission and commits nothing.",
       "why": "A-read#served-claim-write",
       "file": "spec/21-memory.md",
-      "line": 136
+      "line": 118
     },
     {
       "id": "read.revise.malformed-request",
@@ -8506,7 +8495,7 @@
       "statement": "Malformed JSON, unknown fields, a client-selected claim scope, or an empty dedup key on the served claim-write route raises `MemoryClaimMalformed` and commits nothing.",
       "why": "A-read#served-claim-write",
       "file": "spec/21-memory.md",
-      "line": 138
+      "line": 120
     },
     {
       "id": "read.revise.served-dedup",
@@ -8517,7 +8506,7 @@
       "statement": "A served claim write passes its `dedup_key` to {{read.revise.dedup-key}}, returns `landed: false` on restatement, and returns the bound scope on both outcomes.",
       "why": "A-read#served-claim-write",
       "file": "spec/21-memory.md",
-      "line": 140
+      "line": 122
     },
     {
       "id": "read.revise.served-fault",
@@ -8528,7 +8517,7 @@
       "statement": "A served claim write whose store effect refuses raises `MemoryClaimWriteRefused` and lands nothing.",
       "why": "A-read#served-claim-write",
       "file": "spec/21-memory.md",
-      "line": 142
+      "line": 124
     },
     {
       "id": "read.recall.evidence-unresolved",
@@ -8539,7 +8528,7 @@
       "statement": "An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`.",
       "why": "A-read#memory-access-follows",
       "file": "spec/21-memory.md",
-      "line": 153,
+      "line": 135,
       "scenarios": [
         "WHEN entry 290 of 300 reads masked, THEN the claim is suppressed with `MemoryEvidenceUnresolved`."
       ]
@@ -8553,7 +8542,7 @@
       "statement": "For claims citing more than 256 entries of evidence, recall returns the first 256 in cited table, run and sequence order. `evidence_omitted` reports the remaining count.",
       "why": "A-read#memory-access-follows",
       "file": "spec/21-memory.md",
-      "line": 155,
+      "line": 137,
       "scenarios": [
         "WHEN a claim cites 300 readable rows, THEN recall serves 256 entries with `evidence_omitted = 44`."
       ]
@@ -8567,7 +8556,7 @@
       "statement": "`evidence_omitted` is a reserved projected column of {{read.recall.ranked-arm}}, null for a row outside a `memory_facts` table under {{read.retrieve.reserved-columns-project-null}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 157
+      "line": 139
     },
     {
       "id": "read.recall.evidence-gate-bound",
@@ -8578,7 +8567,7 @@
       "statement": "Recall suppresses a claim with more than 4096 entries of evidence as unresolved and raises `MemoryEvidenceOverflow`.",
       "why": "A-read#memory-access-follows",
       "file": "spec/21-memory.md",
-      "line": 158
+      "line": 140
     },
     {
       "id": "read.recall.evidence-key",
@@ -8589,7 +8578,7 @@
       "statement": "Claim writes stamp each citation to a keyed table with a pepper-keyed digest of the cited row's key. If that row is unreadable, recall resolves the digest's live version.",
       "why": "A-read#citation-keyed-table",
       "file": "spec/21-memory.md",
-      "line": 160
+      "line": 142
     },
     {
       "id": "read.recall.evidence-key-masked",
@@ -8600,7 +8589,7 @@
       "statement": "If the writer's session masks or zone-nulls a cited key column, the citation carries no digest. Masked or nulled non-key columns leave the digest intact.",
       "why": "because a masked key cell digests a value no other session reads, while a cell outside the key plays no part in matching it",
       "file": "spec/21-memory.md",
-      "line": 162
+      "line": 144
     },
     {
       "id": "read.recall.evidence-no-value",
@@ -8611,7 +8600,7 @@
       "statement": "A citation stored in a memory row carries the cited table, run, sequence and key digest, and no cell value of the cited row.",
       "why": "A-read#citation-keyed-table",
       "file": "spec/21-memory.md",
-      "line": 164
+      "line": 146
     },
     {
       "id": "read.recall.evidence-stale",
@@ -8622,7 +8611,7 @@
       "statement": "Recall counts a served claim under `stale` in `contextful.recall` if the key digest resolves while the cited run and sequence are unreadable. The block names no claim.",
       "why": "A-read#citation-keyed-table",
       "file": "spec/21-memory.md",
-      "line": 166
+      "line": 148
     },
     {
       "id": "read.recall.ranked-arm",
@@ -8633,7 +8622,7 @@
       "statement": "For `memory_facts`, `corpus.retrieve` returns only claims without `superseded_by` and with `valid_to` null or after the read's anchor. Each claim's evidence passes the evidence check.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 168
+      "line": 150
     },
     {
       "id": "read.recall.recall-block-presence",
@@ -8644,7 +8633,7 @@
       "statement": "A `corpus.retrieve` response carries the `contextful.recall` block exactly when one of its arms reads a `memory_facts` table, whichever of `prefix` and `tables` chose the arms.",
       "why": "because the block counts what claim arms withheld, and a read with no claim arm withheld no claim",
       "file": "spec/21-memory.md",
-      "line": 169
+      "line": 151
     },
     {
       "id": "read.recall.suppression-count",
@@ -8655,7 +8644,7 @@
       "statement": "A suppressed claim is absent from the rows; the `contextful.recall` block counts suppressions per error identifier and names no claim.",
       "why": "because a count discloses that a conclusion was withheld, never what it concluded",
       "file": "spec/21-memory.md",
-      "line": 171
+      "line": 153
     },
     {
       "id": "read.recall.keyed",
@@ -8666,7 +8655,7 @@
       "statement": "`memory.recall` accepts `table`, `subject`, `observed_at`, `as_of_ingest` and `limit`. Returned claims match `subject` exactly, with `valid_from` and `valid_to` covering `observed_at` under {{store.bound-time.valid-as-of}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 173
+      "line": 155
     },
     {
       "id": "read.recall.cli-verb",
@@ -8677,7 +8666,7 @@
       "statement": "`contextful memory recall` forwards arguments to `memory.recall` and prints the tool's JSON response. The command appends the call's read entry under {{disclosure.record.read-entry}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 174
+      "line": 156
     },
     {
       "id": "read.recall.keyed-clocks",
@@ -8688,7 +8677,7 @@
       "statement": "`as_of_ingest` bounds reads under {{store.bound-time.as-of}}; without that argument, reads use the latest committed state. Missing `observed_at` defaults to the call's instant. `contextful.bounds` echoes supplied bounds by argument name with a per-name `inclusive` map.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 175
+      "line": 157
     },
     {
       "id": "read.recall.keyed-history",
@@ -8699,7 +8688,7 @@
       "statement": "Keyed recall returns a replaced claim for `observed_at` within that claim's validity interval. The query filters by validity alone, excluding `superseded_by` from filtering.",
       "why": "because the question is what held at that instant, and the retired claim is the answer its interval records",
       "file": "spec/21-memory.md",
-      "line": 176
+      "line": 158
     },
     {
       "id": "read.recall.keyed-gate",
@@ -8710,7 +8699,7 @@
       "statement": "Every keyed claim passes {{read.recall.evidence-gate-bound}}, and every evidence entry, served or omitted, passes {{read.recall.evidence-unresolved}}; the response carries {{read.recall.suppression-count}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 178
+      "line": 160
     },
     {
       "id": "read.recall.keyed-window",
@@ -8721,7 +8710,7 @@
       "statement": "Keyed recall checks claims in order and stops after retaining one claim beyond the row ceiling. The suppression count covers claims checked before that stop.",
       "why": "because a one-row recall over a subject with thousands of claims otherwise resolves every claim's evidence",
       "file": "spec/21-memory.md",
-      "line": 179
+      "line": 161
     },
     {
       "id": "read.recall.keyed-evidence-batch",
@@ -8732,7 +8721,7 @@
       "statement": "The keyed read resolves a claim's citations into one table and run with one statement, listed among the executed SQL under `internals: true`.",
       "why": "because one statement per citation costs a claim at the gate bound one engine round trip per entry",
       "file": "spec/21-memory.md",
-      "line": 181
+      "line": 163
     },
     {
       "id": "read.recall.keyed-order",
@@ -8743,7 +8732,7 @@
       "statement": "Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 183
+      "line": 165
     },
     {
       "id": "read.recall.keyed-not-claims",
@@ -8754,7 +8743,7 @@
       "statement": "A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.",
       "why": "because a keyed read answers with a claim's subject, validity and evidence, which no other table carries",
       "file": "spec/21-memory.md",
-      "line": 184
+      "line": 166
     },
     {
       "id": "read.recall.confidence-label",
@@ -8765,7 +8754,7 @@
       "statement": "Each keyed claim's `confidence_label` is `calibrated` or `uncalibrated` under {{read.synthesize.confidence-calibration}}. Fitting uses the declared `labels` table, joining `prediction_id` to `claim_id` through the caller's session.",
       "why": "A-read#claim-standing-derived",
       "file": "spec/21-memory.md",
-      "line": 186
+      "line": 168
     },
     {
       "id": "read.recall.stale-revision",
@@ -8776,7 +8765,7 @@
       "statement": "A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.",
       "why": "A-read#claim-standing-derived",
       "file": "spec/21-memory.md",
-      "line": 188
+      "line": 170
     },
     {
       "id": "read.recall.usage-ledger",
@@ -8787,7 +8776,7 @@
       "statement": "`memory.recall`, `memory.explain` responses carrying claims, and `corpus.retrieve` responses containing `memory_facts` record returned claim ids as `contextful.memory.claims`. The read entry includes caller credential, subject and read instant.",
       "why": "A-read#memory-reads-expose",
       "file": "spec/21-memory.md",
-      "line": 190
+      "line": 172
     },
     {
       "id": "read.resolve-entity.ambiguous-mention",
@@ -8798,7 +8787,7 @@
       "statement": "If a mention matches two canonical identities with no deterministic distinguishing key, resolution records an ambiguous skip, raises `MemoryEntityAmbiguous` and dead-letters the candidate claim.",
       "why": "A-read#memory-writes-validate",
       "file": "spec/21-memory.md",
-      "line": 215
+      "line": 185
     },
     {
       "id": "read.resolve-entity.edge-endpoint",
@@ -8809,7 +8798,7 @@
       "statement": "If a candidate edge's source or target resolves to no identity, resolution dead-letters the edge and raises `MemoryEdgeEndpointUnresolved`.",
       "why": "A-read#memory-writes-validate",
       "file": "spec/21-memory.md",
-      "line": 217
+      "line": 187
     },
     {
       "id": "read.resolve-entity.graph-index",
@@ -8820,7 +8809,7 @@
       "statement": "External graph engines index admitted memory edges as derived data. Entity and ownership answers resolve through access-controlled store rows at the read frontier.",
       "why": "A-read#memory-reads-expose",
       "file": "spec/21-memory.md",
-      "line": 219
+      "line": 189
     },
     {
       "id": "read.resolve-entity.ownership-answer",
@@ -8831,7 +8820,7 @@
       "statement": "Ownership queries return targets of every caller-visible `owned_by` edge from the artifact. Results sort by newest `_ingested_at`, then principal id for equal timestamps.",
       "why": "A-read#memory-reads-expose",
       "file": "spec/21-memory.md",
-      "line": 221
+      "line": 191
     },
     {
       "id": "read.resolve-entity.knowledge-card",
@@ -8842,7 +8831,7 @@
       "statement": "`memory.explain` accepts `table`, `reference` and an optional `claims` table. The tool resolves `reference` against `table`'s names and aliases and returns the identity's `entity_id`, `kind`, `name` and `aliases`.",
       "why": "because a caller holding a name or an alias in any script needs the canonical record without knowing its opaque id",
       "file": "spec/21-memory.md",
-      "line": 223,
+      "line": 193,
       "scenarios": [
         "WHEN `reference` is an alias written in another script, THEN `memory.explain` returns the one identity carrying it."
       ]
@@ -8856,7 +8845,7 @@
       "statement": "A card naming `claims` carries the claims {{read.recall.keyed}} returns at the call instant, under {{read.recall.keyed-gate}}, whose `subject` equals the identity's `entity_id` or its canonical `name`.",
       "why": "because synthesis keys a resolved claim by canonical name and `claim_id` hashes the subject, so re-keying stored claims by id re-identifies every one",
       "file": "spec/21-memory.md",
-      "line": 225
+      "line": 195
     },
     {
       "id": "read.resolve-entity.card-candidates",
@@ -8867,7 +8856,7 @@
       "statement": "If `reference` matches multiple identities without an exact canonical-name match distinguishing one, the card returns candidate `entity_id`s and no identity. With no matches, the card is empty.",
       "why": "because naming one of several matches guesses on the caller's behalf, and an absent identity is an answer, not a fault",
       "file": "spec/21-memory.md",
-      "line": 227,
+      "line": 197,
       "scenarios": [
         "WHEN `reference` is an alias two identities share, THEN the card lists both `entity_id`s and no identity."
       ]
@@ -8881,7 +8870,7 @@
       "statement": "Cards read `table` and `claims` through the caller's session. Without a registered `claims` relation, cards return only identity. Cards without claims omit the claims table's name from the response and read entry.",
       "why": "because a grant on identities is narrower than a grant on what the workspace concludes about them",
       "file": "spec/21-memory.md",
-      "line": 229,
+      "line": 199,
       "scenarios": [
         "WHEN the caller holds a read grant on `table` and none on `claims`, THEN the card carries the identity and no claims."
       ]
@@ -8895,7 +8884,7 @@
       "statement": "`contextful memory explain` forwards its arguments, including `--internals`, to `memory.explain`. The command prints the tool's JSON response and appends the same read entry.",
       "why": "because a read outside the audit chain is a read no owner can account for",
       "file": "spec/21-memory.md",
-      "line": 231
+      "line": 201
     },
     {
       "id": "read.resolve-entity.card-not-entities",
@@ -8906,7 +8895,7 @@
       "statement": "A granted `table` declaring a shape other than `memory_entities`, or no memory shape, raises `MemoryExplainNotEntities`.",
       "why": "because only a `memory_entities` table carries the identity, kind and aliases a card returns",
       "file": "spec/21-memory.md",
-      "line": 233
+      "line": 203
     },
     {
       "id": "read.resolve-entity.entity-upsert",
@@ -8917,7 +8906,7 @@
       "statement": "`contextful memory entity upsert --table <entities> --id <id> --kind <kind> --name <name> [--alias <alias>]...` writes one row to the first declared `memory_entities` table. Synthesis resolves against that table; upsert requires its read and write grants.",
       "why": "because the claim write refuses entity rows, and an operator still names the identities mentions resolve to",
       "file": "spec/21-memory.md",
-      "line": 235
+      "line": 205
     },
     {
       "id": "read.resolve-entity.upsert-fields",
@@ -8928,7 +8917,7 @@
       "statement": "Before comparison or storage, upsert trims id, kind, name and each alias. An empty trimmed value raises `MemoryEntityFieldEmpty` and writes nothing.",
       "why": "because a blank identity or alias matches no mention, and surrounding whitespace lands a second spelling of a held name",
       "file": "spec/21-memory.md",
-      "line": 237
+      "line": 207
     },
     {
       "id": "read.resolve-entity.upsert-merge",
@@ -8939,7 +8928,7 @@
       "statement": "For an existing `entity_id`, upsert replaces `kind` and `name`, retaining stored aliases first. Supplied aliases follow, excluding those matching a stored alias after case-folding.",
       "why": "because an alias an earlier upsert recorded keeps naming the entity for mentions already written with it",
       "file": "spec/21-memory.md",
-      "line": 239
+      "line": 209
     },
     {
       "id": "read.resolve-entity.alias-conflict",
@@ -8950,7 +8939,7 @@
       "statement": "An upsert whose name or alias matches, case-folded, the name or an alias of another entity the session reads raises `MemoryEntityAliasConflict`, and nothing lands.",
       "why": "because a mention two identities share resolves to neither: synthesis skips it under {{read.resolve-entity.ambiguous-mention}} and a card lists candidates under {{read.resolve-entity.card-candidates}}",
       "file": "spec/21-memory.md",
-      "line": 241
+      "line": 211
     },
     {
       "id": "read.resolve-entity.upsert-whole-table",
@@ -8961,7 +8950,7 @@
       "statement": "An upsert whose session read of the entities table returns truncated raises `MemoryEntityTableTruncated`, and nothing lands.",
       "why": "because a merge over a cut read drops the held row's aliases, and a conflict check over it misses the entity that carries the mention",
       "file": "spec/21-memory.md",
-      "line": 243
+      "line": 213
     },
     {
       "id": "read.resolve-entity.upsert-serial",
@@ -8972,7 +8961,7 @@
       "statement": "Upsert holds the table's upsert lock during reading, conflict checking and storage. The new timestamp follows the stored row's `_ingested_at`. Concurrent upserts on one table execute serially.",
       "why": "because two upserts merging one snapshot lose an alias, and two checking one snapshot both claim one mention",
       "file": "spec/21-memory.md",
-      "line": 245
+      "line": 215
     },
     {
       "id": "read.resolve-entity.upsert-availability",
@@ -8983,7 +8972,7 @@
       "statement": "An upsert into an entities table declaring `available_time` raises `MemoryEntityAvailabilityDeclared`, and nothing lands.",
       "why": "because an operator's identity carries no source availability instant, and a vintage table keeps the prior row beside the one an upsert replaces",
       "file": "spec/21-memory.md",
-      "line": 247
+      "line": 217
     },
     {
       "id": "read.settle.registration",
@@ -8994,7 +8983,7 @@
       "statement": "A registration requires one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`). Only `metric` requires and permits a comparator. Invalid registrations raise `OutcomeRegistrationInvalid`.",
       "why": "A-read#memory-writes-validate",
       "file": "spec/21-memory.md",
-      "line": 263
+      "line": 233
     },
     {
       "id": "read.settle.source-mismatch",
@@ -9005,7 +8994,7 @@
       "statement": "An observation raises `OutcomeSourceMismatch` if its `metric` series differs from registration, or its verdict's resolution source or registered series is missing or differs. The error names each source by wire name.",
       "why": "A-read#memory-writes-validate",
       "file": "spec/21-memory.md",
-      "line": 265
+      "line": 235
     },
     {
       "id": "read.settle.settling-citation",
@@ -9016,7 +9005,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`. The label view includes the citation.",
       "why": "A-read#memory-writes-validate",
       "file": "spec/21-memory.md",
-      "line": 267
+      "line": 237
     },
     {
       "id": "read.settle.grace-window",
@@ -9027,7 +9016,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 269
+      "line": 239
     },
     {
       "id": "read.settle.calibration-report",
@@ -9038,7 +9027,7 @@
       "statement": "Calibration reports group settled predictions by shape and predicate. Each group reports sample count, Brier score, expected calibration error over 10 equal-width bins, and {{read.synthesize.confidence-calibration}}'s held-out score over every fifth prediction.",
       "why": "A-read#memory-writes-validate",
       "file": "spec/21-memory.md",
-      "line": 270
+      "line": 240
     },
     {
       "id": "read.settle.statement-bound",
@@ -9049,7 +9038,7 @@
       "statement": "A registration's optional `statement` holds the falsifiable claim and participates in {{read.settle.registration-conflict}}. Text exceeding 4096 B raises `OutcomeStatementTooLong`.",
       "why": "because a registration reads on its own only with its claim text, and an unbounded text field lets one row outweigh the table",
       "file": "spec/21-memory.md",
-      "line": 272
+      "line": 242
     },
     {
       "id": "read.settle.metric-reference",
@@ -9060,7 +9049,7 @@
       "statement": "Optional `metric` uses `<table>:<series_id>` with non-empty parts and names the series without a store lookup. Malformed references or references under a source other than `metric` raise `OutcomeMetricReferenceInvalid`.",
       "why": "because a registration precedes its series' first landing, so a store lookup refuses every prediction made before its data exists",
       "file": "spec/21-memory.md",
-      "line": 274
+      "line": 244
     },
     {
       "id": "read.settle.deadline-date",
@@ -9071,7 +9060,7 @@
       "statement": "A bare `YYYY-MM-DD` in `deadline_at` resolves under {{store.bound-time.instant-comparison}} to the next UTC midnight. The entire named day precedes the deadline.",
       "why": "because one date spelling then means one instant on every clock the engine compares",
       "file": "spec/21-memory.md",
-      "line": 276
+      "line": 246
     },
     {
       "id": "read.settle.predict-verb",
@@ -9082,7 +9071,7 @@
       "statement": "`contextful memory predict --into <table> --registration <json>` validates {{read.settle.registration}}. Under the admitted credential's write grant, the command stores the registration in that `predictions` table and prints `prediction_id: <id>`.",
       "why": "because a registration nothing lands leaves its outcome no prediction to settle against",
       "file": "spec/21-memory.md",
-      "line": 278
+      "line": 248
     },
     {
       "id": "read.settle.observe-verb",
@@ -9093,7 +9082,7 @@
       "statement": "`contextful memory observe --into <table> --observation <json>` reads the stored prediction registration through the writer's session. After checking {{read.settle.source-mismatch}} and {{read.settle.settling-citation}}, the command stores the observation in that `outcomes` table and prints its label row.",
       "why": "because a verdict is checked against the source registered before it, never one the observation asserts",
       "file": "spec/21-memory.md",
-      "line": 280
+      "line": 250
     },
     {
       "id": "read.settle.verb-attribution",
@@ -9104,7 +9093,7 @@
       "statement": "Both verbs admit a capability token as `contextful memory write` does, and each landed row carries `_authored_by` from its subject under {{store.reserve.injected}}.",
       "why": "because a settled outcome is weighed by who registered and who observed it",
       "file": "spec/21-memory.md",
-      "line": 282
+      "line": 252
     },
     {
       "id": "read.settle.prediction-unregistered",
@@ -9115,7 +9104,7 @@
       "statement": "An observation naming a `prediction_id` no row of the declared `predictions` table carries in the writer's session raises `OutcomePredictionUnregistered`, and nothing lands.",
       "why": "because a verdict with no registration has no source to check it against",
       "file": "spec/21-memory.md",
-      "line": 284
+      "line": 254
     },
     {
       "id": "read.settle.restated-landing",
@@ -9126,7 +9115,7 @@
       "statement": "A registration or observation identical to the stored row of its `prediction_id` lands nothing, and the verb succeeds with its usual output.",
       "why": "because a retried verb restates one registration, and landing it again commits a run that records nothing new",
       "file": "spec/21-memory.md",
-      "line": 286
+      "line": 256
     },
     {
       "id": "read.settle.registration-conflict",
@@ -9137,7 +9126,7 @@
       "statement": "A registration whose `prediction_id` a stored registration with any other field already holds raises `OutcomeRegistrationConflict`, and nothing lands.",
       "why": "because rewriting a registration after the fact changes the deadline or source a verdict is scored against",
       "file": "spec/21-memory.md",
-      "line": 288
+      "line": 258
     },
     {
       "id": "read.settle.outcome-settled",
@@ -9148,7 +9137,7 @@
       "statement": "If an observation differs from a stored verdict-bearing outcome for its `prediction_id`, the write raises `OutcomeAlreadySettled`. Observations replace stored outcomes without verdicts.",
       "why": "because a verdict rewritten after scoring silently changes the calibration it fed",
       "file": "spec/21-memory.md",
-      "line": 290
+      "line": 260
     },
     {
       "id": "read.settle.label-join",
@@ -9159,7 +9148,7 @@
       "statement": "The label view of Shapes runs over a declared `predictions` and `outcomes` table pair as read through the reader's session.",
       "why": "because the view's grace window and self-rated filter then hold for every reader, not each reader's own join",
       "file": "spec/21-memory.md",
-      "line": 292
+      "line": 262
     },
     {
       "id": "read.settle.calibration-verb",
@@ -9170,7 +9159,7 @@
       "statement": "`contextful memory calibration --table <claims>` joins verdict-bearing labels to claims by `prediction_id = claim_id` through the caller's session. The command prints {{read.settle.calibration-report}} with joined-prediction count, using JSON under `--json`.",
       "why": "because a prediction's shape, predicate and emitted confidence are those of the claim it scores",
       "file": "spec/21-memory.md",
-      "line": 294
+      "line": 264
     },
     {
       "id": "read.traverse.call",
@@ -9181,7 +9170,7 @@
       "statement": "`memory.traverse` accepts `table`, `seed`, `rel_types`, `hops`, `as_of_ingest`, `observed_at` and `available_as_of`. Under one frozen anchor, the tool returns reached edges whose `valid_from` and `valid_to` cover `observed_at`, using {{read.respond.one-projection}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 316
+      "line": 271
     },
     {
       "id": "read.traverse.clocks",
@@ -9192,7 +9181,7 @@
       "statement": "Missing `as_of_ingest` uses the latest committed state; missing `observed_at` uses the call's instant; missing `hops` defaults to 1. `contextful.bounds` echoes each supplied bound under {{read.recall.keyed-clocks}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 317
+      "line": 272
     },
     {
       "id": "read.traverse.cli-verb",
@@ -9203,7 +9192,7 @@
       "statement": "The `contextful memory traverse` verb passes its arguments through {{read.traverse.call}} and prints the same JSON response.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 318
+      "line": 273
     },
     {
       "id": "read.traverse.enforced-edges",
@@ -9214,7 +9203,7 @@
       "statement": "Every edge reads through the caller's enforced session, and each edge's citations pass {{read.recall.evidence-unresolved}}; an edge failing either is neither returned nor walked through.",
       "why": "because walking through a hidden edge reveals the node beyond it",
       "file": "spec/21-memory.md",
-      "line": 319
+      "line": 274
     },
     {
       "id": "read.traverse.engine",
@@ -9225,7 +9214,7 @@
       "statement": "An engine-backed walk answers through {{read.resolve-entity.graph-index}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 321
+      "line": 276
     },
     {
       "id": "read.traverse.walkable",
@@ -9236,7 +9225,7 @@
       "statement": "A `rel_types` entry whose declared relation is not walkable raises `MemoryTraverseRelationUnwalkable`.",
       "why": "A-read#traversal-walks-enforced",
       "file": "spec/21-memory.md",
-      "line": 322
+      "line": 277
     },
     {
       "id": "read.traverse.hop-bound",
@@ -9247,7 +9236,7 @@
       "statement": "A walk follows at most 3 hops; a larger `hops` raises `MemoryTraverseHopsExceeded`.",
       "why": "A-read#traversal-walks-enforced",
       "file": "spec/21-memory.md",
-      "line": 324
+      "line": 279
     },
     {
       "id": "read.traverse.fan-out",
@@ -9258,7 +9247,7 @@
       "statement": "A node expands at most 64 memory-edges, ordered by `valid_from` newest first then edge id; the rest count in `edges_omitted`.",
       "why": "A-read#traversal-walks-enforced",
       "file": "spec/21-memory.md",
-      "line": 326
+      "line": 281
     },
     {
       "id": "read.traverse.frontier-cap",
@@ -9269,7 +9258,7 @@
       "statement": "A walk stops at 512 memory-edges and counts unexpanded edges in `edges_omitted`; a non-zero `edges_omitted` marks the walk incomplete, and `truncated` stays with {{read.respond.truncation-cause}}.",
       "why": "A-read#traversal-walks-enforced",
       "file": "spec/21-memory.md",
-      "line": 328
+      "line": 283
     },
     {
       "id": "read.traverse.omitted-readable",
@@ -9280,7 +9269,7 @@
       "statement": "`edges_omitted` counts only edges the caller's session reads.",
       "why": "because a count of hidden edges discloses their existence, as {{read.recall.suppression-count}} avoids naming claims",
       "file": "spec/21-memory.md",
-      "line": 330
+      "line": 285
     },
     {
       "id": "read.traverse.cycle",
@@ -9291,7 +9280,7 @@
       "statement": "Traversal proceeds breadth-first by hop and expands each node at most once.",
       "why": "because a revisited node adds no edge and a cycle otherwise exhausts {{read.traverse.frontier-cap}}",
       "file": "spec/21-memory.md",
-      "line": 332
+      "line": 287
     },
     {
       "id": "run.journal.step-output",
@@ -26192,7 +26181,7 @@
       "operation": "erase",
       "subject": "physical-removal",
       "kind": "limit",
-      "statement": "Within 24 h of the erasure's commit, every file holding an erased row — superseded snapshots inside {{store.fold.retention}} included — every {{read.synthesize.extract-cache}} entry whose batch held it, and every {{read.synthesize.dead-letter}} row holding its content is rewritten or collected.",
+      "statement": "Within 24 h of the erasure's commit, every file holding an erased row, superseded snapshots inside {{store.fold.retention}} included, is rewritten or collected.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
       "line": 248
@@ -33611,7 +33600,6 @@
       "read.recall.stale-revision"
     ],
     "A-read#extraction-cache-keys": [
-      "read.synthesize.extract-cache",
       "disclosure.erase.reader-frontier"
     ],
     "A-read#gleaning-declared-single": [
@@ -35194,10 +35182,6 @@
     [
       "read.synthesize.cadence",
       "read.synthesize.pass-cursor"
-    ],
-    [
-      "read.synthesize.extract-cache",
-      "connector.infer.cutoffs"
     ],
     [
       "read.revise.supersede",
@@ -36796,14 +36780,6 @@
       "store.fold.retention"
     ],
     [
-      "disclosure.erase.physical-removal",
-      "read.synthesize.extract-cache"
-    ],
-    [
-      "disclosure.erase.physical-removal",
-      "read.synthesize.dead-letter"
-    ],
-    [
       "disclosure.erase.tenant-rewrite",
       "disclosure.erase.atomic-publication"
     ],
@@ -37331,6 +37307,50 @@
       ],
       "clauses": [
         "authority.identify.unverified-link"
+      ]
+    },
+    "contextful_core::memory::revise::Tier": {
+      "file": "crates/contextful-core/src/memory/revise.rs",
+      "line": 18,
+      "kind": "enum",
+      "members": [
+        {
+          "name": "researched"
+        },
+        {
+          "name": "derived"
+        },
+        {
+          "name": "curated"
+        }
+      ],
+      "clauses": [
+        "read.revise.tier"
+      ]
+    },
+    "contextful_core::read::subscribe::Notification": {
+      "file": "crates/contextful-core/src/read/subscribe.rs",
+      "line": 26,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "table"
+        },
+        {
+          "name": "run_id"
+        },
+        {
+          "name": "node_id"
+        },
+        {
+          "name": "committed_at"
+        },
+        {
+          "name": "frontier"
+        }
+      ],
+      "clauses": [
+        "read.subscribe.notification"
       ]
     },
     "contextful_core::store::declare::AvailableTime": {
@@ -40855,7 +40875,7 @@
             "value": 24,
             "unit": "h",
             "basis": "chosen",
-            "gloss": "Commit of an erasure to rewrite or collection of every file, extraction-cache entry and dead-letter row holding an erased row."
+            "gloss": "Commit of an erasure to rewrite or collection of every file holding an erased row."
           },
           "min-group-size-floor": {
             "clause": "disclosure.suppress.min-group-size",
@@ -55520,7 +55540,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/erase.rs",
         "name": "subject_erasure_publishes_every_affected_table_under_one_frontier_and_a_failed_one_exposes_none",
-        "line": 1082,
+        "line": 1085,
         "verdict": "performed",
         "proved": false
       }
@@ -55570,7 +55590,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/erase.rs",
         "name": "keyset_erasure_uses_the_same_signed_publication_and_retains_other_keys",
-        "line": 922,
+        "line": 925,
         "verdict": "performed",
         "proved": false
       }
@@ -55581,6 +55601,16 @@
         "path": "crates/contextful-cli/tests/integration/erase.rs",
         "name": "a_purge_presented_with_a_capability_token_raises_purge_requires_owner_before_reading_the_store",
         "line": 403,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.erase.physical-removal": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/erase.rs",
+        "name": "subject_erasure_publishes_survivors_and_collects_original_retained_parts",
+        "line": 804,
         "verdict": "performed",
         "proved": false
       }
@@ -55610,7 +55640,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/erase.rs",
         "name": "recovery_completes_a_committed_frontier_discards_uncommitted_replacements_and_refuses_a_disagreeing_record",
-        "line": 1169,
+        "line": 1172,
         "verdict": "performed",
         "proved": false
       }
@@ -55640,7 +55670,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/erase.rs",
         "name": "the_signed_erasure_entry_binds_transaction_pseudonym_counts_and_replacement_inventory",
-        "line": 1138,
+        "line": 1141,
         "verdict": "performed",
         "proved": false
       }
@@ -55690,7 +55720,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/erase.rs",
         "name": "the_subject_hash_is_a_domain_separated_hmac_under_the_project_audit_key",
-        "line": 1110,
+        "line": 1113,
         "verdict": "performed",
         "proved": false
       }
@@ -56070,7 +56100,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/erase.rs",
         "name": "a_tenant_purge_rewrites_the_tenant_out_of_every_table_and_returns_a_verifying_receipt",
-        "line": 1242,
+        "line": 1245,
         "verdict": "performed",
         "proved": false
       }
@@ -56090,7 +56120,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/erase.rs",
         "name": "a_repeat_purge_signs_the_latest_earlier_request_id_of_its_tenant",
-        "line": 1356,
+        "line": 1359,
         "verdict": "performed",
         "proved": false
       }
@@ -56130,7 +56160,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/erase.rs",
         "name": "a_purge_of_a_tenant_holding_no_rows_signs_a_zero_count_receipt",
-        "line": 1332,
+        "line": 1335,
         "verdict": "performed",
         "proved": false
       }
@@ -56160,7 +56190,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "a_bounded_reads_entry_carries_its_bounds_snapshot_query_and_digest",
-        "line": 514,
+        "line": 515,
         "verdict": "performed",
         "proved": false
       }
@@ -56260,7 +56290,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "memory_reads_name_every_table_they_read_evidence_included",
-        "line": 1072,
+        "line": 1073,
         "verdict": "performed",
         "proved": false
       }
@@ -56940,7 +56970,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "an_availability_bound_caps_each_driving_rows_instant",
-        "line": 788,
+        "line": 789,
         "verdict": "performed",
         "proved": false
       }
@@ -56950,7 +56980,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "an_as_of_join_onto_an_undeclaring_relation_is_refused",
-        "line": 800,
+        "line": 801,
         "verdict": "performed",
         "proved": false
       }
@@ -56960,7 +56990,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "an_as_of_join_matches_each_row_to_the_right_row_available_at_its_instant",
-        "line": 777,
+        "line": 778,
         "verdict": "performed",
         "proved": false
       }
@@ -57420,7 +57450,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "every_read_tool_called_unbounded_reads_at_the_horizon",
-        "line": 659,
+        "line": 660,
         "verdict": "performed",
         "proved": false
       }
@@ -57460,7 +57490,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "recall_under_a_horizon_reads_the_claims_table_at_it",
-        "line": 718,
+        "line": 719,
         "verdict": "performed",
         "proved": false
       }
@@ -57630,7 +57660,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/read/rank.rs",
         "name": "the_token_fallback_scores_every_phrasing_alike",
-        "line": 177,
+        "line": 188,
         "verdict": "performed",
         "proved": false
       }
@@ -57690,7 +57720,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/read/rank.rs",
         "name": "publication_text_casts_to_an_instant_before_comparison",
-        "line": 124,
+        "line": 135,
         "verdict": "performed",
         "proved": false
       }
@@ -57710,7 +57740,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/read/rank.rs",
         "name": "the_retrieval_block_and_row_fields_carry_their_names",
-        "line": 141,
+        "line": 152,
         "verdict": "performed",
         "proved": false
       }
@@ -57740,7 +57770,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/read/rank.rs",
         "name": "the_anchor_tolerates_24_hours_and_names_the_basis",
-        "line": 108,
+        "line": 119,
         "verdict": "performed",
         "proved": false
       }
@@ -57940,7 +57970,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "the_recall_block_rides_a_ranked_read_exactly_when_a_claim_arm_runs",
-        "line": 948,
+        "line": 949,
         "verdict": "performed",
         "proved": false
       }
@@ -57970,7 +58000,17 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "memory_reads_record_the_claim_ids_they_returned",
-        "line": 1047,
+        "line": 1048,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "read.reference.admission": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-agent/tests/integration/mcp.rs",
+        "name": "reference_dispatch_is_read_admitted_bounded_and_audited",
+        "line": 120,
         "verdict": "performed",
         "proved": false
       }
@@ -57986,6 +58026,26 @@
       }
     ],
     "read.reference.erased-verdict": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/erase.rs",
+        "name": "subject_erasure_publishes_survivors_and_collects_original_retained_parts",
+        "line": 809,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "read.reference.frontier": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/erase.rs",
+        "name": "subject_erasure_publishes_survivors_and_collects_original_retained_parts",
+        "line": 805,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "read.reference.index-visibility": [
       {
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/erase.rs",
@@ -58020,7 +58080,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "available_as_of_wraps_only_the_tables_a_read_touches",
-        "line": 569,
+        "line": 570,
         "verdict": "performed",
         "proved": false
       }
@@ -58030,7 +58090,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "a_listing_ignores_available_as_of",
-        "line": 636,
+        "line": 637,
         "verdict": "performed",
         "proved": false
       }
@@ -58050,7 +58110,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "valid_as_of_wraps_only_the_tables_a_read_touches",
-        "line": 399,
+        "line": 400,
         "verdict": "performed",
         "proved": false
       }
@@ -58060,7 +58120,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "a_listing_ignores_valid_as_of_and_echoes_only_as_of",
-        "line": 450,
+        "line": 451,
         "verdict": "performed",
         "proved": false
       }
@@ -58080,7 +58140,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "read_tools_advertise_and_enforce_request_budgets",
-        "line": 193,
+        "line": 194,
         "verdict": "performed",
         "proved": false
       }
@@ -58190,7 +58250,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "read_tools_advertise_and_enforce_request_budgets",
-        "line": 194,
+        "line": 195,
         "verdict": "performed",
         "proved": false
       }
@@ -58420,7 +58480,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "the_tool_list_is_the_closed_read_set",
-        "line": 141,
+        "line": 142,
         "verdict": "performed",
         "proved": false
       }
@@ -58450,7 +58510,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "memory_explain_answers_the_knowledge_card_over_the_tool_protocol",
-        "line": 872,
+        "line": 873,
         "verdict": "performed",
         "proved": false
       }
@@ -58760,7 +58820,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "a_refusal_arrives_in_band",
-        "line": 155,
+        "line": 156,
         "verdict": "performed",
         "proved": false
       }
@@ -58770,7 +58830,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "every_read_tool_returns_internals_only_on_request",
-        "line": 975,
+        "line": 976,
         "verdict": "performed",
         "proved": false
       }
@@ -59090,7 +59150,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "corpus_retrieve_takes_a_filter_and_kinds",
-        "line": 1096,
+        "line": 1097,
         "verdict": "performed",
         "proved": false
       }
@@ -59205,6 +59265,16 @@
         "proved": false
       }
     ],
+    "read.retrieve.since": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/read/rank.rs",
+        "name": "since_bounds_the_window_inclusively_and_its_absence_admits_every_row",
+        "line": 107,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "read.retrieve.snippet": [
       {
         "kind": "test",
@@ -59220,7 +59290,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/mcp.rs",
         "name": "corpus_retrieve_reads_only_the_listed_tables",
-        "line": 1154,
+        "line": 1155,
         "verdict": "performed",
         "proved": false
       }
@@ -59300,7 +59370,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/memory/revise.rs",
         "name": "the_direct_write_accepts_claims_alone",
-        "line": 103,
+        "line": 104,
         "verdict": "performed",
         "proved": false
       }
@@ -59380,7 +59450,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/memory/revise.rs",
         "name": "an_equal_or_higher_claim_retires_its_prior_on_one_line",
-        "line": 41,
+        "line": 42,
         "verdict": "performed",
         "proved": false
       }
@@ -59390,7 +59460,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/memory/revise.rs",
         "name": "tier_follows_the_write_path_and_the_lowest_grounding",
-        "line": 30,
+        "line": 31,
         "verdict": "performed",
         "proved": false
       }
@@ -59590,7 +59660,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/read/subscribe.rs",
         "name": "notifications_arrive_in_commit_order_once_each",
-        "line": 56,
+        "line": 55,
         "verdict": "performed",
         "proved": false
       }
@@ -59630,7 +59700,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/read/subscribe.rs",
         "name": "a_notification_carries_no_rows_and_no_count",
-        "line": 42,
+        "line": 41,
         "verdict": "performed",
         "proved": false
       }
@@ -59640,7 +59710,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/read/subscribe.rs",
         "name": "a_notification_names_its_run_and_the_frontier_including_it",
-        "line": 31,
+        "line": 30,
         "verdict": "performed",
         "proved": false
       }
@@ -59660,7 +59730,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/read/subscribe.rs",
         "name": "past_the_bound_a_terminal_overrun_names_the_last_delivered_position",
-        "line": 88,
+        "line": 87,
         "verdict": "performed",
         "proved": false
       }
@@ -59670,7 +59740,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/read/subscribe.rs",
         "name": "an_unresolvable_position_names_the_oldest_resolvable_one",
-        "line": 71,
+        "line": 70,
         "verdict": "performed",
         "proved": false
       }

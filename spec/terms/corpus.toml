@@ -114,7 +114,7 @@ corpus-guide-pointer-words = { clause = "corpus.guide.pointer-density", value = 
 [ceiling]
 registry-committed-sites = 3
 anatomy-long-lists = 14
-clause-unowned = 86
+clause-unowned = 80
 why-unscoped = 0
 term-first-use = 0
 
@@ -123,8 +123,8 @@ assurance = 10264
 authority = 7606
 connector = 11062
 corpus = 5091
-disclosure = 5293
-read = 9505
+disclosure = 5277
+read = 9477
 run = 19090
 store = 10153
 surface = 6428

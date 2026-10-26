@@ -245,7 +245,7 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, and th
   *A-disclosure#forced-rewrite-measured*
 - `cascade-unbounded` — A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.
   *A-disclosure#forced-rewrite-measured*
-- `physical-removal` — Within 24 h of the erasure's commit, every file holding an erased row — superseded snapshots inside {{store.fold.retention}} included — every {{read.synthesize.extract-cache}} entry whose batch held it, and every {{read.synthesize.dead-letter}} row holding its content is rewritten or collected.
+- `physical-removal` — Within 24 h of the erasure's commit, every file holding an erased row, superseded snapshots inside {{store.fold.retention}} included, is rewritten or collected.
   *A-disclosure#re-synthesis-after*
 - `tenant-column-type` — A tenant column of a non-string type raises `PurgeTenantColumnType`.
   *A-disclosure#forced-rewrite-measured*
@@ -279,7 +279,7 @@ unsettled: Is request-to-last-replica erasure within 72 h an engine bound or an 
 
 unsettled: Does an erasure refuse fact reads, the free-form statement face included, until re-synthesis restores the facts the cascade invalidated? owner: disclosure affects: disclosure.erase
 
-unsettled: Which record of a committed batch's member rows lets erasure find its cache entries? owner: read-path affects: disclosure.erase
+unsettled: Does erasure rewrite each {{read.synthesize.dead-letter}} row holding an erased subject's content, and within which bound? owner: read-path affects: disclosure.erase
 
 ## receipt
 

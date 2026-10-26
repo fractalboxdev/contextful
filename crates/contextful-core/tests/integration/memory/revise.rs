@@ -25,9 +25,10 @@ fn claim(object: &str, tier: Tier, from: &str) -> Claim {
     }
 }
 
-/// The writer assigns `tier` from write method and grounding, excluding payload values: synthesis uses `derived`,
-/// direct writes use `curated`, fetched results use `researched`. Mixed grounding takes the lowest tier.
-// spec: read.revise.tier@785cc084
+/// The writer assigns `tier`, a {{type:contextful_core::memory::revise::Tier}}, from write method and grounding,
+/// excluding payload values: synthesis uses `derived`, direct writes use `curated`, fetched results use
+/// `researched`. Mixed grounding takes the lowest tier.
+// spec: read.revise.tier@b965b9dd
 #[test]
 fn tier_follows_the_write_path_and_the_lowest_grounding() {
     assert_eq!(tier(WritePath::Synthesis, &[Grounding::Landed]), Tier::Derived);

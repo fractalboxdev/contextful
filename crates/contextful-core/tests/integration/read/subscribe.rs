@@ -25,10 +25,9 @@ fn notified(messages: &[Message]) -> Vec<String> {
         .collect()
 }
 
-/// A notification carries `table`, `run_id`, `node_id`, `committed_at` and `frontier`, the
-/// pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows
-/// carry.
-// spec: read.subscribe.notification@f7efc5e0
+/// A notification is {{type:contextful_core::read::subscribe::Notification}}; its `frontier` is the
+/// pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows carry.
+// spec: read.subscribe.notification@ed567af2
 #[test]
 fn a_notification_names_its_run_and_the_frontier_including_it() {
     let n = Notification::of(&run("events", "r7", 7));
