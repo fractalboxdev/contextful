@@ -53,6 +53,9 @@ SpecDiagramSequence    = { clause = "corpus.diagram.sequence", gloss = "A sequen
 SpecDiagramMessage     = { clause = "corpus.diagram.message", gloss = "A sequence message or note over its word bound." }
 SpecDiagramState       = { clause = "corpus.diagram.state", gloss = "A state diagram without one start, with an unreachable or dead-end state, or a long transition label." }
 SpecGuide              = { clause = "corpus.guide.bad-guide", gloss = "A missing or malformed guide, or one restating a rule." }
+SpecGuideReach         = { clause = "corpus.guide.reach", gloss = "A registered operation its contract's guide never points into." }
+SpecGuidePointerDensity = { clause = "corpus.guide.pointer-density", gloss = "A guide paragraph with too many clause pointers or too little prose per pointer." }
+SpecGuideBound         = { clause = "corpus.guide.bound", gloss = "A guide sentence restating a bound value without the bound's clause pointer." }
 SpecWordCeiling        = { clause = "corpus.anatomy.word-ceilings", gloss = "A contract or contract ADR whose word count differs from its ceiling." }
 SpecClauseUnowned      = { clause = "corpus.state.unowned", gloss = "More unpinned, unscheduled and unquestioned clauses than the ceiling records." }
 SpecWhyUnscoped        = { clause = "corpus.rationale.why-scoped", gloss = "More Why citations naming a contract ADR without a section than the ceiling records." }
@@ -81,6 +84,8 @@ corpus-note-words       = { clause = "corpus.diagram.message", value = 12, unit 
 corpus-transition-words = { clause = "corpus.diagram.state", value = 6, unit = "words", basis = "chosen", gloss = "Longest state transition label." }
 corpus-guide-words      = { clause = "corpus.guide.file", value = 400, unit = "words", basis = "chosen", gloss = "Guide length for a contract with no operation, diagrams excluded." }
 corpus-guide-operation-words = { clause = "corpus.guide.file", value = 20, unit = "words", basis = "chosen", gloss = "Guide length added per registered operation." }
+corpus-guide-paragraph-pointers = { clause = "corpus.guide.pointer-density", value = 3, unit = "pointers", basis = "chosen", gloss = "Most clause pointers in one guide paragraph, list item or table row." }
+corpus-guide-pointer-words = { clause = "corpus.guide.pointer-density", value = 8, unit = "words", basis = "chosen", gloss = "Fewest prose words per clause pointer in one guide paragraph." }
 
 # Ratchets (`corpus.registry.ceiling`): each value is the live count it bounds.
 [ceiling]
@@ -93,7 +98,7 @@ why-unscoped = 806
 assurance = 10245
 authority = 7843
 connector = 11653
-corpus = 4115
+corpus = 4271
 disclosure = 5476
 read = 10127
 run = 19201

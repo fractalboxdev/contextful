@@ -321,6 +321,9 @@ fn guide(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    for d in c.guides() {
+        guide_pointers(c, d, &mut out);
+    }
     for d in c.contracts() {
         for (n, l, k) in d.each() {
             if k != LineKind::Code && GUIDE_LINK.is_match(l) {
@@ -329,6 +332,103 @@ fn guide(c: &Corpus) -> Vec<Finding> {
         }
     }
     out
+}
+
+static GUIDE_UNIT_START: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:[-*+]|[0-9]+\.)\s").unwrap());
+static SENTENCE_END: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"[.!?]["')]*\s+"#).unwrap());
+static GUIDE_NUMBER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^|[^A-Za-z0-9_.\-/#])([0-9][0-9,_]*(?:\.[0-9]+)?)(?:$|[^0-9\-])").unwrap());
+
+/// A guide's prose units, each `(first line, text)`: a paragraph, a list item, a table row
+/// or a heading. Diagrams and front matter hold none.
+fn guide_units(d: &Doc) -> Vec<(usize, String)> {
+    let mut units: Vec<(usize, String)> = Vec::new();
+    let mut open = false;
+    for (n, l, k) in d.each() {
+        let alone = matches!(k, LineKind::Heading | LineKind::TableRow) || l.trim_start().starts_with('|');
+        if matches!(k, LineKind::Code | LineKind::Fence | LineKind::Front | LineKind::Blank) || l.trim().is_empty() {
+            open = false;
+            continue;
+        }
+        if alone && is_separator(l) {
+            continue;
+        }
+        let text = GUIDE_UNIT_START.replace(l, " ").into_owned();
+        match units.last_mut() {
+            Some((_, t)) if open && !alone && !GUIDE_UNIT_START.is_match(l) => {
+                t.push(' ');
+                t.push_str(&text);
+            }
+            _ => units.push((n, text)),
+        }
+        open = !alone;
+    }
+    units
+}
+
+/// `corpus.guide.reach`, `corpus.guide.pointer-density` and `corpus.guide.bound`.
+fn guide_pointers(c: &Corpus, d: &Doc, out: &mut Vec<Finding>) {
+    let stem = d.rel.trim_start_matches("spec/guide/").trim_end_matches(".md");
+    let Some(fragment) = c.reg.fragments.get(stem) else { return };
+    let bound = |name: &str, default: i64| {
+        c.reg.fragments.get("corpus").and_then(|fr| fr.limit.get(name)).and_then(|l| l.value.as_integer()).unwrap_or(default) as usize
+    };
+    let (most, per_pointer) = (bound("corpus-guide-paragraph-pointers", 3), bound("corpus-guide-pointer-words", 8));
+    let alnum = Regex::new(r"[A-Za-z0-9]").unwrap();
+    let mut reached: BTreeSet<String> = BTreeSet::new();
+    for (n, text) in guide_units(d) {
+        let plain = without_ticks(&text);
+        let all = pointers(&plain);
+        for p in &all {
+            if let Some((contract, rest)) = p.split_once('.') {
+                if contract == stem {
+                    reached.insert(rest.split('.').next().unwrap_or_default().to_string());
+                }
+            }
+        }
+        let clauses = all.iter().filter(|p| p.matches('.').count() == 2).count();
+        let prose = strip_pointers(&plain, " ").split_whitespace().filter(|w| alnum.is_match(w)).count();
+        if clauses > most {
+            out.push(f("guide", &d.rel, n, "SpecGuidePointerDensity", format!("`{stem}` paragraph holds {clauses} clause pointers, over {most}")));
+        } else if clauses > 0 && prose < per_pointer * clauses {
+            out.push(f(
+                "guide",
+                &d.rel,
+                n,
+                "SpecGuidePointerDensity",
+                format!("`{stem}` paragraph holds {prose} words of prose for {clauses} clause pointers, under {per_pointer} per pointer"),
+            ));
+        }
+        let mut rest = text.as_str();
+        while !rest.is_empty() {
+            let (sentence, next) = match SENTENCE_END.find(rest) {
+                Some(m) => (&rest[..m.end()], &rest[m.end()..]),
+                None => (rest, ""),
+            };
+            rest = next;
+            let named = pointers(&without_ticks(sentence));
+            let bare = strip_pointers(&without_ticks(sentence), " ");
+            for cap in GUIDE_NUMBER.captures_iter(&bare) {
+                let num = cap[1].replace([',', '_'], "");
+                let equal: Vec<&LimitEntry> = fragment.limit.values().filter(|l| l.value_text().replace([',', '_'], "") == num).collect();
+                if !equal.is_empty() && !equal.iter().any(|l| named.contains(&l.clause)) {
+                    let owners: Vec<&str> = equal.iter().map(|l| l.clause.as_str()).collect();
+                    out.push(f(
+                        "guide",
+                        &d.rel,
+                        n,
+                        "SpecGuideBound",
+                        format!("`{}` equals a bound of `{}`; point in the sentence at {}", &cap[1], stem, owners.join(" or ")),
+                    ));
+                }
+            }
+        }
+    }
+    for op in fragment.operation.keys() {
+        if !reached.contains(op) {
+            out.push(f("guide", &d.rel, 1, "SpecGuideReach", format!("guide reaches no pointer into `{stem}.{op}`")));
+        }
+    }
 }
 
 // ---------------------------------------------------------------- registry

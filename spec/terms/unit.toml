@@ -50,6 +50,7 @@ units    = { gloss = "dispatched units of scheduled work" }
 times    = { gloss = "multiples of a stated base quantity" }
 edges    = { gloss = "flowchart edges" }
 levels   = { gloss = "nesting levels" }
+pointers = { gloss = "clause pointers" }
 participants = { gloss = "sequence diagram participants" }
 messages = { gloss = "sequence diagram messages" }
 notifications = { gloss = "subscription notifications" }

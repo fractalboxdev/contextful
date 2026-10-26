@@ -6,15 +6,15 @@ contract: corpus
 
 ## The problem a corpus solves
 
-Code is built and tested against this specification. A reader therefore needs to find
-each obligation, know why it holds and see whether code meets it. Corpus law is the
-grammar that lets a program answer those three questions. `contextful-spec lint` checks
-every rule, and a rule the checker cannot enforce is not written down.
+Code is built and tested against this specification, so a reader needs to find each
+obligation, know why it holds and see whether code meets it. Corpus law is the grammar
+that lets `contextful-spec lint` answer those questions; a rule the checker cannot
+enforce is not written down.
 
 ## One clause, followed through
 
-The example adds an error case to the store's compaction step, the operation named
-`fold`. An error case is a condition under which an operation returns a named error.
+The example adds an error case, a condition returning a named error, to the store's
+compaction operation `fold`.
 
 A contract, such as `store`, owns one or more numbered files. Each file holds one `## `
 section per operation, and a one-paragraph lede opens the section to say what the
@@ -24,12 +24,11 @@ words ({{corpus.anatomy.statement-words}}).
 
 The item's address joins contract, operation and subject into
 `store.fold.partial-snapshot` ({{corpus.address.clause-id}}). Tests, proofs and other
-clauses use that address, so splitting the file renames nothing.
+clauses use that address, and splitting the file renames nothing.
 
-The statement names the error, so the author registers the error in the contract's
+The statement names the error, so the author registers the error in the contract's registry
 fragment, `spec/terms/store.toml`, against this one clause
-({{corpus.registry.fragment}}). A fragment is the table of a contract's operations,
-errors and bounds. A second clause that needs the same condition writes the clause id
+({{corpus.registry.fragment}}). A second clause that needs the same condition writes the clause id
 between double braces instead of restating it ({{corpus.reference.pointer}}).
 
 An indented italic line under the item carries its Why: a `because` of at most 30 words
@@ -53,8 +52,9 @@ built ({{corpus.render.dated-prose}}).
 
 `contextful-spec state` lists the new clause as `committed` and adds the error to the
 generated store card ({{corpus.render.card}}). A test tagged with the clause id and a
-digest of the statement supplies a pin ({{corpus.state.tag-pin}}). The verdict follows
-the pins: an ignored test, an unfinished body or a stale tag computes `broken`
+digest of the statement supplies a pin ({{corpus.state.tag-pin}}).
+
+An ignored test, an unfinished body or a stale tag computes `broken`
 ({{corpus.state.verdict}}). A reworded statement leaves the tag stale until someone
 checks the test against the new wording ({{corpus.state.stale-pin}}).
 
@@ -71,9 +71,13 @@ generated from the fragment. The guide teaches the flow and reaches each rule on
 pointer, so the guide never becomes a second home for a rule
 ({{corpus.guide.non-normative}}).
 
-The spec cites no literature. Sources live under `references/`, which points into the
-spec by operation ({{corpus.reference.no-literature}}).
+A guide reaches every operation of its contract ({{corpus.guide.reach}}). Each paragraph
+carries prose between its pointers, so a guide never collapses into an index
+({{corpus.guide.pointer-density}}). A number equal to a bound value travels with that
+bound's pointer ({{corpus.guide.bound}}).
 
-To hand one operation to an implementer, `contextful-spec slice store.fold` packs the
-operation's lede and clauses, the clauses they point at, the cited records, and the
-errors and bounds they own.
+The spec cites no literature; `references/` points into the spec instead
+({{corpus.reference.no-literature}}).
+
+`contextful-spec slice store.fold` packs one operation for an implementer: its lede and
+clauses, the clauses they reach, the cited records, and the errors and bounds they own.

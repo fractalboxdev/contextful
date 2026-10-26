@@ -1157,6 +1157,39 @@
       "line": 316
     },
     {
+      "id": "corpus.guide.reach",
+      "contract": "corpus",
+      "operation": "guide",
+      "subject": "reach",
+      "kind": "refusal",
+      "statement": "Each operation a contract's fragment registers appears in the contract's guide as an operation pointer or a pointer to one of its clauses; an operation the guide misses raises `SpecGuideReach`, naming it.",
+      "why": "because a guide that skips an operation leaves its reader no route from the flow to that operation's rules",
+      "file": "spec/00-corpus.md",
+      "line": 318
+    },
+    {
+      "id": "corpus.guide.pointer-density",
+      "contract": "corpus",
+      "operation": "guide",
+      "subject": "pointer-density",
+      "kind": "refusal",
+      "statement": "A guide paragraph, list item or table row holds at most 3 pointers to clauses and at least 8 words of prose per clause pointer; a denser one raises `SpecGuidePointerDensity`.",
+      "why": "because a paragraph of pointers is an index without the reasoning that connects its entries, and the card already is the index",
+      "file": "spec/00-corpus.md",
+      "line": 320
+    },
+    {
+      "id": "corpus.guide.bound",
+      "contract": "corpus",
+      "operation": "guide",
+      "subject": "bound",
+      "kind": "refusal",
+      "statement": "A guide sentence holding a number equal to a bound value in its contract's fragment also holds the pointer to a clause owning a bound of that value; a sentence without one raises `SpecGuideBound`.",
+      "why": "because a restated number drifts when its bound changes, and the pointer names the one place to change it",
+      "file": "spec/00-corpus.md",
+      "line": 322
+    },
+    {
       "id": "corpus.guide.bad-guide",
       "contract": "corpus",
       "operation": "guide",
@@ -1165,7 +1198,7 @@
       "statement": "A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 318
+      "line": 324
     },
     {
       "id": "topology.compose.workspace",
@@ -37737,6 +37770,10 @@
           "pct"
         ]
       },
+      "pointers": {
+        "gloss": "clause pointers",
+        "aliases": []
+      },
       "repeats": {
         "gloss": "repeated measurement samples",
         "aliases": []
@@ -39914,6 +39951,18 @@
             "clause": "corpus.guide.bad-guide",
             "gloss": "A missing or malformed guide, or one restating a rule."
           },
+          "SpecGuideBound": {
+            "clause": "corpus.guide.bound",
+            "gloss": "A guide sentence restating a bound value without the bound's clause pointer."
+          },
+          "SpecGuidePointerDensity": {
+            "clause": "corpus.guide.pointer-density",
+            "gloss": "A guide paragraph with too many clause pointers or too little prose per pointer."
+          },
+          "SpecGuideReach": {
+            "clause": "corpus.guide.reach",
+            "gloss": "A registered operation its contract's guide never points into."
+          },
           "SpecLocalPath": {
             "clause": "corpus.render.local-path",
             "gloss": "An absolute path from a local machine."
@@ -40053,6 +40102,20 @@
             "unit": "words",
             "basis": "chosen",
             "gloss": "Guide length added per registered operation."
+          },
+          "corpus-guide-paragraph-pointers": {
+            "clause": "corpus.guide.pointer-density",
+            "value": 3,
+            "unit": "pointers",
+            "basis": "chosen",
+            "gloss": "Most clause pointers in one guide paragraph, list item or table row."
+          },
+          "corpus-guide-pointer-words": {
+            "clause": "corpus.guide.pointer-density",
+            "value": 8,
+            "unit": "words",
+            "basis": "chosen",
+            "gloss": "Fewest prose words per clause pointer in one guide paragraph."
           },
           "corpus-guide-words": {
             "clause": "corpus.guide.file",
@@ -50358,6 +50421,13 @@
       "verdict": "performed",
       "proved": false
     },
+    "corpus.guide.bound": {
+      "sites": [
+        "tools/spec/tests/integration/guide.rs::a_guide_number_equal_to_a_bound_carries_its_pointer"
+      ],
+      "verdict": "performed",
+      "proved": false
+    },
     "corpus.guide.file": {
       "sites": [
         "tools/spec/tests/integration/guide.rs::a_guide_cap_grows_by_twenty_words_per_registered_operation",
@@ -50370,6 +50440,20 @@
       "sites": [
         "tools/spec/tests/integration/guide.rs::a_guide_operation_pointer_resolves_against_the_fragment_and_a_contract_file_one_dangles",
         "tools/spec/tests/integration/readable.rs::a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding"
+      ],
+      "verdict": "performed",
+      "proved": false
+    },
+    "corpus.guide.pointer-density": {
+      "sites": [
+        "tools/spec/tests/integration/guide.rs::a_paragraph_of_pointers_is_a_density_finding"
+      ],
+      "verdict": "performed",
+      "proved": false
+    },
+    "corpus.guide.reach": {
+      "sites": [
+        "tools/spec/tests/integration/guide.rs::an_operation_the_guide_never_points_at_is_a_reach_finding"
       ],
       "verdict": "performed",
       "proved": false
