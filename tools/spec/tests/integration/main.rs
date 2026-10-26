@@ -82,6 +82,19 @@ impl Scratch {
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     }
 
+    /// Run `state`, then return `clause`'s entry under the lock file's `pins`, or `Null`.
+    pub fn pin_row(&self, clause: &str) -> serde_json::Value {
+        let out = self.cmd(&["state"]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let lock: serde_json::Value = serde_json::from_str(&self.read("spec/spec.lock.json")).unwrap();
+        lock["pins"][clause].clone()
+    }
+
+    /// `clause`'s computed verdict from the lock file's `pins`, once `state` has run.
+    pub fn verdict(&self, clause: &str) -> Option<String> {
+        self.pin_row(clause)["verdict"].as_str().map(str::to_string)
+    }
+
     /// Every clause id of `<contract>.<operation>`, from the lock file.
     pub fn clauses_of(&self, operation: &str) -> Vec<String> {
         let lock: serde_json::Value = serde_json::from_str(&self.read("spec/spec.lock.json")).unwrap();

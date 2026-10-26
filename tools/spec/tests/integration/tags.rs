@@ -16,13 +16,7 @@ fn implemented(s: &Scratch) {
 }
 
 fn verdict(s: &Scratch, clause: &str) -> String {
-    assert!(s.cmd(&["state"]).status.success());
-    let status = s.read("spec/status.md");
-    let row = status
-        .lines()
-        .find(|l| l.starts_with(&format!("| `{clause}` |")))
-        .unwrap_or_else(|| panic!("no pin row for {clause} in\n{status}"));
-    row.trim_end_matches(" |").rsplit("| ").next().unwrap().to_string()
+    s.verdict(clause).unwrap_or_else(|| panic!("no pin entry for {clause} in the lock file"))
 }
 
 // spec: corpus.state.tag-pin@9b4060f5

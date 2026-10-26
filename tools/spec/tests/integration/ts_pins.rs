@@ -17,9 +17,7 @@ fn test_source(rev: &str, call: &str, body: &str) -> String {
 }
 
 fn verdict(s: &Scratch) -> String {
-    assert!(s.cmd(&["state"]).status.success());
-    s.read("spec/status.md").lines().find(|l| l.starts_with(&format!("| `{CLAUSE}` |")))
-        .unwrap().trim_end_matches(" |").rsplit("| ").next().unwrap().to_string()
+    s.verdict(CLAUSE).unwrap()
 }
 
 #[test]
