@@ -54,8 +54,9 @@ fn widened(parent: &Authority, proposal: &Proposal) -> String {
     }
 }
 
-/// A child broader than its parent on actions, tables, templates or aggregate constraints raises `AttenuationWidens`, naming the dimension.
-// spec: authority.attenuate.widens@e63a5c30
+/// A child broader than its parent on actions, tables, templates, aggregate constraints, or a `max_rows`, `max_duration_ms` or
+/// `max_response_bytes` ceiling raises `AttenuationWidens`, naming the dimension.
+// spec: authority.attenuate.widens@6643708e
 #[test]
 fn widens() {
     let base = Grant {
@@ -101,6 +102,34 @@ fn widens() {
     // A child restating no grants inherits its parent's.
     let same = attenuate(&p, &Proposal { grants: None, exp: None, subject: SubjectDerivation::default() }).unwrap();
     assert_eq!(same.grants, p.grants);
+}
+
+/// A broader `max_rows`, `max_duration_ms` or `max_response_bytes` ceiling refuses, naming it; an equal or narrower
+/// one takes effect as the child names it, an absent one inherits its parent's, and an unbounded parent bounds nothing.
+// spec: authority.attenuate.widens@6643708e
+#[test]
+fn a_broader_ceiling_widens_and_an_absent_one_inherits() {
+    let ceilings = |rows: Option<u64>, ms: Option<u64>, bytes: Option<u64>| Grant {
+        max_rows: rows,
+        max_duration_ms: ms,
+        max_response_bytes: bytes,
+        ..grant(&[Action::Read], &["research/*"])
+    };
+    let p = parent(vec![ceilings(Some(500), Some(2_000), Some(65_536))]);
+
+    let rows = attenuate(&p, &child(vec![ceilings(Some(501), Some(2_000), Some(65_536))]));
+    assert!(matches!(rows, Err(AuthorityError::AttenuationWidens(m)) if m.starts_with("max_rows:")));
+    assert!(widened(&p, &child(vec![ceilings(Some(500), Some(2_001), Some(65_536))])).starts_with("max_duration_ms:"));
+    assert!(widened(&p, &child(vec![ceilings(Some(500), Some(2_000), Some(65_537))])).starts_with("max_response_bytes:"));
+
+    let narrower = attenuate(&p, &child(vec![ceilings(Some(100), Some(2_000), Some(1_024))])).unwrap();
+    assert_eq!(narrower.grants[0], ceilings(Some(100), Some(2_000), Some(1_024)));
+    let inherited = attenuate(&p, &child(vec![ceilings(None, None, None)])).unwrap();
+    assert_eq!(inherited.grants[0], ceilings(Some(500), Some(2_000), Some(65_536)));
+
+    let unbounded = parent(vec![ceilings(None, None, None)]);
+    let bounded = attenuate(&unbounded, &child(vec![ceilings(Some(10), Some(10), Some(10))])).unwrap();
+    assert_eq!(bounded.grants[0], ceilings(Some(10), Some(10), Some(10)));
 }
 
 /// A child whose expiry falls past its parent's raises `AttenuationExpiryExtended`.

@@ -86,7 +86,16 @@ statement = "∀ (child parent : Authority.Grant), child.includedIn parent = tru
 assumptions    = ["propext", "Quot.sound"]
 binding   = "crates/contextful-core/src/attenuate.rs::widened via crates/contextful-core/src/attenuate.rs::effective; test crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases"
 negative  = """
-Leaves open: the duration and byte ceilings, which the model's grant omits; that the parsed patterns, tenant scopes, allowlists and aggregate constraints are the ones the credential carries; that the engine enforces a request's tenant partition, template, aggregate release, row count and availability instant as the request states them; that the engine consults the check before admitting a request.
+Leaves open: the duration and byte ceilings at execution, which no modeled request carries; that the parsed patterns, tenant scopes, allowlists and aggregate constraints are the ones the credential carries; that the engine enforces a request's tenant partition, template, aggregate release, row count and availability instant as the request states them; that the engine consults the check before admitting a request.
+"""
+
+[constant."Authority.ceilings_take_effect_as_named"]
+module    = "Contextful.Authority"
+statement = "∀ (c p : Authority.Grant), c.includedIn p = true → (c.under p).maxRows = c.maxRows.or p.maxRows ∧ (c.under p).maxDurationMs = c.maxDurationMs.or p.maxDurationMs ∧ (c.under p).maxResponseBytes = c.maxResponseBytes.or p.maxResponseBytes"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/attenuate.rs::widened via crates/contextful-core/src/attenuate.rs::effective; test crates/contextful-core/tests/integration/attenuate.rs::a_broader_ceiling_widens_and_an_absent_one_inherits"
+negative  = """
+Leaves open: that the engine enforces each ceiling a statement takes effect with; the least of grant, touched-table and request limits.
 """
 
 [constant."Authority.tenant_never_widens"]

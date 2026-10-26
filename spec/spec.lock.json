@@ -21720,7 +21720,7 @@
       "operation": "attenuate",
       "subject": "widens",
       "kind": "refusal",
-      "statement": "A child broader than its parent on actions, tables, templates or aggregate constraints raises `AttenuationWidens`, naming the dimension.",
+      "statement": "A child broader than its parent on actions, tables, templates, aggregate constraints, or a `max_rows`, `max_duration_ms` or `max_response_bytes` ceiling raises `AttenuationWidens`, naming the dimension.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 194
@@ -45381,7 +45381,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "credential_cases_run_through_both_builds_and_never_reach_the_reference",
-        "line": 928,
+        "line": 943,
         "verdict": "performed",
         "proved": false
       }
@@ -47125,7 +47125,7 @@
         "kind": "theorem",
         "path": "formal/Contextful/Authority.lean",
         "name": "authorityMapping_inclusion_narrowing_meaning_restriction",
-        "line": 677,
+        "line": 718,
         "verdict": "performed",
         "proved": false
       }
@@ -47143,7 +47143,7 @@
         "kind": "theorem",
         "path": "formal/Contextful/Authority.lean",
         "name": "attenuateAll_permits_every_parent_block",
-        "line": 662,
+        "line": 703,
         "verdict": "performed",
         "proved": true
       }
@@ -47651,7 +47651,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "expiry_extended",
-        "line": 107,
+        "line": 136,
         "verdict": "performed",
         "proved": false
       }
@@ -47661,7 +47661,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "a_later_horizon_widens_and_an_absent_one_inherits",
-        "line": 192,
+        "line": 221,
         "verdict": "performed",
         "proved": false
       }
@@ -47679,7 +47679,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "narrowing",
-        "line": 140,
+        "line": 169,
         "verdict": "performed",
         "proved": true
       },
@@ -47687,7 +47687,7 @@
         "kind": "theorem",
         "path": "formal/reference/Reference/Narrowing.lean",
         "name": "narrowing_every_dimension_every_hop",
-        "line": 157,
+        "line": 160,
         "verdict": "performed",
         "proved": true
       }
@@ -47717,7 +47717,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "tenant_dropped",
-        "line": 120,
+        "line": 149,
         "verdict": "performed",
         "proved": false
       }
@@ -47745,7 +47745,15 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "widens",
-        "line": 58,
+        "line": 59,
+        "verdict": "performed",
+        "proved": true
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/attenuate.rs",
+        "name": "a_broader_ceiling_widens_and_an_absent_one_inherits",
+        "line": 109,
         "verdict": "performed",
         "proved": true
       },
@@ -47753,7 +47761,7 @@
         "kind": "theorem",
         "path": "formal/reference/Reference/Narrowing.lean",
         "name": "narrow_widens_nearest",
-        "line": 122,
+        "line": 125,
         "verdict": "performed",
         "proved": true
       }
@@ -48445,7 +48453,7 @@
         "kind": "theorem",
         "path": "formal/Contextful/Authority.lean",
         "name": "template_allowlist",
-        "line": 515,
+        "line": 556,
         "verdict": "performed",
         "proved": true
       }

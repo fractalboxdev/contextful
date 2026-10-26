@@ -3,7 +3,7 @@
 
 The delegation profile's permission decision, as the specification states it. A grant
 names actions and table patterns, and optionally a tenant scope, a template allowlist,
-aggregate constraints, a row ceiling and a horizon. A credential carries an authority block
+aggregate constraints, a row, duration and response-byte ceiling and a horizon. A credential carries an authority block
 and the blocks appended after it; a block after the first contributes no authority to an
 allow decision, so appending narrows a credential or adds nothing. A statement over several
 tables needs every access in one coherent grant: actions and tables never flatten into
@@ -12,9 +12,9 @@ instant and the checkpoint's expected audience — and stays fixed across the co
 
 Narrowing compares a proposed child grant list with its parent grant list, dimension by
 dimension, in the order the derivation flowchart gives: widening, expiry, then tenant scope.
-An admitted child grant takes effect under the first parent grant including it, inheriting
-that grant's aggregate constraints when it names none and the lesser of each row ceiling and
-horizon.
+A child ceiling above its parent's widens. An admitted child grant takes effect under the
+first parent grant including it, inheriting that grant's aggregate constraints when it names
+none and the lesser of each ceiling and horizon, which is the child's own where it names one.
 
 Credential bytes, signatures, block chaining and the library's evaluator lie outside the
 model; a credential here is the value the library hands the engine after verification.
@@ -170,8 +170,10 @@ def Aggregate.admits (a : Aggregate) (q : Release) (rows : Nat) : Bool :=
     decide (q.groups ≤ a.ceiling) && underCeiling a.maxRows rows
 
 set_option genCtorIdx false in
-/-- A grant. An absent tenant scope, aggregate, row ceiling or horizon leaves its dimension
-unconstrained; an absent template allowlist confers no template. -/
+/-- A grant. An absent tenant scope, aggregate, ceiling or horizon leaves its dimension
+unconstrained; an absent template allowlist confers no template. The duration and
+response-byte ceilings bound execution and the response, which no request here carries, so
+only narrowing reads them. -/
 structure Grant where
   actions : List Action
   tables : List Pattern
@@ -179,6 +181,8 @@ structure Grant where
   templates : Option (List Name)
   aggregate : Option Aggregate
   maxRows : Option Nat
+  maxDurationMs : Option Nat
+  maxResponseBytes : Option Nat
   horizon : Option Nat
 
 set_option genCtorIdx false in
@@ -307,6 +311,9 @@ inductive Dimension where
   | tables
   | templates
   | aggregate
+  | maxRows
+  | maxDurationMs
+  | maxResponseBytes
   | horizon
 
 /-- The dimension when a check fails, nothing when it holds. -/
@@ -316,7 +323,10 @@ def failing (ok : Bool) (d : Dimension) : List Dimension := if ok then [] else [
 def Grant.widened (c p : Grant) : List Dimension :=
   failing (c.actionsWithin p) .actions ++ failing (c.tablesWithin p) .tables ++
     failing (c.templatesWithin p) .templates ++ failing (c.aggregateWithin p) .aggregate ++
-      failing (c.horizonWithin p) .horizon
+      failing (ceilingWithin c.maxRows p.maxRows) .maxRows ++
+        failing (ceilingWithin c.maxDurationMs p.maxDurationMs) .maxDurationMs ++
+          failing (ceilingWithin c.maxResponseBytes p.maxResponseBytes) .maxResponseBytes ++
+            failing (c.horizonWithin p) .horizon
 
 /-- The narrowing check on one grant: the child is broader than the parent on no dimension
 and keeps the parent's tenant scope. -/
@@ -329,13 +339,19 @@ theorem failing_nil {ok : Bool} {d : Dimension} (h : failing ok d = []) : ok = t
 
 theorem Grant.within_of_widened {c p : Grant} (h : c.widened p = []) :
     c.actionsWithin p = true ∧ c.tablesWithin p = true ∧ c.templatesWithin p = true ∧
-      c.aggregateWithin p = true ∧ c.horizonWithin p = true := by
+      c.aggregateWithin p = true ∧ ceilingWithin c.maxRows p.maxRows = true ∧
+        ceilingWithin c.maxDurationMs p.maxDurationMs = true ∧
+          ceilingWithin c.maxResponseBytes p.maxResponseBytes = true ∧ c.horizonWithin p = true := by
   unfold Grant.widened at h
+  obtain ⟨h, hh⟩ := List.append_eq_nil_iff.mp h
+  obtain ⟨h, hg⟩ := List.append_eq_nil_iff.mp h
+  obtain ⟨h, hf⟩ := List.append_eq_nil_iff.mp h
   obtain ⟨h, he⟩ := List.append_eq_nil_iff.mp h
   obtain ⟨h, hd⟩ := List.append_eq_nil_iff.mp h
   obtain ⟨h, hc⟩ := List.append_eq_nil_iff.mp h
   obtain ⟨ha, hb⟩ := List.append_eq_nil_iff.mp h
-  exact ⟨failing_nil ha, failing_nil hb, failing_nil hc, failing_nil hd, failing_nil he⟩
+  exact ⟨failing_nil ha, failing_nil hb, failing_nil hc, failing_nil hd, failing_nil he, failing_nil hf,
+    failing_nil hg, failing_nil hh⟩
 
 /-- The lesser of two optional ceilings; an absent one imposes none. -/
 def minOpt (a b : Option Nat) : Option Nat := a.elim b (fun x => some (b.elim x (min x)))
@@ -355,12 +371,37 @@ def inherit (c p : Option Aggregate) : Option Aggregate :=
   c.elim p (fun ca => some { ca with maxRows := minOpt ca.maxRows (p.bind (·.maxRows)) })
 
 /-- The child grant as it takes effect under parent grant `p`: an absent aggregate inherits the
-parent's, and each row ceiling and the horizon is the lesser of the two. -/
+parent's, and each ceiling and the horizon is the lesser of the two. -/
 def Grant.under (c p : Grant) : Grant :=
   { c with
     aggregate := inherit c.aggregate p.aggregate
     maxRows := minOpt c.maxRows p.maxRows
+    maxDurationMs := minOpt c.maxDurationMs p.maxDurationMs
+    maxResponseBytes := minOpt c.maxResponseBytes p.maxResponseBytes
     horizon := minOpt c.horizon p.horizon }
+
+/-- A ceiling within its parent's takes effect as the child names it, or as the parent's when
+the child names none: the lesser of the two clamps nothing. -/
+theorem minOpt_of_within : ∀ (c p : Option Nat), ceilingWithin c p = true → minOpt c p = c.or p := by
+  intro c p h
+  cases c with
+  | none => rfl
+  | some x =>
+    cases p with
+    | none => rfl
+    | some y => exact congrArg some (Nat.min_eq_left (of_decide_eq_true h))
+
+/-- Ceilings never widen and never clamp: a child grant the narrowing check admits names no
+ceiling above its parent grant's, and each ceiling takes effect as the child names it, or as
+the parent's when the child names none. -/
+theorem ceilings_take_effect_as_named :
+    ∀ (c p : Grant), c.includedIn p = true →
+      (c.under p).maxRows = c.maxRows.or p.maxRows ∧ (c.under p).maxDurationMs = c.maxDurationMs.or p.maxDurationMs ∧
+        (c.under p).maxResponseBytes = c.maxResponseBytes.or p.maxResponseBytes := by
+  intro c p hinc
+  have hw := Grant.within_of_widened (List.isEmpty_iff.mp ((Bool.and_eq_true _ _).mp hinc).1)
+  exact ⟨minOpt_of_within _ _ hw.2.2.2.2.1, minOpt_of_within _ _ hw.2.2.2.2.2.1,
+    minOpt_of_within _ _ hw.2.2.2.2.2.2.1⟩
 
 /-! ### One lemma per dimension -/
 

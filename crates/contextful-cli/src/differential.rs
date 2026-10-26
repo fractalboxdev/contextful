@@ -646,14 +646,19 @@ fn gen_grant(rng: &mut Rng, pools: &Pools) -> Value {
     if rng.chance(pools.aggregate_percent) {
         g["aggregate"] = gen_aggregate(rng, pools);
     }
-    if rng.chance(20) {
-        g["max_rows"] = json!(rng.pick(pools.counts));
+    for key in CEILINGS {
+        if rng.chance(20) {
+            g[key] = json!(rng.pick(pools.counts));
+        }
     }
     if rng.chance(30) {
         g["horizon"] = json!(rng.pick(pools.instants));
     }
     g
 }
+
+/// The grant ceilings a child keeps, narrows, drops or widens (`authority.attenuate.widens`).
+const CEILINGS: [&str; 3] = ["max_rows", "max_duration_ms", "max_response_bytes"];
 
 /// A value kept, stepped to a neighbour or replaced from the pool: a narrower, equal or
 /// broader bound.
@@ -714,6 +719,21 @@ fn derive_grant(rng: &mut Rng, pools: &Pools, parent: &Value) -> Value {
         };
         agg[key] = json!(value);
     }
+    // Each ceiling the parent names is kept, dropped to inherit, or stepped to a neighbour.
+    for key in CEILINGS {
+        if let Some(n) = parent.get(key).and_then(Value::as_u64) {
+            match rng.below(4) {
+                0 => {
+                    if let Some(o) = g.as_object_mut() {
+                        o.remove(key);
+                    }
+                }
+                1 => g[key] = json!(n.saturating_sub(1)),
+                2 => g[key] = json!(n.saturating_add(1)),
+                _ => {}
+            }
+        }
+    }
     if let Some(h) = parent.get("horizon").and_then(Value::as_u64) {
         if rng.chance(30) {
             if let Some(o) = g.as_object_mut() {
@@ -731,7 +751,7 @@ fn derive_grant(rng: &mut Rng, pools: &Pools, parent: &Value) -> Value {
         }
     }
     if rng.chance(40) {
-        match rng.below(6) {
+        match rng.below(9) {
             0 => g["actions"] = json!(ACTIONS.to_vec()),
             1 => {
                 let extra = gen_pattern(rng, pools);
@@ -744,6 +764,11 @@ fn derive_grant(rng: &mut Rng, pools: &Pools, parent: &Value) -> Value {
             4 => {
                 let (table, value) = rng.pick(pools.tenants);
                 g["tenant"] = json!({"table": table, "value": value});
+            }
+            k @ 6..=8 => {
+                let key = CEILINGS[k - 6];
+                let above = parent.get(key).and_then(Value::as_u64).map_or_else(|| *rng.pick(pools.counts), |n| n.saturating_add(1));
+                g[key] = json!(above);
             }
             _ => {
                 if let Some(agg) = g.get_mut("aggregate") {

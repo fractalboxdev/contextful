@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 4 | 18 | 344 | 76 | 24 | 4 | 334 | 1 | 0 | 334 |
-| `authority` | 2 | 16 | 298 | 80 | 28 | 8 | 286 | 4 | 0 | 286 |
+| `authority` | 2 | 16 | 298 | 80 | 28 | 8 | 286 | 4 | 0 | 285 |
 | `connector` | 3 | 19 | 400 | 87 | 23 | 15 | 335 | 2 | 0 | 335 |
 | `corpus` | 1 | 11 | 125 | 50 | 13 | 0 | 125 | 0 | 0 | 125 |
 | `disclosure` | 3 | 17 | 185 | 64 | 14 | 5 | 167 | 0 | 0 | 167 |
@@ -19,7 +19,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 Decision records: 18.
 
-Clauses restating a code type: 64.
+Clauses restating a code type: 65.
 
 ## Milestones
 
