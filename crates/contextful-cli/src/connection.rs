@@ -29,7 +29,7 @@ pub(crate) enum ConnectionError {
     #[error("ConnectionIdConflict: {0}")]
     IdConflict(String),
     #[error("ConnectionRequestMalformed: {0}")]
-    Malformed(String),
+    RequestMalformed(String),
     #[error("ConnectionUnknown: {0}")]
     Unknown(String),
     #[error(transparent)]
@@ -43,7 +43,7 @@ impl ConnectionError {
         let status = match self {
             ConnectionError::ScopeDenied(_) => 403,
             ConnectionError::IdConflict(_) => 409,
-            ConnectionError::Malformed(_) => 400,
+            ConnectionError::RequestMalformed(_) => 400,
             ConnectionError::Unknown(_) => 404,
             ConnectionError::Control(_) => 503,
         };
@@ -69,20 +69,20 @@ impl Declaration {
     /// Parse and check a create body before any record is read. The secret is a bare name,
     /// never a reference, code or token (`surface.connection.consent-boundary`).
     fn parse(body: &[u8]) -> Result<Declaration, ConnectionError> {
-        let declaration: Declaration = serde_json::from_slice(body).map_err(|e| ConnectionError::Malformed(format!("the create body: {e}")))?;
+        let declaration: Declaration = serde_json::from_slice(body).map_err(|e| ConnectionError::RequestMalformed(format!("the create body: {e}")))?;
         if !is_name(&declaration.id, 64) {
-            return Err(ConnectionError::Malformed("`id` is 1 to 64 letters, digits, `-` or `_`".into()));
+            return Err(ConnectionError::RequestMalformed("`id` is 1 to 64 letters, digits, `-` or `_`".into()));
         }
         if declaration.tenant.is_empty() || declaration.principal.is_empty() {
-            return Err(ConnectionError::Malformed("`tenant` and `principal` are non-empty".into()));
+            return Err(ConnectionError::RequestMalformed("`tenant` and `principal` are non-empty".into()));
         }
         if declaration.file_ids.is_empty() || declaration.file_ids.iter().any(String::is_empty) {
-            return Err(ConnectionError::Malformed("`file_ids` names at least one file".into()));
+            return Err(ConnectionError::RequestMalformed("`file_ids` names at least one file".into()));
         }
         if !declaration.refresh_secret.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'/')) || declaration.refresh_secret.is_empty() || declaration.refresh_secret.len() > 128 {
-            return Err(ConnectionError::Malformed("`refresh_secret` is a secret name of at most 128 letters, digits, `-`, `_`, `.` or `/`".into()));
+            return Err(ConnectionError::RequestMalformed("`refresh_secret` is a secret name of at most 128 letters, digits, `-`, `_`, `.` or `/`".into()));
         }
-        Schedule::parse(&declaration.schedule).map_err(|e| ConnectionError::Malformed(e.to_string()))?;
+        Schedule::parse(&declaration.schedule).map_err(|e| ConnectionError::RequestMalformed(e.to_string()))?;
         Ok(declaration)
     }
 
@@ -140,7 +140,7 @@ pub(crate) fn served(
     }
     let rest = path.strip_prefix("/connections/").unwrap_or_default();
     if !matches!(serde_json::from_slice::<Value>(&request.body), Ok(Value::Object(fields)) if fields.is_empty()) {
-        return Err(ConnectionError::Malformed("a pause or delete body is `{}`".into()));
+        return Err(ConnectionError::RequestMalformed("a pause or delete body is `{}`".into()));
     }
     let (id, pausing) = match rest.strip_suffix("/pause") {
         Some(id) => (id, true),

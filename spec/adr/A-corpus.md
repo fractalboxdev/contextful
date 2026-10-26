@@ -2,7 +2,7 @@
 
 **Status:** accepted
 
-## A clause is an addressed sentence in a list, not a table row
+## clause-addressed-sentence — A clause is an addressed sentence in a list, not a table row
 
 `corpus.anatomy` writes each clause as a list item, `` - `<subject>` — <statement> ``, under its operation's heading, with its Why on the following line. The contract and operation segments come from the file and the section, so the source carries the subject alone and the full id still lands in the lock file, the pins and every `{{id}}`. Each operation opens with a lede that is its only description. The id stays on the sentence, the way a margin anchor does, and a reader meets the operation's purpose before its first rule.
 
@@ -16,7 +16,7 @@
 
 Consequences: `slice` and the lock file keep their shape; a subject rename is still an id change.
 
-## Teaching and reference live on separate pages
+## teaching-reference-live — Teaching and reference live on separate pages
 
 Contract files are reference, and each contract also has a guide under `spec/guide/` that teaches the flow in plain language and reaches rules only by `{{id}}`. Technical terms are explained at first use throughout the guide. A card generated per contract gathers the operations, error cases and bounds on one page.
 

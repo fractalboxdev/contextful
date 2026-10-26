@@ -26,7 +26,7 @@ pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
 }
 
 static SEGMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z0-9-]+$").unwrap());
-static RECORD_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(P[0-9]+|A-[a-z0-9-]+)$").unwrap());
+static RECORD_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(P[0-9]+|A-[a-z0-9-]+(#[a-z0-9-]+)?)$").unwrap());
 static RECORD_FILE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^spec/adr/(?:(P[0-9]+)-[a-z0-9-]+|(A-[a-z0-9-]+))\.md$").unwrap());
 static RAISES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"raises? `([A-Za-z0-9_]+)`").unwrap());
@@ -153,27 +153,7 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
                 format!("sections [{}] differ from owns order [{}]", names.join(", "), want.join(", ")),
             ));
         }
-        // every owned section opens with a lede, then at most one contiguous clause list
-        let mut breaks: BTreeMap<String, usize> = BTreeMap::new();
-        let mut cur = String::new();
-        let mut last: Option<usize> = None; // line of the latest item or Why line in `cur`
-        for (n, l, k) in d.each() {
-            match k {
-                LineKind::Heading if l.starts_with("## ") => {
-                    cur = l[3..].trim().to_string();
-                    last = None;
-                }
-                LineKind::ClauseItem => {
-                    if matches!(last, Some(p) if p + 1 != n) {
-                        breaks.entry(cur.clone()).or_insert(n);
-                    }
-                    last = Some(n);
-                }
-                LineKind::ClauseWhy => last = Some(n),
-                LineKind::BadClause => out.push(a(n, "clause item is not `` - `<subject>` — <statement> ``".into())),
-                _ => {}
-            }
-        }
+        let breaks = clause_lists(d, &mut out);
         for op in &d.owns {
             let line = sections.iter().find(|s| &s.1 == op).map(|s| s.0).unwrap_or(1);
             if let Some(n) = breaks.get(op) {
@@ -190,6 +170,8 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    out.extend(crate::ratchet::compare(c, &long_lists(c)));
+    out.extend(crate::size::word_findings(c, "anatomy"));
     let ids: BTreeSet<String> = c.clauses().map(|cl| cl.id.clone()).collect();
     for sc in c.scenarios() {
         let own = ids.contains(&sc.clause) && sc.clause.split('.').nth(1) == Some(sc.operation.as_str());
@@ -203,6 +185,84 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
         }
     }
     out
+}
+
+/// The anatomy of each operation's clause lists (`corpus.anatomy.clause-list`, `group`):
+/// returns the first line breaking each operation's list, and records malformed groups
+/// and items in `out`.
+fn clause_lists(d: &Doc, out: &mut Vec<Finding>) -> BTreeMap<String, usize> {
+    let a = |line: usize, msg: String| f("anatomy", &d.rel, line, "SpecAnatomy", msg);
+    let mut breaks: BTreeMap<String, usize> = BTreeMap::new();
+    let mut cur = String::new();
+    let mut group: Option<(String, usize)> = None;
+    let mut last: Option<usize> = None; // line of the latest item or Why line in the current list
+    let mut listed = false; // a clause list has ended in this operation
+    let mut content = false; // a line other than a heading or a blank follows the last list
+    let mut late = false; // the current group's heading follows such a line
+    for (n, l, k) in d.each() {
+        match k {
+            LineKind::Heading if l.starts_with("## ") => {
+                cur = l[3..].trim().to_string();
+                (group, last, listed, content, late) = (None, None, false, false, false);
+            }
+            LineKind::Heading if l.starts_with("### ") => {
+                group = Some((l[4..].trim().to_string(), n));
+                late = listed && content;
+                (last, content) = (None, false);
+            }
+            LineKind::Heading => {}
+            LineKind::ClauseItem => {
+                if matches!(last, Some(p) if p + 1 != n) {
+                    breaks.entry(cur.clone()).or_insert(n);
+                }
+                if let (None, Some((g, at))) = (last, &group) {
+                    let key = format!("{cur}.{g}");
+                    if late {
+                        out.push(a(*at, format!("group `{key}` follows content after a clause list")));
+                    }
+                    match d.groups.get(&key).map(|t| sentences(t)) {
+                        None | Some(0) => out.push(a(*at, format!("group `{key}` opens without a lede"))),
+                        Some(1) => {}
+                        Some(k) => out.push(a(*at, format!("group `{key}` lede is {k} sentences, want 1"))),
+                    }
+                }
+                last = Some(n);
+                (listed, content) = (true, false);
+            }
+            LineKind::ClauseWhy => last = Some(n),
+            LineKind::BadClause => out.push(a(n, "clause item is not `` - `<subject>` — <statement> ``".into())),
+            LineKind::Blank => {}
+            _ => content |= listed,
+        }
+    }
+    breaks
+}
+
+/// How many sentences `text` holds: each `.`, `?` or `!` closing a word outside backticks.
+fn sentences(text: &str) -> usize {
+    let plain = without_ticks(text);
+    let chars: Vec<char> = plain.chars().collect();
+    (0..chars.len())
+        .filter(|&i| matches!(chars[i], '.' | '?' | '!') && i > 0 && chars[i - 1].is_alphanumeric() && chars.get(i + 1).is_none_or(|c| c.is_whitespace()))
+        .count()
+}
+
+/// The `anatomy-long-lists` ratchet: clause lists, one per operation and per group,
+/// holding more clauses than `corpus-group-clauses` (`corpus.anatomy.group-clauses`).
+pub fn long_lists(c: &Corpus) -> crate::ratchet::Live {
+    let bound = c
+        .reg
+        .fragments
+        .get("corpus")
+        .and_then(|fr| fr.limit.get("corpus-group-clauses"))
+        .and_then(|l| l.value.as_integer())
+        .unwrap_or(30) as usize;
+    let mut lists: BTreeMap<(String, String, Option<String>), usize> = BTreeMap::new();
+    for cl in c.clauses() {
+        *lists.entry((cl.contract.clone(), cl.operation.clone(), cl.group.clone())).or_default() += 1;
+    }
+    let count = lists.values().filter(|n| **n > bound).count();
+    crate::ratchet::Live { key: "anatomy-long-lists".into(), count, check: "anatomy", code: "SpecAnatomy" }
 }
 
 // ---------------------------------------------------------------- guide
@@ -375,6 +435,7 @@ fn registry(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    out.extend(crate::drift::check(c));
     out
 }
 
@@ -453,7 +514,8 @@ fn rationale(c: &Corpus) -> Vec<Finding> {
         match why_ok(&cl.why) {
             Ok(ids) => {
                 for i in ids {
-                    cited.entry(i).or_insert((cl.file.clone(), cl.line));
+                    let file = i.split('#').next().unwrap_or_default().to_string();
+                    cited.entry(file).or_insert((cl.file.clone(), cl.line));
                 }
             }
             Err(e) => out.push(f("rationale", &cl.file, cl.line, "SpecRecord", format!("`{}`: {e}", cl.id))),
@@ -482,6 +544,8 @@ fn rationale(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    out.extend(crate::size::word_findings(c, "rationale"));
+    out.extend(crate::records::check(c));
     for (id, (file, line)) in &cited {
         if !records.contains(id) {
             out.push(f("rationale", file, *line, "SpecRecord", format!("Why cites missing record {id}")));
@@ -582,7 +646,18 @@ fn contract_adr_anatomy(d: &Doc, id: &str, out: &mut Vec<Finding>) {
         .filter_map(|(n, l, _)| l.strip_prefix("## ").map(|t| (n, t.trim().to_string())))
         .collect();
     if heads.is_empty() {
-        out.push(r(1, "holds no `## <decision>` section".into()));
+        out.push(r(1, "holds no `## <slug> — <decision>` section".into()));
+    }
+    let mut slugs: BTreeMap<String, usize> = BTreeMap::new();
+    for (n, title) in &heads {
+        match crate::records::HEADING.captures(&format!("## {title}")) {
+            None => out.push(r(*n, format!("section heading `{title}` is not `<slug> — <decision>`, the slug `[a-z0-9-]` of at most 40 chars"))),
+            Some(cap) => {
+                if let Some(first) = slugs.insert(cap[1].to_string(), *n) {
+                    out.push(r(*n, format!("slug `{}` also heads the section at line {first}", &cap[1])));
+                }
+            }
+        }
     }
     for (i, (n, title)) in heads.iter().enumerate() {
         let end = heads.get(i + 1).map(|h| h.0).unwrap_or(usize::MAX);
@@ -1279,6 +1354,30 @@ pub fn milestone_lines(c: &Corpus) -> Vec<MilestoneLines> {
     out
 }
 
+/// `corpus.state.closed`: a milestone closes when its acceptance test passes and every
+/// operation it names holds a performed clause.
+pub fn milestone_closed(c: &Corpus, acceptance: Option<&str>, ops: &[&String], verdicts: &BTreeMap<&String, &str>) -> bool {
+    let performed = |op: &String| {
+        c.clauses().any(|cl| *op == format!("{}.{}", cl.contract, cl.operation) && verdicts.get(&cl.id) == Some(&"performed"))
+    };
+    acceptance_verdict(c, acceptance) == "passing" && !ops.is_empty() && ops.iter().all(|o| performed(o))
+}
+
+/// Every operation a milestone computing `open` names, as `<contract>.<operation>`.
+pub fn open_operations(c: &Corpus) -> BTreeSet<String> {
+    let all = pins_by_clause(c);
+    let verdicts: BTreeMap<&String, &str> = all.iter().map(|(id, g)| (id, clause_verdict(c, g))).collect();
+    let (claim, _) = expand_roadmap(c);
+    let mut open = BTreeSet::new();
+    for ml in milestone_lines(c) {
+        let ops: Vec<&String> = claim.iter().filter(|(_, h)| **h == ml.heading).map(|(o, _)| o).collect();
+        if !milestone_closed(c, ml.acceptance.as_deref(), &ops, &verdicts) {
+            open.extend(ops.into_iter().cloned());
+        }
+    }
+    open
+}
+
 /// A roadmap milestone: its heading, its line, and each named operation with its line.
 pub type Milestone = (String, usize, Vec<(usize, String)>);
 
@@ -1443,6 +1542,7 @@ fn state(c: &Corpus) -> Vec<Finding> {
             ));
         }
     }
+    out.extend(crate::size::unowned_findings(c));
     out
 }
 

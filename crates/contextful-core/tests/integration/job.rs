@@ -3,6 +3,7 @@
 
 use contextful_core::job::{parse_jobs, JobError, JobKind, KINDS, PLAN, STORE_DRIVEN, SYNTHESIZE};
 use contextful_core::memory::declare::MemoryDeclarations;
+use contextful_core::run::RunError;
 
 fn registered(name: &str) -> bool {
     name == "score"
@@ -123,7 +124,7 @@ fn a_misspelled_target_names_the_produced_spelling() {
     use contextful_core::job::bind_targets;
     let m = format!("{PIPELINES}[[job]]\nname = \"f\"\nkind = \"fold\"\ntarget = \"Meta-Ads.Insights\"\n");
     match bind_targets(&parse_jobs(&m, &registered).unwrap(), &targets(&m)) {
-        Err(JobError::PipelineUnboundTableName(msg)) => assert!(msg.contains("`meta_ads_insights`"), "{msg}"),
+        Err(JobError::Run(RunError::PipelineUnboundTableName(msg))) => assert!(msg.contains("`meta_ads_insights`"), "{msg}"),
         other => panic!("expected PipelineUnboundTableName, got {other:?}"),
     }
 }

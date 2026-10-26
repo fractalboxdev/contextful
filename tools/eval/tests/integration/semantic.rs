@@ -175,6 +175,7 @@ fn a_second_table_is_refused_whether_pinned_declared_or_carrying_a_vector() {
 
 /// Elements are checked in the single precision the store keeps: a finite f64 whose f32 is
 /// infinite, and a vector whose squared norm overflows f32, are both refused.
+// spec: assurance.evaluate.semantic-inputs@7897662f
 #[test]
 fn vectors_outside_single_precision_are_refused() {
     for (name, value) in [("element", 1e39), ("norm", 3e19)] {
@@ -210,6 +211,7 @@ fn a_table_key_joins_components_with_slashes_on_any_host() {
 /// A symbolic link in place of the manifest, a pinned input or the held-out argument is
 /// refused before any input is read through it: hashes and the held-out comparison follow
 /// links, so a link would admit bytes from outside the verified cache.
+// spec: assurance.evaluate.semantic-cache@b9e87967
 #[cfg(unix)]
 #[test]
 fn symbolic_links_to_the_manifest_inputs_or_held_out_file_are_refused() {

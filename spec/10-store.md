@@ -213,7 +213,7 @@ unsettled: What retires a key a source stops serving under `append`, given the s
 
 ## reserve
 
-Reserved column and table names, injected provenance columns and request ledgers.
+Reserved column and table names, injected provenance columns, the commit protocol that assigns `_commit_seq`, and request ledgers.
 
 - `underscore-namespace` — Column names beginning `_` belong to the engine; the injected set and the reserved optional set are its whole content.
 - `injected` — The engine injects `_ingested_at` as non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id` and `_site_id`. Injection adds int32 `_batch_seq` within a batch scope and `_authored_by` for writes authorized by an authenticated subject. Injected values replace producer values.
@@ -222,18 +222,6 @@ Reserved column and table names, injected provenance columns and request ledgers
   *because a `[[principal]]` names an agent as well as the person it acts for, and {{authority.place.per-principal}} matches either*
 - `row-seq` — The engine injects `_row_seq`, a non-null int64 numbering a run's rows from 0 in batch order, replacing any producer value.
   *because a run's rows share `_ingested_at` and `_run_id`, and keeping the last write per key needs an order among them*
-- `commit-seq` — The engine injects non-null int64 `_commit_seq`, assigned above every value held by the table. A run committing after a read carries a value above every returned row, regardless of `_ingested_at`.
-  *A-topology*
-- `commit-order` — A commit publishes its manifest after every lower `_commit_seq` in the table publishes or ends landing. Readable runs therefore form a prefix of the table's commit sequence.
-  *A-topology*
-- `commit-lock-span` — A commit holds its table's commit lock while assigning `_commit_seq` and writing its manifest. The commit writes parts outside the lock, except when the table keeps vintage history.
-  *A-topology*
-- `commit-wait` — A commit waits at most 30 s for its table's commit lock or for a lower value's publication, then raises `StoreCommitLockTimeout`, a transient failure.
-  *A-topology*
-- `commit-marker` — A commit rewrites `data/.commit_seq` as JSON with `format_version` and `commit_seq`. Builds reading a bare integer refuse the table before writing a part. A newer major refuses under {{store.lay-out.format-newer}}.
-  *A-topology*
-- `commit-seq-seed` — A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot. A pulled store or store without a counter therefore reuses no value.
-  *A-topology*
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
 - `taint` — On each row from model output, the engine injects `_taint` under {{connector.infer.provenance-order}}, replacing any producer value. Rows without model output omit `_taint`.
   *because a label a producer sets is one injected text can forge*
@@ -250,6 +238,28 @@ Reserved column and table names, injected provenance columns and request ledgers
 - `table-namespaces` — The engine reserves three table namespaces. `_runs` holds the durable run record; `_items` holds item records under {{run.items.outcome-record}}. `_visibility` holds each source's mirrored access tables under {{disclosure.mirror.grants-table}}.
 - `table-name` — When assembling a manifest, the engine raises `StoreReservedTableName` for a pipeline table inside a reserved namespace, naming the reservation.
   *P1*
+
+### commit
+
+A commit holds its table's commit lock, assigns `_commit_seq` above every held value and publishes in sequence order.
+
+- `commit-seq` — The engine injects non-null int64 `_commit_seq`, assigned above every value held by the table. A run committing after a read carries a value above every returned row, regardless of `_ingested_at`.
+  *A-topology#commit-lock*
+- `commit-order` — A commit publishes its manifest after every lower `_commit_seq` in the table publishes or ends landing. Readable runs therefore form a prefix of the table's commit sequence.
+  *A-topology#commit-lock*
+- `commit-lock-span` — A commit holds its table's commit lock while assigning `_commit_seq` and writing its manifest. The commit writes parts outside the lock, except when the table keeps vintage history.
+  *A-topology#commit-lock*
+- `commit-wait` — A commit waits at most 30 s for its table's commit lock or for a lower value's publication, then raises `StoreCommitLockTimeout`, a transient failure.
+  *A-topology#commit-lock*
+- `commit-marker` — A commit rewrites `data/.commit_seq` as JSON with `format_version` and `commit_seq`. Builds reading a bare integer refuse the table before writing a part. A newer major refuses under {{store.lay-out.format-newer}}.
+  *A-topology#commit-lock*
+- `commit-seq-seed` — A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot. A pulled store or store without a counter therefore reuses no value.
+  *A-topology#commit-lock*
+
+### request ledgers
+
+Each run appends its outbound requests to its own ledger file, which fold passes merge and collection retires.
+
 - `ledger-suffix` — The engine reserves table names ending in `__requests` for request-ledger relations. Other declarations using that suffix refuse under {{store.reserve.table-name}}.
 - `ledger-path` — A run's request ledger is `requests/<run-id>.<node-id>.parquet`, disjoint per run and per writing node.
 - `ledger-append` — An append locks its run's ledger file to serialize writes. The append returns after syncing its rows and the rename to disk.
@@ -451,7 +461,7 @@ At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and
 - `password-kdf` — A password-derived project key uses Argon2id with 64 MiB memory, 3 iterations and 4 lanes.
 - `transport-separate` — At-rest encryption covers files and TLS covers bucket transport; a cleartext endpoint carries no encrypted-at-rest claim.
 - `redacted-index` — An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.
-  *A-authority*
+  *A-authority#redaction-no-copy*
 - `at-rest-scope` — A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material.
 - `sidecar-reader` — For unencrypted projects, readers memory-map sidecars read-only. For encrypted projects, readers decrypt each sealed sidecar file into anonymous process memory without writing cleartext to disk.
   *A-store*

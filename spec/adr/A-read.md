@@ -2,7 +2,7 @@
 
 **Status:** accepted
 
-## The read surface admits one read-only statement over registered relations
+## read-surface-admits — The read surface admits one read-only statement over registered relations
 
 `read.guard` walks the syntax tree the executor itself serializes and admits exactly one read-only `SELECT` whose base relations are views registered for the caller or declared common table expressions; table functions and catalog reaches refuse, and a refusal never echoes another caller's relation. `read.register` lists only granted templates and binds arguments strictly. A filter's budget applies to the whole filter. `read.respond` reads a preview through its table's relation. The process transport requires a token, with an explicit owner flag for its signed store claim; the run-stream socket authenticates before upgrade and carries snapshots only.
 
@@ -15,7 +15,7 @@
 
 Consequences: a preview and a query apply identical row restriction, masks and zone gate; a socket connection mutates nothing.
 
-## A pooled engine reuses a resolved session only while its whole key holds
+## pooled-engine-reuses — A pooled engine reuses a resolved session only while its whole key holds
 
 **Status:** accepted
 
@@ -34,7 +34,7 @@ Gate: a `contextful-context` benchmark reports cold and warm `Face::query` p50 a
 Criteria: no reuse crosses a snapshot, schema, table set or revocation, fixed; warm latency decides.
 Consequences: `read.register.connection-views` rewords from per statement to per pool entry once the gate admits the pool.
 
-## A result is reused only under the read frontier it was computed at
+## result-reused-under — A result is reused only under the read frontier it was computed at
 
 **Status:** accepted
 
@@ -52,7 +52,7 @@ Criteria: no hit crosses a restriction, revocation or frontier, fixed; then repe
 
 Consequences: a commit on an untouched table leaves an entry live.
 
-## A restricted sidecar probe doubles for a bounded number of rounds and reports under-fill
+## restricted-sidecar-probe — A restricted sidecar probe doubles for a bounded number of rounds and reports under-fill
 
 Context: rows a reader cannot see can cluster near a query point, so one oversampled probe re-joined through the reader's restriction returns fewer rows than the limit.
 Decision: `read.retrieve` doubles the probe and probes again while visible rows under-fill the limit, for at most 4 rounds, then answers with the rows it holds and reports the under-fill in the retrieval block.
@@ -68,7 +68,7 @@ Criteria: bounded work per read, then recall, then an honest count.
 Consequences: an under-filled read costs up to 4 probes and re-joins.
 Revisit: under-fill reported on more than a small share of restricted reads.
 
-## Reciprocal rank calibrates the lexical leg, admitted by the native evaluation
+## reciprocal-rank-calibrates — Reciprocal rank calibrates the lexical leg, admitted by the native evaluation
 
 Context: fusion adds a bounded cosine leg to a corpus-relative BM25 leg; min-max over the window let one outlier compress every other lexical score.
 Decision: `read.rank` calibrates the BM25 leg by reciprocal rank, `61 / (60 + r)`. A calibration replaces the current one only when the native evaluation scores it at or above the current one on every tracked measure, on every leg; reciprocal rank met that against min-max and raised the hybrid leg's nDCG and R-precision.
@@ -83,7 +83,7 @@ Criteria: no measured regression, fixed; then calibration across corpora.
 
 Revisit: a corpus where reciprocal rank loses a tracked measure to another calibration.
 
-## A reranker reorders a masked post-authority window
+## reranker-reorders-masked — A reranker reorders a masked post-authority window
 
 Context: fused order scores a cosine leg and a reciprocal-rank lexical leg; a cross-encoder reading query and candidate together orders the leading rows better, at the price of a model call per candidate.
 Decision: `read.rank` reranks only on a call naming `rerank_with`, over the first 50 rows of fused order after authority has cut and masked them. The reranker reads each masked snippet alone and scores it pointwise; rows past the window keep fused order. A reranker enters the declared set through the same native-evaluation gate a lexical calibration meets. A remote reranker is egress through `connector.infer.model-endpoint`, and a horizon routes it as it routes an embedder; a reranker with no checkpoint cut off before the horizon refuses. An undeclared name refuses.
@@ -99,7 +99,7 @@ Decision: `read.rank` reranks only on a call naming `rerank_with`, over the firs
 Consequences: the result cache keys on the reranker's identity and build, and the retrieval block names both.
 Revisit: the native evaluation measuring no gain for a declared reranker over fused order.
 
-## A zone-withheld relation is named, with one whole-relation count
+## zone-withheld-relation — A zone-withheld relation is named, with one whole-relation count
 
 `read.respond` names each touched relation the session's zone excludes or column-masks in a restriction block that every transport serializes; `context.describe` states the session zone and whether each table admits it. `authority.place` counts the rows the zone step removes over the whole relation, after the tenant and row-policy steps, never over the caller's statement. `authority.compose.before-the-cut` holds: the count is a property of the relation, so no ranked position, filter or requested size moves it.
 
@@ -113,7 +113,7 @@ Revisit: the native evaluation measuring no gain for a declared reranker over fu
 
 Consequences: an empty result carrying no block means no touched relation was withheld by zone.
 
-## The networked read transport is MCP Streamable HTTP, admitted per request
+## networked-read-transport — The networked read transport is MCP Streamable HTTP, admitted per request
 
 **Status:** accepted
 
@@ -132,7 +132,7 @@ Criteria: MCP-client compatibility, then one surface per guarantee, then revocat
 Consequences: admission sits on every read, and a possession-proof check sits on every read under a holder-bound credential; an MCP client that signs nothing reads with a short-lived audience-bound bearer and re-exchanges it before expiry.
 Revisit: a caller needs server-initiated messages or resumable streams.
 
-## A served claim write stays outside read MCP
+## served-claim-write — A served claim write stays outside read MCP
 
 Context: an operator answer distils claims after its read turn, while a hosted console owns no local store root. Criteria: preserve the closed read tool set, the writer's actor and session, and the memory table's commit and evidence gates.
 
@@ -149,7 +149,7 @@ Consequences: claim writes share memory's evidence, supersession, attribution an
 
 Integration: `CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM` names a stable signed claim. Exchange maps `sub` to `on_behalf_of`, that claim to `task`, and grants evidence/claims read plus claims write. Missing mappings, tables or evidence suppress landing. Subject-keyed recall admits broad claims-table readers; the console filters its exact actor/session scope before model input.
 
-## Memory writes validate or dead-letter, and outcomes settle under their source
+## memory-writes-validate — Memory writes validate or dead-letter, and outcomes settle under their source
 
 `read.synthesize` validates every candidate against the declared output schema, retries with the error up to 3 attempts per batch, then dead-letters the response, template hash and drop reason with the cursor held. The relation vocabulary is a reserved core plus declared types; an undeclared edge dead-letters while the batch lands. `read.resolve-entity` dead-letters ambiguous mentions and dangling endpoints. `read.settle` requires one resolution form and one source — `metric`, `adjudicator` or `manual`; metric comparators evaluate outside the engine, verdicts carry an `http`/`https` citation, self-rated outcomes carry a null verdict, and the scored and unresolved views partition the join.
 
@@ -161,7 +161,7 @@ Integration: `CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM` names a stable signed cla
 | Evaluate metric rules with an embedded expression engine | Attack surface | Anyone registering a prediction reaches the evaluator. |
 | Exclude self-rated outcomes in each reader | Repetition | The first reader that forgets the filter inflates calibration. |
 
-## Gleaning is a declared, single extra pass
+## gleaning-declared-single — Gleaning is a declared, single extra pass
 
 Context: one extraction pass over a batch omits claims the batch supports, and a second prompt asking for what the first missed recovers some of them.
 Decision: `read.declare` admits `gleanings` of 0 or 1, off by default. `read.synthesize` re-prompts a schema-valid batch once, gives the gleaning response one attempt, and commits gleaned and first-pass claims in the batch's one commit; a gleaned claim carries `_pass = 'glean'`. A schema-invalid gleaning response discards only the gleaned claims and is counted.
@@ -176,7 +176,7 @@ Criteria: bounded model spend per batch, fixed; then recall of supported claims.
 Consequences: a failed gleaning never dead-letters a batch or holds its cursor.
 Revisit: gleaned claims superseded or contradicted at a rate above first-pass claims.
 
-## An extraction cache keys responses on fenced bytes, template and model
+## extraction-cache-keys — An extraction cache keys responses on fenced bytes, template and model
 
 Context: re-running synthesis over unchanged rows, after a rebuild or an erasure's restaging, repeats model calls whose answer is already known.
 Decision: `read.synthesize` keeps each schema-valid response in an enforced, tenant-scoped table keyed on the fenced batch bytes' digest, the template hash, the model identifier and its cutoffs. Keying on fenced bytes keeps two credentials with different masks apart. A hit copies claims and stamps attribution fresh. The cache is a table, never a side file, under "The store holds nothing a user could not see". It holds model responses and never evidence verdicts, because "Resolve evidence once at write time and cache it" stays rejected.
@@ -191,7 +191,7 @@ Criteria: no response crosses a mask or tenant, fixed; then repeated model spend
 
 Consequences: a re-run over unchanged batches makes no model call; a changed template or model misses.
 
-## Claim standing is one derived tier, and revision is scoped to a validity line
+## claim-standing-derived — Claim standing is one derived tier, and revision is scoped to a validity line
 
 `read.synthesize` stamps `tier` — `curated`, `derived` or `researched` — from the writing grant and the run's source, never the payload; mixed grounding takes the lowest tier. `read.recall` orders by tier, then score. `read.revise` lets a claim retire a prior of equal or higher standing; a lower-standing contradiction lands with a bounded validity end, and two claims revise each other only when both are open-ended or anchor to the same instant. Promotion is a human act, stamped beside the synthesizing agent. A fetched result's contributor key is its registrable domain; a coverage gap closes only on a declared source. Only `researched` claims expire, by stamping a validity end, not deleting.
 
@@ -203,7 +203,7 @@ Consequences: a re-run over unchanged batches makes no model call; a changed tem
 | A confidence ceiling per tier | Ordering | Scores across sources are incomparable, so ceilings leak. |
 | Retire on subject, predicate and scope alone | History | A past-anchored belief retires the present one. |
 
-## Agent and third-party writes stand derived
+## agent-third-party — Agent and third-party writes stand derived
 
 Context: a direct write stamps `curated`, and recall puts curated claims first. An agent writing through ordinary calls, or a claim citing third-party rows, then outranks synthesis on the strength of the write path alone, which lets injected text become a top-ranked belief.
 Decision: `read.revise` stamps a direct write `derived` when its credential carries an agent member or a cited row reads `ingested:third-party`, an unlabelled row included; promotion to `curated` stays a human act, as "Claim standing is one derived tier, and revision is scoped to a validity line" decides. `read.declare` lets a claims table withhold claims below a minimum serving taint.
@@ -219,7 +219,7 @@ Criteria: no model-chosen claim outranks a principal's, fixed; then recall order
 Consequences: the agent member is asserted, never verified, so a principal-only credential an agent presents still stamps curated.
 Revisit: a verified binding between the agent member and the writer.
 
-## Memory access follows evidence grants, and forgetting is a separate privilege
+## memory-access-follows — Memory access follows evidence grants, and forgetting is a separate privilege
 
 `read.recall` serves a claim only when every evidence row resolves through the caller's enforced session; otherwise the claim is suppressed with `MemoryEvidenceUnresolved`, without failing the recall. A claim serves at most 256 evidence entries and counts the rest in `evidence_omitted`; every entry, served or omitted, resolves, and a claim naming more than 4096 entries is suppressed with `MemoryEvidenceOverflow`. `disclosure.erase` sits outside the default grant set and raises `ErasureUngranted` without the forget grant; tombstones and cascade markers commit in one local snapshot before the verb returns.
 
@@ -234,7 +234,7 @@ Revisit: a verified binding between the agent member and the writer.
 Consequences: revocation takes effect on the next recall with no invalidation sweep; recall cost of the evidence join is unmeasured.
 Revisit: recall latency dominated by the evidence join at 4096; a suppression channel that names a withheld claim without its content; evidence lists clustering at the 256 cap.
 
-## A citation into a keyed table resolves through a pepper-keyed digest of its key
+## citation-keyed-table — A citation into a keyed table resolves through a pepper-keyed digest of its key
 
 A fold drops a key's superseded versions, so a citation resolved by run and sequence alone withdraws its claim at the next compaction. The landing write stamps each citation into a keyed table with a digest of the cited key under a secret derived from the mask pepper; recall matches a live row of that key when the cited row no longer reads, and counts the claim stale. The memory row stores no source value, and no caller holds the secret to test a guessed key.
 
@@ -248,7 +248,7 @@ A fold drops a key's superseded versions, so a citation resolved by run and sequ
 Consequences: a fold no longer withdraws memory; each recall of a stale citation scans its table for the digest.
 Revisit: stale counts dominating a recall; a reader needing the claim's cited version rather than its key's live one.
 
-## The store holds nothing a user could not see
+## store-holds-nothing — The store holds nothing a user could not see
 
 Query-time enforcement bounds a read, not the stored bytes, so the ceiling sits at the write path. `authority.resist` rejects a claim carrying a credential-shaped value with `EnforceCredentialShapedValue`, on the direct and the synthesized write alike; the source writer's per-value refusal and its operator-declared exemption stay open. `connector.source` refuses every organization-twin API — security, eDiscovery, legal-hold export — with `ConnectorTwinApiSource`; a sanctioned, paid, disclosed organization-wide export path is admitted.
 
@@ -262,7 +262,7 @@ Query-time enforcement bounds a read, not the stored bytes, so the ceiling sits 
 
 Consequences: removing a credential never needs a rewrite across replicas, because it never landed.
 
-## Nearness is a parent closure over declared edges, and the engine holds no geospatial type
+## nearness-parent-closure — Nearness is a parent closure over declared edges, and the engine holds no geospatial type
 
 `read.resolve-entity` answers nearness as the transitive closure over the deployment's declared parent edges: near a place means at it or under it. The closure materializes once and left-joins as an ordinary dimension, so an unmapped place tags null and the row survives. The engine holds no geometry type, distance function or radius.
 
@@ -276,7 +276,7 @@ Consequences: removing a credential never needs a rewrite across replicas, becau
 Consequences: the place dimension replicates, reads at a vantage and falls under enforcement like any row; metric answers land as rows computed outside.
 Revisit: a deployment declares artificial parent levels to approximate a radius; closure materialization dominates the dimension's build.
 
-## Each statement owns its deadline and serialized response budget
+## statement-owns-deadline — Each statement owns its deadline and serialized response budget
 
 Caller, grant and table limits select the least duration and byte ceilings. An absent limit imposes none. The read face interrupts the timed-out statement's own engine connection; another statement in the process keeps running. Byte accounting includes the response envelope and cut metadata, and admits only whole rows. A response whose first row cannot fit refuses rather than looking empty.
 
@@ -288,7 +288,7 @@ Caller, grant and table limits select the least duration and byte ceilings. An a
 
 Consequences: a caller distinguishes a deadline refusal from a whole-row byte cut; neither returns a partial row or reports success for an oversized first row.
 
-## Memory vocabulary and schedules are explicit
+## memory-vocabulary-schedules — Memory vocabulary and schedules are explicit
 
 The five reserved relations cover evidence, contradiction, succession, subject and origin without assigning deployment-specific meanings. A declaration extends the vocabulary; the rename verb rewrites stored edges before the old name leaves the manifest. Synthesis runs when invoked unless the deployment supplies a schedule for that shape. A schedule does not alter the pass cursor.
 
@@ -299,7 +299,7 @@ The five reserved relations cover evidence, contradiction, succession, subject a
 | One global schedule | Workload fit | Shapes with different source rates either lag or spend idle model calls. |
 | Automatic pass on every commit | Cost | A bulk landing launches repeated extraction before its source is complete. |
 
-## Memory confidence and retention separate history from ranking
+## memory-confidence-retention — Memory confidence and retention separate history from ranking
 
 The source's emitted confidence is uncalibrated until a per-shape-and-predicate isotonic map improves held-out Brier score on settled outcomes. Reports expose sample count, Brier score, expected calibration error and that held-out score. Recall fits the maps on the claims table's declared outcome table, read through the caller's session, and labels each confidence. A claims table may declare a half-life that scales its ranked scores; recorded claims keep their validity until expiry or erasure. A stale citation stays gated, and a newly committed source row is the only automatic synthesis trigger. Equal-instant unscoped contradictions enter the dead-letter table without silently retiring either claim. An earlier direct observation keeps the existing out-of-order refusal.
 
@@ -310,7 +310,7 @@ The source's emitted confidence is uncalibrated until a per-shape-and-predicate 
 | Decay validity intervals by default | History | A later rank policy erases what the workspace once concluded. |
 | Resynthesize each stale read | Read latency | A query can launch an unbounded model job and change the source cursor. |
 
-## Memory reads expose use and resolve ownership from enforced rows
+## memory-reads-expose — Memory reads expose use and resolve ownership from enforced rows
 
 A memory read's audit entry records the claim ids it returned under the caller's credential and subject. Ownership answers include every visible attached principal, ordered by attachment time and id. An external graph engine is a derived index; the store's enforced rows remain the answer source.
 
@@ -321,7 +321,7 @@ A memory read's audit entry records the claim ids it returned under the caller's
 | Return the newest owner only | Completeness | Joint ownership silently loses every older live attachment. |
 | Serve directly from a graph backend | Enforcement | Its grant, mask, zone and frontier rules become a second implementation. |
 
-## A traversal walks enforced edges under fixed bounds
+## traversal-walks-enforced — A traversal walks enforced edges under fixed bounds
 
 `read.traverse` walks memory edges breadth-first from a seed entity under one frozen anchor and the caller's enforced session. An edge the session cannot read, or whose citations do not resolve, is neither returned nor crossed, because the node beyond it discloses the hidden edge. Only relations declared walkable are followed, so a dense relation such as `about` never fans a walk across the store. A hop bound, a per-node fan-out and a per-walk frontier are fixed by the engine, not chosen per call, and the omitted count covers readable edges alone. An external graph engine answers only as the derived index the ownership answer already uses.
 
@@ -336,7 +336,7 @@ A memory read's audit entry records the claim ids it returned under the caller's
 Consequences: a multi-hop question answers from edges the caller reads, and a walk cut by fan-out or frontier reports a non-zero `edges_omitted`, the walk's incompleteness signal.
 Revisit: a graph arm seeded from the query's entities earns a place in fusion; truncation dominates native multi-hop cases.
 
-## Edges supersede under one-cardinality relations
+## edges-supersede-under — Edges supersede under one-cardinality relations
 
 Each declared relation carries a direction, a cardinality of `one` or `many` edges per source, and a walkable flag; the engine fixes the traits of the reserved core. Under a `one` relation, a new edge from a source ends that source's live edge at the new edge's valid-from instant and names it as successor, so `reports_to` answers one manager at any instant while the prior edge keeps its interval. A `many` relation accumulates edges. A producer's valid-from stands, so a backfilled edge keeps its history; an absent one takes the row's availability instant, else its commit instant.
 
@@ -349,7 +349,7 @@ Each declared relation carries a direction, a cardinality of `one` or `many` edg
 
 Consequences: edges share the claims' validity-line discipline, and history answers through the ended edge's interval.
 
-## The as-of join matches on availability time, not valid time
+## join-matches-availability — The as-of join matches on availability time, not valid time
 
 `read.as-of-join` matches a driving row to the right relation's latest row whose declared availability instant precedes the driving instant. Valid time says when a value held; availability time says when anyone could see it. A restated figure keeps its original valid time, and a resource's new label can be published after its effective date, so a valid-time match hands a backtest a value published after its decision. The join runs inside one statement over registered relations, so restriction, masks and the three bounds compose as they do for any read; a right relation declaring no availability time refuses rather than falling back.
 
@@ -360,7 +360,7 @@ Consequences: edges share the claims' validity-line discipline, and history answ
 | Match on the transaction stamp | Backfill | A history landed in one commit joins nothing before that commit. |
 | A dedicated join tool | Composition | The tool restates each relation's restriction outside the statement guard. |
 
-## A horizon withholds load stamps and keeps citation stamps
+## horizon-withholds-load — A horizon withholds load stamps and keeps citation stamps
 
 Under a horizon `read.horizon.engine-stamps` drops `_ingested_at` and `_commit_seq` from the projection: each dates a row's load, and a 2026 backfill read under a 2014 horizon would reveal the present. `_run_id` and `_row_seq` stay, because `context.reference` cites a row by them and neither orders rows in time across runs.
 
@@ -370,7 +370,7 @@ Under a horizon `read.horizon.engine-stamps` drops `_ingested_at` and `_commit_s
 | Drop every engine stamp | Citation | A horizon read returns rows no reference can name. |
 | Drop every stamp and add an opaque citation token | Simplicity | A second identity scheme beside the one the store already records. |
 
-## A sidecar serves a past horizon by filtered traversal
+## sidecar-serves-past — A sidecar serves a past horizon by filtered traversal
 
 `read.horizon.rank-statistics` lets one sidecar answer every horizon at or before its snapshot. Each full-text document and vector node carries its row's availability instant under `store.index.filter-copies`. A probe under a horizon keeps only entries available by it and walks the graph through later nodes; the postings' availability timeline gives the document count and summed length by the horizon in one binary search, so BM25 scores as a sidecar built over those rows alone. A sweep over many past decision dates reads one sidecar rather than refusing or scanning the table once per date. Both layouts change, so both builder versions rise and the next pass rebuilds each sidecar under `store.index.rebuild`.
 

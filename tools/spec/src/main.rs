@@ -5,8 +5,12 @@ mod cards;
 mod checks;
 mod corpus;
 mod diagram;
+mod drift;
 mod native_ts;
 mod pins;
+mod ratchet;
+mod records;
+mod size;
 mod slice;
 mod targets;
 mod scaffold;
@@ -68,6 +72,14 @@ enum Cmd {
         #[arg(required = true)]
         clauses: Vec<String>,
     },
+    /// Lower each ratchet in `spec/terms/corpus.toml` to its live count.
+    Ceilings,
+    /// Rewrite bare citations of each named contract ADR to the one section naming the clause.
+    WhyMigrate {
+        /// `A-<contract>` record ids.
+        #[arg(required = true)]
+        records: Vec<String>,
+    },
     /// Write one failing, tagged test per refusal and limit clause of an operation.
     Scaffold {
         /// `<contract>.<operation>`.
@@ -94,12 +106,17 @@ fn main() -> Result<()> {
             for (contract, text) in cards::pages(&c) {
                 std::fs::write(root.join(format!("spec/cards/{contract}.md")), text)?;
             }
+            for advisory in size::advisories(&c) {
+                eprintln!("{advisory}");
+            }
             std::fs::write(root.join("spec/spec.lock.json"), lock_text(&c))?;
             Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?)
         }
         Cmd::Pins { migrate: true } => pins::migrate(&c),
         Cmd::Pins { migrate: false } => raise_floor(&c),
         Cmd::Retag { clauses } => pins::retag(&c, &clauses),
+        Cmd::Ceilings => ratchet::lower(&c),
+        Cmd::WhyMigrate { records } => records::migrate(&c, &records),
         Cmd::Slice { file, diff, json, .. } if file.is_some() || diff.is_some() => {
             let (heading, rows) = match (file, diff) {
                 (Some(file), _) => (format!("tagged in `{}`", file.display()), pins::by_file(&c, &file)?),
@@ -176,6 +193,11 @@ pub fn lock_text(c: &Corpus) -> String {
         clauses: Vec<&'a Clause>,
         owns: BTreeMap<&'a str, &'a Vec<String>>,
         ledes: BTreeMap<String, &'a str>,
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        groups: BTreeMap<String, &'a str>,
+        /// The clauses citing each contract ADR section, keyed `A-<contract>#<slug>`.
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        sections: BTreeMap<String, Vec<String>>,
         pointers: Vec<(&'a str, String)>,
         registry: &'a Registry,
         pins: BTreeMap<String, PinRow>,
@@ -186,7 +208,17 @@ pub fn lock_text(c: &Corpus) -> String {
         .flat_map(|cl| pointers(&cl.statement).into_iter().map(move |p| (cl.id.as_str(), p)))
         .collect();
     let owns = c.contracts().map(|d| (d.rel.as_str(), &d.owns)).collect();
-    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, ledes: c.ledes(), pointers, registry: &c.reg, pins: pin_rows(c).clone() }).unwrap();
+    let mut s = serde_json::to_string_pretty(&Lock {
+        clauses,
+        owns,
+        ledes: c.ledes(),
+        groups: c.group_ledes(),
+        sections: records::cited_by(c),
+        pointers,
+        registry: &c.reg,
+        pins: pin_rows(c).clone(),
+    })
+    .unwrap();
     s.push('\n');
     s
 }
@@ -278,9 +310,7 @@ pub fn status_text(c: &Corpus) -> String {
             let performed: Vec<&&Clause> = cls.iter().filter(|cl| verdicts.get(&cl.id) == Some(&"performed")).collect();
             let perf = performed.len();
             let acc = checks::acceptance_verdict(c, ml.acceptance.as_deref());
-            // `corpus.state.closed`: every named operation holds at least one performed clause.
-            let covered = ops.iter().all(|o| performed.iter().any(|cl| **o == format!("{}.{}", cl.contract, cl.operation)));
-            let closed = if acc == "passing" && !ops.is_empty() && covered { "closed" } else { "open" };
+            let closed = if checks::milestone_closed(c, ml.acceptance.as_deref(), &ops, &verdicts) { "closed" } else { "open" };
             let _ = writeln!(s, "| {m} | {} | {} | {perf} | {acc} | {closed} |", ops.len(), cls.len());
         }
         let unscheduled = c

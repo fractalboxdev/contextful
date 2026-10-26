@@ -65,7 +65,7 @@ Registered relations, query tools, templates, the embedded SQL engine and HTTP t
 - `connection-views` — Each session connection creates or replaces one view per manifest table, scanning {{store.reconcile.explicit-file-list}}. Statements reuse these views under {{read.cache.session-pool}}. No view directory exists on disk.
 - `declaration-set` — The face registers the tables of {{store.declare.declaration-set}}, so a `primary_key` a pipeline file declares reaches {{store.declare.dedup-view}} on the operator verb and the tool server alike.
 - `engine` — Every profile serving reads links an embedded columnar SQL engine that reads Parquet with standard SQL. External processes read the same files without that embedded engine.
-  *A-topology*
+  *A-topology#build-profiles*
 - `quiet-table` — A quiet table registers as {{store.declare.empty-run}}. Reading that table returns an empty result rather than a missing-relation fault.
   *P4*
 - `bare-name` — In caller statements, templates, ranking queries and file previews, a bare table name resolves to the caller's registered relation. That relation carries the caller's restriction.
@@ -391,10 +391,10 @@ Candidate ordering by vector and lexical scores, timeframe, optional reranking a
 - `absent-block` — Non-ranked statements and builds without a ranker omit the retrieval block. An absent block differs from a block reporting zero matches.
   *P2*
 - `degradation-not-error` — Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the {{read.retrieve.scored-text}}, recency breaking ties. The result differs in order and still answers.
-  *A-topology*
+  *A-topology#build-profiles*
 - `fallback-counts-tokens` — Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.
 - `caller-embedding` — A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.
-  *A-topology*
+  *A-topology#build-profiles*
 - `lexical-index-cache` — The opened full-text sidecar cache holds at most 64 entries in FIFO order, keyed by table, snapshot, path and key-version fingerprint. Repeated reads reuse sidecars; a different snapshot requires opening another.
 - `widened-window-statistics` — Lexical term statistics use the widened candidate window. Accelerated retrieval may therefore order rows differently from the exact scan.
 - `calibration-gate` — A lexical-leg calibration replaces the one {{read.rank.fusion}} names only when the native evaluation scores it at or above that one on every tracked measure.
@@ -497,9 +497,9 @@ Embedding implementations, stored model identifiers, query-model checks, build i
 - `build-identity` — The handshake reports linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and interfaces (`http`, `eval`, `otlp`). These names derive from the same feature declarations as version output.
   *P3*
 - `required-face` — Before the first read, the server rejects a client's `require: [...]` with `RequiredFaceAbsent` for any unreported name. An engine reporting no set satisfies no requirement.
-  *A-topology*
+  *A-topology#build-profiles*
 - `absent-read-backend` — Without the embedded SQL engine linked, every read tool raises `ReadBackendAbsent` rather than answering from a narrower path.
-  *A-topology*
+  *A-topology#build-profiles*
 
 ## as-of-join
 

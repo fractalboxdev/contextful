@@ -12,6 +12,7 @@ mod registry;
 mod render;
 mod slice;
 mod scaffold;
+mod size;
 mod state;
 mod tags;
 mod targets;
@@ -27,8 +28,9 @@ pub struct Scratch {
 }
 
 impl Scratch {
-    /// A scratch root holding the corpus and its benchmark ledger with no pins, so
-    /// each suite states every pin it depends on.
+    /// A scratch root holding the corpus and its benchmark ledger with no pins and no
+    /// source, so each suite states every pin it depends on; a ratchet counting source
+    /// sites starts at zero, and one counting unpinned clauses past any live count.
     pub fn copy() -> Scratch {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_path_buf();
@@ -37,6 +39,16 @@ impl Scratch {
         let s = Scratch { _dir: dir, root };
         s.write("evals/ledger.toml", &std::fs::read_to_string(live.join("evals/ledger.toml")).unwrap());
         s.write("spec/pins.toml", "[pin]\n\n[floor]\n");
+        let terms = s.read("spec/terms/corpus.toml");
+        let sourceless: Vec<String> = terms
+            .lines()
+            .map(|l| match l.split_once(" =").map(|(k, _)| k) {
+                Some("registry-committed-sites") => "registry-committed-sites = 0".to_string(),
+                Some("clause-unowned") => "clause-unowned = 1000000".to_string(),
+                _ => l.to_string(),
+            })
+            .collect();
+        s.write("spec/terms/corpus.toml", &(sourceless.join("\n") + "\n"));
         s
     }
 

@@ -60,14 +60,22 @@ The three segments of a clause id and what makes each legal.
 
 ## anatomy
 
-The section order of a contract file, the lede and clause list of each operation, and the computed kind of a clause.
+The section order of a contract file, the lede, clause list and groups of each operation, and the computed kind of a clause.
 
 - `file-headings` — A contract file carries front matter with `contract` and `owns`, one `# ` title matching its contract entry, one `## <operation>` section per owned operation in `owns` order, then an optional `## Shapes`.
   *P8*
 - `lede` — An operation section opens with a lede: one paragraph stating what the operation covers. The lede is the operation's only description; its fragment entry carries no gloss.
   *A-corpus*
-- `clause-list` — After the lede, one contiguous list holds the section's clauses, each item `` - `<subject>` — <statement> `` on one line, optionally followed by its Why on a two-space-indented `*…*` line.
+- `clause-list` — After the lede, one contiguous list holds the section's ungrouped clauses, each item `` - `<subject>` — <statement> `` on one line, optionally followed by its Why on a two-space-indented `*…*` line.
   *A-corpus*
+- `group` — After an operation's clause list, each `### <group>` section holds a one-sentence lede and its own contiguous clause list. A group names no segment of a clause id and follows no content after a list.
+  *because a long operation reads as named parts, and a group renames no clause*
+- `group-clauses` — A clause list, an operation's or a group's, holds at most 30 clauses; each list past it counts toward the `anatomy-long-lists` ceiling.
+  *because a reader scanning one list for its rule loses the thread past about thirty items*
+- `word-ceilings` — The `contract-words` ceilings count each contract's statement, Why and lede words, and the `adr-words` ceilings each contract ADR's words outside fences, table rules and section slugs; a count off its ceiling raises `SpecWordCeiling`.
+  *because the number of clauses, not their length, drives the corpus's size, and a recorded total makes each addition visible in review*
+- `long-operation` — `contextful-spec state` prints an advisory naming each operation holding more than 30 clauses; the advisory refuses nothing.
+  *because a long operation is a grouping candidate, and the grouping is a reader's judgment no checker makes*
 - `after-list` — Prose, diagrams, tables, scenarios and unsettled lines follow the clause list and state no obligation.
   *A-corpus*
 - `scenario` — A `#### Scenarios` list under an operation holds items `` - `<clause id>`: WHEN <trigger>, THEN <outcome> `` or a backticked `tests/fixtures/` path; the lock file attaches each to its clause.
@@ -80,7 +88,7 @@ The section order of a contract file, the lede and clause list of each operation
   *because one item states one obligation; a longer item is two clauses or carries rationale*
 - `file-length` — A contract file holds at most 900 lines.
   *because a file past that splits by adding a path to its contract entry, which renames nothing*
-- `bad-anatomy` — A missing, extra or out-of-order `##` section, a missing lede, a broken clause list, a malformed item, a title differing from the registry, a file over its length or an overlong statement raises `SpecAnatomy`.
+- `bad-anatomy` — A missing, extra or out-of-order `##` section, a missing lede, a broken list, a malformed group or item, a title off the registry, an oversized file or statement, or a long-list count off its ceiling raises `SpecAnatomy`.
   *P8*
 
 An operation section, with one clause carrying its Why, and an unsettled line:
@@ -98,7 +106,7 @@ unsettled: Does a replica that has never pulled report an empty store or refuse 
 
 ## registry
 
-Where a spelling is registered, the single owner of an error or a bound, and the collision test.
+Where a spelling is registered, the single owner of an error or a bound, the collision test, the source sites checked against each error, and the ratchets the registry records.
 
 - `fragment` — Each contract owns `spec/terms/<contract>.toml`, holding its operations, and its errors and named bounds each with a gloss.
   *P8*
@@ -108,6 +116,16 @@ Where a spelling is registered, the single owner of an error or a bound, and the
   *because an unmeasured number presented as a measurement is a hypothesis stated as fact*
 - `unregistered` — An unregistered error after `raises`, an entry naming a missing clause, an error absent from its clause or present in another, and a malformed bound raise `SpecRegistry`.
   *P8*
+- `defining-site` — A Rust variant whose `#[error]` text opens `<Id>:`, or a string literal holding `<Id>` alone or opening `<Id>:`, under `crates/*/src`, `tools/*/src`, `apps/*/src` or `formal/`, defines the registered error `<Id>`.
+  *because the checker compares code against the registry only where the code spells the identifier*
+- `variant-shape` — An error has at most one defining variant. It is named the error, or the error less the prefix its enum's name holds before `Error`, and its enum's other variants define errors of the same contract.
+  *because a second variant, a foreign name or a mixed enum hides from a reader of the code which contract raises the error*
+- `variant-gloss` — A defining variant's `///` text before its clause pointer is absent or equals its error's registry gloss byte for byte; text after the pointer documents the variant.
+  *because the fragment is the one home of a gloss, and a variant copy that differs states a second meaning*
+- `ceiling` — The `[ceiling]` table of `spec/terms/corpus.toml` records each ratchet's live count. A count above its ceiling raises the ratchet's error, and so does a count below it until `contextful-spec ceilings` lowers the ceiling.
+  *because a ratchet that only refuses growth leaves a reduction unrecorded, and the next change spends it unseen*
+- `drift` — A breach of {{corpus.registry.variant-shape}} or {{corpus.registry.variant-gloss}}, a performed refusal whose error has no defining site, and committed refusals with one past the `registry-committed-sites` ceiling raise `SpecRegistryDrift`.
+  *because a committed clause with code is work status cannot see, and a performed refusal with no code passes on its test alone*
 
 ## reference
 
@@ -124,20 +142,26 @@ The one legal way a statement reaches a fact another clause owns, and the ban on
 
 Where an argument lives: the Why line, the record and its anatomy, and the words a contract file cannot carry.
 
-- `why-cell` — A clause's Why is absent, one or more record ids such as `P3` or `A-store`, or `because` followed by at most 30 words stating the deciding criterion. A refusal carries a Why.
+- `why-cell` — A clause's Why is absent, one or more record ids such as `P3`, `A-store` or `A-topology#commit-lock`, or `because` followed by at most 30 words stating the deciding criterion. A refusal carries a Why.
   *P8*
 - `record-threshold` — A decision earns a section in its contract's ADR when two or more clauses depend on it, it spans contracts, or it names a revisit trigger; otherwise it lives in a `because` cell.
   *P8*
 - `record-anatomy` — A principle `P<n>-<slug>.md` carries `# <id> — <title>`, a `**Status:**` line, then Context (optional), Decision, Options, Consequences, Revisit (optional), in at most 400 words.
   *because a principle argues one rule every contract obeys, and the length of the argument is part of its quality*
-- `contract-adr` — A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <decision>` section per decision, each holding its options table in at most 250 words.
+- `contract-adr` — A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <slug> — <decision>` section per decision, its slug unique in the file, each holding its options table in at most 250 words.
   *because one file per contract puts every decision beside the clauses it governs, and a fresh corpus has no history to keep apart*
 - `options-table` — A principle's Options and each ADR section hold one table headed `Option`, `Lost on`, `Cost` with two to five rows. One row is marked *(chosen)* with `—` as Lost on; every other row names the criterion it lost on.
   *P8*
 - `unsettled-line` — An unknown is one line where it applies: `unsettled:`, a question ending `?`, `owner:` and a handle, `affects:` and a `<contract>.<operation>`. Another form, or a heading `Open questions`, `Out of scope` or `See also`, raises `SpecUnsettled`.
   *P8*
-- `orphan-record` — A record no Why cites, a Why naming no record, and a record breaking its anatomy raise `SpecRecord`.
+- `orphan-record` — A record no Why cites, a Why naming no record or section, a record breaking its anatomy, and a section below {{corpus.rationale.record-threshold}} in an ADR every citation of which names a section raise `SpecRecord`.
   *P8*
+- `why-scoped` — A Why citing a contract ADR names its section as `A-<contract>#<slug>`. Bare `A-<contract>` citations count toward the `why-unscoped` ceiling; past it, each raises `SpecWhyUnscoped`.
+  *because a slug cites the one decision a clause rests on, and a whole-file citation hands the reader every decision of the contract*
+- `why-migrate` — `contextful-spec why-migrate <A-id>` rewrites each bare citation of that ADR to the one section naming the clause by id, else by operation, and prints each citation without a single candidate, per contract.
+  *because a rewrite the checker cannot justify from the text belongs to a reviewer*
+- `cited-by` — `contextful-spec state` lists each contract ADR section with the clauses citing it in its contract's card, and `extract` records the same lists in the lock file.
+  *because the lists derive from Why lines, so no hand-written list repeats them*
 
 ## state
 
@@ -179,6 +203,15 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a clause performing through its test alone demonstrates code no binary runs*
 - `unfinished-test` — A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.
   *because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption*
+- `coverage-floor` — `spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.
+  *because deleting a failing pin must not read as progress*
+- `bad-pin` — A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken or unexercised pin, and one clause pinned to two theorems raise `SpecBrokenPin`.
+  *P8*
+
+### commands
+
+The commands that write tags, rewrite revisions and list the clauses a test file or a diff reaches.
+
 - `scaffold` — `contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function.
 - `scaffold-lean` — `contextful-spec scaffold <contract>.<operation> --lean <file>` appends one tagged theorem per clause of the operation, its statement the docstring and its proposition and proof `sorry`, and rewrites no existing theorem.
 - `migrate` — `contextful-spec pins --migrate` moves each `test` entry of `spec/pins.toml` into a tag above the one test it names, and leaves an entry naming no clause or no single test in place.
@@ -189,10 +222,11 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a reviewer of a test reads what it claims to demonstrate*
 - `slice-diff` — `contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage prints it into the gate log.
   *because an edited test can stop demonstrating its clause while every pin still computes performed*
-- `coverage-floor` — `spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.
-  *because deleting a failing pin must not read as progress*
-- `bad-pin` — A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken or unexercised pin, and one clause pinned to two theorems raise `SpecBrokenPin`.
-  *P8*
+
+### milestones
+
+Roadmap names, acceptance tests, milestone verdicts and the clauses no milestone schedules.
+
 - `roadmap` — `spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.
   *P8*
 - `acceptance` — A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored or holding a body line that opens with `todo!`, and `passing` otherwise.
@@ -201,6 +235,8 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because one passing acceptance test drives one path through a milestone, and an operation without a performed clause demonstrates nothing*
 - `acceptance-first` — A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.
   *A-assurance*
+- `unowned` — An unpinned clause outside every operation an open milestone names, and named in backticks by no `unsettled:` line of its operation, is unowned; unowned clauses past the `clause-unowned` ceiling raise `SpecClauseUnowned`.
+  *because a clause no test pins, no milestone schedules and no open question names is a promise nobody keeps*
 - `deferred-depth` — A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.
   *because an unopened milestone fixes what it refuses and bounds, and its behavior is written against the code that opens it*
 
@@ -258,7 +294,7 @@ The fenced diagram, and the shape every flowchart, sequence and state diagram ke
 Per-provider deployment target files, the roles each shape fills, and the page rendered from them.
 
 - `file` — Each deployment provider's target profile is `spec/targets/<provider>.toml`: named shapes, exactly one marked default, each with a kind, the profiles it hosts, an optional per-invocation wall-clock cap, its exclusions and the primitive filling each role.
-  *A-topology*
+  *A-topology#build-profiles*
 - `roles` — A shape fills eight roles — cron tick, reconciler, durable orchestrator, single-writer catalog, object store, hot-path query face, heavy compute and secrets — and may fill a realtime run projection and a queue.
 - `primitives` — A target file lists the primitives its provider offers, and each shape lists the primitives it uses; {{topology.deploy.unsupported-shape}} refuses a shape using one outside that list.
   *because a shape's roles name products, and only a primitive list makes a missing one checkable*

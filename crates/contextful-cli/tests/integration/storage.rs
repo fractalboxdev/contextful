@@ -51,6 +51,7 @@ fn ordinary_storage_check_reports_its_execution_capabilities_as_json() {
         .contains(&serde_json::json!("journal")));
 }
 
+// spec: run.journal.storage-unsupported@36d4876b
 #[test]
 fn unsupported_storage_profiles_refuse_before_admitting_a_command() {
     let out = command()
@@ -79,6 +80,7 @@ fn cloudflare_postgres_is_not_an_execution_profile() {
     assert!(error.contains("cloudflare-postgres"), "{error}");
 }
 
+// spec: run.journal.storage-incomplete@8c2802d5
 #[test]
 fn d1_profile_requires_a_private_binding_before_project_access() {
     let out = command()

@@ -589,6 +589,7 @@ fn admin_changes_require_fresh_console_attestation_and_record_the_operator() {
     assert!(record["entries"].as_array().unwrap().iter().any(|entry| entry["attributes"]["contextful.operator.subject"] == "operator-a"));
 }
 
+// spec: surface.apply.served-malformed@ac55789a
 #[test]
 fn control_routes_require_admin_and_project_applied_workflows() {
     let (dir, public) = project();
@@ -615,7 +616,9 @@ fn control_routes_require_admin_and_project_applied_workflows() {
     assert_eq!(view["pipelines"][0]["id"], "filings-flow");
     assert_eq!(view["pipelines"][0]["tables"], json!(["research/notes"]));
 
-    assert_eq!(control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":1}").0, 400);
+    let (status, malformed) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":1}");
+    assert_eq!(status, 400, "{malformed}");
+    assert_eq!(malformed["error"]["identifier"], "ControlRequestMalformed");
 
     let edited = json!({ "expected": 1, "document": pipeline.replace("every 1h", "every 1d") }).to_string();
     let (_, saved) = control(&addr, "POST", "/control/edit", Some(&admin), &edited);

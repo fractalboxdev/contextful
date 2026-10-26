@@ -2,7 +2,7 @@
 
 **Status:** accepted
 
-## Redacted material leaves no derived copy
+## redaction-no-copy — Redacted material leaves no derived copy
 
 Redaction holds only when no derived artifact carries the pre-redaction value, so each copy path closes at its source. `store.encrypt` refuses an index over a column redacted at write time. A source journal admits only a canonically prepared replacement under removal authority; body effects lacking that preparation refuse. The derive tier sits on the journaling opt-out list. `connector.attach` renders a URL as scheme, host, port and path and refuses configured userinfo; `run.emit` refuses a derived error string written without address redaction.
 
@@ -16,7 +16,7 @@ Redaction holds only when no derived artifact carries the pre-redaction value, s
 Consequences: two failures at different pages of one walk render identically from a scrubbed URL.
 Revisit: an index structure provably independent of the indexed values.
 
-## A closed body projection records canonical opaque groups
+## body-projection — A closed body projection records canonical opaque groups
 
 A registered effect projection binds labels, roots, types, transforms and normalization before input or paid calls. The existing canonical writer signs concrete rewritten groups under execution, row and effect scope. The existing journal records only their opaque wire; replay and staging independently re-admit that scope. Credential masking precedes shaping, and private counts reach the engine reporter only on fresh preparation.
 
@@ -29,7 +29,7 @@ A registered effect projection binds labels, roots, types, transforms and normal
 
 Consequences: journal and landing share the existing state machine and discard owner; earlier output tables remain published when a later table fails. Live parent admission is independent of each output table's cancellation policy. Declared ruleless roots support mixed outputs without admitting undeclared destinations. Removal protects designated row values, not arbitrary schema labels. Protected awakeable results require their own typed admission path.
 
-## A prepared source record binds canonical authority before execution
+## prepared-record — A prepared source record binds canonical authority before execution
 
 The canonical writer prepares guarded, shaped source rows once, including concrete relational child lineage, before the journal stores them. The recorded wire differs from the source wire; an opaque payload binds its destination, types and normalization to the canonical rules and pepper. Execution owner pins include that authority and the shape identity. Replay re-admits the payload without repeating transforms or removal, preserving keyed hashes and source resumption.
 
@@ -42,7 +42,7 @@ The canonical writer prepares guarded, shaped source rows once, including concre
 
 Consequences: unrelated manifest edits conservatively change recording authority. An absent continuation carries no source bytes; an exact terminal null object carries no private value. A monotonic clock requires complete transform lineage; protected relational clocks refuse without descendant lineage. Protected body effects remain refused without their own typed preparation.
 
-## Span iteration rewrites the union of all matches
+## span-union — Span iteration rewrites the union of all matches
 
 Removal patterns compile to a bounded Thompson NFA. One forward pass keeps, for each NFA state, the leftmost start that reaches it, so every match end yields the widest match ending there; overlapping matches merge into one span and adjacent ones stay separate. Work is linear in the value's length with no restart, and no matched byte remains beside its substitute. Empty matches and Unicode word boundaries refuse at declaration. Source paths retain concrete normalization lineage, and persisted identities derive only after rewritten values.
 
@@ -56,7 +56,7 @@ Removal patterns compile to a bounded Thompson NFA. One forward pass keeps, for 
 
 Consequences: unmatched UTF-8 bytes remain intact; logical projection precedes removal, and identity materialization follows it. Canonical authority binds explicit source plans before execution; a prepared relational record carries its concrete rewritten group.
 
-## Per-row classes resolve through registered masks
+## row-classes — Per-row classes resolve through registered masks
 
 A sibling text column selects a registered strategy in each row. All branches compile through the same mask checks and pepper functions as static policy; unknown or null selectors receive drop. The compiled projection participates in the existing relation identity.
 
@@ -69,7 +69,7 @@ A sibling text column selects a registered strategy in each row. All branches co
 
 Consequences: prompt and completion permit keyed digests without an exhaustion combine; finite identity classes retain their existing generalization floor.
 
-## The acting principal is provider-verified, normalized once, fixed per chain
+## acting-principal — The acting principal is provider-verified, normalized once, fixed per chain
 
 Only an identity provider makes a principal. `authority.identify` checks every subject at the mint: non-empty, at most 256 B, no control character, no surrounding whitespace; the command line trims a padded value and the automated exchange refuses it. A link authorizes only with method `scim_email` or `oidc_sub`; `operator_asserted` stages and confers nothing, and `disclosure.reach` consumes verified links alone. A derivation naming a different `on_behalf_of` refuses, and `authority.issue` refuses a write, execute or forget grant naming none.
 
@@ -84,7 +84,7 @@ Only an identity provider makes a principal. `authority.identify` checks every s
 Consequences: a script calling the command line accepts a padded value the exchange refuses.
 Revisit: a directory's identifiers exceed 256 B; provisioning latency dominates why subjects read nothing.
 
-## Delegation is a versioned profile over an attenuable-credential library
+## delegation-profile — Delegation is a versioned profile over an attenuable-credential library
 
 The library is Biscuit, and its own format is the one wire format; the engine owns a versioned profile and no envelope. `authority.profile` names the admitted facts, checks and restriction tuples, and refuses any other element; the library owns serialization, signatures, chaining and evaluation. Profile 2 adds the signed local owner store identity to the root block; profile 1 stays readable, and attenuation cannot acquire ownership. A credential is an authority block plus N attenuation blocks; the supported chain depth is unsettled under `authority.attenuate`. Time, audience, resolved resources and request identity are reserved engine-supplied facts. Evaluation admits no third-party block, external function, recursion or regular expression, under fact and iteration ceilings that refuse past their bound.
 
@@ -99,7 +99,7 @@ The library is Biscuit, and its own format is the one wire format; the engine ow
 Consequences: no wall-clock timeout enters admission, so slow hardware refuses nothing fast hardware admits.
 Revisit: chain verification cost becomes measurable at real delegation depths; the library gains a backtracking-free matcher identical across native and WebAssembly builds.
 
-## Grants narrow offline, and admission re-checks the whole chain
+## offline-narrowing — Grants narrow offline, and admission re-checks the whole chain
 
 Every derivation provably narrows its parent. `authority.grant` table patterns take three forms — bare star, trailing star, exact literal — answered by one implementation for derivation, view registration, tool visibility and replica selection. A tenant scope over a table without a bare outermost partition column refuses; a tenant-scoped child lives 15 min. `authority.attenuate` runs the identical comparison at derivation and over the whole chain at admission, naming the widened dimension; dropping or changing a tenant scope refuses. `authority.revoke` keys the denylist per derivation, withdrawing one subtree.
 
@@ -114,7 +114,7 @@ Every derivation provably narrows its parent. `authority.grant` table patterns t
 Consequences: a table rebuild dropping the partition column surfaces as a refusal at the read.
 Revisit: chain comparison becomes measurable against request latency; a grant dimension carries a tenant set.
 
-## Query templates are deny-by-default capabilities
+## query-templates — Query templates are deny-by-default capabilities
 
 A template is reachable only by a grant naming it and runs exactly the reviewed statement. `authority.grant` treats the template allowlist as a capability: absent authorizes none, star authorizes every declared template, and a child names only identifiers its parent covered; an uncovered template is absent from the listing and refuses on invocation. `disclosure.template` binds strictly — missing, unknown or mistyped arguments refuse — and validates placeholders, single statements and built-in prefix collisions at manifest check and startup. The statement runs unrewritten under every enforcement layer, over plain store tables only.
 
@@ -129,7 +129,7 @@ A template is reachable only by a grant naming it and runs exactly the reviewed 
 Consequences: identifier confinement is the sole protection on that surface.
 Revisit: operators routinely grant star; a needed store feature requires a non-plain identifier.
 
-## One persisted issuance ceiling bounds every lifetime
+## issuance-ceiling — One persisted issuance ceiling bounds every lifetime
 
 One number, versioned with the project, sets the longest lifetime any mint path produces, and every other window derives from it. `authority.issue` reads a persisted policy: a ceiling of at most 24 h and a default audience. An explicit lifetime above the ceiling refuses; `authority.exchange` clamps a configured lifetime down to the ceiling, with an exchange ceiling of 3600 s. `authority.revoke` refuses a rotation grace shorter than the effective ceiling and validates against the recorded previous ceiling. Format withdrawal runs through revocation, expiry or key rotation at a declared cutover; no flag restores it.
 
@@ -144,7 +144,7 @@ One number, versioned with the project, sets the longest lifetime any mint path 
 Consequences: the longest issued lifetime floors rotation cadence, and format withdrawal is never immediate.
 Revisit: a verified need for lifetimes above 24 h; operators surprised by clamped exchange sessions.
 
-## Verification trusts only pinned or injected keys
+## pinned-keys — Verification trusts only pinned or injected keys
 
 The deployment, never the credential, chooses the verifying key, and an absent answer about keys refuses. `authority.issue` signs through one provider-agnostic port with seed file, secret reference and remote signing oracle adapters. The pinned key's scheme decides verification; a conflicting algorithm claim refuses. `authority.verify` accepts a key set from static pins or an opted-into key route; an opted-in checkpoint lacking the set refuses everything — the engine declines to start, a gateway answers 503. `authority.exchange` verifies against operator-injected secret, PEM key or `kid`-selected key set, with no network call.
 
@@ -159,7 +159,7 @@ The deployment, never the credential, chooses the verifying key, and an absent a
 Consequences: a missed provider rotation fails the mint closed; retiring a key is an action, not an omission.
 Revisit: the port cannot express a needed adapter capability such as batch signing; key-route outages lead admission refusals.
 
-## A face admits one verified credential and carries authority as a value
+## one-credential — A face admits one verified credential and carries authority as a value
 
 Authority enters through one verification and flows as an explicit value, never ambient state. `authority.issue` takes an authoring posture at every project-load site with no default: `session` authors through one ambient credential, `per_request` withholds it. A served face admits a verified capability credential and nothing else — no perimeter bearer, gateway shared secret or owner path, flagged or not. `authority.verify` yields an admitted-authority value, with no fabricating constructor, that every read surface and row-landing effect takes. `authority.exchange` mints per signed-in reader per request.
 
@@ -174,7 +174,7 @@ Authority enters through one verification and flows as an explicit value, never 
 Consequences: a wrong posture mis-authors silently, so the posture argument is the one review point.
 Revisit: per-request mint latency dominates reads; a face needs a caller class no grant expresses.
 
-## Credentials are sender-constrained, with a nonce replay window
+## sender-constrained — Credentials are sender-constrained, with a nonce replay window
 
 Over a network, holding a credential admits nothing without proof of its key, and a captured request is not re-sendable. A network checkpoint requires a confirmation thumbprint of a client public key in every credential; under a credential carrying one, every transport requires a per-request signature over method, target, body digest and nonce from the matching private key; a mismatch refuses. A credential with none admits only locally, as the local-transports section records. A nonce repeating inside the checkpoint's local replay window refuses; one outside it is not remembered. The proof establishes key possession and claims nothing about what the client is.
 
@@ -189,7 +189,7 @@ Over a network, holding a credential admits nothing without proof of its key, an
 Consequences: a credential is minted against one client's key; each checkpoint holds nonce state sized by window and request rate.
 Revisit: cross-checkpoint replay observed within a credential's lifetime; a client class cannot hold a private key.
 
-## A network face admits a short-lived audience-bound bearer, and a key-bound credential only under proof
+## network-bearer — A network face admits a short-lived audience-bound bearer, and a key-bound credential only under proof
 
 **Status:** accepted; narrows the network requirement of the sender-constrained decision above.
 
@@ -208,7 +208,7 @@ Criteria: MCP-client compatibility, then theft yield; compatibility decided it.
 Consequences: an operator wanting replay resistance mints with `--holder`; a bearer client re-exchanges at least hourly.
 Revisit: mainstream MCP clients sign per-request proofs; bearer replay is observed within a lifetime.
 
-## The exchange renews a credential, binding it to a proven holder key
+## exchange-renewal — The exchange renews a credential, binding it to a proven holder key
 
 **Status:** accepted; applies the network-face decision above to the exchange.
 
@@ -229,7 +229,7 @@ Criteria: theft yield, then MCP-client compatibility; theft yield decided the fi
 Consequences: identity-provider availability bounds a bearer session past one hour.
 Revisit: clients report hourly exchange as a sign-in outage; a face needs holders with no identity provider.
 
-## A digest over an exhaustible class needs generalizing truncation
+## exhaustible-digest — A digest over an exhaustible class needs generalizing truncation
 
 A digest over an enumerable value space — national identifier, phone, email, medical record number — ships only behind truncation, so exhaustive search returns a crowd. `authority.mask` refuses a class outside the registry with `EnforceUnknownClass` at manifest check. A bare keyed hash over an exhaustible class refuses; `combine = "truncate:<n>"` satisfies it, and random identifiers keep a bare hash. Truncation is the one secondary admitted behind a hash or tokenization. A width at or past the primary's output refuses; narrower widths are operator judgment. Primary and secondary compile to one inseparable value.
 
@@ -244,7 +244,7 @@ A digest over an enumerable value space — national identifier, phone, email, m
 Consequences: a band and a joinable key need two columns; sufficient narrowness is unverified.
 Revisit: manifests carry a measured domain size per class; a per-person join over an exhaustible class becomes a requirement.
 
-## Placement breadth is declared data-side, and resolution fails narrow
+## placement-breadth — Placement breadth is declared data-side, and resolution fails narrow
 
 Only the data side widens inference placement, every widening shows in the manifest diff, and ambiguity resolves narrowest. `authority.issue` refuses a wildcard inference zone on a credential or subject. `authority.place` refuses a permissive default for unlabeled tables when more than one principal owns the store. Widening a protected-class surface past its floor requires a class-named override flag, else it narrows at serve time. A synthesized row's zones are at most the intersection of its evidence tables'. Incognito pins the session, the local owner included. No model-vendor client library links into any workspace package.
 
@@ -259,7 +259,7 @@ Only the data side widens inference placement, every widening shows in the manif
 Consequences: the override flag records an assertion and verifies no vendor agreement; a session needing a cloud model restarts without the pin.
 Revisit: fragment-level provenance through synthesis becomes observable; per-zone minting dominates issuance.
 
-## Redistribution ships an allowlist and never reaches backwards
+## redistribution — Redistribution ships an allowlist and never reaches backwards
 
 `authority.bound-redistribution` fails toward not shipping and names what an earlier push uploaded. While any table is withheld, a root object ships only if allowlisted as free of row data — the mirrored permission tables and the stale-memory index; any other raises `EnforceRootObjectNotAllowlisted` at push. Clearing the redistribution flag over a table an earlier push uploaded raises `EnforceStaleRedistributedObjects`, naming each implicated object and its remedy, up to 100 files plus the total, and removes nothing; the check runs before and after the upload loop.
 
@@ -272,7 +272,7 @@ Revisit: fragment-level provenance through synthesis becomes observable; per-zon
 
 Consequences: a push refuses until the bucket is clean; a replica keeps resolving permissions and staleness while tables are withheld.
 
-## Local transports bind possession to the holder key, then to the OS peer
+## local-transport — Local transports bind possession to the holder key, then to the OS peer
 
 Context: MCP hosts spawn a server over stdio or relay to a Unix socket, and many sign nothing per request.
 
@@ -290,7 +290,7 @@ Criteria: theft yield, then host compatibility; theft yield decided the order.
 Consequences: a key-holding local client keeps network-grade theft resistance; a credential with no confirmation claim is local-only. Accepted cost: on the fallback, a same-uid process reading the host's configuration acts with the credential locally.
 Revisit: stdio hosts sign per request, retiring the fallback; a portable call names the peer process.
 
-## The horizon is a grant dimension enforced through the existing egress hook
+## horizon — The horizon is a grant dimension enforced through the existing egress hook
 
 An agent replaying a past instant must not see what became available after it. A cutoff the agent passes per call is one it can omit or widen, so the horizon rides the credential: every read inherits it, a later argument refuses, and a child narrows it like any other dimension. Tools beyond the read face reach the outside through the one mediated attachment point, so the horizon is an input to the pre-send hook rather than a second allowlist. Search hosted inside a model provider never reaches that client, and refuses at the call.
 

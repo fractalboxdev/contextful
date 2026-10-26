@@ -30,19 +30,19 @@ Execution, storage, queries, access controls and the contracts these components 
 - `read-path` — Storage and query code manages the context store, catalog, queries, ranking, memory queries and bucket sync. A capability check admits each record before storage.
 - `run-path` — Execution code manages the journal, scheduler, cursor commits, awakeables and journaled connector steps. Execution code owns no store or ranking.
 - `three-crossings` — Execution, storage and query code share exactly three contracts: the connector interface world, columnar-part-plus-manifest layout and capability-token format. No general internal API connects these components.
-  *A-topology*
+  *A-topology#public-surfaces*
 - `crossing-version` — Each shared contract has a version. Execution, storage and query code run its conformance suite. Adding a contract member requires a security review.
 - `undeclared-crossing` — An execution crate depends on storage or query crates only through crates implementing the three shared contracts. {{assurance.gate.crate-graph}} checks each dependency.
-  *A-topology*
+  *A-topology#public-surfaces*
 - `run-path-droppable` — A build without the execution engine, scheduler or component host reads data written by a full-profile build. Both builds use the same part-and-manifest layout and connector contract.
 - `cli-binary` — The runtime ships one command binary, `contextful`, and one package scope, `@contextful/*`; release assurance follows {{assurance.consumer.suite}}. The smallest deployable build is a profile, not a crate.
 - `mediation` — Each function returning or releasing stored rows requires an access-control admission value ({{assurance.gate.row-token}}). A call omitting that value fails to compile. Access controls have no disable option.
-  *A-topology*
+  *A-topology#enforcement-stack*
 - `enforcement-span` — Execution enforces capability allowlists and records journal entries. Storage and queries enforce statement guards, visibility semi-joins, row and column restrictions, masking and the audit chain.
 - `semantic-layer` — Access controls do not interpret content. Retrieval, memory synthesis, the operator console and inference placement interpret content and access enforcement through the three shared contracts alone.
 - `one-tree` — Local and clustered deployments use one source tree. Single-node and edge deployments use no external queue, cache or coordination process. Multi-node deployments add one shared database.
 - `queue-extension` — With a `queue` role, the target carries `receive` batches, object-arrival keys and post-commit wake-ups through the `Queue` port. Without that role, the target uses the local spool. Only the engine writes the store.
-  *A-topology*
+  *A-topology#queue-ingress*
 - `queue-sqs` — With `CONTEXTFUL_QUEUE_URL` set, `receive` batches and object-arrival keys travel through that SQS standard queue, each request signed with Signature Version 4 under {{store.endpoint.role-credentials}}; post-commit wake-ups stay in the local spool.
   *because the `aws` target's queue role is an SQS standard queue, and its task holds a workload role rather than a key pair*
 - `queue-sqs-absent` — A build linking no SQS adapter, given `CONTEXTFUL_QUEUE_URL`, refuses each queue use as {{topology.package.capability-absent}} and never falls back to the local spool.
@@ -60,9 +60,9 @@ Execution, storage, queries, access controls and the contracts these components 
 - `connector-pillar` — A connector is an interface world run in a sandboxed component host that mediates every capability. A native connector, the first-party path for stateful sources, satisfies the same schema, record and cursor contract.
 - `open-store` — Table data sits in columnar parts with a JSON manifest and a rebuildable catalog on plain object storage, readable by standard SQL tooling. No proprietary container or opaque blob holds table data.
 - `inference-egress` — Model access leaves the process through one operator-configured endpoint speaking OpenAI-compatible HTTP. The one provider-shaped step serializes a tool's parameter schema into the provider's envelope.
-  *A-topology*
+  *A-topology#one-egress*
 - `vendor-sdk` — A model-vendor SDK or second outbound model path raises `VendorSdkLinked` in the dependency audit. The error names the crate and dependency.
-  *A-topology*
+  *A-topology#one-egress*
 - `local-first` — Pipelines need no network beyond their sources, and bucket sync is opt-in per deployment. The engine makes no control-plane callback, no license check, and sends no telemetry to its authors.
 - `script-runtime` — A JavaScript runtime linked into any profile raises `ScriptRuntimeLinked`. The authoring surface is a build-time compiler emitting a serialized, content-hashed plan.
   *A-run*
@@ -77,39 +77,39 @@ Rust package dependencies and the capabilities each compiled binary includes.
 - `crate-map-drift` — An unmapped `crates/` package or {{topology.package.crate-map}} count differing from the `## Shapes` tree raises `CrateMapDrift`. The error names the package or both counts.
   *because a package added without a map entry otherwise passes every other gate*
 - `domain-crate` — `contextful-core` holds the pure domain types and the port traits every adapter implements, performs no I/O, and links into every profile.
-  *A-topology*
+  *A-topology#domain-crate*
 - `domain-impurity` — An async runtime, component host, HTTP client or columnar-format implementation in `contextful-core` raises `DomainCrateImpurity`. The error names the dependency and enabling feature.
-  *A-topology*
+  *A-topology#domain-crate*
 - `dependency-direction` — A dependency edge from `contextful-core` toward an adapter crate raises `TopologyDependencyInversion`, naming both crates and the manifest line.
-  *A-topology*
+  *A-topology#domain-crate*
 - `profile` — Three profiles compile from the workspace, each a Cargo feature bundle selected at build time: `contextful-edge`, `contextful-full`, `contextful-control`. Each links the dependencies its role names and nothing else.
-  *A-topology*
+  *A-topology#build-profiles*
 - `fixed-at-build` — No run-time detection widens a running binary into another profile's feature set. Build, release and automation tooling links into no profile.
-  *A-topology*
+  *A-topology#build-profiles*
 - `profile-leak` — A dependency outside a profile's role raises `ProfileRoleLeak`, naming the profile and dependency path. Disallowed dependencies include component hosts, execution or evaluation in edge/control; SQL in control; build tooling in any profile.
-  *A-topology*
+  *A-topology#build-profiles*
 - `capability-absent` — A subcommand requiring an unlinked capability raises `ProfileCapabilityAbsent`, naming the subcommand and profile. The command performs no action. A subcommand absent from every profile is a usage error.
-  *A-topology*
+  *A-topology#build-profiles*
 - `version-profile` — `contextful --version` prints the workspace version and selected build profile. A build selecting no profile prints `development` as its profile.
 - `edge-profile` — `contextful-edge` syncs parts and manifests from a bucket and serves read-only SQL queries. This profile links no scheduler, execution engine, script runtime or component host.
 - `edge-eligibility` — The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.
 - `full-profile` — `contextful-full` includes the execution engine, in-process scheduler, component host, SQL queries, transforms, full-text and vector sidecars, and tool server.
 - `control-profile` — `contextful-control` provides self-hosted team configuration and operator identity. Apply produces canonical TOML. This profile alone links the CRDT library.
-  *A-topology*
+  *A-topology#control-crdt*
 - `control-team-state` — The control profile stores ingest source, model and access-policy configuration in one `loro` document. Replicas merge concurrent edits. Apply uses this document as the editable configuration.
-  *A-topology*
+  *A-topology#control-crdt*
 - `control-identity` — The control profile identifies an operator by {{surface.apply.operator-attestation}} alone, refusing an apply without one, and keeps no account store.
   *because the console already signs every Admin mutation, and a second account concept is a second identity to provision and revoke*
 - `canonical-toml` — Apply sorts each table's keys by byte order and places nested tables after values. The format-preserving editor chooses quoting and spacing, preserving comments. Applying canonicalization to canonical text changes no byte.
   *because equal configurations then claim identical bytes, and a comment is the operator's record of why a value holds*
 - `apply-home` — `contextful-snapshot` is the one home of the snapshot directory {{surface.apply.local-claim}} claims into; `contextful-engine` and `contextful-control` both call it, and it links no run-path package.
-  *A-topology*
+  *A-topology#control-crdt*
 - `component-host` — Builds that link a component host run component connectors: the full profile and container or worker deployments built from that profile.
-  *A-topology*
+  *A-topology#build-profiles*
 - `host-missing` — Dispatching a component connector without a component host raises `ComponentHostMissing`, naming the connector and profile. No similarly named native source substitutes.
-  *A-topology*
+  *A-topology#build-profiles*
 - `crdt-leak` — The CRDT library in the resolved dependency graph of the edge or full profile raises `ProfileDependencyLeak`, naming the profile and the path that pulled it. A daemon or replica reads materialized text.
-  *A-topology*
+  *A-topology#build-profiles*
 - `store-write-engine-free` — Without `read`, `contextful-context` excludes `duckdb`, `libduckdb-sys`, `libsqlite3-sys`, async runtimes, HTTP and TLS from normal dependencies on every target. A dependency reaching these raises `StoreWriteLinksEngine`, naming the package and path.
   *because a host that lands, folds or scans a store serves no read and opens no connection, so an engine, runtime or network stack is code it never calls*
 - `transport-optional` — Without `transport-ureq`, `contextful-outbound` excludes `ureq`, `hyper`, `reqwest`, `rustls` and `curl` from normal dependencies. A dependency reaching these raises `TransportStackLinked`, naming the dependency path.
@@ -137,12 +137,12 @@ unsettled: Does the edge profile pull native connectors through an execution cor
 Deployment configurations, provider services and comparison against the reference deployment.
 
 - `unsupported-shape` — A target profile claiming a shape its provider does not provide raises `TargetShapeUnsupported`, naming the shape and the missing primitive.
-  *A-topology*
+  *A-topology#deploy-observation*
 - `wall-clock-cap` — A target capping per-invocation wall clock at 15 min hosts neither a first-time backfill nor a component connector, and its target profile records both exclusions.
 - `parity` — One declaration produces byte-identical table parts on every control-plane target. The parity check compares each target's object-store parts with the reference parts after a 24 h soak.
-  *A-topology*
+  *A-topology#deploy-observation*
 - `parity-divergence` — A byte difference from the reference output raises `ParityDivergence`, naming the target, the table and the first differing part.
-  *A-topology*
+  *A-topology#deploy-observation*
 
 Provider configurations live under `spec/targets/`; `corpus.targets` checks those files.
 The generated [deployment tables and diagrams](./targets.md) identify processes, embedded
@@ -286,9 +286,9 @@ unsettled: Which role hosts heavy compute on a provider exposing neither a conta
 Hostname access policies, deployment checks and requests through the routing service to the query container.
 
 - `posture-mismatch` — An unreachable hostname or response outside its declared access policy raises `HostnamePostureMismatch`, naming the hostname, policy and observed response. `contextful-ci deploy probe` exits nonzero.
-  *A-topology*
+  *A-topology#posture-probe*
 - `probe-table` — Before probing hostnames, the deploy tool compares descriptor and probe-table entries. An entry missing from either set raises `ProbeTableDrift`, naming the hostname and missing side.
-  *A-topology*
+  *A-topology#posture-probe*
 - `empty-probe` — An absent descriptor directory, absent probe table or empty hostname set raises `ProbeSetEmpty`, naming the path. A passing probe checks at least one hostname.
   *because a probe that checks nothing and exits zero reads as a proven posture to the pipeline that invoked it.*
 - `unknown-field` — An unmodelled descriptor property raises `DescriptorUnknownField`, naming the key and contract version. The decoder rejects the descriptor.
@@ -362,7 +362,7 @@ Conditional metadata updates, writer leases and the databases that store coordin
 - `catalog-port` — Engine code accesses catalog backends through the `Catalog` trait without naming a backend. `contextful-cli` selects the backend through dependency injection.
   *A-store*
 - `backends` — Single-node self-hosting uses a local catalog file. Clusters use Postgres through `pg-catalog`. Cloudflare execution uses D1 through `d1-catalog`.
-  *A-store, A-topology*
+  *A-store, A-topology#cloudflare-d1*
 - `catalog-url` — With `pg-catalog`, `CONTEXTFUL_CATALOG_URL` selects the named Postgres catalog instead of the local file. Without `pg-catalog`, setting this variable raises {{topology.package.capability-absent}}.
   *because a daemon falling back to its own file while its peers share the database holds leases no peer sees*
 - `postgres-transport` — Beyond loopback or Unix sockets, PostgreSQL requires TLS with WebPKI roots and hostname verification. Disabling TLS there raises `DatabaseTransportUnprotected` before DNS resolution. Preferred TLS mode permits no plaintext fallback there.
@@ -424,7 +424,7 @@ unsettled: Does an encrypted store seal its rows in the Postgres catalog, or kee
 Responsibilities of the engine and applications that use the engine.
 
 - `domain-neutral` — The engine processes declared data, schemas, policies, time bounds and capabilities. Consumer configuration, connectors, components or explicitly selected evaluation profiles supply domain meanings, business rules and sector-specific metrics.
-  *A-topology*
+  *A-topology#public-surfaces*
 - `restated-case` — A case with neither a generated artifact nor a callable route stays with the application, which restates the engine rule at its site under {{assurance.structure-tree.mirror-exemption}}.
   *because a restatement naming its clause id surfaces when the rule changes, and an adapter for one case costs more than it guards*
 

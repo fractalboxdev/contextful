@@ -235,10 +235,10 @@ Host handling of outbound requests: network transport, permitted hosts and addre
   *A-connector*
 - `sensitive-header-record` — A run records which header names carried a credential, by name only.
 - `url-scrubbing` — Before a URL enters an error message, log line or stored column, the host removes query, fragment and userinfo. Scheme, host, port and path remain.
-  *A-authority*
+  *A-authority#redaction-no-copy*
 - `typed-url-edit` — Metered vendor traffic and control-plane traffic each use one client that clears URLs through typed error mapping. The host scrubs other URLs as text.
 - `credential-in-a-url` — A configured endpoint carrying userinfo raises `SecretCredentialInUrl` at validation, naming the source.
-  *A-authority*
+  *A-authority#redaction-no-copy*
 - `mediation-covers-every-egress` — A built-in source, a guest connector, a model call and a limiter call each attach through the one mediated client; {{connector.attach.exec-environment}} names the one attachment outside it.
   *A-connector*
 - `exec-environment` — At spawn, an exec step hydrates its env template through the source resolver into the environment cleared by {{run.exec.no-shell}}. This attachment bypasses host mediation and enters {{connector.record.provider-attribution}}.

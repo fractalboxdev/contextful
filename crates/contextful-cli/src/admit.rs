@@ -70,9 +70,9 @@ pub enum AdmitError {
     #[cfg(feature = "read-plane")]
     #[error("OwnerCredentialInvalid: {0}")]
     OwnerCredentialInvalid(String),
-    /// (`authority.revoke.ledger-unavailable`)
-    #[error("KeySetLedgerUnavailable: {0}")]
-    KeySetLedgerUnavailable(String),
+    /// A refusal of the authority contract raised while admitting.
+    #[error(transparent)]
+    Authority(#[from] AuthorityError),
 }
 
 /// The static pins from `--public-key`, else [`PUBKEY_VAR`]; neither raises
@@ -123,7 +123,7 @@ impl LedgerFile {
     /// The ledger now. An absent default file that no earlier read found is empty: no key
     /// retired and no epoch bumped.
     pub fn read(&self) -> Result<KeySetLedger, AdmitError> {
-        let unavailable = |why: String| AdmitError::KeySetLedgerUnavailable(format!("{}: {why}", self.path.display()));
+        let unavailable = |why: String| AdmitError::from(AuthorityError::KeySetLedgerUnavailable(format!("{}: {why}", self.path.display())));
         let text = match std::fs::read_to_string(&self.path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound && !self.required.load(Ordering::SeqCst) => {

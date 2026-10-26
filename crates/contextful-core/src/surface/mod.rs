@@ -87,9 +87,6 @@ pub enum SurfaceError {
     /// (`surface.dispatch.step-result`)
     #[error("StepResultRefused: {0}")]
     StepResultRefused(String),
-    /// (`surface.dispatch.in-band-tool-error`)
-    #[error("StepToolError: {0}")]
-    StepToolError(String),
     /// (`surface.dispatch.callback-rejected`)
     #[error("DispatchCallbackRejected: {0}")]
     DispatchCallbackRejected(String),
@@ -133,7 +130,6 @@ impl SurfaceError {
             | SurfaceError::ConnectorUploadRefused(_)
             | SurfaceError::DispatchUnitNotAHead(_)
             | SurfaceError::StepResultRefused(_)
-            | SurfaceError::StepToolError(_)
             | SurfaceError::DelegateHostRefused(_)
             | SurfaceError::DelegateAnswerRejected(_)
             | SurfaceError::DelegateTimeoutRefused(_)

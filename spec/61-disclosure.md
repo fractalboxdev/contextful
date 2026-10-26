@@ -125,7 +125,7 @@ flowchart LR
 Query templates a releasing principal calls by name: the single-statement rule, the checks they pass, and the truncation flag a capped read carries.
 
 - `single-statement` — A declaration holding more than one statement raises `DisclosureTemplateMultiStatement`.
-  *A-authority*
+  *A-authority#query-templates*
 - `overfetch` — A capped result sets the envelope's truncation flag by reading exactly 1 rows past the effective ceiling.
 - `read-envelope` — A template read returns rows, truncation, row ceiling, suppression presence and the disclosure policy hash; set-valued policy fields follow {{run.publish.disclosure-digest}} at every nesting depth.
   *A-disclosure*

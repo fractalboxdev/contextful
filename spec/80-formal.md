@@ -86,7 +86,7 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `protocol-model` — The protocol model is a total, computable step function over two lease paths, the compaction lease guarding a table pointer and the run lease guarding a commit log: grant, raise, renewal, expiry, release, fenced commit, pause, message delay and crash.
   *A-assurance*
 - `protocol-safety` — Five invariants are Lean theorems over every reachable state of both paths: one lease holder per fence, fences only increase, no commit after a successor's acquisition, no lost update, and release keeps the lease object and its fence.
-  *A-assurance*
+  *A-assurance#store-protocol-modelled*
 - `protocol-theorems` — Each protocol invariant theorem is a required constant in the protocol package's inventory, audited by {{assurance.audit-assumptions.check-command}} against the same allowlist.
 - `protocol-check` — The gate evaluates every invariant on each state reached by every step sequence over three nodes and four lease generations; a breaking state raises `ProtocolInvariantViolated`, printing the shortest sequence reaching it.
   *P7*
@@ -205,7 +205,7 @@ The sentence the assurance claim is allowed to be: named decisions, trusted depe
 The executable reference models, the case generators, the minimized counterexample corpus and the command running them.
 
 - `reference-model` — The reference model is the policy package's proved decision definitions, compiled with JSON case decoding and decision rendering into a binary that reads one case on standard input and prints one decision.
-  *A-assurance*
+  *A-assurance#executed-reference-proved*
 - `reference-theorems` — Each theorem the reference package proves over a decision it executes is a required constant in its inventory, audited by {{assurance.audit-assumptions.check-command}} and bound to the differential test running that decision.
   *because a theorem pin performs only beside a differential that drives the code its clause names*
 - `harness` — The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.

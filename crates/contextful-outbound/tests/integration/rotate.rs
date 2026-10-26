@@ -125,6 +125,7 @@ fn the_put_carries_the_refreshed_expiry_as_a_hint() {
 
 /// A refused put, or an answering adapter with no write half, fails closed and the refreshed
 /// token is dropped unserved.
+// spec: connector.rotate.write-back-denied@13fed6fb
 #[test]
 fn a_refused_put_fails_closed_and_the_refreshed_token_is_never_served() {
     let manager = Manager::new("old-token");

@@ -2,7 +2,7 @@
 
 **Status:** accepted
 
-## A synced UUID binds a store across clones
+## synced-uuid-binds — A synced UUID binds a store across clones
 
 `store.init` publishes a random version-4 UUID in `store-id` inside the store root. Owner mint on a root lacking an ID creates it once. Bucket sync carries it as an immutable object: an empty clone accepts the UUID, while a pull into an independently identified store refuses before copying data. Removing and reinitializing a root creates another UUID, so a signed owner claim from the removed root does not follow its filesystem path.
 
@@ -14,7 +14,7 @@
 
 Consequences: a clone holds the original store identity; a new store at an old path does not.
 
-## An empty complete snapshot carries a replacement frontier
+## empty-complete-snapshot — An empty complete snapshot carries a replacement frontier
 
 A zero-row result has two meanings for a replacing table. A source can finish enumerating its inventory and find no rows, or it can skip unchanged input without reading it. The run records a replacement frontier only for the complete result. The marker lives in the run manifest, survives bucket sync as committed data, and remains effective when a fold publishes an empty snapshot. An incomplete or failed pull commits neither rows nor frontier. A bounded read before the marker still reaches earlier runs while retention keeps them.
 
@@ -26,7 +26,7 @@ A zero-row result has two meanings for a replacing table. A source can finish en
 
 Consequences: a complete empty inventory clears current reads, while a skipped inventory leaves its earlier state readable.
 
-## The schema lattice has one promotion, and a key never widens
+## schema-lattice-has — The schema lattice has one promotion, and a key never widens
 
 `store.reconcile` models one promotion, `Int64` with `Float64` to `Float64`, the only pairing that produces physically mixed Parquet; the scan's own type resolution widens it, with no per-column cast. Any other pair refuses at the write, naming the column, the stored type and the arriving one. A primary-key column takes no float promotion: reconciliation refuses the widening batch before any Parquet is written, `store.fold` refuses a key already reconciled to `Float64`, and a key value beyond the exact-integer range of `Float64` is emitted as a string.
 
@@ -41,7 +41,7 @@ Consequences: a complete empty inventory clears current reads, while a skipped i
 Consequences: every accepted column has one logical type across its files, and a keyed table's identity survives integers past the float range.
 Revisit: a second pairing that some source emits routinely and the scan resolves losslessly.
 
-## Coordination is probed compare-and-swap with fences the storage enforces
+## coordination-probed-compare — Coordination is probed compare-and-swap with fences the storage enforces
 
 `topology.coordinate` rests on one linearizable conditional write behind the `Catalog` port; a backend without it refuses at open with `ConditionalWriteUnsupported`. `store.probe` tests atomic conditional writes with a live sentinel inside the configured prefix; an inconclusive probe raises `SyncProbeInconclusive`, and a declared `cas` push stops with `SyncCoordinationUnproven`. `store.lease` acquisition increments a fence the storage enforces on the cursor commit (`cursors/<pipeline_id>/<seq>.json`), the `_pointer.json` replace and the catalog update; losing to a higher fence raises `LeaseFenced`, a held lease raises `LeaseHeld` and retries next tick, and release nulls `holder` without deleting the object. `store.fold` compacts only under the table's compaction lease.
 
@@ -56,7 +56,7 @@ Revisit: a second pairing that some source emits routinely and the scan resolves
 Consequences: a backend without demonstrated conditional writes runs single-writer by refusal, never by silent degradation.
 Revisit: a backend whose access policy enforces a generation bound for every writer.
 
-## A replica is a read-only whole-snapshot cache
+## replica-read-whole — A replica is a read-only whole-snapshot cache
 
 `store.replicate` answers reads and holds no write path; a write verb refuses and names the canonical store. A replica holds every Parquet file of a snapshot or none, and a query needing an absent sidecar index or partition refuses, naming the refresh that supplies it; a replica never answers from what is present and never fetches mid-query. A table declaring sensitive columns replicates off by default, and a consumer reads them through the proxying face, which verifies the credential and records each read. `store.pull` writes a table's pointer after every object it reaches has landed and folds records into the rebuildable `derived.sqlite`; cursor and lease rows live in `machine.sqlite`, which no pull or rebuild touches.
 
@@ -70,7 +70,7 @@ Revisit: a backend whose access policy enforces a generation bound for every wri
 
 Consequences: a replica's answer is complete for the snapshot it names, or a refusal.
 
-## The bucket index commits by compare-and-set over a scoped union of the remote
+## bucket-index-commits — The bucket index commits by compare-and-set over a scoped union of the remote
 
 `store.merge` commits the bucket index, a push's commit point, by compare-and-set over a scoped union: the remote contributes an entry only where this writer has never written, so an owned entry absent locally drops out and retention and collection reach a consumer. Ownership is readable from the key: run directories carry a node segment, request-ledger files carry the node in the filename. A lost race re-reads, re-merges and re-commits within the retry bound; exhaustion raises `SyncManifestRebaseExhausted`, reports every object already uploaded, and asks for a re-run.
 
@@ -85,7 +85,7 @@ Consequences: a replica's answer is complete for the snapshot it names, or a ref
 Consequences: a contended bucket can leave a writer's objects durable and unlisted, visible in the refusal.
 Revisit: a key shape whose ownership is not derivable from the key; retries exhausting under ordinary concurrency; the index outgrowing a single-object commit.
 
-## Canonical metadata sits inside an authenticated envelope
+## canonical-metadata-sits — Canonical metadata sits inside an authenticated envelope
 
 **Status:** accepted
 
@@ -101,7 +101,7 @@ Decision: a bound store seals each metadata file under a fresh wrapped data key 
 
 Consequences: sync authenticates metadata before merge; a key-bound store starts from an empty tree or an explicit migration.
 
-## The machine catalog seals a SQLite snapshot
+## machine-catalog-seals — The machine catalog seals a SQLite snapshot
 
 **Status:** accepted
 
@@ -117,7 +117,7 @@ Decision: each operation locks a stable sibling file, decrypts the authenticated
 
 Consequences: catalog size sets memory and write cost; a missing or invalid sealed snapshot refuses rather than rebuilding machine state.
 
-## A sidecar is memory-mapped only over plaintext
+## sidecar-memory-mapped — A sidecar is memory-mapped only over plaintext
 
 **Status:** accepted
 
@@ -135,7 +135,7 @@ Decision: in an unencrypted project a sidecar is plaintext and memory-mapped rea
 Consequences: the memory-mapped path and its relaxed bound serve unencrypted projects alone, and an encrypted project's search scale is set by resident memory.
 Revisit: a builder that reads through a caller-supplied page source, making per-page decryption a reader rather than a format.
 
-## Every sidecar names one id column
+## sidecar-names-id — Every sidecar names one id column
 
 **Status:** accepted
 
@@ -152,7 +152,7 @@ Decision: a sidecar declaration names one `id_column`, unique within each snapsh
 
 Consequences: an unkeyed embedding table gains a sidecar at the cost of one unique column the producer owns.
 
-## Binary and fixed-size vector columns take no promotion
+## binary-fixed-size — Binary and fixed-size vector columns take no promotion
 
 **Status:** accepted
 
@@ -169,7 +169,7 @@ Decision: the lattice adds `Binary`, `FixedSizeBinary(n)` and `FixedSizeList` of
 
 Consequences: `read.embed.model-identifier` gains a typed vector column, and an Arrow batch lands without a JSON round trip.
 
-## The store's catalogs sit behind a port with SQLite in its own package
+## store-s-catalogs — The store's catalogs sit behind a port with SQLite in its own package
 
 **Status:** accepted
 
@@ -186,7 +186,7 @@ Decision: the store reaches `derived.sqlite` and `machine.sqlite` through port t
 
 Consequences: a gate rule like `topology.package.store-write-engine-free` holds `contextful-context` free of `libsqlite3-sys`.
 
-## A variant column keeps each row's scalar kind in one Struct
+## variant-column-keeps — A variant column keeps each row's scalar kind in one Struct
 
 **Status:** accepted; amends the lattice decision above, whose variant row lost on read-time recoverability because no single Arrow type described the column.
 
@@ -203,7 +203,7 @@ Decision: a `variant` column is a Struct of per-kind fields `str`, `int`, `doubl
 
 Consequences: a mixed-kind source lands without widening the lattice, and an `Int64` past the exact float range keeps its value. The accepted cost is a wider stored schema and a variant column that takes no promotion.
 
-## The SQLite link rule reads normal dependencies alone
+## sqlite-link-rule — The SQLite link rule reads normal dependencies alone
 
 **Status:** accepted; narrows the catalog-port decision above, whose link rule named no dependency kind.
 
@@ -218,7 +218,7 @@ Decision: the rule reads normal dependencies. Under Cargo's resolver 2 a dev-dep
 
 Consequences: the check and its clause agree, and a build script's SQLite answers to Cargo's own `links` check alone.
 
-## A keyed table is covered by a scheduled fold job
+## keyed-table-covered — A keyed table is covered by a scheduled fold job
 
 **Status:** accepted
 
@@ -235,7 +235,7 @@ Decision: a `[[job]]` block of kind `fold` carrying a `schedule`, with `enabled`
 
 Consequences: a seeded pipeline carries its fold job in the same declaration, and disabling that job refuses the pipeline.
 
-## Struct, list and map columns reconcile field by field
+## struct-list-map — Struct, list and map columns reconcile field by field
 
 **Status:** accepted
 
@@ -252,7 +252,7 @@ Decision: the lattice adds `Struct`, `List` and `Map` with `Utf8` keys, recursiv
 
 Consequences: a producer with an open key set declares `map<utf8, …>`, and only a union keeps a text form.
 
-## A manifest carries a format version whose major refuses
+## manifest-carries-format — A manifest carries a format version whose major refuses
 
 **Status:** accepted
 
@@ -268,7 +268,7 @@ Decision: each manifest carries `format_version` as `<major>.<minor>`. A minor a
 
 Consequences: a mixed fleet refuses a newer major by name instead of folding it. The second major, `2.0`, marks a snapshot carrying a part or segment by reference; its migration is the section below.
 
-## A pass carries untouched parts and sidecar segments by reference
+## pass-carries-untouched — A pass carries untouched parts and sidecar segments by reference
 
 **Status:** accepted.
 
@@ -286,7 +286,7 @@ Decision: a part entry names its `origin` snapshot; a pass writes delta parts, r
 Consequences: a mixed fleet upgrades every reader before a writer folds by reference.
 Revisit: restatements that rewrite large parts on every pass.
 
-## A sidecar's builder is recorded, not encoded in its path
+## sidecar-s-builder — A sidecar's builder is recorded, not encoded in its path
 
 **Status:** accepted
 
@@ -303,7 +303,7 @@ Decision: a sidecar's entry and `derived.sqlite` record its builder and builder 
 Consequences: an upgraded build reads by exact scan until the next pass rebuilds. Writers of two builder versions over one store rebuild each other's sidecars on every pass, so an upgrade replaces every writer before its next pass.
 Revisit: a second builder declared over one column.
 
-## A tenant value is its bytes
+## tenant-value-bytes — A tenant value is its bytes
 
 **Status:** accepted
 
@@ -320,7 +320,7 @@ Decision: land checks a tenant value against no canonical form and keeps its exa
 Consequences: tenant hygiene belongs to the producer and the grant issuer.
 Revisit: a source whose tenant spelling varies between batches.
 
-## A sidecar copies only the tenant, zone and availability instant
+## sidecar-copies-tenant — A sidecar copies only the tenant, zone and availability instant
 
 **Status:** accepted
 
@@ -337,7 +337,7 @@ Decision: a sidecar holds its `id_column` and indexed column alone, save the ten
 Consequences: a filter beyond tenant and zone costs oversampling, never exposure.
 Revisit: a declared filter whose oversampling misses recall targets.
 
-## A validity interval is one row
+## validity-interval-row — A validity interval is one row
 
 **Status:** accepted
 
@@ -354,7 +354,7 @@ Decision: each interval is its own row. A keyed table declaring `valid_time` ded
 Consequences: `valid_as_of` stays one predicate over the declared pair.
 Revisit: a key whose interval count makes the row set dominate the table.
 
-## An exhausted pull refuses and resumes
+## exhausted-pull-refuses — An exhausted pull refuses and resumes
 
 **Status:** accepted
 
@@ -371,7 +371,7 @@ Decision: exhaustion raises a typed refusal and writes no pointer, and every obj
 Consequences: a contended pull converges across runs, each downloading less.
 Revisit: pulls refusing under ordinary write rates.
 
-## A tombstone is signed by its node's issuer key
+## tombstone-signed-node — A tombstone is signed by its node's issuer key
 
 **Status:** accepted
 
@@ -388,7 +388,7 @@ Decision: a push signs each tombstone with its node's issuer key over the key, o
 Consequences: retiring an issuer key ends the deletions it signs after retirement.
 Revisit: a deployment whose writers hold no issuer key.
 
-## A replica advertises a descriptor beside its catalog
+## replica-advertises-descriptor — A replica advertises a descriptor beside its catalog
 
 **Status:** accepted
 
@@ -404,7 +404,7 @@ Decision: each replica pull writes `replica.json` beside `derived.sqlite`, namin
 
 Consequences: a replica's holdings read without opening a snapshot manifest.
 
-## Availability is a declared column resolved at landing
+## availability-declared-column — Availability is a declared column resolved at landing
 
 **Status:** accepted
 
@@ -423,7 +423,7 @@ Decision: `available_time` names a declared `timestamptz` column. Landing resolv
 Consequences: `as_of` freezes the corpus so an eval reproduces; `available_as_of` sets the simulated present.
 Revisit: a source publishing a per-row availability stamp the engine verifies.
 
-## A restatement is a vintage row
+## restatement-vintage-row — A restatement is a vintage row
 
 **Status:** accepted
 
@@ -440,7 +440,7 @@ Decision: a keyed table declaring `available_time` keys each row on its availabi
 Consequences: a fold and the expiry of `retain_runs` leave every vintage readable.
 Revisit: an estimate-revision source whose vintage rows outgrow the table's partition bounds.
 
-## A vintage landing reads only its own keys' history
+## vintage-landing-reads — A vintage landing reads only its own keys' history
 
 Context: the content-hash comparison runs under the table's commit lock. Decoding every stored vintage there makes a daily backfill quadratic in its days and holds every concurrent writer behind history it never matches. Criteria: commit cost independent of table size; no new structure to keep in step.
 
@@ -455,7 +455,7 @@ Decision: the comparison decodes only row groups whose key bloom filters and foo
 Consequences: a valid-time vintage snapshot sorts by time, so a key lookup in it reads every row group's key bounds.
 Revisit: a random-key vintage table declaring no bloom filter whose landings decode its history.
 
-## A column records the commit that first landed it
+## column-records-commit — A column records the commit that first landed it
 
 `schema.json` carries `first_landed_at` per column, set once by the merge that first adds the column and never moved by a later merge; bucket sync carries it with the schema. On a table declaring `available_time` the instant is the earliest availability among that batch's rows carrying the column, so a backfill landed years later keeps its fields visible at the horizons its rows answer; elsewhere it is the commit instant. `read.horizon.late-columns` drops a column first landed after the horizon.
 
@@ -466,7 +466,7 @@ Revisit: a random-key vintage table declaring no bloom filter whose landings dec
 | A separate append-only column log per table | One home | A second file the schema merge and sync must keep in step. |
 | Scan the earliest run carrying the column | Cost | Every horizon session reads run manifests to find a schema fact. |
 
-## A snapshot corpus is a declared table pinned by snapshot id
+## snapshot-corpus-declared — A snapshot corpus is a declared table pinned by snapshot id
 
 `[pipeline.tables.snapshot]` names the corpus's `url`, `captured_at`, `digest` and `source` columns and an optional `leak_score` column. A capture lands through the ordinary write path and commits as one store snapshot; an evaluation case pins it by that `snapshot` id. A document captured after the horizon answers a horizon read only while its `leak_score` holds 0, so an unscored late capture never answers.
 
@@ -476,7 +476,7 @@ Revisit: a random-key vintage table declaring no bloom filter whose landings dec
 | A per-case leak threshold | Default safety | A case author can admit a partly leaked page. |
 | Consumer-landed leak rows beside the corpus | One home | The read joins a second table to decide admission. |
 
-## Adjustment factors apply at read time, back from each factor's effective date
+## adjustment-factors-apply — Adjustment factors apply at read time, back from each factor's effective date
 
 A measurement table keeps raw values. Under `available_as_of` each listed numeric column multiplies by the product of the factor table's vintages available by the bound that agree on the factor table's key and take effect after the row's valid-time `from`. An unbounded read returns raw values. A re-pull matching its key's latest content hash stays on disk and drops at read.
 
@@ -486,7 +486,7 @@ A measurement table keeps raw values. Under `available_as_of` each listed numeri
 | Store corrected values | Point-in-time | A historical value encodes a correction published after that value's availability instant. |
 | One adjusted copy per factor vintage | Storage | Every factor revision rewrites the measurement history. |
 
-## A push tombstones only the owned keys its store held
+## push-tombstones-owned — A push tombstones only the owned keys its store held
 
 **Status:** accepted; amends the scoped-union decision above, whose merge read every owned key a store lacks as its deletion.
 
@@ -504,7 +504,7 @@ Decision: a store records the keys of its node it held at its last push or pull,
 Consequences: a store with no record whose earlier push left its push guard file reads as holding every owned key, so its pending deletions still propagate; a store that never pushed reads as holding none.
 Revisit: two disks under one node id overwriting one run state.
 
-## A lost commit round counts only when no newer generation landed
+## lost-commit-round — A lost commit round counts only when no newer generation landed
 
 **Status:** accepted; amends the scoped-union decision above, whose retry bound counted every lost round.
 
@@ -521,7 +521,7 @@ Decision: a lost round whose re-read manifest carries a newer generation resets 
 Consequences: `SyncManifestRebaseExhausted` names a bucket that stops advancing, or a writer outrun 64 times.
 Revisit: deployments whose concurrent writers exceed 64.
 
-## A cold store boots on metadata and fetches parts on first read
+## cold-store-boots — A cold store boots on metadata and fetches parts on first read
 
 **Status:** accepted
 
@@ -540,7 +540,7 @@ Decision: under `[sync] lazy_parts`, a pull brings home manifests, pointers, sch
 Consequences: retention can collect a part a lagging container still names, which refuses and advances the pointer; the cache bound caps the largest fold a container runs.
 Revisit: cold-table first reads past the wait bound under ordinary bucket latency.
 
-## An unpushed run is marked in the execution database
+## unpushed-run-marked — An unpushed run is marked in the execution database
 
 On a disposable disk a run commits locally before its push reaches the bucket, so a refused or interrupted push leaves the run on a disk the next release discards. The run row lives in the execution database the profile already keeps durable: `store.drain` marks it there at the run's open, before any commit, and clears the mark once a committed push carries the run's manifest. A pulling command pushes first while a mark stands, a stopping serve pushes within a deadline, and `contextful sync status` answers a release step without the disk.
 
