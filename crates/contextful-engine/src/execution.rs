@@ -446,7 +446,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
     pub(crate) fn claim(&mut self) -> Result<(), Close> {
         // The journal deletes a retired owner's rows only after the catalog commits the
         // retirement, so a crash between the two leaves rows this open deletes again
-        // (`run.journal.retire-order`).
+        // (`run.journal.collection`).
         if let Some(retired) = self.engine.catalog.retired_at(&self.scope)? {
             if self.pending.as_ref().is_none_or(|o| o.execution_id != retired) {
                 self.engine.journal.collect(&retired)?;

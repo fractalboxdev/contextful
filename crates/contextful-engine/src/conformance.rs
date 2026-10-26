@@ -257,7 +257,7 @@ pub fn awakeable_store<A: AwakeableStore + Clone, J: JournalStore + Clone, B: Bl
     assert_eq!(r.resolve(&a.token, b"yes", at("2030-01-01T00:00:10Z")).unwrap(), b"yes");
     let journal = Journal::over(rows.clone(), blobs.clone());
     assert!(matches!(journal.row(&resume_key("x-1", &a.token)).unwrap(), Some(Row::Recorded { .. })), "{adapter}: the payload is a journal entry under the resume key");
-    // run.suspend.idempotent-resolution and conflicting-resolution.
+    // run.suspend.resume-is-a-step-output and conflicting-resolution.
     assert_eq!(r.resolve(&a.token, b"yes", at("2030-01-01T00:00:20Z")).unwrap(), b"yes", "{adapter}: the identical payload answers the recorded value");
     assert!(matches!(r.resolve(&a.token, b"no", at("2030-01-01T00:00:20Z")), Err(AwakeError::Refused(RunError::AwakeableAlreadyResolved(_)))));
     assert_eq!(r.awaited("x-1", &a.token, at("2030-01-01T00:00:30Z")).unwrap(), Awaited::Resumed(b"yes".to_vec()), "{adapter}: a conflicting payload leaves the recorded one");

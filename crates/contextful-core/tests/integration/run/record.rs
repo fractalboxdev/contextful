@@ -238,9 +238,8 @@ fn a_recorded_error_is_masked_and_capped_at_2_kib() {
     assert_eq!(cap_error("short"), "short");
 }
 
-/// A run row carries run id, pipeline id, site id, status, owner, start and end instants, row and byte counts,
-/// error kind and message, connector id, version and hash, trace id and phase.
-// spec: run.record.columns@facc3543
+/// A run row is a {{type:contextful_core::run::record::RunRow}}.
+// spec: run.record.columns@dc4c8292
 #[test]
 fn a_run_row_carries_every_column() {
     let v = serde_json::to_value(row("run-1", "2030-01-01T00:00:00Z")).unwrap();

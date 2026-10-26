@@ -266,8 +266,10 @@ fn success_retires_the_owner_and_the_next_fire_takes_a_fresh_execution() {
     assert_ne!(first.execution_id, second.execution_id);
 }
 
-/// Retiring an execution owner deletes its journal rows in the retiring transaction.
-// spec: run.journal.collection@3c4f3a13
+/// Retiring an execution owner deletes its journal rows in the retiring transaction; a journal
+/// store apart from the catalog deletes them after the catalog commits the retirement, and the next
+/// open under that scope repeats the delete.
+// spec: run.journal.collection@8142a7ac
 #[test]
 fn retirement_collects_the_executions_journal() {
     let rig = Rig::new();
@@ -1059,7 +1061,7 @@ fn the_row_exists_before_the_first_pull() {
 }
 
 /// The engine measures row and byte counts at the destination rather than at the source.
-// spec: run.record.counts-at-destination@a65efad9
+// spec: run.record.skipped-count@575f9748
 #[test]
 fn counts_come_from_the_destination() {
     let rig = Rig::new();
@@ -1136,9 +1138,9 @@ impl Source for Bodies {
     }
 }
 
-/// A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the
-/// run's pulls, replayed pulls included, beside the destination counts.
-// spec: run.record.skipped-count@849043a6
+/// The run row counts rows and bytes at the destination and sums each pull's optional `skipped` count of inputs
+/// the source declined to land whole, replayed pulls included.
+// spec: run.record.skipped-count@575f9748
 #[test]
 fn the_run_row_sums_the_skipped_count_of_every_pull() {
     let rig = Rig::new();

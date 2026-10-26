@@ -9376,21 +9376,10 @@
       "operation": "journal",
       "subject": "collection",
       "kind": "behavior",
-      "statement": "Retiring an execution owner deletes its journal rows in the retiring transaction.",
+      "statement": "Retiring an execution owner deletes its journal rows in the retiring transaction; a journal store apart from the catalog deletes them after the catalog commits the retirement, and the next open under that scope repeats the delete.",
       "why": "because recorded work is needed only while a replay can reach it, and an uncollected journal grows with total ingest",
       "file": "spec/30-run.md",
       "line": 74
-    },
-    {
-      "id": "run.journal.retire-order",
-      "contract": "run",
-      "operation": "journal",
-      "subject": "retire-order",
-      "kind": "behavior",
-      "statement": "A journal store apart from the catalog deletes a retired owner's rows after the catalog commits the retirement, and the next open under that scope repeats the delete.",
-      "why": "because a delete ahead of the commit strands a pending owner without its recorded steps, while a late delete leaves only rows no replay reaches",
-      "file": "spec/30-run.md",
-      "line": 76
     },
     {
       "id": "run.journal.one-cutoff",
@@ -9401,7 +9390,7 @@
       "statement": "Every step kind follows {{run.journal.inline-cutoff}}: pulls, recorded effects, input steps and awakeable payloads, whose pending row references an offloaded blob. No step kind overrides the cutoff.",
       "why": "because one placement rule lets every adapter and the blob sweep read a row without knowing which step kind wrote it",
       "file": "spec/30-run.md",
-      "line": 78
+      "line": 76
     },
     {
       "id": "run.journal.fan-out-join",
@@ -9412,7 +9401,7 @@
       "statement": "Parallel branches rejoin only at an explicit join node. A failed branch reaching the join fails the run. With `allow_partial`, the join instead records each failed branch's label and failure tag on the run record.",
       "why": "because an implicit join hides which branch failed, and a partial result recorded as complete reads as one",
       "file": "spec/30-run.md",
-      "line": 80
+      "line": 78
     },
     {
       "id": "run.journal.blob-sweep",
@@ -9423,7 +9412,7 @@
       "statement": "A mark-and-sweep pass every 24 h deletes each blob that no journal row or pending awakeable references and that is older than 1 h.",
       "why": "because the grace window covers a blob written ahead of the row that names it",
       "file": "spec/30-run.md",
-      "line": 82
+      "line": 80
     },
     {
       "id": "run.journal.effect-boundary",
@@ -9434,7 +9423,7 @@
       "statement": "A body replays faithfully when every observable side effect passes through a recorded step, a cursor commit or an awakeable; the work between them is pure.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 84
+      "line": 82
     },
     {
       "id": "run.journal.unwired-capability",
@@ -9445,7 +9434,7 @@
       "statement": "Requesting a capability absent from the running profile raises `CapabilityUnwired` at the first request, before any partial work.",
       "why": "A-topology#build-profiles",
       "file": "spec/30-run.md",
-      "line": 85
+      "line": 83
     },
     {
       "id": "run.journal.machine-state",
@@ -9456,7 +9445,7 @@
       "statement": "The host's own stores hold journal rows, execution owners and awakeables. The derived catalog holds none. A catalog rebuild changes none and reconstructs none from the file tree.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 87
+      "line": 85
     },
     {
       "id": "run.journal.recorded-batch",
@@ -9467,7 +9456,7 @@
       "statement": "A journaled pull records its guarded source batch, or its canonically prepared replacement under {{authority.redact.before-the-record}}, ahead of landing.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 93,
+      "line": 91,
       "group": "pulls"
     },
     {
@@ -9479,7 +9468,7 @@
       "statement": "A journal hit hands the recorded batch to the land path, so a resumed run lands bytes identical to an uninterrupted one, batch ordinal included.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 94,
+      "line": 92,
       "group": "pulls"
     },
     {
@@ -9491,7 +9480,7 @@
       "statement": "The outbound request ledger settles durably before the entry recording its batch commits.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 95,
+      "line": 93,
       "group": "pulls"
     },
     {
@@ -9503,7 +9492,7 @@
       "statement": "A journaled source declaring removal without canonical prepared-recording admission raises `JournalRedactionConflict` before its first pull; a boolean removal assertion supplies no admission.",
       "why": "A-authority#prepared-record",
       "file": "spec/30-run.md",
-      "line": 96,
+      "line": 94,
       "group": "pulls"
     },
     {
@@ -9515,7 +9504,7 @@
       "statement": "Protected recording binds the plan, shape, canonical declarations, normalization and pepper identities into owner pins before source execution; a changed identity follows {{run.own.pinned-plan-changed}}.",
       "why": "A-authority#prepared-record",
       "file": "spec/30-run.md",
-      "line": 98,
+      "line": 96,
       "group": "pulls"
     },
     {
@@ -9527,7 +9516,7 @@
       "statement": "A protected journal hit admits the recorded rewritten payload against its canonical writer without repeating shaping, normalization or removal and without fetching the source again.",
       "why": "A-authority#prepared-record",
       "file": "spec/30-run.md",
-      "line": 100,
+      "line": 98,
       "group": "pulls"
     },
     {
@@ -9539,7 +9528,7 @@
       "statement": "Pull journaling defaults on. A source whose pre-pull cursor cannot name the content it reads opts out through one constant, pinned against each source's declaration by a test. An empty pull is never journaled.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 102,
+      "line": 100,
       "group": "pulls"
     },
     {
@@ -9551,7 +9540,7 @@
       "statement": "Journaling permits only two exceptions: `journal.unsafe(label, effect)` for an idempotent read, and a source declaring no pull journaling. Each exception states its idempotency argument at a searchable call site.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 103,
+      "line": 101,
       "group": "pulls"
     },
     {
@@ -9563,7 +9552,7 @@
       "statement": "One execution interface provides: open or resume under a scope and content-hashed plan reference; record step output; commit a cursor; suspend on an awakeable with timeout; attach a retry schedule; describe capabilities.",
       "why": "A-run#run-substrate-storage, A-run#host-opens-execution",
       "file": "spec/30-run.md",
-      "line": 109,
+      "line": 107,
       "group": "storage"
     },
     {
@@ -9575,7 +9564,7 @@
       "statement": "Journal rows, blobs and awakeables persist through a journal store, a blob store and an awakeable store; every `run.journal` and `run.suspend` clause holds for each adapter, the file tree included.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 111,
+      "line": 109,
       "group": "storage"
     },
     {
@@ -9587,7 +9576,7 @@
       "statement": "`contextful-sqlite` serves the journal, blob and awakeable stores from one SQLite file in write-ahead-log mode over one connection, a blob as a row keyed by its sha256; an awakeable update commits with the journal writes inside it.",
       "why": "because a resolution recording its payload through a second connection waits on the write lock its own update holds",
       "file": "spec/30-run.md",
-      "line": 113,
+      "line": 111,
       "group": "storage"
     },
     {
@@ -9599,7 +9588,7 @@
       "statement": "Every `contextful-sqlite` store write opens an immediate transaction, so concurrent writers of one key across connections to one file serialize: one record lands, and every other returns the standing value instead of a locked-database failure.",
       "why": "because under write-ahead logging a deferred read upgrading to a write fails on the lock at once instead of waiting through the busy timeout",
       "file": "spec/30-run.md",
-      "line": 115,
+      "line": 113,
       "group": "storage"
     },
     {
@@ -9611,7 +9600,7 @@
       "statement": "`contextful-pg` serves journal rows, blobs and awakeables through {{run.journal.storage-ports}} in the catalog's PostgreSQL database; conditional journal writes serialize across connections, and recorded values survive replacement of every local disk.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 117,
+      "line": 115,
       "group": "storage"
     },
     {
@@ -9623,7 +9612,7 @@
       "statement": "`CONTEXTFUL_STORAGE_PROFILE=postgres` selects {{run.journal.postgres-stores}} with shared owners, cadence and {{run.export.remote-state}}; corpus objects use a remote S3-compatible bucket with pull-before-run and push-after-run enabled.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 119,
+      "line": 117,
       "group": "storage"
     },
     {
@@ -9635,7 +9624,7 @@
       "statement": "`CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1` selects D1 for catalog, journal, awakeables and export state through a private Worker outbound binding; R2 holds blob content and corpus objects.",
       "why": "A-run#run-substrate-storage, A-topology#cloudflare-d1, A-run#d1-execution-state",
       "file": "spec/30-run.md",
-      "line": 121,
+      "line": 119,
       "group": "storage"
     },
     {
@@ -9647,7 +9636,7 @@
       "statement": "D1 commits metadata atomically and stores each blob digest, whose R2 object key is `blobs/<sha256>`; an R2 write precedes its D1 reference, an R2 deletion follows removal of every reference, and a read verifies the digest.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 123,
+      "line": 121,
       "group": "storage"
     },
     {
@@ -9659,7 +9648,7 @@
       "statement": "A D1 read, health probe or content-addressed blob request left without an HTTP answer resends, within 3 attempts of at most 15 s each; a writing statement outside {{run.journal.d1-initialize}} goes once over a fresh connection and raises `StorageBindingUnavailable`.",
       "why": "because a write whose answer is lost may have committed, and resending it could apply it twice",
       "file": "spec/30-run.md",
-      "line": 125,
+      "line": 123,
       "group": "storage"
     },
     {
@@ -9671,7 +9660,7 @@
       "statement": "Storage initialization's D1 batch, every statement `IF NOT EXISTS` DDL or an insert or update guarded to apply once, resends after a lost answer as a read does under {{run.journal.d1-transport}}.",
       "why": "because a second application of that batch leaves the state its first application left",
       "file": "spec/30-run.md",
-      "line": 127,
+      "line": 125,
       "group": "storage"
     },
     {
@@ -9683,7 +9672,7 @@
       "statement": "A committed D1 guard prevents owner or lease transfer throughout an admitted external callback; a crash guard requires recorded receipt or idempotency evidence before takeover.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 129,
+      "line": 127,
       "group": "storage"
     },
     {
@@ -9695,7 +9684,7 @@
       "statement": "The D1 recovery identity binds one project and schema to an R2 object frontier; a missing object or mismatched generation follows {{run.journal.execution-recovery}}.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 131,
+      "line": 129,
       "group": "storage"
     },
     {
@@ -9707,7 +9696,7 @@
       "statement": "A D1 recovery captures the execution database with its guard and export rows, the R2 blob and corpus frontier, project recovery identity and executable schema before writers resume.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 133,
+      "line": 131,
       "group": "storage"
     },
     {
@@ -9719,7 +9708,7 @@
       "statement": "Missing profile bindings, corpus state, strict execution guards or a supported outbox raises `StorageCapabilityMissing` before execution admission; absent compiled adapters follow {{topology.package.capability-absent}}.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 135,
+      "line": 133,
       "group": "storage"
     },
     {
@@ -9731,7 +9720,7 @@
       "statement": "If a storage preflight's corpus request fails as {{store.endpoint.unavailable}}, preflight raises `StorageCorpusUnavailable`, naming the bucket or object. The failure does not raise {{run.journal.storage-incomplete}}'s refusal.",
       "why": "because an unanswered bucket says nothing of whether a capability is absent, and a transient outage must not read as an unsupported profile",
       "file": "spec/30-run.md",
-      "line": 137,
+      "line": 135,
       "group": "storage"
     },
     {
@@ -9743,7 +9732,7 @@
       "statement": "An unknown storage profile or an encrypted corpus paired with an unsealed execution adapter raises `StorageProfileUnsupported` before execution admission.",
       "why": "because an unrecognized durability claim cannot select a local fallback safely",
       "file": "spec/30-run.md",
-      "line": 139,
+      "line": 137,
       "group": "storage"
     },
     {
@@ -9755,7 +9744,7 @@
       "statement": "An execution database whose schema differs from the executable's supported schema raises `ExecutionSchemaIncompatible` before execution admission; preflight creates no missing execution table.",
       "why": "because creating an empty replacement for a missing table erases the evidence of a partial restore",
       "file": "spec/30-run.md",
-      "line": 141,
+      "line": 139,
       "group": "storage"
     },
     {
@@ -9767,7 +9756,7 @@
       "statement": "Missing execution tables or a mismatched project recovery identity raise `ExecutionRecoveryMismatch`. Normal startup provisions no recovery identity. A corpus-only restore admits no paid or effectful work.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 143,
+      "line": 141,
       "group": "storage"
     },
     {
@@ -9779,7 +9768,7 @@
       "statement": "An execution checks its durable owner, admitted pins and active attempt immediately before effect dispatch and publication; a superseded attempt enters neither boundary, and a late stop still follows {{run.cancel.land-path-uncut}}.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 145,
+      "line": 143,
       "group": "storage"
     },
     {
@@ -9791,7 +9780,7 @@
       "statement": "PostgreSQL admission holds shared owner and unexpired lease locks through each bounded provider or destination callback, including item ancestors and entity fences; owner replacement, retirement and takeover serialize after admitted callbacks.",
       "why": "A-run#run-substrate-storage",
       "file": "spec/30-run.md",
-      "line": 147,
+      "line": 145,
       "group": "storage"
     },
     {
@@ -9803,7 +9792,7 @@
       "statement": "A guarded callback may update run metadata; mutating its admitted owner or lease refuses. Nested callbacks retain only scopes and leases their caller already admits. Local adapters expose cooperative checks without strict execution-guard capability.",
       "why": "because nested lock expansion and owner mutation can deadlock the admission that invokes them",
       "file": "spec/30-run.md",
-      "line": 149,
+      "line": 147,
       "group": "storage"
     },
     {
@@ -9815,7 +9804,7 @@
       "statement": "A run resolves the plan reference it started against for its whole life.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 156,
+      "line": 154,
       "group": "store-driven input"
     },
     {
@@ -9827,19 +9816,7 @@
       "statement": "A store-driven run reads its statement once, through the read face under the job's grant at its `as_of`, and records the resolved snapshot id per table and the ordered input rows as its first step.",
       "why": "A-surface#store-driven-job",
       "file": "spec/30-run.md",
-      "line": 157,
-      "group": "store-driven input"
-    },
-    {
-      "id": "run.journal.input-replay",
-      "contract": "run",
-      "operation": "journal",
-      "subject": "input-replay",
-      "kind": "behavior",
-      "statement": "A resumed run iterates recorded input without re-reading the statement. Rows landed after the pinned `as_of`, or folded since, do not enter the input set.",
-      "why": "",
-      "file": "spec/30-run.md",
-      "line": 159,
+      "line": 155,
       "group": "store-driven input"
     },
     {
@@ -9848,10 +9825,10 @@
       "operation": "journal",
       "subject": "open-as-of",
       "kind": "behavior",
-      "statement": "A store-driven job declaring no `as_of` resolves it to the instant its execution opens, recorded in the input step, so every resume reads that instant.",
+      "statement": "A store-driven job declaring no `as_of` resolves it to the instant its execution opens, recorded in the input step; a resume iterates that recorded input without re-reading the statement, so rows landed after `as_of`, or folded since, stay out.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 160,
+      "line": 157,
       "group": "store-driven input"
     },
     {
@@ -9860,22 +9837,10 @@
       "operation": "journal",
       "subject": "input-pin",
       "kind": "behavior",
-      "statement": "A store-driven run's plan reference hashes its body name, statement and declared `as_of`, so a resume under a changed one meets {{run.own.pinned-plan-changed}} before any step replays.",
+      "statement": "A store-driven run's plan reference hashes its body name, statement, declared `as_of` and any host-supplied structural identity, which also joins its owner pins, so a resume under a changed one meets {{run.own.pinned-plan-changed}} before any step replays.",
       "why": "A-surface#store-driven-job",
       "file": "spec/30-run.md",
-      "line": 161,
-      "group": "store-driven input"
-    },
-    {
-      "id": "run.journal.host-structure-pin",
-      "contract": "run",
-      "operation": "journal",
-      "subject": "host-structure-pin",
-      "kind": "behavior",
-      "statement": "A host-supplied structural identity joins the input plan and owner pins through {{run.own.pinned-plan-changed}}; without one, the plan reference hashes body, statement and `as_of` alone, as {{run.journal.input-pin}} states.",
-      "why": "A-surface#store-driven-job",
-      "file": "spec/30-run.md",
-      "line": 163,
+      "line": 158,
       "group": "store-driven input"
     },
     {
@@ -9887,7 +9852,7 @@
       "statement": "An input statement whose response the face truncates at its row ceiling raises `RunInputTruncated` before any row runs.",
       "why": "because a silently shortened input set closes `success` as though every row ran",
       "file": "spec/30-run.md",
-      "line": 165,
+      "line": 160,
       "group": "store-driven input"
     },
     {
@@ -9899,7 +9864,7 @@
       "statement": "Each input row runs the registered body under a row key, its ordinal in the recorded input; every step the body records carries a label scoped to that key, and a paid call carries {{run.journal.idempotency-key}}.",
       "why": "because two rows sharing one label under one execution resolve to one recorded value",
       "file": "spec/30-run.md",
-      "line": 167,
+      "line": 162,
       "group": "store-driven input"
     },
     {
@@ -9911,7 +9876,7 @@
       "statement": "A batch store-driven run holds at most `max_in_flight` rows inside the body at once; a failing row admits no further row, and the run closes after the rows in flight return.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 169,
+      "line": 164,
       "group": "store-driven input"
     },
     {
@@ -9923,7 +9888,7 @@
       "statement": "A batch's emitted rows land after the last input row completes and before the owner retires, one run per declared output table through {{run.land.stage-order}}.",
       "why": "because a landing that fails then holds the owner, and its resume replays every paid call instead of paying again",
       "file": "spec/30-run.md",
-      "line": 170,
+      "line": 165,
       "group": "store-driven input"
     },
     {
@@ -9935,7 +9900,7 @@
       "statement": "A registered body's closed effect labels, declared roots, types, transforms and normalization bind its owner before input or effect execution; a caller-supplied projection differing from that registration refuses.",
       "why": "A-authority#body-projection",
       "file": "spec/30-run.md",
-      "line": 172,
+      "line": 167,
       "group": "store-driven input"
     },
     {
@@ -9947,7 +9912,7 @@
       "statement": "A store-driven job defaults to batch execution; `isolated_items` explicitly declares logical and entity key columns, an entity namespace and a positive failed-attempt budget.",
       "why": "because independent completion changes aggregate failure and retry semantics",
       "file": "spec/30-run.md",
-      "line": 200
+      "line": 174
     },
     {
       "id": "run.items.identity",
@@ -9958,7 +9923,7 @@
       "statement": "An isolated item's logical identity derives from its declared key and namespace; its execution identity binds that identity, job, input row, policy and pinned plan, independently of input order.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 202
+      "line": 176
     },
     {
       "id": "run.items.completion",
@@ -9966,24 +9931,13 @@
       "operation": "items",
       "subject": "completion",
       "kind": "behavior",
-      "statement": "Each successful item lands independently and stores a durable completion receipt; a later fire under the same execution identity skips its body and landing.",
+      "statement": "Each successful item lands independently with a durable completion receipt that a later fire under its execution identity skips; once every item holds a terminal receipt, the aggregate releases its pinned input owner, so later fires read fresh input.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 203,
+      "line": 177,
       "scenarios": [
         "WHEN one input fails permanently among three isolated items, THEN both healthy items land and reordering a later fire repeats neither completed body."
       ]
-    },
-    {
-      "id": "run.items.terminal-input",
-      "contract": "run",
-      "operation": "items",
-      "subject": "terminal-input",
-      "kind": "behavior",
-      "statement": "An aggregate whose items all hold terminal receipts releases its pinned input owner, so later fires read fresh input while retaining each item's completion or terminal failure.",
-      "why": "",
-      "file": "spec/30-run.md",
-      "line": 204
     },
     {
       "id": "run.items.outcomes",
@@ -9994,7 +9948,7 @@
       "statement": "Individual outcomes distinguish success, failure, parked, deferred and waiting; the aggregate succeeds only when every required item succeeds.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 205
+      "line": 178
     },
     {
       "id": "run.items.retry-budget",
@@ -10005,7 +9959,7 @@
       "statement": "Failed attempts consume the declared item budget across fires; permanent failures terminate immediately, parked entries consume no failed attempt, and terminal failure receipts prevent further body entry.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 206
+      "line": 179
     },
     {
       "id": "run.items.replay",
@@ -10016,7 +9970,7 @@
       "statement": "A nonterminal failed or parked item retains its execution owner and recorded paid calls; its next admitted attempt reuses that journal.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 208
+      "line": 181
     },
     {
       "id": "run.items.entity-admission",
@@ -10027,10 +9981,9 @@
       "statement": "Admission holds one leased entity namespace and key across triggers, job names and execution versions; unrelated entities occupy at most the job's `max_in_flight` body slots.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 209,
+      "line": 182,
       "scenarios": [
-        "WHEN three store-driven jobs declare one entity namespace and key column and two fire in one window, THEN at most one item per key enters a body and the later job's item reports deferred.",
-        "WHEN two jobs target one entity under different plans, THEN one enters its body and the other reports deferred while unrelated entities proceed."
+        "WHEN three store-driven jobs declare one entity namespace and key column and two fire in one window, THEN at most one item per key enters a body and the later job's item reports deferred."
       ]
     },
     {
@@ -10042,10 +9995,9 @@
       "statement": "Recorded effects and output publication check their execution owner and entity fence immediately before dispatch; a superseded owner sends no provider request and publishes no output.",
       "why": "because an owner that resumes after transfer cannot authorize another effect",
       "file": "spec/30-run.md",
-      "line": 210,
+      "line": 183,
       "scenarios": [
-        "WHEN a newer owner takes an entity's lease while an earlier job's item resumes, THEN that resume sends no delegate request and publishes nothing.",
-        "WHEN an entity lease transfers before a paid call, THEN the earlier attempt invokes no provider."
+        "WHEN a newer owner takes an entity's lease while an earlier job's item resumes, THEN that resume sends no delegate request and publishes nothing."
       ]
     },
     {
@@ -10057,7 +10009,7 @@
       "statement": "Under a delegated body, each call ordinal is one request under {{surface.delegate.envelope}}, its {{type:contextful_core::surface::delegate::Answer}} recorded under the item's entry key, so a resume replays every recorded answer and sends only the unrecorded call.",
       "why": "A-surface#delegated-body-deploy",
       "file": "spec/30-run.md",
-      "line": 212
+      "line": 185
     },
     {
       "id": "run.items.outcome-record",
@@ -10068,7 +10020,7 @@
       "statement": "Each terminal item appends one row to the reserved `_items` table once its receipt commits: job, logical key, entity namespace and key, attempt count, terminal outcome, reason, attempt run id, execution id and end instant.",
       "why": "A-run#terminal-item-s",
       "file": "spec/30-run.md",
-      "line": 214,
+      "line": 187,
       "scenarios": [
         "WHEN one of three items fails transiently under a one-attempt budget, THEN `_items` holds two `succeeded` rows and one `exhausted` row naming the job and entity key, and a later fire adds none."
       ]
@@ -10082,7 +10034,7 @@
       "statement": "An item row's outcome is an {{type:contextful_core::run::drive::ItemTerminal}}, `exhausted` on the attempt spending {{run.items.retry-budget}}; its reason carries the failure tag and {{run.record.error-cap}} message.",
       "why": "A-run#terminal-item-s",
       "file": "spec/30-run.md",
-      "line": 216
+      "line": 189
     },
     {
       "id": "run.items.waiting-item",
@@ -10093,7 +10045,7 @@
       "statement": "Under `isolated_items`, every retry wait closes its item {{run.retry.waiting-state}} and frees its slot; once the pass ends, an item whose instant falls within {{run.retry.retry-after}}'s ceiling re-enters in the same fire.",
       "why": "because one throttled item sleeping in a slot delays every sibling queued behind it",
       "file": "spec/30-run.md",
-      "line": 218
+      "line": 191
     },
     {
       "id": "run.items.served-key",
@@ -10104,7 +10056,7 @@
       "statement": "An item row carries its logical and entity keys as the job's input relation served them, so a key its source masks or classes lands under that rule, never in the clear.",
       "why": "A-run#terminal-item-s",
       "file": "spec/30-run.md",
-      "line": 220,
+      "line": 193,
       "scenarios": [
         "WHEN the input table hashes the entity key column, THEN every `_items` row carries the 32-char digest and no clear key."
       ]
@@ -10118,7 +10070,7 @@
       "statement": "A cursor declares a {{type:contextful_core::run::advance::CursorKind}}. An undeclared kind resolves to `opaque-token`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 239
+      "line": 210
     },
     {
       "id": "run.advance.concurrency-by-kind",
@@ -10129,7 +10081,7 @@
       "statement": "A `monotonic` position is concurrent-safe and commits the highest value observed. A position of another {{type:contextful_core::run::advance::CursorKind}} moves only under a single-writer lease. Last-write-wins governs no cursor.",
       "why": "because two writers resolving one continuation token by recency skip or duplicate records with no count showing it",
       "file": "spec/30-run.md",
-      "line": 240
+      "line": 211
     },
     {
       "id": "run.advance.commit-with-rows",
@@ -10140,7 +10092,7 @@
       "statement": "A table's run commit marker, {{store.lay-out.run-manifest}}, publishes its rows and new position together. The catalog cursor caches the newest committed marker.",
       "why": "because rows and position committed in two stores leave a crash window that re-lands a batch",
       "file": "spec/30-run.md",
-      "line": 242
+      "line": 213
     },
     {
       "id": "run.advance.cursor-bytes",
@@ -10151,7 +10103,7 @@
       "statement": "A position is opaque bytes the connector owns, one per table, and its kind a manifest fact; the connector moves it only by committing through the engine, a recorded step that replays as a resolved read.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 244
+      "line": 215
     },
     {
       "id": "run.advance.inclusive-boundary",
@@ -10162,7 +10114,7 @@
       "statement": "A polled load admits a row whose clock value is at or after the stored position, re-landing the boundary instant's rows on every poll, idempotently on a keyed table and accumulating in a keyless table's union view.",
       "why": "because a clock coarser than the row grain otherwise drops a sibling sharing the boundary value, permanently and invisibly",
       "file": "spec/30-run.md",
-      "line": 245
+      "line": 216
     },
     {
       "id": "run.advance.watermark-shape",
@@ -10173,7 +10125,7 @@
       "statement": "A watermark position serializes as `{\"field\": \"<name>\", \"at\": <value>}`. `field` names the column whose values determine the watermark.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 247
+      "line": 218
     },
     {
       "id": "run.advance.field-rename",
@@ -10184,7 +10136,7 @@
       "statement": "Opening a position whose stored field differs from the declared `incremental` field raises `CursorFieldMismatch` before any request leaves the host.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/30-run.md",
-      "line": 248
+      "line": 219
     },
     {
       "id": "run.advance.frontier",
@@ -10195,7 +10147,7 @@
       "statement": "The frontier counts every fetched row, landed or not. A committed position advances or stays unchanged. An empty or older window does not rewind the position.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 250
+      "line": 221
     },
     {
       "id": "run.advance.walk-position",
@@ -10206,7 +10158,7 @@
       "statement": "Under a `monotonic` cursor, a pull reporting more and carrying a position other than the one it asked continues its walk: the next pull asks that position and admits rows from the walk's floor, and the run commits the frontier.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/30-run.md",
-      "line": 251,
+      "line": 222,
       "scenarios": [
         "WHEN a `monotonic` walk's pull returns no rows, the position it asked and more, THEN the run ends and commits its frontier."
       ]
@@ -10220,7 +10172,7 @@
       "statement": "A row with no orderable value in the clock field, or a stream switching between text and numeric positions mid-pass, raises `CursorPositionUnorderable`, terminal for the pull.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/30-run.md",
-      "line": 253
+      "line": 224
     },
     {
       "id": "run.advance.allowed-lateness",
@@ -10231,7 +10183,7 @@
       "statement": "A table declares `allowed_lateness`, default 0 s; a `monotonic` poll re-reads from its stored position minus that window, so a row arriving that late still lands.",
       "why": "because lateness belongs to the source feeding a table, and a position records only where the frontier stands",
       "file": "spec/30-run.md",
-      "line": 255
+      "line": 226
     },
     {
       "id": "run.advance.turning-incremental-on",
@@ -10242,7 +10194,7 @@
       "statement": "Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current window once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 257
+      "line": 228
     },
     {
       "id": "run.advance.skip-unchanged",
@@ -10253,7 +10205,7 @@
       "statement": "A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 258
+      "line": 229
     },
     {
       "id": "run.advance.snapshot-completion",
@@ -10264,7 +10216,7 @@
       "statement": "A snapshot source reports complete inventory or unchanged skip independently of row count; a replacing run carries only complete inventory into its manifest.",
       "why": "A-store#empty-complete-snapshot",
       "file": "spec/30-run.md",
-      "line": 259
+      "line": 230
     },
     {
       "id": "run.advance.zero-row-commit",
@@ -10275,11 +10227,9 @@
       "statement": "A complete empty snapshot of a replacing table commits {{store.declare.empty-replacement}}; a skipped unchanged input holds the frontier and position, and a failed pull publishes neither.",
       "why": "A-store#empty-complete-snapshot",
       "file": "spec/30-run.md",
-      "line": 261,
+      "line": 232,
       "scenarios": [
-        "WHEN a complete snapshot holds zero rows after a non-empty replacing run, THEN the current read is empty and a bounded read before the commit retains the older rows.",
-        "WHEN the source skips unchanged input, THEN the current read and cursor retain their prior values.",
-        "WHEN a pull fails before completion, THEN no replacement marker becomes readable."
+        "WHEN a complete snapshot holds zero rows after a non-empty replacing run, THEN the current read is empty and a bounded read before the commit retains the older rows."
       ]
     },
     {
@@ -10291,7 +10241,7 @@
       "statement": "An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row through the awakeable store; an external party resumes by posting the token back.",
       "why": "A-run#awakeable-resumes-credentialed",
       "file": "spec/30-run.md",
-      "line": 275
+      "line": 244
     },
     {
       "id": "run.suspend.resume-is-a-step-output",
@@ -10299,10 +10249,10 @@
       "operation": "suspend",
       "subject": "resume-is-a-step-output",
       "kind": "behavior",
-      "statement": "The journal records a resume payload as the awaited step's output under key `sha256(\"awakeable:\" + token)`. A run that resumes and then crashes reads the payload back without suspending again.",
+      "statement": "The journal records a resume payload as the awaited step's output under key `sha256(\"awakeable:\" + token)`, so a resolution repeating the identical payload returns it, and a run that resumes then crashes reads it back without suspending again.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 277
+      "line": 246
     },
     {
       "id": "run.suspend.deadline",
@@ -10313,18 +10263,7 @@
       "statement": "A deadline is the creation instant plus a time-to-live, both caller-supplied RFC3339 Zulu strings; the core reads no wall clock, and a suspension past its deadline at an injected instant stays `timed_out` under any later one.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 278
-    },
-    {
-      "id": "run.suspend.idempotent-resolution",
-      "contract": "run",
-      "operation": "suspend",
-      "subject": "idempotent-resolution",
-      "kind": "behavior",
-      "statement": "Resolving a token again with the identical payload returns the recorded value.",
-      "why": "",
-      "file": "spec/30-run.md",
-      "line": 279
+      "line": 247
     },
     {
       "id": "run.suspend.conflicting-resolution",
@@ -10335,7 +10274,7 @@
       "statement": "A second resolution with a different payload raises `AwakeableAlreadyResolved` and leaves the recorded value untouched.",
       "why": "A-run#external-signals-single",
       "file": "spec/30-run.md",
-      "line": 280
+      "line": 248
     },
     {
       "id": "run.suspend.expired-token",
@@ -10346,7 +10285,7 @@
       "statement": "Resolving a token past its deadline raises `AwakeableTimedOut`.",
       "why": "A-run#external-signals-single",
       "file": "spec/30-run.md",
-      "line": 282
+      "line": 250
     },
     {
       "id": "run.suspend.unknown-token",
@@ -10357,7 +10296,7 @@
       "statement": "A token with no row raises `AwakeableUnknown` and allocates no state.",
       "why": "P2",
       "file": "spec/30-run.md",
-      "line": 284
+      "line": 252
     },
     {
       "id": "run.suspend.resume-route",
@@ -10368,7 +10307,7 @@
       "statement": "`POST /awake/:token` on the served face answers `200` with the recorded payload, `404` for {{run.suspend.unknown-token}}, `409` for {{run.suspend.conflicting-resolution}} and `410` for {{run.suspend.expired-token}}. `GET /awake/:token` reports state without resuming.",
       "why": "A-run#awakeable-resumes-credentialed",
       "file": "spec/30-run.md",
-      "line": 286
+      "line": 254
     },
     {
       "id": "run.suspend.resume-authenticates",
@@ -10379,7 +10318,7 @@
       "statement": "The resume route admits the request's credential before reading the registry, answering `401` without one, and passes the credential's verified `on_behalf_of` as the caller subject.",
       "why": "A-run#awakeable-resumes-credentialed",
       "file": "spec/30-run.md",
-      "line": 288
+      "line": 256
     },
     {
       "id": "run.suspend.caller-binding",
@@ -10390,7 +10329,7 @@
       "statement": "An awakeable may bind a verified caller subject at mint; resolving it then takes the token and a credential for that subject, and any other caller answers as {{run.suspend.unknown-token}}. An unbound token is its whole authority.",
       "why": "because a token leaked through a log otherwise resumes a run, and answering unknown discloses nothing to the wrong holder",
       "file": "spec/30-run.md",
-      "line": 290
+      "line": 258
     },
     {
       "id": "run.suspend.postgres-reconciliation",
@@ -10401,7 +10340,7 @@
       "statement": "A PostgreSQL callback row interrupted after its resume value commits recovers its resolved payload from that journal value; a conflicting resolution follows {{run.suspend.conflicting-resolution}}.",
       "why": "because a separately committed callback row cannot overwrite the journal value that already determines replay",
       "file": "spec/30-run.md",
-      "line": 292
+      "line": 260
     },
     {
       "id": "run.suspend.survives-restart",
@@ -10412,7 +10351,7 @@
       "statement": "A durable awakeable store persists every registry row, so a process reopening it over the same location drops no pending callback; an in-process store ends with its process.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 294
+      "line": 262
     },
     {
       "id": "run.suspend.row-parks",
@@ -10423,7 +10362,7 @@
       "statement": "A store-driven row awaiting an unresolved awakeable parks and frees its slot; the other rows run on, and the parked row re-enters its body once the awakeable resolves or its deadline passes.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 295
+      "line": 263
     },
     {
       "id": "run.suspend.recorded-timeout",
@@ -10434,7 +10373,7 @@
       "statement": "A row's wait past its deadline records a timeout value as that wait's step output, so every re-entry of the body reads the identical value.",
       "why": "because a body branching on the clock rather than on a recorded value replays differently after a crash",
       "file": "spec/30-run.md",
-      "line": 296
+      "line": 264
     },
     {
       "id": "run.retry.failure-taxonomy",
@@ -10445,7 +10384,7 @@
       "statement": "One tagged failure type, {{type:contextful_core::run::failure::FailureTag}}, crosses every port. A caller branches on the tag, never on a message.",
       "why": "P2",
       "file": "spec/30-run.md",
-      "line": 329
+      "line": 271
     },
     {
       "id": "run.retry.schedule",
@@ -10456,7 +10395,7 @@
       "statement": "A schedule attaches to a step and carries a fixed or exponential backoff with base and factor, a total attempt count including the first, a per-delay clamp, a jitter ceiling and `retry_on`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 331
+      "line": 273
     },
     {
       "id": "run.retry.default-policy",
@@ -10467,7 +10406,7 @@
       "statement": "The default schedule is exponential from a 100 ms base with factor 2, to 5 attempts in total, each delay clamped at 30 s, plus seeded jitter below 250 ms.",
       "why": "because zero jitter synchronizes every run that hit one shared throttle",
       "file": "spec/30-run.md",
-      "line": 332
+      "line": 274
     },
     {
       "id": "run.retry.single-attempt",
@@ -10478,7 +10417,7 @@
       "statement": "A schedule of 1 attempts is the no-retry schedule.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 334
+      "line": 276
     },
     {
       "id": "run.retry.retryable-classes",
@@ -10489,7 +10428,7 @@
       "statement": "`Transient` and `RateLimited` retry; every other tag stands as the step's answer whatever budget remains. `retry_on` narrows that pair.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 335
+      "line": 277
     },
     {
       "id": "run.retry.unretryable-tag",
@@ -10500,7 +10439,7 @@
       "statement": "A `retry_on` naming any tag outside `Transient` and `RateLimited` raises `RunRetryTagUnretryable` at plan compile.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 337
+      "line": 279
     },
     {
       "id": "run.retry.step-failed",
@@ -10511,7 +10450,7 @@
       "statement": "A non-retryable failure, or a step exhausting its schedule, raises `StepFailed` carrying the step label and the underlying tag.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 339
+      "line": 281
     },
     {
       "id": "run.retry.deterministic-verdict",
@@ -10522,7 +10461,7 @@
       "statement": "A refusal whose check is pure over static input is terminal and consumes no attempt budget.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 341
+      "line": 283
     },
     {
       "id": "run.retry.retry-after",
@@ -10533,7 +10472,7 @@
       "statement": "A server-supplied `Retry-After` supersedes the computed delay; a remaining wait up to 300 s sleeps in process, and a longer one closes the attempt `RateLimited` under {{run.retry.waiting-state}} instead of sleeping.",
       "why": "because an unclamped upstream delay holds a run slot for as long as the vendor asks",
       "file": "spec/30-run.md",
-      "line": 343
+      "line": 285
     },
     {
       "id": "run.retry.not-before",
@@ -10544,7 +10483,7 @@
       "statement": "Before any wait, a retrying step records its next-attempt instant and attempt count on its journal row, so a restart, a container replacement included, resumes the remaining budget and wait.",
       "why": "because a wait held only in memory restarts on every replacement and calls the vendor early",
       "file": "spec/30-run.md",
-      "line": 345
+      "line": 287
     },
     {
       "id": "run.retry.waiting-state",
@@ -10555,7 +10494,7 @@
       "statement": "An attempt closed on its next-attempt instant reports `waiting` with that instant on its run row, counts as neither refused nor failed, and keeps its owner; only exhausting the schedule's attempts fails the step.",
       "why": "because a vendor's requested pause is not evidence the work is wrong",
       "file": "spec/30-run.md",
-      "line": 347
+      "line": 289
     },
     {
       "id": "run.retry.resume-at",
@@ -10566,7 +10505,7 @@
       "statement": "Until a step's stored instant passes, an attempt reaching it, a crash mid-sleep included, waits only the remaining time without invoking the effect; the first attempt once it passes re-enters under its work key, pins and attempt count.",
       "why": "because resuming under another key or a fresh budget repeats paid work or retries without bound",
       "file": "spec/30-run.md",
-      "line": 349
+      "line": 291
     },
     {
       "id": "run.retry.wake",
@@ -10577,18 +10516,7 @@
       "statement": "A waiting attempt records its instant on its owner; the scheduler fires that owner's unit at the first beat at or after it, ahead of the unit's regular `schedule` fire, and the next attempt's claim clears it.",
       "why": "because a resume gated on the regular cadence adds up to a full interval to every rate-limited wait",
       "file": "spec/30-run.md",
-      "line": 351
-    },
-    {
-      "id": "run.retry.shared-path",
-      "contract": "run",
-      "operation": "retry",
-      "subject": "shared-path",
-      "kind": "behavior",
-      "statement": "An HTTP `Retry-After`, a throttled lease mint and a limiter denial each reach the step as a `RateLimited` failure carrying its wait, and each takes {{run.retry.not-before}}.",
-      "why": "because two retry owners for one throttle disagree on when to call again",
-      "file": "spec/30-run.md",
-      "line": 353
+      "line": 293
     },
     {
       "id": "run.retry.no-double-spend",
@@ -10599,7 +10527,7 @@
       "statement": "A resumed attempt replays every recorded step, so it reserves no meter permit and issues no call an earlier attempt already recorded.",
       "why": "because each resume reserving afresh spends a budget once per wait",
       "file": "spec/30-run.md",
-      "line": 355
+      "line": 295
     },
     {
       "id": "run.retry.one-layer",
@@ -10607,10 +10535,10 @@
       "operation": "retry",
       "subject": "one-layer",
       "kind": "behavior",
-      "statement": "The step's schedule is the only retry layer: an adapter, a credential mint and a meter acquire inside a step return their failure to it.",
+      "statement": "The step's schedule is the only retry layer: an adapter, a credential mint and a meter acquire return their failure to it, an HTTP `Retry-After`, throttled mint or limiter denial as `RateLimited` carrying its wait under {{run.retry.not-before}}.",
       "why": "because nested retry layers multiply attempts and amplify a vendor outage",
       "file": "spec/30-run.md",
-      "line": 357
+      "line": 297
     },
     {
       "id": "run.retry.decision-is-pure",
@@ -10621,7 +10549,7 @@
       "statement": "The retry decision is a pure function of the completed one-based attempt and classified failure. Jitter derives from an injected seed. The runner owns the sleep and attempt counter.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 359
+      "line": 299
     },
     {
       "id": "run.retry.partial-failure",
@@ -10632,7 +10560,7 @@
       "statement": "A run failing after it staged batches commits none of them under {{run.own.one-commit-per-run}} and closes `failed`, holding its owner so the journal keeps the resume point; only {{run.record.orphan-reap}} closes a run `partial_failure`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 360
+      "line": 300
     },
     {
       "id": "run.retry.no-compensation",
@@ -10643,7 +10571,7 @@
       "statement": "The engine offers no compensation combinator; undoing a partial effect is an author-written recorded step, replayed like any other.",
       "why": "because compensation depends on each vendor's undo semantics, which the engine cannot know",
       "file": "spec/30-run.md",
-      "line": 361
+      "line": 301
     },
     {
       "id": "run.retry.pressure-is-local",
@@ -10654,7 +10582,7 @@
       "statement": "Rate-limit pressure against one source paces only that source's runs.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 363
+      "line": 303
     },
     {
       "id": "run.retry.bound-hit-is-transient",
@@ -10665,7 +10593,7 @@
       "statement": "A connector striking {{connector.package.linear-memory}} or {{connector.package.call-deadline}} fails the attempt `Transient`, the failure naming the bound it struck.",
       "why": "A-run#bound-hit-rides",
       "file": "spec/30-run.md",
-      "line": 364
+      "line": 304
     },
     {
       "id": "run.retry.bound-hit-recorded",
@@ -10676,7 +10604,7 @@
       "statement": "The run record lists every bound hit with its step label, attempt and bound, a hit a later attempt recovered from included.",
       "why": "A-run#bound-hit-rides",
       "file": "spec/30-run.md",
-      "line": 366
+      "line": 306
     },
     {
       "id": "run.own.execution-owner",
@@ -10687,7 +10615,7 @@
       "statement": "One durable execution owner exists per scope; a table or chunk owner holds the connector identity with its component world, the pipeline `content_hash` and the input hash.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 373
+      "line": 313
     },
     {
       "id": "run.own.host-scope",
@@ -10698,7 +10626,7 @@
       "statement": "The catalog keys every owner on its scope — live table, backfill chunk or host-declared id — a table owner keeping its stored key byte for byte, and a host owner pinning the plan reference and identities the host supplies.",
       "why": "A-run#host-registered-derive, A-run#host-opens-execution",
       "file": "spec/30-run.md",
-      "line": 374
+      "line": 314
     },
     {
       "id": "run.own.execution-id-keys-the-journal",
@@ -10709,7 +10637,7 @@
       "statement": "Recorded work keys on the execution id; a catalog run id is the provenance of one attempt, so attempts under one owner resolve the same recorded values.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 376
+      "line": 316
     },
     {
       "id": "run.own.retirement",
@@ -10720,7 +10648,7 @@
       "statement": "Retiring an owner and caching its committed position share one catalog transaction; a later fire receives a fresh execution id even at a byte-identical position. A completed backfill chunk retires the same way.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 377
+      "line": 317
     },
     {
       "id": "run.own.marker-reconciles",
@@ -10731,7 +10659,7 @@
       "statement": "At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced it before any replay.",
       "why": "because a crash between marker and catalog otherwise replays a recorded pull into rows already committed",
       "file": "spec/30-run.md",
-      "line": 378
+      "line": 318
     },
     {
       "id": "run.own.pinned-plan-changed",
@@ -10742,7 +10670,7 @@
       "statement": "While an owner is pending, a changed pin — connector identity, component world, pipeline `content_hash`, or a host's plan reference or identities — raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the scope and both pin sets.",
       "why": "A-connector#executables-content-pinned",
       "file": "spec/30-run.md",
-      "line": 380,
+      "line": 320,
       "scenarios": [
         "WHEN a host scope's pending owner pins plan reference `plan-a` and an open asks for `plan-b`, THEN the open refuses with `ExecutionPinMismatch` and its run row closes `failed`."
       ]
@@ -10756,7 +10684,7 @@
       "statement": "Restoring the recorded build and resuming to completion clears a pending owner; {{run.own.rewind}} retires a host or table owner, a chunk rewind those its window covers. The {{run.own.pinned-plan-changed}} refusal names these recoveries with the pending execution id, and no other.",
       "why": "because an operator acts on the refusal's text, and a recovery no verb provides leaves the scope refusing every fire",
       "file": "spec/30-run.md",
-      "line": 382
+      "line": 322
     },
     {
       "id": "run.own.scope-independence",
@@ -10767,7 +10695,7 @@
       "statement": "A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 384
+      "line": 324
     },
     {
       "id": "run.own.unclosed-execution",
@@ -10778,7 +10706,7 @@
       "statement": "An execution handle dropped without close records no status; its owner stays pending, and the next open under its scope resumes it once {{run.record.owner-lease}} lapses.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 385,
+      "line": 325,
       "scenarios": [
         "WHEN a host execution records two steps and its process dies mid-third, THEN the next open under its scope after the lease lapses replays both steps without running their effects."
       ]
@@ -10792,7 +10720,7 @@
       "statement": "An open under a host scope whose pending owner has an attempt on an unexpired {{run.record.owner-lease}} fails `Transient` naming that attempt, and its run row closes `failed` without joining the owner.",
       "why": "because two live handles on one owner share its journal, and either one retiring it strands the other",
       "file": "spec/30-run.md",
-      "line": 387,
+      "line": 327,
       "scenarios": [
         "WHEN attempt `job-a` holds host scope `index-42` open and `job-b` opens under it, THEN `job-b` fails `Transient` naming `job-a`, and `job-a` alone holds the owner."
       ]
@@ -10806,7 +10734,7 @@
       "statement": "`success`, a failure that wrote no batch, and replay-stable failures under {{run.own.staged-bytes}}, {{run.land.late-type}}, or {{run.own.source-stage-schema}} release the owner; every other status holds it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 389
+      "line": 329
     },
     {
       "id": "run.own.admission-pin",
@@ -10817,7 +10745,7 @@
       "statement": "A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run.",
       "why": "A-connector#executables-content-pinned",
       "file": "spec/30-run.md",
-      "line": 390
+      "line": 330
     },
     {
       "id": "run.own.body-implementation",
@@ -10828,7 +10756,7 @@
       "statement": "Store-driven owner pins include the host-verified digest of its executing binary and concrete registered body type; configuration selects a body name and supplies no implementation identity.",
       "why": "A-run#host-registered-derive, A-run#registered-bodies-pin",
       "file": "spec/30-run.md",
-      "line": 397,
+      "line": 337,
       "group": "body pins"
     },
     {
@@ -10840,7 +10768,7 @@
       "statement": "Registration declares prompt/template, public provider/model configuration and policy identities affecting execution; owner pins carry their digests independently of structural input and output declarations.",
       "why": "A-run#host-registered-derive, A-run#registered-bodies-pin",
       "file": "spec/30-run.md",
-      "line": 399,
+      "line": 339,
       "group": "body pins"
     },
     {
@@ -10852,7 +10780,7 @@
       "statement": "Body implementation and dependency pins bind before input reads, recorded-call replay or body entry; a registration declaring no dependency receives the host implementation pin alone, and unavailable, changed or absent pins follow {{run.own.pinned-plan-changed}}.",
       "why": "because an unversioned record cannot establish which executable produced its paid calls",
       "file": "spec/30-run.md",
-      "line": 401,
+      "line": 341,
       "group": "body pins"
     },
     {
@@ -10864,7 +10792,7 @@
       "statement": "A fresh execution under changed implementation or dependencies receives a distinct plan identity and preserves earlier run records; pending work requires its recorded host build and registered dependencies.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 403,
+      "line": 343,
       "group": "body pins"
     },
     {
@@ -10876,7 +10804,7 @@
       "statement": "Semantic provider configuration contains public endpoint, model and generation parameters; credential-bearing endpoints refuse registration, credentials enter neither exported diagnostics nor recorded pins, and credential rotation alone changes no semantic identity.",
       "why": "because credential custody and executable semantics are independent identities",
       "file": "spec/30-run.md",
-      "line": 404,
+      "line": 344,
       "group": "body pins"
     },
     {
@@ -10888,7 +10816,7 @@
       "statement": "Prepared body outputs require the unchanged parent execution and current in-flight, unstopped attempt at admission, staging and commit; a stopped parent reaches {{run.cancel.abandoned-work}} independently of the output table's stop policy.",
       "why": "A-authority#body-projection",
       "file": "spec/30-run.md",
-      "line": 406,
+      "line": 346,
       "group": "body pins"
     },
     {
@@ -10900,7 +10828,7 @@
       "statement": "`contextful run rewind <execution-id> --reason <text>` retires the pending host or table owner holding that execution and leaves the scope's committed position alone, so the scope's next fire claims a fresh execution.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 413,
+      "line": 353,
       "group": "operator retirement",
       "scenarios": [
         "WHEN job `score`'s pending owner pins `plan-a`, a fire asking `plan-b` refuses, and an operator rewinds that execution, THEN the next fire claims a fresh execution under `plan-b` and completes."
@@ -10915,7 +10843,7 @@
       "statement": "A retirement under {{run.own.rewind}} or {{run.own.apply-retires-superseded}} writes one `canceled` run row under the scope carrying the retired execution id, its pinned plan reference and the reason, started at the owner's open.",
       "why": "because a row started at the retirement reads as the job's latest start and postpones its next due fire",
       "file": "spec/30-run.md",
-      "line": 415,
+      "line": 355,
       "group": "operator retirement"
     },
     {
@@ -10927,7 +10855,7 @@
       "statement": "A rewind naming an execution no pending host or table owner holds raises `ExecutionRewindNotPending`.",
       "why": "because a completed or retired execution holds nothing to release, and a chunk owner retires through its window's rewind",
       "file": "spec/30-run.md",
-      "line": 417,
+      "line": 357,
       "group": "operator retirement"
     },
     {
@@ -10939,7 +10867,7 @@
       "statement": "If no attempt or refused open requested another plan reference, rewinding the owner raises `ExecutionRewindPlanCurrent`. The operator may override this refusal with `--force`.",
       "why": "because such an owner resumes on its next fire, and retiring it discards its recorded work",
       "file": "spec/30-run.md",
-      "line": 419,
+      "line": 359,
       "group": "operator retirement"
     },
     {
@@ -10951,7 +10879,7 @@
       "statement": "Retiring an owner with an attempt on an unexpired {{run.record.owner-lease}}, a `waiting` attempt, or an awakeable pending before its deadline raises `ExecutionRewindUnsafe` naming it; `--force` overrides none.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 421,
+      "line": 361,
       "group": "operator retirement"
     },
     {
@@ -10963,7 +10891,7 @@
       "statement": "A claimed `pipeline apply` retires a build or sweepless store-driven job's pending owner when the applied snapshot produces no matching declared plan reference: a verified body's `input` identity, otherwise its plan reference.",
       "why": "A-run#host-registered-derive, A-run#superseded-owner-retires",
       "file": "spec/30-run.md",
-      "line": 423,
+      "line": 363,
       "group": "operator retirement",
       "scenarios": [
         "WHEN applied v2 changes the model a build job targets while its pending owner pins v1's plan reference, THEN the apply retires that owner and the job's next fire completes."
@@ -10978,7 +10906,7 @@
       "statement": "An applied retirement meeting {{run.own.rewind-unsafe}} leaves the owner pending and the snapshot claimed, and the apply names the execution and {{run.own.rewind}} on standard error.",
       "why": "A-run#host-registered-derive, A-run#superseded-owner-retires",
       "file": "spec/30-run.md",
-      "line": 425,
+      "line": 365,
       "group": "operator retirement"
     },
     {
@@ -10990,7 +10918,7 @@
       "statement": "The runner stages each shaped batch through the destination as one part before its next pull, so a run holds one pulled batch in memory; the commit names the staged parts.",
       "why": "because holding every batch until the commit sizes a run's memory by the sum of its pulls",
       "file": "spec/30-run.md",
-      "line": 432,
+      "line": 372,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN a source serves three pages, THEN the destination stages part 0 after the first pull, part 1 after the second and part 2 after the third, and one commit names all three."
@@ -11005,7 +10933,7 @@
       "statement": "One run produces one atomic commit per table, plus one per {{run.own.checkpoint-commit}}; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step or commit.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 434,
+      "line": 374,
       "group": "staging and checkpoints"
     },
     {
@@ -11017,7 +10945,7 @@
       "statement": "A stage carrying the parts a run staged since its last commit past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run commits nothing more and retires its owner, so the next fire pulls afresh from the stored cursor.",
       "why": "because a replay of the run's recorded pulls stages the same bytes past the bound and fails identically, holding the table's owner indefinitely",
       "file": "spec/30-run.md",
-      "line": 435,
+      "line": 375,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN each of three pulls of a replacing table stages a 400 MiB part, THEN the third stage fails the run `Permanent` with `RunStagedBytesExceeded`, the cursor stays where it stood, and the next fire pulls all three pages under a fresh execution."
@@ -11032,7 +10960,7 @@
       "statement": "When the parts a run of a position-addressed source staged since its last commit reach 512 MiB, the run commits them with the position after its last staged pull before staging more rows, then keeps pulling under the same execution.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 437,
+      "line": 377,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN each of sixteen pulls stages a 128 MiB part, THEN one fire commits four times, four parts each, carrying the positions `p4`, `p8`, `p12` and `p16`."
@@ -11047,7 +10975,7 @@
       "statement": "Under a `monotonic` cursor, a checkpoint commits only before a pull whose every clock passes the run's frontier, so no commit's position splits the rows of one instant.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 439,
+      "line": 379,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN five pages of clocks `1 1`, `1`, `2`, `2` and `3` each stage a 512 MiB part, THEN the run commits at positions 1, 2 and 3, and no instant's rows span two commits."
@@ -11062,7 +10990,7 @@
       "statement": "A checkpoint caches its position and marker in the catalog cursor while the owner stays pending, and collects the journal's recorded pulls, so a resumption pulls afresh from that position.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 441,
+      "line": 381,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN a run commits checkpoints at `p4` and `p8` and dies pulling `p9`, THEN the next fire pulls from `p8` and lands every later row once."
@@ -11077,7 +11005,7 @@
       "statement": "A run's first commit lands under its run id and each later one under `<run id>.<n>`, `n` its zero-padded six-digit ordinal, so every commit names its own parts.",
       "why": "because the store holds one manifest per run id, and a later commit naming an earlier one's directory finds it committed",
       "file": "spec/30-run.md",
-      "line": 443,
+      "line": 383,
       "group": "staging and checkpoints"
     },
     {
@@ -11089,7 +11017,7 @@
       "statement": "A checkpoint whose next `<run id>.<n>` passes {{store.lay-out.run-id-shape}} raises `RunCheckpointIdTooLong` before it commits; the run commits nothing and retires its owner.",
       "why": "because a run committing its first checkpoint and then failing on the next one's run id leaves a partial window published",
       "file": "spec/30-run.md",
-      "line": 445,
+      "line": 385,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN a run id of 122 chars stages sixteen 128 MiB parts, THEN the run fails with `RunCheckpointIdTooLong` and commits nothing."
@@ -11104,11 +11032,10 @@
       "statement": "A run failing after a checkpoint's commit lands records on its row the rows and bytes every landed checkpoint commit carried, including one whose cursor update then fails.",
       "why": "because the checkpoints stay committed, and a failed row counting no rows hides rows every read returns",
       "file": "spec/30-run.md",
-      "line": 447,
+      "line": 387,
       "group": "staging and checkpoints",
       "scenarios": [
-        "WHEN a run commits checkpoints at `p4` and `p8` and its tenth pull fails, THEN its `failed` row counts eight rows.",
-        "WHEN a run's `p12` checkpoint commits and the cursor row moves before its update, THEN its `failed` row counts twelve rows."
+        "WHEN a run commits checkpoints at `p4` and `p8` and its tenth pull fails, THEN its `failed` row counts eight rows."
       ]
     },
     {
@@ -11120,11 +11047,10 @@
       "statement": "A source is position-addressed when each pull's position names a watermark, page token or stable offset. A {{connector.source.http-url-walk}}, a replacing table, a body's prepared landing, and a seeding or receiving scope commit once.",
       "why": "A-run#host-registered-derive",
       "file": "spec/30-run.md",
-      "line": 449,
+      "line": 389,
       "group": "staging and checkpoints",
       "scenarios": [
-        "WHEN an appending table's next-URL walk dies on its third page and the listing gains a first row, THEN the next fire lands each listed row once.",
-        "WHEN a replacing table's next-URL walk dies mid-walk on three fires, THEN the fourth fire succeeds with every listed row and no fire succeeds with zero."
+        "WHEN an appending table's next-URL walk dies on its third page and the listing gains a first row, THEN the next fire lands each listed row once."
       ]
     },
     {
@@ -11136,7 +11062,7 @@
       "statement": "A stage refuses against `schema.json` and the run's earlier stages, then merges its columns into the run's own staged schema; only the commit merges them into `schema.json`.",
       "why": "because otherwise rows no commit publishes fix a column's type in the table's schema",
       "file": "spec/30-run.md",
-      "line": 451,
+      "line": 391,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN run `run-s` stages `ts` as text and fails, THEN a later run lands `ts` as a timestamp, and `run-s`'s commit refuses with `StoreSchemaIncompatible`."
@@ -11151,7 +11077,7 @@
       "statement": "A deterministic `SchemaIncompatible` from staging an ordinary source batch, raw or prepared, retires its owner unless another live attempt holds it; the failed run changes neither committed cursor nor published rows. This exception excludes prepared body-emission staging.",
       "why": "because a recorded source batch that fails the same schema check on replay prevents a repaired source from being fetched",
       "file": "spec/30-run.md",
-      "line": 453,
+      "line": 393,
       "group": "staging and checkpoints"
     },
     {
@@ -11163,7 +11089,7 @@
       "statement": "A staged part carries no `_commit_seq`; the commit assigns it under {{store.reserve.commit-order}} and writes it into each part it names, so a run committing between a stage and that commit takes the lower value.",
       "why": "because a value fixed at the stage orders a run by its first pull, and the readable runs then hold no prefix of the sequence",
       "file": "spec/30-run.md",
-      "line": 455,
+      "line": 395,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN run `run-s` stages a part, run `run-c` then commits as `_commit_seq` 1, and `run-s` commits after it, THEN every row of `run-s` reads `_commit_seq` 2."
@@ -11178,7 +11104,7 @@
       "statement": "A staged part carries no `_ingested_at`; the commit writes its commit instant into each part it names, so every row of a run carries the instant its marker carries.",
       "why": "because a stage-time instant ranks a run by its first pull, so under {{store.declare.dedup-view}} an earlier committer outranks a later one on a shared key",
       "file": "spec/30-run.md",
-      "line": 457,
+      "line": 397,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN run `run-a` stages key `k` at 00:01, run `run-b` commits `k` at 00:03 and `run-a` commits at 00:05, THEN the keyed read returns `run-a`'s row, `_ingested_at` 00:05."
@@ -11193,7 +11119,7 @@
       "statement": "A run that fails removes every part it staged, and a commit failing before its manifest exists removes the parts it copied; a run's crash leaves its staged parts.",
       "why": "because a run id names one attempt, so no later commit names a failed run's staged parts",
       "file": "spec/30-run.md",
-      "line": 459,
+      "line": 399,
       "group": "staging and checkpoints",
       "scenarios": [
         "WHEN a run stages its first page and its second pull fails, THEN its run directory holds no staged part."
@@ -11208,7 +11134,7 @@
       "statement": "The catalog stores each stop request on the run row as requested-at instant, scope and optional reason, a newer request overwriting an older mark. The catalog is the only stop-request channel.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 506
+      "line": 444
     },
     {
       "id": "run.cancel.two-grains",
@@ -11219,7 +11145,7 @@
       "statement": "A `run`-scoped stop halts one run and the fire continues; a `pipeline`-scoped stop halts every in-flight run of the pipeline and every table or chunk the fire had left. An unrecognized stored scope reads as `run`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 507
+      "line": 445
     },
     {
       "id": "run.cancel.host-grain",
@@ -11230,7 +11156,7 @@
       "statement": "A `pipeline`-scoped stop on a host execution's run halts every in-flight run under the same host-declared scope and no run of another scope.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 508
+      "line": 446
     },
     {
       "id": "run.cancel.one-token",
@@ -11241,7 +11167,7 @@
       "statement": "Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait and a subprocess wait. A meter reservation holds no wait of its own, under {{connector.meter.acquire-call}}.",
       "why": "because a stop observed only at the pull leaves sleeps and child processes running after the record reads canceled",
       "file": "spec/30-run.md",
-      "line": 509
+      "line": 447
     },
     {
       "id": "run.cancel.poll-interval",
@@ -11252,7 +11178,7 @@
       "statement": "The engine updates the token from one catalog read before the run's first await, then every 500 ms. Each await evaluates cancellation before work.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 511
+      "line": 449
     },
     {
       "id": "run.cancel.engine-keeper",
@@ -11263,7 +11189,7 @@
       "statement": "One keeper per engine renews every registered execution's owner lease and feeds its token, sleeping until the earliest deadline; opening an execution registers it, and close or drop deregisters it.",
       "why": "A-run#unclosed-execution-recovers",
       "file": "spec/30-run.md",
-      "line": 512,
+      "line": 450,
       "scenarios": [
         "WHEN 20 executions are open on one engine, THEN one keeper thread renews all 20 owner leases, and it exits once the last one closes or drops."
       ]
@@ -11277,7 +11203,7 @@
       "statement": "A keeper job that panics warns and leaves the keeper running: every other registration keeps its cadence, the panicking one retries at its next deadline, and dropping it returns.",
       "why": "because the keeper is shared, so one adapter's panic that ended its thread lapses every open execution's lease under a live run",
       "file": "spec/30-run.md",
-      "line": 514
+      "line": 452
     },
     {
       "id": "run.cancel.land-path-uncut",
@@ -11288,7 +11214,7 @@
       "statement": "A table run's own stop does not interrupt landing. The engine finishes landing bytes already received and records the unfulfilled stop. Prepared body outputs additionally require {{run.own.body-parent}}.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 516
+      "line": 454
     },
     {
       "id": "run.cancel.abandoned-work",
@@ -11299,7 +11225,7 @@
       "statement": "Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone.",
       "why": "A-run#unclosed-execution-recovers",
       "file": "spec/30-run.md",
-      "line": 517
+      "line": 455
     },
     {
       "id": "run.cancel.child-reaped",
@@ -11310,7 +11236,7 @@
       "statement": "A stop signals a running subprocess chain's process group. The engine records `canceled` only after reaping the group.",
       "why": "because a record reading canceled while a child still runs misstates what the machine is doing",
       "file": "spec/30-run.md",
-      "line": 519
+      "line": 457
     },
     {
       "id": "run.cancel.storage-blip",
@@ -11321,7 +11247,7 @@
       "statement": "A failed poll read warns and keeps polling.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 521
+      "line": 459
     },
     {
       "id": "run.cancel.not-in-flight",
@@ -11332,7 +11258,7 @@
       "statement": "Only a row holding a non-terminal {{type:contextful_core::run::record::RunStatus}} accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.",
       "why": "A-run#external-signals-single",
       "file": "spec/30-run.md",
-      "line": 522
+      "line": 460
     },
     {
       "id": "run.cancel.distinct-terminal-status",
@@ -11343,7 +11269,7 @@
       "statement": "`canceled` is a terminal status apart from `failed`, and upstream health observations skip it.",
       "why": "A-run#external-signals-single",
       "file": "spec/30-run.md",
-      "line": 524
+      "line": 462
     },
     {
       "id": "run.cancel.resumable-remains",
@@ -11354,7 +11280,7 @@
       "statement": "A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 526
+      "line": 464
     },
     {
       "id": "run.cancel.authority-from-the-record",
@@ -11365,7 +11291,7 @@
       "statement": "A stop authorizes against the pipeline read off the run record, never off the request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 527
+      "line": 465
     },
     {
       "id": "run.cancel.stop-unauthorized",
@@ -11376,7 +11302,7 @@
       "statement": "A credentialed stop needs an `execute` grant covering the pipeline read off the run record; an uncovered or unrecorded run raises `CancelUnauthorized` without naming the pipeline, answering `403` over HTTP.",
       "why": "because a stop halts work `execute` fires, and a refusal naming the pipeline discloses it to a credential that cannot read it",
       "file": "spec/30-run.md",
-      "line": 528
+      "line": 466
     },
     {
       "id": "run.cancel.stop-route",
@@ -11387,7 +11313,7 @@
       "statement": "`POST /runs/:run_id/stop` writes a stop under a per-request network credential, its optional JSON body carrying `scope` and `reason`, and answers `200` with the marked run ids.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 530
+      "line": 468
     },
     {
       "id": "run.record.reserved-table",
@@ -11398,7 +11324,7 @@
       "statement": "The durable run record is a reserved store table holding two append-only rows per run, one at plan and one at commit; the latest row per run and phase wins. The local catalog is a cache in front of it.",
       "why": "A-run#run-record-folds",
       "file": "spec/30-run.md",
-      "line": 567
+      "line": 478
     },
     {
       "id": "run.record.columns",
@@ -11406,10 +11332,10 @@
       "operation": "record",
       "subject": "columns",
       "kind": "behavior",
-      "statement": "A run row carries run id, pipeline id, site id, status, owner, start and end instants, row and byte counts, error kind and message, connector id, version and hash, trace id and phase.",
+      "statement": "A run row is a {{type:contextful_core::run::record::RunRow}}.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 569
+      "line": 480
     },
     {
       "id": "run.record.trace-context",
@@ -11420,7 +11346,7 @@
       "statement": "A run a command opens takes as trace id the trace of the caller's `traceparent`, read from `TRACEPARENT` and `TRACESTATE`, or a fresh trace; both run rows carry it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 570
+      "line": 481
     },
     {
       "id": "run.record.run-span",
@@ -11431,7 +11357,7 @@
       "statement": "With an exporter configured, a run exports one span, child of the caller's span, carrying run id, pipeline, table, status, row and byte counts, and the failure tag.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 571
+      "line": 482
     },
     {
       "id": "run.record.status-set",
@@ -11442,7 +11368,7 @@
       "statement": "A run status is a {{type:contextful_core::run::record::RunStatus}}, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.",
       "why": "because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading",
       "file": "spec/30-run.md",
-      "line": 572
+      "line": 483
     },
     {
       "id": "run.record.row-at-open",
@@ -11453,7 +11379,7 @@
       "statement": "The engine writes a run row at open, before the first pull. Readers distinguish zero-row `success`, `failed` with an error kind, and no run row.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 574
+      "line": 485
     },
     {
       "id": "run.record.record-folds",
@@ -11464,7 +11390,7 @@
       "statement": "An append to {{run.record.reserved-table}} runs a pass on it once {{store.fold.triggers}} fires; a pass that fails leaves the row appended and the append succeeding, and the next append retries it.",
       "why": "A-run#run-record-folds",
       "file": "spec/30-run.md",
-      "line": 575
+      "line": 486
     },
     {
       "id": "run.record.rebuild-restores-history",
@@ -11475,7 +11401,7 @@
       "statement": "A catalog rebuild restores run history from {{run.record.reserved-table}}, so a rebuilt catalog lists every run the store recorded instead of starting empty.",
       "why": "because the catalog is a cache, and a rebuild dropping history loses the only record of failed runs",
       "file": "spec/30-run.md",
-      "line": 577
+      "line": 488
     },
     {
       "id": "run.record.time-travel",
@@ -11486,7 +11412,7 @@
       "statement": "Run history inherits the store's transaction-time bound, so one as-of selector rewinds it with every other table.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 579
+      "line": 490
     },
     {
       "id": "run.record.owner-lease",
@@ -11497,7 +11423,7 @@
       "statement": "A `running` or `waiting` row carries an owner of process id, boot id and a lease expiry, renewed every 10 s with a 30 s time-to-live.",
       "why": "because a second process sharing the catalog needs a liveness signal to tell a live run from an orphan",
       "file": "spec/30-run.md",
-      "line": 580
+      "line": 491
     },
     {
       "id": "run.record.orphan-reap",
@@ -11508,7 +11434,7 @@
       "statement": "Startup marks only non-terminal rows with expired owner leases as `partial_failure`. Startup leaves rows held by live processes unchanged.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 582
+      "line": 493
     },
     {
       "id": "run.record.writing-site",
@@ -11519,7 +11445,7 @@
       "statement": "Every landed row carries its run's site id in the `_site_id` column {{store.reserve.injected}} writes, so a row names the site that wrote it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 583
+      "line": 494
     },
     {
       "id": "run.record.site-id-length",
@@ -11530,7 +11456,7 @@
       "statement": "A site id matches letters, digits, dot, underscore and hyphen, from 1 chars to 64 chars.",
       "why": "because it is interpolated into run directories and request-ledger filenames",
       "file": "spec/30-run.md",
-      "line": 584
+      "line": 495
     },
     {
       "id": "run.record.site-id-unresolved",
@@ -11541,7 +11467,7 @@
       "statement": "A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset variable raises `SiteIdUnresolved` at startup.",
       "why": "P3",
       "file": "spec/30-run.md",
-      "line": 586
+      "line": 497
     },
     {
       "id": "run.record.history-window",
@@ -11552,7 +11478,7 @@
       "statement": "History requests specify an inclusive start-instant lower bound and row ceiling, returning newest first. A SQL catalog applies the bound in `WHERE` over an indexed start column and the ceiling as `LIMIT`.",
       "why": "because filtering after the read scans every run a pipeline ever recorded, so a describe call grows with history rather than with its window",
       "file": "spec/30-run.md",
-      "line": 588
+      "line": 499
     },
     {
       "id": "run.record.describe-window",
@@ -11563,7 +11489,7 @@
       "statement": "The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 590
+      "line": 501
     },
     {
       "id": "run.record.bound-spelling",
@@ -11574,7 +11500,7 @@
       "statement": "A window lower bound is `YYYY-MM-DD` or a UTC RFC3339 instant ending `Z`; any other spelling raises `HistoryBoundSpelling` at every caller-facing surface.",
       "why": "because a bound read under a guessed zone silently moves the window",
       "file": "spec/30-run.md",
-      "line": 591
+      "line": 502
     },
     {
       "id": "run.record.truncation-flag",
@@ -11585,7 +11511,7 @@
       "statement": "A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than the ceiling returned; an empty window answers `[]` and raises nothing.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 593
+      "line": 504
     },
     {
       "id": "run.record.history-export",
@@ -11596,7 +11522,7 @@
       "statement": "History leaves the machine as a process listing and an NDJSON export over one run projection; the export's first line carries store, window, count and truncation flag, then one run per line. It resolves no bucket.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 594
+      "line": 505
     },
     {
       "id": "run.record.export-ceiling",
@@ -11607,7 +11533,7 @@
       "statement": "The export returns 500 rows by default and clamps at 5000 rows. Each pipeline's window takes the full ceiling; the export clips the merged result once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 595
+      "line": 506
     },
     {
       "id": "run.record.error-cap",
@@ -11618,7 +11544,7 @@
       "statement": "The shared run projection masks credential-shaped spans in recorded errors and caps each error at 2 KiB with an ellipsis marker. Every surface serves that projection.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 596
+      "line": 507
     },
     {
       "id": "run.record.failure-publishes",
@@ -11629,18 +11555,7 @@
       "statement": "The bucket push runs on the failure arm as on the success arm, for every failure past run open.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 597
-    },
-    {
-      "id": "run.record.counts-at-destination",
-      "contract": "run",
-      "operation": "record",
-      "subject": "counts-at-destination",
-      "kind": "behavior",
-      "statement": "The engine measures row and byte counts at the destination rather than at the source.",
-      "why": "",
-      "file": "spec/30-run.md",
-      "line": 598
+      "line": 508
     },
     {
       "id": "run.record.skipped-count",
@@ -11648,21 +11563,10 @@
       "operation": "record",
       "subject": "skipped-count",
       "kind": "behavior",
-      "statement": "A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.",
+      "statement": "The run row counts rows and bytes at the destination and sums each pull's optional `skipped` count of inputs the source declined to land whole, replayed pulls included.",
       "why": "because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows",
       "file": "spec/30-run.md",
-      "line": 599
-    },
-    {
-      "id": "run.record.input-bounds",
-      "contract": "run",
-      "operation": "record",
-      "subject": "input-bounds",
-      "kind": "behavior",
-      "statement": "A store-driven run's row carries its input: the resolved `as_of`, the snapshot id per table and the input row count.",
-      "why": "",
-      "file": "spec/30-run.md",
-      "line": 601
+      "line": 509
     },
     {
       "id": "run.record.sweep-bounds",
@@ -11670,10 +11574,10 @@
       "operation": "record",
       "subject": "sweep-bounds",
       "kind": "behavior",
-      "statement": "A sweep origin's run row carries, beside {{run.record.input-bounds}}, its `available_as_of`, any `valid_as_of` it read under, the sweep id and the origin.",
+      "statement": "A store-driven run's row carries its input as {{type:contextful_core::run::record::InputBounds}}: the resolved `as_of`, snapshot ids and row count, and for a sweep origin the bounds it read under, the sweep id and the origin.",
       "why": "because a score reported per origin is auditable only when each run names the bounds it read under",
       "file": "spec/30-run.md",
-      "line": 602
+      "line": 511
     },
     {
       "id": "run.record.plan-identity",
@@ -11684,7 +11588,7 @@
       "statement": "A run row retains its admitted plan reference after owner retirement; a record lacking that field decodes with no plan identity.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 604
+      "line": 513
     },
     {
       "id": "run.record.schema-diff-home",
@@ -11695,7 +11599,7 @@
       "statement": "A table's run manifest holds its committed downgrade events with its parts and cursor; run history reads them under that run id.",
       "why": "A-run#table-commit-owns",
       "file": "spec/30-run.md",
-      "line": 605,
+      "line": 514,
       "scenarios": [
         "WHEN a nested column downgrades and its table commits, THEN run history and that table's run manifest carry the same event; a failed stage carries none."
       ]
@@ -11709,7 +11613,7 @@
       "statement": "Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not commit contributes none.",
       "why": "A-run#table-commit-owns",
       "file": "spec/30-run.md",
-      "line": 607
+      "line": 516
     },
     {
       "id": "run.project.best-effort",
@@ -11720,7 +11624,7 @@
       "statement": "Live run state is a best-effort in-memory projection of events the runner emits after durable state changes; execution never reads it, and a restart discards it, so a subscriber recovers from the durable record.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 620
+      "line": 529
     },
     {
       "id": "run.project.wire-snapshot",
@@ -11731,7 +11635,7 @@
       "statement": "The wire snapshot is a {{type:contextful_core::run::project::Snapshot}}, its status from {{run.record.status-set}}. Every deploy target emits it identically.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 621
+      "line": 530
     },
     {
       "id": "run.project.step-view",
@@ -11742,7 +11646,7 @@
       "statement": "A step view is a {{type:contextful_core::run::project::StepView}}, its status a {{type:contextful_core::run::project::StepStatus}}.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 622
+      "line": 531
     },
     {
       "id": "run.project.stopped-step",
@@ -11753,7 +11657,7 @@
       "statement": "A stopped run reports its executing step `failed` with the `Canceled` tag and leaves the run-level error unset.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 623
+      "line": 532
     },
     {
       "id": "run.project.emission-never-blocks",
@@ -11764,7 +11668,7 @@
       "statement": "Progress emission is no journal step: events reach an in-process observer over a bounded channel that drops when full and never blocks the runner.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 624
+      "line": 533
     },
     {
       "id": "run.project.terminal-slot",
@@ -11775,7 +11679,7 @@
       "statement": "A terminal transition bypasses the lossy channel through a per-run slot that is never dropped; a projection reading non-terminal behind a terminal run record reconciles from the record.",
       "why": "because a dropped terminal event otherwise leaves a finished run reading running forever",
       "file": "spec/30-run.md",
-      "line": 625
+      "line": 534
     },
     {
       "id": "run.project.coalescing",
@@ -11786,7 +11690,7 @@
       "statement": "The hub coalesces snapshot broadcasts to at most one per 100 ms, keeping only the latest. A terminal transition flushes immediately. The hub uses an injected clock.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 627
+      "line": 536
     },
     {
       "id": "run.project.metadata-too-large",
@@ -11797,7 +11701,7 @@
       "statement": "A metadata write whose serialized size exceeds 16384 B raises `RunMetadataTooLarge` naming size and bound, and the snapshot stands unchanged.",
       "why": "because a silently clipped map reads as the complete metadata",
       "file": "spec/30-run.md",
-      "line": 628
+      "line": 537
     },
     {
       "id": "run.project.version",
@@ -11808,7 +11712,7 @@
       "statement": "The snapshot version is `(epoch, counter)`, the epoch being the hub's start instant, compared lexicographically; a client discards any delta at or below the highest version it holds.",
       "why": "because a bare counter restarts at zero with the process and freezes every client's view",
       "file": "spec/30-run.md",
-      "line": 630
+      "line": 539
     },
     {
       "id": "run.project.reducer-is-total",
@@ -11819,7 +11723,7 @@
       "statement": "The reducer is total: nothing overwrites a terminal step or run status, a new step label appends, an existing one merges field-wise, and a stale delta is a no-op.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 632
+      "line": 541
     },
     {
       "id": "run.project.outputs-by-reference",
@@ -11830,7 +11734,7 @@
       "statement": "A step output appears as a post-redaction reference and a byte count, never inline; fetching the payload is a separately authorized request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 633
+      "line": 542
     },
     {
       "id": "run.project.connect",
@@ -11838,10 +11742,10 @@
       "operation": "project",
       "subject": "connect",
       "kind": "behavior",
-      "statement": "A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update.",
+      "statement": "A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update; a late joiner may instead start from the oldest snapshot {{run.project.broadcast-ring}} holds, reading each in order before live updates.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 634
+      "line": 543
     },
     {
       "id": "run.project.broadcast-ring",
@@ -11852,18 +11756,7 @@
       "statement": "The per-run broadcast holds 256 entries; a subscriber that overruns it resynchronizes to the latest snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 635
-    },
-    {
-      "id": "run.project.catch-up",
-      "contract": "run",
-      "operation": "project",
-      "subject": "catch-up",
-      "kind": "behavior",
-      "statement": "A late joiner may subscribe from the oldest snapshot {{run.project.broadcast-ring}} holds, reading each held snapshot in order before live updates.",
-      "why": "because the folded snapshot shows where a run stands, and a late joiner animating the catch-up needs how it got there",
-      "file": "spec/30-run.md",
-      "line": 636
+      "line": 544
     },
     {
       "id": "run.project.channel-eviction",
@@ -11874,7 +11767,7 @@
       "statement": "The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the durable record.",
       "why": "because a channel allocated per run otherwise grows a long-lived process by every run it has seen",
       "file": "spec/30-run.md",
-      "line": 638
+      "line": 545
     },
     {
       "id": "run.project.unauthenticated-upgrade",
@@ -11885,7 +11778,7 @@
       "statement": "The run-stream socket, `GET /runs/:run_id/stream`, authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.",
       "why": "A-read#networked-read-transport",
       "file": "spec/30-run.md",
-      "line": 640
+      "line": 547
     },
     {
       "id": "run.project.read-only-socket",
@@ -11896,7 +11789,7 @@
       "statement": "A subscription permits reads only. Stop requests use an authenticated route.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 642
+      "line": 549
     },
     {
       "id": "run.sweep.origins",
@@ -11907,7 +11800,7 @@
       "statement": "A store-driven `[[job]]` declaring {{type:contextful_core::run::sweep::Sweep}} opens one run per origin from its start through its end at each step in {{surface.arm.grammar}} units, each reading with `available_as_of` equal to its origin.",
       "why": "because an origin reading rows published after it scores a forecast against its own answer",
       "file": "spec/30-run.md",
-      "line": 648,
+      "line": 555,
       "scenarios": [
         "WHEN a `fresh` sweep of 12 origins, `7d` apart from `2014-03-05T00:00:00Z`, reads a 2026-backfilled table holding a planted row available `2014-04-30T00:00:00Z`, THEN origins 1 to 8 return no planted row and origins 9 to 12 return it."
       ]
@@ -11921,7 +11814,7 @@
       "statement": "A sweep's id is the execution id of the fire that opens it; every origin's run records it, so run history groups one sweep's origins.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 650
+      "line": 557
     },
     {
       "id": "run.sweep.frozen-as-of",
@@ -11932,7 +11825,7 @@
       "statement": "Every origin of one sweep reads at one `as_of`: the job's declared `as_of`, else the instant the sweep opens, recorded once as {{run.journal.open-as-of}} records it for resumes.",
       "why": "A-run#sweep-freezes-transaction",
       "file": "spec/30-run.md",
-      "line": 651
+      "line": 558
     },
     {
       "id": "run.sweep.origin-after-open",
@@ -11943,7 +11836,7 @@
       "statement": "A sweep whose `end` is later than its `as_of` raises `RunSweepOriginAfterOpen`, at validation for a declared `as_of` and at sweep open otherwise, and opens no origin.",
       "why": "because an origin past the frozen corpus reads nothing newer than it, and that empty answer looks like a forecast",
       "file": "spec/30-run.md",
-      "line": 653
+      "line": 560
     },
     {
       "id": "run.sweep.carried-state",
@@ -11954,7 +11847,7 @@
       "statement": "Under `state = \"carried\"`, origins run in ascending order one at a time, each reading the job's output `tables` at the commit of the preceding origin and every other table at the sweep's `as_of`.",
       "why": "A-run#sweep-freezes-transaction",
       "file": "spec/30-run.md",
-      "line": 655
+      "line": 562
     },
     {
       "id": "run.sweep.fresh-state",
@@ -11965,7 +11858,7 @@
       "statement": "Under `state = \"fresh\"`, the default, every table an origin reads, its output tables included, resolves at the sweep's `as_of`, so no origin reads a row another origin wrote.",
       "why": "A-run#sweep-freezes-transaction",
       "file": "spec/30-run.md",
-      "line": 657
+      "line": 564
     },
     {
       "id": "run.sweep.simulated-write",
@@ -11976,7 +11869,7 @@
       "statement": "A row an origin lands into a table declaring `available_time` carries the origin as its availability instant, so a later origin reads it and an earlier origin never does.",
       "why": "because notes an agent wrote at a 2014 origin were available in 2014, not at the instant they committed",
       "file": "spec/30-run.md",
-      "line": 659
+      "line": 566
     },
     {
       "id": "run.sweep.origin-pin",
@@ -11987,7 +11880,7 @@
       "statement": "An origin's plan reference hashes the sweep declaration and its origin beside the fields {{run.journal.input-pin}} hashes, so a resume under a changed sweep meets {{run.own.pinned-plan-changed}}.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 661
+      "line": 568
     },
     {
       "id": "run.sweep.no-collapse",
@@ -11998,7 +11891,7 @@
       "statement": "A sweep runs every declared origin, regardless of elapsed time. {{surface.arm.catch-up}} collapses no origin. A failed origin in a `carried` sweep prevents every later origin from opening.",
       "why": "because each origin is a distinct question, and a collapsed or skipped origin drops silently from the score",
       "file": "spec/30-run.md",
-      "line": 662
+      "line": 569
     },
     {
       "id": "run.sweep.cache-key",
@@ -12009,7 +11902,7 @@
       "statement": "No recorded or cached value crosses origins: each origin runs under its own execution id, which keys {{run.journal.entry-key}}, and carries its origin as `available_as_of` among the bounds {{read.cache.result-key}} keys on.",
       "why": "because a cache keyed without the bound passes one origin's answer to another",
       "file": "spec/30-run.md",
-      "line": 664
+      "line": 571
     },
     {
       "id": "run.orchestrate.role",
@@ -12020,7 +11913,7 @@
       "statement": "A target's orchestrator implements every operation in {{run.journal.substrate-port}}. The engine runner over {{run.journal.storage-ports}} is the reference implementation.",
       "why": "A-run#orchestrator-role-port",
       "file": "spec/30-run.md",
-      "line": 677
+      "line": 584
     },
     {
       "id": "run.orchestrate.provider-step",
@@ -12031,7 +11924,7 @@
       "statement": "A provider adapter runs one provider step per table pull or backfill chunk, recording that table's or chunk's commit pointer. The engine's journal entries under {{run.journal.entry-key}} remain inside the provider step.",
       "why": "A-run#orchestrator-role-port",
       "file": "spec/30-run.md",
-      "line": 679
+      "line": 586
     },
     {
       "id": "run.orchestrate.semantics",
@@ -12042,7 +11935,7 @@
       "statement": "Every `run.journal`, `run.retry`, `run.suspend` and `run.cancel` clause holds inside a provider step. An adapter's conformance suite demonstrates these clauses before a target profile names the adapter.",
       "why": "A-run#orchestrator-role-port",
       "file": "spec/30-run.md",
-      "line": 681
+      "line": 588
     },
     {
       "id": "run.orchestrate.resume",
@@ -12053,7 +11946,7 @@
       "statement": "A provider replay of a completed step returns its recorded commit pointer and re-enters nothing; a crash inside a step resumes under the engine's entry keys, so the parts land byte-identical to an uninterrupted run under {{run.journal.replay-lands}}.",
       "why": "because a replay the provider owns below the commit pointer lands per-target bytes, and the proofs over the journal then cover no managed target",
       "file": "spec/30-run.md",
-      "line": 683,
+      "line": 590,
       "scenarios": [
         "WHEN a backfill chunk's provider step crashes after half its pages and the provider replays the step, THEN the engine resumes from its recorded pages and the chunk's parts match the uninterrupted run's bytes."
       ]
@@ -12067,7 +11960,7 @@
       "statement": "A provider adapter disables provider per-step retries. The schedule in {{run.retry.one-layer}} is the only retry layer. A failed step closes its table or chunk as the engine closes it.",
       "why": "because a provider retry around an engine schedule multiplies attempts against a shared quota",
       "file": "spec/30-run.md",
-      "line": 685,
+      "line": 592,
       "scenarios": [
         "WHEN a provider step's pull meets a throttle, THEN the engine's schedule retries inside the step and the provider records one step attempt."
       ]
@@ -12081,7 +11974,7 @@
       "statement": "Every orchestrator runs a delegate under {{surface.delegate.binding}} inside the engine's journaled step within a provider step. No adapter dispatches a delegate as a separate provider step.",
       "why": "because a delegate reached outside the engine's step escapes the entry key, the fence and the item budget",
       "file": "spec/30-run.md",
-      "line": 687
+      "line": 594
     },
     {
       "id": "run.declare.pipeline-spec",
@@ -15322,31 +15215,17 @@
       ]
     },
     {
-      "id": "run.select.derive-failed-parent",
-      "contract": "run",
-      "operation": "select",
-      "subject": "derive-failed-parent",
-      "kind": "behavior",
-      "statement": "A child derive pipeline runs after its parent fails and reads only the parent's committed rows.",
-      "why": "A-run#derive-work-set",
-      "file": "spec/32-derive.md",
-      "line": 83,
-      "scenarios": [
-        "WHEN a parent fails after earlier rows committed, THEN its child reads those committed rows in the same tick."
-      ]
-    },
-    {
       "id": "run.select.parent-outcome",
       "contract": "run",
       "operation": "select",
       "subject": "parent-outcome",
       "kind": "behavior",
-      "statement": "A derived child starts only after its parent produces a completed run outcome; a local launch, wait or signal failure, or a worker dispatch error, stops the unit before that child starts.",
+      "statement": "A derived child starts only once its parent produces a completed run outcome, a failed one included, and then reads only the parent's committed rows; a launch, wait or signal failure, or a worker dispatch error, stops the unit first.",
       "why": "A-run#chained-derive-pipelines",
       "file": "spec/32-derive.md",
-      "line": 85,
+      "line": 83,
       "scenarios": [
-        "WHEN the parent process fails to start, THEN its derived child does not start in that unit."
+        "WHEN a parent fails after earlier rows committed, THEN its child reads those committed rows in the same tick."
       ]
     },
     {
@@ -15358,10 +15237,7 @@
       "statement": "A build whose derive source-table dependencies return to a pipeline raises `DeriveCycle`, names every pipeline on the cycle and arms none.",
       "why": "A-run#chained-derive-pipelines",
       "file": "spec/32-derive.md",
-      "line": 87,
-      "scenarios": [
-        "WHEN two derive pipelines read each other's output tables, THEN the build raises `DeriveCycle` naming both; a self-reference names itself."
-      ]
+      "line": 85
     },
     {
       "id": "run.select.derive-after-conflict",
@@ -15372,10 +15248,7 @@
       "statement": "A derive child whose `after` names a pipeline other than its source-table parent raises `DeriveAfterConflict` and arms none.",
       "why": "A-run#chained-derive-pipelines",
       "file": "spec/32-derive.md",
-      "line": 89,
-      "scenarios": [
-        "WHEN a derive child names another pipeline in `after`, THEN the build raises `DeriveAfterConflict` naming the child and both parents."
-      ]
+      "line": 87
     },
     {
       "id": "run.select.parent-scan",
@@ -15386,7 +15259,7 @@
       "statement": "The derive source scans parent tables of at most 1000000 rows in memory. For larger tables, the source streams through the read engine in batches, holding one batch in memory.",
       "why": "A-run#derive-work-set",
       "file": "spec/32-derive.md",
-      "line": 91
+      "line": 89
     },
     {
       "id": "run.select.dry-run",
@@ -15397,7 +15270,7 @@
       "statement": "`pipeline run --dry-run` on a derive pipeline prints its eligible, already-derived and outstanding unit counts from one selection, calling no engine and landing no row.",
       "why": "A-run#selection-stays-bounded",
       "file": "spec/32-derive.md",
-      "line": 93
+      "line": 91
     },
     {
       "id": "run.select.available-select",
@@ -15408,7 +15281,7 @@
       "statement": "A derive run carrying `available_as_of` selects only parent rows {{store.available-time.available-as-of}} admits at that bound, and each derived row lands its parent row's availability instant.",
       "why": "because content derived from a later source record otherwise answers an earlier horizon",
       "file": "spec/32-derive.md",
-      "line": 95
+      "line": 93
     },
     {
       "id": "run.bind.unbound-engine",
@@ -15419,7 +15292,7 @@
       "statement": "An engine with no `[derive.<name>]` block raises `DeriveEngineUnbound`, naming the pipeline, the engine, the file to edit and every bound engine.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 114
+      "line": 109
     },
     {
       "id": "run.bind.command-in-manifest",
@@ -15430,7 +15303,7 @@
       "statement": "A {{type:contextful_core::run::derive::config::Binding}} key `preprocess`, `env` or `allow_hosts`, or a step's `command`, inside `[pipeline.source.config]` raises `DeriveCommandInManifest`.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 116
+      "line": 111
     },
     {
       "id": "run.bind.unknown-task",
@@ -15441,7 +15314,7 @@
       "statement": "`task` names `transcribe`, the default, `link_preview`, or a task the embedding binary registered; any other value raises `DeriveUnknownTask`, listing the built-in and registered names.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 118
+      "line": 113
     },
     {
       "id": "run.bind.host-task",
@@ -15452,7 +15325,7 @@
       "statement": "An embedding binary registers each compiled derive task by name before build. Configuration selects that registered name without supplying a command. A duplicate built-in or registered task name raises `DeriveTaskNameTaken`.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 120
+      "line": 115
     },
     {
       "id": "run.bind.join-repeated",
@@ -15463,7 +15336,7 @@
       "statement": "A host task whose joins name one table twice raises `DeriveJoinRepeated` at registration.",
       "why": "because a unit holds one joined list per table, so the second join's rows replace the first's",
       "file": "spec/32-derive.md",
-      "line": 122
+      "line": 117
     },
     {
       "id": "run.bind.driver-mismatch",
@@ -15474,7 +15347,7 @@
       "statement": "`driver` is `exec` or `\"none\"` behind `transcribe` and `fetch` behind `link_preview`, and a host task names no `engine`; any other pairing raises `DeriveDriverMismatch`.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 124
+      "line": 119
     },
     {
       "id": "run.bind.endpoint-host-bare",
@@ -15485,7 +15358,7 @@
       "statement": "An `endpoint_host` carrying a path, query, port or scheme raises `DeriveEndpointHostNotBare`.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 126
+      "line": 121
     },
     {
       "id": "run.bind.remote-url-unsupported",
@@ -15496,7 +15369,7 @@
       "statement": "An `http` or `https` media value for an engine declining remote addresses raises `DeriveRemoteUrlUnsupported`, naming the `when = \"media_is_url\"` preprocess step.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 128
+      "line": 123
     },
     {
       "id": "run.bind.media-unreadable",
@@ -15507,7 +15380,7 @@
       "statement": "A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing that unit alone.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 130
+      "line": 125
     },
     {
       "id": "run.bind.media-root",
@@ -15518,7 +15391,7 @@
       "statement": "The engine canonicalizes local media paths under the binding's `media_root` ({{store.init.declaration-base}}), defaulting to that declaration base. A path outside the root raises `DeriveMediaOutsideRoot` and fails only that unit.",
       "why": "because a parent row is third-party data, and an unconfined path reads any file the machine's user can",
       "file": "spec/32-derive.md",
-      "line": 132
+      "line": 127
     },
     {
       "id": "run.bind.confidence-range",
@@ -15529,7 +15402,7 @@
       "statement": "A `confidence` outside `0.0..=1.0` after adapter normalization raises `DeriveConfidenceOutOfRange` and lands null.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 134
+      "line": 129
     },
     {
       "id": "run.bind.upstream-excerpt",
@@ -15540,7 +15413,7 @@
       "statement": "An `Upstream` excerpt holds at most 4 KiB and no request body.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 136
+      "line": 131
     },
     {
       "id": "run.bind.engine-unavailable",
@@ -15551,7 +15424,7 @@
       "statement": "If a transcriber returns `EngineUnavailable`, the run ends. If a `LinkReader` returns `EngineUnavailable`, the derive source raises `DeriveLinkEngineUnavailable` and fails only that unit.",
       "why": "P6",
       "file": "spec/32-derive.md",
-      "line": 137
+      "line": 132
     },
     {
       "id": "run.bind.advisory-zone",
@@ -15562,7 +15435,7 @@
       "statement": "A row zone taken from the binding's advisory `zone` key raises `DeriveAdvisoryZone`.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 139
+      "line": 134
     },
     {
       "id": "run.bind.locality-wider",
@@ -15573,7 +15446,7 @@
       "statement": "An engine whose declared locality is wider than the zones its source table admits raises `DeriveLocalityWider` at build, naming the engine, its locality and the table.",
       "why": "because a derived passage carries its parent's content, and an engine outside the parent's zones moves that content where the parent cannot go",
       "file": "spec/32-derive.md",
-      "line": 141
+      "line": 136
     },
     {
       "id": "run.exec.shell-command",
@@ -15584,7 +15457,7 @@
       "statement": "A string-valued `command` raises `DeriveShellCommand`; {{run.exec.no-shell}} runs the argument array.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 150
+      "line": 145
     },
     {
       "id": "run.exec.env-name",
@@ -15595,7 +15468,7 @@
       "statement": "An allowlist name that is not ASCII alphanumeric or underscore, or that leads with a digit, raises `DeriveEnvNameInvalid`.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 152
+      "line": 147
     },
     {
       "id": "run.exec.chain-deadline",
@@ -15606,7 +15479,7 @@
       "statement": "`timeout_secs` bounds one unit's whole chain at 1800 s by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 154
+      "line": 149
     },
     {
       "id": "run.exec.captured-output",
@@ -15617,7 +15490,7 @@
       "statement": "`max_output_bytes` bounds each step's captured standard output and error at 8 MiB by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 155
+      "line": 150
     },
     {
       "id": "run.exec.audit-entries",
@@ -15628,7 +15501,7 @@
       "statement": "A chain contributes at most 64 entries of captured output to the run record.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 156
+      "line": 151
     },
     {
       "id": "run.exec.step-error-excerpt",
@@ -15639,7 +15512,7 @@
       "statement": "A failing step's error text carries at most 4 KiB of its standard error.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 157
+      "line": 152
     },
     {
       "id": "run.exec.non-zero-exit",
@@ -15650,7 +15523,7 @@
       "statement": "A step exiting non-zero raises `DeriveStepExit` carrying its bounded error text into the run audit.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 158
+      "line": 153
     },
     {
       "id": "run.exec.deadline-elapsed",
@@ -15661,7 +15534,7 @@
       "statement": "If a chain exceeds its deadline, the executor raises `DeriveStepTimeout`, naming the running step.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 160
+      "line": 155
     },
     {
       "id": "run.exec.output-cap",
@@ -15672,7 +15545,7 @@
       "statement": "The executor counts and discards output past the bound without buffering. Crossing the bound kills the step and raises `DeriveOutputCap` with the byte count. The executor continues draining so the child does not block.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 162
+      "line": 157
     },
     {
       "id": "run.exec.silent-step",
@@ -15683,7 +15556,7 @@
       "statement": "A preprocess step exiting zero without writing its output file raises `DeriveStepProducedNothing`.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 164
+      "line": 159
     },
     {
       "id": "run.exec.missing-binary",
@@ -15694,7 +15567,7 @@
       "statement": "A `command[0]` that is not an executable file on this machine raises `DeriveBinaryMissing`, naming the binary and the step.",
       "why": "A-connector#executables-content-pinned",
       "file": "spec/32-derive.md",
-      "line": 166
+      "line": 161
     },
     {
       "id": "run.exec.unpinned-path",
@@ -15705,7 +15578,7 @@
       "statement": "A path-form `command[0]` without `sha256` raises `DeriveUnpinnedPath`, quoting the computed digest. A bare search-path name carries no digest.",
       "why": "A-connector#executables-content-pinned",
       "file": "spec/32-derive.md",
-      "line": 168
+      "line": 163
     },
     {
       "id": "run.exec.digest-mismatch",
@@ -15716,7 +15589,7 @@
       "statement": "A pinned file whose bytes differ from its recorded digest raises `DeriveDigestMismatch`.",
       "why": "A-connector#executables-content-pinned",
       "file": "spec/32-derive.md",
-      "line": 170
+      "line": 165
     },
     {
       "id": "run.exec.no-shell",
@@ -15727,7 +15600,7 @@
       "statement": "A step runs as its argument array with no shell, in a process group of its own, under a cleared environment holding only the binding's `env` table.",
       "why": "A-run#derive-engine-machine",
       "file": "spec/32-derive.md",
-      "line": 172
+      "line": 167
     },
     {
       "id": "run.exec.step-condition",
@@ -15738,7 +15611,7 @@
       "statement": "A preprocess step runs only while its `when` holds: `media_is_url` for an `http` or `https` input, `engine_requires_pcm16_wav` for an input other than 16-bit PCM WAV; another name raises `DeriveStepConditionUnknown`.",
       "why": "because a misspelled condition otherwise skips or runs its step silently",
       "file": "spec/32-derive.md",
-      "line": 174
+      "line": 169
     },
     {
       "id": "run.exec.verified-spawn",
@@ -15749,7 +15622,7 @@
       "statement": "Before each spawn, the executor re-reads the step's binary and compares its bytes with the digest resolved at run start. A mismatch follows {{run.exec.digest-mismatch}}; matching bytes permit execution.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 176
+      "line": 171
     },
     {
       "id": "run.exec.engine-id",
@@ -15760,7 +15633,7 @@
       "statement": "An `exec` engine id reads `exec:<name>@<prefix>`, the prefix being 12 chars of lowercase hex over every step's binary digest and arguments.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 177
+      "line": 172
     },
     {
       "id": "run.exec.vendor-deadline",
@@ -15771,7 +15644,7 @@
       "statement": "A vendor engine, a binding naming an `endpoint_host`, holds `request_timeout_secs` as its engine step's deadline, clipped to the time {{run.exec.chain-deadline}} leaves, so a stalled vendor fails its unit before the chain elapses.",
       "why": "because a chain deadline alone lets one stalled vendor call spend the unit's whole budget with no step to name",
       "file": "spec/32-derive.md",
-      "line": 178
+      "line": 173
     },
     {
       "id": "run.fetch.scheme",
@@ -15782,7 +15655,7 @@
       "statement": "An address whose scheme is neither `http` nor `https` raises `DeriveSchemeUnsupported` before any socket opens.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/32-derive.md",
-      "line": 205
+      "line": 180
     },
     {
       "id": "run.fetch.address-literal",
@@ -15793,7 +15666,7 @@
       "statement": "A host written as an address literal raises `DeriveAddressLiteral`.",
       "why": "A-connector#outbound-transport-origin",
       "file": "spec/32-derive.md",
-      "line": 207
+      "line": 182
     },
     {
       "id": "run.fetch.redirect-chain",
@@ -15804,7 +15677,7 @@
       "statement": "A redirect chain runs to at most 5 hops.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 209
+      "line": 184
     },
     {
       "id": "run.fetch.binding-key",
@@ -15815,7 +15688,7 @@
       "statement": "A {{type:contextful_core::run::derive::config::Binding}} key `env`, `preprocess`, `engine` or `max_output_bytes` on a fetch binding raises `DeriveFetchBindingKey`, naming the key.",
       "why": "because a silently ignored key leaves an operator believing a fetch carries a credential or runs a process",
       "file": "spec/32-derive.md",
-      "line": 210
+      "line": 185
     },
     {
       "id": "run.fetch.document-prefix",
@@ -15826,7 +15699,7 @@
       "statement": "`max_document_bytes` bounds the scanned document prefix at 1 MiB by default, dropping the remainder.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 212
+      "line": 187
     },
     {
       "id": "run.fetch.probe-prefix",
@@ -15837,7 +15710,7 @@
       "statement": "`max_probe_bytes` bounds one picture range request at 64 KiB by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 213
+      "line": 188
     },
     {
       "id": "run.fetch.hop-timeout",
@@ -15848,7 +15721,7 @@
       "statement": "`request_timeout_secs` bounds one hop at 20 s by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 214
+      "line": 189
     },
     {
       "id": "run.fetch.retry-after-default",
@@ -15859,7 +15732,7 @@
       "statement": "A `429` without a usable `Retry-After` maps to `RateLimited` carrying 60 s.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 215
+      "line": 190
     },
     {
       "id": "run.fetch.charset",
@@ -15870,7 +15743,7 @@
       "statement": "A declared character set other than UTF-8 raises `DeriveCharsetUnsupported`, naming the value.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/32-derive.md",
-      "line": 216
+      "line": 191
     },
     {
       "id": "run.fetch.not-utf8",
@@ -15881,7 +15754,7 @@
       "statement": "If a document declares no character set and fails UTF-8 validation, the fetch driver raises `DeriveBytesNotUtf8`. The validator tolerates a character split at the byte bound.",
       "why": "A-connector#untrusted-input-decodes",
       "file": "spec/32-derive.md",
-      "line": 218
+      "line": 193
     },
     {
       "id": "run.fetch.head-rows",
@@ -15892,7 +15765,7 @@
       "statement": "A link preview lands one passage for non-empty head title or description and one passage per distinct advertised head image, each carrying the scrubbed page URL and each image its probe status.",
       "why": "because the head and its image claims remain separately citable, including an image whose probe fails",
       "file": "spec/32-derive.md",
-      "line": 220,
+      "line": 195,
       "scenarios": [
         "WHEN a page head declares a title, description and one image, THEN the output holds one text passage and one image passage with its probe status."
       ]
@@ -15906,7 +15779,7 @@
       "statement": "Per-unit failure state recorded outside the output table raises `DeriveFailureOffTable`.",
       "why": "A-run#derive-work-set",
       "file": "spec/32-derive.md",
-      "line": 249
+      "line": 206
     },
     {
       "id": "run.emit.unit-status",
@@ -15917,7 +15790,7 @@
       "statement": "`unit_status` is `ok`, `empty` where the engine established nothing to derive, `unavailable` where it returned nothing and stated no reason, or `failed` on a typed error; any other value raises `DeriveUnitStatusUnknown`.",
       "why": "A-run#derive-work-set",
       "file": "spec/32-derive.md",
-      "line": 251
+      "line": 208
     },
     {
       "id": "run.emit.reserved-discriminator",
@@ -15928,7 +15801,7 @@
       "statement": "A derive table declaring a column named `kind` raises `DeriveReservedDiscriminator`.",
       "why": "A-run#derive-work-set",
       "file": "spec/32-derive.md",
-      "line": 253
+      "line": 210
     },
     {
       "id": "run.emit.settled-revived",
@@ -15939,7 +15812,7 @@
       "statement": "A unit that settles under its current key while a tick derives it raises `DeriveSettledUnitRevived`, and that tick lands none of its rows; a changed key revives nothing.",
       "why": "A-run#derivation-key-decides",
       "file": "spec/32-derive.md",
-      "line": 255
+      "line": 212
     },
     {
       "id": "run.emit.attempts",
@@ -15950,7 +15823,7 @@
       "statement": "`attempts` is the prior count under the row's key plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 257
+      "line": 214
     },
     {
       "id": "run.emit.unredacted-error",
@@ -15961,7 +15834,7 @@
       "statement": "A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.",
       "why": "A-authority#redaction-no-copy",
       "file": "spec/32-derive.md",
-      "line": 258
+      "line": 215
     },
     {
       "id": "run.emit.primary-key",
@@ -15972,7 +15845,7 @@
       "statement": "A derive output table or host marker table without `primary_key` `[\"unit_ref\", \"derivation_key\", \"cue_seq\"]`, or a host content table whose key does not open with `unit_ref` and `derivation_key`, raises `DerivePrimaryKeyMissing`.",
       "why": "because a re-derived unit otherwise lands its new passages over the originals, or beside them with no key telling them apart",
       "file": "spec/32-derive.md",
-      "line": 260
+      "line": 217
     },
     {
       "id": "run.emit.derivation-key",
@@ -15983,7 +15856,7 @@
       "statement": "Every passage and marker row carries `derivation_key`: lowercase hex SHA-256 over the engine id, the binding less its bounds and `zone`, the output table's declared columns, and the parent row's id, media value and `derivation_key`.",
       "why": "A-run#derivation-key-decides",
       "file": "spec/32-derive.md",
-      "line": 262
+      "line": 219
     },
     {
       "id": "run.emit.stale-supersedes",
@@ -15994,7 +15867,7 @@
       "statement": "A unit's latest `ok` or `empty` landing supersedes rows landed earlier under another key. Those rows answer until that landing. The next fold drops the superseded rows and rebuilds the table's sidecars without them.",
       "why": "A-run#derivation-key-decides, A-run#derived-unit-follows",
       "file": "spec/32-derive.md",
-      "line": 264
+      "line": 221
     },
     {
       "id": "run.emit.task-version",
@@ -16005,7 +15878,7 @@
       "statement": "A host task's `derivation_key` hashes its registered name, its `task_version` and the parent row's id, declared columns and `derivation_key`, so raising the version re-selects every settled unit.",
       "why": "A-run#host-registered-derive",
       "file": "spec/32-derive.md",
-      "line": 266
+      "line": 223
     },
     {
       "id": "run.emit.host-rows",
@@ -16016,7 +15889,7 @@
       "statement": "A host task's content row carries its unit's `unit_ref`, `derivation_key` and `task_version`, `kind` `passage` and `unit_status` `ok`; every unit lands one marker, `ok` over content rows, `empty` over none.",
       "why": "A-run#derive-work-set",
       "file": "spec/32-derive.md",
-      "line": 268
+      "line": 225
     },
     {
       "id": "run.emit.content-empty",
@@ -16027,7 +15900,7 @@
       "statement": "A host unit landing no row in a content table lands one `kind` `marker`, `unit_status` `empty` row there under its key, so {{run.emit.stale-supersedes}} holds in every content table.",
       "why": "because a read and a fold supersede from one table's rows alone, so a content table never seeing the unit's newest key keeps its stale rows answering",
       "file": "spec/32-derive.md",
-      "line": 270
+      "line": 227
     },
     {
       "id": "run.emit.content-marker-retention-clock",
@@ -16038,7 +15911,7 @@
       "statement": "A generated host marker copies a custom {{store.declare.retain-rows}} timestamp from the parent row when the parent carries a same-named column.",
       "why": "because a generated empty marker must carry the declared clock before the content table accepts its landing",
       "file": "spec/32-derive.md",
-      "line": 272
+      "line": 229
     },
     {
       "id": "run.emit.output-tables",
@@ -16049,7 +15922,7 @@
       "statement": "A host-task pipeline declares exactly its task's marker and content tables, and a unit returns rows for its content tables alone; either breach raises `DeriveOutputTablesMismatch`, the second failing that unit alone.",
       "why": "A-run#derive-work-set",
       "file": "spec/32-derive.md",
-      "line": 274
+      "line": 231
     },
     {
       "id": "run.emit.marker-last",
@@ -16060,7 +15933,7 @@
       "statement": "A host-task run commits each content table under its own commit, then the marker table, and a content table failing stops the fire before its marker lands, so the unit re-runs and its rows collapse by key.",
       "why": "A-run#derive-work-set",
       "file": "spec/32-derive.md",
-      "line": 276
+      "line": 233
     },
     {
       "id": "run.emit.version-retained",
@@ -16071,7 +15944,7 @@
       "statement": "On an output table declaring `retain_versions`, {{run.emit.stale-supersedes}} holds per unit and `task_version`, so rows under an earlier task version stay current under that version beside the newer version's rows.",
       "why": "A-run#host-registered-derive",
       "file": "spec/32-derive.md",
-      "line": 278
+      "line": 235
     },
     {
       "id": "run.emit.marker-row",
@@ -16082,7 +15955,7 @@
       "statement": "A unit yielding no passage lands one marker row, `cue_seq` -1 and `kind` `marker`, carrying its status, attempts, last error and whether it retries.",
       "why": "A-run#derivation-key-decides",
       "file": "spec/32-derive.md",
-      "line": 280
+      "line": 237
     },
     {
       "id": "run.emit.empty-document",
@@ -16093,7 +15966,7 @@
       "statement": "Only a WebVTT document whose blocks are its header, notes and styles establishes nothing to derive; empty output, or blocks none of which parse, lands `unavailable`.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 282
+      "line": 239
     },
     {
       "id": "run.emit.canceled-unit",
@@ -16104,7 +15977,7 @@
       "statement": "A unit whose chain a run stop interrupts lands no row and charges no attempt; the pull ends `Canceled` once {{run.cancel.child-reaped}}.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 283
+      "line": 240
     },
     {
       "id": "run.emit.output-modality",
@@ -16115,7 +15988,7 @@
       "statement": "A text passage extracted from a video parent carries `_modality` `text`, and an advertised image passage carries `image`, each under {{store.reserve.modality}}.",
       "why": "A-run#passage-s-modality",
       "file": "spec/32-derive.md",
-      "line": 284,
+      "line": 241,
       "scenarios": [
         "WHEN a video parent yields a transcript passage and an advertised picture, THEN their output modalities are `text` and `image`."
       ]
@@ -16129,7 +16002,7 @@
       "statement": "A local media unit's {{run.emit.derivation-key}} includes a SHA-256 digest of canonical file bytes, so changed bytes under an unchanged path reselect the unit.",
       "why": "A-run#derived-unit-follows",
       "file": "spec/32-derive.md",
-      "line": 286,
+      "line": 243,
       "scenarios": [
         "WHEN a local file changes bytes under the same path, THEN the next tick selects its unit under another key."
       ]
@@ -16143,7 +16016,7 @@
       "statement": "Every passage and marker row keyed as {{run.emit.primary-key}} carries `derived_id`, lowercase hex SHA-256 over its `unit_ref`, `derivation_key` and `cue_seq`, and a sidecar over such a table defaults its `id_column` to `derived_id`.",
       "why": "because a sidecar re-joins on one column, and a producer column outside the reserved underscore namespace needs no store change",
       "file": "spec/32-derive.md",
-      "line": 288
+      "line": 245
     },
     {
       "id": "run.parse-cues.backward-cue",
@@ -16154,7 +16027,7 @@
       "statement": "If a block starts before the last accepted block, the caption parser raises `DeriveCueOutOfOrder` and drops the block.",
       "why": "P4",
       "file": "spec/32-derive.md",
-      "line": 300
+      "line": 257
     },
     {
       "id": "run.parse-cues.passage-chars",
@@ -16165,7 +16038,7 @@
       "statement": "A passage stays open while it holds fewer than 600 chars.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 302
+      "line": 259
     },
     {
       "id": "run.parse-cues.passage-span",
@@ -16176,7 +16049,7 @@
       "statement": "A passage stays open while it spans less than 60 s.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 303
+      "line": 260
     },
     {
       "id": "run.parse-cues.passage-bytes",
@@ -16187,7 +16060,7 @@
       "statement": "One passage's text holds at most 8 KiB.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 304
+      "line": 261
     },
     {
       "id": "run.parse-cues.passages-per-document",
@@ -16198,7 +16071,7 @@
       "statement": "One document yields at most 2000 rows of passages.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 305
+      "line": 262
     },
     {
       "id": "run.parse-cues.grammar",
@@ -16209,7 +16082,7 @@
       "statement": "SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 306
+      "line": 263
     },
     {
       "id": "run.test-engine.unsupported-driver",
@@ -16220,7 +16093,7 @@
       "statement": "A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`.",
       "why": "because the verb drives a transcriber over media, and a link engine takes no media",
       "file": "spec/32-derive.md",
-      "line": 312
+      "line": 269
     },
     {
       "id": "connector.export.authoring-path",
@@ -33775,7 +33648,6 @@
     ],
     "A-run#derive-work-set": [
       "run.select.anti-join",
-      "run.select.derive-failed-parent",
       "run.select.parent-scan",
       "run.emit.failure-off-table",
       "run.emit.unit-status",
@@ -34212,8 +34084,7 @@
     ],
     "A-surface#store-driven-job": [
       "run.journal.store-input",
-      "run.journal.input-pin",
-      "run.journal.host-structure-pin"
+      "run.journal.input-pin"
     ],
     "A-surface#synced-control-head": [
       "store.push.control-artifact",
@@ -35340,14 +35211,6 @@
       "run.own.pinned-plan-changed"
     ],
     [
-      "run.journal.host-structure-pin",
-      "run.own.pinned-plan-changed"
-    ],
-    [
-      "run.journal.host-structure-pin",
-      "run.journal.input-pin"
-    ],
-    [
       "run.journal.row-step",
       "run.journal.idempotency-key"
     ],
@@ -35408,7 +35271,7 @@
       "run.retry.waiting-state"
     ],
     [
-      "run.retry.shared-path",
+      "run.retry.one-layer",
       "run.retry.not-before"
     ],
     [
@@ -35524,15 +35387,11 @@
       "store.reserve.injected"
     ],
     [
-      "run.record.sweep-bounds",
-      "run.record.input-bounds"
-    ],
-    [
       "run.project.wire-snapshot",
       "run.record.status-set"
     ],
     [
-      "run.project.catch-up",
+      "run.project.connect",
       "run.project.broadcast-ring"
     ],
     [
@@ -37424,6 +37283,166 @@
       ],
       "clauses": [
         "run.project.step-view"
+      ]
+    },
+    "contextful_core::run::record::InputBounds": {
+      "file": "crates/contextful-core/src/run/record.rs",
+      "line": 233,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "as_of"
+        },
+        {
+          "name": "snapshots"
+        },
+        {
+          "name": "rows"
+        },
+        {
+          "name": "available_as_of"
+        },
+        {
+          "name": "valid_as_of"
+        },
+        {
+          "name": "sweep_id"
+        },
+        {
+          "name": "origin"
+        }
+      ],
+      "clauses": [
+        "run.record.sweep-bounds"
+      ]
+    },
+    "contextful_core::run::record::RunRow": {
+      "file": "crates/contextful-core/src/run/record.rs",
+      "line": 127,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "run_id"
+        },
+        {
+          "name": "pipeline_id"
+        },
+        {
+          "name": "table"
+        },
+        {
+          "name": "site_id"
+        },
+        {
+          "name": "status"
+        },
+        {
+          "name": "owner"
+        },
+        {
+          "name": "started_at"
+        },
+        {
+          "name": "ended_at"
+        },
+        {
+          "name": "rows",
+          "doc": "Rows and bytes measured at the destination (`run.record.skipped-count`)."
+        },
+        {
+          "name": "bytes"
+        },
+        {
+          "name": "batches",
+          "doc": "Batches the run landed."
+        },
+        {
+          "name": "skipped",
+          "doc": "Inputs the run's pulls declared skipped, summed (`run.record.skipped-count`)."
+        },
+        {
+          "name": "fetched",
+          "doc": "Rows the run's pulls carried into the transform chain, summed (`run.land.ingest-tally`)."
+        },
+        {
+          "name": "kept",
+          "doc": "Rows the transform chain kept for staging, summed; `fetched - kept` is the rows its `filter` operations dropped (`run.land.ingest-tally`)."
+        },
+        {
+          "name": "declined",
+          "doc": "What the run's directory walks declined, tallied by extension and summed over its pulls (`connector.source.declined-tally`)."
+        },
+        {
+          "name": "audit",
+          "doc": "Captured output the run's pulls recorded, in pull order (`run.exec.audit-entries`)."
+        },
+        {
+          "name": "error_kind"
+        },
+        {
+          "name": "error_message"
+        },
+        {
+          "name": "connector_id"
+        },
+        {
+          "name": "connector_version"
+        },
+        {
+          "name": "connector_hash"
+        },
+        {
+          "name": "trace_id"
+        },
+        {
+          "name": "phase"
+        },
+        {
+          "name": "pipeline_phase",
+          "doc": "The pipeline phase the run ran under; a seed chunk's run records `seeding`, its only attribution beside the load id (`run.seed.one-land-path`). Absent for every other run."
+        },
+        {
+          "name": "execution_id",
+          "doc": "The execution whose journal this attempt resolves against (`run.own.execution-id-keys-the-journal`)."
+        },
+        {
+          "name": "plan_ref",
+          "doc": "Immutable plan identity admitted at this attempt's open, retained after retirement."
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "host_scope",
+          "doc": "The host scope an execution opened under; `None` for a table or chunk run, whose pipeline and table name its scope (`run.own.host-scope`)."
+        },
+        {
+          "name": "input",
+          "doc": "A store-driven run's input (`run.record.sweep-bounds`); `None` for every other run."
+        },
+        {
+          "name": "failed_branches",
+          "doc": "Each fan-out branch that failed into a join declaring `allow_partial`, with its label and failure tag (`run.journal.fan-out-join`)."
+        },
+        {
+          "name": "credential_providers",
+          "doc": "Each logical name the run hydrated, mapped to the adapter that answered it, names only; a row recorded without the field decodes as empty (`connector.record.provider-attribution`)."
+        },
+        {
+          "name": "bound_hits",
+          "doc": "Every declared resource bound a connector struck, in the order struck, a hit a later attempt recovered from included; a row recorded without the list decodes as empty (`run.retry.bound-hit-recorded`)."
+        },
+        {
+          "name": "next_attempt_at",
+          "doc": "A `waiting` attempt's next-attempt instant (`run.retry.waiting-state`); absent on every other row."
+        },
+        {
+          "name": "unpushed",
+          "doc": "A run committed on a disposable disk whose run manifest no committed push has carried (`store.drain.mark`); absent on every other row."
+        }
+      ],
+      "clauses": [
+        "run.record.columns"
       ]
     },
     "contextful_core::run::record::RunStatus": {
@@ -52747,7 +52766,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "the_run_row_holds_every_pulls_declined_tally_by_extension",
-        "line": 1181,
+        "line": 1183,
         "verdict": "performed",
         "proved": false
       }
@@ -53865,7 +53884,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_receive_batch_key_resumes_its_own_owner_and_no_other_keys",
-        "line": 1482,
+        "line": 1484,
         "verdict": "performed",
         "proved": false
       }
@@ -59905,7 +59924,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "the_position_commits_with_the_rows_and_the_catalog_caches_it",
-        "line": 896,
+        "line": 898,
         "verdict": "performed",
         "proved": false
       }
@@ -59915,7 +59934,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_token_cursor_moves_under_one_writer_and_a_watermark_never_rewinds",
-        "line": 999,
+        "line": 1001,
         "verdict": "performed",
         "proved": false
       }
@@ -59925,7 +59944,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_marker_the_catalog_missed_retires_its_owner_before_replay",
-        "line": 289,
+        "line": 291,
         "verdict": "performed",
         "proved": false
       },
@@ -59933,7 +59952,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_position_round_trips_untouched_and_each_table_keeps_its_own",
-        "line": 1449,
+        "line": 1451,
         "verdict": "performed",
         "proved": false
       }
@@ -59981,7 +60000,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "every_poll_re_lands_the_boundary_instant",
-        "line": 929,
+        "line": 931,
         "verdict": "performed",
         "proved": false
       }
@@ -60031,7 +60050,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_monotonic_walk_ends_when_the_source_repeats_its_position",
-        "line": 692,
+        "line": 694,
         "verdict": "performed",
         "proved": false
       }
@@ -60649,7 +60668,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_pointer_clock_reads_a_nested_value_from_each_row",
-        "line": 973,
+        "line": 975,
         "verdict": "performed",
         "proved": false
       }
@@ -61962,6 +61981,14 @@
         "line": 13,
         "verdict": "performed",
         "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-engine/tests/integration/items.rs",
+        "name": "terminal_sibling_failure_does_not_pin_later_fires_to_old_input",
+        "line": 524,
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "run.items.delegated-item": [
@@ -62064,16 +62091,6 @@
         "proved": false
       }
     ],
-    "run.items.terminal-input": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-engine/tests/integration/items.rs",
-        "name": "terminal_sibling_failure_does_not_pin_later_fires_to_old_input",
-        "line": 524,
-        "verdict": "performed",
-        "proved": false
-      }
-    ],
     "run.items.terminal-outcome": [
       {
         "kind": "test",
@@ -62143,7 +62160,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/drive.rs",
         "name": "protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call",
-        "line": 531,
+        "line": 533,
         "verdict": "performed",
         "proved": false
       }
@@ -62185,9 +62202,17 @@
     "run.journal.collection": [
       {
         "kind": "test",
+        "path": "crates/contextful-engine/tests/integration/retire.rs",
+        "name": "a_delete_the_catalog_commit_outran_repeats_at_the_next_open",
+        "line": 83,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "retirement_collects_the_executions_journal",
-        "line": 270,
+        "line": 272,
         "verdict": "performed",
         "proved": false
       }
@@ -62388,16 +62413,6 @@
         "proved": false
       }
     ],
-    "run.journal.host-structure-pin": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-core/tests/integration/run/drive.rs",
-        "name": "structural_identity_binds_the_plan_and_pending_owner_without_changing_input_text",
-        "line": 150,
-        "verdict": "performed",
-        "proved": false
-      }
-    ],
     "run.journal.idempotency-key": [
       {
         "kind": "test",
@@ -62421,19 +62436,17 @@
     "run.journal.input-pin": [
       {
         "kind": "test",
-        "path": "crates/contextful-engine/tests/integration/drive.rs",
-        "name": "a_resume_under_a_changed_statement_or_as_of_refuses_before_any_replay",
-        "line": 259,
+        "path": "crates/contextful-core/tests/integration/run/drive.rs",
+        "name": "structural_identity_binds_the_plan_and_pending_owner_without_changing_input_text",
+        "line": 150,
         "verdict": "performed",
         "proved": false
-      }
-    ],
-    "run.journal.input-replay": [
+      },
       {
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/drive.rs",
-        "name": "a_resume_iterates_the_recorded_rows_whatever_the_store_holds_since",
-        "line": 192,
+        "name": "a_resume_under_a_changed_statement_or_as_of_refuses_before_any_replay",
+        "line": 261,
         "verdict": "performed",
         "proved": false
       }
@@ -62491,7 +62504,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/suspend.rs",
         "name": "a_payload_above_the_cutoff_lands_in_the_blob_store",
-        "line": 84,
+        "line": 85,
         "verdict": "performed",
         "proved": false
       }
@@ -62500,8 +62513,16 @@
       {
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/drive.rs",
+        "name": "a_resume_iterates_the_recorded_rows_whatever_the_store_holds_since",
+        "line": 192,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-engine/tests/integration/drive.rs",
         "name": "an_undeclared_as_of_is_the_open_instant_and_a_resume_keeps_it",
-        "line": 216,
+        "line": 217,
         "verdict": "performed",
         "proved": false
       }
@@ -62586,22 +62607,12 @@
         "proved": false
       }
     ],
-    "run.journal.retire-order": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-engine/tests/integration/retire.rs",
-        "name": "a_delete_the_catalog_commit_outran_repeats_at_the_next_open",
-        "line": 83,
-        "verdict": "performed",
-        "proved": false
-      }
-    ],
     "run.journal.row-concurrency": [
       {
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/drive.rs",
         "name": "at_most_max_in_flight_rows_run_and_a_failed_row_admits_no_further_row",
-        "line": 287,
+        "line": 289,
         "verdict": "performed",
         "proved": false
       }
@@ -62817,7 +62828,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_type_declared_after_its_column_staged_refuses",
-        "line": 1218,
+        "line": 1220,
         "verdict": "performed",
         "proved": false
       }
@@ -63787,7 +63798,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "each_batch_stages_before_the_next_pull",
-        "line": 420,
+        "line": 422,
         "verdict": "performed",
         "proved": false
       }
@@ -63845,7 +63856,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/drive.rs",
         "name": "protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call",
-        "line": 532,
+        "line": 534,
         "verdict": "performed",
         "proved": false
       }
@@ -63865,7 +63876,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_window_staging_two_gib_completes_in_one_fire",
-        "line": 474,
+        "line": 476,
         "verdict": "performed",
         "proved": false
       }
@@ -63875,7 +63886,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_monotonic_checkpoint_waits_for_a_strict_frontier_advance",
-        "line": 655,
+        "line": 657,
         "verdict": "performed",
         "proved": false
       }
@@ -63885,7 +63896,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_run_id_too_long_for_a_checkpoint_commits_nothing",
-        "line": 536,
+        "line": 538,
         "verdict": "performed",
         "proved": false
       }
@@ -63895,7 +63906,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_failed_run_records_what_its_checkpoints_landed",
-        "line": 578,
+        "line": 580,
         "verdict": "performed",
         "proved": false
       }
@@ -63905,7 +63916,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_fire_after_a_crash_resumes_from_the_last_checkpoint",
-        "line": 513,
+        "line": 515,
         "verdict": "performed",
         "proved": false
       }
@@ -63915,7 +63926,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_window_staging_two_gib_completes_in_one_fire",
-        "line": 475,
+        "line": 477,
         "verdict": "performed",
         "proved": false
       }
@@ -63925,7 +63936,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "an_interrupted_url_walk_resumes_from_its_first_page",
-        "line": 831,
+        "line": 833,
         "verdict": "performed",
         "proved": false
       }
@@ -63975,7 +63986,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_marker_the_catalog_missed_retires_its_owner_before_replay",
-        "line": 290,
+        "line": 292,
         "verdict": "performed",
         "proved": false
       }
@@ -63985,7 +63996,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_run_commits_once_and_a_crash_commits_nothing",
-        "line": 351,
+        "line": 353,
         "verdict": "performed",
         "proved": false
       }
@@ -64023,7 +64034,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_moved_build_under_a_pending_owner_is_refused_before_replay",
-        "line": 313,
+        "line": 315,
         "verdict": "performed",
         "proved": false
       }
@@ -64103,7 +64114,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "source_stage_schema_refusal_releases_recorded_pulls_without_advancing_the_committed_cursor",
-        "line": 1285,
+        "line": 1287,
         "verdict": "performed",
         "proved": false
       }
@@ -64153,7 +64164,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_run_staging_past_the_bound_commits_nothing",
-        "line": 439,
+        "line": 441,
         "verdict": "performed",
         "proved": false
       }
@@ -64233,7 +64244,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/project.rs",
         "name": "a_restarted_hub_holds_nothing_and_recovers_from_the_record",
-        "line": 169,
+        "line": 171,
         "verdict": "performed",
         "proved": false
       },
@@ -64256,22 +64267,12 @@
         "proved": false
       }
     ],
-    "run.project.catch-up": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-engine/tests/integration/project.rs",
-        "name": "a_late_joiner_replays_the_held_ring_before_live_updates",
-        "line": 189,
-        "verdict": "performed",
-        "proved": false
-      }
-    ],
     "run.project.channel-eviction": [
       {
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/project.rs",
         "name": "a_terminal_channel_is_evicted_after_60_s",
-        "line": 227,
+        "line": 229,
         "verdict": "performed",
         "proved": false
       }
@@ -64291,7 +64292,15 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/project.rs",
         "name": "connect_hands_over_the_folded_snapshot_then_every_later_update_once",
-        "line": 142,
+        "line": 144,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-engine/tests/integration/project.rs",
+        "name": "a_late_joiner_replays_the_held_ring_before_live_updates",
+        "line": 191,
         "verdict": "performed",
         "proved": false
       }
@@ -64601,17 +64610,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/run/record.rs",
         "name": "a_run_row_carries_every_column",
-        "line": 243,
-        "verdict": "performed",
-        "proved": false
-      }
-    ],
-    "run.record.counts-at-destination": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-engine/tests/integration/runner.rs",
-        "name": "counts_come_from_the_destination",
-        "line": 1062,
+        "line": 242,
         "verdict": "performed",
         "proved": false
       }
@@ -64672,16 +64671,6 @@
         "path": "crates/contextful-sqlite/tests/integration/machine.rs",
         "name": "history_selects_its_window_over_an_indexed_start_column",
         "line": 577,
-        "verdict": "performed",
-        "proved": false
-      }
-    ],
-    "run.record.input-bounds": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-engine/tests/integration/drive.rs",
-        "name": "the_run_row_carries_the_input_as_of_snapshots_and_row_count",
-        "line": 410,
         "verdict": "performed",
         "proved": false
       }
@@ -64751,7 +64740,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "the_row_exists_before_the_first_pull",
-        "line": 1044,
+        "line": 1046,
         "verdict": "performed",
         "proved": false
       }
@@ -64810,8 +64799,16 @@
       {
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
+        "name": "counts_come_from_the_destination",
+        "line": 1064,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "the_run_row_sums_the_skipped_count_of_every_pull",
-        "line": 1141,
+        "line": 1143,
         "verdict": "performed",
         "proved": false
       }
@@ -64829,9 +64826,17 @@
     "run.record.sweep-bounds": [
       {
         "kind": "test",
+        "path": "crates/contextful-engine/tests/integration/drive.rs",
+        "name": "the_run_row_carries_the_input_as_of_snapshots_and_row_count",
+        "line": 412,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-engine/tests/integration/sweep.rs",
         "name": "an_origin_row_names_its_bounds_sweep_and_origin",
-        "line": 237,
+        "line": 238,
         "verdict": "performed",
         "proved": false
       }
@@ -64899,7 +64904,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "every_bound_hit_lands_on_the_run_record_even_when_a_retry_recovers",
-        "line": 1555,
+        "line": 1557,
         "verdict": "performed",
         "proved": false
       }
@@ -64985,9 +64990,17 @@
     "run.retry.one-layer": [
       {
         "kind": "test",
+        "path": "crates/contextful-engine/tests/integration/not_before.rs",
+        "name": "a_restart_between_reschedule_and_resume_keeps_the_time_and_the_attempt_count",
+        "line": 262,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-wasm/tests/integration/meter.rs",
         "name": "the_adapter_the_mint_and_the_meter_each_return_their_failure_once",
-        "line": 154,
+        "line": 155,
         "verdict": "performed",
         "proved": false
       }
@@ -64997,7 +65010,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_run_failing_after_a_stage_commits_nothing_and_closes_failed",
-        "line": 392,
+        "line": 394,
         "verdict": "performed",
         "proved": false
       }
@@ -65007,7 +65020,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_rate_limited_source_paces_its_own_run_and_no_other",
-        "line": 1391,
+        "line": 1393,
         "verdict": "performed",
         "proved": false
       }
@@ -65056,16 +65069,6 @@
         "path": "crates/contextful-core/tests/integration/run/retry.rs",
         "name": "a_schedule_carries_backoff_attempts_clamp_jitter_and_retry_on",
         "line": 45,
-        "verdict": "performed",
-        "proved": false
-      }
-    ],
-    "run.retry.shared-path": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-engine/tests/integration/not_before.rs",
-        "name": "a_restart_between_reschedule_and_resume_keeps_the_time_and_the_attempt_count",
-        "line": 262,
         "verdict": "performed",
         "proved": false
       }
@@ -65310,16 +65313,6 @@
         "proved": false
       }
     ],
-    "run.select.derive-failed-parent": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-cli/tests/integration/derive.rs",
-        "name": "a_child_reads_committed_parent_rows_after_its_parent_fails",
-        "line": 314,
-        "verdict": "performed",
-        "proved": false
-      }
-    ],
     "run.select.derive-order": [
       {
         "kind": "test",
@@ -65431,6 +65424,14 @@
       }
     ],
     "run.select.parent-outcome": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/derive.rs",
+        "name": "a_child_reads_committed_parent_rows_after_its_parent_fails",
+        "line": 314,
+        "verdict": "performed",
+        "proved": false
+      },
       {
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/derive.rs",
@@ -65558,16 +65559,6 @@
         "proved": false
       }
     ],
-    "run.suspend.idempotent-resolution": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-core/tests/integration/run/suspend.rs",
-        "name": "an_identical_second_resolution_returns_the_recorded_value",
-        "line": 42,
-        "verdict": "performed",
-        "proved": false
-      }
-    ],
     "run.suspend.postgres-reconciliation": [
       {
         "kind": "test",
@@ -65583,7 +65574,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/drive.rs",
         "name": "a_timed_out_wait_is_a_recorded_step_every_re_entry_reads",
-        "line": 489,
+        "line": 491,
         "verdict": "performed",
         "proved": false
       }
@@ -65601,9 +65592,17 @@
     "run.suspend.resume-is-a-step-output": [
       {
         "kind": "test",
+        "path": "crates/contextful-core/tests/integration/run/suspend.rs",
+        "name": "an_identical_second_resolution_returns_the_recorded_value",
+        "line": 42,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-engine/tests/integration/suspend.rs",
         "name": "a_resumed_run_reads_its_payload_back_from_the_journal",
-        "line": 50,
+        "line": 51,
         "verdict": "performed",
         "proved": false
       }
@@ -65623,7 +65622,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/drive.rs",
         "name": "a_parked_row_frees_its_slot_and_re_enters_on_its_payload_or_its_deadline",
-        "line": 451,
+        "line": 453,
         "verdict": "performed",
         "proved": false
       }
@@ -65633,7 +65632,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/suspend.rs",
         "name": "a_restart_keeps_every_pending_callback",
-        "line": 103,
+        "line": 104,
         "verdict": "performed",
         "proved": false
       }
@@ -65643,7 +65642,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/suspend.rs",
         "name": "an_unknown_token_is_refused_and_writes_nothing",
-        "line": 66,
+        "line": 67,
         "verdict": "performed",
         "proved": false
       }
@@ -65713,7 +65712,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/sweep.rs",
         "name": "a_resume_under_a_changed_sweep_meets_a_pin_mismatch",
-        "line": 258,
+        "line": 259,
         "verdict": "performed",
         "proved": false
       }
@@ -71269,7 +71268,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_component_connector_runs_on_an_engine_wiring_its_world",
-        "line": 1086,
+        "line": 1088,
         "verdict": "performed",
         "proved": false
       }
@@ -71819,7 +71818,7 @@
         "kind": "test",
         "path": "crates/contextful-engine/tests/integration/runner.rs",
         "name": "a_component_connector_runs_on_an_engine_wiring_its_world",
-        "line": 1087,
+        "line": 1089,
         "verdict": "performed",
         "proved": false
       }

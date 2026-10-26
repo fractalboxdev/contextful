@@ -39,7 +39,7 @@ fn a_timeout_sticks_under_any_later_instant() {
 }
 
 /// Resolving a token again with the identical payload returns the recorded value.
-// spec: run.suspend.idempotent-resolution@96d13cc8
+// spec: run.suspend.resume-is-a-step-output@f6776353
 #[test]
 fn an_identical_second_resolution_returns_the_recorded_value() {
     let mut a = minted();

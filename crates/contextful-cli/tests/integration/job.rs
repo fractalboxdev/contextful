@@ -10,7 +10,7 @@ use std::process::{Command, Output};
 
 const AUD: &str = "contextful://acme-research";
 
-// spec: run.items.completion@d0744f84
+// spec: run.items.completion@080e93f0
 #[test]
 fn isolated_items_skip_completed_paid_calls_and_outputs_on_later_fires() {
     for prepared in [false,true] {

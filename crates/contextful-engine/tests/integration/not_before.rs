@@ -259,7 +259,7 @@ fn a_crash_during_an_in_ceiling_sleep_resumes_the_remaining_wait() {
 /// A restart between a reschedule and its resume keeps the stored instant and the attempt
 /// count, and the attempt budget carries over to the resumed attempt.
 // spec: run.retry.not-before@bb80cde6
-// spec: run.retry.shared-path@2122850a
+// spec: run.retry.one-layer@4e92c090
 #[test]
 fn a_restart_between_reschedule_and_resume_keeps_the_time_and_the_attempt_count() {
     let rig = Rig::new();

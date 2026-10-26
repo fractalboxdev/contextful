@@ -235,7 +235,7 @@ pub trait Catalog {
     fn retire_at(&self, scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
     /// The execution the scope's last applied retirement retired, whose journal rows a
     /// journal store apart from the catalog deletes after that commit and again at the
-    /// scope's next open (`run.journal.retire-order`); `None` before any retirement.
+    /// scope's next open (`run.journal.collection`); `None` before any retirement.
     fn retired_at(&self, scope: &OwnerScope) -> Result<Option<String>, Failure>;
 
     /// The chunk row of a chunk scope; `None` when no plan holds it. A catalog keeping no
