@@ -74,3 +74,15 @@ fn the_count_holds_under_a_ceiling_that_only_falls() {
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("--- stage unwired"), "{}", stderr(&o));
 }
+
+#[test]
+fn an_item_of_the_acceptance_harness_is_test_support_and_never_unwired() {
+    let r = fixture();
+    r.write("crates/demo/src/main.rs", "fn main() {\n    // entry: store.replicate.periodic\n    demo::replica_spawn(1);\n}\n");
+    r.write("crates/acceptance/src/lib.rs", "pub fn harness_repo() -> u8 {\n    1\n}\n");
+    r.write("crates/demo/tests/integration/replicate.rs", &TEST.replace("#[test]\nfn broken", "#[test]\nfn harness() {\n    contextful_acceptance::harness_repo();\n}\n\n#[test]\nfn broken"));
+    let lock = LOCK.replace("\"store.replicate.broken\"", "\"store.replicate.harness\": [{\"kind\": \"test\", \"path\": \"crates/demo/tests/integration/replicate.rs\", \"name\": \"harness\", \"line\": 6, \"verdict\": \"performed\", \"proved\": false}],\n  \"store.replicate.broken\"");
+    r.write("spec/spec.lock.json", &lock);
+    let o = unwired(&r, &[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+}

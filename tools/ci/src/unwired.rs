@@ -3,7 +3,8 @@
 //! reaches an item when another file names it, or when an item of its own file that is
 //! reached names it; `main` and trait-impl methods are reached. Such a clause performs
 //! through its test and through no binary. A `// entry: <clause id>` comment in non-test
-//! source clears the clause.
+//! source clears the clause. Items of the acceptance harness under `crates/acceptance` are
+//! test support and never count.
 
 use anyhow::{Context, Result};
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
@@ -184,7 +185,14 @@ fn entries(text: &str) -> Vec<String> {
 
 fn sources(root: &Path) -> Vec<Source> {
     let mut files = Vec::new();
-    let mut dirs: Vec<_> = std::fs::read_dir(root.join("crates")).into_iter().flatten().flatten().map(|e| e.path().join("src")).collect();
+    // The acceptance harness is test support: its items serve tests, not a binary.
+    let mut dirs: Vec<_> = std::fs::read_dir(root.join("crates"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path() != root.join(crate::ACCEPTANCE_DIR))
+        .map(|e| e.path().join("src"))
+        .collect();
     while let Some(dir) = dirs.pop() {
         for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             let p = e.path();
