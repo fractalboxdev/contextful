@@ -108,3 +108,17 @@ test("a glossary under spec/ routes to its own page and links its pointers", asy
   assert.ok(/<a href="\/docs\/specs\/contracts\/10-store\/#lease"[^>]*class="clause-ref operation-ref"><code>lease<\/code>/.test(html));
   assert.ok(!html.includes('class="clause"'));
 });
+
+test("an ADR section lists the clauses the lock records citing it", async () => {
+  const lock = {
+    ...readLock(),
+    sections: { "A-store#lease": ["store.reserve.commit-wait", "store.fold.partial-snapshot"], "A-store#unused": [] },
+  };
+  const adr = await render(fixture("decision-sections.md"), join(ADR_DIR, "A-store.md"), { lock });
+  const cited = /<h2 id="lease">[^]*?<\/h2>\s*<p class="cited-by">([\s\S]*?)<\/p>/.exec(adr)?.[1];
+  assert.ok(cited, "cited-by follows the section heading");
+  for (const id of ["store.reserve.commit-wait", "store.fold.partial-snapshot"]) {
+    assert.ok(new RegExp(`<a href="/docs/specs/contracts/[^"]+#${id.replaceAll(".", "\\.")}"[^>]*class="clause-ref"><code>${id}</code><span class="clause-preview"`).test(cited), id);
+  }
+  assert.equal(adr.match(/class="cited-by"/g).length, 1);
+});

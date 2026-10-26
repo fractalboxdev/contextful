@@ -143,6 +143,20 @@ test("the search index holds every clause id and every registered error", () => 
   assert.ok(htmlFor("/docs/").includes('href="/docs/search/"'));
 });
 
+test("every ADR section that clauses cite lists them under its heading", () => {
+  const cited = Object.entries(lock.sections ?? {}).filter(([, ids]) => ids.length);
+  assert.ok(cited.length > 0, "the lock records cited sections");
+  for (const [section, ids] of cited) {
+    const [record, slug] = section.split("#");
+    const file = readdirSync(join(SPEC_DIR, "adr")).find((f) => f === `${record}.md`);
+    assert.ok(file, section);
+    const html = htmlFor(routeFor(join(SPEC_DIR, "adr", file)));
+    const list = new RegExp(`<h2 id="${slug}">[^]*?</h2>\\s*<p class="cited-by">([\\s\\S]*?)</p>`).exec(html)?.[1];
+    assert.ok(list, `${section}: cited-by list`);
+    for (const id of ids) assert.ok(list.includes(`#${id}"`), `${section} → ${id}`);
+  }
+});
+
 test("pinned clauses show their pins beside the id", { skip: !lock.pins && "the lock carries no pins" }, () => {
   for (const id of Object.keys(lock.pins ?? {})) {
     const clause = lock.clauses.find((c) => c.id === id);
