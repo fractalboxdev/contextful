@@ -3,7 +3,8 @@
 //! budget refuses.
 
 use super::*;
-use contextful_context::visibility::{sweep_grants, sweep_read, sweep_run, Landing};
+use contextful_context::visibility::{sweep_read, Landing};
+use crate::support::sweep_run;
 use contextful_core::disclosure::declare::Binding;
 use contextful_core::disclosure::sweep::{Directory, GrantLine, GrantsRead, Membership, SweepBlock, SweepKind};
 use std::sync::{Arc, Mutex};
@@ -100,7 +101,7 @@ impl Wiki {
 
     fn sweep(&self, kind: SweepKind, began: &str, grants: Vec<GrantLine>) {
         let landing = Landing { node: NodeId::parse("ingest-a").unwrap(), site_id: "site-a".into() };
-        sweep_grants(&self.reads.store, &landing, &self.block, &self.bindings, kind, grants, at(began), at(began)).unwrap();
+        sweep_run(&self.reads.store, &landing, &self.block, &self.bindings, kind, grants, None, at(began), at(began)).unwrap();
     }
 
     fn sweep_directory(&self, kind: SweepKind, began: &str, grants: Vec<GrantLine>, directory: Directory) {
