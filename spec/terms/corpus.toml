@@ -131,13 +131,13 @@ surface = 6428
 topology = 2647
 
 [ceiling.adr-words]
-A-assurance = 5737
+A-assurance = 2892
 A-authority = 2061
 A-connector = 1790
 A-corpus = 229
 A-disclosure = 1888
-A-read = 5189
-A-run = 8375
-A-store = 6984
+A-read = 2681
+A-run = 3725
+A-store = 3428
 A-surface = 1655
 A-topology = 1312
