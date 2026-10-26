@@ -34,8 +34,8 @@ fence, loses its condition, and leaves its run unreadable
 ## Two machines pushing one bucket
 
 A push commits the bucket manifest by a conditional replace on the version it read. A
-push that loses reads the newer manifest, merges, and commits again. The number of
-rounds that make no progress is bounded, so two pushers converge or stop
+push that loses reads the newer manifest, merges, and commits again. A configured bound
+limits the rounds that make no progress, so two pushers converge or stop
 ({{store.merge.retries}}).
 
 ## Two callers running one step
@@ -45,7 +45,7 @@ before running the effect, and a concurrent caller waits for the recorded value 
 of running the effect a second time ({{run.journal.entry-key}}). A claim lives only as
 long as its owner's lease: once that lease expires, the next caller takes the claim over
 ({{run.journal.claim-takeover}}). An owner that a newer owner has replaced checks its
-standing immediately before each outbound request, so it sends nothing and publishes
+standing as the last step before each outbound request, so it sends nothing and publishes
 nothing ({{run.items.fence}}).
 
 ## What each writer observes
