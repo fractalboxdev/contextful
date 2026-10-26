@@ -52,10 +52,6 @@ flowchart LR
 
 Outbound credential references, the `secret://` scheme and value templates.
 
-- `credential-plane` — Outbound credentials authenticate vendor requests separately from credentials admitting callers into a store. A key retains its inbound or outbound purpose regardless of storage location.
-  *A-connector#credentials-references-workload*
-- `declaration-binds-a-reference` — A declaration's capability block lists required credential names. Each name binds to a `secret://<name>` reference that the resolver hydrates at run time.
-  *A-connector#credentials-references-workload*
 - `reference-scheme` — `secret://<name>` carries a logical name matching `[a-z0-9-]+` of at most 128 chars. A reference names no storage path, file name or key identifier.
 - `backend-independence` — The adapter maps a logical name to a storage location. Changing credential stores changes the backend mapping without editing declarations.
 - `value-template` — A value embedding a credential is a template of literal text with `${secret://<name>}` placeholders, such as `Bearer ${secret://vendor-token}`.
@@ -63,15 +59,12 @@ Outbound credential references, the `secret://` scheme and value templates.
   *A-connector#credentials-references-workload*
 - `malformed-placeholder` — When reading a declaration, the parser raises `SecretMalformedTemplate` for an unclosed, empty or nested placeholder, before any text leaves the process.
   *P1*
-- `environment-is-a-miss` — Template hydration skips the process-environment adapter and continues through the chain. If no adapter answers, the resolver applies {{connector.resolve.unresolved-name}}.
+- `environment-is-a-miss` — Template hydration skips the process-environment adapter unless `CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES=1`, and continues through the chain. If no adapter answers, the resolver applies {{connector.resolve.unresolved-name}}.
   *A-connector#credentials-references-workload*
-- `environment-opt-in` — `CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES=1` enables the environment adapter for template hydration. The resolver logs one warning per process naming the variable.
 - `whole-value-binding` — `env://NAME` binds a whole credential outside the template grammar.
 - `whole-value-reference` — A whole-value `secret://<name>` reference outside templates, such as a `[sync]` credential key, resolves through the assembled adapter chain, including process environment, under {{connector.resolve.first-hit-wins}} and {{connector.resolve.shadowed-name}}.
   *because a whole-value key sits in the node's own configuration, where `env://NAME` already reads the environment directly*
 - `material-in-a-declaration` — A credential-shaped literal standing where a reference belongs raises `SecretMaterialInDeclaration` at validation, naming the key.
-  *A-connector#credentials-references-workload*
-- `lease-has-no-scheme` — A leased credential binds as `secret://<name>`. No lease spelling exists in the manifest grammar.
   *A-connector#credentials-references-workload*
 - `name-is-the-join` — Declarations, provider entries, cache keys, records and run provider attribution identify the same credential by its logical name.
 
@@ -79,8 +72,8 @@ Outbound credential references, the `secret://` scheme and value templates.
 
 The provider interface, adapter order, request-time resolution, credential buffers and deployment security configurations.
 
-- `provider-port` — One provider interface resolves a reference to credential material. Each backend implements this interface as an adapter. `CONTEXTFUL_SECRETS_BACKEND` selects the adapters in the chain.
-- `provider-chain` — The chain runs: lease provider, process environment, operating-system keychain, operator-managed secret store, then a tunnel into the deployment trust zone.
+- `provider-port` — One provider interface resolves a reference to credential material. Each backend implements this interface as an adapter.
+- `provider-chain` — `CONTEXTFUL_SECRETS_BACKEND` names the chain's adapters in answer order, `env` when unset, and the lease provider joins at its head. Naming an adapter the build does not link refuses at assembly.
   *A-connector#credentials-references-workload*
 - `first-hit-wins` — Hydration uses the first adapter answering the name. The resolver consults no later adapter for that reference during the run.
 - `shadowed-name` — At first hydration, a name answered by the serving adapter and by any adapter behind it raises `SecretNameShadowed`, naming the logical name and both adapters.
@@ -94,18 +87,15 @@ The provider interface, adapter order, request-time resolution, credential buffe
 - `cache-ttl` — A cache entry lives at most 300 s.
 - `unresolved-name` — If no assembled adapter answers a reference, the resolver raises `SecretUnresolvedReference`, naming the reference. The error occurs at preflight for static bindings and at the call otherwise.
   *P2*
-- `adapter-is-optional` — Each managed backend is one adapter holding opaque versioned ciphertext; a deployment links only the adapters it uses.
 - `aws-secrets-manager` — The `aws-secrets-manager` backend answers `secret://<name>` with the `AWSCURRENT` value of secret id `CONTEXTFUL_AWS_SECRET_PREFIX` plus the name, signing under {{store.endpoint.role-credentials}}; an absent secret is a miss.
 
 ```mermaid
 flowchart LR
   REF["secret reference"] -->|"lookup"| L["lease provider"]
   L -->|"miss or undeclared name"| E["process environment"]
-  E -->|"miss or template not opted"| K["operating-system keychain"]
-  K -->|"miss"| M[("operator-managed secret store")]
-  M -->|"miss"| T["deployment trust-zone tunnel"]
-  T -->|"miss everywhere"| U["unresolved reference"]
-  L & E & K & M & T -->|"first hit, first hydration"| SH{"also answered behind adapter?"}
+  E -->|"miss or template not opted"| M[("operator-managed secret store")]
+  M -->|"miss everywhere"| U["unresolved reference"]
+  L & E & M -->|"first hit, first hydration"| SH{"also answered behind adapter?"}
   SH -->|"yes: SecretNameShadowed"| SHADOW["shadowed name"]
   SH -->|"no"| W["redacting wrapper"]
   W -->|"cached up to 300 s"| C["resolved material"]
@@ -146,9 +136,8 @@ The first credential adapter: credential lease declarations, mint requests, expi
 - `vendor-requests-on-failure` — A run holding an expired credential lease whose provider is unreachable issues 0 requests to the vendor.
   *P6*
 - `calls-per-resolver` — A resolver issues at most 1 calls to the mint endpoint per declared name per lease window.
-- `bootstrap-credential` — The engine authenticates to the mint endpoint with one standing `secret://` credential scoped only to minting. Revoking this credential cuts off each leased source at its next expiry.
+- `bootstrap-credential` — The engine authenticates to the mint endpoint with one standing `secret://` credential, hydrated only through the adapters the chain held before the lease provider joined.
   *A-connector#credentials-references-workload*
-- `bootstrap-non-recursion` — The lease provider holds the chain as assembled before it joined, so the mint reference hydrates only through adapters behind it.
 - `bootstrap-unserved` — A bootstrap name no adapter behind the lease provider answers raises `SecretBootstrapUnresolved`, naming the reference.
   *A-connector#credentials-references-workload*
 - `bootstrap-declared-leased` — Listing the bootstrap name among the leased scopes raises `SecretBootstrapLeased` at startup.
@@ -190,8 +179,6 @@ sequenceDiagram
 
 Host handling of outbound requests: network transport, permitted hosts and addresses, credential headers, redirects and URL scrubbing.
 
-- `host-mediation` — The host implements outbound HTTP. Before socket I/O, the host checks each request against the declaration, assigns a request id and writes the bound credential onto a permitted request.
-  *A-connector#outbound-transport-origin*
 - `no-material-to-a-guest` — No host import hands credential bytes to guest code; a guest names a request and receives a response.
   *A-connector#outbound-transport-origin*
 - `unpermitted-request` — A request whose host the declaration does not cover raises `SecretUnpermittedRequest` and fails the guest call even where guest code discards the error.
@@ -210,7 +197,6 @@ Host handling of outbound requests: network transport, permitted hosts and addre
   *because admitting the metadata or loopback range reopens the SSRF path the private-address check closes*
 - `bound-host` — A credential-bound source declares one non-wildcard host, checked at validation and session open. A wildcard entry or table-bound endpoint host beside a bound credential raises `SecretWildcardHost`.
   *A-connector#outbound-transport-origin*
-- `attach-block` — An `[attach]` block maps a header name to a value template. The host hydrates it onto the permitted request, overriding the guest's header of that name.
 - `per-request-hydration` — A guest session stores hydration handles and plain static headers. The host calls each handle for every permitted request and releases the hydrated header when the request completes.
   *because session-held credential material outlives the request and delays rotation*
 - `literal-attach-value` — An attach value embedding no reference raises `SecretLiteralAttachValue`.
@@ -228,7 +214,6 @@ Host handling of outbound requests: network transport, permitted hosts and addre
 - `sensitive-header-record` — A run records which header names carried a credential, by name only.
 - `url-scrubbing` — Before a URL enters an error message, log line or stored column, the host removes query, fragment and userinfo. Scheme, host, port and path remain.
   *A-authority#redaction-no-copy*
-- `typed-url-edit` — Metered vendor traffic and control-plane traffic each use one client that clears URLs through typed error mapping. The host scrubs other URLs as text.
 - `credential-in-a-url` — A configured endpoint carrying userinfo raises `SecretCredentialInUrl` at validation, naming the source.
   *A-authority#redaction-no-copy*
 - `mediation-covers-every-egress` — A built-in source, a guest connector, a model call and a limiter call each attach through the one mediated client; {{connector.attach.exec-environment}} names the one attachment outside it.
@@ -256,8 +241,6 @@ Credential rotation responsibilities and mechanisms.
   *A-connector#rotation-writes-forward*
 - `conditional-put` — If another writer stores a version first, the losing put rehydrates that version without raising an error.
   *A-connector#rotation-writes-forward*
-- `no-master-key` — The engine holds references, and no single encryption key exists whose theft with a database copy yields every credential.
-  *A-connector#credentials-references-workload*
 - `turnover-preserves-the-name` — Every rotation mechanism keeps the logical name, touching no declaration and no pinned connector artifact.
 
 #### Scenarios
@@ -278,8 +261,6 @@ Optional operator metadata, provider observations, the inventory of configured b
 - `surface-of-consumption` — An operator record identifies each documented consuming surface and its credential binding name.
 - `optional-record` — A binding without an operator record remains resolvable and appears in inventory with unknown descriptive fields.
 - `unverified-scope-is-marked` — An operator record marks grants as unknown when the operator has not established them.
-- `rotation-record` — A rotation follows {{connector.rotate.turnover-preserves-the-name}} without requiring a repository commit; operator metadata changes only when its assertions change.
-  *A-connector#credential-custody-stays*
 - `inventory` — `contextful secrets list` displays configured logical bindings with their configured adapters, operator metadata and available provider observations. The command reads no credential values and claims no complete provider inventory.
 - `observation-provenance` — Each provider-observed field names its adapter and observation time; operator assertions remain separately labelled, including when they disagree with provider observations.
 - `observation-unavailable` — Inventory reports unsupported, denied or failed metadata reads as unavailable with a reason. Inventory neither substitutes operator assertions for provider observations nor hydrates values to obtain metadata.
@@ -300,7 +281,6 @@ Optional operator metadata, provider observations, the inventory of configured b
 
 - `connector.record.provider-custody`: WHEN a binding selects an external manager with no encrypted repository entry, THEN the manager remains the sole owner of its value and versions.
 - `connector.record.optional-record`: WHEN a configured binding has no operator record, THEN inventory includes the binding with unknown descriptive fields.
-- `connector.record.rotation-record`: WHEN a manager rotates a credential, THEN the repository needs no commit.
 - `connector.record.observation-provenance`: WHEN an operator expiry differs from an observed expiry, THEN inventory shows both with their distinct provenance.
 - `connector.record.observation-unavailable`: WHEN a provider denies metadata access, THEN inventory reports the reason without reading a credential value.
 - `connector.record.expiry-unknown`: WHEN neither operator nor provider supplies an expiry, THEN inventory reports unknown expiry and no days remaining.

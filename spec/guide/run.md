@@ -68,7 +68,7 @@ commit marker newer than the cached position, so the pending owner stays
 
 The plan hash matches, so the run replays. The journal hands the recorded page to the
 land path byte for byte ({{run.journal.replay-lands}}), and the replay sends no request
-to the vendor ({{connector.meter.replay-reservation}}).
+to the vendor ({{run.retry.no-double-spend}}).
 
 The remaining pages pull live. The commit publishes the rows and the new position
 together ({{run.advance.commit-with-rows}}), and `success` releases the owner

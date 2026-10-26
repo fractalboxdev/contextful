@@ -32,8 +32,6 @@ ConnectorAllowlistRejected      = { clause = "connector.declare-capability.allow
 ConnectorScopeExceeded          = { clause = "connector.declare-capability.scope-exceeded", gloss = "A granted scope outside the manifest's declared expectation." }
 ConnectorScopeUnverified        = { clause = "connector.declare-capability.scope-unverified", gloss = "A scope probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII." }
 ConnectorScopeProbeRejected     = { clause = "connector.declare-capability.probe-shape", gloss = "A scope probe declaring a scopes header that is empty or not an HTTP field name." }
-ConnectorBindingUnsupported     = { clause = "connector.declare-capability.binding-unsupported", gloss = "An environment binding on a key the connector does not read." }
-ConnectorBindingUnbound         = { clause = "connector.declare-capability.binding-unbound", gloss = "An environment binding not supplied, or supplied off its declared shape." }
 ConnectorQuotaUnbound           = { clause = "connector.meter.quota-unbound", gloss = "A declared limiter quota with no operator binding." }
 ConnectorLimiterBindingRejected = { clause = "connector.meter.binding-transport", gloss = "A non-HTTPS limiter endpoint, one carrying a query, fragment or userinfo, or a limiter token that is not a secret reference." }
 ConnectorForwardRejected        = { clause = "connector.meter.forward-credential", gloss = "A limiter declaration forwarding a credential-bearing response header." }
@@ -79,7 +77,6 @@ ConnectorImageHeaderUnreadable  = { clause = "connector.source.image-header", gl
 ConnectorQuotabilityMismatch    = { clause = "connector.source.marker-body-pairing", gloss = "An image body and its quotability marker not null together." }
 ConnectorProviderOriginRejected = { clause = "connector.source.provider-origin", gloss = "A search call to a non-TLS transport or a host other than the provider's." }
 ConnectorObjectAddressRejected  = { clause = "connector.source.object-address", gloss = "An object source declaring both or neither of a key and a prefix." }
-ConnectorTwinApiSource          = { clause = "connector.source.twin-api", gloss = "A source reading through an API licensed beyond any individual user's view." }
 ConnectorDriveRootsInvalid      = { clause = "connector.source.drive-root-set", gloss = "An empty, oversized, repeated or ambiguous Drive root selection." }
 ConnectorDriveRootRejected      = { clause = "connector.source.drive-root-validation", gloss = "A selected Drive root that does not exist or lies outside the declared Shared Drive." }
 ConnectorDriveModeUnknown       = { clause = "connector.source.drive-mode", gloss = "A Drive capture mode other than bytes-and-pages or metadata-only." }

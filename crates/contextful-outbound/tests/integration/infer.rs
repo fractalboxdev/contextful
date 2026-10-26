@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 // spec: topology.compose.inference-egress@d35cf48e
+// spec: connector.infer.model-endpoint@b7556a29
 #[test]
 fn a_completion_posts_the_conversation_and_returns_the_content() {
     let _env = proxy_env();
@@ -61,6 +62,7 @@ fn a_failed_or_malformed_answer_is_an_error() {
 /// A model call sends through the mediated client under {{connector.attach.mediation-covers-every-egress}}, its
 /// allowlist the configured endpoint host alone, and passes {{connector.meter.pre-send-hook}} like a vendor hop.
 // spec: connector.infer.mediated-call@efeea03a
+// spec: connector.attach.mediation-covers-every-egress@38e925ca
 #[test]
 fn a_completion_passes_the_hook_and_the_address_check() {
     let _env = proxy_env();
@@ -88,6 +90,7 @@ fn a_completion_passes_the_hook_and_the_address_check() {
 
 /// A model call with no configured key declares no header and keeps the system proxy; a configured key is a declared
 /// header and takes the hardened client under {{connector.attach.header-selects-client}}.
+// spec: connector.attach.header-selects-client@51d021e5
 #[test]
 fn a_completion_keeps_the_proxy_unless_a_key_is_configured() {
     let answer = json!({ "choices": [{ "message": { "content": "ok" } }] }).to_string();

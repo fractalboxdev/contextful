@@ -58,20 +58,13 @@ Connector interfaces: shared types, source and destination worlds, optional inte
 - `type-taxonomy` — The shared types interface carries a schema (name, fields, primary key) and a field (name, data type, nullability) over `boolean`, `int32`, `int64`, `float64`, `string`, `bytes`, `timestamp-millis` and `json`.
 - `batch-encoding` — A batch crosses the boundary as Arrow IPC bytes, and a position as opaque bytes beside a declared cursor kind.
 - `arrow-types` — The host reads Arrow `Binary` or `FixedSizeBinary` columns as bytes of that width and `FixedSizeList` of `Float32` or `Float16` as vectors. Each lands in its {{store.reconcile.binary-and-vector}} type without text conversion.
-- `nested-value` — The connector sends a nested value as `json`; normalization determines its type. The interface defines no recursive type.
 - `read-handle` — A source exports its cursor kind, discovery call and open call taking a table and optional position. The handle's `next` yields one batch or exhaustion; `position` reports the current position.
-- `write-handle` — A destination exports `prepare`, `write`, `commit` and `abort`. Source and destination are separate worlds sharing the types interface.
 - `optional-world` — Operator configuration and failure attribution each use an additional world interface. The host probes instances by interface name. A base-world guest instantiates unchanged; neither interface changes the world version.
 - `partition-attribution` — A guest exporting failure attribution answers with the byte-exact values of the outermost partition column a failed read belongs to. The host reads it on failure and success alike; an empty list keeps the unattributed refusal.
   *because a read holding one partition back and landing the rest returns success*
 - `attribution-budget` — Failure attribution carries at most 512 entries per session, each value at most 512 B.
 - `shared-failure` — A read failing under `auth-expired`, or during which the host failed to hydrate or lease a credential, fails unattributed; the host discards the guest's failure attribution for that session.
   *because every attach binding is session-wide, so a credential failure belongs to every partition the read could reach*
-- `native-read` — A native source reads a table from a position, returning batches each paired with the position after it. A source unable to bound a half-open chunk range falls back to the unbounded read.
-  *because an overlapping read is recoverable and a mis-bounded chunk is not*
-- `native-extra` — A native source may provide a content fingerprint from stat or HEAD without downloading, plus its connector identity, audit entries and a declared reason for unmetered vendor traffic.
-- `store-blindness` — A source receives credentials, limiter bindings, the run id, the request ledger, the component pin and the incremental position, and no store handle. A store-driven run receives its query set as run parameters.
-  *P5*
 
 A connector failure crosses as a variant of {{run.retry.failure-taxonomy}}. Failure
 attribution narrows a failure the guest saw for one partition, such as a per-resource
@@ -86,10 +79,7 @@ attribution narrows a failure the guest saw for one partition, such as a per-res
 
 Host imports and the configuration table the host forwards to a guest.
 
-- `three-imports` — Both worlds import the WASI 0.2 outgoing HTTP and wall-clock interfaces and the logging interface, and nothing else; every export is a synchronous call. There is no filesystem import and no socket import.
-  *A-connector#guest-world-targets*
 - `empty-context` — A guest standard library pulling broader interfaces links against an empty context: no preopens, no environment, no arguments.
-- `wait-primitive` — Neither world carries a monotonic clock or a sleep primitive, so a guest holds no call open across a wait.
 - `forwarded-config` — The pipeline's guest configuration table is the one part of the source configuration crossing inward, as one JSON object delivered once per session ahead of discovery.
   *A-surface#configuration-reaches-engine*
 - `config-shape` — Ahead of any I/O, a guest configuration value that is not a table, a serialization over 64 KiB, or a credential or environment reference inside it raises `ConnectorConfigRejected`.
@@ -113,10 +103,6 @@ Manifest-declared host access and the probe that checks a bound credential's gra
 - `host-allowlist` — The outbound allowlist holds exact hosts and subdomain wildcards matched as suffixes; a wildcard entry covers subdomains and not the apex.
 - `allowlist-shape` — An empty allowlist, a bare wildcard, an empty entry, and an entry carrying a scheme, port or path raise `ConnectorAllowlistRejected`.
   *A-connector#host-access-quota*
-- `environment-name` — A declared environment name is a name, not ambient access: the operator binds it to a reference and the host resolves and injects the value at call time. No connector reads the process environment.
-  *A-connector#host-access-quota*
-- `ambient-authority` — No credential is a property of the process: no shared client carries a default header and no import returns secret bytes. Every grant binds to one declared host and attaches at request time.
-  *A-connector#host-access-quota*
 - `scope-probe` — A manifest may declare an identity endpoint, the response header carrying granted scopes, and the grant it expects. The host calls it with the bound credential ahead of the first read.
 - `probe-transport` — The scope probe's host sits on the allowlist and its scheme is TLS or loopback.
   *A-connector#host-access-quota*
@@ -126,10 +112,6 @@ Manifest-declared host access and the probe that checks a bound credential's gra
   *A-connector#host-access-quota*
 - `scope-unverified` — A probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII, raises `ConnectorScopeUnverified`.
   *because cannot-verify is not verified*
-- `binding-unsupported` — A `_from` binding on a key the connector does not read raises `ConnectorBindingUnsupported`.
-  *P3*
-- `binding-unbound` — A bound key the environment did not supply, or supplied off its declared shape, raises `ConnectorBindingUnbound` at preflight.
-  *P3*
 
 ```mermaid
 flowchart LR
@@ -137,9 +119,7 @@ flowchart LR
   A -->|"no: ConnectorAllowlistRejected"| REJ["rejected manifest"]
   A -->|"yes"| U{"only listed access?"}
   U -->|"no: ConnectorUndeclaredAccess"| REJ
-  U -->|"yes"| B{"bindings supplied on shape?"}
-  B -->|"no: ConnectorBindingUnbound"| REJ
-  B -->|"yes"| SP{"scope probe declared?"}
+  U -->|"yes"| SP{"scope probe declared?"}
   SP -->|"no"| SESS["connector session"]
   SP -->|"yes, probe"| IDP(["identity endpoint"])
   IDP -->|"granted scopes"| SC{"scopes within expectation?"}
@@ -212,7 +192,6 @@ Vendor quota declarations, limiter bindings, pre-send checks, permit reservation
   *P2*
 - `synthesized-throttle` — A denied reservation returns to the guest as a synthesized `429` carrying the retry-after. An unreachable limiter fails the request as a transport failure.
   *because a connector mapping vendor throttles needs no second interface*
-- `replay-reservation` — Replay issues no outbound request and makes no limiter call.
 - `counting-not-pricing` — The limiter counts requests and prices none.
 
 ```mermaid
@@ -272,8 +251,6 @@ Model requests: endpoint selection, data boundary markers and output provenance 
 - `label-hygiene` — Marking truncates a provenance label at 200 chars and flattens the label to one line without brackets. The label opens or closes no block.
   *because a label is built from connector-supplied table names and row ids*
 - `empty-batch` — A call marking no value renders an explicit no-data line instead of an empty section.
-- `operator-template` — The operator's prompt template stays unmarked in the system role. The idempotency hash covers the template alone.
-  *because hardening the markers leaves a dedup key intact*
 - `cutoffs` — A model reference carries a pinned snapshot id and pre-training and post-training cutoffs, each tagged `documented` or `estimated`. An undeclared cutoff compares as the call's own instant.
   *because tuning adds knowledge after pre-training, and an estimated cutoff often falls before the reported one*
 - `logprobs` — A call to an endpoint exposing token log-probabilities lands them with the call record.
@@ -334,7 +311,6 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `host-built-pin` — `--local` builds with the host toolchain and prints a host-local digest; writing a pin from a host build raises `ConnectorHostPinRefused`.
   *A-connector#pin-builder-runs*
 - `path-remap` — Every build remaps the source root and the package cache, so checkout location is not a digest input.
-- `native-verification` — `--verify --native` checks host triple, compiler and package manager against pinned constants and clears byte-moving configuration before building. A mismatch exits with a status distinct from digest drift.
 - `interpreted-target` — A host built with the `pulley` feature runs components on the interpreted target as portable bytecode, mapping no executable memory, under the same deadlines and mediated client; the compiled native target stays the default.
   *because a hardened runtime refusing writable-then-executable pages loads no compiled guest, and interpretation trades throughput for loading there*
 - `interpreted-target-absent` — A host built without the `pulley` feature refuses the interpreted target at construction, naming the feature, before any component compiles.
@@ -398,10 +374,6 @@ flowchart LR
 
 The declared behavior of each source compiled into the engine.
 
-- `poll-only-increments` — Incremental loading is a scheduled poll. A replication socket held open is not a source read.
-  *because its output is unbounded and has no recorded exchange to replay*
-- `twin-api` — A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. The engine admits a sanctioned, disclosed organization-wide export path.
-  *A-read#store-holds-nothing*
 - `parse-containment` — A compiled-in source decodes behind {{run.land.parse-boundary}}.
   *A-connector#untrusted-input-decodes*
 
@@ -607,7 +579,7 @@ Async vendor reports, images, web search results and pushed `receive` batches ea
   *A-connector#outbound-transport-origin*
 - `receive-form` — A `receive` source declares `format = "jsonl"`, a positive `max_batch_bytes`, a positive `max_queue_depth` and a positive `key_retention_secs`, none defaulted; it serves every declared table and requests nothing from outside.
   *because a ceiling the sender fills must be the operator's choice, not a guess the binary carries*
-- `receive-recorded` — The engine bounds and records a delivered batch before storing its rows. {{connector.source.poll-only-increments}} does not apply to `receive` sources.
+- `receive-recorded` — The engine bounds and records a delivered batch before storing its rows.
 - `receive-unscheduled` — A `receive` pipeline declaring a `schedule` fails validation.
   *because a sender, not the cadence, starts its runs, so a scheduled fire fails on every beat*
 - `receive-body` — A `receive` body holds one JSON object per line, `table` naming a declared table and `row` its row object; another shape fails the whole batch as {{run.land.unreadable-input}}, naming the line.
@@ -636,8 +608,6 @@ The drive source walks selected Drive folders and lands one row per file and one
   *A-connector#drive-capture-binds*
 - `drive-version-consistency` — After a metadata-only download or export, the source re-reads the file version; a change from the listed version raises `ConnectorDriveVersionMoved` before any row or cursor commits.
   *because a digest of newer bytes cannot witness the version named by the file row*
-- `drive-named-skip` — A skipped file row names the file and reason; the per-file bound of {{connector.source.drive-file-cap}} applies in both modes.
-  *because a skipped row cannot attest to bytes the source did not read*
 - `drive-export` — A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.
 - `drive-page-grain` — In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page content row lands.
   *because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table*
@@ -680,7 +650,7 @@ unsettled: Does a job whose `after` names a `receive` pipeline fire after each d
 - `connector.source.drive-selection-position`: WHEN a configured pipeline changes from `bytes-and-pages` to `metadata-only`, THEN the next read rewalks its roots and rereads retained files.
 - `connector.source.drive-metadata-only`: WHEN the source downloads the separately retained named version, THEN its byte SHA-256 reproduces the `files` row's digest.
 - `connector.source.drive-version-consistency`: WHEN a file changes between listing and download, THEN `ConnectorDriveVersionMoved` refuses the capture without a file row or cursor.
-- `connector.source.drive-named-skip`: WHEN a selected file exceeds the byte cap, THEN its skipped row names the file and cap.
+- `connector.source.drive-file-cap`: WHEN a selected file exceeds the byte cap, THEN its skipped row names the file and cap.
 - `connector.source.drive-selection-removals`: WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone.
 - `connector.source.drive-selection-removals`: WHEN mode changes from `bytes-and-pages` to `metadata-only`, THEN old pages receive tombstones and no page content row remains.
 - `connector.source.drive-root-reassignment`: WHEN a retained file's version changes with identical `modifiedTime` and path, THEN the read captures its new bytes and digest.

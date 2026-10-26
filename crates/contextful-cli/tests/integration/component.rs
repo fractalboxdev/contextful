@@ -175,6 +175,7 @@ impl Vendor {
 /// run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
 // spec: connector.package.component-load@43f09e4a
 // spec: connector.import.config-hashing@1a312bfb
+// spec: connector.export.authoring-path@7c54aef3
 #[test]
 fn pipeline_run_lands_a_pinned_component_and_records_its_digest() {
     let pin = digest(PROBE);

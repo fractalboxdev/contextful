@@ -253,9 +253,9 @@ fn one_mint_per_name_per_window() {
     assert_eq!(mints(&server), 2 * MINT_CALLS_PER_WINDOW as usize, "one per declared name");
 }
 
-/// The lease provider holds the chain as assembled before it joined, so the mint reference hydrates only through
-/// adapters behind it.
-// spec: connector.lease.bootstrap-non-recursion@072ce297
+/// The engine authenticates to the mint endpoint with one standing `secret://` credential, hydrated only through the
+/// adapters the chain held before the lease provider joined.
+// spec: connector.lease.bootstrap-credential@e25e4b53
 #[test]
 fn the_mint_credential_comes_from_the_adapters_behind_the_provider() {
     let _env = proxy_env();
