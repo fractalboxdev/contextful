@@ -19,7 +19,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 Decision records: 18.
 
-Clauses restating a code type: 64.
+Clauses restating a code type: 58.
 
 ## Milestones
 

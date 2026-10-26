@@ -374,7 +374,7 @@ fn an_unbound_or_literal_credential_key_is_refused_naming_the_key() {
 
 /// `credentials = "role"` beside `access_key_id`, `secret_access_key` or `session_token`, or on an R2 endpoint,
 /// raises `SyncCredentialConflict`, naming the endpoint; alone on an S3 or HTTPS endpoint it selects role signing.
-// spec: store.endpoint.role-conflict@0db7d718
+// spec: store.endpoint.role-conflict@ea998d83
 #[test]
 fn role_credentials_beside_a_key_or_on_r2_conflict_naming_the_endpoint() {
     let role = |e: &str| SyncConfig { credentials: Some("role".into()), ..endpoint(e) };

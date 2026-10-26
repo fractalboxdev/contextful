@@ -32,9 +32,9 @@ const VECTOR: &str = "[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \
 
 const FULLTEXT: &str = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";
 
-/// Each table declares sidecars under `indexes` with kind, `column`, `id_column` and builder parameters. The `vector`
-/// kind takes `model`, `dim`, metric `cosine`, `m` and `ef_construction`. The `fulltext` kind takes `tokenizer`.
-// spec: store.index.declaration@c6c47fb8
+/// Each table declares sidecars under `indexes` as {{type:contextful_core::store::index::IndexBlock}}. A vector
+/// sidecar requires `model` and `dim`, and a key outside its kind refuses the declaration.
+// spec: store.index.declaration@13bc46a4
 #[test]
 fn each_sidecar_kind_declares_its_column_identifier_and_builder_parameters() {
     let t = table(

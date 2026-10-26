@@ -172,7 +172,7 @@ Table declarations, primary keys, row ordering, write modes and replacement beha
 
 - `table-block` — A table block takes {{type:contextful_core::store::declare::TableDecl}}; canonical serialization omits unset keys. A key applies from the next read and rewrites no committed part; `columns` types every landing, pipeline runs included, under {{store.reconcile.typed-landing}}.
   *because a JSON value alone cannot say it carries bytes or a vector*
-- `erasure-metadata` — An erasure declaration names `erasure_key`, incoming `referenced_by` table/column edges, and `on_erase = "survive"` for retained citing rows; absent fields remain absent in canonical serialization.
+- `erasure-metadata` — An erasure declaration names, in keys of {{type:contextful_core::store::declare::TableDecl}}, the table's erasure key, the table and column references citing it, and whether citing rows survive erasure.
   *A-disclosure#erasure-forced-rewrite*
 - `retain-rows` — `retain_rows = { column = "<name>", age = "<n>d" }` accepts `_ingested_at` or a declared Timestamp column. Another column or null value raises `StoreRetentionColumnInvalid` before landing. A malformed age refuses the declaration.
   *because a sender's clock cannot control the injected arrival time, and a nullable retention clock leaves a row with no expiry*
@@ -181,7 +181,7 @@ Table declarations, primary keys, row ordering, write modes and replacement beha
 - `dedup-view` — A keyed table reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1`. The source unions the current snapshot, if present, with committed runs omitted by that snapshot.
   *because a keyed table read as a union before its first fold inflates every aggregate silently*
 - `order-by-default` — `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.
-- `key-unknown` — A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or `StoreOrderByUnknownColumn`, and a struct, list or map column in either role or in `cluster_by`, `partition_by` or `valid_time` raises `StoreNestedKeyColumn`, at validation.
+- `key-unknown` — A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or `StoreOrderByUnknownColumn`, and a struct, list or map column in a key, ordering, clustering, partition or valid-time role raises `StoreNestedKeyColumn`, at validation.
   *because a key or ordering column absent from every file reads as null, and a nested one has no total order, so rows group or survive arbitrarily*
 - `replace-frontier` — `write_mode` is `append`, the default, retiring no key, or `replace`, where a read covers the newest complete-state run and every later run; displaced runs stay on disk until `retain_runs` expires, with no erasure receipt or lineage traversal.
 - `empty-run` — A run landing zero rows commits a manifest with no parts; without {{store.declare.empty-replacement}} it replaces nothing. A table with no rows registers as a zero-row relation over its declared and injected columns.
@@ -371,7 +371,7 @@ Sidecar index types, identifiers and builds; row clustering, partitions and tena
   *because writers landing interleaved keys write parts whose key bounds overlap, and only a key filter keeps {{store.available-time.vintage-scope}} from decoding another writer's rows*
 - `bloom-encrypted` — A project binding an encryption key writes no bloom filter in any part, whatever its tables name in `bloom_filter`.
   *because Parquet modular encryption leaves a bloom filter in plaintext, where it answers key membership without the key*
-- `declaration` — Each table declares sidecars under `indexes` with kind, `column`, `id_column` and builder parameters. The `vector` kind takes `model`, `dim`, metric `cosine`, `m` and `ef_construction`. The `fulltext` kind takes `tokenizer`.
+- `declaration` — Each table declares sidecars under `indexes` as {{type:contextful_core::store::index::IndexBlock}}. A vector sidecar requires `model` and `dim`, and a key outside its kind refuses the declaration.
 - `id-column` — Without `valid_time`, a sidecar's `id_column` defaults to the table's single-column primary key. All sidecars of a table share `id_column`; keyed, composite-key and unkeyed tables each use one.
   *A-store#sidecar-names-id*
 - `id-column-unresolved` — Manifest validation raises `StoreIndexIdColumnUnresolved` for missing `id_column` without a single-column primary key or with `valid_time`. Naming a valid-time table's single key, or different `id_column` values across sidecars, raises the same error.
@@ -658,7 +658,7 @@ Merging bucket manifests across writers, verifying tombstones and retrying condi
 
 - `tombstone-owner` — A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.
   *A-store#bucket-index-commits*
-- `tombstone-signed` — Push signs each tombstone with the node's issuer key, recording `signer` and `signature` over the key, owner and `deleted_at`. A node without an issuer key writes unsigned tombstones.
+- `tombstone-signed` — Push signs each {{type:contextful_core::store::sync::Tombstone}} with the node's issuer key over the key it names, its owner and its deletion instant. A node without an issuer key writes unsigned tombstones.
   *A-store#bucket-index-commits*
 - `tombstone-unverified` — Unsigned tombstones, invalid signatures, or keys absent from the key-set ledger's verifying set at `deleted_at` raise `SyncTombstoneUnverified`. Merge preserves the named entry; pull deletes nothing.
   *A-store#bucket-index-commits*

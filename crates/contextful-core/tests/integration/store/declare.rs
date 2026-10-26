@@ -22,7 +22,7 @@ from = "effective_from"
 to   = "effective_to"
 "#;
 
-// spec: store.declare.erasure-metadata@1d880303
+// spec: store.declare.erasure-metadata@643e8791
 #[test]
 fn erasure_declarations_keep_key_reference_and_survival_policy_typed() {
     let source = r#"
@@ -141,9 +141,9 @@ fn order_by_defaults_to_ingested_at() {
 }
 
 /// A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or
-/// `StoreOrderByUnknownColumn`, and a struct, list or map column in either role or in `cluster_by`, `partition_by` or `valid_time`
+/// `StoreOrderByUnknownColumn`, and a struct, list or map column in a key, ordering, clustering, partition or valid-time role
 /// raises `StoreNestedKeyColumn`, at validation.
-// spec: store.declare.key-unknown@3a910d40
+// spec: store.declare.key-unknown@7bc37486
 #[test]
 fn an_order_by_naming_no_column_is_refused() {
     let schema = Schema { columns: vec![Column::new("revised_at", ColumnType::Int64, true)] , ..Default::default() };
@@ -283,8 +283,8 @@ fn a_scheduled_enabled_fold_job_covers_its_target_or_every_table() {
 }
 
 /// A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or `StoreOrderByUnknownColumn`, and a struct, list or map column in
-/// either role or in `cluster_by`, `partition_by` or `valid_time` raises `StoreNestedKeyColumn`, at validation.
-// spec: store.declare.key-unknown@3a910d40
+/// a key, ordering, clustering, partition or valid-time role raises `StoreNestedKeyColumn`, at validation.
+// spec: store.declare.key-unknown@7bc37486
 #[test]
 fn a_nested_column_in_a_key_or_ordering_role_is_refused() {
     let nested = [

@@ -204,9 +204,9 @@ fn a_read_refuses_an_unknown_order_by_rather_than_emitting_it() {
 }
 
 /// A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or
-/// `StoreOrderByUnknownColumn`, and a struct, list or map column in either role or in `cluster_by`, `partition_by` or `valid_time`
+/// `StoreOrderByUnknownColumn`, and a struct, list or map column in a key, ordering, clustering, partition or valid-time role
 /// raises `StoreNestedKeyColumn`, at validation.
-// spec: store.declare.key-unknown@3a910d40
+// spec: store.declare.key-unknown@7bc37486
 #[test]
 fn an_unknown_primary_key_refuses_the_first_batch_before_any_parquet() {
     let f = Fixture::new();

@@ -2926,7 +2926,7 @@
       "operation": "declare",
       "subject": "erasure-metadata",
       "kind": "behavior",
-      "statement": "An erasure declaration names `erasure_key`, incoming `referenced_by` table/column edges, and `on_erase = \"survive\"` for retained citing rows; absent fields remain absent in canonical serialization.",
+      "statement": "An erasure declaration names, in keys of {{type:contextful_core::store::declare::TableDecl}}, the table's erasure key, the table and column references citing it, and whether citing rows survive erasure.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/10-store.md",
       "line": 175
@@ -2992,7 +2992,7 @@
       "operation": "declare",
       "subject": "key-unknown",
       "kind": "refusal",
-      "statement": "A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or `StoreOrderByUnknownColumn`, and a struct, list or map column in either role or in `cluster_by`, `partition_by` or `valid_time` raises `StoreNestedKeyColumn`, at validation.",
+      "statement": "A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or `StoreOrderByUnknownColumn`, and a struct, list or map column in a key, ordering, clustering, partition or valid-time role raises `StoreNestedKeyColumn`, at validation.",
       "why": "because a key or ordering column absent from every file reads as null, and a nested one has no total order, so rows group or survive arbitrarily",
       "file": "spec/10-store.md",
       "line": 184
@@ -3850,7 +3850,7 @@
       "operation": "index",
       "subject": "declaration",
       "kind": "behavior",
-      "statement": "Each table declares sidecars under `indexes` with kind, `column`, `id_column` and builder parameters. The `vector` kind takes `model`, `dim`, metric `cosine`, `m` and `ef_construction`. The `fulltext` kind takes `tokenizer`.",
+      "statement": "Each table declares sidecars under `indexes` as {{type:contextful_core::store::index::IndexBlock}}. A vector sidecar requires `model` and `dim`, and a key outside its kind refuses the declaration.",
       "why": "",
       "file": "spec/10-store.md",
       "line": 374
@@ -4978,7 +4978,7 @@
       "operation": "merge",
       "subject": "tombstone-signed",
       "kind": "behavior",
-      "statement": "Push signs each tombstone with the node's issuer key, recording `signer` and `signature` over the key, owner and `deleted_at`. A node without an issuer key writes unsigned tombstones.",
+      "statement": "Push signs each {{type:contextful_core::store::sync::Tombstone}} with the node's issuer key over the key it names, its owner and its deletion instant. A node without an issuer key writes unsigned tombstones.",
       "why": "A-store#bucket-index-commits",
       "file": "spec/10-store.md",
       "line": 661
@@ -5242,7 +5242,7 @@
       "operation": "snapshot",
       "subject": "capture",
       "kind": "behavior",
-      "statement": "`[pipeline.tables.snapshot]` names each document's `url`, `captured_at`, `digest` and `source` columns. Each capture commits as one store snapshot. An evaluation case pins the capture by `snapshot` id.",
+      "statement": "`[pipeline.tables.snapshot]` declares {{type:contextful_core::store::declare::SnapshotDecl}}, the columns describing each captured document. Each capture commits as one store snapshot, and an evaluation case pins it by `snapshot` id.",
       "why": "A-store#snapshot-corpus-declared",
       "file": "spec/11-snapshot.md",
       "line": 17
@@ -5820,7 +5820,7 @@
       "operation": "endpoint",
       "subject": "role-conflict",
       "kind": "refusal",
-      "statement": "`credentials = \"role\"` beside `access_key_id`, `secret_access_key` or `session_token`, or on an R2 endpoint, raises `SyncCredentialConflict`, naming the endpoint.",
+      "statement": "`credentials = \"role\"` beside a key credential {{store.endpoint.credentials}} binds, or on an R2 endpoint, raises `SyncCredentialConflict`, naming the endpoint.",
       "why": "because two credential sources for one bucket leave unstated which identity signed a write",
       "file": "spec/15-endpoint.md",
       "line": 30
@@ -34876,6 +34876,10 @@
       "store.endpoint.role-credentials"
     ],
     [
+      "store.endpoint.role-conflict",
+      "store.endpoint.credentials"
+    ],
+    [
       "store.endpoint.conditional-answers",
       "store.probe.inconclusive"
     ],
@@ -37350,6 +37354,32 @@
         "store.available-time.declaration"
       ]
     },
+    "contextful_core::store::declare::SnapshotDecl": {
+      "file": "crates/contextful-core/src/store/declare.rs",
+      "line": 81,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "url"
+        },
+        {
+          "name": "captured_at"
+        },
+        {
+          "name": "digest"
+        },
+        {
+          "name": "source"
+        },
+        {
+          "name": "leak_score",
+          "doc": "The judged leak score a capture after the horizon answers under (`store.snapshot.post-horizon-capture`)."
+        }
+      ],
+      "clauses": [
+        "store.snapshot.capture"
+      ]
+    },
     "contextful_core::store::declare::TableDecl": {
       "file": "crates/contextful-core/src/store/declare.rs",
       "line": 126,
@@ -37472,7 +37502,69 @@
         }
       ],
       "clauses": [
-        "store.declare.table-block"
+        "store.declare.table-block",
+        "store.declare.erasure-metadata"
+      ]
+    },
+    "contextful_core::store::index::IndexBlock": {
+      "file": "crates/contextful-core/src/store/index.rs",
+      "line": 191,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "kind"
+        },
+        {
+          "name": "column"
+        },
+        {
+          "name": "id_column"
+        },
+        {
+          "name": "model"
+        },
+        {
+          "name": "dim"
+        },
+        {
+          "name": "metric"
+        },
+        {
+          "name": "m"
+        },
+        {
+          "name": "ef_construction"
+        },
+        {
+          "name": "tokenizer"
+        }
+      ],
+      "clauses": [
+        "store.index.declaration"
+      ]
+    },
+    "contextful_core::store::sync::Tombstone": {
+      "file": "crates/contextful-core/src/store/sync.rs",
+      "line": 345,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "owner"
+        },
+        {
+          "name": "deleted_at"
+        },
+        {
+          "name": "signer",
+          "doc": "The signing key's public text, `ed25519:<hex>` or `es256:<hex>`; absent when the writing node holds no issuer key."
+        },
+        {
+          "name": "signature",
+          "doc": "Hex of the signature over [`Tombstone::message`]."
+        }
+      ],
+      "clauses": [
+        "store.merge.tombstone-signed"
       ]
     }
   },
@@ -57349,7 +57441,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/point_in_time.rs",
         "name": "a_horizon_ranking_reads_the_pinned_capture",
-        "line": 235,
+        "line": 236,
         "verdict": "performed",
         "proved": false
       }
@@ -65689,7 +65781,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/point_in_time.rs",
         "name": "a_bounded_read_applies_only_factors_announced_by_the_bound",
-        "line": 316,
+        "line": 317,
         "verdict": "performed",
         "proved": false
       },
@@ -65697,7 +65789,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/point_in_time.rs",
         "name": "a_factor_applies_to_its_own_key_before_its_effective_date",
-        "line": 336,
+        "line": 337,
         "verdict": "performed",
         "proved": false
       }
@@ -69213,7 +69305,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/point_in_time.rs",
         "name": "each_capture_commits_one_snapshot_a_read_pins_by_id",
-        "line": 190,
+        "line": 191,
         "verdict": "performed",
         "proved": false
       }
@@ -69223,7 +69315,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/point_in_time.rs",
         "name": "a_capture_after_the_horizon_answers_only_at_a_leak_score_of_zero",
-        "line": 211,
+        "line": 212,
         "verdict": "performed",
         "proved": false
       }

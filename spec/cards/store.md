@@ -159,9 +159,21 @@ The struct at `crates/contextful-core/src/store/declare.rs:49`, named by `store.
 | `live_since` | The instant the source began publishing live (`store.available-time.live-since`). |
 | `adjustment` | The factor table a bounded read multiplies listed columns by (`store.available-time.adjustment-factors`). |
 
+### `contextful_core::store::declare::SnapshotDecl`
+
+The struct at `crates/contextful-core/src/store/declare.rs:81`, named by `store.snapshot.capture`.
+
+| Key | Doc |
+| --- | --- |
+| `url` |  |
+| `captured_at` |  |
+| `digest` |  |
+| `source` |  |
+| `leak_score` | The judged leak score a capture after the horizon answers under (`store.snapshot.post-horizon-capture`). |
+
 ### `contextful_core::store::declare::TableDecl`
 
-The struct at `crates/contextful-core/src/store/declare.rs:126`, named by `store.declare.table-block`.
+The struct at `crates/contextful-core/src/store/declare.rs:126`, named by `store.declare.table-block`, `store.declare.erasure-metadata`.
 
 | Key | Doc |
 | --- | --- |
@@ -199,6 +211,33 @@ The struct at `crates/contextful-core/src/store/declare.rs:126`, named by `store
 | `result_cache` | The time to live of a cached read result touching the table, which opts the table into the result cache (`read.cache.cache-is-opt-in`), spelled as `retain_runs`. |
 | `private` | A table whose rows never enter the result cache (`read.cache.cache-is-opt-in`). |
 | `retrieve` | What a ranked read scores the table's rows on (`read.retrieve.scored-text`). |
+
+### `contextful_core::store::index::IndexBlock`
+
+The struct at `crates/contextful-core/src/store/index.rs:191`, named by `store.index.declaration`.
+
+| Key | Doc |
+| --- | --- |
+| `kind` |  |
+| `column` |  |
+| `id_column` |  |
+| `model` |  |
+| `dim` |  |
+| `metric` |  |
+| `m` |  |
+| `ef_construction` |  |
+| `tokenizer` |  |
+
+### `contextful_core::store::sync::Tombstone`
+
+The struct at `crates/contextful-core/src/store/sync.rs:345`, named by `store.merge.tombstone-signed`.
+
+| Key | Doc |
+| --- | --- |
+| `owner` |  |
+| `deleted_at` |  |
+| `signer` | The signing key's public text, `ed25519:<hex>` or `es256:<hex>`; absent when the writing node holds no issuer key. |
+| `signature` | Hex of the signature over [`Tombstone::message`]. |
 
 ## Decisions
 

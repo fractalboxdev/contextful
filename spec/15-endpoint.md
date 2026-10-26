@@ -27,7 +27,7 @@ Bucket endpoint schemes, transport, request addressing and signing, credentials 
   *because a task role or service account supplies short-lived keys, and a long-lived key in a secret store is the credential posture a regulated account refuses*
 - `role-unavailable` — Under {{store.endpoint.role-credentials}}, a bucket open that no role source answers raises `SyncRoleUnavailable`, naming each source tried.
   *because an unsigned request otherwise reaches the bucket and fails as forbidden, hiding the missing role*
-- `role-conflict` — `credentials = "role"` beside `access_key_id`, `secret_access_key` or `session_token`, or on an R2 endpoint, raises `SyncCredentialConflict`, naming the endpoint.
+- `role-conflict` — `credentials = "role"` beside a key credential {{store.endpoint.credentials}} binds, or on an R2 endpoint, raises `SyncCredentialConflict`, naming the endpoint.
   *because two credential sources for one bucket leave unstated which identity signed a write*
 - `role-refresh` — Role credentials refresh 300 s before their stated expiry, and no request signs with expired credentials. A failed refresh keeps still-valid credentials and retries at the next request.
 - `conditional-answers` — A `412` or `409` means a failed condition; a `404` naming `NoSuchKey` does so for an `If-Match` put. `501` means an unsupported method; `403` means forbidden credentials. Both follow {{store.probe.inconclusive}}.

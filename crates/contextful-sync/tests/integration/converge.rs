@@ -129,9 +129,9 @@ fn unhex(text: &str) -> Vec<u8> {
     (0..text.len()).step_by(2).map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap()).collect()
 }
 
-/// Push signs each tombstone with the node's issuer key, recording `signer` and `signature` over the key, owner and
-/// `deleted_at`. A node without an issuer key writes unsigned tombstones.
-// spec: store.merge.tombstone-signed@a459a5a5
+/// Push signs each {{type:contextful_core::store::sync::Tombstone}} with the node's issuer key over the key it
+/// names, its owner and its deletion instant. A node without an issuer key writes unsigned tombstones.
+// spec: store.merge.tombstone-signed@4fadd6dd
 #[test]
 fn a_push_signs_each_tombstone_with_its_issuer_key() {
     use contextful_policy::issue::SignerKey;

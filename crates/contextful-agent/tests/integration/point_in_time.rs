@@ -185,9 +185,10 @@ fn urls(answer: &Value) -> Vec<String> {
     out
 }
 
-/// `[pipeline.tables.snapshot]` names each document's `url`, `captured_at`, `digest` and `source` columns. Each
-/// capture commits as one store snapshot. An evaluation case pins the capture by `snapshot` id.
-// spec: store.snapshot.capture@bbab83d6
+/// `[pipeline.tables.snapshot]` declares {{type:contextful_core::store::declare::SnapshotDecl}}, the columns
+/// describing each captured document. Each capture commits as one store snapshot, and an evaluation case pins
+/// it by `snapshot` id.
+// spec: store.snapshot.capture@1b5ecf0e
 #[test]
 fn each_capture_commits_one_snapshot_a_read_pins_by_id() {
     let mut ids = Vec::new();
