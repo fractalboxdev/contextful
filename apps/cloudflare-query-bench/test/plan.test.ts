@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FIXTURES, OBJECTS_PER_PUSH, OBJECTS_PER_RUN, parseServeLog, planFixture, quantile, sameSecret, storeConfig, summarize } from "../src/plan.ts";
+import { FIXTURES, healthHolds, OBJECTS_PER_PUSH, OBJECTS_PER_RUN, parseServeLog, planFixture, quantile, sameSecret, storeConfig, summarize } from "../src/plan.ts";
 
 test("each fixture plan reaches its object count and Parquet bytes", () => {
   for (const fixture of FIXTURES) {
@@ -53,4 +53,12 @@ test("the bench token compares whole and refuses an empty secret", () => {
   assert.equal(sameSecret("Bearer abd", "Bearer abc"), false);
   assert.equal(sameSecret("Bearer abc ", "Bearer abc"), false);
   assert.equal(sameSecret("", ""), false);
+});
+
+test("hydration holds only once the health body names it complete", () => {
+  assert.equal(healthHolds("ready", 200, `{"hydration":"warming"}`), true);
+  assert.equal(healthHolds("hydrated", 200, `{"hydration":"warming"}`), false);
+  assert.equal(healthHolds("hydrated", 200, `{"hydration":"complete"}`), true);
+  assert.equal(healthHolds("hydrated", 503, `{"hydration":"complete"}`), false);
+  assert.equal(healthHolds("hydrated", 200, "not json"), false);
 });

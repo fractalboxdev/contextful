@@ -64,7 +64,7 @@ export function renderTable(results: Results): string {
   }
   if (results.idle) {
     rows.push(["First read after `sleepAfter` elapses", fixtureCell(results, results.idle.fixture),
-      `${s(results.idle.e2e_ms)} end to end through the routing Worker, ${results.idle.attempts} request(s), sleepAfter ${results.sleep_after_secs} s`]);
+      `${s(results.idle.e2e_ms)} end to end ${results.target === "cloudflare" ? "through the routing Worker" : "on loopback"}, ${results.idle.attempts} request(s), sleepAfter ${results.sleep_after_secs} s`]);
   }
   if (results.warm) {
     const { point, aggregate } = results.warm;

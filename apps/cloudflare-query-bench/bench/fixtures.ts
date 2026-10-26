@@ -49,7 +49,7 @@ const bytesPerRow = calibrated.bytes / calibrationRows;
 // One issuer the query container pins and the driver mints read tokens from.
 const issuerDir = join(out, "issuer");
 mkdirSync(join(issuerDir, ".contextful"), { recursive: true });
-writeFileSync(join(issuerDir, ".contextful/issuance.toml"), `default_audience = ${JSON.stringify(AUDIENCE)}\nmax_lifetime_secs = 86400\n`);
+writeFileSync(join(issuerDir, ".contextful/issuance.toml"), `default_audience = ${JSON.stringify(AUDIENCE)}\nmax_lifetime_secs = 3600\n`);
 if (!existsSync(join(issuerDir, "issuer.pub"))) {
   const key = contextful(bin, issuerDir, ["token", "keygen", "--out", ".contextful/issuer.seed"]).trim();
   writeFileSync(join(issuerDir, "issuer.pub"), key + "\n");

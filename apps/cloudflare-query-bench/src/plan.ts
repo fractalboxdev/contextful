@@ -103,6 +103,23 @@ export function parseServeLog(log: string): HydrationLog {
   };
 }
 
+/** The health path each probe polls. */
+export const healthPath = (until: "ready" | "hydrated") => (until === "ready" ? "/health" : "/health?ready=hydrated");
+
+/**
+ * Whether a `/health` answer meets `until`. Hydration also requires the body to name it
+ * `complete`, which a build answering `200` to `?ready=hydrated` while warming still reports.
+ */
+export function healthHolds(until: "ready" | "hydrated", status: number, body: string): boolean {
+  if (status !== 200) return false;
+  if (until === "ready") return true;
+  try {
+    return (JSON.parse(body) as { hydration?: unknown }).hydration === "complete";
+  } catch {
+    return false;
+  }
+}
+
 /** The `q`-quantile of `samples` by the nearest-rank method. */
 export function quantile(samples: readonly number[], q: number): number {
   if (samples.length === 0 || !(q > 0 && q <= 1)) throw new Error("QuantileUndefined");

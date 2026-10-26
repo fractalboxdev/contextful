@@ -23,7 +23,7 @@ A `null` prefix starts the Container with no `[sync]` block, which measures read
 | `1gb-1k` | 1 GB | 1,000 |
 | `1gb-8k` | 1 GB | 8,000 |
 
-Each landed run adds two objects, a Parquet part and its run manifest, and one push adds four more. Rows carry 768 seeded random bytes as base64, so Parquet compresses them little. The builder lands a 2,000-row calibration run, measures its Parquet bytes per row, and sizes every run from that figure. All rows derive from seed `0x5eed0733`, so a rebuild reproduces them.
+Each landed run adds two objects, a Parquet part and its run manifest, and one push adds four more. Folds add a few objects on top of these, so `fixtures.json` records the object count the push reported (1,016 for a 1k fixture). Rows carry 768 seeded random bytes as base64, so Parquet compresses them little. The builder lands a 2,000-row calibration run, measures its Parquet bytes per row, and sizes every run from that figure. All rows derive from seed `0x5eed0733`, so a rebuild reproduces them.
 
 The 8k fixtures land about 4,000 runs each. Landing slows as the table's run count grows, so one 8k fixture takes tens of minutes to build. `--fixtures 100mb-1k,1gb-1k` builds a subset.
 
@@ -55,7 +55,7 @@ The builder writes `fixtures.json` and an issuer key pair to `--out`, which defa
 | --- | --- |
 | `ready` | Times `--starts` empty-disk starts to the first `200` from `/health` |
 | `hydrate` | Times each fixture to `/health?ready=hydrated` and reads the objects pulled and bytes mapped from the serve log |
-| `lazy` | Runs the same starts under `[sync] lazy_parts`, then one aggregate. Per-part fetch time is (first aggregate − warm aggregate) ÷ parts |
+| `lazy` | Runs the same starts under `[sync] lazy_parts`, then one aggregate. Per-part fetch time is (first aggregate − warm aggregate) ÷ the files a full hydration of that fixture mapped |
 | `warm` | On `1gb-1k`, takes `--warm` point lookups and `--warm` aggregates over every row, each timed end to end through the Worker |
 | `idle` | On `1gb-8k`, hydrates and reads once, sends nothing for `sleepAfter` + 30 s, then times a read through the Worker until it returns `200`. A `503` is retried after `Retry-After`, capped at 1 s |
 

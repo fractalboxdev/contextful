@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import type { ProbeResult, QueryResult, StartRequest } from "../src/container.ts";
 
-import { AUDIENCE, parseServeLog, PROJECT, PROJECT_DECLARATION, QUERY_TOKEN_HEADER, storeConfig } from "../src/plan.ts";
+import { AUDIENCE, healthHolds, healthPath, parseServeLog, PROJECT, PROJECT_DECLARATION, QUERY_TOKEN_HEADER, storeConfig } from "../src/plan.ts";
 
 export interface Target {
   /** Stop any running container and start a fresh one on an empty disk. */
@@ -23,7 +23,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The bench Worker's `/bench/*` routes under `url`, authenticated by `token`. */
 export class CloudflareTarget implements Target {
-  constructor(private url: string, private token: string) {}
+  private url: string;
+  private token: string;
+
+  constructor(url: string, token: string) {
+    this.url = url;
+    this.token = token;
+  }
 
   private async post(path: string, body: string, headers: Record<string, string> = {}): Promise<Response> {
     return fetch(new URL(path, this.url), {
@@ -79,7 +85,19 @@ export class LocalTarget implements Target {
   private port = 0;
   private request: StartRequest | null = null;
 
-  constructor(private bin: string, private workDir: string, private endpoint: string, private bucket: string, private publicKey: string) {}
+  private bin: string;
+  private workDir: string;
+  private endpoint: string;
+  private bucket: string;
+  private publicKey: string;
+
+  constructor(bin: string, workDir: string, endpoint: string, bucket: string, publicKey: string) {
+    this.bin = bin;
+    this.workDir = workDir;
+    this.endpoint = endpoint;
+    this.bucket = bucket;
+    this.publicKey = publicKey;
+  }
 
   private async spawnServe(request: StartRequest) {
     await this.stop();
@@ -115,12 +133,10 @@ export class LocalTarget implements Target {
 
   async probe(until: "ready" | "hydrated", waitMs: number): Promise<ProbeResult> {
     const deadline = performance.now() + waitMs;
-    const path = until === "ready" ? "/health" : "/health?ready=hydrated";
     for (;;) {
       try {
-        const answer = await fetch(`http://127.0.0.1:${this.port}${path}`);
-        await answer.arrayBuffer();
-        if (answer.status === 200) {
+        const answer = await fetch(`http://127.0.0.1:${this.port}${healthPath(until)}`);
+        if (healthHolds(until, answer.status, await answer.text())) {
           const elapsed_ms = performance.now() - this.startedAt;
           const log = until === "hydrated" ? parseServeLog(readFileSync(join(this.workDir, "serve.log"), "utf8")) : null;
           return { held: true, elapsed_ms, log };

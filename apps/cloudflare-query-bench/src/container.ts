@@ -1,5 +1,5 @@
 import { Container } from "@cloudflare/containers";
-import { AUDIENCE, parseServeLog, PROJECT, PROJECT_DECLARATION, SERVE_PORT, storeConfig, type HydrationLog } from "./plan.ts";
+import { AUDIENCE, healthHolds, healthPath, parseServeLog, PROJECT, PROJECT_DECLARATION, SERVE_PORT, storeConfig, type HydrationLog } from "./plan.ts";
 
 /** Which fixture a cold start hydrates; `prefix: null` starts on an empty disk with no bucket. */
 export type StartRequest = { prefix: string | null; lazy_parts: boolean };
@@ -73,14 +73,12 @@ export class QueryBenchContainer extends Container<QueryBenchEnv> {
    */
   async probe(until: "ready" | "hydrated", wait_ms: number): Promise<ProbeResult> {
     if (this.startedAt === 0) throw new Error("BenchNotStarted");
-    const path = until === "ready" ? "/health" : "/health?ready=hydrated";
     const deadline = Date.now() + Math.min(Math.max(wait_ms, 0), 25_000);
     for (;;) {
       if (this.ctx.container?.running) {
         try {
-          const answer = await this.containerFetch(`http://query${path}`, { method: "GET" }, SERVE_PORT);
-          await answer.arrayBuffer();
-          if (answer.status === 200) {
+          const answer = await this.containerFetch(`http://query${healthPath(until)}`, { method: "GET" }, SERVE_PORT);
+          if (healthHolds(until, answer.status, await answer.text())) {
             const elapsed_ms = Date.now() - this.startedAt;
             return { held: true, elapsed_ms, log: until === "hydrated" ? await this.serveLog() : null };
           }

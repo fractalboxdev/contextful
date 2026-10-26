@@ -4,6 +4,8 @@
  *   BENCH_TOKEN=… npm run measure -- --target cloudflare --url https://<bench-route> --sleep-after-secs 300
  *   npm run measure -- --target local --starts 5 --hydrate-runs 1 --warm 10       # loopback check
  *
+ * `--warm-fixture` and `--idle-fixture` replace the fixtures the warm and idle sections use.
+ *
  * `--sections ready,hydrate,lazy,warm,idle` selects measurements (default all). Results land in
  * `--out` as results.json, results.md and one ledger record per filled trend entry under
  * records/ (or $CONTEXTFUL_MEASURE_DIR when set).
@@ -27,6 +29,8 @@ const warmReads = Number(args.get("warm") ?? "50");
 const sleepAfterSecs = Number(args.get("sleep-after-secs") ?? "300");
 const hydrateWaitMs = Number(args.get("hydrate-timeout-secs") ?? "3600") * 1000;
 const kind = args.get("target") ?? "cloudflare";
+const warmFixture = args.get("warm-fixture") ?? WARM_FIXTURE;
+const idleFixture = args.get("idle-fixture") ?? IDLE_FIXTURE;
 
 let target: Target;
 let runner: string;
@@ -44,8 +48,18 @@ if (kind === "cloudflare") {
   throw new Error(`BenchTargetUnknown: ${kind}`);
 }
 
-const token = contextful(bin, manifest.issuer_dir, ["token", "mint", "--issuer-key", ".contextful/issuer.seed",
-  "--on-behalf-of", "user://bench@example.test", "--zone", ZONE, "--table", TABLE, "--ttl", "86400"]).trim();
+// A network checkpoint admits a bearer living at most 3600 s, so the driver re-mints before expiry.
+let minted = { token: "", at: 0 };
+const token = () => {
+  if (Date.now() - minted.at > 50 * 60_000) {
+    minted = {
+      token: contextful(bin, manifest.issuer_dir, ["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+        "--on-behalf-of", "user://bench@example.test", "--zone", ZONE, "--table", TABLE, "--ttl", "3600"]).trim(),
+      at: Date.now(),
+    };
+  }
+  return minted.token;
+};
 const fixture = (name: string) => {
   const f = manifest.fixtures.find((x) => x.name === name);
   if (!f) throw new Error(`BenchFixtureAbsent: ${name} is not in fixtures.json`);
@@ -56,7 +70,7 @@ const built = FIXTURES.map((f) => f.name).filter((name) => manifest.fixtures.som
 /** One read, timed by the caller; the aggregate's counts must cover every row. */
 async function read(sql: string, expectRows?: number): Promise<number> {
   const at = performance.now();
-  const answer = await target.query(queryCall(sql), token);
+  const answer = await target.query(queryCall(sql), token());
   const took = performance.now() - at;
   if (answer.status !== 200) throw new Error(`BenchReadFailed: ${answer.status} ${answer.body.slice(0, 300)}`);
   const result = JSON.parse(answer.body).result?.structuredContent as { rows?: unknown[][] } | undefined;
@@ -114,14 +128,14 @@ try {
         const first = await read(QUERIES.aggregate, f.rows);
         const warm: number[] = [];
         for (let j = 0; j < 5; j++) warm.push(await read(QUERIES.aggregate, f.rows));
-        runs.push({ boot_ms: boot.hydrated_ms, first_read_ms: first, warm_read_ms: summarize(warm).p50, parts: f.runs });
+        runs.push({ boot_ms: boot.hydrated_ms, first_read_ms: first, warm_read_ms: summarize(warm).p50, parts: results.hydrate.find((h) => h.fixture === name)?.runs[0]?.log?.files ?? f.runs });
         log(`lazy ${name} ${i + 1}/${hydrateRuns}: ${JSON.stringify(runs[i])}`);
       }
       results.lazy.push({ fixture: name, runs });
     }
   }
-  if (sections.has("warm") && built.includes(WARM_FIXTURE)) {
-    const f = fixture(WARM_FIXTURE);
+  if (sections.has("warm") && built.includes(warmFixture)) {
+    const f = fixture(warmFixture);
     await hydrated(f.prefix, false);
     await read(QUERIES.aggregate, f.rows);
     const ids = new Stream(manifest.seed, "point");
@@ -129,11 +143,11 @@ try {
     const aggregate: number[] = [];
     for (let i = 0; i < warmReads; i++) point.push(await read(QUERIES.point(ids.below(f.rows))));
     for (let i = 0; i < warmReads; i++) aggregate.push(await read(QUERIES.aggregate, f.rows));
-    results.warm = { fixture: WARM_FIXTURE, point: summarize(point), aggregate: summarize(aggregate) };
+    results.warm = { fixture: warmFixture, point: summarize(point), aggregate: summarize(aggregate) };
     log(`warm ${JSON.stringify(results.warm)}`);
   }
-  if (sections.has("idle") && built.includes(IDLE_FIXTURE)) {
-    const f = fixture(IDLE_FIXTURE);
+  if (sections.has("idle") && built.includes(idleFixture)) {
+    const f = fixture(idleFixture);
     await hydrated(f.prefix, false);
     await read(QUERIES.aggregate, f.rows);
     log(`idle: waiting for the container to sleep (sleepAfter ${sleepAfterSecs} s)`);
@@ -142,13 +156,13 @@ try {
     let attempts = 0;
     for (;;) {
       attempts++;
-      const answer = await target.query(queryCall(QUERIES.aggregate), token);
+      const answer = await target.query(queryCall(QUERIES.aggregate), token());
       if (answer.status === 200) break;
       if (answer.status !== 503) throw new Error(`BenchReadFailed: ${answer.status} ${answer.body.slice(0, 300)}`);
       if (performance.now() - at > hydrateWaitMs) throw new Error("BenchNotHydrated: the idle container never answered");
       await new Promise((r) => setTimeout(r, Math.min(Number(answer.retry_after ?? "1"), 1) * 1000));
     }
-    results.idle = { fixture: IDLE_FIXTURE, e2e_ms: performance.now() - at, attempts };
+    results.idle = { fixture: idleFixture, e2e_ms: performance.now() - at, attempts };
     log(`idle ${JSON.stringify(results.idle)}`);
   }
 } finally {
