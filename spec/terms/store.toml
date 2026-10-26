@@ -30,19 +30,19 @@ StoreManifestFormatNewer     = { clause = "store.lay-out.format-newer", gloss = 
 StoreUnknownTable            = { clause = "store.lay-out.unknown-table", gloss = "A table name resolves to no `schema.json` in the tree." }
 StoreNodeIdInvalid           = { clause = "store.lay-out.node-id-shape", gloss = "A resolved node id is too long or outside the path-safe pattern." }
 StoreCommitLockTimeout       = { clause = "store.reserve.commit-wait", gloss = "A commit outwaited its table's commit lock or a lower value's publication." }
-StoreProjectNameInvalid      = { clause = "store.init.name-shape", gloss = "A project name is not path-safe `/`-separated segments." }
+StoreProjectNameInvalid      = { clause = "store.init.name-conflict", gloss = "A project name is not path-safe `/`-separated segments." }
 StoreIdentityInvalid         = { clause = "store.init.identity-invalid", gloss = "A store UUID is malformed or owner mint names no initialized root." }
 StoreIdentityConflict        = { clause = "store.pull.identity-conflict", gloss = "A pull would replace one store UUID with another." }
 StoreProjectConflict         = { clause = "store.init.name-conflict", gloss = "An init meets a `contextful.toml` declaring another project, or a project with no name." }
 StoreProjectUndiscovered     = { clause = "store.init.undiscovered", gloss = "A command given no `--project` finds no `contextful.toml` naming a project from its working directory up." }
 StoreNodeIdShared            = { clause = "store.lay-out.node-id-shared", gloss = "A node id is declared in a control-plane configuration applied to many machines." }
-StoreOrderByUnknownColumn    = { clause = "store.declare.order-by-unknown", gloss = "An `order_by` names a column neither declared nor injected." }
+StoreOrderByUnknownColumn    = { clause = "store.declare.key-unknown", gloss = "An `order_by` names a column neither declared nor injected." }
 StoreKeyUnknownColumn        = { clause = "store.declare.key-unknown", gloss = "A `primary_key` names a column neither declared nor injected." }
 StoreReservedColumnName      = { clause = "store.reserve.column-name", gloss = "A producer column is spelled inside the reserved namespace and outside the optional set." }
 StoreReservedTableName       = { clause = "store.reserve.table-name", gloss = "A declared table collides with a reserved table namespace." }
 StoreSchemaIncompatible      = { clause = "store.reconcile.incompatible", gloss = "Two observed types for one column have no supertype in the lattice." }
 StoreKeyWidened              = { clause = "store.reconcile.key-widening", gloss = "A primary-key column takes the float promotion." }
-StoreNestedKeyColumn         = { clause = "store.declare.nested-key", gloss = "A struct, list or map column takes a key, ordering, clustering, partition or valid-time role." }
+StoreNestedKeyColumn         = { clause = "store.declare.key-unknown", gloss = "A struct, list or map column takes a key, ordering, clustering, partition or valid-time role." }
 StorePartitionColumnType     = { clause = "store.index.partition-type", gloss = "A `partition_by` column is typed binary or vector." }
 StoreRunConflict             = { clause = "store.lay-out.run-conflict", gloss = "A run id already committed on its node lands again as other than its replay." }
 StorePartialSnapshot         = { clause = "store.fold.partial-snapshot", gloss = "A commit would expose snapshot data without its declared sidecars, or the reverse." }
@@ -54,9 +54,9 @@ StoreValidTimeNotTimestamp   = { clause = "store.bound-time.valid-time-type", gl
 StoreAsOfUnretained          = { clause = "store.bound-time.as-of-unretained", gloss = "An `as_of` precedes the oldest retained snapshot of a table whose history was collected." }
 StoreValidTimeUndeclared     = { clause = "store.bound-time.valid-time-undeclared", gloss = "A valid-time-bounded read names a table declaring no pair." }
 StoreAvailableTimeUndeclared = { clause = "store.available-time.undeclared", gloss = "An availability-bounded read names a table declaring no availability time." }
-StoreAvailableTimeNull       = { clause = "store.available-time.null", gloss = "A landing row resolves to a null availability instant." }
-StoreVintageHashUndeclared   = { clause = "store.available-time.vintage-hash-undeclared", gloss = "A vintage table declares no `content_hash_column`." }
-StoreVintageRetainRows       = { clause = "store.available-time.vintage-retain-rows", gloss = "A vintage table declares a row-age retention cutoff." }
+StoreAvailableTimeNull       = { clause = "store.available-time.undeclared", gloss = "A landing row resolves to a null availability instant." }
+StoreVintageHashUndeclared   = { clause = "store.available-time.vintage-validation", gloss = "A vintage table declares no `content_hash_column`." }
+StoreVintageRetainRows       = { clause = "store.available-time.vintage-validation", gloss = "A vintage table declares a row-age retention cutoff." }
 StoreEncryptionKeyUnbound    = { clause = "store.encrypt.key-unbound", gloss = "A declared key source names a binding the process lacks." }
 StoreIndexOverRedactedColumn = { clause = "store.encrypt.redacted-index", gloss = "An index is declared over a column redacted at write time." }
 StoreIndexPathCollision      = { clause = "store.index.path-collision", gloss = "Two sidecar declarations of one table resolve to one path." }

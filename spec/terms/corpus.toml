@@ -87,7 +87,7 @@ corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "w
 registry-committed-sites = 3
 anatomy-long-lists = 15
 clause-unowned = 249
-why-unscoped = 806
+why-unscoped = 798
 
 [ceiling.contract-words]
 assurance = 10245
@@ -97,7 +97,7 @@ corpus = 4244
 disclosure = 5476
 read = 10127
 run = 19201
-store = 10704
+store = 10284
 surface = 6502
 topology = 2646
 

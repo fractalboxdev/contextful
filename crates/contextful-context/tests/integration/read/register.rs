@@ -560,9 +560,10 @@ fn reference_is_a_bounded_read_tool_over_registered_relations() {
     assert!(tool["inputSchema"]["properties"].get("max_response_bytes").is_some());
 }
 
-/// `available_as_of` applies before access controls under {{store.bound-time.beneath-enforcement}}, like the other two
-/// bounds. The bound only narrows the rows access controls admit.
-// spec: store.available-time.beneath-enforcement@8520183c
+/// `available_as_of` filters the inner source with `<column> <= available_as_of` beneath access controls, under
+/// {{store.bound-time.beneath-enforcement}}, and combines with {{store.bound-time.as-of}} and
+/// {{store.bound-time.valid-as-of}} when the read supplies those bounds.
+// spec: store.available-time.available-as-of@01cafb83
 #[test]
 fn an_availability_bound_narrows_the_tenant_restricted_rows() {
     const FILINGS: &str = "\n[[pipeline.tables]]\nname = \"research/filings\"\nprimary_key = [\"filing_id\"]\npartition_by = [\"tenant\"]\ncontent_hash_column = \"digest\"\n\n[pipeline.tables.policy.columns]\nanalyst = { strategy = \"drop\" }\n\n[pipeline.tables.available_time]\ncolumn = \"accepted_at\"\n";
