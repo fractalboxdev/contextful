@@ -222,8 +222,9 @@ fn a_tenant_value_is_kept_byte_for_byte() {
 }
 
 #[cfg(feature = "read")]
-/// Table file sets exclude `indexes/`. A snapshot reader lists only parts named by the snapshot manifest.
-// spec: store.index.not-in-file-set@268176f2
+/// Every read passes `read_parquet` an explicit sorted file list of the parts the pointer's manifests name, with no glob, so stray files and
+/// `indexes/` stay out.
+// spec: store.reconcile.explicit-file-list@38646064
 #[test]
 fn a_sidecar_directory_joins_no_file_set() {
     let f = Fixture::new();
@@ -547,9 +548,9 @@ fn collecting_a_snapshot_collects_its_sidecars() {
     assert!(!first_dir.exists() && !sidecar.exists());
 }
 
-/// A vector sidecar is an HNSW graph over unit-length `Float32` vectors. Layers use a seed from the snapshot id and
-/// column. The same staged row set therefore produces a byte-identical graph.
-// spec: store.index.graph@1af6bae7
+/// A vector sidecar is an HNSW graph over unit-length `Float32` vectors, its layers seeded from the snapshot id and
+/// column, so one staged row set yields a byte-identical graph.
+// spec: store.index.graph@7b7b97d1
 #[test]
 fn one_staged_row_set_builds_one_byte_identical_graph() {
     let rows: Vec<Value> = (0..300)
@@ -706,9 +707,9 @@ fn probe_ids(sidecar: &FulltextSidecar, query: &[&str], k: usize) -> Vec<String>
     sidecar.probe(&tokens, k).unwrap().candidates.into_iter().map(|c| c.id).collect()
 }
 
-/// Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term.
-/// Fold records the sidecar in the snapshot manifest.
-// spec: store.index.fulltext-by-fold@8027ca82
+/// Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term,
+/// recording it in the snapshot manifest.
+// spec: store.index.fulltext-by-fold@6cc65b1c
 #[test]
 fn the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms() {
     let f = Fixture::new();

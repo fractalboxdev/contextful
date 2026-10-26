@@ -58,10 +58,9 @@ fn a_retried_land_acknowledges_the_replay_and_refuses_other_rows() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("StoreRunConflict"), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
-/// A pass reports folded, `indexes-built`, nothing-landed or failed on one line per table. `indexes-built` names
-/// sidecars built without folding runs. Nothing-landed means no pending runs and every declared sidecar current; the
-/// pass continues.
-// spec: store.fold.result@67b753db
+/// A pass reports one line per table, folded, `indexes-built` for sidecars built without folding runs, failed, or
+/// nothing-landed when no run is pending and every declared sidecar is current, and continues.
+// spec: store.fold.result@1b7ffb16
 #[test]
 fn a_scheduled_pass_reports_every_table_and_continues_past_nothing_landed() {
     let p = project();

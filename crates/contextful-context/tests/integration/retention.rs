@@ -332,7 +332,7 @@ fn collection_names_each_removed_directory() {
     assert!(printed.contains("data/snapshots/"), "{outcome:?}");
 }
 
-// spec: store.declare.retain-rows@e4995f44
+// spec: store.declare.retain-rows@5bed55fb
 #[test]
 fn retention_refuses_an_undeclared_or_non_timestamp_column() {
     let f = Fixture::new();

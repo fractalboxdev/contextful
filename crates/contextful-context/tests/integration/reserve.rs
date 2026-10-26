@@ -14,10 +14,10 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 #[cfg(feature = "read")]
-/// The engine injects `_ingested_at` as non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id` and `_site_id`. Injection
-/// adds int32 `_batch_seq` within a batch scope and `_authored_by` for writes authorized by an authenticated subject.
-/// Injected values replace producer values.
-// spec: store.reserve.injected@1efd85ab
+/// The engine injects non-null `_ingested_at` as Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_site_id`, int32
+/// `_batch_seq` within a batch scope, and `_authored_by` for writes an authenticated subject authorized, replacing
+/// producer values.
+// spec: store.reserve.injected@99f4c73c
 #[test]
 fn the_engine_injects_provenance_and_replaces_producer_values() {
     let f = Fixture::new();

@@ -94,9 +94,9 @@ fn pinned_snapshot_footer_keeps_variant_type_at_every_depth() {
 }
 
 #[cfg(feature = "read")]
-/// Every read passes `read_parquet` an explicit sorted file list resolved from the pointer and manifests. Reads use no
-/// glob and exclude stray files.
-// spec: store.reconcile.explicit-file-list@96d7f7cd
+/// Every read passes `read_parquet` an explicit sorted file list of the parts the pointer's manifests name, with no
+/// glob, so stray files and `indexes/` stay out.
+// spec: store.reconcile.explicit-file-list@38646064
 #[test]
 fn a_read_hands_read_parquet_an_explicit_sorted_list() {
     let f = Fixture::new();
@@ -431,8 +431,8 @@ fn a_declared_column_type_types_a_landing_that_declares_none() {
 }
 
 #[cfg(feature = "read")]
-/// A `Float16` vector stores each element at half width in Parquet. The engine reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension through one relation cast.
-// spec: store.reconcile.half-width@b93ac02d
+/// A `Float16` vector stores elements at half width in Parquet; one relation cast reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension.
+// spec: store.reconcile.half-width@147b0f6a
 #[test]
 fn half_floats_store_at_half_width_and_read_as_float_arrays() {
     let f = Fixture::new();

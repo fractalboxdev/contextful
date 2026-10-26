@@ -218,7 +218,7 @@ fn a_status_reaching_no_execution_database_fails_apart_from_an_unpushed_refusal(
 
 /// A container replaced before any push carried its marked run: the next push finds no copy
 /// of the run, marks it `lost` and names it, and the status lists it without refusing.
-// spec: store.drain.clear@53b5e343
+// spec: store.drain.clear@692e405a
 #[test]
 fn a_replacement_disk_marks_a_run_no_push_carried_lost() {
     let s3 = S3Server::start("conformance");
@@ -296,7 +296,7 @@ impl StallAfterCommit {
 /// A run killed after its local commit and before its own push, here while its execution
 /// database stops answering, still carries its mark: the status refuses on it, and the next
 /// push carries it and clears the mark.
-// spec: store.drain.mark@8601b5e6
+// spec: store.drain.mark@d1491b97
 #[test]
 fn a_run_killed_after_its_local_commit_stays_marked_until_a_push_carries_it() {
     let s3 = S3Server::start("conformance");

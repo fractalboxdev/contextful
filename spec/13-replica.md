@@ -6,9 +6,7 @@ owns:
 
 # Replicas
 
-A replica is a read-only store that downloads whole snapshots from another store's bucket.
-Operators use this contract to refresh a replica and identify the snapshots available to a local query server.
-The replica reports its local contents and writes nothing back to the source store.
+A replica is a read-only store that downloads whole snapshots from another store's bucket and writes nothing back.
 
 ## replicate
 

@@ -246,10 +246,10 @@ fn a_row_whose_class_names_no_lag_is_refused() {
 }
 
 #[cfg(feature = "read")]
-/// A date-typed availability value resolves at landing to the start of the following day in the declared `zone`.
-/// The engine injects `_available_reconstructed` true on each row available before `available_time.live_since`,
-/// the instant the source began publishing live.
-// spec: store.available-time.live-since@2a0e0187
+/// A date-typed availability value resolves at landing to the start of the next day in the declared `zone`; rows
+/// available before `available_time.live_since`, when the source began publishing live, get injected
+/// `_available_reconstructed` true.
+// spec: store.available-time.live-since@92102367
 #[test]
 fn a_date_only_instant_resolves_to_the_next_day_in_its_zone() {
     use crate::support::s;
@@ -354,10 +354,10 @@ fn a_seeded_row_lands_its_sources_instant_beside_the_commit_instant() {
 }
 
 #[cfg(feature = "read")]
-/// A date-typed availability value resolves at landing to the start of the following day in the
-/// declared `zone`. The engine injects `_available_reconstructed` true on each row available before
-/// `available_time.live_since`, the instant the source began publishing live.
-// spec: store.available-time.live-since@2a0e0187
+/// A date-typed availability value resolves at landing to the start of the next day in the declared
+/// `zone`; rows available before `available_time.live_since`, when the source began publishing
+/// live, get injected `_available_reconstructed` true.
+// spec: store.available-time.live-since@92102367
 #[test]
 fn a_row_available_before_live_since_is_marked_reconstructed() {
     use crate::support::s;

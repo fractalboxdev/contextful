@@ -132,8 +132,8 @@ fn a_pass_reports_folded_or_nothing_landed() {
     assert!(FoldOutcome::Failed("x".into()).to_string().starts_with("failed"));
 }
 
-/// A pass naming a table no `schema.json` declares halts the command with {{store.lay-out.unknown-table}}.
-// spec: store.fold.unknown-table@a3fe0968
+/// A table name absent from every `schema.json` raises `StoreUnknownTable` rather than returning an empty result.
+// spec: store.lay-out.unknown-table@3272cbb8
 #[test]
 fn a_pass_over_an_unknown_table_halts() {
     let f = Fixture::new();

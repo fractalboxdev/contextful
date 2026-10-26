@@ -7,9 +7,8 @@ owns:
 
 # Time bounds
 
-Rows record transaction time; tables optionally declare valid-time and availability-time columns.
-The engine stamps transaction time at commit. Table declarations name the valid-time and availability-time columns.
-Implementers use this contract to resolve timestamp bounds before access controls select rows.
+The engine stamps transaction time at commit; a table declaration names its valid-time and availability-time columns.
+Each bound resolves before access controls select rows.
 
 ## bound-time
 
@@ -46,7 +45,7 @@ The source availability timestamp, its value at landing and row selection under 
   *A-store#availability-declared-column*
 - `lag-fill` — At landing, `available_time.lag` fills a null availability column with valid-time `to`, else `from`, plus the duration `lag.classes` maps the row's `lag.class_column` value to, and injects `_available_imputed` true; a class without an entry leaves the instant null.
   *because a source can publish different record classes after different declared delays*
-- `live-since` — A date-typed availability value resolves at landing to the start of the following day in the declared `zone`. The engine injects `_available_reconstructed` true on each row available before `available_time.live_since`, the instant the source began publishing live.
+- `live-since` — A date-typed availability value resolves at landing to the start of the next day in the declared `zone`; rows available before `available_time.live_since`, when the source began publishing live, get injected `_available_reconstructed` true.
   *because a date gives no publication time within its day, and history before the live date was rebuilt afterwards*
 - `available-as-of` — `available_as_of` filters the inner source with `<column> <= available_as_of` under {{store.bound-time.beneath-enforcement}}, combining with {{store.bound-time.as-of}} and {{store.bound-time.valid-as-of}} when the read supplies them.
   *A-store#availability-declared-column, P5*

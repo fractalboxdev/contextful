@@ -6,20 +6,18 @@ owns:
 
 # Unpushed runs
 
-Replacing a disposable disk loses locally committed runs that have not reached the bucket.
-Operators use this contract to check these runs before replacing a disk or container.
-The execution database tracks each run from opening until a successful push.
-Commands, `pipeline serve` shutdown and release checks read that record.
+Replacing a disposable disk loses committed runs that have not reached the bucket.
+The execution database marks each run from opening until a push carries it, and commands, `pipeline serve` shutdown and release checks read the mark.
 
 ## drain
 
 Tracking unpushed runs, retrying pushes before reads, pushing during shutdown and reporting status to release checks.
 
-- `mark` — Under `postgres` or `cloudflare-d1`, opening a run sets its row's `unpushed` mark with the node, before landing commits. Closing clears the mark when no run manifest exists in any table included in the push.
+- `mark` — Under `postgres` or `cloudflare-d1`, opening a run marks its row `unpushed` with the node before landing commits; closing clears the mark when no table the push includes holds a manifest of the run.
   *A-store#unpushed-run-marked*
 - `record-unmarked` — The store's run record keeps each run row without `unpushed`; only the execution database holds the mark.
   *because a rebuilt execution database restores rows from the pushed run record, so a mark there resurrects every pushed run*
-- `clear` — A committed push clears marks for manifests present in included tables at push start. For marked runs lacking a local manifest and live owner, the push sets `lost` and names the runs on stderr.
+- `clear` — A committed push clears the marks of manifests its included tables held at push start, and sets `lost` on marked runs with no local manifest and no live owner, naming them on stderr.
   *because a committed push carries every manifest the store held as it walked, and no retry restores a lost commit*
 - `before-read` — Under these profiles, {{store.pull.before-run}} pushes after pulling for unlost marks on its node with a local manifest or expired owner lease. A failed push names those runs and stops the command before its first read.
   *A-store#unpushed-run-marked*

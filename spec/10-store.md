@@ -19,12 +19,8 @@ owns:
 
 # The store and its sync
 
-The store holds canonical Parquet data, JSON manifests and a pointer to each table's current snapshot.
-Readers open the Parquet files without the engine. Two local SQLite catalogs cache metadata and hold machine state.
-An S3-compatible bucket mirrors the directory tree key for key.
-Implementers use this contract to store rows, publish snapshots and sync files between machines.
-
-The diagram shows canonical files, local catalogs, bucket sync and the components that write or read rows.
+The store holds canonical Parquet data, JSON manifests and a pointer to each table's current snapshot, which readers open without the engine.
+Two local SQLite catalogs cache metadata and hold machine state, and an S3-compatible bucket mirrors the tree key for key.
 
 ```mermaid
 flowchart LR
@@ -134,28 +130,28 @@ Store directories, run and snapshot manifests, table pointers, local catalogs an
   *because a control-plane snapshot applies to every machine reconciling it, making one id many holders*
 - `node-id-local` — A machine with no writable state directory takes the reserved node id `local`.
 
-unsettled: Does a store re-bind the node id it last derived, so runs landed before its root moved, or under the bare host id an earlier build used, push without `CONTEXTFUL_NODE_ID`? owner: store affects: store.lay-out
+unsettled: Does a store re-bind the node id it last derived, so runs landed before its root moved push without `CONTEXTFUL_NODE_ID`? owner: store affects: store.lay-out
 
 ## init
 
 Project initialization, repeated initialization and project discovery when a command omits `--project`.
 
-- `declaration-file` — `contextful init <name>` writes `[project]` with `name = "<name>"` into `contextful.toml` in the working directory, appending the table to a file declaring no `project` key and keeping its bytes, and creates the store root {{store.lay-out.store-root}} beside it.
+- `declaration-file` — `contextful init <name>` writes `[project] name = "<name>"` into the working directory's `contextful.toml`, appending to a file declaring no `project` key and keeping its bytes, and creates the store root {{store.lay-out.store-root}} beside it.
 - `store-identity` — An initialized store holds one synced, canonical version-4 UUID in `store-id`; repeated init and clones keep it, while a recreated root receives a new UUID.
   *A-store#synced-uuid-binds*
 - `identity-invalid` — A malformed `store-id`, or an owner mint naming no initialized store root, raises `StoreIdentityInvalid`.
   *A-store#synced-uuid-binds*
-- `name-conflict` — A project name other than `/`-separated `[A-Za-z0-9._-]` segments, or holding a `.` or `..` segment, raises `StoreProjectNameInvalid` before any file access. A `contextful.toml` declaring another name or no string `name` raises `StoreProjectConflict` and writes nothing.
+- `name-conflict` — A project name other than `/`-separated `[A-Za-z0-9._-]` segments, or with a `.` or `..` segment, raises `StoreProjectNameInvalid` before file access; a `contextful.toml` naming another project or no string `name` raises `StoreProjectConflict`, writing nothing.
   *because the name enters every project path, so a traversing segment escapes it and a rename orphans the store root*
 - `repeat` — If `contextful.toml` declares the same `[project] name`, init succeeds, keeps store content and rewrites only the posture under {{store.init.posture}} and a missing {{store.init.store-identity}}.
   *because scripts and onboarding run init unconditionally, so a repeat converges on the first one's state*
 - `posture` — `contextful init <name> --authoring-posture <posture>` prepends `authoring_posture = "<posture>"` under {{authority.issue.posture-key}} when `contextful.toml` declares none, preserving every other byte; init keeps a declared posture and, without the flag, writes none.
   *because the posture decides whether a write without a credential lands, so no default chooses it*
-- `discovery` — Without `--project`, a command takes the `[project] name` of the nearest `contextful.toml` in the working directory or an ancestor, and bases the store root, `.contextful/run/<project>/` and `.contextful/memory/<project>/` on that file's directory.
-- `default-declaration` — Under `--project`, a command bases every project path {{store.init.discovery}} names on the working directory and runs no discovery. A command given no `--declaration` reads the discovered `contextful.toml`, or the working directory's under `--project`.
+- `discovery` — Without `--project`, a command takes the `[project] name` of the nearest `contextful.toml` at or above the working directory, basing the store root, `.contextful/run/<project>/` and `.contextful/memory/<project>/` on its directory.
+- `default-declaration` — Under `--project`, a command runs no discovery and bases every path {{store.init.discovery}} names on the working directory. Without `--declaration`, it reads the discovered `contextful.toml`, or the working directory's under `--project`.
 - `declaration-base` — A located project resolves relative declaration paths, a derive binding's `media_root` and path-form `command[0]` included, against its base directory rather than the working directory.
   *because a pipeline otherwise reads different media or programs per subdirectory it fires from*
-- `undiscovered` — Without `--project`, a command raises `StoreProjectUndiscovered` when the working directory and ancestors lack `contextful.toml` or the nearest file lacks `[project] name`. The error names the starting directory.
+- `undiscovered` — Without `--project`, a command raises `StoreProjectUndiscovered`, naming the starting directory, when no `contextful.toml` sits at or above it or the nearest lacks `[project] name`.
   *because a store opened at a guessed root splits one project's rows across two trees*
 
 #### Scenarios
@@ -174,20 +170,20 @@ Table declarations, primary keys, row ordering, write modes and replacement beha
   *because a JSON value alone cannot say it carries bytes or a vector*
 - `erasure-metadata` — An erasure declaration names, in keys of {{type:contextful_core::store::declare::TableDecl}}, the table's erasure key, the table and column references citing it, and whether citing rows survive erasure.
   *A-disclosure#erasure-forced-rewrite*
-- `retain-rows` — `retain_rows = { column = "<name>", age = "<n>d" }` accepts `_ingested_at` or a declared Timestamp column. Another column or null value raises `StoreRetentionColumnInvalid` before landing. A malformed age refuses the declaration.
+- `retain-rows` — `retain_rows = { column = "<name>", age = "<n>d" }` takes `_ingested_at` or a declared Timestamp column; another column or a null value raises `StoreRetentionColumnInvalid` before landing, and a malformed age refuses the declaration.
   *because a sender's clock cannot move the injected arrival time, and a null retention clock never expires*
 - `two-genres` — A table holds connector items or synthesized artifacts, whose kind is an open string; both append, deduplicate on content and carry a timestamp.
 - `unkeyed-union` — A table declaring no `primary_key` reads as the byte-identical union of its visible committed runs, selected under {{store.declare.replace-frontier}} when replacing.
-- `dedup-view` — A keyed table reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1`. The source unions the current snapshot, if present, with committed runs omitted by that snapshot.
+- `dedup-view` — A keyed table reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1` over the current snapshot, if any, unioned with the committed runs it omits.
   *because a keyed table read as a union before its first fold inflates every aggregate*
 - `order-by-default` — `order_by` names the column picking each key's surviving row, default `_ingested_at`.
 - `key-unknown` — A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or `StoreOrderByUnknownColumn`, and a struct, list or map column in a key, ordering, clustering, partition or valid-time role raises `StoreNestedKeyColumn`, at validation.
   *because an absent column reads as null and a nested one has no total order, so rows group arbitrarily*
-- `replace-frontier` — `write_mode` is `append`, the default, retiring no key, or `replace`, where a read covers the newest complete-state run and every later run; displaced runs stay on disk until `retain_runs` expires, with no erasure receipt or lineage traversal.
-- `empty-run` — A run landing zero rows commits a manifest with no parts; without {{store.declare.empty-replacement}} it replaces nothing. A table with no rows registers as a zero-row relation over its declared and injected columns.
+- `replace-frontier` — `write_mode` is `append`, the default, retiring no key, or `replace`, whose read covers the newest complete-state run and every later run; displaced runs stay until `retain_runs` expires, with no erasure receipt or lineage traversal.
+- `empty-run` — A zero-row run commits a manifest with no parts, replacing nothing without {{store.declare.empty-replacement}}; a table with no rows registers as a zero-row relation over its declared and injected columns.
 - `empty-replacement` — A complete zero-row `replace` run marks its manifest a replacement frontier, which push, pull and fold preserve; current reads exclude earlier files, and bounded reads before it keep earlier rows within retention.
   *A-store#sidecar-names-id*
-- `fold-job` — A `[[job]]` block of kind `fold` with a `schedule`, `enabled` absent or true and `target` absent or naming the table's destination covers the table; `pipeline validate` warns on stderr, failing nothing, for each keyed table no job covers.
+- `fold-job` — A `[[job]]` of kind `fold` with a `schedule`, `enabled` absent or true and `target` absent or naming the table's destination covers the table; `pipeline validate` warns on stderr for each keyed table no job covers.
   *A-store#sidecar-names-id*
 - `declaration-set` — The project's tables combine its declaration with adjacent `pipelines/*.toml` and `pipelines/*.json`, `[pipeline]` tables as named and specification tables under {{run.declare.table-name}}; queries and every `sync` verb use this set.
   *because a key declared only where `pipeline run` reads it leaves reads, pulls and folds treating the table as unkeyed*
@@ -199,7 +195,7 @@ unsettled: What retires a key a source stops serving under `append`, given the s
 Reserved column and table names, injected provenance columns, the commit protocol that assigns `_commit_seq`, and request ledgers.
 
 - `underscore-namespace` — Column names beginning `_` belong to the engine: the injected set and the reserved optional set.
-- `injected` — The engine injects `_ingested_at` as non-null Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id` and `_site_id`. Injection adds int32 `_batch_seq` within a batch scope and `_authored_by` for writes authorized by an authenticated subject. Injected values replace producer values.
+- `injected` — The engine injects non-null `_ingested_at` as Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_site_id`, int32 `_batch_seq` within a batch scope, and `_authored_by` for writes an authenticated subject authorized, replacing producer values.
   *because a string instant does not sort by time once fractions or offsets appear*
 - `authored-agent` — Where an authenticated subject with an agent member authorized the write, the engine injects that agent as `_authored_agent` beside `_authored_by`, replacing any producer value.
   *because a `[[principal]]` names an agent and the person it acts for, and {{authority.place.per-principal}} matches either*
@@ -253,7 +249,7 @@ unsettled: Does a fold backfill `_commit_seq` onto parts landed without the colu
 
 Schema reconciliation across table files, type promotion, added columns and scan behavior.
 
-- `explicit-file-list` — Every read passes `read_parquet` an explicit sorted file list resolved from the pointer and manifests. Reads use no glob and exclude stray files.
+- `explicit-file-list` — Every read passes `read_parquet` an explicit sorted file list of the parts the pointer's manifests name, with no glob, so stray files and `indexes/` stay out.
 - `union-by-name` — Every read passes `union_by_name=true`. Columns resolve to the common supertype across files carrying each column. The generated relation casts only vectors under {{store.reconcile.half-width}}.
 - `lattice` — The type lattice holds one promotion, `Int64` with `Float64` to `Float64`; a JSON type absorbs `Utf8`.
   *A-store#schema-lattice-has*
@@ -272,7 +268,7 @@ Schema reconciliation across table files, type promotion, added columns and scan
   *A-store#struct-list-map*
 - `stored-type` — Once `schema.json` records a binary, vector or nested type, later undeclared JSON values land in that type without a declaration.
   *A-store#binary-fixed-size*
-- `half-width` — A `Float16` vector stores each element at half width in Parquet. The engine reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension through one relation cast.
+- `half-width` — A `Float16` vector stores elements at half width in Parquet; one relation cast reads its elements as `FLOAT`, either binary type as `BLOB`, and a vector as an `ARRAY` of its dimension.
   *A-store#binary-fixed-size*
 - `key-widening` — Primary-key columns take no `Float64` promotion: a widening batch raises `StoreKeyWidened` before any Parquet, and so does a fold meeting a key already reconciled to `Float64`.
   *A-store#schema-lattice-has*
@@ -285,18 +281,18 @@ Schema reconciliation across table files, type promotion, added columns and scan
 
 unsettled: What dimension caps a fixed-size vector column, given the engine bounds an `ARRAY` width? owner: store affects: store.reconcile
 
-unsettled: Do the linked DuckDB and parquet releases read and write Parquet `VARIANT`, so the variant column's Struct encoding gives way to it (issue 90)? owner: store affects: store.reconcile
+unsettled: Does the variant column's Struct encoding give way to Parquet `VARIANT` once the linked DuckDB and parquet releases read and write it? owner: store affects: store.reconcile
 
 ## fold
 
-Compaction steps, triggers, retention, leases and snapshot publication through a pointer update.
+Compaction passes, their triggers and retention, and snapshot publication through a pointer update.
 
 - `pass` — A pass selects committed runs omitted by the current snapshot, deduplicates by key or unions, reconciles schemas, sorts by `cluster_by`, then partitions. The pass stages Parquet and every declared sidecar, then commits through {{store.fold.pointer-commit}}.
 - `carry-by-reference` — For append tables, a pass writes unfolded rows as one delta part per affected partition and rewrites only parts replacement or retention touches, referencing every other part in its origin snapshot.
   *A-store#pass-carries-untouched*
 - `tiered-merge` — In each written partition a size tier spans row counts between consecutive powers of 4, and a pass merges 4 parts of one tier into one part until every tier holds fewer than 4 parts.
   *A-store#pass-carries-untouched*
-- `bounded-memory` — A carrying pass without a full sidecar build holds its delta and one record batch per part read or merged. Peak memory therefore scales with landed rows rather than stored rows.
+- `bounded-memory` — A carrying pass without a full sidecar build holds its delta and one record batch per part read or merged, so peak memory scales with landed, not stored, rows.
   *because a landing's inline pass decoding the whole table grows with history until memory runs out*
 - `valid-time-line` — A keyed table declaring `valid_time` partitions on both the key and valid-time line. The table keeps one row per line.
 - `includes-runs` — A snapshot's `includes_runs` names each folded run as `<run-id>/<node-id>`, matching the run directory. Reads include runs committed after the snapshot.
@@ -313,10 +309,8 @@ Compaction steps, triggers, retention, leases and snapshot publication through a
   *because a time partition follows the sender's clock while the retention clock follows arrival*
 - `row-retention-report` — Per table, a pass reports the row-age cutoff, expired rows, dropped partitions and collected directories; `collect` returns the removed paths.
   *because an operator needs evidence of both logical expiry and physical collection*
-- `result` — A pass reports folded, `indexes-built`, nothing-landed or failed on one line per table. `indexes-built` names sidecars built without folding runs. Nothing-landed means no pending runs and every declared sidecar current; the pass continues.
+- `result` — A pass reports one line per table, folded, `indexes-built` for sidecars built without folding runs, failed, or nothing-landed when no run is pending and every declared sidecar is current, and continues.
 - `collection-failed` — A collection failure reports beside `folded` when the pass published, the snapshot staying published, and as `failed` otherwise; both exit non-zero.
-- `unknown-table` — A pass naming a table no `schema.json` declares halts the command with {{store.lay-out.unknown-table}}.
-  *P1*
 - `compaction-lease` — A pass holds the table's compaction lease and stamps its fence into the snapshot manifest and the pointer.
   *A-store#coordination-probed-compare*
 - `pointer-commit` — A pass publishes by replacing `_pointer.json` conditioned on the ETag read at pass start. Object stores use `If-Match`; filesystems use a version-checked rename.
@@ -393,15 +387,14 @@ Sidecar index types, identifiers and builds; row clustering, partitions and tena
   *A-store#sidecar-s-builder*
 - `filter-copies` — A sidecar copies only `id_column`, the indexed column, and the tenant column, zone label and availability instant needed for filtered traversal. Every other filter applies at {{store.index.candidate-ids}}.
   *A-store#sidecar-copies-tenant, A-read#sidecar-serves-past*
-- `not-in-file-set` — Table file sets exclude `indexes/`. A snapshot reader lists only parts named by the snapshot manifest.
 - `dies-with-snapshot` — Collecting a snapshot collects its sidecars in the same step, save a segment {{store.fold.reference-retention}} keeps.
 - `candidate-ids` — A sidecar returns only candidate `id_column` values, which retrieval joins on that column through the relation access controls protect before finalizing top-K.
   *P5*
 - `vector-by-fold` — Fold builds each declared vector sidecar from staged rows with non-null identifiers and non-zero vectors, of the declared model where `embedding_model` exists, and records it in the snapshot manifest.
   *A-store#sidecar-names-id*
-- `graph` — A vector sidecar is an HNSW graph over unit-length `Float32` vectors. Layers use a seed from the snapshot id and column. The same staged row set therefore produces a byte-identical graph.
+- `graph` — A vector sidecar is an HNSW graph over unit-length `Float32` vectors, its layers seeded from the snapshot id and column, so one staged row set yields a byte-identical graph.
   *because a rebuilt sidecar then differs only where the rows do, and a recall figure replays from its snapshot*
-- `fulltext-by-fold` — Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term. Fold records the sidecar in the snapshot manifest.
+- `fulltext-by-fold` — Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term, recording it in the snapshot manifest.
   *A-store#sidecar-names-id*
 - `postings` — Each full-text segment is one file with a sorted term dictionary and each term's row identifiers and positions. Readers binary-search the mapped or decrypted bytes.
   *because one layout serves mapped plaintext and decrypted sealed files, and a probe reads only its terms' postings*
@@ -606,7 +599,7 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
 - `control-head` — Pull downloads the bucket manifest's project-scoped control head, snapshot and receipt ancestry at their listed digests. The local applied pointer stays unchanged for {{surface.reconcile.pulled-control}}.
   *A-surface#synced-control-head*
 
-unsettled: Under {{store.pull.lazy-parts}} a pointer lands before its parts are home: does {{store.pull.pointer-last}} hold the snapshot manifest and its listed digests alone, and does {{store.pull.before-run}} end once every table's metadata is home? owner: store affects: store.pull
+unsettled: Under {{store.pull.lazy-parts}}, does {{store.pull.pointer-last}} wait for the snapshot manifest and its listed digests alone, and {{store.pull.before-run}} for every table's metadata alone? owner: store affects: store.pull
 
 A pull converges on the bucket manifest and writes each table pointer last.
 

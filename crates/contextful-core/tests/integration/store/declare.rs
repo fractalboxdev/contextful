@@ -159,10 +159,10 @@ fn an_order_by_naming_no_column_is_refused() {
     t.validate(&schema).unwrap();
 }
 
-/// `write_mode` is `append`, the default, retiring no key, or `replace`, where a read covers the newest
-/// complete-state run and every later run; displaced runs stay on disk until `retain_runs` expires, with no
-/// erasure receipt or lineage traversal.
-// spec: store.declare.replace-frontier@45e65273
+/// `write_mode` is `append`, the default, retiring no key, or `replace`, whose read covers the newest
+/// complete-state run and every later run; displaced runs stay until `retain_runs` expires, with no erasure
+/// receipt or lineage traversal.
+// spec: store.declare.replace-frontier@d8f63047
 #[test]
 fn write_mode_is_append_by_default_or_replace() {
     assert_eq!(TableDecl::named("t").write_mode(), WriteMode::Append);
@@ -188,10 +188,10 @@ fn a_retain_runs_outside_the_grammar_is_refused_not_panicked_on() {
     }
 }
 
-/// `write_mode` is `append`, the default, retiring no key, or `replace`, where a read covers the newest complete-state
-/// run and every later run; displaced runs stay on disk until `retain_runs` expires, with no erasure receipt or lineage
+/// `write_mode` is `append`, the default, retiring no key, or `replace`, whose read covers the newest complete-state
+/// run and every later run; displaced runs stay until `retain_runs` expires, with no erasure receipt or lineage
 /// traversal.
-// spec: store.declare.replace-frontier@45e65273
+// spec: store.declare.replace-frontier@d8f63047
 #[test]
 fn replace_covers_the_newest_complete_run_and_what_follows() {
     let s0 = snapshot("2030-01-01T00:30:00Z", None, &["run-1"]);
@@ -244,10 +244,9 @@ fn a_marked_empty_run_is_a_replacement_frontier() {
     assert_eq!(append.resolve(None).unwrap().files().len(), 1, "append ignores a replacement marker");
 }
 
-/// A `[[job]]` block of kind `fold` with a `schedule`, `enabled` absent or true and `target` absent or naming the
-/// table's destination covers the table; `pipeline validate` warns on stderr, failing nothing, for each keyed table
-/// no job covers.
-// spec: store.declare.fold-job@7759a47b
+/// A `[[job]]` of kind `fold` with a `schedule`, `enabled` absent or true and `target` absent or naming the table's
+/// destination covers the table; `pipeline validate` warns on stderr for each keyed table no job covers.
+// spec: store.declare.fold-job@aa32a6c0
 #[test]
 fn a_scheduled_enabled_fold_job_covers_its_target_or_every_table() {
     use contextful_core::store::declare::FoldCoverage;

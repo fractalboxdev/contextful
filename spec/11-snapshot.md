@@ -6,9 +6,7 @@ owns:
 
 # Snapshot corpora
 
-A snapshot corpus stores copies of external documents for local ranking under a reading horizon.
-Implementers use this contract to record captures and bind evaluation cases to a stored snapshot.
-Pipelines store the documents through the ordinary write path. Reads follow {{read.horizon.local-rank}} without querying the live web.
+A snapshot corpus stores copies of external documents, landed through the ordinary write path, for local ranking under {{read.horizon.local-rank}}.
 
 ## snapshot
 
