@@ -195,7 +195,7 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a conjunctive clause takes one test per conjunct, and one passing test of half a clause reads as the whole*
 - `unexercised` — A test pin of a refusal clause computes `broken` unless its function body names one of the clause's errors: the id itself, or a `::` variant path keeping at least two of the id's trailing words.
   *because a test that never observes the error demonstrates some other behavior*
-- `limit-const` — A named-bound entry may record the Rust const holding its bound as `const = "<crate path>"`; a test pin of its clause computes `broken` while that const resolves to nothing or no non-test source under `crates/*/src` or `tools/*/src` reads it.
+- `limit-const` — A named-bound entry may record the Rust const holding its bound as `const = "<file>::<NAME>"`; a test pin of its clause computes `broken` while that const resolves to nothing or no non-test source under `crates/*/src` or `tools/*/src` reads it.
   *because a test of a bound the code never consults demonstrates a number, not a limit*
 - `module-path` — A path pin resolves only where its file or module part points: `<file>.rs::<fn>` to that file, `<crate>::<module>::<fn>` to a file of that package opening that module path, `A.B.<theorem>` to `A/B.lean`.
   *because a pin matching any same-named function elsewhere demonstrates nothing about the named one*
