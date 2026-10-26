@@ -442,3 +442,20 @@ Decision: `assurance.gate.affected-parts` lists the required parts the diff from
 | Every part on every change | Gate wall clock | A spec-only change waits on hours of builds. |
 
 Consequences: a change confined to `spec/`, `references/`, `apps/`, `packages/` or `formal/` runs a fraction of the parts. A part the map omits wrongly stays green until a change under `crates/` or `tools/` runs it.
+
+## protocol-package-holds — The protocol package holds the journal and merge machines
+
+**Status:** accepted
+
+Context: `run.journal` and `store.merge` carry the engine's concurrency risk. Criteria: one toolchain and audit, a differential driving the engine's own code, and five policy modules.
+
+Decision: `formal/protocol` holds the journal as port-call steps and the merge per key. The journal harness runs `Journal::step` over gated adapters; the merge harness calls `merge_verified`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Both machines in `formal/protocol` *(chosen)* | — | The bounded checks share the formal stage's wall clock. |
+| One Lean package per machine | One audit | Three inventories, toolchain pins and executables. |
+| Machines in `formal/Contextful` | Scope | The policy package gains IO-shaped state. |
+| Interleaving tests without a model | Proof | A sample shows no property for every state. |
+
+Consequences: `no_dangling_blob` holds under the grace hypothesis; `--no-grace` reproduces `BlobMissing` on every adapter.

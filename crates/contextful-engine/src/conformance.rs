@@ -6,6 +6,8 @@
 //! A factory hands back empty stores on every call; a clone of a store shares its state.
 //! The restart check reopens a durable adapter over its location instead of cloning it.
 
+pub mod interleave;
+
 use crate::awake::{resume_key, AwakeError, Awaited, Registry};
 use crate::journal::{Journal, Resolved, StepError};
 use contextful_core::run::journal::{sha256_hex, EntryKey, Row, Stored, BLOB_SWEEP_GRACE_SECS, BLOB_SWEEP_INTERVAL_SECS, INLINE_CUTOFF_BYTES};

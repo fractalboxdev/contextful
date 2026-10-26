@@ -979,6 +979,8 @@ name = "contextful-core"
 version = "0.17.1"
 dependencies = [
  "base64 0.22.1",
+ "proptest",
+ "proptest-state-machine",
  "regex-automata",
  "regex-syntax",
  "schemars",
@@ -1034,6 +1036,8 @@ dependencies = [
  "contextful-snapshot",
  "getrandom 0.3.4",
  "libc",
+ "proptest",
+ "proptest-state-machine",
  "serde",
  "serde_json",
  "tempfile",

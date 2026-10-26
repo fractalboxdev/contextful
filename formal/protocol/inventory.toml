@@ -55,3 +55,120 @@ assumptions    = ["propext", "Quot.sound"]
 negative  = """
 Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares.
 """
+
+[constant."Protocol.Journal.recorded_stable"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ (s : Protocol.Journal.State) (st : Protocol.Journal.Step) (k : Protocol.Journal.Key) (v : Protocol.Journal.Value), s.rows k = some (Protocol.Journal.Row.recorded v) → (Protocol.Journal.step s st).rows k = some (Protocol.Journal.Row.recorded v) ∨ st = Protocol.Journal.Step.retire k"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Holds for every state, reachable or not; retirement of the key's execution deletes the row.
+"""
+
+[constant."Protocol.Journal.resolutions_agree"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c d : Protocol.Journal.Caller) (k : Protocol.Journal.Key) (v w : Protocol.Journal.Value), (s.callers c).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.replayed v) ∨ (s.callers c).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.recorded v) → (s.callers d).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.replayed w) ∨ (s.callers d).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.recorded w) → v = w"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Speaks of callers holding a journaled resolution; an unrecorded value and a failed effect resolve to no recorded value.
+"""
+
+[constant."Protocol.Journal.one_record_per_key"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (k : Protocol.Journal.Key), s.records k ≤ 1"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Counts records between two retirements of the key's execution; a retired key records afresh.
+"""
+
+[constant."Protocol.Journal.effect_only_when_claimed"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c : Protocol.Journal.Caller) (k : Protocol.Journal.Key), (s.callers c).phase = Protocol.Journal.Phase.claimed k → (∃ a, s.rows k = some (Protocol.Journal.Row.pending c a)) ∨ (s.callers c).lapsed = true ∨ ∃ v, s.rows k = some (Protocol.Journal.Row.recorded v)"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Admits a lapsed holder's effect: a holder whose lease lapsed runs its effect after a taker claimed the key, and a taker runs its effect after a lapsed holder recorded, so the effect runs twice; the recorded value stays one.
+"""
+
+[constant."Protocol.Journal.takeover_only_from_lapsed"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c h : Protocol.Journal.Caller) (k : Protocol.Journal.Key), (s.callers c).phase = Protocol.Journal.Phase.takingOver k h → (s.callers h).lapsed = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Says nothing of when a takeover happens: a live holder's claim is waited on without bound.
+"""
+
+[constant."Protocol.Journal.no_dangling_blob"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (k : Protocol.Journal.Key) (v : Protocol.Journal.Value), s.rows k = some (Protocol.Journal.Row.recorded v) → v.blob = true → s.blobs v.origin = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Assumes the grace hypothesis: an aged sweep spares the blob of a caller between its put and its record, so that span stays under the grace window. Mark and delete are one step.
+"""
+
+[constant."Protocol.Journal.no_blob_missing"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c : Protocol.Journal.Caller) (k : Protocol.Journal.Key), (s.callers c).phase ≠ Protocol.Journal.Phase.done k Protocol.Journal.Resolution.missing"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Assumes the grace hypothesis of `no_dangling_blob`; without it, `protocol journal check --no-grace` prints the shortest sequence to `BlobMissing`.
+"""
+
+[constant."Protocol.Merge.merge_scoped_union"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input), (∀ (e : Protocol.Merge.Entry), i.localEntry = some e → e.owner = me → (Protocol.Merge.mergeKey me now i).entry = some e) ∧ (∀ (e : Protocol.Merge.Entry), i.localEntry = some e → e.owner ≠ 0 → e.owner ≠ me → Protocol.Merge.mergeKey me now i = Protocol.Merge.mergeKey me now { log := i.log, held := i.held, verified := i.verified, localEntry := none, remoteEntry := i.remoteEntry, remoteTomb := i.remoteTomb }) ∧ ∀ (t : Protocol.Merge.Tombstone), (Protocol.Merge.mergeKey me now i).tomb = some t → i.remoteTomb ≠ some t → t = { owner := me, deletedAt := now } ∧ i.held = true ∧ (∃ r, i.remoteEntry = some r ∧ r.owner = me) ∧ ∀ (e : Protocol.Merge.Entry), i.localEntry = some e → e.owner ≠ 0 ∧ e.owner ≠ me"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Speaks of one writer's merge; an unowned local entry is listed and a verified unowned tombstone removes it.
+"""
+
+[constant."Protocol.Merge.foreign_tombstone_keeps_entry"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input) (x : Protocol.Merge.Entry) (rt : Protocol.Merge.Tombstone), Protocol.Merge.base me now i = (some x, none) → i.remoteTomb = some rt → now - rt.deletedAt < Protocol.Merge.ttl → x.owner ≠ rt.owner → Protocol.Merge.mergeKey me now i = { entry := some x, tomb := none, refusal := some Protocol.Merge.Refusal.foreign }"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Speaks of a live tombstone; an expired one leaves without a refusal.
+"""
+
+[constant."Protocol.Merge.unverified_tombstone_keeps_entry"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input) (x : Protocol.Merge.Entry) (rt : Protocol.Merge.Tombstone), Protocol.Merge.base me now i = (some x, none) → i.remoteTomb = some rt → now - rt.deletedAt < Protocol.Merge.ttl → x.owner = rt.owner → x.owner ≠ me → i.verified = false → Protocol.Merge.mergeKey me now i = { entry := some x, tomb := none, refusal := some Protocol.Merge.Refusal.unverified }"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Speaks of a live tombstone naming another writer's entry; a tombstone naming this writer's entry leaves without a refusal.
+"""
+
+[constant."Protocol.Merge.merged_tombstones_live"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input) (t : Protocol.Merge.Tombstone), (Protocol.Merge.mergeKey me now i).tomb = some t → now - t.deletedAt < Protocol.Merge.ttl"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Counts age in whole seconds at the merge's `now`; a clock behind a tombstone's `deleted_at` reads its age as zero.
+"""
+
+[constant."Protocol.Merge.merge_refuses_on_conflicts"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (is : List Protocol.Merge.Input) (i : Protocol.Merge.Input), i ∈ is → Protocol.Merge.conflicts me i = true → Protocol.Merge.merge me now is = none"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Says nothing of which copy is right: the cursor resolves through its commit outside the merge.
+"""
+
+[constant."Protocol.Merge.merge_converges"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input), (Protocol.Merge.mergeKey me now (i.after (Protocol.Merge.mergeKey me now i))).entry = (Protocol.Merge.mergeKey me now i).entry ∧ (Protocol.Merge.mergeKey me now (i.after (Protocol.Merge.mergeKey me now i))).tomb = (Protocol.Merge.mergeKey me now i).tomb"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Fixes one writer, one store and one `now`: refusals answer on the first merge only, and two writers holding different copies of an unowned key alternate.
+"""
