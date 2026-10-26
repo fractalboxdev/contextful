@@ -29812,6 +29812,17 @@
       "line": 207
     },
     {
+      "id": "assurance.differential-test.reference-theorems",
+      "contract": "assurance",
+      "operation": "differential-test",
+      "subject": "reference-theorems",
+      "kind": "behavior",
+      "statement": "Each theorem the reference package proves over a decision it executes is a required constant in its inventory, audited by {{assurance.audit-assumptions.check-command}} and bound to the differential test running that decision.",
+      "why": "because a theorem pin performs only beside a differential that drives the code its clause names",
+      "file": "spec/80-formal.md",
+      "line": 209
+    },
+    {
       "id": "assurance.differential-test.harness",
       "contract": "assurance",
       "operation": "differential-test",
@@ -29820,7 +29831,7 @@
       "statement": "The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 209
+      "line": 211
     },
     {
       "id": "assurance.differential-test.builds",
@@ -29831,7 +29842,7 @@
       "statement": "The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 211
+      "line": 213
     },
     {
       "id": "assurance.differential-test.decision-cases",
@@ -29842,7 +29853,7 @@
       "statement": "A case names one decision: table-pattern coverage, grant narrowing, zone admission against an allow-set, session-zone resolution, or credential admission; a placement decision also carries the zone it resolved.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 213
+      "line": 215
     },
     {
       "id": "assurance.differential-test.credential-cases",
@@ -29853,7 +29864,7 @@
       "statement": "A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.",
       "why": "because the reference model carries no signature scheme, and a gateway admits the credential before it places the request",
       "file": "spec/80-formal.md",
-      "line": 214
+      "line": 216
     },
     {
       "id": "assurance.differential-test.case-classes",
@@ -29864,7 +29875,7 @@
       "statement": "Each run generates malformed inputs, boundary values and well-formed requests, and its report names the classes it drew from.",
       "why": "because a green run is evidence over the generated classes, not an equivalence proof",
       "file": "spec/80-formal.md",
-      "line": 216
+      "line": 218
     },
     {
       "id": "assurance.differential-test.malformed-bytes",
@@ -29875,7 +29886,7 @@
       "statement": "The malformed class draws case texts carrying invalid UTF-8 or an integer literal outside the unsigned 64-bit range, handed as bytes to every decider, and each decides such a text malformed.",
       "why": "because a 32-bit WebAssembly build and a 64-bit native build part ways first at byte decoding and integer width",
       "file": "spec/80-formal.md",
-      "line": 218
+      "line": 220
     },
     {
       "id": "assurance.differential-test.minimized",
@@ -29886,7 +29897,7 @@
       "statement": "A disagreement is shrunk until no single field removal, string shortening or byte removal keeps any two of the three decisions apart, and the minimized case is recorded.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 220
+      "line": 222
     },
     {
       "id": "assurance.differential-test.corpus-replay",
@@ -29897,7 +29908,7 @@
       "statement": "Every counterexample-corpus case replays before any freshly generated case.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 221
+      "line": 223
     },
     {
       "id": "assurance.differential-test.corpus-entries",
@@ -29908,7 +29919,7 @@
       "statement": "The counterexample corpus retains at most 256 entries, evicting the oldest case a fresh seed reproduces.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 222
+      "line": 224
     },
     {
       "id": "assurance.differential-test.run-budget",
@@ -29919,7 +29930,7 @@
       "statement": "One invocation, corpus replay included, completes within 300 s.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 223
+      "line": 225
     },
     {
       "id": "assurance.differential-test.disagreement",
@@ -29930,7 +29941,7 @@
       "statement": "A case on which any two of the three decisions differ raises `ReferenceModelDrift`, printing the minimized case and every decision.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 224
+      "line": 226
     },
     {
       "id": "assurance.differential-test.discarded-counterexample",
@@ -29941,7 +29952,7 @@
       "statement": "A run reporting a disagreement and writing no corpus entry raises `CounterexampleDiscarded`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 226
+      "line": 228
     },
     {
       "id": "assurance.differential-test.seed",
@@ -29952,7 +29963,7 @@
       "statement": "Each run records its generator seed, and re-running with that seed reproduces the same case sequence.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 228
+      "line": 230
     },
     {
       "id": "assurance.differential-test.protocol-cases",
@@ -29963,7 +29974,7 @@
       "statement": "Protocol cases are operation sequences and node interleavings a `proptest-state-machine` generator draws over grant, raise, renew, expire, release, send, deliver, pause, resume and crash steps across three nodes, each replayed on both lease paths.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 229
+      "line": 231
     },
     {
       "id": "assurance.differential-test.protocol-harness",
@@ -29974,7 +29985,7 @@
       "statement": "The harness drives the protocol executable and the store's own lease calls, `Syncer` over a scripted bucket and the local catalog with the commit log, through each case, comparing lease, fence, head, write count and node views after every step.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 230
+      "line": 232
     },
     {
       "id": "assurance.differential-test.protocol-drift",
@@ -29985,7 +29996,7 @@
       "statement": "A step after which the model's state and the store's projected state differ raises `ProtocolConformanceDrift`, printing the minimized operation sequence and both states.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 232
+      "line": 234
     },
     {
       "id": "assurance.differential-test.protocol-vocabulary",
@@ -29996,7 +30007,7 @@
       "statement": "Before any case, the harness reads the protocol executable's step listing; a step kind one of the model and the harness lists and the other lacks raises `ProtocolVocabularyDrift`, printing both lists.",
       "why": "because the step type and the harness enum spell the vocabulary twice, and a step one side lacks is never compared",
       "file": "spec/80-formal.md",
-      "line": 234
+      "line": 236
     },
     {
       "id": "assurance.differential-test.command",
@@ -30007,7 +30018,7 @@
       "statement": "`contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 236
+      "line": 238
     },
     {
       "id": "assurance.structure-tree.one-home",
@@ -36204,6 +36215,10 @@
     [
       "assurance.prove.proof-targets",
       "assurance.prove.restriction-preservation"
+    ],
+    [
+      "assurance.differential-test.reference-theorems",
+      "assurance.audit-assumptions.check-command"
     ],
     [
       "assurance.structure-tree.capability-registry",
@@ -43566,6 +43581,13 @@
     "assurance.differential-test.reference-model": {
       "sites": [
         "crates/contextful-cli/tests/integration/differential.rs::the_reference_binary_reads_one_case_and_prints_one_decision"
+      ],
+      "verdict": "performed",
+      "proved": false
+    },
+    "assurance.differential-test.reference-theorems": {
+      "sites": [
+        "crates/contextful-cli/tests/integration/formal.rs::the_reference_theorems_pass_the_audit_bound_to_the_differential"
       ],
       "verdict": "performed",
       "proved": false

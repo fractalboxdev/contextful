@@ -13,6 +13,7 @@ use crate::enforce::EnforceError;
 use crate::grant::{Action, AggregateGrant, Grant, TablePattern, TenantScope};
 use crate::identify::NormalizedSubject;
 use crate::place::{session_zone, AllowSet, Entry, Zone};
+use crate::time::Instant;
 use crate::AuthorityError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -143,10 +144,17 @@ fn decide_case(case: &Value) -> Decoded<Decision> {
         "narrow" => {
             let parent = required(obj, "parent")?.as_array().ok_or(Fault::Malformed)?;
             let child = required(obj, "child")?.as_array().ok_or(Fault::Malformed)?;
+            // Expiries are Unix seconds; an absent parent expiry is 0, an absent child one inherits.
+            let parent_exp = optional(obj, "parent_exp", seconds)?.unwrap_or(0);
+            let child_exp = optional(obj, "child_exp", seconds)?;
             let parent = parent.iter().map(grant).collect::<Decoded<Vec<_>>>()?;
             let child = child.iter().map(grant).collect::<Decoded<Vec<_>>>()?;
-            let authority = Authority { grants: parent, exp: 0, subject: NormalizedSubject::default() };
-            let proposal = Proposal { grants: Some(child), ..Proposal::default() };
+            // Horizons become instants once every grant has decoded, so a later grant's
+            // malformed field outranks an unrepresentable horizon.
+            let parent = parent.into_iter().map(with_horizon).collect::<Decoded<Vec<_>>>()?;
+            let child = child.into_iter().map(with_horizon).collect::<Decoded<Vec<_>>>()?;
+            let authority = Authority { grants: parent, exp: parent_exp, subject: NormalizedSubject::default() };
+            let proposal = Proposal { grants: Some(child), exp: child_exp, ..Proposal::default() };
             Ok(match attenuate(&authority, &proposal) {
                 Ok(_) => Decision::verdict("admitted"),
                 Err(e) => refusal(&e),
@@ -192,6 +200,11 @@ pub fn unsigned(v: &Value) -> Decoded<u64> {
     v.as_u64().ok_or(Fault::Malformed)
 }
 
+/// Unix seconds within the signed 64-bit range.
+fn seconds(v: &Value) -> Decoded<i64> {
+    i64::try_from(unsigned(v)?).map_err(|_| Fault::Malformed)
+}
+
 pub fn optional<'a, T>(obj: &'a Map<String, Value>, key: &str, f: impl Fn(&'a Value) -> Decoded<T>) -> Decoded<Option<T>> {
     field(obj, key).map(f).transpose()
 }
@@ -213,8 +226,16 @@ fn aggregate(v: &Value) -> Decoded<AggregateGrant> {
     Ok(AggregateGrant { min_group_size, max_contributor_share, functions, max_groups, max_rows })
 }
 
-/// One grant: its shape first, then each action, then each table pattern.
-fn grant(v: &Value) -> Decoded<Grant> {
+/// A decoded grant with its horizon in Unix seconds, as an instant; an instant no timestamp
+/// represents refuses as `TimestampMalformed`.
+fn with_horizon((mut g, horizon): (Grant, Option<u64>)) -> Decoded<Grant> {
+    g.horizon = horizon.map(|h| Instant::from_unix_secs(i64::try_from(h).unwrap_or(i64::MAX))).transpose()?;
+    Ok(g)
+}
+
+/// One grant: its shape first, then each action, then each table pattern. Its horizon stays
+/// Unix seconds.
+fn grant(v: &Value) -> Decoded<(Grant, Option<u64>)> {
     let obj = v.as_object().ok_or(Fault::Malformed)?;
     let actions = strings(required(obj, "actions")?)?;
     let tables = strings(required(obj, "tables")?)?;
@@ -222,9 +243,11 @@ fn grant(v: &Value) -> Decoded<Grant> {
     let templates = optional(obj, "templates", strings)?;
     let aggregate = optional(obj, "aggregate", aggregate)?;
     let max_rows = optional(obj, "max_rows", unsigned)?;
+    let horizon = optional(obj, "horizon", unsigned)?;
     let actions = actions.iter().map(|a| Action::parse(a)).collect::<Result<Vec<_>, _>>()?;
     let tables = tables.iter().map(|t| TablePattern::parse(t)).collect::<Result<Vec<_>, _>>()?;
     let max_duration_ms = optional(obj, "max_duration_ms", unsigned)?;
     let max_response_bytes = optional(obj, "max_response_bytes", unsigned)?;
-    Ok(Grant { actions, tables, tenant, aggregate, templates, max_rows, max_duration_ms, max_response_bytes, horizon: None })
+    let g = Grant { actions, tables, tenant, aggregate, templates, max_rows, max_duration_ms, max_response_bytes, horizon: None };
+    Ok((g, horizon))
 }

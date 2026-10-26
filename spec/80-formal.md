@@ -206,6 +206,8 @@ The executable reference models, the case generators, the minimized counterexamp
 
 - `reference-model` — The reference model is the policy package's proved decision definitions, compiled with JSON case decoding and decision rendering into a binary that reads one case on standard input and prints one decision.
   *A-assurance*
+- `reference-theorems` — Each theorem the reference package proves over a decision it executes is a required constant in its inventory, audited by {{assurance.audit-assumptions.check-command}} and bound to the differential test running that decision.
+  *because a theorem pin performs only beside a differential that drives the code its clause names*
 - `harness` — The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
   *A-assurance*
 - `builds` — The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.
