@@ -25,8 +25,6 @@ principal-secrets  = {}
 ConnectorDriveFilesInvalid = { clause = "connector.drive-picks.file-selection-invalid", gloss = "An empty, repeated or mixed individual-file selection." }
 ConnectorDriveFileRejected = { clause = "connector.drive-picks.file-access", gloss = "A selected id is inaccessible or is not a file." }
 ConnectorDriveDomainRejected = { clause = "connector.drive-domain-auth.domain-boundary", gloss = "A delegated subject lies outside the approved Workspace domain." }
-ConnectorWidenUnresolved = { clause = "connector.widen.unresolved", gloss = "A grant comparison establishes neither inclusion nor a replayed widening witness." }
-ConnectorWidenApprovalRequired = { clause = "connector.widen.approval-required", gloss = "Additional connector access lacks approval bound to both manifests." }
 ConnectorConfigRejected         = { clause = "connector.import.config-shape", gloss = "A forwarded guest configuration value of the wrong type, above its size bound, or carrying a reference." }
 ConnectorConfigUnclaimed        = { clause = "connector.import.config-unclaimed", gloss = "A guest configuration table declared against a guest exporting no configuration interface." }
 ConnectorUndeclaredAccess       = { clause = "connector.declare-capability.undeclared-access", gloss = "Host access a connector reaches for that its manifest does not list." }
@@ -42,8 +40,6 @@ ConnectorForwardRejected        = { clause = "connector.meter.forward-credential
 ConnectorLimiterUnreadable      = { clause = "connector.meter.unreadable-answer", gloss = "A limiter response the engine cannot parse." }
 ConnectorUnmetered              = { clause = "connector.meter.unmetered-request", gloss = "A vendor request without a granted reservation under a declared limiter." }
 ConnectorEgressRefused          = { clause = "connector.meter.hook-refusal", gloss = "An outbound hop the pre-send hook refused before name resolution." }
-ConnectorGrantMissing           = { clause = "connector.meter.built-in-grant-absent", gloss = "A compiled-in vendor-reaching source built without a limiter grant." }
-ConnectorGrantUnhonorable       = { clause = "connector.meter.grant-unhonorable", gloss = "A limiter grant on a source bypassing the mediated client." }
 ConnectorRemoteUnpinned         = { clause = "connector.package.remote-unpinned", gloss = "A remote artifact reference with no 64-hex content pin." }
 ConnectorOciReferenceInvalid    = { clause = "connector.package.oci-reference", gloss = "An OCI reference with an empty registry, repository or selector." }
 ConnectorOciArtifactUnsupported = { clause = "connector.package.oci-component-layer", gloss = "An OCI manifest that is not schema 2 with exactly one WebAssembly component layer." }
@@ -53,11 +49,9 @@ ConnectorArtifactFetchFailed    = { clause = "connector.package.remote-fetch-fai
 ConnectorInsecureArtifact       = { clause = "connector.package.insecure-artifact", gloss = "A connector artifact referenced over plain HTTP." }
 ConnectorDigestMismatch         = { clause = "connector.package.digest-mismatch", gloss = "Resolved artifact bytes whose re-hash differs from the pin." }
 ConnectorLocalUnpinned          = { clause = "connector.package.local-unpinned", gloss = "An unpinned local artifact under a set pin requirement." }
-ConnectorPostureUndeclared      = { clause = "connector.package.posture-undeclared", gloss = "A manifest carrying neither a digest nor both template markers." }
 ConnectorPositionOwned          = { clause = "connector.package.component-position", gloss = "An `incremental` field declared beside a component source, whose position the guest owns." }
 ConnectorManifestRejected       = { clause = "connector.package.manifest-keys", gloss = "A component source with no manifest, or a manifest carrying an unread key or a value off its shape." }
 ConnectorHostPinRefused         = { clause = "connector.package.host-built-pin", gloss = "A pin written from a host-toolchain build." }
-ConnectorHotReload              = { clause = "connector.package.live-reresolution", gloss = "Re-resolving or reloading a connector a journaled run holds live." }
 ConnectorFormatKeyRejected      = { clause = "connector.source.format-key-mismatch", gloss = "A record path, pagination shape or decode key the chosen format does not read." }
 ConnectorEncodingInvalid        = { clause = "connector.source.declared-encoding", gloss = "A delimited body invalid under its declared encoding." }
 ConnectorClockColumnRejected    = { clause = "connector.source.clock-column-spelling", gloss = "A delimited clock column neither RFC 3339 nor a fixed-width digit stamp." }
@@ -98,9 +92,6 @@ SecretMalformedTemplate         = { clause = "connector.reference.malformed-plac
 SecretMaterialInDeclaration     = { clause = "connector.reference.material-in-a-declaration", gloss = "A credential-shaped literal where a reference belongs." }
 SecretNameShadowed              = { clause = "connector.resolve.shadowed-name", gloss = "A logical name answered by two assembled adapters." }
 SecretUnresolvedReference       = { clause = "connector.resolve.unresolved-name", gloss = "A logical name no assembled adapter answers." }
-SecretInlineCredential          = { clause = "connector.resolve.inline-outside-development", gloss = "Plaintext material bound at a call site outside development." }
-SecretForwardingBroker          = { clause = "connector.resolve.forwarding-sidecar", gloss = "A sidecar forwarding a stored long-lived credential." }
-SecretProviderKnowHowInBackend  = { clause = "connector.resolve.know-how-in-an-adapter", gloss = "An adapter exposing a provider-specific exchange, refresh or lifetime entry point." }
 SecretLeaseScopesEmpty          = { clause = "connector.lease.empty-scope-set", gloss = "The lease backend selected with no scope declared." }
 SecretMalformedLease            = { clause = "connector.lease.malformed-lease", gloss = "A lease with no expiry, or one already past on arrival." }
 SecretLeaseScopeUnknown         = { clause = "connector.lease.unknown-scope", gloss = "The mint endpoint answering `404` for a declared scope." }

@@ -22,6 +22,7 @@ from = "effective_from"
 to   = "effective_to"
 "#;
 
+// spec: store.declare.erasure-metadata@1d880303
 #[test]
 fn erasure_declarations_keep_key_reference_and_survival_policy_typed() {
     let source = r#"

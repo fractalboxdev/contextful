@@ -185,20 +185,16 @@ Rebuilding and re-auditing from pinned source in a credential-free environment.
 
 ## scope-claim
 
-The sentence the assurance claim is allowed to be: named decisions, trusted dependencies, translation chain, refinement reach.
+The sentence the assurance claim is allowed to be: named decisions, named specifications and trusted dependencies.
 
-- `claim-sentence` — The assurance claim reads: these named decisions satisfy these named Lean specifications under these stated translation and runtime assumptions; each list resolves to code paths, constants and components in the tree.
+- `claim-sentence` — The assurance claim reads: these named decisions satisfy these named Lean specifications under these stated runtime assumptions; each list resolves to code paths, constants and components in the tree.
 - `beyond-named-decisions` — A claim that the enforcement engine, or any object wider than the named decisions, is verified raises `ClaimBeyondNamedDecisions`.
   *A-assurance*
-- `trusted-dependencies` — The claim names the delegation library, its cryptography, its parser and the translator as trusted dependencies, and proves none of them.
+- `trusted-dependencies` — The claim names the delegation library, its cryptography and its parser as trusted dependencies, and proves none of them.
 - `unnamed-dependency` — A claim resting on a component absent from its trusted-dependency list raises `TrustedDependencyUnnamed`, naming the component.
   *A-assurance*
-- `translation-chain` — A statement about translated code inherits four links: the compiler's lowering, the translator (Aeneas, named by one release string), hand-written models of external definitions, and the production build configuration.
-- `unstated-chain` — A theorem claimed over translated code without its translation chain raises `TranslationChainUnstated`.
-  *A-assurance*
-- `refinement-scope` — Refinement covers the decision functions behind the proof targets, whose inputs are values and whose outputs are decisions.
-- `refinement-exceeded` — Translation reaching cryptography, a parsing adapter, a database call or concurrency raises `RefinementScopeExceeded`, naming the module.
-  *A-assurance*
+
+unsettled: Which translator, external models and refinement scope does a claim name once a theorem reaches the Rust decision functions through translated code? owner: build affects: assurance.scope-claim
 
 ## differential-test
 
@@ -208,6 +204,8 @@ The executable reference models, the case generators, the minimized counterexamp
   *A-assurance#executed-reference-proved*
 - `reference-theorems` — Each theorem the reference package proves over a decision it executes is a required constant in its inventory, audited by {{assurance.audit-assumptions.check-command}} and bound to the differential test running that decision.
   *because a theorem pin performs only beside a differential that drives the code its clause names*
+- `reference-vocabulary` — Before any case, the harness reads the reference binary's operation listing; an operation one of the reference and the harness lists and the other lacks raises `ReferenceVocabularyDrift`, printing both lists.
+  *because the reference's case decoder and the harness spell the operations twice, and an operation one side lacks is never compared*
 - `harness` — The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
   *A-assurance*
 - `builds` — The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.

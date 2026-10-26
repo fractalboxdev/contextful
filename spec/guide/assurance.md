@@ -84,8 +84,8 @@ next run.
 
 The claim stays within its evidence. A composition proof offered as a mediation proof
 fails, because composition says nothing about whether every read passes the filter
-({{assurance.prove.mediation-from-composition}}). The connection between model and code
-covers only decision functions over values ({{assurance.scope-claim.refinement-scope}}).
+({{assurance.prove.mediation-from-composition}}). A claim that the whole engine is
+verified, beyond the named decisions, fails as well ({{assurance.scope-claim.beyond-named-decisions}}).
 
 ## Engineering checks
 

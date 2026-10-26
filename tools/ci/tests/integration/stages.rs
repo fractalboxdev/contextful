@@ -6,7 +6,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
-const SEQUENCE: [&str; 13] = [
+const SEQUENCE: [&str; 14] = [
     "pins",
     "toolchain",
     "schema",
@@ -19,6 +19,7 @@ const SEQUENCE: [&str; 13] = [
     "connectors",
     "surfaces",
     "formal",
+    "unwired",
     "budget",
 ];
 
@@ -77,10 +78,11 @@ fn ran(o: &Output) -> Vec<String> {
     stderr(o).lines().filter_map(|l| l.strip_prefix("--- stage ")).map(str::to_string).collect()
 }
 
-/// The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — all of both tiers when none is named, else the named subset, which `--plan` prints unrun.
-// spec: assurance.gate.stage-sequence@12bb267e
+/// The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, unwired, budget — all of both tiers when none is named, else the named subset, which `--plan`
+/// prints.
+// spec: assurance.gate.stage-sequence@280db6cd
 #[test]
-fn the_gate_defines_the_thirteen_stages_in_run_order_and_runs_a_named_subset() {
+fn the_gate_defines_the_fourteen_stages_in_run_order_and_runs_a_named_subset() {
     let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
     assert!(out.status.success());
     let listed: Vec<String> = String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect();
@@ -92,7 +94,7 @@ fn the_gate_defines_the_thirteen_stages_in_run_order_and_runs_a_named_subset() {
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(ran(&o), ["pins", "features"]);
 
-    // A run naming no stage selects all thirteen, the nightly tier included; `--plan`
+    // A run naming no stage selects all fourteen, the nightly tier included; `--plan`
     // prints a run's selection and runs none.
     r.write("crates/gated/Cargo.toml", &(crate::manifest("gated", "") + "\n[features]\nextra = []\n"));
     r.write("crates/gated/src/lib.rs", "");

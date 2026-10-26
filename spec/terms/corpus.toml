@@ -28,7 +28,7 @@ SpecUnsettled          = { clause = "corpus.rationale.unsettled-line", gloss = "
 SpecRecord             = { clause = "corpus.rationale.orphan-record", gloss = "An uncited or missing record, a bad Why, or a record out of anatomy." }
 SpecCoverageRegression = { clause = "corpus.state.coverage-floor", gloss = "Fewer performed pins than the floor." }
 SpecBrokenPin          = { clause = "corpus.state.bad-pin", gloss = "A pin that names no clause, mismatches its kind, does not resolve, or competes with a second test." }
-SpecUnwired            = { clause = "corpus.state.unwired", gloss = "A public item only a performed pin's test reaches." }
+SpecUnwired            = { clause = "corpus.state.unwired-ceiling", gloss = "More public items only a performed pin's test reaches than the recorded ceiling." }
 SpecProofObligationUnpinned = { clause = "corpus.state.proof-obligation", gloss = "A clause listed as a proof obligation that does not compute proved." }
 SpecStalePin           = { clause = "corpus.state.stale-pin", gloss = "A tag recording a statement revision the clause no longer carries." }
 SpecRoadmap            = { clause = "corpus.state.roadmap", gloss = "A roadmap name resolving to nothing, claimed twice, or a milestone missing its reach or acceptance line." }
@@ -91,25 +91,25 @@ corpus-guide-pointer-words = { clause = "corpus.guide.pointer-density", value = 
 [ceiling]
 registry-committed-sites = 3
 anatomy-long-lists = 15
-clause-unowned = 249
-why-unscoped = 806
+clause-unowned = 98
+why-unscoped = 757
 
 [ceiling.contract-words]
-assurance = 10245
-authority = 7843
-connector = 11653
-corpus = 4271
-disclosure = 5476
-read = 10127
-run = 19201
-store = 10704
-surface = 6502
+assurance = 9773
+authority = 7792
+connector = 11054
+corpus = 4374
+disclosure = 5268
+read = 9478
+run = 19110
+store = 10601
+surface = 6422
 topology = 2646
 
 [ceiling.adr-words]
-A-assurance = 5819
+A-assurance = 5781
 A-authority = 4473
-A-connector = 3602
+A-connector = 3600
 A-corpus = 383
 A-disclosure = 4053
 A-read = 5491

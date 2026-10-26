@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 349 | 74 | 25 | 3 | 310 | 1 | 0 | 310 |
-| `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 278 | 0 | 0 | 278 |
-| `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 318 | 2 | 0 | 318 |
-| `corpus` | 1 | 10 | 108 | 46 | 9 | 0 | 108 | 0 | 0 | 108 |
-| `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 0 | 165 |
-| `read` | 2 | 20 | 327 | 58 | 30 | 16 | 285 | 0 | 0 | 285 |
-| `run` | 3 | 29 | 613 | 129 | 49 | 19 | 581 | 0 | 0 | 581 |
-| `store` | 6 | 20 | 343 | 72 | 24 | 12 | 333 | 0 | 0 | 333 |
-| `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 176 | 0 | 0 | 176 |
-| `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 89 | 0 | 0 | 89 |
-| **total** | 26 | 177 | 2953 | 721 | 237 | 82 | 2643 | 3 | 0 | |
+| `assurance` | 4 | 18 | 329 | 72 | 24 | 4 | 319 | 1 | 0 | 319 |
+| `authority` | 2 | 16 | 298 | 80 | 28 | 8 | 286 | 4 | 0 | 286 |
+| `connector` | 3 | 19 | 400 | 87 | 23 | 15 | 335 | 2 | 0 | 335 |
+| `corpus` | 1 | 10 | 110 | 46 | 9 | 0 | 110 | 0 | 0 | 110 |
+| `disclosure` | 3 | 17 | 185 | 64 | 14 | 5 | 167 | 0 | 0 | 167 |
+| `read` | 2 | 20 | 303 | 53 | 29 | 16 | 286 | 0 | 0 | 286 |
+| `run` | 3 | 29 | 609 | 128 | 49 | 19 | 590 | 0 | 0 | 590 |
+| `store` | 6 | 20 | 339 | 72 | 23 | 12 | 336 | 2 | 0 | 336 |
+| `surface` | 2 | 22 | 199 | 70 | 24 | 2 | 186 | 0 | 0 | 186 |
+| `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 90 | 0 | 0 | 90 |
+| **total** | 27 | 177 | 2864 | 698 | 232 | 84 | 2705 | 9 | 0 | |
 
 Decision records: 18.
 
@@ -25,24 +25,24 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
-| 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
-| 1 — The authority core | 14 | 250 | 249 | passing | closed |
-| 2 — The store | 9 | 199 | 190 | passing | closed |
-| 3 — The run path | 12 | 318 | 310 | passing | closed |
-| 4 — Ingest | 25 | 651 | 556 | passing | closed |
-| 5 — The read face under enforcement | 17 | 321 | 288 | passing | closed |
-| 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
-| 7 — Memory | 6 | 100 | 85 | passing | closed |
-| 8 — Accountability | 5 | 96 | 89 | passing | closed |
-| 9 — Visibility | 6 | 55 | 46 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 121 | 109 | passing | closed |
-| 11 — The derive tier | 7 | 98 | 97 | passing | closed |
-| 12 — The operator console | 12 | 67 | 57 | passing | closed |
+| 0 — The test-first gate | 2 | 21 | 20 | passing | closed |
+| 1 — The authority core | 14 | 247 | 246 | passing | closed |
+| 2 — The store | 9 | 195 | 192 | passing | closed |
+| 3 — The run path | 12 | 317 | 312 | passing | closed |
+| 4 — Ingest | 25 | 624 | 580 | passing | closed |
+| 5 — The read face under enforcement | 17 | 308 | 296 | passing | closed |
+| 6 — Sync and replicas | 9 | 118 | 118 | passing | closed |
+| 7 — Memory | 6 | 87 | 85 | passing | closed |
+| 8 — Accountability | 5 | 93 | 91 | passing | closed |
+| 9 — Visibility | 6 | 50 | 46 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 121 | 115 | passing | closed |
+| 11 — The derive tier | 7 | 97 | 97 | passing | closed |
+| 12 — The operator console | 12 | 65 | 62 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
-| 14 — Assurance | 7 | 190 | 158 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 80 | 79 | passing | closed |
+| 14 — Assurance | 7 | 176 | 169 | passing | closed |
+| 15 — Point-in-time evaluation | 7 | 79 | 79 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
-| 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
+| 17 — Delegated bodies | 1 | 15 | 12 | passing | closed |
 | 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
 | 19 — Drive connections | 2 | 22 | 13 | open | open |
 | 20 — Drive permission custody | 2 | 11 | 0 | absent | open |

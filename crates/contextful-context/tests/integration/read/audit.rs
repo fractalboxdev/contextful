@@ -32,6 +32,7 @@ fn signer() -> SeedSigner {
     SeedSigner::from_seed(&format!("ed25519-private/{}", "07".repeat(32))).unwrap()
 }
 
+// spec: disclosure.record.erasures-view@0428bd73
 #[test]
 fn audit_erasures_projects_only_row_free_committed_erasure_attributes() {
     let dir = tempfile::tempdir().unwrap();

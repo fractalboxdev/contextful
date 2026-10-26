@@ -101,19 +101,28 @@ fn theorem_beside_test(s: &Scratch) {
 
 const BOUND: &str = "[constant.\"Corpus.statement_words\"]\nmodule = \"Contextful.Corpus\"\nbinding = \"crates/x/src/lib.rs::words; test crates/x/tests/integration/anatomy.rs::statement_words\"\n";
 
-// spec: corpus.state.bound-theorem@72da97a9
+// spec: corpus.state.bound-theorem@480fa3ab
 // spec: corpus.state.proved@fb95daa7
 #[test]
 fn a_theorem_beside_a_test_counts_only_when_its_inventory_row_binds_that_test() {
     let s = Scratch::copy();
     theorem_beside_test(&s);
     assert!(codes(&s.lint("state"), "SpecBrokenPin").is_empty(), "{:?}", s.lint("state"));
-    let row = s.pin_row(CLAUSE);
+    let row = &s.pin_row(CLAUSE)[0];
     assert_eq!((row["verdict"].as_str(), row["proved"].as_bool()), (Some("performed"), Some(false)), "{row}");
     s.write("formal/inventory.toml", &BOUND.replace("::statement_words\"", "::file_length\""));
-    assert_eq!(s.pin_row(CLAUSE)["proved"], false, "a binding naming another test leaves the theorem uncounted");
+    assert_eq!(s.pin_row(CLAUSE)[0]["proved"], false, "a binding naming another test leaves the theorem uncounted");
+    for inventory in ["formal/protocol/inventory.toml", "formal/reference/inventory.toml"] {
+        s.write(inventory, BOUND);
+        assert_eq!(s.pin_row(CLAUSE)[0]["proved"], true, "{inventory} binds as formal/inventory.toml does");
+        s.write(inventory, "");
+    }
     s.write("formal/inventory.toml", BOUND);
-    let row = s.pin_row(CLAUSE);
+    let pins = s.pin_row(CLAUSE);
+    let kinds: Vec<&str> = pins.as_array().unwrap().iter().map(|p| p["kind"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["test", "theorem"], "{pins}");
+    assert_eq!((pins[1]["path"].as_str(), pins[1]["name"].as_str()), (Some(LEAN), Some("statement_words")), "{pins}");
+    let row = &pins[1];
     assert_eq!((row["verdict"].as_str(), row["proved"].as_bool()), (Some("performed"), Some(true)), "{row}");
     let status = s.read("spec/status.md");
     assert!(status.contains("| Performed | Proved | Broken |"), "{status}");

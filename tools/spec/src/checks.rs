@@ -1316,10 +1316,42 @@ pub fn owned_errors<'a>(c: &'a Corpus, cl: &Clause) -> Vec<&'a str> {
     c.reg.fragments.get(&cl.contract).map(|f| f.error.iter().filter(|(_, e)| e.clause == cl.id).map(|(k, _)| k.as_str()).collect()).unwrap_or_default()
 }
 
+/// The `const` paths of the limits a clause owns in its contract's fragment.
+pub fn owned_consts(c: &Corpus, cl: &Clause) -> Vec<String> {
+    c.reg.fragments.get(&cl.contract).map(|f| f.limit.values().filter(|l| l.clause == cl.id).filter_map(|l| l.constant.clone()).collect()).unwrap_or_default()
+}
+
+/// `corpus.state.limit-const`: the const at `path` resolves, and source under
+/// `crates/*/src` or `tools/*/src` names it outside its own definition line and before any
+/// `#[cfg(test)]` item of its file.
+fn used(c: &Corpus, path: &str) -> bool {
+    let Some(site) = crate::pins::locate(c, "item", path, &PIN_ROOTS).into_iter().next() else { return false };
+    let name = path.rsplit("::").next().unwrap_or(path);
+    let word = Regex::new(&format!(r"\b{}\b", regex::escape(name))).unwrap();
+    for root in ["crates", "tools"] {
+        for package in std::fs::read_dir(c.root.join(root)).into_iter().flatten().flatten() {
+            let walk = walkdir::WalkDir::new(package.path().join("src")).into_iter().flatten();
+            for e in walk.filter(|e| e.path().extension().is_some_and(|x| x == "rs")) {
+                let Ok(text) = std::fs::read_to_string(e.path()) else { continue };
+                let rel = e.path().strip_prefix(&c.root).unwrap_or(e.path()).to_string_lossy().replace('\\', "/");
+                let live = text.split("#[cfg(test)]").next().unwrap_or_default();
+                let defined = (rel == site.file).then(|| text[..site.offset].matches('\n').count());
+                if live.lines().enumerate().any(|(n, l)| Some(n) != defined && word.is_match(l)) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// `corpus.state.unexercised`: a test pin of a refusal clause names one of the clause's
 /// errors in its body — the id itself, or a variant path `::<Suffix>` whose suffix keeps
 /// at least two of the id's trailing CamelCase words.
 fn exercises(c: &Corpus, cl: &Clause, pin: &Pin) -> bool {
+    if cl.kind == "limit" {
+        return owned_consts(c, cl).iter().all(|path| used(c, path));
+    }
     let errors = owned_errors(c, cl);
     if cl.kind != "refusal" || errors.is_empty() {
         return true;
@@ -1576,6 +1608,10 @@ fn state(c: &Corpus) -> Vec<Finding> {
                 PinState::Unfinished => format!("pin for `{id}` names a declaration still holding `sorry`"),
                 PinState::Absent => format!("pin for `{id}` does not resolve under crates/, tools/ or formal/"),
                 PinState::Unattached => format!("tag for `{id}` sits above no function"),
+                PinState::Unexercised if cl.kind == "limit" => format!(
+                    "pin for `{id}` demonstrates a bound no non-test source reads: {}",
+                    owned_consts(c, cl).iter().map(|k| format!("`{k}`")).collect::<Vec<_>>().join(", ")
+                ),
                 PinState::Unexercised => format!("pin for `{id}` names a test whose body names none of {}", owned_errors(c, cl).iter().map(|e| format!("`{e}`")).collect::<Vec<_>>().join(", ")),
                 PinState::Stale => {
                     let rev = p.tag.as_ref().map(|t| t.rev.as_str()).unwrap_or("");

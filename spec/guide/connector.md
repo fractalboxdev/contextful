@@ -29,8 +29,8 @@ limit and a per-call deadline ({{connector.package.call-deadline}}).
 Its manifest lists the hosts it reaches, and the host decides that grant at load
 ({{connector.declare-capability.declared-grant}}). Code reaching past the list fails to
 load ({{connector.declare-capability.undeclared-access}}). When a new version asks for
-another host, the reload keeps the admitted manifest until an operator approves the
-wider grant ({{connector.widen.approval-required}}).
+another host, the reload compares the two manifests and reports each widened host as a
+witness the old manifest refuses ({{connector.widen.host-witness}}).
 
 ## What crosses the interface
 

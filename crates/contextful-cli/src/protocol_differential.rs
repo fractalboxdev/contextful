@@ -169,6 +169,8 @@ impl Projection {
 trait Driver {
     fn apply(&mut self, step: Step) -> Result<()>;
     fn project(&self) -> Result<Projection>;
+    /// The stale commits the store refused with `LeaseFenced` so far.
+    fn fenced(&self) -> u64;
 }
 
 #[cfg(feature = "data-plane")]
@@ -374,6 +376,7 @@ mod drivers {
         syncers: Vec<Arc<Syncer>>,
         nodes: [CompactionNode; NODES],
         now: Instant,
+        fenced: u64,
     }
 
     impl Compaction {
@@ -410,6 +413,7 @@ mod drivers {
                 syncers,
                 nodes: Default::default(),
                 now: epoch(),
+                fenced: 0,
             })
         }
 
@@ -524,7 +528,8 @@ mod drivers {
                     if let Some(held) = self.nodes[node].pending.take() {
                         let snapshot = format!("snapshot-{}", held.lease.fence);
                         match self.syncers[node].publish(TABLE, &snapshot, &held) {
-                            Ok(()) | Err(SyncError::Store(StoreError::LeaseFenced(_))) => {}
+                            Ok(()) => {}
+                            Err(SyncError::Store(StoreError::LeaseFenced(_))) => self.fenced += 1,
                             Err(e) => bail!("node-{node} publish: {e}"),
                         }
                     }
@@ -541,6 +546,10 @@ mod drivers {
                 }
             }
             Ok(())
+        }
+
+        fn fenced(&self) -> u64 {
+            self.fenced
         }
 
         fn project(&self) -> Result<Projection> {
@@ -617,6 +626,7 @@ mod drivers {
         catalog: LocalCatalog,
         clock: Arc<StepClock>,
         nodes: [RunNode; NODES],
+        fenced: u64,
     }
 
     impl Run {
@@ -631,6 +641,7 @@ mod drivers {
                 catalog,
                 clock,
                 nodes: Default::default(),
+                fenced: 0,
             })
         }
 
@@ -744,7 +755,7 @@ mod drivers {
                         };
                         match commit_log::append(&self.store, PROJECT, "machine", &entry) {
                             Ok(_) => {}
-                            Err(e) if fenced(&e) => {}
+                            Err(e) if fenced(&e) => self.fenced += 1,
                             Err(e) => bail!("node-{node} commit: {e}"),
                         }
                     }
@@ -759,6 +770,10 @@ mod drivers {
                 }
             }
             Ok(())
+        }
+
+        fn fenced(&self) -> u64 {
+            self.fenced
         }
 
         fn project(&self) -> Result<Projection> {
@@ -953,6 +968,7 @@ fn compare(
     reference: &Path,
     path: LeasePath,
     steps: &[Step],
+    fenced: &mut u64,
 ) -> Result<Option<(usize, String, String)>> {
     let mut child = Command::new(reference)
         .args(["run", path.name()])
@@ -988,6 +1004,7 @@ fn compare(
             return Ok(Some((i, model.into(), actual)));
         }
     }
+    *fenced += store.fenced();
     Ok(None)
 }
 
@@ -996,7 +1013,7 @@ fn minimize(reference: &Path, path: LeasePath, mut steps: Vec<Step>) -> Result<V
     while i < steps.len() && steps.len() > 1 {
         let mut candidate = steps.clone();
         candidate.remove(i);
-        if compare(reference, path, &candidate)?.is_some() {
+        if compare(reference, path, &candidate, &mut 0)?.is_some() {
             steps = candidate;
             i = 0;
         } else {
@@ -1056,13 +1073,14 @@ pub fn run(args: Args) -> Result<()> {
     for _ in 0..args.cases {
         cases.push(generate(&mut runner)?);
     }
+    let mut fenced = [0u64; 2];
     for (case, steps) in cases.into_iter().enumerate() {
-        for path in LeasePath::ALL {
-            if compare(&reference, path, &steps)?.is_none() {
+        for (path, refused) in LeasePath::ALL.into_iter().zip(fenced.iter_mut()) {
+            if compare(&reference, path, &steps, refused)?.is_none() {
                 continue;
             }
             let reduced = minimize(&reference, path, steps)?;
-            let (at, model, store) = compare(&reference, path, &reduced)?
+            let (at, model, store) = compare(&reference, path, &reduced, &mut 0)?
                 .context("the minimized protocol sequence no longer reproduces the drift")?;
             if let Some(parent) = regressions.parent() {
                 std::fs::create_dir_all(parent)?;
@@ -1083,10 +1101,11 @@ pub fn run(args: Args) -> Result<()> {
         }
     }
     println!(
-        "stale-fence-differential: 0 drift cases; seed={}; generated={}; regressions={replayed}; paths={}",
+        "stale-fence-differential: 0 drift cases; seed={}; generated={}; regressions={replayed}; paths={}; LeaseFenced={}",
         args.seed,
         args.cases,
-        LeasePath::ALL.map(LeasePath::name).join(",")
+        LeasePath::ALL.map(LeasePath::name).join(","),
+        LeasePath::ALL.iter().zip(fenced).map(|(p, n)| format!("{}:{n}", p.name())).collect::<Vec<_>>().join(",")
     );
     Ok(())
 }

@@ -285,8 +285,6 @@ Derive tasks emit content rows and completion markers with status, attempt count
   *A-run*
 - `local-content-key` — A local media unit's {{run.emit.derivation-key}} includes a SHA-256 digest of canonical file bytes, so changed bytes under an unchanged path reselect the unit.
   *A-run*
-- `parent-tombstone` — A fold drops derived rows whose parent key is absent or tombstoned in the parent table, then rebuilds their sidecars.
-  *A-run*
 - `derived-id` — Every passage and marker row keyed as {{run.emit.primary-key}} carries `derived_id`, lowercase hex SHA-256 over its `unit_ref`, `derivation_key` and `cue_seq`, and a sidecar over such a table defaults its `id_column` to `derived_id`.
   *because a sidecar re-joins on one column, and a producer column outside the reserved underscore namespace needs no store change*
 
@@ -294,7 +292,6 @@ Derive tasks emit content rows and completion markers with status, attempt count
 
 - `run.emit.output-modality`: WHEN a video parent yields a transcript passage and an advertised picture, THEN their output modalities are `text` and `image`.
 - `run.emit.local-content-key`: WHEN a local file changes bytes under the same path, THEN the next tick selects its unit under another key.
-- `run.emit.parent-tombstone`: WHEN a parent row is tombstoned, THEN the next fold drops its passages and rebuilds the affected sidecars.
 
 ## parse-cues
 

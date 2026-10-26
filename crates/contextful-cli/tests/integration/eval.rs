@@ -131,6 +131,7 @@ fn semantic_quality_uses_cached_real_vectors_through_the_ranked_store() {
 
 /// A cache holding a second table — declared, hashed and lacking a vector — refuses before
 /// any row lands: the semantic run stubs no embedding and writes no report.
+// spec: assurance.evaluate.semantic-cache@b9e87967
 #[test]
 fn a_semantic_run_refuses_a_second_table_instead_of_stubbing_its_vectors() {
     use sha2::{Digest, Sha256};

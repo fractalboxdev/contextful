@@ -78,6 +78,7 @@ fn refreshed(value: &'static str, hint: Option<Instant>) -> impl FnOnce(&Hydrate
 /// An OAuth credential refreshes at the retirement-margin point, puts the new version to the
 /// adapter that answered its name, conditioned on the hydrated version, then clears the entry.
 // spec: connector.record.provider-custody@1dd8cfd2
+// spec: connector.rotate.oauth-credential@391c7c68
 #[test]
 fn a_refresh_puts_forward_to_the_answering_adapter_conditioned_on_the_hydrated_version() {
     let t0 = at(T0);

@@ -123,6 +123,7 @@ fn pipeline_removal_rejects_unknown_tables_and_bounds_all_declared_rules() {
     assert!(declared(json!(vec![valid; 257])).validate().is_err(), "the pipeline owns the aggregate bound");
 }
 
+// spec: authority.redact.after-normalization@40434495
 #[test]
 fn relational_lineage_rewrites_children_before_deriving_persisted_identities() {
     use contextful_core::pipeline::normalize::NormalizedGroup;
