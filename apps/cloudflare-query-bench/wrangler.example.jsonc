@@ -1,0 +1,46 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "contextful-query-bench",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "vars": {
+    // The idle period after which the query container sleeps; `measure --sleep-after-secs` matches it.
+    "QUERY_SLEEP_AFTER": "5m"
+  },
+  "secrets": {
+    "required": [
+      "BENCH_TOKEN",
+      "CORPUS_R2_ENDPOINT",
+      "CORPUS_R2_BUCKET",
+      "CORPUS_R2_ACCESS_KEY_ID",
+      "CORPUS_R2_SECRET_ACCESS_KEY",
+      "ISSUER_PUBLIC_KEY"
+    ]
+  },
+  "containers": [
+    {
+      "name": "contextful-query-bench",
+      "class_name": "QueryBenchContainer",
+      "image": "./image/Dockerfile",
+      "image_build_context": "./image",
+      "max_instances": 1,
+      "instance_type": "standard-1"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "QUERY_CONTAINER", "class_name": "QueryBenchContainer" }
+    ]
+  },
+  "exports": {
+    "ContainerProxy": { "type": "worker" },
+    "QueryBenchContainer": {
+      "type": "durable-object",
+      "storage": "sqlite",
+      "container": "contextful-query-bench"
+    }
+  },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}
