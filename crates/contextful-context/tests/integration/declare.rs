@@ -118,8 +118,10 @@ fn an_empty_keyed_table_registers_its_declared_columns() {
 }
 
 #[cfg(feature = "read")]
-/// A declaration key changes what a read returns and rewrites no committed part; a key added after rows land applies from the next read.
-// spec: store.declare.read-side-keys@71b2bfcf
+/// A table block takes {{type:contextful_core::store::declare::TableDecl}}; canonical serialization omits unset keys. A key applies from
+/// the next read and rewrites no committed part; `columns` types every landing, pipeline runs included, under
+/// {{store.reconcile.typed-landing}}.
+// spec: store.declare.table-block@8cede22d
 #[test]
 fn a_key_added_after_rows_land_applies_at_the_next_read() {
     let f = Fixture::new();
@@ -148,9 +150,10 @@ fn a_key_added_after_rows_land_applies_at_the_next_read() {
 }
 
 #[cfg(feature = "read")]
-/// A replacing run keeps displaced runs on disk until `retain_runs` expires. The replacing run writes no erasure
-/// receipt and traverses no lineage.
-// spec: store.declare.replace-retains@06386279
+/// `write_mode` is `append`, the default, retiring no key, or `replace`, where a read covers the newest
+/// complete-state run and every later run; displaced runs stay on disk until `retain_runs` expires, with no
+/// erasure receipt or lineage traversal.
+// spec: store.declare.replace-frontier@45e65273
 #[test]
 fn a_replacing_run_leaves_displaced_runs_until_retention() {
     let f = Fixture::new();
@@ -200,8 +203,10 @@ fn a_read_refuses_an_unknown_order_by_rather_than_emitting_it() {
     assert!(matches!(err.store(), Some(StoreError::StoreOrderByUnknownColumn(_))), "{err}");
 }
 
-/// A `primary_key` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` at validation, before the first batch.
-// spec: store.declare.key-unknown@ab12e0f7
+/// A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or
+/// `StoreOrderByUnknownColumn`, and a struct, list or map column in either role or in `cluster_by`, `partition_by` or `valid_time`
+/// raises `StoreNestedKeyColumn`, at validation.
+// spec: store.declare.key-unknown@3a910d40
 #[test]
 fn an_unknown_primary_key_refuses_the_first_batch_before_any_parquet() {
     let f = Fixture::new();

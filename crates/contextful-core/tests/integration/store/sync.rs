@@ -200,7 +200,6 @@ fn acquisition_creates_or_replaces_on_the_etag_with_the_next_fence() {
 }
 
 /// A holder renews every 200 s by `If-Match` replace on the ETag it holds.
-// spec: store.lease.renewal@86e363e5
 #[test]
 fn a_holder_renews_every_200_seconds_on_the_etag_it_holds() {
     assert_eq!(RENEWAL_SECS, 200);

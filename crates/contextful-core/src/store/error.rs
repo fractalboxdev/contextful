@@ -43,7 +43,7 @@ pub enum StoreError {
     /// A `primary_key` names a column neither declared nor injected. (`store.declare.key-unknown`)
     #[error("StoreKeyUnknownColumn: {0}")]
     StoreKeyUnknownColumn(String),
-    /// A struct, list or map column takes a key, ordering, clustering, partition or valid-time role. (`store.declare.nested-key`)
+    /// A struct, list or map column takes a key, ordering, clustering, partition or valid-time role. (`store.declare.key-unknown`)
     #[error("StoreNestedKeyColumn: {0}")]
     StoreNestedKeyColumn(String),
     /// A primary-key column takes the float promotion. (`store.reconcile.key-widening`)
@@ -67,13 +67,13 @@ pub enum StoreError {
     /// An init meets a `contextful.toml` declaring another project, or a project with no name. (`store.init.name-conflict`)
     #[error("StoreProjectConflict: {0}")]
     StoreProjectConflict(String),
-    /// A project name is not path-safe `/`-separated segments. (`store.init.name-shape`)
+    /// A project name is not path-safe `/`-separated segments. (`store.init.name-conflict`)
     #[error("StoreProjectNameInvalid: {0}")]
     StoreProjectNameInvalid(String),
     /// A command given no `--project` finds no `contextful.toml` naming a project from its working directory up. (`store.init.undiscovered`)
     #[error("StoreProjectUndiscovered: {0}")]
     StoreProjectUndiscovered(String),
-    /// An `order_by` names a column neither declared nor injected. (`store.declare.order-by-unknown`)
+    /// An `order_by` names a column neither declared nor injected. (`store.declare.key-unknown`)
     #[error("StoreOrderByUnknownColumn: {0}")]
     StoreOrderByUnknownColumn(String),
     /// A `partition_by` column is typed binary or vector. (`store.index.partition-type`)
@@ -109,13 +109,13 @@ pub enum StoreError {
     /// An availability-bounded read names a table declaring no availability time. (`store.available-time.undeclared`)
     #[error("StoreAvailableTimeUndeclared: {0}")]
     StoreAvailableTimeUndeclared(String),
-    /// A landing row resolves to a null availability instant. (`store.available-time.null`)
+    /// A landing row resolves to a null availability instant. (`store.available-time.undeclared`)
     #[error("StoreAvailableTimeNull: {0}")]
     StoreAvailableTimeNull(String),
-    /// A vintage table declares no `content_hash_column`. (`store.available-time.vintage-hash-undeclared`)
+    /// A vintage table declares no `content_hash_column`. (`store.available-time.vintage-validation`)
     #[error("StoreVintageHashUndeclared: {0}")]
     StoreVintageHashUndeclared(String),
-    /// A vintage table declares a row-age retention cutoff. (`store.available-time.vintage-retain-rows`)
+    /// A vintage table declares a row-age retention cutoff. (`store.available-time.vintage-validation`)
     #[error("StoreVintageRetainRows: {0}")]
     StoreVintageRetainRows(String),
     /// A cursor whose kind takes no lease reached `cursors/`. (`store.lease.cursor-kind`)

@@ -97,7 +97,11 @@ const frontMatter = (src) => {
 
 /** A statement as plain text: code ticks and emphasis dropped, a `{{pointer}}` shown as its last segment. */
 const plainStatement = (s) =>
-  s.replace(/\{\{(?:[a-z0-9-]+\.)+([a-z0-9-]+)\}\}/g, "$1").replace(/[`*]/g, "").trim();
+  s
+    .replace(/\{\{(?:[a-z0-9-]+\.)+([a-z0-9-]+)\}\}/g, "$1")
+    .replace(/\{\{type:(?:\w+::)*(\w+)\}\}/g, "$1")
+    .replace(/[`*]/g, "")
+    .trim();
 
 /**
  * The clause items and operation ledes of one contract file. Under each `## <operation>`,
@@ -201,9 +205,10 @@ export const lockPins = (lock) => {
 
 /**
  * Clause id → `{ route, statement, pins }`, `contract.operation` → `{ url, lede }` of the
- * owning section, record id → route, error identifier → `{ clause, gloss }`, and ADR
- * section `A-<contract>#<slug>` → the ids of the clauses citing it. Read fresh on
- * every call so `astro dev` tracks edits. `lock` stands in for `spec/spec.lock.json`.
+ * owning section, record id → route, error identifier → `{ clause, gloss }`, ADR
+ * section `A-<contract>#<slug>` → the ids of the clauses citing it, and a type pointer's
+ * Rust path → `{ href, kind }` from the lock's `types`. Read fresh on every call so
+ * `astro dev` tracks edits. `lock` stands in for `spec/spec.lock.json`.
  */
 export const corpusIndex = (lock = readLock()) => {
   const clauses = new Map();
@@ -223,5 +228,11 @@ export const corpusIndex = (lock = readLock()) => {
   }
   const records = new Map();
   for (const f of mdFiles(ADR_DIR)) records.set(recordId(f), routeFor(join(ADR_DIR, f)));
-  return { clauses, operations, records, errors: registeredErrors(), sections: new Map(Object.entries(lock.sections ?? {})) };
+  const types = new Map(
+    Object.entries(lock.types ?? {}).map(([path, { file, line, kind }]) => [
+      path,
+      { kind, href: `${REPOSITORY}/blob/main/${file}${line ? `#L${line}` : ""}` },
+    ]),
+  );
+  return { clauses, operations, records, errors: registeredErrors(), sections: new Map(Object.entries(lock.sections ?? {})), types };
 };

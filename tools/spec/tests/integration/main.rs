@@ -17,6 +17,7 @@ mod state;
 mod tags;
 mod targets;
 mod ts_pins;
+mod types;
 mod upkeep;
 
 use std::path::{Path, PathBuf};
@@ -29,14 +30,23 @@ pub struct Scratch {
 
 impl Scratch {
     /// A scratch root holding the corpus and its benchmark ledger with no pins and no
-    /// source, so each suite states every pin it depends on; a ratchet counting source
-    /// sites starts at zero, and one counting unpinned clauses past any live count.
+    /// source but the files defining the types its pointers name, so each suite states
+    /// every pin it depends on; a ratchet counting source sites starts at zero, and one
+    /// counting unpinned clauses past any live count.
     pub fn copy() -> Scratch {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_path_buf();
         let live = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         copy_dir(&live.join("spec"), &root.join("spec"));
         let s = Scratch { _dir: dir, root };
+        let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
+        for record in lock["types"].as_object().into_iter().flat_map(|t| t.values()) {
+            let file = Path::new(record["file"].as_str().unwrap());
+            s.write(&file.to_string_lossy(), &std::fs::read_to_string(live.join(file)).unwrap());
+            let package = file.ancestors().find(|p| live.join(p).join("Cargo.toml").is_file()).unwrap();
+            let manifest = package.join("Cargo.toml");
+            s.write(&manifest.to_string_lossy(), &std::fs::read_to_string(live.join(&manifest)).unwrap());
+        }
         s.write("evals/ledger.toml", &std::fs::read_to_string(live.join("evals/ledger.toml")).unwrap());
         s.write("spec/pins.toml", "[pin]\n\n[floor]\n");
         let terms = s.read("spec/terms/corpus.toml");

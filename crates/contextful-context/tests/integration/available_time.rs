@@ -25,9 +25,10 @@ fn first(bounds: Bounds) -> Bounds {
 }
 
 #[cfg(feature = "read")]
-/// `available_as_of` filters the inner source with `<column> <= available_as_of` over the declared column. The filter
-/// combines with {{store.bound-time.as-of}} and {{store.bound-time.valid-as-of}} when the read supplies those bounds.
-// spec: store.available-time.available-as-of@09508c84
+/// `available_as_of` filters the inner source with `<column> <= available_as_of` beneath access controls, under
+/// {{store.bound-time.beneath-enforcement}}, and combines with {{store.bound-time.as-of}} and
+/// {{store.bound-time.valid-as-of}} when the read supplies those bounds.
+// spec: store.available-time.available-as-of@01cafb83
 #[test]
 fn a_row_answers_from_its_availability_instant_onward() {
     use crate::support::s;
@@ -63,8 +64,10 @@ fn a_scan_bounded_by_availability_refuses_an_undeclaring_table() {
     }
 }
 
-/// Landing a row whose resolved availability instant is null raises `StoreAvailableTimeNull`, naming the table and the run.
-// spec: store.available-time.null@6f96e557
+/// An `available_as_of` read naming a table that declares no `available_time` raises `StoreAvailableTimeUndeclared`, naming
+/// the table; landing a row whose resolved availability instant is null raises `StoreAvailableTimeNull`, naming the table
+/// and the run.
+// spec: store.available-time.undeclared@02015bb7
 #[test]
 fn landing_a_row_without_an_availability_instant_is_refused() {
     let f = Fixture::new();
@@ -109,9 +112,10 @@ fn gdp() -> (Fixture, contextful_core::store::declare::TableDecl) {
 const RELEASE: &str = "SELECT value, CAST(released_at AS VARCHAR) FROM t";
 
 #[cfg(feature = "read")]
-/// A keyed table declaring `available_time` is a vintage table. The table keeps one row per primary key, declared
-/// valid-time `from` and availability instant. A revised value lands beside the earlier value.
-// spec: store.available-time.vintage-rows@1477fe1e
+/// A keyed table declaring `available_time` is a vintage table, keeping every vintage per primary key, valid-time
+/// `from` and availability instant; a read returns the latest at or before any `available_as_of`, or under
+/// `vintage = "first"` the earliest.
+// spec: store.available-time.vintage-rows@cf738bc3
 #[test]
 fn a_restatement_lands_beside_the_value_it_revises() {
     use crate::support::s;
@@ -123,9 +127,10 @@ fn a_restatement_lands_beside_the_value_it_revises() {
 }
 
 #[cfg(feature = "read")]
-/// For each primary key and valid-time `from`, a vintage-table read returns the vintage with the latest availability
-/// instant at or before `available_as_of`. Without an availability bound, the read returns the latest vintage.
-// spec: store.available-time.vintage-resolution@3344cf6e
+/// A keyed table declaring `available_time` is a vintage table, keeping every vintage per primary key, valid-time
+/// `from` and availability instant; a read returns the latest at or before any `available_as_of`, or under `vintage
+/// = "first"` the earliest.
+// spec: store.available-time.vintage-rows@cf738bc3
 #[test]
 fn a_vintage_read_returns_the_latest_release_the_bound_admits() {
     use crate::support::s;
@@ -137,9 +142,10 @@ fn a_vintage_read_returns_the_latest_release_the_bound_admits() {
 }
 
 #[cfg(feature = "read")]
-/// For each primary key and valid-time `from`, `vintage = "first"` returns the vintage with the earliest availability
-/// instant. The read respects `available_as_of` when supplied.
-// spec: store.available-time.vintage-first@c98328eb
+/// A keyed table declaring `available_time` is a vintage table, keeping every vintage per primary key, valid-time
+/// `from` and availability instant; a read returns the latest at or before any `available_as_of`, or under `vintage =
+/// "first"` the earliest.
+// spec: store.available-time.vintage-rows@cf738bc3
 #[test]
 fn vintage_first_returns_the_initial_release() {
     use crate::support::s;
@@ -179,9 +185,11 @@ fn an_older_repull_of_the_latest_hash_keeps_the_first_vintage() {
 }
 
 #[cfg(feature = "read")]
-/// A fold over a vintage table partitions under {{store.fold.valid-time-line}} or {{store.declare.dedup-view}}, adding
-/// the availability column. The fold preserves every vintage.
-// spec: store.available-time.vintage-fold-key@fab1f6c1
+/// A vintage table reads through {{store.declare.dedup-view}}, or {{store.bound-time.interval-rows}} under
+/// `valid_time`, and folds under {{store.declare.dedup-view}} or {{store.fold.valid-time-line}}, each adding the
+/// availability column to the key and keeping every vintage; an unclustered `valid_time` fold sorts by `from`, then
+/// primary key.
+// spec: store.available-time.vintage-dedup-key@3ed4d637
 #[test]
 fn a_fold_keeps_every_vintage() {
     use crate::support::{at, s};
@@ -197,8 +205,9 @@ fn a_fold_keeps_every_vintage() {
 
 #[cfg(feature = "read")]
 /// At landing, `available_time.lag` fills a null availability column with valid-time `to`, else `from`, plus the
-/// duration from {{store.available-time.lag-class}}. The engine injects `_available_imputed` true on that row.
-// spec: store.available-time.lag-fill@0263e0a5
+/// duration `lag.classes` maps the row's `lag.class_column` value to, and injects `_available_imputed` true; a
+/// class without an entry leaves the instant null.
+// spec: store.available-time.lag-fill@3f3dec48
 #[test]
 fn a_null_instant_fills_from_valid_time_plus_the_class_lag() {
     use crate::support::s;
@@ -225,7 +234,7 @@ fn a_null_instant_fills_from_valid_time_plus_the_class_lag() {
 /// `available_time.lag = { class_column = "<column>", classes = { <class> = "<n>d" } }` maps each row's class to a
 /// duration. A class without an entry resolves no instant; landing refuses the row under {{store.available-
 /// time.null}}.
-// spec: store.available-time.lag-class@5f64226b
+// spec: store.available-time.lag-fill@3f3dec48
 #[test]
 fn a_row_whose_class_names_no_lag_is_refused() {
     let f = Fixture::new();
@@ -239,7 +248,9 @@ fn a_row_whose_class_names_no_lag_is_refused() {
 
 #[cfg(feature = "read")]
 /// A date-typed availability value resolves at landing to the start of the following day in the declared `zone`.
-// spec: store.available-time.date-end@49ac6e34
+/// The engine injects `_available_reconstructed` true on each row available before `available_time.live_since`,
+/// the instant the source began publishing live.
+// spec: store.available-time.live-since@2a0e0187
 #[test]
 fn a_date_only_instant_resolves_to_the_next_day_in_its_zone() {
     use crate::support::s;
@@ -344,9 +355,10 @@ fn a_seeded_row_lands_its_sources_instant_beside_the_commit_instant() {
 }
 
 #[cfg(feature = "read")]
-/// `available_time.live_since` names the instant a source began publishing live. The engine injects
-/// `_available_reconstructed` true on each row available before that instant.
-// spec: store.available-time.live-since@f6ba1b6e
+/// A date-typed availability value resolves at landing to the start of the following day in the
+/// declared `zone`. The engine injects `_available_reconstructed` true on each row available before
+/// `available_time.live_since`, the instant the source began publishing live.
+// spec: store.available-time.live-since@2a0e0187
 #[test]
 fn a_row_available_before_live_since_is_marked_reconstructed() {
     use crate::support::s;

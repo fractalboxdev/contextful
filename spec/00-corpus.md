@@ -129,12 +129,18 @@ Where a spelling is registered, the single owner of an error or a bound, the col
 
 ## reference
 
-The one legal way a statement reaches a fact another clause owns, and the ban on restatement and literature.
+The one legal way a statement reaches a fact another clause or a code type owns, and the ban on restatement and literature.
 
 - `pointer` — `{{<clause id>}}` is the one way a statement reaches a fact another clause owns. The lock file records every pointer as an edge.
   *P8*
 - `dangling` — A `{{id}}` naming no clause raises `SpecDanglingReference`.
   *P8*
+- `type-pointer` — `{{type:<crate>::<module>::<Type>}}` names a Rust struct or enum in place of its keys; the lock file records its file, line and each field or variant with its `serde` spelling and doc comment, and the contract's card lists them.
+  *because a key list copied from code drifts from the code, and the type already holds every key with its gloss*
+- `type-unresolved` — A type pointer whose crate and module part names no file defining that struct or enum raises `SpecTypeUnresolved`.
+  *because a pointer to a moved or renamed type shows the reader no keys*
+- `restates-code` — `contextful-spec state` prints a `SpecRestatesCode` advisory naming each clause that backticks three or more keys of one deserialized struct or enum and carries no pointer to it; `spec/status.md` records their count.
+  *because a key list in a clause is a second home for its type, and which list a pointer replaces is a reviewer's judgment*
 - `no-literature` — A spec file carries no hyperlink to an external document and no path under `references/`; either raises `SpecExternalLink`. Literature lives in `references/`, which cites clause ids.
   *because the contract is judged by behavior, and a citation invites arguing from authority*
 
@@ -195,7 +201,7 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a conjunctive clause takes one test per conjunct, and one passing test of half a clause reads as the whole*
 - `unexercised` — A test pin of a refusal clause computes `broken` unless its function body names one of the clause's errors: the id itself, or a `::` variant path keeping at least two of the id's trailing words.
   *because a test that never observes the error demonstrates some other behavior*
-- `limit-const` — A named-bound entry may record the Rust const holding its bound as `const = "<crate path>"`; a test pin of its clause computes `broken` while that const resolves to nothing or no non-test source under `crates/*/src` or `tools/*/src` reads it.
+- `limit-const` — A named-bound entry may record the Rust const holding its bound as `const = "<file>::<NAME>"`; a test pin of its clause computes `broken` while that const resolves to nothing or no non-test source under `crates/*/src` or `tools/*/src` reads it.
   *because a test of a bound the code never consults demonstrates a number, not a limit*
 - `module-path` — A path pin resolves only where its file or module part points: `<file>.rs::<fn>` to that file, `<crate>::<module>::<fn>` to a file of that package opening that module path, `A.B.<theorem>` to `A/B.lean`.
   *because a pin matching any same-named function elsewhere demonstrates nothing about the named one*

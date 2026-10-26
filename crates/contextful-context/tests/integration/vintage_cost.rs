@@ -355,7 +355,7 @@ fn a_repull_respelling_its_valid_time_lands_no_vintage() {
 }
 
 /// Bars landed newest day first fold into a snapshot ordered by valid time, then symbol.
-// spec: store.available-time.vintage-fold-order@df6f27c4
+// spec: store.available-time.vintage-dedup-key@3ed4d637
 #[test]
 fn a_vintage_fold_orders_its_snapshot_by_valid_time() {
     let f = Fixture::new();
