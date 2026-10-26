@@ -1140,7 +1140,7 @@
       "operation": "guide",
       "subject": "file",
       "kind": "limit",
-      "statement": "Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose of at most 700 words outside diagrams.",
+      "statement": "Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose outside diagrams of at most 400 words plus 20 words per operation its contract's fragment registers.",
       "why": "A-corpus",
       "file": "spec/00-corpus.md",
       "line": 314
@@ -1151,7 +1151,7 @@
       "operation": "guide",
       "subject": "non-normative",
       "kind": "behavior",
-      "statement": "A guide holds no clause item and names no registered error; it reaches a rule by `{{id}}`. No contract file links a guide.",
+      "statement": "A guide holds no clause item and names no registered error. It reaches a rule by `{{<clause id>}}` and an operation by `{{<contract>.<operation>}}`, which resolves against that contract's fragment. No contract file links a guide.",
       "why": "because a rule restated in teaching prose is a second home that drifts from the first",
       "file": "spec/00-corpus.md",
       "line": 316
@@ -34444,7 +34444,11 @@
     ],
     [
       "corpus.guide.non-normative",
-      "id"
+      "<clause id>"
+    ],
+    [
+      "corpus.guide.non-normative",
+      "<contract>.<operation>"
     ],
     [
       "topology.compose.undeclared-crossing",
@@ -40043,12 +40047,19 @@
             "basis": "chosen",
             "gloss": "Longest clause list."
           },
-          "corpus-guide-words": {
+          "corpus-guide-operation-words": {
             "clause": "corpus.guide.file",
-            "value": 700,
+            "value": 20,
             "unit": "words",
             "basis": "chosen",
-            "gloss": "Longest guide, diagrams excluded."
+            "gloss": "Guide length added per registered operation."
+          },
+          "corpus-guide-words": {
+            "clause": "corpus.guide.file",
+            "value": 400,
+            "unit": "words",
+            "basis": "chosen",
+            "gloss": "Guide length for a contract with no operation, diagrams excluded."
           },
           "corpus-message-words": {
             "clause": "corpus.diagram.message",
@@ -50349,6 +50360,7 @@
     },
     "corpus.guide.file": {
       "sites": [
+        "tools/spec/tests/integration/guide.rs::a_guide_cap_grows_by_twenty_words_per_registered_operation",
         "tools/spec/tests/integration/readable.rs::a_guide_over_its_length_or_off_its_title_is_a_guide_finding"
       ],
       "verdict": "performed",
@@ -50356,6 +50368,7 @@
     },
     "corpus.guide.non-normative": {
       "sites": [
+        "tools/spec/tests/integration/guide.rs::a_guide_operation_pointer_resolves_against_the_fragment_and_a_contract_file_one_dangles",
         "tools/spec/tests/integration/readable.rs::a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding"
       ],
       "verdict": "performed",

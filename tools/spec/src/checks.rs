@@ -273,13 +273,10 @@ static GUIDE_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\]\([^)]*guid
 fn guide(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
     let g = |file: &str, line: usize, msg: String| f("guide", file, line, "SpecGuide", msg);
-    let cap = c
-        .reg
-        .fragments
-        .get("corpus")
-        .and_then(|fr| fr.limit.get("corpus-guide-words"))
-        .and_then(|l| l.value.as_integer())
-        .unwrap_or(700) as usize;
+    let bound = |name: &str, default: i64| {
+        c.reg.fragments.get("corpus").and_then(|fr| fr.limit.get(name)).and_then(|l| l.value.as_integer()).unwrap_or(default) as usize
+    };
+    let (base, per_operation) = (bound("corpus-guide-words", 400), bound("corpus-guide-operation-words", 20));
     let errors: BTreeSet<&str> = c.reg.fragments.values().flat_map(|fr| fr.error.keys().map(String::as_str)).collect();
     let word = Regex::new(r"[A-Za-z][A-Za-z0-9_]*").unwrap();
     for name in c.reg.contracts.keys() {
@@ -304,6 +301,7 @@ fn guide(c: &Corpus) -> Vec<Finding> {
             ([_], _) => {}
             _ => out.push(g(&d.rel, 1, format!("{} `# ` titles, want 1", titles.len()))),
         }
+        let cap = base + per_operation * c.reg.fragments.get(stem).map_or(0, |fr| fr.operation.len());
         let words = words_of(d.each().filter(|(_, _, k)| !matches!(k, LineKind::Code | LineKind::Fence | LineKind::Front)).map(|(_, l, _)| l));
         if words > cap {
             out.push(g(&d.rel, 1, format!("{words} words exceed {cap}")));
@@ -470,7 +468,7 @@ fn reference(c: &Corpus) -> Vec<Finding> {
                 continue;
             }
             for p in pointers(&without_ticks(l)) {
-                if !ids.contains(&p) {
+                if !ids.contains(&p) && !(d.role == Role::Guide && is_operation(c, &p)) {
                     out.push(f("reference", &d.rel, n, "SpecDanglingReference", format!("{{{{{p}}}}} names no clause")));
                 }
             }
@@ -480,6 +478,11 @@ fn reference(c: &Corpus) -> Vec<Finding> {
         }
     }
     out
+}
+
+/// `<contract>.<operation>` naming an operation the contract's fragment registers.
+fn is_operation(c: &Corpus, p: &str) -> bool {
+    p.split_once('.').is_some_and(|(contract, op)| c.reg.fragments.get(contract).is_some_and(|fr| fr.operation.contains_key(op)))
 }
 
 // ---------------------------------------------------------------- rationale
