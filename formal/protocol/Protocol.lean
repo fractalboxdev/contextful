@@ -3,3 +3,6 @@ import Protocol.Invariants
 import Protocol.Journal
 import Protocol.JournalInvariants
 import Protocol.JournalCheck
+import Protocol.Merge
+import Protocol.MergeTheorems
+import Protocol.MergeCheck

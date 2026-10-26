@@ -110,9 +110,11 @@ fn the_journal_theorems_pass_the_protocol_audit() {
     if !lean() {
         return;
     }
-    let out = Command::new(BIN).args(["formal", "check", "--root"]).arg(protocol_root()).output().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let report_path = dir.path().join("report.json");
+    let out = Command::new(BIN).args(["formal", "check", "--root"]).arg(protocol_root()).arg("--report").arg(&report_path).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(protocol_root().join(".lake/contextful-report.json")).unwrap()).unwrap();
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&report_path).unwrap()).unwrap();
     for theorem in [
         "recorded_stable",
         "resolutions_agree",

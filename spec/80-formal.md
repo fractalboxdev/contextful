@@ -98,6 +98,9 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
   *because a sweep past the grace window deletes a blob written ahead of the row that names it*
 - `journal-check` — `protocol journal check` evaluates every journal property on each state three callers reach on one key; a breaking state raises `JournalInvariantViolated`, printing the shortest sequence reaching it.
   *P7*
+- `merge-model` — The protocol package's merge model decides each key of one writer's merge from that key's local entry, remote entry, remote tombstone, held flag and verification flag; one differing commit-log copy refuses the whole merge.
+  *A-assurance*
+- `merge-theorems` — Six merge properties are Lean theorems over every input: the scoped union, a foreign or unverified tombstone keeping its entry, only live tombstones listed, the commit-log refusal, and one writer's convergence at a fixed `now`.
 
 ## prove
 
@@ -241,6 +244,10 @@ The executable reference models, the case generators, the minimized counterexamp
 - `journal-drift` — A step after which the journal model's state and an adapter's projected state differ raises `JournalConformanceDrift`, printing the adapter, the minimized step sequence and both states.
   *A-assurance*
 - `journal-command` — `contextful formal journal-differential --seed <n> --cases <n>` replays `formal/protocol/journal-regressions.jsonl`, each entry in its own grace mode, then the generated cases; `--no-grace` replays and saves the model's sequence to {{run.journal.missing-blob}}.
+- `merge-harness` — `contextful formal merge-differential --seed <n> --cases <n>` compares the merge model's executable with `merge_verified` on each generated case, key by key: entry, tombstone and refusal, or the whole merge's {{store.merge.cursor-recency}} refusal.
+  *because a merge case has two deciders, as a `verify` case does*
+- `merge-drift` — A case on which the merge model and `merge_verified` differ raises `MergeConformanceDrift`, printing the case minimized to the fewest keys and both merges.
+  *A-assurance*
 - `command` — `contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.
 
 One differential run:
@@ -302,6 +309,9 @@ formal/
       Journal.lean         journal state, port-call steps, the step function
       JournalInvariants.lean  the seven journal theorems
       JournalCheck.lean    the journal check and replay
+      Merge.lean           one writer's merge, decided per key
+      MergeTheorems.lean   the six merge theorems
+      MergeCheck.lean      the merge replay
     Main.lean              executable: one step sequence in, one state per step out
     inventory.toml         the invariant theorems and their expected statements
     journal-regressions.jsonl  saved journal sequences and their grace mode

@@ -164,6 +164,7 @@ def main (args : List String) : IO UInt32 := do
       for st in path do IO.eprintln s!"  {showStep st}"
       return 1
   | "journal" :: rest => Protocol.Journal.main rest
+  | "merge" :: rest => Protocol.Merge.main rest
   | _ =>
-    IO.eprintln "usage: protocol [check [--unfenced] | run | journal (check | run) [--no-grace]]"
+    IO.eprintln "usage: protocol [check [--unfenced] | run | journal (check | run) [--no-grace] | merge run]"
     return 2

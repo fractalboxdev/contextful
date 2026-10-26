@@ -103,3 +103,57 @@ binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextf
 negative  = """
 Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Assumes the grace hypothesis of `no_dangling_blob`; without it, `protocol journal check --no-grace` prints the shortest sequence to `BlobMissing`.
 """
+
+[constant."Protocol.Merge.merge_scoped_union"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input), (∀ (e : Protocol.Merge.Entry), i.localEntry = some e → e.owner = me → (Protocol.Merge.mergeKey me now i).entry = some e) ∧ (∀ (e : Protocol.Merge.Entry), i.localEntry = some e → e.owner ≠ 0 → e.owner ≠ me → Protocol.Merge.mergeKey me now i = Protocol.Merge.mergeKey me now { log := i.log, held := i.held, verified := i.verified, localEntry := none, remoteEntry := i.remoteEntry, remoteTomb := i.remoteTomb }) ∧ ∀ (t : Protocol.Merge.Tombstone), (Protocol.Merge.mergeKey me now i).tomb = some t → i.remoteTomb ≠ some t → t = { owner := me, deletedAt := now } ∧ i.held = true ∧ (∃ r, i.remoteEntry = some r ∧ r.owner = me) ∧ ∀ (e : Protocol.Merge.Entry), i.localEntry = some e → e.owner ≠ 0 ∧ e.owner ≠ me"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Speaks of one writer's merge; an unowned local entry is listed and a verified unowned tombstone removes it.
+"""
+
+[constant."Protocol.Merge.foreign_tombstone_keeps_entry"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input) (x : Protocol.Merge.Entry) (rt : Protocol.Merge.Tombstone), Protocol.Merge.base me now i = (some x, none) → i.remoteTomb = some rt → now - rt.deletedAt < Protocol.Merge.ttl → x.owner ≠ rt.owner → Protocol.Merge.mergeKey me now i = { entry := some x, tomb := none, refusal := some Protocol.Merge.Refusal.foreign }"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Speaks of a live tombstone; an expired one leaves without a refusal.
+"""
+
+[constant."Protocol.Merge.unverified_tombstone_keeps_entry"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input) (x : Protocol.Merge.Entry) (rt : Protocol.Merge.Tombstone), Protocol.Merge.base me now i = (some x, none) → i.remoteTomb = some rt → now - rt.deletedAt < Protocol.Merge.ttl → x.owner = rt.owner → x.owner ≠ me → i.verified = false → Protocol.Merge.mergeKey me now i = { entry := some x, tomb := none, refusal := some Protocol.Merge.Refusal.unverified }"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Speaks of a live tombstone naming another writer's entry; a tombstone naming this writer's entry leaves without a refusal.
+"""
+
+[constant."Protocol.Merge.merged_tombstones_live"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input) (t : Protocol.Merge.Tombstone), (Protocol.Merge.mergeKey me now i).tomb = some t → now - t.deletedAt < Protocol.Merge.ttl"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Counts age in whole seconds at the merge's `now`; a clock behind a tombstone's `deleted_at` reads its age as zero.
+"""
+
+[constant."Protocol.Merge.merge_refuses_on_conflicts"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (is : List Protocol.Merge.Input) (i : Protocol.Merge.Input), i ∈ is → Protocol.Merge.conflicts me i = true → Protocol.Merge.merge me now is = none"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Says nothing of which copy is right: the cursor resolves through its commit outside the merge.
+"""
+
+[constant."Protocol.Merge.merge_converges"]
+module    = "Protocol.MergeTheorems"
+statement = "∀ (me now : Nat) (i : Protocol.Merge.Input), (Protocol.Merge.mergeKey me now (i.after (Protocol.Merge.mergeKey me now i))).entry = (Protocol.Merge.mergeKey me now i).entry ∧ (Protocol.Merge.mergeKey me now (i.after (Protocol.Merge.mergeKey me now i))).tomb = (Protocol.Merge.mergeKey me now i).tomb"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key"
+negative  = """
+Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Fixes one writer, one store and one `now`: refusals answer on the first merge only, and two writers holding different copies of an unowned key alternate.
+"""

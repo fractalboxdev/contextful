@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 354 | 75 | 25 | 3 | 313 | 0 | 313 |
+| `assurance` | 3 | 18 | 358 | 76 | 25 | 3 | 317 | 0 | 317 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 312 | 0 | 312 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 173 | 0 | 173 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 88 | 0 | 88 |
-| **total** | 26 | 177 | 2930 | 713 | 235 | 82 | 2604 | 0 | |
+| **total** | 26 | 177 | 2934 | 714 | 235 | 82 | 2608 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
-| 1 — The authority core | 14 | 255 | 254 | passing | closed |
+| 1 — The authority core | 14 | 259 | 258 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 318 | 307 | passing | closed |
 | 4 — Ingest | 25 | 651 | 551 | passing | closed |
@@ -174,6 +174,8 @@ Unscheduled operations: 13.
 | `assurance.differential-test.journal-drift` | `crates/contextful-cli/tests/integration/journal_differential.rs::a_journal_difference_prints_the_minimal_sequence_and_both_states` | performed |
 | `assurance.differential-test.journal-harness` | `crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter` | performed |
 | `assurance.differential-test.malformed-bytes` | `crates/contextful-cli/tests/integration/differential.rs::malformed_bytes_reach_every_decider_and_each_decides_them_malformed` | performed |
+| `assurance.differential-test.merge-drift` | `crates/contextful-cli/tests/integration/merge_differential.rs::a_merge_difference_prints_the_minimal_case_and_both_merges` | performed |
+| `assurance.differential-test.merge-harness` | `crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key` | performed |
 | `assurance.differential-test.minimized` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_disagreement_is_minimal_under_every_shrinking_step` | performed |
 | `assurance.differential-test.protocol-cases` | `spec/pins.toml` | performed |
 | `assurance.differential-test.protocol-drift` | `spec/pins.toml` | performed |
@@ -289,6 +291,8 @@ Unscheduled operations: 13.
 | `assurance.model.journal-model` | `crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter` | performed |
 | `assurance.model.journal-safety` | `crates/contextful-cli/tests/integration/journal_differential.rs::the_journal_theorems_pass_the_protocol_audit` | performed |
 | `assurance.model.layer` | `formal/Contextful/Layer.lean::composed` | performed |
+| `assurance.model.merge-model` | `crates/contextful-cli/tests/integration/merge_differential.rs::fixed_seed_merges_agree_key_by_key` | performed |
+| `assurance.model.merge-theorems` | `crates/contextful-cli/tests/integration/merge_differential.rs::the_merge_theorems_pass_the_protocol_audit` | performed |
 | `assurance.model.module-layout` | `crates/contextful-cli/tests/integration/formal.rs::the_library_root_re_exports_five_modules` | performed |
 | `assurance.model.out-of-model` | `crates/contextful-cli/tests/integration/formal.rs::the_policy_package_reaches_no_process_state_or_bytes` | performed |
 | `assurance.model.package` | `crates/contextful-cli/tests/integration/formal.rs::the_policy_package_has_one_library_no_dependency_and_an_exact_toolchain` | performed |
@@ -2274,7 +2278,7 @@ Unscheduled operations: 13.
 | `store.lease.renewal` | `crates/contextful-core/tests/integration/store/sync.rs::a_holder_renews_every_200_seconds_on_the_etag_it_holds` | performed |
 | `store.lease.stale-fence` | `crates/contextful-context/tests/integration/run_commit.rs::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable`, `formal/protocol/Protocol/Invariants.lean::no_commit_below_granted` | performed |
 | `store.lease.ttl` | `crates/contextful-core/tests/integration/store/sync.rs::a_lease_is_granted_for_10_minutes` | performed |
-| `store.merge.cursor-recency` | `crates/contextful-core/tests/integration/store/sync.rs::differing_copies_of_a_commit_log_entry_refuse` | performed |
+| `store.merge.cursor-recency` | `crates/contextful-core/tests/integration/store/sync.rs::differing_copies_of_a_commit_log_entry_refuse`, `formal/protocol/Protocol/MergeTheorems.lean::merge_refuses_on_conflicts` | performed |
 | `store.merge.exhausted` | `crates/contextful-sync/tests/integration/push.rs::exhausted_rounds_refuse_and_report_every_uploaded_object` | performed |
 | `store.merge.held-absent` | `crates/contextful-sync/tests/integration/push.rs::a_store_without_a_record_holds_every_owned_key_once_it_pushed_and_none_before` | performed |
 | `store.merge.held-record` | `crates/contextful-sync/tests/integration/push.rs::a_push_records_the_keys_it_holds_and_a_pull_adds_those_it_brings_home` | performed |
@@ -2282,11 +2286,11 @@ Unscheduled operations: 13.
 | `store.merge.ownership` | `crates/contextful-core/tests/integration/store/sync.rs::a_keys_owner_is_read_off_the_key` | performed |
 | `store.merge.retries` | `crates/contextful-sync/tests/integration/push.rs::the_re_commit_loop_takes_five_rounds_by_default_and_the_declared_bound_otherwise` | performed |
 | `store.merge.round-ceiling` | `crates/contextful-sync/tests/integration/push.rs::a_push_overtaken_every_round_stops_at_sixty_four_rounds` | performed |
-| `store.merge.scoped-union` | `crates/contextful-core/tests/integration/store/sync.rs::a_merge_tombstones_only_the_owned_entries_its_store_held` | performed |
-| `store.merge.tombstone-owner` | `crates/contextful-core/tests/integration/store/sync.rs::a_tombstone_naming_another_owners_entry_refuses_and_the_entry_stays` | performed |
+| `store.merge.scoped-union` | `crates/contextful-core/tests/integration/store/sync.rs::a_merge_tombstones_only_the_owned_entries_its_store_held`, `formal/protocol/Protocol/MergeTheorems.lean::merge_scoped_union` | performed |
+| `store.merge.tombstone-owner` | `crates/contextful-core/tests/integration/store/sync.rs::a_tombstone_naming_another_owners_entry_refuses_and_the_entry_stays`, `formal/protocol/Protocol/MergeTheorems.lean::foreign_tombstone_keeps_entry` | performed |
 | `store.merge.tombstone-signed` | `crates/contextful-sync/tests/integration/converge.rs::a_push_signs_each_tombstone_with_its_issuer_key` | performed |
-| `store.merge.tombstone-ttl` | `crates/contextful-core/tests/integration/store/sync.rs::a_tombstone_leaves_the_manifest_after_30_days` | performed |
-| `store.merge.tombstone-unverified` | `crates/contextful-sync/tests/integration/converge.rs::an_unverified_tombstone_deletes_nothing` | performed |
+| `store.merge.tombstone-ttl` | `crates/contextful-core/tests/integration/store/sync.rs::a_tombstone_leaves_the_manifest_after_30_days`, `formal/protocol/Protocol/MergeTheorems.lean::merged_tombstones_live` | performed |
+| `store.merge.tombstone-unverified` | `crates/contextful-sync/tests/integration/converge.rs::an_unverified_tombstone_deletes_nothing`, `formal/protocol/Protocol/MergeTheorems.lean::unverified_tombstone_keeps_entry` | performed |
 | `store.probe.inconclusive` | `crates/contextful-sync/tests/integration/push.rs::a_refused_method_credential_or_transport_is_inconclusive` | performed |
 | `store.probe.network-volume` | `crates/contextful-sync/tests/integration/push.rs::a_bucket_on_a_network_volume_resolves_single_writer_and_refuses_a_declared_cas` | performed |
 | `store.probe.sentinel` | `crates/contextful-sync/tests/integration/push.rs::the_probe_demonstrates_cas_and_leaves_no_sentinel` | performed |
