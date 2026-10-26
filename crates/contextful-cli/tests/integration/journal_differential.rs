@@ -26,10 +26,14 @@ fn differential(args: &[&str], regressions: &Path) -> Output {
         .unwrap()
 }
 
-/// The protocol package holds a journal model: a total, computable step function in which each journal-store and blob-store port call, each effect, lapse, crash, sweep and retirement is one step, over three callers and two keys.
-// spec: assurance.model.journal-model@933ca966
-// spec: assurance.differential-test.journal-harness@2297ea6f
-// spec: assurance.differential-test.journal-command@6d882d1e
+/// The journal model is a total, computable step function over three callers and two keys; each journal-store and blob-store port call, effect, lapse, crash, sweep and retirement is one step.
+// spec: assurance.model.journal-model@12f1af8c
+// spec: assurance.differential-test.journal-harness@50810f6d
+// spec: assurance.differential-test.journal-command@ef733f6b
+// spec: run.journal.step-output@78bc23e4
+// spec: run.journal.entry-key@62b1a12d
+// spec: run.journal.claim-takeover@9f58eef0
+// spec: run.journal.blob-sweep@a62b9f09
 #[test]
 fn fixed_seed_replays_interleaved_journal_cases_against_every_adapter() {
     if !lean() {
@@ -46,8 +50,8 @@ fn fixed_seed_replays_interleaved_journal_cases_against_every_adapter() {
     assert!(report.contains("adapters=memory,file,sqlite"), "{report}");
 }
 
-/// `no_dangling_blob` assumes the grace hypothesis: an aged sweep spares the blob of a caller between its put and its record. `protocol journal check --no-grace` prints the shortest sequence reaching {{run.journal.missing-blob}}.
-// spec: assurance.model.journal-grace@2b9b01e2
+/// `no_dangling_blob` assumes an aged sweep spares a blob between its put and its record; `protocol journal check --no-grace` prints the shortest sequence reaching {{run.journal.missing-blob}}.
+// spec: assurance.model.journal-grace@bcc338d8
 #[test]
 fn without_the_grace_window_the_model_and_every_adapter_reach_blob_missing() {
     if !lean() {
@@ -68,8 +72,8 @@ fn without_the_grace_window_the_model_and_every_adapter_reach_blob_missing() {
     assert!(String::from_utf8_lossy(&replay.stdout).contains("regressions=1"));
 }
 
-/// A step after which the journal model's state and an adapter's projected state differ raises `JournalConformanceDrift`, printing the adapter, the minimized step sequence and both states.
-// spec: assurance.differential-test.journal-drift@aed1d8a5
+/// A step after which the journal model and an adapter differ raises `JournalConformanceDrift`, printing the adapter, the minimized sequence and both states.
+// spec: assurance.differential-test.journal-drift@2065542f
 #[test]
 fn a_journal_difference_prints_the_minimal_sequence_and_both_states() {
     let dir = tempfile::tempdir().unwrap();

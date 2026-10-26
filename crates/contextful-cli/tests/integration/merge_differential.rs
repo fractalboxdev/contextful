@@ -6,9 +6,14 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_contextful");
 
-/// The protocol package's merge model decides each key of one writer's merge from that key's local entry, remote entry, remote tombstone, held flag and verification flag; one differing commit-log copy refuses the whole merge.
-// spec: assurance.model.merge-model@36737c41
-// spec: assurance.differential-test.merge-harness@d9a568a2
+/// The merge model decides each key from its local entry, remote entry, remote tombstone, held flag and verification flag; one differing commit-log copy refuses the whole merge.
+// spec: assurance.model.merge-model@ca704364
+// spec: assurance.differential-test.merge-harness@86acbe82
+// spec: store.merge.scoped-union@fc9577a4
+// spec: store.merge.tombstone-owner@df322a2c
+// spec: store.merge.tombstone-unverified@fab14869
+// spec: store.merge.tombstone-ttl@30121692
+// spec: store.merge.cursor-recency@a551b135
 #[test]
 fn fixed_seed_merges_agree_key_by_key() {
     if Command::new("lake").arg("--version").output().is_err() {
@@ -27,13 +32,15 @@ fn fixed_seed_merges_agree_key_by_key() {
     assert_eq!(first.stdout, run().stdout);
     let report = String::from_utf8_lossy(&first.stdout);
     assert!(report.contains("merge-differential: 0 drift cases"), "{report}");
-    // The generated cases reach both refusals and the commit-log conflict.
+    // The generated cases reach both tombstone refusals and the commit-log conflict.
     let count = |field: &str| -> u64 { report.split(&format!("{field}=")).nth(1).unwrap().split(|c: char| !c.is_ascii_digit()).next().unwrap().parse().unwrap() };
-    assert!(count("conflicts") > 0 && count("refusals") > 0, "{report}");
+    for refusal in ["SyncCursorConflict", "SyncTombstoneForeign", "SyncTombstoneUnverified"] {
+        assert!(count(refusal) > 0, "{refusal}: {report}");
+    }
 }
 
-/// A case on which the merge model and `merge_verified` differ raises `MergeConformanceDrift`, printing the case minimized to the fewest keys and both merges.
-// spec: assurance.differential-test.merge-drift@f5be28fb
+/// A case on which the merge model and `merge_verified` differ raises `MergeConformanceDrift`, printing the minimized case and both merges.
+// spec: assurance.differential-test.merge-drift@8710b5e9
 #[test]
 fn a_merge_difference_prints_the_minimal_case_and_both_merges() {
     let dir = tempfile::tempdir().unwrap();

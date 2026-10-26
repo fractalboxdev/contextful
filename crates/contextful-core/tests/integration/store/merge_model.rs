@@ -220,6 +220,8 @@ prop_state_machine! {
     /// A merge takes each local entry its writer owns or no writer owns, and every other remote entry; an entry leaves
     /// only under its owner's tombstone, a foreign tombstone keeps its entry, a tombstone past 30 d leaves, a second merge
     /// of the same store is a no-op, and writers pushing in turn at one `now` reach a fixed point.
+    // spec: store.merge.scoped-union@fc9577a4
+    // spec: store.merge.tombstone-ttl@30121692
     #[test]
     fn writers_merging_in_any_order_keep_the_scoped_union(sequential 1..48 => Bucket);
 }

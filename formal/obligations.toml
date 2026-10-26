@@ -10,4 +10,13 @@ clauses = [
     "authority.grant.template-allowlist",
     "connector.widen.host-inclusion",
     "connector.widen.host-witness",
+    "run.journal.blob-sweep",
+    "run.journal.claim-takeover",
+    "run.journal.entry-key",
+    "run.journal.step-output",
+    "store.merge.cursor-recency",
+    "store.merge.scoped-union",
+    "store.merge.tombstone-owner",
+    "store.merge.tombstone-ttl",
+    "store.merge.tombstone-unverified",
 ]

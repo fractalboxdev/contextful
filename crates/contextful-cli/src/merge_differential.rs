@@ -231,7 +231,7 @@ pub fn run(args: Args) -> Result<()> {
         cases.push(strategy().new_tree(&mut runner).map_err(|e| anyhow::anyhow!("generating a merge case: {e}"))?.current());
     }
     let models = model(&reference, &cases)?;
-    let (mut conflicts, mut refusals) = (0, 0);
+    let (mut conflicts, mut foreign, mut unverified) = (0, 0, 0);
     for (n, (case, expected)) in cases.into_iter().zip(models).enumerate() {
         let actual = store(&case)?;
         if expected != actual {
@@ -240,8 +240,12 @@ pub fn run(args: Args) -> Result<()> {
             bail!("MergeConformanceDrift: seed={} case={n}; case={}; model={model}; store={}", args.seed, reduced.line(), store(&reduced)?);
         }
         conflicts += usize::from(actual == "conflict");
-        refusals += actual.matches("foreign").count() + actual.matches("unverified").count();
+        foreign += actual.matches("foreign").count();
+        unverified += actual.matches("unverified").count();
     }
-    println!("merge-differential: 0 drift cases; seed={}; generated={}; conflicts={conflicts}; refusals={refusals}", args.seed, args.cases);
+    println!(
+        "merge-differential: 0 drift cases; seed={}; generated={}; SyncCursorConflict={conflicts}; SyncTombstoneForeign={foreign}; SyncTombstoneUnverified={unverified}",
+        args.seed, args.cases
+    );
     Ok(())
 }

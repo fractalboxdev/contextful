@@ -443,19 +443,19 @@ Decision: `assurance.gate.affected-parts` lists the required parts the diff from
 
 Consequences: a change confined to `spec/`, `references/`, `apps/`, `packages/` or `formal/` runs a fraction of the parts. A part the map omits wrongly stays green until a change under `crates/` or `tools/` runs it.
 
-## The protocol package holds the journal and merge machines
+## protocol-package-holds — The protocol package holds the journal and merge machines
 
 **Status:** accepted
 
-Context: `run.journal` and `store.merge` carry the engine's concurrency risk, and a proof of each needs a model that a differential ties to the engine. Criteria: one toolchain and one assumption audit, a differential that drives the engine's own code, and a policy package of five modules.
+Context: `run.journal` and `store.merge` carry the engine's concurrency risk. Criteria: one toolchain and audit, a differential driving the engine's own code, and five policy modules.
 
-Decision: `assurance.model.journal-model` admits the journal into `formal/protocol` as port-call steps over three callers and two keys. `assurance.differential-test.journal-harness` runs the engine's own `Journal::step` on caller threads over gated memory, file and SQLite adapters, one port call per model step. `assurance.model.merge-model` decides one writer's merge per key, and `assurance.differential-test.merge-harness` compares it with `merge_verified`.
+Decision: `formal/protocol` holds the journal as port-call steps and the merge per key. The journal harness runs `Journal::step` over gated adapters; the merge harness calls `merge_verified`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Journal and merge machines in `formal/protocol` *(chosen)* | — | One package elaborates every machine, and the bounded checks share the formal stage's wall clock. |
-| A third Lean package per machine | One audit | Three inventories, three toolchain pins and three executables. |
-| Machines in `formal/Contextful` | Scope | The policy package gains IO-shaped state it states no theorem over. |
-| Interleaving tests without a model | Proof | A sampled interleaving shows no property for every state. |
+| Both machines in `formal/protocol` *(chosen)* | — | The bounded checks share the formal stage's wall clock. |
+| One Lean package per machine | One audit | Three inventories, toolchain pins and executables. |
+| Machines in `formal/Contextful` | Scope | The policy package gains IO-shaped state. |
+| Interleaving tests without a model | Proof | A sample shows no property for every state. |
 
-Consequences: `no_dangling_blob` holds under the grace hypothesis, and `--no-grace` reproduces `BlobMissing` on every adapter. The model's three callers and two keys bound the theorems.
+Consequences: `no_dangling_blob` holds under the grace hypothesis; `--no-grace` reproduces `BlobMissing` on every adapter.

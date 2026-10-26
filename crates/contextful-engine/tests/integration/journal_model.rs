@@ -149,6 +149,8 @@ prop_state_machine! {
 
     /// Callers interleaving one port call at a time keep a recorded value stable, resolve every journaled read to it,
     /// list one row per key, run an effect only under a claim or a lapsed lease, and never strand a recorded blob.
+    // spec: run.journal.claim-takeover@9f58eef0
+    // spec: run.journal.blob-sweep@a62b9f09
     #[test]
     fn interleaved_callers_over_the_file_journal_keep_one_recorded_value(sequential 1..40 => Model<File>);
 
