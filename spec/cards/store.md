@@ -173,7 +173,7 @@ The struct at `crates/contextful-core/src/store/declare.rs:81`, named by `store.
 
 ### `contextful_core::store::declare::TableDecl`
 
-The struct at `crates/contextful-core/src/store/declare.rs:126`, named by `store.declare.table-block`, `store.declare.erasure-metadata`.
+The struct at `crates/contextful-core/src/store/declare.rs:126`, named by `store.declare.table-block`, `store.declare.erasure-metadata`, `run.model.restricted-input`, `run.publish.disclosure-digest`.
 
 | Key | Doc |
 | --- | --- |

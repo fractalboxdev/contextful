@@ -75,9 +75,8 @@ fn spans(plan: &ChunkPlan) -> Vec<(String, i64, i64)> {
         .collect()
 }
 
-/// `[pipeline.backfill]` declares `max_chunks`, the bound on a plan's chunk count; `chunk_size`, one clock-ranged
-/// chunk's width in cursor units; and `start_from`, the floor, default zero.
-// spec: run.backfill.block@3577d3c7
+/// `[pipeline.backfill]` takes {{type:contextful_core::run::backfill::BackfillBlock}}; `start_from` defaults to zero.
+// spec: run.backfill.block@6f1c143c
 #[test]
 fn a_backfill_block_declares_a_chunk_bound_a_width_and_a_floor_defaulting_to_zero() {
     let declared = block(json!({"max_chunks": 4, "chunk_size": 10, "start_from": 5}));

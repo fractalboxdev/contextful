@@ -339,7 +339,7 @@ fn staged_repull_is_checked_against_commits_before_publication() {
 
 #[cfg(feature = "read")]
 /// A seeded row lands its availability instant and `_ingested_at` as {{run.backfill.available-instant}} lands a backfilled row's.
-// spec: run.seed.available-instant@05480a7c
+// spec: run.seed.one-land-path@9ba6a62e
 #[test]
 fn a_seeded_row_lands_its_sources_instant_beside_the_commit_instant() {
     use crate::support::s;

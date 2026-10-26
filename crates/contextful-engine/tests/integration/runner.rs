@@ -972,7 +972,7 @@ impl Source for Nested {
 
 /// An `incremental` value opening with `/` is an RFC 6901 pointer read from each fetched row, so a nested clock
 /// such as `/commit/committer/date` orders the stream and names its watermark.
-// spec: run.declare.incremental-pointer@d55d2b92
+// spec: run.declare.incremental-field@82b8102e
 #[test]
 fn a_pointer_clock_reads_a_nested_value_from_each_row() {
     let rig = Rig::new();

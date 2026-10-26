@@ -360,7 +360,7 @@ fn typed_export_sends_deletion_after_a_replace_publication() {
     assert_eq!(second.last().unwrap()["kind"], "publication_complete");
 }
 
-// spec: run.export.typed-view-recheck@bf34aca7
+// spec: run.export.typed-view-recheck@12bbd9ec
 #[test]
 fn typed_export_republishes_a_changed_read_policy_without_a_new_commit() {
     let collector = Collector::start();
@@ -405,7 +405,7 @@ fn typed_export_rekeys_without_a_new_commit() {
     assert_eq!(events.last().unwrap()["kind"], "publication_complete");
 }
 
-// spec: run.export.typed-publication-id@1de87934
+// spec: run.export.typed-view-recheck@12bbd9ec
 #[test]
 fn typed_export_marks_a_schema_change_without_a_new_commit() {
     let collector = Collector::start();
@@ -583,7 +583,7 @@ fn cursor(dir: &Path) -> serde_json::Value {
 
 /// A manifest `[[export]]` block declares `name`, one landed `table`, an OTLP/HTTP `endpoint`, `signal` and optional
 /// `headers`; `contextful export run <name>` delivers every row its cursor has not passed.
-// spec: run.export.export-block@011fb3be
+// spec: run.export.export-block@fe2ab230
 #[test]
 fn an_export_run_delivers_the_rows_its_cursor_has_not_passed() {
     let collector = Collector::start();

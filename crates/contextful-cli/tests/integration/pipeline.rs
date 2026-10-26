@@ -806,8 +806,10 @@ fn a_failing_table_is_named_with_its_kind_and_run() {
     assert!(vendor.targets().iter().all(|t| t.starts_with("/v1/bad")), "abort halts the fire: {:?}", vendor.targets());
 }
 
-/// A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
-// spec: run.land.ingest-tally@cd6727e0
+/// A fire reports, in total and per table, its runs' `fetched`, `kept` and `skipped` from
+/// {{type:contextful_core::run::record::RunRow}}, `dropped_low_quality` as `fetched` less `kept`, and `failed`
+/// tables; a non-zero `failed` exits non-zero.
+// spec: run.land.ingest-tally@b8e35400
 #[test]
 fn a_fire_tallies_fetched_kept_and_filtered_rows_and_failed_tables() {
     let serve = |t: &str| if t.starts_with("/v1/bad") {
@@ -831,9 +833,10 @@ fn a_fire_tallies_fetched_kept_and_filtered_rows_and_failed_tables() {
     assert!(out.contains("tally: fetched 3 · kept 2 · skipped 0 · failed 0 · dropped_low_quality 1"), "{out}");
 }
 
-/// `on_table_error = abort`, the default, halts the fire at the first failing table. `continue` lands every other
-/// table and reports failed run ids through {{run.declare.table-error-exit}}.
-// spec: run.declare.table-error@db1c70ed
+/// `on_table_error = abort`, the default, halts the fire at the first failing table. Under `continue` every other
+/// table lands, `run` exits non-zero naming the failed runs, and a scheduled fire appends its failure count to its
+/// log line.
+// spec: run.declare.table-error@4698fede
 #[test]
 fn abort_halts_at_the_first_failure_and_continue_runs_the_rest() {
     let serve = |t: &str| if t.starts_with("/v1/bad") { (404, "{}".to_string()) } else { (200, "[{\"id\":\"g\"}]".to_string()) };
@@ -2533,9 +2536,10 @@ fn a_relational_pipeline_shreds_lists_into_indexed_child_rows() {
     assert_eq!(child["rows"][1], serde_json::json!([parent_id, "1", "end", null, "BIGINT"]));
 }
 
-/// Dead letters whose `<table>_dead_letter` already holds a relational child table, or a store table lacking `key`,
-/// `reason` or `sha256`, refuse the pull under {{run.declare.table-name-collision}} and land nothing.
-// spec: run.land.dead-letter-occupied@42db8483
+/// Dead letters whose `<table>_dead_letter` already holds a relational child table, or a store table lacking a
+/// {{type:contextful_core::run::ports::DeadLetter}} column, refuse the pull under
+/// {{run.declare.table-name-collision}} and land nothing.
+// spec: run.land.dead-letter-occupied@ec90e396
 #[test]
 fn dead_letters_landing_in_a_relational_child_table_refuse_the_pull() {
     let vendor = Vendor::start(|_| (200, r#"[{"id":"a","letter":[{"n":1}]}]"#.into()));
@@ -2996,7 +3000,7 @@ fn rows(dir: &Path, sql: &str) -> serde_json::Value {
 }
 
 /// Under continue, `run` exits non-zero naming the failed runs, and a scheduled fire appends its failure count to its log line.
-// spec: run.declare.table-error-exit@db011c3b
+// spec: run.declare.table-error@4698fede
 #[test]
 fn a_continued_fire_with_a_failed_table_exits_non_zero_and_its_scheduled_line_counts_the_failures() {
     let serve = |t: &str| if t.starts_with("/v1/bad") { (404, "{}".to_string()) } else { (200, "[{\"id\":\"g\"}]".to_string()) };
@@ -3052,10 +3056,10 @@ fn append_retires_no_key_and_replace_lands_the_whole_current_state() {
     assert_eq!(land("write_mode = \"replace\""), serde_json::json!([["b", "2"]]), "the replacing run is the whole state");
 }
 
-/// `incremental = "<field>"` names the pipeline's stream clock. With this declaration, the source reports a
-/// `monotonic` cursor committing {{run.advance.watermark-shape}}. Without this declaration, the source refetches in
-/// full.
-// spec: run.declare.incremental-field@295113e3
+/// `incremental = "<field>"` names the stream clock, an RFC 6901 pointer into each fetched row when it opens with
+/// `/`; with it the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}, and without it
+/// the source refetches in full.
+// spec: run.declare.incremental-field@82b8102e
 #[test]
 fn a_declared_clock_resumes_past_its_watermark_and_an_undeclared_one_refetches_in_full() {
     let body = r#"[{"id":"a","at":5},{"id":"b","at":9}]"#;
