@@ -16,6 +16,7 @@ mod deadline {
     use contextful_core::run::journal::sha256_hex;
     use contextful_core::store::object::{Condition, ObjectError, PartSource, Put};
     use contextful_core::store::sync::{BucketManifest, Entry, MANIFEST_KEY};
+    use contextful_core::read::ReadError;
     use contextful_core::store::StoreError;
     use contextful_sync::lazy::{Clock, PART_WAIT};
     use contextful_sync::LazyParts;
@@ -105,7 +106,7 @@ mod deadline {
         );
         let result = parts.hold_inputs(&[PART.into()]);
         assert!(
-            matches!(result, Err(StoreError::ReadPartUnavailable(_))),
+            matches!(result, Err(StoreError::Read(ReadError::ReadPartUnavailable(_)))),
             "{result:?}"
         );
         assert_eq!(time.now() - started, PART_WAIT);
@@ -154,7 +155,7 @@ mod deadline {
         );
         let result = parts.hold(&[PART.into(), SECOND.into()]);
         assert!(
-            matches!(result, Err(StoreError::ReadPartUnavailable(_))),
+            matches!(result, Err(StoreError::Read(ReadError::ReadPartUnavailable(_)))),
             "{result:?}"
         );
         assert_eq!(time.now() - started, PART_WAIT);
@@ -178,7 +179,7 @@ mod deadline {
             let dir = tempfile::tempdir().unwrap();
             let parts = LazyParts::with_clock(bucket.clone(), "", "project", dir.path(), 100, 1, time.clone());
             let err = parts.hold(&[PART.into()]).unwrap_err();
-            assert!(matches!(err, StoreError::ReadPartUnavailable(ref message) if message.contains(PART)), "{err}");
+            assert!(matches!(err, StoreError::Read(ReadError::ReadPartUnavailable(ref message)) if message.contains(PART)), "{err}");
             assert_eq!(time.now() - started, PART_WAIT);
             let deadlines = bucket.deadlines.lock().unwrap();
             assert!(!deadlines.is_empty());
@@ -195,7 +196,7 @@ mod deadline {
         let edge = Arc::new(contextful_sync::ServingEdge::new(bucket.clone(), "", "project", &[]));
         let dir = tempfile::tempdir().unwrap();
         let parts = LazyParts::with_clock(edge, "", "project", dir.path(), 100, 1, time.clone());
-        assert!(matches!(parts.hold(&[PART.into()]), Err(StoreError::ReadPartUnavailable(_))));
+        assert!(matches!(parts.hold(&[PART.into()]), Err(StoreError::Read(ReadError::ReadPartUnavailable(_)))));
         assert_eq!(time.now() - started, PART_WAIT);
         assert_eq!(*bucket.deadlines.lock().unwrap(), [started + PART_WAIT]);
     }

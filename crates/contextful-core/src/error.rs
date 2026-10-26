@@ -110,6 +110,9 @@ pub enum AuthorityError {
     /// An opted-into published key set that could not be obtained, or a malformed pin. (`authority.verify.key-set-unavailable`)
     #[error("KeySetUnavailable: {0}")]
     KeySetUnavailable(String),
+    /// A required key-set ledger absent or malformed. (`authority.revoke.ledger-unavailable`)
+    #[error("KeySetLedgerUnavailable: {0}")]
+    KeySetLedgerUnavailable(String),
     /// A request proof failing against the confirmation thumbprint. (`authority.verify.possession-invalid`)
     #[error("PossessionProofInvalid: {0}")]
     PossessionProofInvalid(String),

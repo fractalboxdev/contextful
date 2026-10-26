@@ -4,6 +4,7 @@
 //! A variant's `Display` begins with its identifier, so a surface printing the error
 //! names the refusal a caller greps for.
 
+use crate::assurance::AssuranceError;
 use crate::enforce::EnforceError;
 use crate::disclosure::{DisclosureError, VisibilityError};
 use crate::memory::MemoryError;
@@ -76,9 +77,12 @@ pub enum ReadError {
     /// A tool-protocol subscription arrived under a credential carrying a horizon. (`read.subscribe.horizon-refusal`)
     #[error("SubscriptionUnderHorizon: {0}")]
     SubscriptionUnderHorizon(String),
-    /// A read path loading a query-engine extension into a statically linked binary. (`assurance.build.runtime-extension-load`)
-    #[error("ExtensionAutoloadRefused: {0}")]
-    ExtensionAutoloadRefused(String),
+    /// A refusal of another contract raised on the read path.
+    #[error(transparent)]
+    Assurance(#[from] AssuranceError),
+    /// A part a statement touches did not download within its wait. (`read.cache.miss-wait`)
+    #[error("ReadPartUnavailable: {0}")]
+    ReadPartUnavailable(String),
 }
 
 impl ReadError {
@@ -103,7 +107,8 @@ impl ReadError {
             ReadError::TemplateNamesForeignRelation(_) => "TemplateNamesForeignRelation",
             ReadError::ServeDeclarationMissing(_) => "ServeDeclarationMissing",
             ReadError::HttpCredentialMissing(_) => "HttpCredentialMissing",
-            ReadError::ExtensionAutoloadRefused(_) => "ExtensionAutoloadRefused",
+            ReadError::Assurance(e) => e.identifier(),
+            ReadError::ReadPartUnavailable(_) => "ReadPartUnavailable",
             ReadError::ReadBoundExceedsHorizon(_) => "ReadBoundExceedsHorizon",
             ReadError::ReadNoBuildWithinHorizon(_) => "ReadNoBuildWithinHorizon",
             ReadError::SubscriptionPositionUnavailable(_) => "SubscriptionPositionUnavailable",

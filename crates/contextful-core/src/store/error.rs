@@ -3,6 +3,8 @@
 //! A variant's `Display` begins with its identifier, so a surface printing the error
 //! names the refusal a caller greps for.
 
+use crate::read::ReadError;
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StoreError {
     /// A store UUID is malformed or owner mint names no initialized root. (`store.init.identity-invalid`)
@@ -200,9 +202,9 @@ pub enum StoreError {
     /// A fold's input parts exceed the part cache bound. (`store.fold.cached-inputs`)
     #[error("FoldInputsExceedCache: {0}")]
     FoldInputsExceedCache(String),
-    /// A part a statement touches did not download within its wait. (`read.cache.miss-wait`)
-    #[error("ReadPartUnavailable: {0}")]
-    ReadPartUnavailable(String),
+    /// A refusal of the read contract raised while the store serves a part.
+    #[error(transparent)]
+    Read(#[from] ReadError),
     /// A pull exhausted its retries against keys moving beneath it. (`store.pull.unconverged`)
     #[error("SyncPullDidNotConverge: {0}")]
     SyncPullDidNotConverge(String),

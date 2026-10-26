@@ -252,6 +252,9 @@ pub enum RunError {
     /// An inverted, empty or scale-incomparable rewind window. (`run.backfill.rewind-invalid`)
     #[error("PipelineRewindWindowInvalid: {0}")]
     PipelineRewindWindowInvalid(String),
+    /// A destination table named in a spelling the fold does not produce. (`run.declare.unbound-table-name`)
+    #[error("PipelineUnboundTableName: {0}")]
+    PipelineUnboundTableName(String),
     /// A seeded row stamped at or past the ceiling. (`run.seed.ceiling-breached`)
     #[error("PipelineSeedCeilingBreached: {0}")]
     PipelineSeedCeilingBreached(String),

@@ -5,6 +5,7 @@
 use crate::memory::declare::{MemoryDeclarations, Shape};
 use crate::pipeline::declare::PipelineSpec;
 use crate::run::drive::{ItemPolicy, StoreInput};
+use crate::run::RunError;
 use crate::run::sweep::Sweep;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -44,9 +45,9 @@ pub enum JobError {
     /// A job target binding to no produced table or declared model. (`surface.fire.target-unbound`)
     #[error("JobTargetUnbound: {0}")]
     JobTargetUnbound(String),
-    /// A destination table named in a spelling the fold does not produce. (`run.declare.unbound-table-name`)
-    #[error("PipelineUnboundTableName: {0}")]
-    PipelineUnboundTableName(String),
+    /// A refusal of the run contract a job target raises.
+    #[error(transparent)]
+    Run(#[from] RunError),
     /// A block that does not parse, or lacks a key its kind requires.
     #[error("{0}")]
     Invalid(String),
@@ -351,7 +352,7 @@ pub fn bind_targets(jobs: &[Job], targets: &Targets) -> Result<(), JobError> {
         }
         let folded = fold_spelling(target);
         if folded != *target && set.contains(&folded) {
-            return Err(JobError::PipelineUnboundTableName(format!("job `{}` targets `{target}`; the fold produces `{folded}`", job.name)));
+            return Err(RunError::PipelineUnboundTableName(format!("job `{}` targets `{target}`; the fold produces `{folded}`", job.name)).into());
         }
         let known: Vec<&str> = set.iter().map(String::as_str).collect();
         return Err(JobError::JobTargetUnbound(format!(
