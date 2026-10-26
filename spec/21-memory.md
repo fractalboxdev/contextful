@@ -74,9 +74,9 @@ Claim extraction, entity resolution, consolidation, evidence, deduplication, aud
 - `dead-letter` — A batch exhausting {{read.synthesize.extract-attempts}} writes the response, template hash and drop reason to the dead-letter table, raises `MemoryExtractExhausted`, and leaves the cursor unadvanced.
   *A-read#memory-writes-validate*
 - `pass-cursor` — Through the writing credential's session, synthesis reads committed source rows absent from its cursor, in batches under {{read.synthesize.prompt-bound}}. The cursor records each batch after its claims commit.
-- `prompt-bound` — A batch packs fenced rows up to 32 KiB; a fenced row over that bound travels in a batch of its own.
+- `prompt-bound` — A batch packs marked rows up to 32 KiB; a marked row over that bound travels in a batch of its own.
   *because one oversized row neither stalls the pass nor drags its neighbours past the bound*
-- `row-cap` — Synthesis fences each row at 16384 chars under {{connector.infer.value-cap}}. Truncated rows reach the model; their batch commits and advances the cursor. The pass report counts these rows in `truncated`.
+- `row-cap` — Synthesis marks each row, capped at 16384 chars under {{connector.infer.value-cap}}. Truncated rows reach the model; their batch commits and advances the cursor. The pass report counts these rows in `truncated`.
   *because a silent cut hides that a conclusion rests on a partial row*
 - `attribution` — Every landed claim carries `grant_id`, the chain-final revocation identifier of the credential that wrote it, `agent`, that credential's agent member, and `_authored_by`, its on-behalf-of principal.
   *because a reader weighs a conclusion by which grant could have produced it*
@@ -86,7 +86,7 @@ Claim extraction, entity resolution, consolidation, evidence, deduplication, aud
   *A-read#gleaning-declared-single*
 - `confidence-calibration` — Model-emitted confidence carries `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score. A validated map supplies the reported calibrated confidence.
   *A-read#memory-confidence-retention*
-- `extract-cache` — Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise fenced-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.
+- `extract-cache` — Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise marked-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.
   *A-read#extraction-cache-keys*
 
 One synthesis batch, from landed rows to a committed claim or the dead-letter table:

@@ -1,0 +1,13 @@
+extends: existence
+message: "'%s' lets an implementation skip the requirement. State the condition, or remove the clause."
+level: warning
+ignorecase: true
+tokens:
+  - if possible
+  - where possible
+  - as far as possible
+  - where applicable
+  - if applicable
+  - if necessary
+  - when necessary
+  - as appropriate

@@ -78,9 +78,9 @@ fn readable(f: &Fixture) -> Vec<String> {
     f.store.committed_runs("filings").unwrap().into_iter().map(|m| m.run_id).collect()
 }
 
-/// If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher fence, the
-/// operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.
-// spec: store.lease.stale-fence@ec8153dd
+/// If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher commit
+/// fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.
+// spec: store.lease.stale-fence@97140f35
 #[test]
 fn a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable() {
     let f = Fixture::new();

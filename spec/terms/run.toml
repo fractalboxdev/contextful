@@ -226,3 +226,11 @@ derive-passage-chars       = { clause = "run.parse-cues.passage-chars", value = 
 derive-passage-span        = { clause = "run.parse-cues.passage-span", value = 60, unit = "s", basis = "chosen", gloss = "Span at which an open passage closes.", const = "crates/contextful-core/src/run/derive/cues.rs::PASSAGE_SPAN_MS" }
 derive-passage-bytes       = { clause = "run.parse-cues.passage-bytes", value = 8, unit = "KiB", basis = "chosen", gloss = "Text one passage holds.", const = "crates/contextful-core/src/run/derive/cues.rs::PASSAGE_BYTES" }
 derive-passages-per-doc    = { clause = "run.parse-cues.passages-per-document", value = 2000, unit = "rows", basis = "chosen", gloss = "Passages one caption document yields.", const = "crates/contextful-core/src/run/derive/cues.rs::PASSAGES_PER_DOCUMENT" }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"journal"         = { clause = "run.journal.step-output", gloss = "The durable record of each step's value, written once, so a resumed run replays recorded steps." }
+"entry key"       = { clause = "run.journal.entry-key", gloss = "The `(execution_id, step_label, input_hash)` triple keying one journal entry." }
+"idempotency key" = { clause = "run.journal.idempotency-key", gloss = "The key an outbound request carries, derived from its entry key, identical on every re-entry." }
+"awakeable"       = { clause = "run.suspend.awakeable", gloss = "A single-use token that suspends a run until a caller resolves it or its deadline passes." }
+"execution owner" = { clause = "run.own.execution-owner", gloss = "The one durable owner of a scope's executions, holding its connector identity and pins." }

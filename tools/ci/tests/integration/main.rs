@@ -24,6 +24,7 @@ mod mirrors;
 mod mandatory_toolchains;
 mod parity;
 mod probe;
+mod prose;
 mod release;
 mod secrets;
 mod shell;

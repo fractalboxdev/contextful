@@ -99,9 +99,9 @@ fn the_lease_backend_with_no_scope_refuses_at_assembly() {
     assert_eq!(mints(&server), 0);
 }
 
-/// The resolver holds a leased credential and its expiry together in memory for the run. The resolver evicts both at
-/// expiry. Neither enters a file, journal entry or audit record.
-// spec: connector.lease.lease@7dda27b9
+/// The resolver holds a credential lease's value and its expiry together in memory for the run. The resolver evicts
+/// both at expiry. Neither enters a file, journal entry or audit record.
+// spec: connector.lease.lease@e8e69dea
 #[test]
 fn a_lease_is_evicted_at_its_expiry_and_reminted() {
     let _env = proxy_env();
@@ -121,8 +121,9 @@ fn a_lease_is_evicted_at_its_expiry_and_reminted() {
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), before.len());
 }
 
-/// A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the lease's own expiry.
-// spec: connector.lease.cache-window@7c82033c
+/// A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the credential lease's
+/// own expiry.
+// spec: connector.lease.cache-window@dfaf3b19
 #[test]
 fn a_leased_entry_retires_by_the_tighter_bound() {
     let _env = proxy_env();
@@ -340,7 +341,7 @@ fn a_provider_named_localhost_mints_over_loopback() {
 }
 
 /// One mint call answers one scope: two leased names send two calls, each body naming one scope.
-// spec: connector.lease.scope-declaration@20184934
+// spec: connector.lease.scope-declaration@51bf16e8
 #[test]
 fn each_leased_name_mints_alone() {
     let _env = proxy_env();

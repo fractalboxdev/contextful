@@ -2,7 +2,7 @@ import { getCollection, type CollectionEntry } from "astro:content";
 import { collectionRoute, contractsByFile } from "./corpus.mjs";
 export { contractsByFile } from "./corpus.mjs";
 
-type Entry = CollectionEntry<"spec"> | CollectionEntry<"adr"> | CollectionEntry<"guide"> | CollectionEntry<"cards">;
+type Entry = CollectionEntry<"spec"> | CollectionEntry<"adr"> | CollectionEntry<"guide"> | CollectionEntry<"topics"> | CollectionEntry<"cards">;
 
 export interface NavItem {
   href: string;
@@ -66,6 +66,7 @@ export const navigation = async (): Promise<NavGroup[]> => {
     || a.id.localeCompare(b.id),
   );
   const cards = (await getCollection("cards")).sort((a, b) => a.id.localeCompare(b.id));
+  const topics = (await getCollection("topics")).sort((a, b) => a.id.localeCompare(b.id));
   const contracts = contractsByFile();
   const item = (base: string) => (e: Entry): NavItem => ({ href: collectionRoute(base, e.id), label: titleOf(e) });
   const adrItem = (e: Entry): NavItem => ({
@@ -77,6 +78,7 @@ export const navigation = async (): Promise<NavGroup[]> => {
   const isContract = (e: Entry) => Boolean(e.data.contract) || contracts.has(e.id);
   const groups: NavGroup[] = [
     { label: "Guides", items: guides.map(item("guide")) },
+    { label: "Topics", items: topics.map(item("topics")) },
     {
       label: "Contracts",
       items: spec.filter(isContract).map((e) => ({ ...item("spec")(e), hint: e.id.split("-")[0] })),

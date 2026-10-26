@@ -11,6 +11,7 @@ targets   = {}
 render    = {}
 diagram   = {}
 guide     = {}
+topic     = {}
 
 [error]
 SpecMalformedId        = { clause = "corpus.address.malformed-id", gloss = "A clause id with the wrong shape, contract or operation." }
@@ -59,6 +60,9 @@ SpecGuidePointerDensity = { clause = "corpus.guide.pointer-density", gloss = "A 
 SpecGuideBound         = { clause = "corpus.guide.bound", gloss = "A guide sentence restating a bound value without the bound's clause pointer." }
 SpecWordCeiling        = { clause = "corpus.anatomy.word-ceilings", gloss = "A contract or contract ADR whose word count differs from its ceiling." }
 SpecClauseUnowned      = { clause = "corpus.state.unowned", gloss = "More unpinned, unscheduled and unquestioned clauses than the ceiling records." }
+SpecTerm               = { clause = "corpus.registry.bad-term", gloss = "A term registered twice, naming a missing or foreign clause, glossed out of bounds, or avoided as itself a term." }
+SpecTermFirstUse       = { clause = "corpus.registry.term-first-use", gloss = "More guide first uses of a term without its defining pointer than the ceiling records." }
+SpecTopic              = { clause = "corpus.topic.bad-topic", gloss = "A topic page out of its registry entry, shape or bounds, restating a rule, or leaving an answer unreachable." }
 SpecWhyUnscoped        = { clause = "corpus.rationale.why-scoped", gloss = "More Why citations naming a contract ADR without a section than the ceiling records." }
 
 [limit]
@@ -83,10 +87,28 @@ corpus-fragment-depth   = { clause = "corpus.diagram.sequence", value = 2, unit 
 corpus-message-words    = { clause = "corpus.diagram.message", value = 8, unit = "words", basis = "chosen", gloss = "Longest sequence message label." }
 corpus-note-words       = { clause = "corpus.diagram.message", value = 12, unit = "words", basis = "chosen", gloss = "Longest sequence note." }
 corpus-transition-words = { clause = "corpus.diagram.state", value = 6, unit = "words", basis = "chosen", gloss = "Longest state transition label." }
+corpus-topic-words      = { clause = "corpus.topic.file", value = 600, unit = "words", basis = "chosen", gloss = "Longest topic page, diagrams excluded." }
+corpus-topic-pages      = { clause = "corpus.topic.pages", value = 8, unit = "pages", basis = "chosen", gloss = "Most topic pages." }
+corpus-topic-contract-pointers = { clause = "corpus.topic.contract-pointers", value = 3, unit = "pointers", basis = "chosen", gloss = "Most distinct pointers from one topic page into one contract." }
+corpus-term-gloss-words = { clause = "corpus.registry.term", value = 25, unit = "words", basis = "chosen", gloss = "Longest term gloss." }
 corpus-guide-words      = { clause = "corpus.guide.file", value = 400, unit = "words", basis = "chosen", gloss = "Guide length for a contract with no operation, diagrams excluded." }
 corpus-guide-operation-words = { clause = "corpus.guide.file", value = 20, unit = "words", basis = "chosen", gloss = "Guide length added per registered operation." }
 corpus-guide-paragraph-pointers = { clause = "corpus.guide.pointer-density", value = 3, unit = "pointers", basis = "chosen", gloss = "Most clause pointers in one guide paragraph, list item or table row." }
 corpus-guide-pointer-words = { clause = "corpus.guide.pointer-density", value = 8, unit = "words", basis = "chosen", gloss = "Fewest prose words per clause pointer in one guide paragraph." }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"clause"          = { clause = "corpus.address.clause-id", gloss = "One normative sentence: a list item under an operation, addressed as contract, operation and subject." }
+"lede"            = { clause = "corpus.anatomy.lede", gloss = "The one paragraph opening an operation section, stating what the operation covers." }
+"clause pointer"  = { clause = "corpus.reference.pointer", gloss = "A `{{id}}` reference by which one statement reaches a fact another clause owns." }
+"why line"        = { clause = "corpus.rationale.why-cell", gloss = "The indented line under a clause naming the record it rests on, or a short `because` criterion." }
+"decision record" = { clause = "corpus.rationale.contract-adr", gloss = "A contract's ADR section holding one decision, its options and what each lost on." }
+"pin"             = { clause = "corpus.state.pin", gloss = "A link from a clause to the test, theorem or item that demonstrates it." }
+"verdict"         = { clause = "corpus.state.verdict", gloss = "A clause's computed state: committed when unpinned, performed when its pins qualify, broken otherwise." }
+"ratchet"         = { clause = "corpus.registry.ceiling", gloss = "A recorded count the tree lowers and never raises; a live count off it fails lint." }
+"guide"           = { clause = "corpus.guide.file", gloss = "A contract's non-normative teaching page, reaching each rule by pointer." }
+"topic page"      = { clause = "corpus.topic.file", gloss = "A non-normative page answering one question that spans contracts by pointing at the clauses that answer it." }
+"card"            = { clause = "corpus.render.card", gloss = "A contract's generated page listing its operations, error cases and bounds." }
 
 # Ratchets (`corpus.registry.ceiling`): each value is the live count it bounds.
 [ceiling]
@@ -94,18 +116,19 @@ registry-committed-sites = 3
 anatomy-long-lists = 15
 clause-unowned = 98
 why-unscoped = 0
+term-first-use = 24
 
 [ceiling.contract-words]
 assurance = 10169
-authority = 7792
-connector = 11055
-corpus = 4526
+authority = 7793
+connector = 11062
+corpus = 5091
 disclosure = 5293
-read = 9504
+read = 9505
 run = 19090
-store = 10142
+store = 10153
 surface = 6428
-topology = 2646
+topology = 2647
 
 [ceiling.adr-words]
 A-assurance = 5726

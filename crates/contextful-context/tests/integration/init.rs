@@ -80,7 +80,7 @@ fn a_traversing_or_unsafe_name_refuses_before_any_write() {
 }
 
 /// An init against the same declaration preserves its existing store content and UUID.
-// spec: store.init.repeat@b82805b3
+// spec: store.init.repeat@bb22d991
 #[test]
 fn a_repeated_init_rewrites_nothing() {
     let dir = tempfile::tempdir().unwrap();

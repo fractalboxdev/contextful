@@ -26,7 +26,7 @@ fn run(seed: &str) -> std::process::Output {
 /// A commit-log create or pointer replacement carrying a fence a later acquisition passed
 /// loses its condition with `LeaseFenced` on both lease paths, as the model's
 /// `no_commit_after_successor_acquire` states, and the generated cases reach that refusal.
-// spec: store.lease.stale-fence@ec8153dd
+// spec: store.lease.stale-fence@97140f35
 // spec: store.lease.pointer-fence@037c9e49
 #[test]
 fn fixed_seed_replays_protocol_cases_against_the_store() {

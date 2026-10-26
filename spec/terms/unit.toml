@@ -54,3 +54,4 @@ pointers = { gloss = "clause pointers" }
 participants = { gloss = "sequence diagram participants" }
 messages = { gloss = "sequence diagram messages" }
 notifications = { gloss = "subscription notifications" }
+pages    = { gloss = "authored pages" }

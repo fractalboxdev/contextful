@@ -9,7 +9,7 @@
       "statement": "A clause id is three dot-separated segments — contract, operation, subject — each matching `[a-z0-9-]+`. A clause item writes the subject alone; its file and section supply the rest.",
       "why": "A-corpus#clause-addressed-sentence",
       "file": "spec/00-corpus.md",
-      "line": 46
+      "line": 49
     },
     {
       "id": "corpus.address.contract-segment",
@@ -20,7 +20,7 @@
       "statement": "The first segment is the file's front-matter `contract`, which names an entry of `spec/terms/contract.toml` listing that file.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 48
+      "line": 51
     },
     {
       "id": "corpus.address.operation-segment",
@@ -31,7 +31,7 @@
       "statement": "The second segment is the `## ` section holding the item: an operation registered in the contract's fragment and listed in the front-matter `owns` of exactly one of the contract's files.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 50
+      "line": 53
     },
     {
       "id": "corpus.address.subject-segment",
@@ -42,7 +42,7 @@
       "statement": "The third segment is a slug of at most 40 chars, unique within its operation. It is a name, not a registry entry.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 52
+      "line": 55
     },
     {
       "id": "corpus.address.ids-are-stable",
@@ -53,7 +53,7 @@
       "statement": "An id changes when a fact changes obligor. Moving an operation between two files of one contract rewrites no id.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 54
+      "line": 57
     },
     {
       "id": "corpus.address.malformed-id",
@@ -64,7 +64,7 @@
       "statement": "A clause id violating the shape, or a clause item under a section its file does not own, raises `SpecMalformedId`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 56
+      "line": 59
     },
     {
       "id": "corpus.address.duplicate-id",
@@ -75,7 +75,7 @@
       "statement": "A clause id appearing in two items raises `SpecDuplicateId`, naming both locations.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 58
+      "line": 61
     },
     {
       "id": "corpus.anatomy.file-headings",
@@ -86,7 +86,7 @@
       "statement": "A contract file carries front matter with `contract` and `owns`, one `# ` title matching its contract entry, one `## <operation>` section per owned operation in `owns` order, then an optional `## Shapes`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 65
+      "line": 68
     },
     {
       "id": "corpus.anatomy.lede",
@@ -97,7 +97,7 @@
       "statement": "An operation section opens with a lede: one paragraph stating what the operation covers. The lede is the operation's only description; its fragment entry carries no gloss.",
       "why": "A-corpus#clause-addressed-sentence",
       "file": "spec/00-corpus.md",
-      "line": 67
+      "line": 70
     },
     {
       "id": "corpus.anatomy.clause-list",
@@ -108,7 +108,7 @@
       "statement": "After the lede, one contiguous list holds the section's ungrouped clauses, each item `` - `<subject>` — <statement> `` on one line, optionally followed by its Why on a two-space-indented `*…*` line.",
       "why": "A-corpus#clause-addressed-sentence",
       "file": "spec/00-corpus.md",
-      "line": 69
+      "line": 72
     },
     {
       "id": "corpus.anatomy.group",
@@ -119,7 +119,7 @@
       "statement": "After an operation's clause list, each `### <group>` section holds a one-sentence lede and its own contiguous clause list. A group names no segment of a clause id and follows no content after a list.",
       "why": "because a long operation reads as named parts, and a group renames no clause",
       "file": "spec/00-corpus.md",
-      "line": 71
+      "line": 74
     },
     {
       "id": "corpus.anatomy.group-clauses",
@@ -130,7 +130,7 @@
       "statement": "A clause list, an operation's or a group's, holds at most 30 clauses; each list past it counts toward the `anatomy-long-lists` ceiling.",
       "why": "because a reader scanning one list for its rule loses the thread past about thirty items",
       "file": "spec/00-corpus.md",
-      "line": 73
+      "line": 76
     },
     {
       "id": "corpus.anatomy.word-ceilings",
@@ -141,7 +141,7 @@
       "statement": "The `contract-words` ceilings count each contract's statement, Why and lede words, and the `adr-words` ceilings each contract ADR's words outside fences, table rules and section slugs; a count off its ceiling raises `SpecWordCeiling`.",
       "why": "because the number of clauses, not their length, drives the corpus's size, and a recorded total makes each addition visible in review",
       "file": "spec/00-corpus.md",
-      "line": 75
+      "line": 78
     },
     {
       "id": "corpus.anatomy.long-operation",
@@ -152,7 +152,7 @@
       "statement": "`contextful-spec state` prints an advisory naming each operation holding more than 30 clauses; the advisory refuses nothing.",
       "why": "because a long operation is a grouping candidate, and the grouping is a reader's judgment no checker makes",
       "file": "spec/00-corpus.md",
-      "line": 77
+      "line": 80
     },
     {
       "id": "corpus.anatomy.after-list",
@@ -163,7 +163,7 @@
       "statement": "Prose, diagrams, tables, scenarios and unsettled lines follow the clause list and state no obligation.",
       "why": "A-corpus#clause-addressed-sentence",
       "file": "spec/00-corpus.md",
-      "line": 79
+      "line": 82
     },
     {
       "id": "corpus.anatomy.scenario",
@@ -174,7 +174,7 @@
       "statement": "A `#### Scenarios` list under an operation holds items `` - `<clause id>`: WHEN <trigger>, THEN <outcome> `` or a backticked `tests/fixtures/` path; the lock file attaches each to its clause.",
       "why": "because an example is the test an implementer writes first, and a rule without one leaves the agent to invent it",
       "file": "spec/00-corpus.md",
-      "line": 81
+      "line": 84
     },
     {
       "id": "corpus.anatomy.bad-scenario",
@@ -185,7 +185,7 @@
       "statement": "A scenario naming a clause outside its operation, or holding neither a WHEN/THEN sentence nor a fixture path, raises `SpecScenario`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 83
+      "line": 86
     },
     {
       "id": "corpus.anatomy.kind-is-computed",
@@ -196,7 +196,7 @@
       "statement": "A clause is a refusal when its statement names an error its fragment assigns to it, a limit when its fragment assigns it a named bound, and a behavior otherwise. The checker writes the kind into `spec/spec.lock.json`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 85
+      "line": 88
     },
     {
       "id": "corpus.anatomy.statement-words",
@@ -207,7 +207,7 @@
       "statement": "A clause statement holds at most 40 words, a `{{id}}` reference counting as one.",
       "why": "because one item states one obligation; a longer item is two clauses or carries rationale",
       "file": "spec/00-corpus.md",
-      "line": 87
+      "line": 90
     },
     {
       "id": "corpus.anatomy.file-length",
@@ -218,7 +218,7 @@
       "statement": "A contract file holds at most 900 lines.",
       "why": "because a file past that splits by adding a path to its contract entry, which renames nothing",
       "file": "spec/00-corpus.md",
-      "line": 89
+      "line": 92
     },
     {
       "id": "corpus.anatomy.bad-anatomy",
@@ -229,7 +229,7 @@
       "statement": "A missing, extra or out-of-order `##` section, a missing lede, a broken list, a malformed group or item, a title off the registry, an oversized file or statement, or a long-list count off its ceiling raises `SpecAnatomy`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 91
+      "line": 94
     },
     {
       "id": "corpus.registry.fragment",
@@ -240,7 +240,7 @@
       "statement": "Each contract owns `spec/terms/<contract>.toml`, holding its operations, and its errors and named bounds each with a gloss.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 111
+      "line": 114
     },
     {
       "id": "corpus.registry.one-error-one-clause",
@@ -251,7 +251,7 @@
       "statement": "An error entry names the one clause raising it. That clause's statement names the error, and no other clause statement does; a second site reaches the condition by `{{id}}`.",
       "why": "P2",
       "file": "spec/00-corpus.md",
-      "line": 113
+      "line": 116
     },
     {
       "id": "corpus.registry.bound-entry",
@@ -262,7 +262,7 @@
       "statement": "A named-bound entry carries its owning clause, a value, a unit from `spec/terms/unit.toml` and a basis: `chosen`, `measured:<benchmark>` or `standard:<name>`. The owning statement carries the value followed by the unit.",
       "why": "because an unmeasured number presented as a measurement is a hypothesis stated as fact",
       "file": "spec/00-corpus.md",
-      "line": 115
+      "line": 118
     },
     {
       "id": "corpus.registry.unregistered",
@@ -273,7 +273,7 @@
       "statement": "An unregistered error after `raises`, an entry naming a missing clause, an error absent from its clause or present in another, and a malformed bound raise `SpecRegistry`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 117
+      "line": 120
     },
     {
       "id": "corpus.registry.defining-site",
@@ -284,7 +284,7 @@
       "statement": "A Rust variant whose `#[error]` text opens `<Id>:`, or a string literal holding `<Id>` alone or opening `<Id>:`, under `crates/*/src`, `tools/*/src`, `apps/*/src` or `formal/`, defines the registered error `<Id>`.",
       "why": "because the checker compares code against the registry only where the code spells the identifier",
       "file": "spec/00-corpus.md",
-      "line": 119
+      "line": 122
     },
     {
       "id": "corpus.registry.variant-shape",
@@ -295,7 +295,7 @@
       "statement": "An error has at most one defining variant. It is named the error, or the error less the prefix its enum's name holds before `Error`, and its enum's other variants define errors of the same contract.",
       "why": "because a second variant, a foreign name or a mixed enum hides from a reader of the code which contract raises the error",
       "file": "spec/00-corpus.md",
-      "line": 121
+      "line": 124
     },
     {
       "id": "corpus.registry.variant-gloss",
@@ -306,7 +306,7 @@
       "statement": "A defining variant's `///` text before its clause pointer is absent or equals its error's registry gloss byte for byte; text after the pointer documents the variant.",
       "why": "because the fragment is the one home of a gloss, and a variant copy that differs states a second meaning",
       "file": "spec/00-corpus.md",
-      "line": 123
+      "line": 126
     },
     {
       "id": "corpus.registry.ceiling",
@@ -317,7 +317,7 @@
       "statement": "The `[ceiling]` table of `spec/terms/corpus.toml` records each ratchet's live count. A count above its ceiling raises the ratchet's error, and so does a count below it until `contextful-spec ceilings` lowers the ceiling.",
       "why": "because a ratchet that only refuses growth leaves a reduction unrecorded, and the next change spends it unseen",
       "file": "spec/00-corpus.md",
-      "line": 125
+      "line": 128
     },
     {
       "id": "corpus.registry.drift",
@@ -328,7 +328,73 @@
       "statement": "A breach of {{corpus.registry.variant-shape}} or {{corpus.registry.variant-gloss}}, a performed refusal whose error has no defining site, and committed refusals with one past the `registry-committed-sites` ceiling raise `SpecRegistryDrift`.",
       "why": "because a committed clause with code is work status cannot see, and a performed refusal with no code passes on its test alone",
       "file": "spec/00-corpus.md",
-      "line": 127
+      "line": 130
+    },
+    {
+      "id": "corpus.registry.term",
+      "contract": "corpus",
+      "operation": "registry",
+      "subject": "term",
+      "kind": "limit",
+      "statement": "A fragment's `[term]` table maps a lowercase term to the clause of its own contract that defines it, a gloss of at most 25 words, and optional `avoid` spellings the term replaces.",
+      "why": "because a reader assumes two words name two things, and one registered spelling per meaning makes that assumption hold",
+      "file": "spec/00-corpus.md",
+      "line": 132
+    },
+    {
+      "id": "corpus.registry.bad-term",
+      "contract": "corpus",
+      "operation": "registry",
+      "subject": "bad-term",
+      "kind": "refusal",
+      "statement": "A term registered in two fragments, a term naming a missing clause or another contract's clause, an empty or longer gloss, and an `avoid` spelling that is itself a term raise `SpecTerm`.",
+      "why": "because one spelling naming two meanings is the homonym the term table exists to refuse",
+      "file": "spec/00-corpus.md",
+      "line": 134
+    },
+    {
+      "id": "corpus.registry.glossary",
+      "contract": "corpus",
+      "operation": "registry",
+      "subject": "glossary",
+      "kind": "behavior",
+      "statement": "`contextful-spec state` renders `spec/glossary.md`: every registered term in alphabetical order with its gloss and its defining clause as a pointer; a committed copy differing from regeneration counts under {{corpus.render.generated}}.",
+      "why": "because a definition a reader cannot find by name serves only its writer",
+      "file": "spec/00-corpus.md",
+      "line": 136
+    },
+    {
+      "id": "corpus.registry.vale-terms",
+      "contract": "corpus",
+      "operation": "registry",
+      "subject": "vale-terms",
+      "kind": "behavior",
+      "statement": "`contextful-spec state` writes `.vale/styles/WriteTechnically/Terms.yml`, a Vale substitution rule mapping each `avoid` spelling to its term; a committed copy differing from regeneration counts under {{corpus.render.generated}}.",
+      "why": "because the registry decides each term, and a hand-edited copy of its list drifts from it",
+      "file": "spec/00-corpus.md",
+      "line": 138
+    },
+    {
+      "id": "corpus.registry.term-first-use",
+      "contract": "corpus",
+      "operation": "registry",
+      "subject": "term-first-use",
+      "kind": "refusal",
+      "statement": "A guide's first use of a registered term, in any case or inflection, sits in a paragraph carrying the term's defining clause as a pointer; first uses without one past the `term-first-use` ceiling raise `SpecTermFirstUse`.",
+      "why": "because a reader meets a term at its first use, and a definition reached later arrives after the misreading",
+      "file": "spec/00-corpus.md",
+      "line": 140
+    },
+    {
+      "id": "corpus.registry.prose-report",
+      "contract": "corpus",
+      "operation": "registry",
+      "subject": "prose-report",
+      "kind": "behavior",
+      "statement": "`contextful-ci prose` runs Vale 3.25.1 with `.vale/vale.ini` over `spec/guide/` and `references/`, prints each alert and their count, and exits 0, naming an absent or other Vale version instead of refusing.",
+      "why": "because Vale finds candidates a reviewer decides, and a check that cannot judge an alert refuses nothing",
+      "file": "spec/00-corpus.md",
+      "line": 142
     },
     {
       "id": "corpus.reference.pointer",
@@ -339,7 +405,7 @@
       "statement": "`{{<clause id>}}` is the one way a statement reaches a fact another clause owns. The lock file records every pointer as an edge.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 134
+      "line": 149
     },
     {
       "id": "corpus.reference.dangling",
@@ -350,7 +416,7 @@
       "statement": "A `{{id}}` naming no clause raises `SpecDanglingReference`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 136
+      "line": 151
     },
     {
       "id": "corpus.reference.type-pointer",
@@ -361,7 +427,7 @@
       "statement": "`{{type:<crate>::<module>::<Type>}}` names a Rust struct or enum in place of its keys; the lock file records its file, line and each field or variant with its `serde` spelling and doc comment, and the contract's card lists them.",
       "why": "because a key list copied from code drifts from the code, and the type already holds every key with its gloss",
       "file": "spec/00-corpus.md",
-      "line": 138
+      "line": 153
     },
     {
       "id": "corpus.reference.type-unresolved",
@@ -372,7 +438,7 @@
       "statement": "A type pointer whose crate and module part names no file defining that struct or enum raises `SpecTypeUnresolved`.",
       "why": "because a pointer to a moved or renamed type shows the reader no keys",
       "file": "spec/00-corpus.md",
-      "line": 140
+      "line": 155
     },
     {
       "id": "corpus.reference.restates-code",
@@ -383,7 +449,7 @@
       "statement": "`contextful-spec state` prints a `SpecRestatesCode` advisory naming each clause that backticks three or more keys of one deserialized struct or enum and carries no pointer to it; `spec/status.md` records their count.",
       "why": "because a key list in a clause is a second home for its type, and which list a pointer replaces is a reviewer's judgment",
       "file": "spec/00-corpus.md",
-      "line": 142
+      "line": 157
     },
     {
       "id": "corpus.reference.no-literature",
@@ -394,7 +460,7 @@
       "statement": "A spec file carries no hyperlink to an external document and no path under `references/`; either raises `SpecExternalLink`. Literature lives in `references/`, which cites clause ids.",
       "why": "because the contract is judged by behavior, and a citation invites arguing from authority",
       "file": "spec/00-corpus.md",
-      "line": 144
+      "line": 159
     },
     {
       "id": "corpus.rationale.why-cell",
@@ -405,7 +471,7 @@
       "statement": "A clause's Why is absent, one or more record ids such as `P3`, `A-store` or `A-topology#commit-lock`, or `because` followed by at most 30 words stating the deciding criterion. A refusal carries a Why.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 151
+      "line": 166
     },
     {
       "id": "corpus.rationale.record-threshold",
@@ -416,7 +482,7 @@
       "statement": "A decision earns a section in its contract's ADR when two or more clauses depend on it, it spans contracts, or it names a revisit trigger; otherwise it lives in a `because` cell.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 153
+      "line": 168
     },
     {
       "id": "corpus.rationale.record-anatomy",
@@ -427,7 +493,7 @@
       "statement": "A principle `P<n>-<slug>.md` carries `# <id> — <title>`, a `**Status:**` line, then Context (optional), Decision, Options, Consequences, Revisit (optional), in at most 400 words.",
       "why": "because a principle argues one rule every contract obeys, and the length of the argument is part of its quality",
       "file": "spec/00-corpus.md",
-      "line": 155
+      "line": 170
     },
     {
       "id": "corpus.rationale.contract-adr",
@@ -438,7 +504,7 @@
       "statement": "A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <slug> — <decision>` section per decision, its slug unique in the file, each holding its options table in at most 250 words.",
       "why": "because one file per contract puts every decision beside the clauses it governs, and a fresh corpus has no history to keep apart",
       "file": "spec/00-corpus.md",
-      "line": 157
+      "line": 172
     },
     {
       "id": "corpus.rationale.options-table",
@@ -449,7 +515,7 @@
       "statement": "A principle's Options and each ADR section hold one table headed `Option`, `Lost on`, `Cost` with two to five rows. One row is marked *(chosen)* with `—` as Lost on; every other row names the criterion it lost on.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 159
+      "line": 174
     },
     {
       "id": "corpus.rationale.unsettled-line",
@@ -460,7 +526,7 @@
       "statement": "An unknown is one line where it applies: `unsettled:`, a question ending `?`, `owner:` and a handle, `affects:` and a `<contract>.<operation>`. Another form, or a heading `Open questions`, `Out of scope` or `See also`, raises `SpecUnsettled`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 161
+      "line": 176
     },
     {
       "id": "corpus.rationale.orphan-record",
@@ -471,7 +537,7 @@
       "statement": "A record no Why cites, a Why naming no record or section, a record breaking its anatomy, and a section below {{corpus.rationale.record-threshold}} in an ADR every citation of which names a section raise `SpecRecord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 163
+      "line": 178
     },
     {
       "id": "corpus.rationale.why-scoped",
@@ -482,7 +548,7 @@
       "statement": "A Why citing a contract ADR names its section as `A-<contract>#<slug>`. Bare `A-<contract>` citations count toward the `why-unscoped` ceiling; past it, each raises `SpecWhyUnscoped`.",
       "why": "because a slug cites the one decision a clause rests on, and a whole-file citation hands the reader every decision of the contract",
       "file": "spec/00-corpus.md",
-      "line": 165
+      "line": 180
     },
     {
       "id": "corpus.rationale.why-migrate",
@@ -493,7 +559,7 @@
       "statement": "`contextful-spec why-migrate <A-id>` rewrites each bare citation of that ADR to the one section naming the clause by id, else by operation, and prints each citation without a single candidate, per contract.",
       "why": "because a rewrite the checker cannot justify from the text belongs to a reviewer",
       "file": "spec/00-corpus.md",
-      "line": 167
+      "line": 182
     },
     {
       "id": "corpus.rationale.cited-by",
@@ -504,7 +570,7 @@
       "statement": "`contextful-spec state` lists each contract ADR section with the clauses citing it in its contract's card, and `extract` records the same lists in the lock file.",
       "why": "because the lists derive from Why lines, so no hand-written list repeats them",
       "file": "spec/00-corpus.md",
-      "line": 169
+      "line": 184
     },
     {
       "id": "corpus.state.status-is-computed",
@@ -515,7 +581,7 @@
       "statement": "`contextful-spec state` computes which clauses the tree demonstrates: per contract and milestone into `spec/status.md`, per clause into the lock file's `pins`. No authored file says whether something is built.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 176
+      "line": 191
     },
     {
       "id": "corpus.state.pin",
@@ -526,7 +592,7 @@
       "statement": "`spec/pins.toml` maps a clause id to one artifact: a `test` function path, a `theorem` constant under `formal/` or an `item` path. A refusal or a limit takes a test or a theorem.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 178
+      "line": 193
     },
     {
       "id": "corpus.state.verdict",
@@ -537,7 +603,7 @@
       "statement": "An unpinned clause computes `committed`; a pinned clause computes `performed` when its Rust, Lean or {{corpus.state.typescript-tag-pin}} artifact qualifies, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 180
+      "line": 195
     },
     {
       "id": "corpus.state.tag-pin",
@@ -548,7 +614,7 @@
       "statement": "A line `// spec: <id>@<rev>` among the comments and attributes above a test function under `crates/` or `tools/` pins clause `<id>` to that test; `<rev>` is the first 8 hex digits of the statement's SHA-256.",
       "why": "because a pin written beside its test travels with every move and rename, and the digest records which wording the test demonstrates",
       "file": "spec/00-corpus.md",
-      "line": 182
+      "line": 197
     },
     {
       "id": "corpus.state.typescript-tag-pin",
@@ -559,7 +625,7 @@
       "statement": "A `// spec: <id>@<rev>` line above a uniquely named `node:test` call under a direct TypeScript surface pins its clause when the callback contains a recognizable assertion call.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 184
+      "line": 199
     },
     {
       "id": "corpus.state.typescript-unfinished",
@@ -570,7 +636,7 @@
       "statement": "A pinned TypeScript test using `skip`, `todo` or `only`, lacking an assertion, placing its first assertion after a nested arrow, holding `if (false)` or a placeholder, or shadowing `node:test` computes `broken`.",
       "why": "because a test that cannot demonstrate an assertion demonstrates no clause",
       "file": "spec/00-corpus.md",
-      "line": 186
+      "line": 201
     },
     {
       "id": "corpus.state.lean-tag",
@@ -581,7 +647,7 @@
       "statement": "A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}.",
       "why": "because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale",
       "file": "spec/00-corpus.md",
-      "line": 188
+      "line": 203
     },
     {
       "id": "corpus.state.theorem-beside-test",
@@ -592,7 +658,7 @@
       "statement": "A clause carries at most one theorem pin beside its test pins. A theorem pin alone states a property of a model, and performs once its proof holds no `sorry`.",
       "why": "A-assurance#source-change-carries",
       "file": "spec/00-corpus.md",
-      "line": 190
+      "line": 205
     },
     {
       "id": "corpus.state.bound-theorem",
@@ -603,7 +669,7 @@
       "statement": "Beside test pins, a theorem pin counts only when the `binding` of its row in an `inventory.toml` under `formal/` names one of those tests; an uncounted theorem leaves the clause's verdict to its tests.",
       "why": "because a proof of a model the code never drives says nothing about the code the clause names",
       "file": "spec/00-corpus.md",
-      "line": 192
+      "line": 207
     },
     {
       "id": "corpus.state.proved",
@@ -614,7 +680,7 @@
       "statement": "A performed clause computes `proved` when a counted theorem pin and a test pin of it both perform; `spec/status.md` counts proved clauses per contract and each card per operation.",
       "why": "because performed and proved are different strengths of evidence, and one count hides which a contract holds",
       "file": "spec/00-corpus.md",
-      "line": 194
+      "line": 209
     },
     {
       "id": "corpus.state.proof-obligation",
@@ -625,7 +691,7 @@
       "statement": "`formal/obligations.toml` lists clause ids under `clauses`; a listed clause that does not compute `proved` raises `SpecProofObligationUnpinned`, so an entry joins once its theorem counts and stays while it does.",
       "why": "because a proof dropped silently reads as a clause still proved",
       "file": "spec/00-corpus.md",
-      "line": 196
+      "line": 211
     },
     {
       "id": "corpus.state.stale-pin",
@@ -636,7 +702,7 @@
       "statement": "A tag whose `<rev>` differs from the digest of its clause's current statement raises `SpecStalePin`, and its clause computes `broken`.",
       "why": "because a reworded clause no longer says what its test was written to demonstrate",
       "file": "spec/00-corpus.md",
-      "line": 198
+      "line": 213
     },
     {
       "id": "corpus.state.several-tests",
@@ -647,7 +713,7 @@
       "statement": "A clause takes any number of test pins and computes `performed` only when every one of them performs.",
       "why": "because a conjunctive clause takes one test per conjunct, and one passing test of half a clause reads as the whole",
       "file": "spec/00-corpus.md",
-      "line": 200
+      "line": 215
     },
     {
       "id": "corpus.state.unexercised",
@@ -658,7 +724,7 @@
       "statement": "A test pin of a refusal clause computes `broken` unless its function body names one of the clause's errors: the id itself, or a `::` variant path keeping at least two of the id's trailing words.",
       "why": "because a test that never observes the error demonstrates some other behavior",
       "file": "spec/00-corpus.md",
-      "line": 202
+      "line": 217
     },
     {
       "id": "corpus.state.limit-const",
@@ -669,7 +735,7 @@
       "statement": "A named-bound entry may record the Rust const holding its bound as `const = \"<file>::<NAME>\"`; a test pin of its clause computes `broken` while that const resolves to nothing or no non-test source under `crates/*/src` or `tools/*/src` reads it.",
       "why": "because a test of a bound the code never consults demonstrates a number, not a limit",
       "file": "spec/00-corpus.md",
-      "line": 204
+      "line": 219
     },
     {
       "id": "corpus.state.module-path",
@@ -680,7 +746,7 @@
       "statement": "A path pin resolves only where its file or module part points: `<file>.rs::<fn>` to that file, `<crate>::<module>::<fn>` to a file of that package opening that module path, `A.B.<theorem>` to `A/B.lean`.",
       "why": "because a pin matching any same-named function elsewhere demonstrates nothing about the named one",
       "file": "spec/00-corpus.md",
-      "line": 206
+      "line": 221
     },
     {
       "id": "corpus.state.test-pin-is-test",
@@ -691,7 +757,7 @@
       "statement": "A `test` pin naming a function that carries no `#[test]` attribute does not resolve.",
       "why": "because a helper or production function proves presence, not behavior",
       "file": "spec/00-corpus.md",
-      "line": 208
+      "line": 223
     },
     {
       "id": "corpus.state.unwired",
@@ -702,7 +768,7 @@
       "statement": "`contextful-ci unwired` reports each public item under `crates/*/src` that a performed pin's test names and no non-test source reaches, unless an `// entry: <clause id>` comment names the clause.",
       "why": "because a clause performing through its test alone demonstrates code no binary runs",
       "file": "spec/00-corpus.md",
-      "line": 210
+      "line": 225
     },
     {
       "id": "corpus.state.unwired-ceiling",
@@ -713,7 +779,7 @@
       "statement": "`tools/ci/unwired.toml` records a `ceiling` for the unwired count; a count above it raises `SpecUnwired`, and `contextful-ci unwired --lower` sets it to a lower live count, so the ceiling only falls.",
       "why": "because the count starts above zero, and wiring each item belongs to its own contract's change",
       "file": "spec/00-corpus.md",
-      "line": 212
+      "line": 227
     },
     {
       "id": "corpus.state.unfinished-test",
@@ -724,7 +790,7 @@
       "statement": "A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.",
       "why": "because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption",
       "file": "spec/00-corpus.md",
-      "line": 214
+      "line": 229
     },
     {
       "id": "corpus.state.coverage-floor",
@@ -735,7 +801,7 @@
       "statement": "`spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.",
       "why": "because deleting a failing pin must not read as progress",
       "file": "spec/00-corpus.md",
-      "line": 216
+      "line": 231
     },
     {
       "id": "corpus.state.bad-pin",
@@ -746,7 +812,7 @@
       "statement": "A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken or unexercised pin, and one clause pinned to two theorems raise `SpecBrokenPin`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 218
+      "line": 233
     },
     {
       "id": "corpus.state.scaffold",
@@ -757,7 +823,7 @@
       "statement": "`contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 225,
+      "line": 240,
       "group": "commands"
     },
     {
@@ -769,7 +835,7 @@
       "statement": "`contextful-spec scaffold <contract>.<operation> --lean <file>` appends one tagged theorem per clause of the operation, its statement the docstring and its proposition and proof `sorry`, and rewrites no existing theorem.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 226,
+      "line": 241,
       "group": "commands"
     },
     {
@@ -781,7 +847,7 @@
       "statement": "`contextful-spec pins --migrate` moves each `test` entry of `spec/pins.toml` into a tag above the one test it names, and leaves an entry naming no clause or no single test in place.",
       "why": "because a tag travels with its test, and a path in a separate file goes stale unseen",
       "file": "spec/00-corpus.md",
-      "line": 227,
+      "line": 242,
       "group": "commands"
     },
     {
@@ -793,7 +859,7 @@
       "statement": "`contextful-spec retag <clause>` rewrites every tag of the clause to its statement's rev, and a `///` copy above a tag reading at least 0.9 like the tagged statement, refusing while a check other than `state` or `render` reports.",
       "why": "because a reworded clause otherwise leaves each tag and copy for a hand edit, and a malformed statement takes no rev",
       "file": "spec/00-corpus.md",
-      "line": 229,
+      "line": 244,
       "group": "commands"
     },
     {
@@ -805,7 +871,7 @@
       "statement": "`contextful-spec slice --file <path>` prints each clause the file's tags name, with its current statement and the functions tagging it.",
       "why": "because a reviewer of a test reads what it claims to demonstrate",
       "file": "spec/00-corpus.md",
-      "line": 231,
+      "line": 246,
       "group": "commands"
     },
     {
@@ -817,7 +883,7 @@
       "statement": "`contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage prints it into the gate log.",
       "why": "because an edited test can stop demonstrating its clause while every pin still computes performed",
       "file": "spec/00-corpus.md",
-      "line": 233,
+      "line": 248,
       "group": "commands"
     },
     {
@@ -829,7 +895,7 @@
       "statement": "`spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 240,
+      "line": 255,
       "group": "milestones"
     },
     {
@@ -841,7 +907,7 @@
       "statement": "A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored or holding a body line that opens with `todo!`, and `passing` otherwise.",
       "why": "A-assurance#source-change-carries",
       "file": "spec/00-corpus.md",
-      "line": 242,
+      "line": 257,
       "group": "milestones"
     },
     {
@@ -853,7 +919,7 @@
       "statement": "A milestone computes `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause, and `open` otherwise.",
       "why": "because one passing acceptance test drives one path through a milestone, and an operation without a performed clause demonstrates nothing",
       "file": "spec/00-corpus.md",
-      "line": 244,
+      "line": 259,
       "group": "milestones"
     },
     {
@@ -865,7 +931,7 @@
       "statement": "A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.",
       "why": "A-assurance#source-change-carries",
       "file": "spec/00-corpus.md",
-      "line": 246,
+      "line": 261,
       "group": "milestones"
     },
     {
@@ -877,7 +943,7 @@
       "statement": "An unpinned clause outside every operation an open milestone names, and named in backticks by no `unsettled:` line of its operation, is unowned; unowned clauses past the `clause-unowned` ceiling raise `SpecClauseUnowned`.",
       "why": "because a clause no test pins, no milestone schedules and no open question names is a promise nobody keeps",
       "file": "spec/00-corpus.md",
-      "line": 248,
+      "line": 263,
       "group": "milestones"
     },
     {
@@ -889,7 +955,7 @@
       "statement": "A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.",
       "why": "because an unopened milestone fixes what it refuses and bounds, and its behavior is written against the code that opens it",
       "file": "spec/00-corpus.md",
-      "line": 250,
+      "line": 265,
       "group": "milestones"
     },
     {
@@ -901,7 +967,7 @@
       "statement": "`contextful-spec state` regenerates `spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json`, and `contextful-spec extract` the lock file alone. A committed copy differing from regeneration raises `SpecStaleRender`.",
       "why": "P8, A-assurance#generated-artifacts-prove",
       "file": "spec/00-corpus.md",
-      "line": 257
+      "line": 272
     },
     {
       "id": "corpus.render.lock-file",
@@ -912,7 +978,7 @@
       "statement": "The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pins: kind, path, name, line, verdict, proof.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 259
+      "line": 274
     },
     {
       "id": "corpus.render.card",
@@ -923,7 +989,7 @@
       "statement": "`contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.",
       "why": "A-corpus#teaching-reference-live",
       "file": "spec/00-corpus.md",
-      "line": 261
+      "line": 276
     },
     {
       "id": "corpus.render.dated-prose",
@@ -934,7 +1000,7 @@
       "statement": "The words `planned`, `not yet`, `currently`, `today`, `shipped`, `implemented`, `previously`, `used to`, `legacy`, `TODO`, `FIXME` and `WIP`, and an ISO date, raise `SpecDatedProse` in any authored file.",
       "why": "because build state is computed, and a dated sentence is stale the day it lands",
       "file": "spec/00-corpus.md",
-      "line": 263
+      "line": 278
     },
     {
       "id": "corpus.render.counterfactual",
@@ -945,7 +1011,7 @@
       "statement": "The words `will`, `would` and `shall` raise `SpecCounterfactual` in a contract file or a guide.",
       "why": "because a contract states present behavior, and a record's Options is where a path not taken is described",
       "file": "spec/00-corpus.md",
-      "line": 265
+      "line": 280
     },
     {
       "id": "corpus.render.banned-vocabulary",
@@ -956,7 +1022,7 @@
       "statement": "The nouns `seam`, `load-bearing`, `wedge`, `rung`, `land-grab` and an unbackticked `axiom`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 267
+      "line": 282
     },
     {
       "id": "corpus.render.local-path",
@@ -967,7 +1033,7 @@
       "statement": "A path beginning `/Users/`, `/home/`, `$HOME/` or `~/` raises `SpecLocalPath`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 269
+      "line": 284
     },
     {
       "id": "corpus.diagram.fence",
@@ -978,7 +1044,7 @@
       "statement": "A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 275
+      "line": 290
     },
     {
       "id": "corpus.diagram.boundary",
@@ -989,7 +1055,7 @@
       "statement": "A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 277
+      "line": 292
     },
     {
       "id": "corpus.diagram.node",
@@ -1000,7 +1066,7 @@
       "statement": "A flowchart node names one thing in at most 5 words: its label holds no `·`, `<br/>`, `,`, `;`, `: ` or error identifier, is no operation name, and sets no article second. A breach raises `SpecDiagramNode`.",
       "why": "because a box of bundled attributes or a verb hides the things and what flows between them; operations, limits and errors ride the edges",
       "file": "spec/00-corpus.md",
-      "line": 279
+      "line": 294
     },
     {
       "id": "corpus.diagram.shape",
@@ -1011,7 +1077,7 @@
       "statement": "A node labelled with a snake_case identifier or a phrase ending `table`, `store`, `log` or `queue` is a cylinder `[( )]`, and a label ending `?` is a decision `{ }`. A breach raises `SpecDiagramShape`.",
       "why": "because one shape meaning one kind lets a reader tell data from the parts acting on it at a glance",
       "file": "spec/00-corpus.md",
-      "line": 281
+      "line": 296
     },
     {
       "id": "corpus.diagram.edge",
@@ -1022,7 +1088,7 @@
       "statement": "A flowchart edge points one way; its label holds at most 5 words and no `·`, and an edge touching no decision node carries one. A breach raises `SpecDiagramEdge`.",
       "why": "because an unlabelled line says two things relate without saying how, and a two-way line hides which side acts",
       "file": "spec/00-corpus.md",
-      "line": 283
+      "line": 298
     },
     {
       "id": "corpus.diagram.decision",
@@ -1033,7 +1099,7 @@
       "statement": "A decision node asks a question or names a condition in at most 8 words and no error identifier, has an incoming edge, and has two or more outgoing edges each labelled with a distinct outcome. A breach raises `SpecDiagramDecision`.",
       "why": "because a branch without a guard on each exit leaves the reader to guess which path a case takes",
       "file": "spec/00-corpus.md",
-      "line": 285
+      "line": 300
     },
     {
       "id": "corpus.diagram.branch",
@@ -1044,7 +1110,7 @@
       "statement": "A non-decision node with an outgoing edge labelled `yes` or `no`, an outgoing error identifier beside another exit, or two exits opening `if`, `when`, `over`, `under` or `else` raises `SpecDiagramBranch`; a branch is a decision node.",
       "why": "because a condition hidden in edge labels off a box reads as parallel flow",
       "file": "spec/00-corpus.md",
-      "line": 287
+      "line": 302
     },
     {
       "id": "corpus.diagram.connected",
@@ -1055,7 +1121,7 @@
       "statement": "Every flowchart node, or a subgraph enclosing it, is an edge endpoint. A breach raises `SpecDiagramOrphan`.",
       "why": "because an unconnected element asserts nothing about the system",
       "file": "spec/00-corpus.md",
-      "line": 289
+      "line": 304
     },
     {
       "id": "corpus.diagram.unique-label",
@@ -1066,7 +1132,7 @@
       "statement": "No two nodes of one flowchart carry the same label; a second mention reuses the node id. A breach raises `SpecDiagramDuplicate`.",
       "why": "because one label naming two nodes leaves the reader to decide whether they are one thing",
       "file": "spec/00-corpus.md",
-      "line": 291
+      "line": 306
     },
     {
       "id": "corpus.diagram.layout",
@@ -1077,7 +1143,7 @@
       "statement": "A flowchart header declares `LR`, `TB` or `TD`, no subgraph declares `direction`, subgraphs nest at most 2 levels, and the chart holds at most 20 nodes and 25 edges. A breach raises `SpecDiagramLayout`.",
       "why": "because one reading direction keeps the flow followable, and a chart past that size or depth is two diagrams",
       "file": "spec/00-corpus.md",
-      "line": 293
+      "line": 308
     },
     {
       "id": "corpus.diagram.sequence",
@@ -1088,7 +1154,7 @@
       "statement": "A sequence diagram declares each participant it messages and messages each it declares, and holds at most 6 participants, 15 messages, 2 messages from a participant to itself and fragments nested 2 levels. A breach raises `SpecDiagramSequence`.",
       "why": "because a sequence diagram shows one scenario's interactions, and branching logic past that belongs in a flowchart",
       "file": "spec/00-corpus.md",
-      "line": 295
+      "line": 310
     },
     {
       "id": "corpus.diagram.message",
@@ -1099,7 +1165,7 @@
       "statement": "A sequence message label holds at most 8 words and a note at most 12 words. A breach raises `SpecDiagramMessage`.",
       "why": "because a message names one call; its parameters and bounds belong in clauses",
       "file": "spec/00-corpus.md",
-      "line": 297
+      "line": 312
     },
     {
       "id": "corpus.diagram.state",
@@ -1110,7 +1176,7 @@
       "statement": "A state diagram has one top-level `[*]` start reaching every state, every state has an outgoing transition, `[*]` counting as a target, and a transition label holds at most 6 words. A breach raises `SpecDiagramState`.",
       "why": "because an unreachable or dead-end state is a lifecycle the system cannot run",
       "file": "spec/00-corpus.md",
-      "line": 299
+      "line": 314
     },
     {
       "id": "corpus.targets.file",
@@ -1121,7 +1187,7 @@
       "statement": "Each deployment provider's target profile is `spec/targets/<provider>.toml`: named shapes, exactly one marked default, each with a kind, the profiles it hosts, an optional per-invocation wall-clock cap, its exclusions and the primitive filling each role.",
       "why": "A-topology#build-profiles",
       "file": "spec/00-corpus.md",
-      "line": 306
+      "line": 321
     },
     {
       "id": "corpus.targets.roles",
@@ -1132,7 +1198,7 @@
       "statement": "A shape fills eight roles — cron tick, reconciler, durable orchestrator, single-writer catalog, object store, hot-path query face, heavy compute and secrets — and may fill a realtime run projection and a queue.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 308
+      "line": 323
     },
     {
       "id": "corpus.targets.primitives",
@@ -1143,7 +1209,7 @@
       "statement": "A target file lists the primitives its provider offers, and each shape lists the primitives it uses; {{topology.deploy.unsupported-shape}} refuses a shape using one outside that list.",
       "why": "because a shape's roles name products, and only a primitive list makes a missing one checkable",
       "file": "spec/00-corpus.md",
-      "line": 309
+      "line": 324
     },
     {
       "id": "corpus.targets.incomplete",
@@ -1154,7 +1220,7 @@
       "statement": "A shape leaving a role unfilled, or a target file marking other than one default shape, raises `SpecTargetIncomplete`, naming the provider, the shape and the role.",
       "why": "because an unfilled role surfaces only when a deploy reaches it, on someone else's account",
       "file": "spec/00-corpus.md",
-      "line": 311
+      "line": 326
     },
     {
       "id": "corpus.targets.cap-unrecorded",
@@ -1165,7 +1231,7 @@
       "statement": "A shape whose cap sits at or below the {{topology.deploy.wall-clock-cap}} bound and whose exclusions omit `first-time-backfill` or `component-connector` raises `SpecTargetCapUnrecorded`.",
       "why": "because the exclusion is the difference between a refused dispatch and a job killed mid-run",
       "file": "spec/00-corpus.md",
-      "line": 313
+      "line": 328
     },
     {
       "id": "corpus.targets.function-profile",
@@ -1176,7 +1242,7 @@
       "statement": "A function-class shape listing a profile other than `edge` raises `SpecTargetFunctionProfile`, naming the provider and the shape.",
       "why": "because {{topology.package.edge-eligibility}} admits the edge profile alone on a function-class target",
       "file": "spec/00-corpus.md",
-      "line": 315
+      "line": 330
     },
     {
       "id": "corpus.targets.page",
@@ -1187,7 +1253,7 @@
       "statement": "`contextful-spec state` renders `spec/targets.md` from the target files: per provider, a role table across its shapes and a diagram of its default shape.",
       "why": "because a diagram drawn by hand beside the data it shows drifts from it",
       "file": "spec/00-corpus.md",
-      "line": 317
+      "line": 332
     },
     {
       "id": "corpus.guide.file",
@@ -1198,7 +1264,7 @@
       "statement": "Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose outside diagrams of at most 400 words plus 20 words per operation its contract's fragment registers.",
       "why": "A-corpus#teaching-reference-live",
       "file": "spec/00-corpus.md",
-      "line": 324
+      "line": 339
     },
     {
       "id": "corpus.guide.non-normative",
@@ -1209,7 +1275,7 @@
       "statement": "A guide holds no clause item and names no registered error. It reaches a rule by `{{<clause id>}}` and an operation by `{{<contract>.<operation>}}`, which resolves against that contract's fragment. No contract file links a guide.",
       "why": "because a rule restated in teaching prose is a second home that drifts from the first",
       "file": "spec/00-corpus.md",
-      "line": 326
+      "line": 341
     },
     {
       "id": "corpus.guide.reach",
@@ -1220,7 +1286,7 @@
       "statement": "Each operation a contract's fragment registers appears in the contract's guide as an operation pointer or a pointer to one of its clauses; an operation the guide misses raises `SpecGuideReach`, naming it.",
       "why": "because a guide that skips an operation leaves its reader no route from the flow to that operation's rules",
       "file": "spec/00-corpus.md",
-      "line": 328
+      "line": 343
     },
     {
       "id": "corpus.guide.pointer-density",
@@ -1231,7 +1297,7 @@
       "statement": "A guide paragraph, list item or table row holds at most 3 pointers to clauses and at least 8 words of prose per clause pointer; a denser one raises `SpecGuidePointerDensity`.",
       "why": "because a paragraph of pointers is an index without the reasoning that connects its entries, and the card already is the index",
       "file": "spec/00-corpus.md",
-      "line": 330
+      "line": 345
     },
     {
       "id": "corpus.guide.bound",
@@ -1242,7 +1308,7 @@
       "statement": "A guide sentence holding a number equal to a bound value in its contract's fragment also holds the pointer to a clause owning a bound of that value; a sentence without one raises `SpecGuideBound`.",
       "why": "because a restated number drifts when its bound changes, and the pointer names the one place to change it",
       "file": "spec/00-corpus.md",
-      "line": 332
+      "line": 347
     },
     {
       "id": "corpus.guide.bad-guide",
@@ -1253,7 +1319,73 @@
       "statement": "A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 334
+      "line": 349
+    },
+    {
+      "id": "corpus.topic.file",
+      "contract": "corpus",
+      "operation": "topic",
+      "subject": "file",
+      "kind": "limit",
+      "statement": "A topic page `spec/topics/<slug>.md` carries front matter `topic`, one `# ` title equal to its entry's `title` in `spec/terms/topic.toml`, then prose of at most 600 words outside diagrams.",
+      "why": "because a topic routes a reader to the clauses, and a page past one screen of reading starts restating them",
+      "file": "spec/00-corpus.md",
+      "line": 356
+    },
+    {
+      "id": "corpus.topic.pages",
+      "contract": "corpus",
+      "operation": "topic",
+      "subject": "pages",
+      "kind": "limit",
+      "statement": "The corpus holds at most 8 pages under `spec/topics/`.",
+      "why": "because each topic answers a question the contracts split, and a growing set of them becomes a second corpus",
+      "file": "spec/00-corpus.md",
+      "line": 358
+    },
+    {
+      "id": "corpus.topic.answers",
+      "contract": "corpus",
+      "operation": "topic",
+      "subject": "answers",
+      "kind": "behavior",
+      "statement": "A topic entry lists under `answers` the clause ids its page answers; the page reaches each within one pointer step, by pointing at it or at a clause whose statement points at it.",
+      "why": "because a reader of a topic follows one link to the rule, and a longer path is the search the page exists to save",
+      "file": "spec/00-corpus.md",
+      "line": 360
+    },
+    {
+      "id": "corpus.topic.contract-pointers",
+      "contract": "corpus",
+      "operation": "topic",
+      "subject": "contract-pointers",
+      "kind": "limit",
+      "statement": "A topic page holds at most 3 pointers into any one contract, counting a repeated pointer once.",
+      "why": "because a page pointing at most of one contract is that contract's guide, and a topic crosses contracts",
+      "file": "spec/00-corpus.md",
+      "line": 362
+    },
+    {
+      "id": "corpus.topic.non-normative",
+      "contract": "corpus",
+      "operation": "topic",
+      "subject": "non-normative",
+      "kind": "behavior",
+      "statement": "A topic page holds no clause item and names no registered error, reaching each rule by `{{id}}`; no contract file links a topic page.",
+      "why": "because a rule restated on a topic page is a second home that drifts from the first",
+      "file": "spec/00-corpus.md",
+      "line": 364
+    },
+    {
+      "id": "corpus.topic.bad-topic",
+      "contract": "corpus",
+      "operation": "topic",
+      "subject": "bad-topic",
+      "kind": "refusal",
+      "statement": "A page without an entry or an entry without a page, a page off its shape, words, pointer bound or {{corpus.topic.non-normative}}, more pages than {{corpus.topic.pages}}, and an unreachable or missing answer raise `SpecTopic`.",
+      "why": "P8",
+      "file": "spec/00-corpus.md",
+      "line": 366
     },
     {
       "id": "topology.compose.workspace",
@@ -1955,7 +2087,7 @@
       "subject": "empty-probe",
       "kind": "refusal",
       "statement": "An absent descriptor directory, absent probe table or empty hostname set raises `ProbeSetEmpty`, naming the path. A passing probe checks at least one hostname.",
-      "why": "because a probe that checks nothing and exits zero reads as a proven posture to the pipeline that invoked it.",
+      "why": "because a probe that checks nothing and exits zero reads as a proven access policy to the pipeline that invoked it.",
       "file": "spec/01-topology.md",
       "line": 292
     },
@@ -2438,7 +2570,7 @@
       "operation": "lay-out",
       "subject": "table-pointer",
       "kind": "behavior",
-      "statement": "`tables/<t>/_pointer.json` names the table's current snapshot and publishing fence. Readers access only snapshots reachable from the pointer directly or through `parent` links.",
+      "statement": "`tables/<t>/_pointer.json` names the table's current snapshot and its commit fence. Readers access only snapshots reachable from the pointer directly or through `parent` links.",
       "why": "A-store#manifest-carries-format",
       "file": "spec/10-store.md",
       "line": 102
@@ -2705,7 +2837,7 @@
       "operation": "init",
       "subject": "repeat",
       "kind": "behavior",
-      "statement": "If `contextful.toml` declares the same `[project] name`, init succeeds and preserves store content. Init rewrites only the posture under {{store.init.posture}} and a missing {{store.init.store-identity}}.",
+      "statement": "If `contextful.toml` declares the same `[project] name`, init succeeds and preserves store content. Init rewrites only the authoring posture under {{store.init.posture}} and a missing {{store.init.store-identity}}.",
       "why": "because a repeated init converges on the state the first one wrote, so scripts and onboarding run it unconditionally",
       "file": "spec/10-store.md",
       "line": 150,
@@ -2719,8 +2851,8 @@
       "operation": "init",
       "subject": "posture",
       "kind": "behavior",
-      "statement": "`contextful init <name> --authoring-posture <posture>` prepends top-level `authoring_posture = \"<posture>\"` under {{authority.issue.posture-key}} when `contextful.toml` declares none, preserving every other byte. Init preserves a declared posture. Without the flag, init writes no posture.",
-      "why": "because the posture decides whether a write without a credential lands, so no default chooses it for the operator",
+      "statement": "`contextful init <name> --authoring-posture <posture>` prepends top-level `authoring_posture = \"<posture>\"` under {{authority.issue.posture-key}} when `contextful.toml` declares none, preserving every other byte. Init preserves a declared authoring posture. Without the flag, init writes none.",
+      "why": "because the authoring posture decides whether a write without a credential lands, so no default chooses it for the operator",
       "file": "spec/10-store.md",
       "line": 152,
       "scenarios": [
@@ -5000,7 +5132,7 @@
       "operation": "lease",
       "subject": "ttl",
       "kind": "limit",
-      "statement": "A lease grants ownership for 10 min.",
+      "statement": "A writer lease grants ownership for 10 min.",
       "why": "",
       "file": "spec/10-store.md",
       "line": 691
@@ -5023,7 +5155,7 @@
       "subject": "clock-skew",
       "kind": "limit",
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
-      "why": "because correctness rests on the fence, and the skew bound only sets how early a holder stops committing",
+      "why": "because correctness rests on the commit fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
       "line": 693
     },
@@ -5044,7 +5176,7 @@
       "operation": "lease",
       "subject": "stale-fence",
       "kind": "refusal",
-      "statement": "If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.",
+      "statement": "If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher commit fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
       "line": 697
@@ -5088,7 +5220,7 @@
       "operation": "lease",
       "subject": "acquire",
       "kind": "behavior",
-      "statement": "Acquisition creates the lease object under `If-None-Match` or replaces an expired or released object under `If-Match` on its ETag. The acquired fence is one above the object's fence.",
+      "statement": "Acquisition creates the lease object under `If-None-Match` or replaces an expired or released object under `If-Match` on its ETag. The acquired commit fence is one above the object's commit fence.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
       "line": 705
@@ -5689,7 +5821,7 @@
       "subject": "role-credentials",
       "kind": "behavior",
       "statement": "`[sync] credentials = \"role\"` on an `s3://` or `https://` endpoint signs with workload-role credentials in place of both keys: the ECS container credential endpoint, then a web identity token exchanged through STS, then IMDSv2.",
-      "why": "because a task role or service account supplies short-lived keys, and a long-lived key in a secret store is the posture a regulated account refuses",
+      "why": "because a task role or service account supplies short-lived keys, and a long-lived key in a secret store is the credential posture a regulated account refuses",
       "file": "spec/15-endpoint.md",
       "line": 26
     },
@@ -8162,7 +8294,7 @@
       "operation": "synthesize",
       "subject": "prompt-bound",
       "kind": "limit",
-      "statement": "A batch packs fenced rows up to 32 KiB; a fenced row over that bound travels in a batch of its own.",
+      "statement": "A batch packs marked rows up to 32 KiB; a marked row over that bound travels in a batch of its own.",
       "why": "because one oversized row neither stalls the pass nor drags its neighbours past the bound",
       "file": "spec/21-memory.md",
       "line": 77
@@ -8173,7 +8305,7 @@
       "operation": "synthesize",
       "subject": "row-cap",
       "kind": "limit",
-      "statement": "Synthesis fences each row at 16384 chars under {{connector.infer.value-cap}}. Truncated rows reach the model; their batch commits and advances the cursor. The pass report counts these rows in `truncated`.",
+      "statement": "Synthesis marks each row, capped at 16384 chars under {{connector.infer.value-cap}}. Truncated rows reach the model; their batch commits and advances the cursor. The pass report counts these rows in `truncated`.",
       "why": "because a silent cut hides that a conclusion rests on a partial row",
       "file": "spec/21-memory.md",
       "line": 79
@@ -8228,7 +8360,7 @@
       "operation": "synthesize",
       "subject": "extract-cache",
       "kind": "behavior",
-      "statement": "Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise fenced-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.",
+      "statement": "Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise marked-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.",
       "why": "A-read#extraction-cache-keys",
       "file": "spec/21-memory.md",
       "line": 89
@@ -16955,7 +17087,7 @@
       "operation": "infer",
       "subject": "data-fence",
       "kind": "behavior",
-      "statement": "No ingested value reaches a model outside a data boundary: marker pairs whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.",
+      "statement": "No ingested value reaches a model outside its data boundary markers: a pair whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.",
       "why": "",
       "file": "spec/40-connector.md",
       "line": 259
@@ -16966,7 +17098,7 @@
       "operation": "infer",
       "subject": "fence-is-not-a-boundary",
       "kind": "behavior",
-      "statement": "The fence lowers the success rate of injected instructions and bounds nothing. No clause treats the output of a fenced call as trusted.",
+      "statement": "Data boundary markers lower the success rate of injected instructions and bound nothing. No clause treats the output of a marked call as trusted.",
       "why": "because spotlighting reduces injection and guarantees nothing",
       "file": "spec/40-connector.md",
       "line": 260
@@ -16977,7 +17109,7 @@
       "operation": "infer",
       "subject": "output-taint",
       "kind": "behavior",
-      "statement": "Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.",
+      "statement": "Model output carries the least-trusted provenance label among its marked inputs, and lands under that label.",
       "why": "because output re-landing as fresh data launders injected text",
       "file": "spec/40-connector.md",
       "line": 262
@@ -16988,8 +17120,8 @@
       "operation": "infer",
       "subject": "provenance-order",
       "kind": "behavior",
-      "statement": "Provenance labels order by trust: `operator` above `ingested:first-party` above `ingested:third-party`. A call fencing no value carries `operator`.",
-      "why": "because the least-trusted input is defined only over a total order, and a call fencing nothing sends the operator's template alone",
+      "statement": "Provenance labels order by trust: `operator` above `ingested:first-party` above `ingested:third-party`. A call marking no value carries `operator`.",
+      "why": "because the least-trusted input is defined only over a total order, and a call marking nothing sends the operator's template alone",
       "file": "spec/40-connector.md",
       "line": 264
     },
@@ -16999,7 +17131,7 @@
       "operation": "infer",
       "subject": "marker-derivation",
       "kind": "limit",
-      "statement": "Every marker of one call carries one token of 16 B, derived from every label and value the call fences, as fenced.",
+      "statement": "Every marker of one call carries one token of 16 B, derived from every label and value the call marks, as marked.",
       "why": "because closing one's own block then requires content containing the digest of a batch that contains it",
       "file": "spec/40-connector.md",
       "line": 266
@@ -17010,7 +17142,7 @@
       "operation": "infer",
       "subject": "replay",
       "kind": "behavior",
-      "statement": "The same values, labels, cap and rules fence to the same bytes, and a change to any value or label moves the token.",
+      "statement": "The same values, labels, cap and rules mark to the same bytes, and a change to any value or label moves the token.",
       "why": "because a replayed call sends an identical prompt, and a token read from one batch closes no other",
       "file": "spec/40-connector.md",
       "line": 268
@@ -17021,7 +17153,7 @@
       "operation": "infer",
       "subject": "fenced-value-hygiene",
       "kind": "behavior",
-      "statement": "Fencing removes control characters other than newline and tab from a value.",
+      "statement": "Marking removes control characters other than newline and tab from a value.",
       "why": "",
       "file": "spec/40-connector.md",
       "line": 270
@@ -17043,7 +17175,7 @@
       "operation": "infer",
       "subject": "label-hygiene",
       "kind": "limit",
-      "statement": "Fencing truncates a provenance label at 200 chars and flattens the label to one line without brackets. The label opens or closes no block.",
+      "statement": "Marking truncates a provenance label at 200 chars and flattens the label to one line without brackets. The label opens or closes no block.",
       "why": "because a label is built from connector-supplied table names and row ids",
       "file": "spec/40-connector.md",
       "line": 272
@@ -17054,7 +17186,7 @@
       "operation": "infer",
       "subject": "empty-batch",
       "kind": "behavior",
-      "statement": "A call fencing no value renders an explicit no-data line instead of an empty section.",
+      "statement": "A call marking no value renders an explicit no-data line instead of an empty section.",
       "why": "",
       "file": "spec/40-connector.md",
       "line": 274
@@ -17065,8 +17197,8 @@
       "operation": "infer",
       "subject": "operator-template",
       "kind": "behavior",
-      "statement": "The operator's prompt template stays unfenced in the system role. The idempotency hash covers the template alone.",
-      "why": "because hardening the fence leaves a dedup key intact",
+      "statement": "The operator's prompt template stays unmarked in the system role. The idempotency hash covers the template alone.",
+      "why": "because hardening the markers leaves a dedup key intact",
       "file": "spec/40-connector.md",
       "line": 275
     },
@@ -19657,7 +19789,7 @@
       "operation": "lease",
       "subject": "scope-declaration",
       "kind": "behavior",
-      "statement": "`CONTEXTFUL_LEASE_SCOPES` lists the logical names hydrating as run-time leases, each optionally as `name=scope`.",
+      "statement": "`CONTEXTFUL_LEASE_SCOPES` lists the logical names hydrating as credential leases, each optionally as `name=scope`.",
       "why": "",
       "file": "spec/41-secrets.md",
       "line": 120
@@ -19701,7 +19833,7 @@
       "operation": "lease",
       "subject": "lease",
       "kind": "behavior",
-      "statement": "The resolver holds a leased credential and its expiry together in memory for the run. The resolver evicts both at expiry. Neither enters a file, journal entry or audit record.",
+      "statement": "The resolver holds a credential lease's value and its expiry together in memory for the run. The resolver evicts both at expiry. Neither enters a file, journal entry or audit record.",
       "why": "A-connector#credentials-references-workload",
       "file": "spec/41-secrets.md",
       "line": 126
@@ -19712,7 +19844,7 @@
       "operation": "lease",
       "subject": "malformed-lease",
       "kind": "refusal",
-      "statement": "A lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient failure.",
+      "statement": "A credential lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient failure.",
       "why": "P6",
       "file": "spec/41-secrets.md",
       "line": 128
@@ -19723,7 +19855,7 @@
       "operation": "lease",
       "subject": "cache-window",
       "kind": "behavior",
-      "statement": "A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the lease's own expiry.",
+      "statement": "A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the credential lease's own expiry.",
       "why": "",
       "file": "spec/41-secrets.md",
       "line": 130
@@ -19822,7 +19954,7 @@
       "operation": "lease",
       "subject": "vendor-requests-on-failure",
       "kind": "limit",
-      "statement": "A run holding an expired lease whose provider is unreachable issues 0 requests to the vendor.",
+      "statement": "A run holding an expired credential lease whose provider is unreachable issues 0 requests to the vendor.",
       "why": "P6",
       "file": "spec/41-secrets.md",
       "line": 146
@@ -21764,7 +21896,7 @@
       "operation": "issue",
       "subject": "posture-key",
       "kind": "refusal",
-      "statement": "A manifest declares its posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.",
+      "statement": "A manifest declares its authoring posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 257
@@ -32392,7 +32524,8 @@
       "render",
       "diagram",
       "targets",
-      "guide"
+      "guide",
+      "topic"
     ],
     "spec/01-topology.md": [
       "compose",
@@ -32657,8 +32790,8 @@
     "connector.drive-sheet": "Google Sheets capture as structured rows, separate from PDF page capture.",
     "connector.export": "Connector interfaces: shared types, source and destination worlds, optional interfaces and compiled-in sources.",
     "connector.import": "Host imports and the configuration table the host forwards to a guest.",
-    "connector.infer": "Model requests: endpoint selection, prompt data markers and output provenance labels.",
-    "connector.lease": "The first credential adapter: lease declarations, mint requests, expiry, failures and the mint credential.",
+    "connector.infer": "Model requests: endpoint selection, data boundary markers and output provenance labels.",
+    "connector.lease": "The first credential adapter: credential lease declarations, mint requests, expiry, failures and the mint credential.",
     "connector.meter": "Vendor quota declarations, limiter bindings, pre-send checks, permit reservations, denials and usage reports.",
     "connector.package": "Distribution form, digest pinning, per-connector resource bounds and world versioning.",
     "connector.principal-secrets": "Per-principal credential names and the adapter that serves their material.",
@@ -32674,10 +32807,11 @@
     "corpus.guide": "A non-normative teaching page per contract, and what keeps it from becoming a second home for a rule.",
     "corpus.rationale": "Where an argument lives: the Why line, the record and its anatomy, and the words a contract file cannot carry.",
     "corpus.reference": "The one legal way a statement reaches a fact another clause or a code type owns, and the ban on restatement and literature.",
-    "corpus.registry": "Where a spelling is registered, the single owner of an error or a bound, the collision test, the source sites checked against each error, and the ratchets the registry records.",
+    "corpus.registry": "Where a spelling is registered, the single owner of an error or a bound, the collision test, the source sites checked against each error, the ratchets the registry records, and the term table with the glossary and first-use rule it drives.",
     "corpus.render": "The generated files, and the vocabulary no authored file carries.",
     "corpus.state": "Pins, verdicts, the coverage floor, the roadmap's operation claims and each milestone's acceptance test.",
     "corpus.targets": "Per-provider deployment target files, the roles each shape fills, and the page rendered from them.",
+    "corpus.topic": "A non-normative page answering one question that spans contracts, the clauses it answers, and the bounds that keep it a route into the contracts.",
     "disclosure.attest": "Chain verification, signed segment roots, lineage attestations, and the reach of each guarantee.",
     "disclosure.bound-cohort": "The line between a per-person table and a cohort table, and the floor a cohort read carries.",
     "disclosure.bound-staleness": "The declared age budget on mirrored authorization, the refusal past it, and the one narrowing posture.",
@@ -32755,7 +32889,7 @@
     "store.index": "Sidecar index types, identifiers and builds; row clustering, partitions and tenant identifiers.",
     "store.init": "Project initialization, repeated initialization and project discovery when a command omits `--project`.",
     "store.lay-out": "Store directories, run and snapshot manifests, table pointers, local catalogs and node identifiers.",
-    "store.lease": "Exclusive pipeline and compaction leases, fencing values and cursor commits in the commit log.",
+    "store.lease": "Exclusive pipeline and compaction writer leases, their commit fences, and cursor commits in the commit log.",
     "store.merge": "Merging bucket manifests across writers, verifying tombstones and retrying conditional manifest commits.",
     "store.probe": "Testing conditional writes with a sentinel object and selecting the backend's coordination mode.",
     "store.pull": "Downloading bucket files, verifying digests, advancing table pointers and restoring named generations.",
@@ -34297,6 +34431,14 @@
       "corpus.registry.variant-gloss"
     ],
     [
+      "corpus.registry.glossary",
+      "corpus.render.generated"
+    ],
+    [
+      "corpus.registry.vale-terms",
+      "corpus.render.generated"
+    ],
+    [
       "corpus.reference.pointer",
       "<clause id>"
     ],
@@ -34331,6 +34473,18 @@
     [
       "corpus.guide.non-normative",
       "<contract>.<operation>"
+    ],
+    [
+      "corpus.topic.non-normative",
+      "id"
+    ],
+    [
+      "corpus.topic.bad-topic",
+      "corpus.topic.non-normative"
+    ],
+    [
+      "corpus.topic.bad-topic",
+      "corpus.topic.pages"
     ],
     [
       "topology.compose.undeclared-crossing",
@@ -37594,6 +37748,10 @@
         "gloss": "subscription notifications",
         "aliases": []
       },
+      "pages": {
+        "gloss": "authored pages",
+        "aliases": []
+      },
       "participants": {
         "gloss": "sequence diagram participants",
         "aliases": []
@@ -38317,6 +38475,16 @@
             "basis": "chosen",
             "gloss": "Worsening past which a trend figure is annotated."
           }
+        },
+        "term": {
+          "capability registry": {
+            "clause": "assurance.structure-tree.capability-registry",
+            "gloss": "`spec/capabilities.toml`, naming each engine capability with its home path and defining symbols."
+          },
+          "one home": {
+            "clause": "assurance.structure-tree.one-home",
+            "gloss": "The single engine implementation a capability resolves to, reached by every surface."
+          }
         }
       },
       "authority": {
@@ -38956,6 +39124,36 @@
             "basis": "chosen",
             "gloss": "Characters in a zone identifier.",
             "const": "crates/contextful-core/src/place.rs::ZONE_IDENTIFIER_LENGTH"
+          }
+        },
+        "term": {
+          "authoring posture": {
+            "clause": "authority.issue.authoring-posture",
+            "gloss": "A manifest's `session` or `per_request` setting deciding whose principal authors a table write."
+          },
+          "delegation profile": {
+            "clause": "authority.profile.delegation-profile",
+            "gloss": "The attenuable, chain-signed credential format delegated authority travels in."
+          },
+          "denylist": {
+            "clause": "authority.revoke.denylist",
+            "gloss": "The checkpoint's list of revoked credential identifiers."
+          },
+          "inference zone": {
+            "clause": "authority.place.zone-string",
+            "gloss": "Where a model call runs: `local:device`, `on-prem`, `private-cloud` or `public-cloud`, with an identifier."
+          },
+          "revocation epoch": {
+            "clause": "authority.revoke.epoch",
+            "gloss": "A counter per project, tenant and principal class whose bump invalidates that slice of outstanding authority."
+          },
+          "revocation identifier": {
+            "clause": "authority.revoke.revocation-id",
+            "gloss": "The identifier each credential derivation carries, withdrawing its subtree alone."
+          },
+          "subject tuple": {
+            "clause": "authority.identify.subject-tuple",
+            "gloss": "The agent, host, principal, task scope, inference zone and incognito flag a credential binds."
           }
         }
       },
@@ -39651,6 +39849,47 @@
             "gloss": "Cell text, keys and entry charges one worksheet read holds.",
             "const": "crates/contextful-decode/src/workbook.rs::TEXT_BUDGET"
           }
+        },
+        "term": {
+          "credential lease": {
+            "clause": "connector.lease.lease",
+            "gloss": "A short-lived credential minted per scope and held in memory with its expiry; it never enters a file.",
+            "avoid": [
+              "secret lease"
+            ]
+          },
+          "credential reference": {
+            "clause": "connector.reference.reference-scheme",
+            "gloss": "A `secret://<name>` value naming a credential by logical name, never by storage path."
+          },
+          "data boundary marker": {
+            "clause": "connector.infer.data-fence",
+            "gloss": "One of the paired markers enclosing an ingested value in a model prompt, carrying its provenance label.",
+            "avoid": [
+              "data fence",
+              "prompt fence"
+            ]
+          },
+          "hydration": {
+            "clause": "connector.resolve.hydration-is-just-in-time",
+            "gloss": "Resolving a credential reference to material when a request is built, never at declaration."
+          },
+          "manifest posture": {
+            "clause": "connector.package.manifest-posture",
+            "gloss": "Whether a connector manifest is adopted, carrying a digest, or a template carrying a pin requirement."
+          },
+          "mint credential": {
+            "clause": "connector.lease.bootstrap-credential",
+            "gloss": "The one standing credential the engine presents to the mint endpoint to obtain credential leases."
+          },
+          "provenance label": {
+            "clause": "connector.infer.provenance-order",
+            "gloss": "The trust label a model input carries: `operator`, `ingested:first-party` or `ingested:third-party`."
+          },
+          "provider chain": {
+            "clause": "connector.resolve.provider-chain",
+            "gloss": "The ordered adapters a reference resolves through, first answer winning."
+          }
         }
       },
       "corpus": {
@@ -39692,6 +39931,10 @@
             "aliases": []
           },
           "targets": {
+            "gloss": "",
+            "aliases": []
+          },
+          "topic": {
             "gloss": "",
             "aliases": []
           }
@@ -39864,6 +40107,18 @@
           "SpecTargetIncomplete": {
             "clause": "corpus.targets.incomplete",
             "gloss": "A target shape leaving a role unfilled, or a target file without exactly one default shape."
+          },
+          "SpecTerm": {
+            "clause": "corpus.registry.bad-term",
+            "gloss": "A term registered twice, naming a missing or foreign clause, glossed out of bounds, or avoided as itself a term."
+          },
+          "SpecTermFirstUse": {
+            "clause": "corpus.registry.term-first-use",
+            "gloss": "More guide first uses of a term without its defining pointer than the ceiling records."
+          },
+          "SpecTopic": {
+            "clause": "corpus.topic.bad-topic",
+            "gloss": "A topic page out of its registry entry, shape or bounds, restating a rule, or leaving an answer unreachable."
           },
           "SpecTypeUnresolved": {
             "clause": "corpus.reference.type-unresolved",
@@ -40055,12 +40310,86 @@
             "basis": "chosen",
             "gloss": "Longest subject slug."
           },
+          "corpus-term-gloss-words": {
+            "clause": "corpus.registry.term",
+            "value": 25,
+            "unit": "words",
+            "basis": "chosen",
+            "gloss": "Longest term gloss."
+          },
+          "corpus-topic-contract-pointers": {
+            "clause": "corpus.topic.contract-pointers",
+            "value": 3,
+            "unit": "pointers",
+            "basis": "chosen",
+            "gloss": "Most distinct pointers from one topic page into one contract."
+          },
+          "corpus-topic-pages": {
+            "clause": "corpus.topic.pages",
+            "value": 8,
+            "unit": "pages",
+            "basis": "chosen",
+            "gloss": "Most topic pages."
+          },
+          "corpus-topic-words": {
+            "clause": "corpus.topic.file",
+            "value": 600,
+            "unit": "words",
+            "basis": "chosen",
+            "gloss": "Longest topic page, diagrams excluded."
+          },
           "corpus-transition-words": {
             "clause": "corpus.diagram.state",
             "value": 6,
             "unit": "words",
             "basis": "chosen",
             "gloss": "Longest state transition label."
+          }
+        },
+        "term": {
+          "card": {
+            "clause": "corpus.render.card",
+            "gloss": "A contract's generated page listing its operations, error cases and bounds."
+          },
+          "clause": {
+            "clause": "corpus.address.clause-id",
+            "gloss": "One normative sentence: a list item under an operation, addressed as contract, operation and subject."
+          },
+          "clause pointer": {
+            "clause": "corpus.reference.pointer",
+            "gloss": "A `{{id}}` reference by which one statement reaches a fact another clause owns."
+          },
+          "decision record": {
+            "clause": "corpus.rationale.contract-adr",
+            "gloss": "A contract's ADR section holding one decision, its options and what each lost on."
+          },
+          "guide": {
+            "clause": "corpus.guide.file",
+            "gloss": "A contract's non-normative teaching page, reaching each rule by pointer."
+          },
+          "lede": {
+            "clause": "corpus.anatomy.lede",
+            "gloss": "The one paragraph opening an operation section, stating what the operation covers."
+          },
+          "pin": {
+            "clause": "corpus.state.pin",
+            "gloss": "A link from a clause to the test, theorem or item that demonstrates it."
+          },
+          "ratchet": {
+            "clause": "corpus.registry.ceiling",
+            "gloss": "A recorded count the tree lowers and never raises; a live count off it fails lint."
+          },
+          "topic page": {
+            "clause": "corpus.topic.file",
+            "gloss": "A non-normative page answering one question that spans contracts by pointing at the clauses that answer it."
+          },
+          "verdict": {
+            "clause": "corpus.state.verdict",
+            "gloss": "A clause's computed state: committed when unpinned, performed when its pins qualify, broken otherwise."
+          },
+          "why line": {
+            "clause": "corpus.rationale.why-cell",
+            "gloss": "The indented line under a clause naming the record it rests on, or a short `because` criterion."
           }
         }
       },
@@ -40530,6 +40859,28 @@
             "basis": "chosen",
             "gloss": "Capacity of the reachable-set cache.",
             "const": "crates/contextful-core/src/disclosure/reach.rs::REACH_CACHE_ENTRIES"
+          }
+        },
+        "term": {
+          "audit chain": {
+            "clause": "disclosure.record.segment",
+            "gloss": "The hash-linked, segment-signed log of reads and erasures."
+          },
+          "narrowing posture": {
+            "clause": "disclosure.bound-staleness.public-only",
+            "gloss": "Serving only publicly granted rows of a `public_only` table once its mirrored permissions pass their staleness budget."
+          },
+          "purge receipt": {
+            "clause": "disclosure.receipt.coverage",
+            "gloss": "The signed artifact a tenant purge returns, stating what the purge covers."
+          },
+          "reachable set": {
+            "clause": "disclosure.reach.subject-principals",
+            "gloss": "The principals and resources one subject reaches through identity links and group closure."
+          },
+          "staleness budget": {
+            "clause": "disclosure.bound-staleness.budget-grammar",
+            "gloss": "`max_acl_staleness`: the age mirrored source permissions reach before a read refuses."
           }
         }
       },
@@ -41161,6 +41512,24 @@
             "basis": "chosen",
             "gloss": "How far past the anchor a publication instant still counts in-window.",
             "const": "crates/contextful-core/src/read/rank.rs::WINDOW_ANCHOR_TOLERANCE_HOURS"
+          }
+        },
+        "term": {
+          "read frontier": {
+            "clause": "read.cache.frontier-invalidates",
+            "gloss": "A table's current snapshot and runs; a commit, fold or ledger append changes it and invalidates cached results."
+          },
+          "retrieval container": {
+            "clause": "read.cache.hot-local-parquet",
+            "gloss": "A container serving reads from a locally synced, memory-mapped snapshot set."
+          },
+          "signed store frontier": {
+            "clause": "read.reference.frontier",
+            "gloss": "The signed statement of a store's state a reference resolver validates before resolving and answering."
+          },
+          "statement guard": {
+            "clause": "read.guard.single-read-only-statement",
+            "gloss": "The check admitting caller SQL only as one read-only SELECT over registered relations."
           }
         }
       },
@@ -42294,6 +42663,28 @@
             "basis": "chosen",
             "gloss": "Largest typed export request body."
           }
+        },
+        "term": {
+          "awakeable": {
+            "clause": "run.suspend.awakeable",
+            "gloss": "A single-use token that suspends a run until a caller resolves it or its deadline passes."
+          },
+          "entry key": {
+            "clause": "run.journal.entry-key",
+            "gloss": "The `(execution_id, step_label, input_hash)` triple keying one journal entry."
+          },
+          "execution owner": {
+            "clause": "run.own.execution-owner",
+            "gloss": "The one durable owner of a scope's executions, holding its connector identity and pins."
+          },
+          "idempotency key": {
+            "clause": "run.journal.idempotency-key",
+            "gloss": "The key an outbound request carries, derived from its entry key, identical on every re-entry."
+          },
+          "journal": {
+            "clause": "run.journal.step-output",
+            "gloss": "The durable record of each step's value, written once, so a resumed run replays recorded steps."
+          }
         }
       },
       "store": {
@@ -42934,6 +43325,75 @@
             "gloss": "Object requests a pull or a push keeps in flight at once.",
             "const": "crates/contextful-core/src/store/sync.rs::TRANSFER_WIDTH"
           }
+        },
+        "term": {
+          "commit fence": {
+            "clause": "store.lease.acquire",
+            "gloss": "The integer each writer lease acquisition raises by one; a commit carrying a lower commit fence loses its condition.",
+            "avoid": [
+              "fencing token",
+              "fencing value"
+            ]
+          },
+          "commit lock": {
+            "clause": "store.reserve.commit-lock-span",
+            "gloss": "A table's lock held while a commit assigns its commit sequence and writes its manifest."
+          },
+          "commit log": {
+            "clause": "store.lease.commit-log",
+            "gloss": "The `cursors/` objects through which a run under a machine writer lease commits."
+          },
+          "compaction lease": {
+            "clause": "store.fold.compaction-lease",
+            "gloss": "The writer lease a compaction pass holds on one table, stamped into its snapshot and pointer."
+          },
+          "node id": {
+            "clause": "store.lay-out.node-id-order",
+            "gloss": "The path-safe name of one writing process, keying its run directories and writer leases."
+          },
+          "replacement frontier": {
+            "clause": "store.declare.replace-frontier",
+            "gloss": "The newest run carrying a `replace` source's complete state; reads cover it and every later run."
+          },
+          "replica": {
+            "clause": "store.replicate.descriptor",
+            "gloss": "A read-only copy of a store pulled from its bucket, refusing every write verb."
+          },
+          "retention window": {
+            "clause": "store.fold.retention",
+            "gloss": "How long folded runs and superseded snapshots stay before collection removes them."
+          },
+          "run manifest": {
+            "clause": "store.lay-out.run-manifest",
+            "gloss": "The `_manifest.json` whose conditional create commits one run's parts."
+          },
+          "sidecar": {
+            "clause": "store.index.declaration",
+            "gloss": "An index file beside a snapshot's parts: a vector graph, full-text index or key map, built at compaction."
+          },
+          "snapshot": {
+            "clause": "store.lay-out.snapshot-id",
+            "gloss": "An immutable compacted version of a table, named by its creation instant."
+          },
+          "snapshot manifest": {
+            "clause": "store.lay-out.snapshot-manifest",
+            "gloss": "The `_manifest.json` listing a snapshot's parts and indexes with their key versions."
+          },
+          "store identity": {
+            "clause": "store.init.store-identity",
+            "gloss": "The UUID naming one store across its synced copies."
+          },
+          "table pointer": {
+            "clause": "store.lay-out.table-pointer",
+            "gloss": "`_pointer.json`, naming a table's current snapshot; readers reach only snapshots it reaches."
+          },
+          "writer lease": {
+            "clause": "store.lease.ttl",
+            "gloss": "Time-bounded exclusive ownership of a pipeline, partition or table compaction, held by one node and renewed by conditional replace.",
+            "avoid": [
+              "ownership lease"
+            ]
+          }
         }
       },
       "surface": {
@@ -43511,6 +43971,16 @@
             "gloss": "Longest a wake holds its request before answering.",
             "const": "crates/contextful-core/src/surface/arm.rs::WAKE_ANSWER_SECS"
           }
+        },
+        "term": {
+          "control receipt": {
+            "clause": "surface.apply.receipt-message",
+            "gloss": "The signed JSON record of one applied control version and its parent."
+          },
+          "delegate": {
+            "clause": "surface.delegate.binding",
+            "gloss": "Deploy-bound code outside the binary that runs a store-driven item's body over one signed HTTP request."
+          }
         }
       },
       "topology": {
@@ -43715,6 +44185,24 @@
             "basis": "standard:aws-sqs-receive-message",
             "gloss": "Long poll of the first SQS receive call, the most SQS waits.",
             "const": "crates/contextful-outbound/src/aws_sqs.rs::WAIT_SECS"
+          }
+        },
+        "term": {
+          "build profile": {
+            "clause": "topology.package.profile",
+            "gloss": "A Cargo feature bundle selected at build time: `contextful-edge`, `contextful-full` or `contextful-control`."
+          },
+          "cadence lease": {
+            "clause": "topology.coordinate.cadence-lease-ttl",
+            "gloss": "The writer lease a reconciler holds on a deployment's cadence, so one fire runs per tick."
+          },
+          "conditional write": {
+            "clause": "topology.coordinate.primitive",
+            "gloss": "A write that succeeds only while a stored precondition holds; the one coordination primitive."
+          },
+          "lease row": {
+            "clause": "topology.coordinate.lease-row",
+            "gloss": "A catalog row naming one writer lease's key, holder, expiry and commit fence."
           }
         }
       }
@@ -50640,7 +51128,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "the_bootstrap_name_cannot_be_leased",
-        "line": 285,
+        "line": 286,
         "verdict": "performed",
         "proved": false
       }
@@ -50650,7 +51138,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "the_mint_credential_comes_from_the_adapters_behind_the_provider",
-        "line": 257,
+        "line": 258,
         "verdict": "performed",
         "proved": false
       }
@@ -50660,7 +51148,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "an_unanswered_bootstrap_refuses_before_any_mint",
-        "line": 272,
+        "line": 273,
         "verdict": "performed",
         "proved": false
       }
@@ -50670,7 +51158,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "a_leased_entry_retires_by_the_tighter_bound",
-        "line": 125,
+        "line": 126,
         "verdict": "performed",
         "proved": false
       }
@@ -50680,7 +51168,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "one_mint_per_name_per_window",
-        "line": 229,
+        "line": 230,
         "verdict": "performed",
         "proved": false
       }
@@ -50700,7 +51188,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "a_mint_is_a_bearer_post_naming_the_scope",
-        "line": 145,
+        "line": 146,
         "verdict": "performed",
         "proved": false
       }
@@ -50740,7 +51228,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "a_rejected_mint_credential_is_auth_expired",
-        "line": 175,
+        "line": 176,
         "verdict": "performed",
         "proved": false
       }
@@ -50750,7 +51238,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "the_mint_endpoint_is_tls_or_loopback_and_bypasses_the_proxy",
-        "line": 295,
+        "line": 296,
         "verdict": "performed",
         "proved": false
       }
@@ -50760,7 +51248,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "a_throttled_mint_carries_its_retry_after",
-        "line": 188,
+        "line": 189,
         "verdict": "performed",
         "proved": false
       }
@@ -50770,7 +51258,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "a_redirected_mint_refuses_and_the_target_sees_nothing",
-        "line": 317,
+        "line": 318,
         "verdict": "performed",
         "proved": false
       }
@@ -50780,7 +51268,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "another_client_error_is_a_permanent_configuration_fault",
-        "line": 198,
+        "line": 199,
         "verdict": "performed",
         "proved": false
       }
@@ -50810,7 +51298,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "each_leased_name_mints_alone",
-        "line": 343,
+        "line": 344,
         "verdict": "performed",
         "proved": false
       }
@@ -50820,7 +51308,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "server_and_transport_failures_are_transient_and_tried_once",
-        "line": 213,
+        "line": 214,
         "verdict": "performed",
         "proved": false
       }
@@ -50840,7 +51328,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "an_unknown_scope_is_a_configuration_fault_with_no_fallthrough",
-        "line": 160,
+        "line": 161,
         "verdict": "performed",
         "proved": false
       }
@@ -53945,6 +54433,16 @@
         "proved": false
       }
     ],
+    "corpus.registry.bad-term": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/terms.rs",
+        "name": "a_homonym_a_foreign_clause_or_an_avoided_term_raises_spec_term",
+        "line": 43,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "corpus.registry.bound-entry": [
       {
         "kind": "test",
@@ -53995,6 +54493,16 @@
         "proved": false
       }
     ],
+    "corpus.registry.glossary": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/terms.rs",
+        "name": "state_renders_every_term_into_the_glossary_and_lint_holds_it_to_regeneration",
+        "line": 67,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "corpus.registry.one-error-one-clause": [
       {
         "kind": "test",
@@ -54005,12 +54513,52 @@
         "proved": false
       }
     ],
+    "corpus.registry.prose-report": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/prose.rs",
+        "name": "the_prose_report_prints_each_alert_and_exits_zero",
+        "line": 36,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "corpus.registry.term": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/terms.rs",
+        "name": "a_term_names_its_defining_clause_and_a_gloss_of_at_most_25_words",
+        "line": 28,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "corpus.registry.term-first-use": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/terms.rs",
+        "name": "a_guide_first_use_without_the_defining_pointer_raises_spec_term_first_use",
+        "line": 98,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "corpus.registry.unregistered": [
       {
         "kind": "test",
         "path": "tools/spec/tests/integration/registry.rs",
         "name": "an_unregistered_error_or_an_entry_naming_a_missing_clause_is_a_registry_finding",
         "line": 78,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "corpus.registry.vale-terms": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/terms.rs",
+        "name": "state_writes_each_avoided_spelling_into_the_vale_term_rule",
+        "line": 84,
         "verdict": "performed",
         "proved": false
       }
@@ -54519,6 +55067,66 @@
         "path": "tools/spec/tests/integration/targets.rs",
         "name": "a_shape_fills_eight_roles_and_may_fill_a_realtime_projection_and_a_queue",
         "line": 90,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "corpus.topic.answers": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/topic.rs",
+        "name": "each_answer_sits_within_one_pointer_step_of_its_page",
+        "line": 57,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "corpus.topic.bad-topic": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/topic.rs",
+        "name": "a_page_without_an_entry_or_an_entry_without_a_page_raises_spec_topic",
+        "line": 92,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "corpus.topic.contract-pointers": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/topic.rs",
+        "name": "a_topic_page_holds_at_most_3_pointers_into_one_contract",
+        "line": 69,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "corpus.topic.file": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/topic.rs",
+        "name": "a_topic_page_carries_its_registry_title_and_at_most_600_words",
+        "line": 27,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "corpus.topic.non-normative": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/topic.rs",
+        "name": "a_topic_page_restates_no_rule_and_no_contract_file_links_one",
+        "line": 80,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "corpus.topic.pages": [
+      {
+        "kind": "test",
+        "path": "tools/spec/tests/integration/topic.rs",
+        "name": "the_corpus_holds_at_most_8_topic_pages",
+        "line": 44,
         "verdict": "performed",
         "proved": false
       }

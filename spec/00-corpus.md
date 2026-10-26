@@ -11,6 +11,7 @@ owns:
   - diagram
   - targets
   - guide
+  - topic
 ---
 
 # Corpus law
@@ -29,6 +30,8 @@ spec/
                         and one <contract>.toml fragment per contract
   adr/                  P<n>-<slug>.md principles, A-<contract>.md decisions
   guide/                <contract>.md, one teaching page per contract
+  topics/               <slug>.md, one page per cross-contract question
+  glossary.md           generated
   cards/                <contract>.md, generated
   pins.toml             clause id -> demonstrating artifact, plus the coverage floor
   roadmap.md            milestone -> operation set
@@ -106,7 +109,7 @@ unsettled: Does a replica that has never pulled report an empty store or refuse 
 
 ## registry
 
-Where a spelling is registered, the single owner of an error or a bound, the collision test, the source sites checked against each error, and the ratchets the registry records.
+Where a spelling is registered, the single owner of an error or a bound, the collision test, the source sites checked against each error, the ratchets the registry records, and the term table with the glossary and first-use rule it drives.
 
 - `fragment` — Each contract owns `spec/terms/<contract>.toml`, holding its operations, and its errors and named bounds each with a gloss.
   *P8*
@@ -126,6 +129,18 @@ Where a spelling is registered, the single owner of an error or a bound, the col
   *because a ratchet that only refuses growth leaves a reduction unrecorded, and the next change spends it unseen*
 - `drift` — A breach of {{corpus.registry.variant-shape}} or {{corpus.registry.variant-gloss}}, a performed refusal whose error has no defining site, and committed refusals with one past the `registry-committed-sites` ceiling raise `SpecRegistryDrift`.
   *because a committed clause with code is work status cannot see, and a performed refusal with no code passes on its test alone*
+- `term` — A fragment's `[term]` table maps a lowercase term to the clause of its own contract that defines it, a gloss of at most 25 words, and optional `avoid` spellings the term replaces.
+  *because a reader assumes two words name two things, and one registered spelling per meaning makes that assumption hold*
+- `bad-term` — A term registered in two fragments, a term naming a missing clause or another contract's clause, an empty or longer gloss, and an `avoid` spelling that is itself a term raise `SpecTerm`.
+  *because one spelling naming two meanings is the homonym the term table exists to refuse*
+- `glossary` — `contextful-spec state` renders `spec/glossary.md`: every registered term in alphabetical order with its gloss and its defining clause as a pointer; a committed copy differing from regeneration counts under {{corpus.render.generated}}.
+  *because a definition a reader cannot find by name serves only its writer*
+- `vale-terms` — `contextful-spec state` writes `.vale/styles/WriteTechnically/Terms.yml`, a Vale substitution rule mapping each `avoid` spelling to its term; a committed copy differing from regeneration counts under {{corpus.render.generated}}.
+  *because the registry decides each term, and a hand-edited copy of its list drifts from it*
+- `term-first-use` — A guide's first use of a registered term, in any case or inflection, sits in a paragraph carrying the term's defining clause as a pointer; first uses without one past the `term-first-use` ceiling raise `SpecTermFirstUse`.
+  *because a reader meets a term at its first use, and a definition reached later arrives after the misreading*
+- `prose-report` — `contextful-ci prose` runs Vale 3.25.1 with `.vale/vale.ini` over `spec/guide/` and `references/`, prints each alert and their count, and exits 0, naming an absent or other Vale version instead of refusing.
+  *because Vale finds candidates a reviewer decides, and a check that cannot judge an alert refuses nothing*
 
 ## reference
 
@@ -332,4 +347,21 @@ A non-normative teaching page per contract, and what keeps it from becoming a se
 - `bound` — A guide sentence holding a number equal to a bound value in its contract's fragment also holds the pointer to a clause owning a bound of that value; a sentence without one raises `SpecGuideBound`.
   *because a restated number drifts when its bound changes, and the pointer names the one place to change it*
 - `bad-guide` — A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.
+  *P8*
+
+## topic
+
+A non-normative page answering one question that spans contracts, the clauses it answers, and the bounds that keep it a route into the contracts.
+
+- `file` — A topic page `spec/topics/<slug>.md` carries front matter `topic`, one `# ` title equal to its entry's `title` in `spec/terms/topic.toml`, then prose of at most 600 words outside diagrams.
+  *because a topic routes a reader to the clauses, and a page past one screen of reading starts restating them*
+- `pages` — The corpus holds at most 8 pages under `spec/topics/`.
+  *because each topic answers a question the contracts split, and a growing set of them becomes a second corpus*
+- `answers` — A topic entry lists under `answers` the clause ids its page answers; the page reaches each within one pointer step, by pointing at it or at a clause whose statement points at it.
+  *because a reader of a topic follows one link to the rule, and a longer path is the search the page exists to save*
+- `contract-pointers` — A topic page holds at most 3 pointers into any one contract, counting a repeated pointer once.
+  *because a page pointing at most of one contract is that contract's guide, and a topic crosses contracts*
+- `non-normative` — A topic page holds no clause item and names no registered error, reaching each rule by `{{id}}`; no contract file links a topic page.
+  *because a rule restated on a topic page is a second home that drifts from the first*
+- `bad-topic` — A page without an entry or an entry without a page, a page off its shape, words, pointer bound or {{corpus.topic.non-normative}}, more pages than {{corpus.topic.pages}}, and an unreachable or missing answer raise `SpecTopic`.
   *P8*

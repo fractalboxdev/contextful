@@ -43,7 +43,7 @@ flowchart LR
   MED -->|"acquire, report"| LIM
   LIM -->|"permits"| MED
   MED -->|"allowlist, attach credentials"| VEND
-  MED -->|"infer on fenced data"| MODEL
+  MED -->|"infer on marked data"| MODEL
   GUEST -->|"batches + position"| RUN
   NATIVE -->|"batches + position"| RUN
   RUN -->|"committed batches"| LAND
@@ -248,7 +248,7 @@ unsettled: Where does an operator declare the pre-send hook a command-line run c
 
 ## infer
 
-Model requests: endpoint selection, prompt data markers and output provenance labels.
+Model requests: endpoint selection, data boundary markers and output provenance labels.
 
 - `model-endpoint` — Every model call resolves to one operator-configured OpenAI-compatible HTTP endpoint declared as a capability. The host owns the credential, rate limit and span; the component owns the prompt template and response schema.
   *A-topology#one-egress*
@@ -256,24 +256,24 @@ Model requests: endpoint selection, prompt data markers and output provenance la
   *A-connector#egress-passes-transport*
 - `vendor-sdk` — The workspace rejects a model-vendor SDK in any Rust crate under {{topology.compose.vendor-sdk}}. Changing providers requires only a URL edit.
   *A-topology#one-egress*
-- `data-fence` — No ingested value reaches a model outside a data boundary: marker pairs whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.
-- `fence-is-not-a-boundary` — The fence lowers the success rate of injected instructions and bounds nothing. No clause treats the output of a fenced call as trusted.
+- `data-fence` — No ingested value reaches a model outside its data boundary markers: a pair whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.
+- `fence-is-not-a-boundary` — Data boundary markers lower the success rate of injected instructions and bound nothing. No clause treats the output of a marked call as trusted.
   *because spotlighting reduces injection and guarantees nothing*
-- `output-taint` — Model output carries the least-trusted provenance label among its fenced inputs, and lands under that label.
+- `output-taint` — Model output carries the least-trusted provenance label among its marked inputs, and lands under that label.
   *because output re-landing as fresh data launders injected text*
-- `provenance-order` — Provenance labels order by trust: `operator` above `ingested:first-party` above `ingested:third-party`. A call fencing no value carries `operator`.
-  *because the least-trusted input is defined only over a total order, and a call fencing nothing sends the operator's template alone*
-- `marker-derivation` — Every marker of one call carries one token of 16 B, derived from every label and value the call fences, as fenced.
+- `provenance-order` — Provenance labels order by trust: `operator` above `ingested:first-party` above `ingested:third-party`. A call marking no value carries `operator`.
+  *because the least-trusted input is defined only over a total order, and a call marking nothing sends the operator's template alone*
+- `marker-derivation` — Every marker of one call carries one token of 16 B, derived from every label and value the call marks, as marked.
   *because closing one's own block then requires content containing the digest of a batch that contains it*
-- `replay` — The same values, labels, cap and rules fence to the same bytes, and a change to any value or label moves the token.
+- `replay` — The same values, labels, cap and rules mark to the same bytes, and a change to any value or label moves the token.
   *because a replayed call sends an identical prompt, and a token read from one batch closes no other*
-- `fenced-value-hygiene` — Fencing removes control characters other than newline and tab from a value.
+- `fenced-value-hygiene` — Marking removes control characters other than newline and tab from a value.
 - `value-cap` — A value past its declared character cap keeps its first cap characters followed by a truncation mark, and the closing line still follows its block.
-- `label-hygiene` — Fencing truncates a provenance label at 200 chars and flattens the label to one line without brackets. The label opens or closes no block.
+- `label-hygiene` — Marking truncates a provenance label at 200 chars and flattens the label to one line without brackets. The label opens or closes no block.
   *because a label is built from connector-supplied table names and row ids*
-- `empty-batch` — A call fencing no value renders an explicit no-data line instead of an empty section.
-- `operator-template` — The operator's prompt template stays unfenced in the system role. The idempotency hash covers the template alone.
-  *because hardening the fence leaves a dedup key intact*
+- `empty-batch` — A call marking no value renders an explicit no-data line instead of an empty section.
+- `operator-template` — The operator's prompt template stays unmarked in the system role. The idempotency hash covers the template alone.
+  *because hardening the markers leaves a dedup key intact*
 - `cutoffs` — A model reference carries a pinned snapshot id and pre-training and post-training cutoffs, each tagged `documented` or `estimated`. An undeclared cutoff compares as the call's own instant.
   *because tuning adds knowledge after pre-training, and an estimated cutoff often falls before the reported one*
 - `logprobs` — A call to an endpoint exposing token log-probabilities lands them with the call record.
@@ -761,7 +761,7 @@ exclude  = ["drafts/**"]
 base_url = "https://handbook.example.org"
 ```
 
-A connector manifest in the adopted posture:
+A connector manifest in the adopted manifest posture:
 
 ```toml
 name    = "vendor-metrics"

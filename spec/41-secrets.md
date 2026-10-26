@@ -115,19 +115,19 @@ unsettled: Does a profile other than development refuse plaintext credential mat
 
 ## lease
 
-The first credential adapter: lease declarations, mint requests, expiry, failures and the mint credential.
+The first credential adapter: credential lease declarations, mint requests, expiry, failures and the mint credential.
 
-- `scope-declaration` — `CONTEXTFUL_LEASE_SCOPES` lists the logical names hydrating as run-time leases, each optionally as `name=scope`.
+- `scope-declaration` — `CONTEXTFUL_LEASE_SCOPES` lists the logical names hydrating as credential leases, each optionally as `name=scope`.
 - `head-of-chain` — For a declared name, the resolver uses the lease provider without falling back to later adapters. A shadowing adapter raises under {{connector.resolve.shadowed-name}}.
   *A-connector#rotation-writes-forward*
 - `undeclared-name-defers` — An undeclared name sends the lease provider no request and leaves precedence among the other adapters untouched.
 - `empty-scope-set` — Selecting the lease backend with no scope declared raises `SecretLeaseScopesEmpty` at startup.
   *P3*
-- `lease` — The resolver holds a leased credential and its expiry together in memory for the run. The resolver evicts both at expiry. Neither enters a file, journal entry or audit record.
+- `lease` — The resolver holds a credential lease's value and its expiry together in memory for the run. The resolver evicts both at expiry. Neither enters a file, journal entry or audit record.
   *A-connector#credentials-references-workload*
-- `malformed-lease` — A lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient failure.
+- `malformed-lease` — A credential lease carrying no expiry, or one already past on arrival, raises `SecretMalformedLease` as a transient failure.
   *P6*
-- `cache-window` — A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the lease's own expiry.
+- `cache-window` — A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the credential lease's own expiry.
 - `retirement-margin` — An entry retires 10 percent of its window ahead of expiry, the margin capped at 30 s.
   *because a request sent near the boundary still lands inside the grant*
 - `endpoint` — The provider answers `POST <provider-url>/leases` carrying a bearer mint credential and body `{ "scope": "<lease scope>" }`.
@@ -143,7 +143,7 @@ The first credential adapter: lease declarations, mint requests, expiry, failure
   *P6*
 - `transient-class` — A `5xx` and a transport error are transient. The mint client retries nothing itself; the run's retry schedule is the one retry layer.
   *P6*
-- `vendor-requests-on-failure` — A run holding an expired lease whose provider is unreachable issues 0 requests to the vendor.
+- `vendor-requests-on-failure` — A run holding an expired credential lease whose provider is unreachable issues 0 requests to the vendor.
   *P6*
 - `calls-per-resolver` — A resolver issues at most 1 calls to the mint endpoint per declared name per lease window.
 - `bootstrap-credential` — The engine authenticates to the mint endpoint with one standing `secret://` credential scoped only to minting. Revoking this credential cuts off each leased source at its next expiry.

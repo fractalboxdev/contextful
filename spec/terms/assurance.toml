@@ -135,3 +135,8 @@ assurance-test-first-base-run    = { clause = "assurance.test.base-run-bound", v
 assurance-timing-iterations      = { clause = "assurance.measure.timing-iterations", value = 200, unit = "repeats", basis = "chosen", gloss = "Warm repeats per timed batch." }
 assurance-timing-batches         = { clause = "assurance.measure.timing-batches", value = 5, unit = "repeats", basis = "chosen", gloss = "Batches behind a timed figure." }
 assurance-trend-band             = { clause = "assurance.measure.trend-band", value = 25, unit = "percent", basis = "chosen", gloss = "Worsening past which a trend figure is annotated." }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"one home"            = { clause = "assurance.structure-tree.one-home", gloss = "The single engine implementation a capability resolves to, reached by every surface." }
+"capability registry" = { clause = "assurance.structure-tree.capability-registry", gloss = "`spec/capabilities.toml`, naming each engine capability with its home path and defining symbols." }

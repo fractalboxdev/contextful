@@ -160,7 +160,7 @@ fn a_rotated_secret_reaches_the_next_request_after_cache_expiry() {
 
 /// A hydration failure sends the vendor nothing and fails the call with the provider's failure, even when the guest
 /// swallows the refused request.
-// spec: connector.lease.vendor-requests-on-failure@1affc87c
+// spec: connector.lease.vendor-requests-on-failure@639c5f2f
 #[test]
 fn a_failed_hydration_sends_nothing_and_fails_the_call() {
     let server = Server::start(|_| Response::text(200, "ok"));

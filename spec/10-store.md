@@ -99,7 +99,7 @@ Store directories, run and snapshot manifests, table pointers, local catalogs an
   *because retention collects superseded snapshot directories, and a push decides a pointer's descent from the snapshot's own manifest*
 - `unrecognised-index-entry` — An `indexes` entry with an unsupported kind or fields parses as unrecognised. The manifest remains readable, probes ignore the entry, and rewrites preserve the entry byte for byte.
   *because a sidecar a newer builder records must neither refuse the table's reads nor vanish when an older build rewrites the manifest*
-- `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and publishing fence. Readers access only snapshots reachable from the pointer directly or through `parent` links.
+- `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and its commit fence. Readers access only snapshots reachable from the pointer directly or through `parent` links.
   *A-store#manifest-carries-format*
 - `manifest-default` — A field added to a manifest carries a default value.
 - `format-version` — Run and snapshot manifests carry `format_version` as `<major>.<minor>`. Snapshots referencing parts or segments use `2.0`; other manifests use `1.0`. An absent version reads as `1.0`. Readers parse newer minor versions as their own.
@@ -147,10 +147,10 @@ Project initialization, repeated initialization and project discovery when a com
   *A-store#synced-uuid-binds*
 - `name-conflict` — A project name other than `/`-separated `[A-Za-z0-9._-]` segments, or holding a `.` or `..` segment, raises `StoreProjectNameInvalid` before any file access. A `contextful.toml` declaring another name or no string `name` raises `StoreProjectConflict` and writes nothing.
   *because the name enters every project path, so a traversing segment escapes the project, and a rename orphans its store root*
-- `repeat` — If `contextful.toml` declares the same `[project] name`, init succeeds and preserves store content. Init rewrites only the posture under {{store.init.posture}} and a missing {{store.init.store-identity}}.
+- `repeat` — If `contextful.toml` declares the same `[project] name`, init succeeds and preserves store content. Init rewrites only the authoring posture under {{store.init.posture}} and a missing {{store.init.store-identity}}.
   *because a repeated init converges on the state the first one wrote, so scripts and onboarding run it unconditionally*
-- `posture` — `contextful init <name> --authoring-posture <posture>` prepends top-level `authoring_posture = "<posture>"` under {{authority.issue.posture-key}} when `contextful.toml` declares none, preserving every other byte. Init preserves a declared posture. Without the flag, init writes no posture.
-  *because the posture decides whether a write without a credential lands, so no default chooses it for the operator*
+- `posture` — `contextful init <name> --authoring-posture <posture>` prepends top-level `authoring_posture = "<posture>"` under {{authority.issue.posture-key}} when `contextful.toml` declares none, preserving every other byte. Init preserves a declared authoring posture. Without the flag, init writes none.
+  *because the authoring posture decides whether a write without a credential lands, so no default chooses it for the operator*
 - `discovery` — Without `--project`, a command takes the `[project] name` of the nearest `contextful.toml` in the working directory or an ancestor, and bases the store root, `.contextful/run/<project>/` and `.contextful/memory/<project>/` on that file's directory.
 - `default-declaration` — Under `--project`, a command bases every project path {{store.init.discovery}} names on the working directory and runs no discovery. A command given no `--declaration` reads the discovered `contextful.toml`, or the working directory's under `--project`.
 - `declaration-base` — For a located project, relative declaration paths resolve against the project's base directory rather than the working directory. These paths include a derive binding's `media_root` and path-form `command[0]`.
@@ -686,15 +686,15 @@ Merging bucket manifests across writers, verifying tombstones and retrying condi
 
 ## lease
 
-Exclusive pipeline and compaction leases, fencing values and cursor commits in the commit log.
+Exclusive pipeline and compaction writer leases, their commit fences, and cursor commits in the commit log.
 
-- `ttl` — A lease grants ownership for 10 min.
+- `ttl` — A writer lease grants ownership for 10 min.
 - `renewal` — A holder renews every 200 s by `If-Match` replace on the ETag it holds.
 - `clock-skew` — Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.
-  *because correctness rests on the fence, and the skew bound only sets how early a holder stops committing*
+  *because correctness rests on the commit fence, and the skew bound only sets how early a holder stops committing*
 - `held` — If a run finds an unexpired lease, the engine raises `LeaseHeld`, names the holder and expiry, and skips the run. The engine retries the run at the next reconciliation tick.
   *A-store#coordination-probed-compare*
-- `stale-fence` — If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.
+- `stale-fence` — If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher commit fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.
   *A-store#coordination-probed-compare*
 - `not-held` — Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.
   *A-store#coordination-probed-compare*
@@ -702,7 +702,7 @@ Exclusive pipeline and compaction leases, fencing values and cursor commits in t
   *A-run#incremental-position-bound*
 - `local-node` — A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.
   *P3*
-- `acquire` — Acquisition creates the lease object under `If-None-Match` or replaces an expired or released object under `If-Match` on its ETag. The acquired fence is one above the object's fence.
+- `acquire` — Acquisition creates the lease object under `If-None-Match` or replaces an expired or released object under `If-Match` on its ETag. The acquired commit fence is one above the object's commit fence.
   *A-store#coordination-probed-compare*
 - `pointer-fence` — Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.
   *A-store#coordination-probed-compare*

@@ -1,0 +1,8 @@
+extends: existence
+message: "'%s' reads as a prediction. Use the present tense, unless the event is genuinely later (\"the next time the backup runs\")."
+link: https://developers.google.com/style/tense
+level: warning
+ignorecase: true
+tokens:
+  - will
+  - won't

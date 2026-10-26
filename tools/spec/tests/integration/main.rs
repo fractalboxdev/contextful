@@ -17,6 +17,8 @@ mod size;
 mod state;
 mod tags;
 mod targets;
+mod terms;
+mod topic;
 mod ts_pins;
 mod types;
 mod upkeep;
@@ -39,6 +41,7 @@ impl Scratch {
         let root = dir.path().to_path_buf();
         let live = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         copy_dir(&live.join("spec"), &root.join("spec"));
+        copy_dir(&live.join(".vale"), &root.join(".vale"));
         let s = Scratch { _dir: dir, root };
         let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
         for record in lock["types"].as_object().into_iter().flat_map(|t| t.values()) {

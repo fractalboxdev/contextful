@@ -54,7 +54,7 @@ export const collectionRoute = (collection, id) => {
  */
 export const legacyRedirects = () => Object.fromEntries([
   ["/docs/guide/", "/docs/"],
-  ...["spec", "guide", "cards", "adr"].flatMap((collection) =>
+  ...["spec", "guide", "topics", "cards", "adr"].flatMap((collection) =>
     mdFiles(collection === "spec" ? SPEC_DIR : join(SPEC_DIR, collection)).map((file) => {
       const id = basename(file, ".md");
       return [`/${collection}/${id}/`, collectionRoute(collection, id)];
@@ -63,12 +63,12 @@ export const legacyRedirects = () => Object.fromEntries([
 ]);
 
 export const sitePaths = () => [...new Set([
-  "/", "/docs/", "/docs/specs/", "/docs/specs/contracts/", "/docs/specs/cards/", "/docs/specs/adr/",
+  "/", "/docs/", "/docs/specs/", "/docs/specs/contracts/", "/docs/specs/topics/", "/docs/specs/cards/", "/docs/specs/adr/",
   ...Object.values(legacyRedirects()).map((route) => route.split("#")[0]),
 ])];
 
 /** Machine-readable exports read the same Markdown as the content collections. */
-export const sourceDocuments = () => ["spec", "guide", "cards", "adr"].flatMap((collection) => {
+export const sourceDocuments = () => ["spec", "guide", "topics", "cards", "adr"].flatMap((collection) => {
   const directory = collection === "spec" ? SPEC_DIR : join(SPEC_DIR, collection);
   return mdFiles(directory).map((file) => ({
     route: collectionRoute(collection, basename(file, ".md")),
@@ -83,7 +83,7 @@ export const routeFor = (absPath) => {
   const stem = rel.slice(0, -3);
   if (!stem.includes("/")) return collectionRoute("spec", stem);
   const [dir, name, ...rest] = stem.split("/");
-  if (rest.length === 0 && ["adr", "guide", "cards"].includes(dir)) return collectionRoute(dir, name);
+  if (rest.length === 0 && ["adr", "guide", "topics", "cards"].includes(dir)) return collectionRoute(dir, name);
   return undefined;
 };
 

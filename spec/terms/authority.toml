@@ -132,3 +132,13 @@ scope-guard-walk               = { clause = "authority.refuse.guard-walk", value
 stale-object-report            = { clause = "authority.bound-redistribution.report", value = 100, unit = "files", basis = "chosen", gloss = "Objects a left-behind report names.", const = "crates/contextful-sync/src/sync.rs::STALE_OBJECT_REPORT" }
 zone-allow-set-entries         = { clause = "authority.place.allow-set-entries", value = 32, unit = "entries", basis = "chosen", gloss = "Patterns one zone allow-set holds.", const = "crates/contextful-core/src/place.rs::ALLOW_SET_ENTRIES" }
 zone-identifier-length         = { clause = "authority.place.identifier-length", value = 128, unit = "chars", basis = "chosen", gloss = "Characters in a zone identifier.", const = "crates/contextful-core/src/place.rs::ZONE_IDENTIFIER_LENGTH" }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"subject tuple"         = { clause = "authority.identify.subject-tuple", gloss = "The agent, host, principal, task scope, inference zone and incognito flag a credential binds." }
+"delegation profile"    = { clause = "authority.profile.delegation-profile", gloss = "The attenuable, chain-signed credential format delegated authority travels in." }
+"inference zone"        = { clause = "authority.place.zone-string", gloss = "Where a model call runs: `local:device`, `on-prem`, `private-cloud` or `public-cloud`, with an identifier." }
+"authoring posture"     = { clause = "authority.issue.authoring-posture", gloss = "A manifest's `session` or `per_request` setting deciding whose principal authors a table write." }
+"revocation epoch"      = { clause = "authority.revoke.epoch", gloss = "A counter per project, tenant and principal class whose bump invalidates that slice of outstanding authority." }
+"revocation identifier" = { clause = "authority.revoke.revocation-id", gloss = "The identifier each credential derivation carries, withdrawing its subtree alone." }
+"denylist"              = { clause = "authority.revoke.denylist", gloss = "The checkpoint's list of revoked credential identifiers." }
