@@ -400,7 +400,7 @@ The enum at `crates/contextful-core/src/surface/delegate.rs:221`, named by `run.
 | `A-run#disposable-execution-state` | `run.export.remote-state`, `run.export.writer-fenced` |
 | `A-run#external-signals-single` | `run.suspend.conflicting-resolution`, `run.suspend.expired-token`, `run.cancel.not-in-flight`, `run.cancel.distinct-terminal-status` |
 | `A-run#host-opens-execution` | `run.journal.substrate-port`, `run.own.host-scope` |
-| `A-run#host-registered-derive` | `run.own.host-scope`, `run.own.body-implementation`, `run.own.body-dependencies`, `run.own.rewind`, `run.own.rewind-unsafe`, `run.own.apply-retires-superseded`, `run.own.apply-retire-refused`, `run.own.unclosed-execution`, `run.own.checkpoint-commit`, `run.own.checkpoint-frontier`, `run.own.checkpoint-resume`, `run.own.checkpoint-scope`, `run.emit.task-version`, `run.emit.version-retained` |
+| `A-run#host-registered-derive` | `run.own.host-scope`, `run.own.unclosed-execution`, `run.own.body-implementation`, `run.own.body-dependencies`, `run.own.rewind`, `run.own.rewind-unsafe`, `run.own.apply-retires-superseded`, `run.own.apply-retire-refused`, `run.own.checkpoint-commit`, `run.own.checkpoint-frontier`, `run.own.checkpoint-resume`, `run.own.checkpoint-scope`, `run.emit.task-version`, `run.emit.version-retained` |
 | `A-run#incremental-position-bound` | `store.merge.cursor-recency`, `store.lease.cursor-kind`, `run.advance.field-rename`, `run.advance.walk-position`, `run.advance.unorderable-position`, `run.seed.declaration-missing`, `run.seed.ceiling-breached`, `run.seed.ceiling-unevaluable`, `run.seed.source-changed` |
 | `A-run#meter-reservation-holds` | `connector.meter.acquire-call` |
 | `A-run#minor-contract-bump` | `run.model.contract-major`, `run.model.contract-minor` |
