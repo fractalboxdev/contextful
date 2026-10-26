@@ -185,7 +185,7 @@ A minor adds defaulted fields an older build ignores; a major changes meaning. T
 
 ## pass-carries-untouched — A pass carries untouched parts and sidecar segments by reference
 
-A pass that rewrites every part writes bytes in proportion to the table, so each landing over a growing history costs more than the last.
+A `store.fold` pass that rewrites every part writes bytes in proportion to the table, so each landing over a growing history costs more than the last.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
