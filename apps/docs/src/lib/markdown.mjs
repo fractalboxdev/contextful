@@ -2,7 +2,7 @@
 import { dirname, resolve } from "node:path";
 import { visit, SKIP } from "unist-util-visit";
 import { existsSync, readFileSync } from "node:fs";
-import { ADR_DIR, corpusIndex, routeFor, SPEC_DIR } from "./corpus.mjs";
+import { ADR_DIR, corpusIndex, recordId, routeFor, SPEC_DIR } from "./corpus.mjs";
 
 // `{{contract.operation.subject}}` and `{{contract.operation}}` pointers, and bare record
 // ids (P4, D07, A-store), a contract ADR optionally naming its section (A-store#lease).
@@ -167,12 +167,25 @@ const addressClauses = (tree, contract, owns, index) => {
   }
 };
 
-/** An ADR section heading `<slug> — <decision>` takes `<slug>` as its anchor, the target of `A-<contract>#<slug>`. */
-const addressDecisions = (tree) => {
-  for (const h of tree.children) {
+/**
+ * An ADR section heading `<slug> — <decision>` takes `<slug>` as its anchor, the target of
+ * `A-<contract>#<slug>`, and is followed by links to the clauses the lock records citing it.
+ */
+const addressDecisions = (tree, record, { clauses, sections }) => {
+  const kids = tree.children;
+  for (let i = 0; i < kids.length; i++) {
+    const h = kids[i];
     if (h.type !== "heading" || h.depth !== 2) continue;
     const m = /^([a-z0-9-]+) — \S/.exec(plain(h));
-    if (m) h.data = { ...h.data, hProperties: { ...h.data?.hProperties, id: m[1] } };
+    if (!m) continue;
+    h.data = { ...h.data, hProperties: { ...h.data?.hProperties, id: m[1] } };
+    const citing = (sections.get(`${record}#${m[1]}`) ?? []).filter((id) => clauses.has(id));
+    if (!citing.length) continue;
+    kids.splice(i + 1, 0, el("citedBy", "p", "cited-by", [
+      el("citedByLabel", "span", "cited-by-label", [text("Cited by")]),
+      ...citing.map((id) => clauseLink(id, clauses.get(id), { type: "inlineCode", value: id })),
+    ]));
+    i++;
   }
 };
 
@@ -201,7 +214,7 @@ export function remarkCorpus({ lock } = {}) {
       );
       addressClauses(tree, contract, owns, index);
     }
-    if (from && dirname(from) === ADR_DIR) addressDecisions(tree);
+    if (from && dirname(from) === ADR_DIR) addressDecisions(tree, recordId(from), index);
 
     // `store.fold.partial-snapshot` links to its row, `store.fold` to its section, and
     // `StorePartialSnapshot` to the clause that owns it.
