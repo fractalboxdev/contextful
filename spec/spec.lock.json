@@ -43618,7 +43618,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/protocol_differential.rs",
         "name": "generated_protocol_cases_cover_the_three_nodes_and_every_step",
-        "line": 117,
+        "line": 127,
         "verdict": "performed",
         "proved": false
       }
@@ -43628,7 +43628,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/protocol_differential.rs",
         "name": "a_protocol_difference_prints_the_minimal_sequence_and_both_states",
-        "line": 57,
+        "line": 67,
         "verdict": "performed",
         "proved": false
       }
@@ -43648,7 +43648,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/protocol_differential.rs",
         "name": "a_step_the_model_and_the_harness_do_not_share_raises_vocabulary_drift",
-        "line": 83,
+        "line": 93,
         "verdict": "performed",
         "proved": false
       }
@@ -65532,11 +65532,19 @@
     "store.lease.pointer-fence": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/protocol_differential.rs",
+        "name": "fixed_seed_replays_protocol_cases_against_the_store",
+        "line": 30,
+        "verdict": "performed",
+        "proved": true
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-sync/tests/integration/pull.rs",
         "name": "a_publish_under_a_superseded_fence_loses_its_condition",
         "line": 431,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       },
       {
         "kind": "theorem",
@@ -65544,7 +65552,7 @@
         "name": "no_commit_after_successor_acquire",
         "line": 343,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       }
     ],
     "store.lease.renewal": [
@@ -65560,11 +65568,19 @@
     "store.lease.stale-fence": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/protocol_differential.rs",
+        "name": "fixed_seed_replays_protocol_cases_against_the_store",
+        "line": 29,
+        "verdict": "performed",
+        "proved": true
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-context/tests/integration/run_commit.rs",
         "name": "a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable",
         "line": 83,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       },
       {
         "kind": "theorem",
@@ -65572,7 +65588,7 @@
         "name": "no_commit_after_successor_acquire",
         "line": 342,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       }
     ],
     "store.lease.ttl": [

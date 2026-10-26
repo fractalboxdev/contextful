@@ -10,4 +10,6 @@ clauses = [
     "authority.grant.template-allowlist",
     "connector.widen.host-inclusion",
     "connector.widen.host-witness",
+    "store.lease.pointer-fence",
+    "store.lease.stale-fence",
 ]
