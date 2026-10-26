@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { gunzipSync } from "node:zlib";
 import { legacyRedirects, readLock, registeredErrors, routeFor, sitePaths, SPEC_DIR } from "../src/lib/corpus.mjs";
 
 const origin = "https://contextful.fractalbox.dev";
@@ -81,7 +82,7 @@ test("redirects, sitemap and machine-readable exports cover the canonical routes
 });
 
 const lock = readLock();
-const pages = () => sitePaths().filter((path) => path.startsWith("/docs/"));
+const pages = () => [...sitePaths().filter((path) => path.startsWith("/docs/")), "/docs/search/"];
 
 test("each contract page folds every Why into details and addresses every clause", () => {
   const byRoute = Map.groupBy(lock.clauses, (clause) => routeFor(resolve(SPEC_DIR, "..", clause.file)));
@@ -108,7 +109,8 @@ test("every clause and error reference carries a server-rendered statement previ
 test("every error code span links to its owning clause outside that clause", () => {
   const errors = registeredErrors();
   const failures = [];
-  for (const path of pages()) {
+  // The search page names example terms; the Markdown pages carry the references.
+  for (const path of sitePaths().filter((path) => path.startsWith("/docs/"))) {
     const html = htmlFor(path);
     for (const m of html.matchAll(/<code>([A-Z][A-Za-z0-9]+)<\/code>/g)) {
       const owner = errors.get(m[1])?.clause;
@@ -127,6 +129,20 @@ test("every error code span links to its owning clause outside that clause", () 
   assert.deepEqual(failures, []);
 });
 
+test("the search index holds every clause id and every registered error", () => {
+  const dir = "dist/pagefind/fragment";
+  const fragments = readdirSync(dir).map((f) => JSON.parse(gunzipSync(readFileSync(join(dir, f))).toString().replace(/^pagefind_dcd/, "")));
+  const byTitle = new Map(fragments.map((f) => [f.meta?.title, f]));
+  const missing = lock.clauses.filter((c) => !byTitle.get(c.id)?.url.endsWith(`#${c.id}`)).map((c) => c.id);
+  assert.deepEqual(missing, []);
+  const unindexed = [...registeredErrors()].filter(([name, { clause }]) => !byTitle.get(clause)?.content.includes(name)).map(([name]) => name);
+  assert.deepEqual(unindexed, []);
+  assert.ok(htmlFor("/docs/search/").includes('src="/pagefind/pagefind-ui.js"'));
+  assert.ok(!htmlFor("/docs/search/").includes("data-pagefind-body"), "the search page stays out of its own index");
+  assert.ok(!fragments.some((f) => f.url === "/docs/search/"));
+  assert.ok(htmlFor("/docs/").includes('href="/docs/search/"'));
+});
+
 test("pinned clauses show their pins beside the id", { skip: !lock.pins && "the lock carries no pins" }, () => {
   for (const id of Object.keys(lock.pins ?? {})) {
     const clause = lock.clauses.find((c) => c.id === id);
@@ -139,6 +155,6 @@ test("pinned clauses show their pins beside the id", { skip: !lock.pins && "the 
 
 test("the glossary renders as a page when spec/glossary.md exists", { skip: !existsSync(join(SPEC_DIR, "glossary.md")) && "spec/glossary.md is absent" }, () => {
   assert.ok(sitePaths().includes("/docs/specs/glossary/"));
-  assert.ok(htmlFor("/docs/specs/glossary/").includes('<article class="prose"'));
+  assert.ok(htmlFor("/docs/specs/glossary/").includes('<article class="prose" data-pagefind-body>'));
   assert.ok(htmlFor("/docs/").includes('href="/docs/specs/glossary/"'));
 });
