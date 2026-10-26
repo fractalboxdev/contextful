@@ -4,15 +4,37 @@ contract: read
 
 # Reading and memory
 
-## What it is for
+## The problem the read face solves
 
-SQL, templates, ranked retrieval and memory share relations, admission, ranking and the envelope. Reads write no rows. Memory uses the run path and table enforcement.
+A caller, such as an agent holding a capability token, asks questions of stored tables.
+The caller sees only rows its grant admits, and no read writes a row. SQL queries,
+ranked retrieval and memory recall all pass through the same registered relations and
+return the same response shape.
 
-## How it works
+The example agent wants the current status of one resource.
 
-Each connection starts by registering one view per table the manifests name ({{read.register.connection-views}}). Each view carries the caller's restriction, so a bare table name anywhere means the caller's restricted relation ({{read.register.bare-name}}). The tool set is closed ({{read.register.tool-set}}). Reads under one key share a pooled connection ({{read.cache.session-pool}}).
+## Naming what a caller reads
 
-The guard reads the engine's parse tree ({{read.guard.engine-own-parse}}), admits exactly one read-only SELECT ({{read.guard.single-read-only-statement}}), and walks the whole tree ({{read.guard.whole-tree-walk}}), checking every base relation against the registered set ({{read.guard.relation-allowlist}}). Authorship decides whether the guard runs: operator text runs raw, token-holder text is gated ({{read.guard.statement-provenance}}); the command line carries the operator verb ({{read.query.operator-verb}}). Caller parameters bind by name or contiguous number ({{read.guard.query-binding}}). Templates are checked once at startup ({{read.guard.startup-time-check}}) and bind arguments with no coercion ({{read.guard.template-binding}}).
+Each session connection registers one view per manifest table
+({{read.register.connection-views}}). A bare table name in the caller's SQL resolves
+to that caller's restricted view ({{read.register.bare-name}}). The tool set is closed,
+so a caller reaches nothing outside it ({{read.register.tool-set}}).
+
+The agent first calls `context.describe` and learns row counts, declared indexes and
+the published row ceiling ({{read.register.describe-payload}}).
+
+## Which statements run
+
+The guard reads the SQL engine's own parse tree, so no keyword list decides admission
+({{read.guard.engine-own-parse}}). The text has to parse to exactly one read-only
+SELECT ({{read.guard.single-read-only-statement}}).
+
+The agent joins `documents` to a `read_parquet` call, and the guard refuses the table
+function ({{read.guard.table-function}}). It retries with a join to a table it holds
+no grant on; the error echoes only the requested name ({{read.guard.unregistered-relation}}).
+
+Operator statements run without that guard, and no network interface exposes them
+({{read.guard.statement-provenance}}). The operator runs a raw statement with `contextful query` ({{read.query.operator-verb}}).
 
 ```mermaid
 sequenceDiagram
@@ -37,7 +59,26 @@ sequenceDiagram
   end
 ```
 
-Ranked reads use `corpus.retrieve` ({{read.retrieve.ranked-call}}) over a prefix and table list ({{read.retrieve.table-list}}): content tokens ({{read.retrieve.content-tokens}}), a per-table recency window ({{read.retrieve.candidate-window}}) that sidecars widen ({{read.retrieve.sidecar-generates-candidates}}), a full-text probe ({{read.retrieve.fulltext-probe}}) and a relevance floor ({{read.retrieve.relevance-floor}}). Ranking fuses cosine with BM25 ({{read.rank.fusion}}); a question's timeframe is a tier, not a filter ({{read.rank.question-window-is-a-tier}}). A missing lexical backend uses token scoring with recency breaking ties ({{read.rank.degradation-not-error}}).
+## The response
+
+Every transport serializes one projection: columns, rows, `truncated` and optional
+blocks ({{read.respond.one-projection}}). `truncated` is set from an over-fetched probe
+row, never from comparing counts ({{read.respond.truncation-is-exact}}). Zero rows is a
+success, not an error ({{read.respond.zero-rows-is-success}}).
+
+## Ranked retrieval
+
+The agent switches to `corpus.retrieve` with the query "resource status" and a filter on
+`resource_id` ({{read.retrieve.ranked-call}}). A table lacking `resource_id`
+contributes no rows instead of running unfiltered ({{read.retrieve.unsatisfiable-arm-drops}}).
+
+Ranking fuses vector cosine with lexical BM25 scores ({{read.rank.fusion}}). A
+question's timeframe orders rows but drops none ({{read.rank.question-window-is-a-tier}}).
+A stored vector names its producing model, and a query embedded by another model fails
+({{read.embed.query-model}}).
+
+To report that no document mentions a status change, the agent counts rows. A low top
+score proves no absence ({{read.respond.coverage-is-a-count}}).
 
 ```mermaid
 sequenceDiagram
@@ -61,7 +102,20 @@ sequenceDiagram
   R-->>A: ranked rows with the retrieval block
 ```
 
-Time travel takes three bounds on every read tool ({{read.register.bound-arguments}}, {{read.register.available-bound-argument}}): `as_of` freezes the corpus, `valid_as_of` picks what was true, and `available_as_of` is the simulated present ({{store.available-time.available-as-of}}). An `ASOF JOIN` matches on availability ({{read.as-of-join.per-row-bound}}).
+Reads under one key reuse a pooled session and its connections
+({{read.cache.session-pool}}).
+
+## Reading at an earlier time
+
+Every read tool takes three bounds: `as_of` freezes the corpus, `valid_as_of` picks what
+was true, and `available_as_of` sets a simulated present. An `ASOF JOIN` matches each
+row on availability ({{read.as-of-join.per-row-bound}}).
+
+A read naming a published model build resolves that build, and an unknown build fails
+instead of widening to the latest state ({{read.resolve-pin.unknown-build}}).
+
+A credential carrying a horizon caps the simulated present. A call asking for a later
+`available_as_of` fails, naming the argument ({{read.horizon.exceeds-horizon}}).
 
 ```mermaid
 sequenceDiagram
@@ -86,15 +140,22 @@ sequenceDiagram
   T-->>A: rows with the three bounds echoed
 ```
 
-Every transport serializes one projection ({{read.respond.one-projection}}). Internals carries bindings ({{read.respond.query-internals-parameters}}). Tools without SQL have no deadline ({{read.register.duration-no-statement}}). Deadlines and byte bounds follow {{read.respond.duration-ceiling}} and {{read.respond.byte-ceiling}}. A row ceiling sets `truncated` through an over-fetched probe row ({{read.respond.truncation-is-exact}}); a byte cut also sets it, and each cut names its cause ({{read.respond.truncation-cause}}). Zero rows is a success ({{read.respond.zero-rows-is-success}}). A pinned build never silently widens to the latest state ({{read.resolve-pin.unknown-build}}).
+`context.reference` resolves one stored citation, and an erased source answers
+`erased`, distinct from `missing` ({{read.reference.erased-verdict}}).
 
-Memory uses ordinary store tables ({{topology.compose.memory-substrate}}, {{read.declare.availability}}). Synthesis retries invalid extraction ({{read.synthesize.extract-attempts}}), then dead-letters with its cursor held ({{read.synthesize.dead-letter}}). Ambiguous mentions dead-letter ({{read.resolve-entity.ambiguous-mention}}). Recall gates evidence through the caller's session ({{read.recall.evidence-unresolved}}). The CLI shares keyed recall ({{read.recall.cli-verb}}). Predictions settle through {{read.settle.predict-verb}}, {{read.settle.observe-verb}}, {{read.settle.label-join}} and {{read.settle.calibration-verb}}. An alias explains to one card ({{read.resolve-entity.knowledge-card}}), claims needing their own grant ({{read.resolve-entity.card-authorization}}).
+## Notifications
 
-Relations, cadence, confidence and usage follow {{read.declare.reserved-relations}}, {{read.synthesize.cadence}}, {{read.synthesize.confidence-calibration}} and {{read.recall.usage-ledger}}.
+A subscription notifies each committed run once, in commit order, with no row content
+({{read.subscribe.commit-order}}). A resume position naming no committed run fails
+and names the oldest one available ({{read.subscribe.position-unavailable}}).
 
-An edge walk ({{read.traverse.call}}) crosses readable, cited edges ({{read.traverse.enforced-edges}}) within bounds ({{read.traverse.frontier-cap}}).
+## Memory
 
-Operator claims land through {{read.revise.served-write}} under credential-bound scope ({{read.revise.served-scope}}); browser requests refuse ({{read.revise.browser-request}}).
+Memory is claims about entities, kept in ordinary store tables with reserved relation
+types ({{read.declare.reserved-relations}}). A synthesis pass extracts claims from
+source rows and retries an invalid response a bounded number of times
+({{read.synthesize.extract-attempts}}). An exhausted batch goes to a dead-letter
+table, and the cursor holds ({{read.synthesize.dead-letter}}).
 
 ```mermaid
 sequenceDiagram
@@ -123,25 +184,15 @@ sequenceDiagram
   R-->>A: facts whose evidence the caller reads
 ```
 
-## Worked example
+A mention matching two identities dead-letters its claim instead of guessing
+({{read.resolve-entity.ambiguous-mention}}). A writable server accepts operator claims
+through one direct-write route ({{read.revise.served-write}}).
 
-An agent with a capability token wants one resource's current status.
+The agent asks memory what the workspace concluded about the resource. One fact cites a
+row masked for this caller, so recall suppresses that fact and answers with the rest
+({{read.recall.evidence-unresolved}}).
 
-- It calls `context.describe` and learns row counts, declared indexes and the published row ceiling ({{read.register.describe-payload}}), which the engine applies exactly as published ({{read.register.advertised-is-enforced}}).
-- It sends SQL that joins `documents` to a `read_parquet` call, and the guard rejects the table function ({{read.guard.table-function}}). It retries with a join to `restricted_records`, which it holds no grant on; the error echoes only what it asked for ({{read.guard.unregistered-relation}}).
-- It switches to `corpus.retrieve` with the query "resource status" and a filter on `resource_id`. A table lacking `resource_id` drops its arm instead of running unfiltered ({{read.retrieve.unsatisfiable-arm-drops}}). The `documents` vector sidecar sits under its size cap ({{read.retrieve.sidecar-size-cap}}), so the probe adds candidates, each re-joined through enforcement ({{authority.compose.vector-arm}}).
-- Rows keep one copy per table and row key ({{read.retrieve.row-key-dedup}}), sort in-window first, and return with the `contextful.retrieval` block ({{read.rank.retrieval-block}}). Counts reflect delivered rows ({{read.rank.delivered-counts}}). Rows carry integer scores; the lexical engine's float score stays inside ({{read.rank.internal-score-stays-internal}}).
-- To report that no document mentions a status change, the agent counts rows, never trusting a low top score ({{read.respond.coverage-is-a-count}}).
-- It asks memory what the workspace concluded about the resource. One fact cites a row in a table masked for this caller, so recall suppresses that fact and still answers with the rest ({{read.recall.evidence-unresolved}}).
-
-## Where to look
-
-Stored citations share {{read.reference.call}}; {{read.reference.erased-verdict}} distinguishes absence, {{read.reference.index-visibility}} controls metadata, and {{read.reference.frontier}} binds publication.
-
-- What a connection can name: `read.register`.
-- Which statements run: `read.guard`.
-- The envelope and its encodings: `read.respond`.
-- Candidates and order: `read.retrieve`, `read.rank`.
-- Build pins and time bounds: `read.resolve-pin`.
-- Memory writes and reads: `read.synthesize`, `read.revise`, `read.recall`, `read.resolve-entity`, `read.traverse`.
-- Predictions and outcomes: `read.settle`.
+An edge walk follows only edges the caller reads, with citations that resolve
+({{read.traverse.enforced-edges}}). A prediction registers through
+`contextful memory predict` and settles against later observations
+({{read.settle.predict-verb}}).
