@@ -285,6 +285,9 @@ a.clause-pin:hover { color: var(--accent); }
 /* A scrolling table clips an absolute preview, so inside one it docks to the viewport. */
 .table-wrap .clause-preview { position: fixed; left: 16px; right: 16px; top: auto; bottom: 16px; width: auto; max-width: 40rem; margin: 0 auto; }
 .record-ref { font-family: var(--font-mono); font-size: 0.86em; }
+/* Under an ADR section, the clauses that cite it. */
+.prose p.cited-by { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.6rem; margin: -0.25rem 0 1rem; font-size: 0.85rem; }
+.cited-by-label { font-size: 0.72rem; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-muted); }
 
 .search { --pagefind-ui-scale: 0.85; --pagefind-ui-primary: var(--accent); --pagefind-ui-text: var(--fg); --pagefind-ui-background: var(--bg); --pagefind-ui-border: var(--border); --pagefind-ui-tag: var(--bg-soft); --pagefind-ui-border-width: 1px; --pagefind-ui-border-radius: 6px; --pagefind-ui-font: var(--font-sans); }
 .search .pagefind-ui__result-title { overflow-wrap: anywhere; }

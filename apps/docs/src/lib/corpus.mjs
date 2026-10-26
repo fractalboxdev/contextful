@@ -201,7 +201,8 @@ export const lockPins = (lock) => {
 
 /**
  * Clause id → `{ route, statement, pins }`, `contract.operation` → `{ url, lede }` of the
- * owning section, record id → route, error identifier → `{ clause, gloss }`. Read fresh on
+ * owning section, record id → route, error identifier → `{ clause, gloss }`, and ADR
+ * section `A-<contract>#<slug>` → the ids of the clauses citing it. Read fresh on
  * every call so `astro dev` tracks edits. `lock` stands in for `spec/spec.lock.json`.
  */
 export const corpusIndex = (lock = readLock()) => {
@@ -222,5 +223,5 @@ export const corpusIndex = (lock = readLock()) => {
   }
   const records = new Map();
   for (const f of mdFiles(ADR_DIR)) records.set(recordId(f), routeFor(join(ADR_DIR, f)));
-  return { clauses, operations, records, errors: registeredErrors() };
+  return { clauses, operations, records, errors: registeredErrors(), sections: new Map(Object.entries(lock.sections ?? {})) };
 };
