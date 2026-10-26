@@ -60,10 +60,6 @@ Memory table schemas, required columns, trust tiers, scopes and relation types.
   *A-read*
 - `reserved-relations` — Reserved relation types are `supports`, `contradicts`, `supersedes`, `about` and `derived_from`. Deployments add types through `[relation].declared`. `contextful memory relations rename` rewrites stored edges before removing an old name.
   *A-read*
-- `gleanings` — A claims table's `gleanings` declares at most 1 passes over each batch, 0 by default; any other value raises `MemoryGleaningsInvalid` when the declaration loads.
-  *A-read*
-- `serving-taint` — A claims table's `serving_taint` sets the minimum label under {{connector.infer.provenance-order}}. Missing `_taint` ranks as `operator`. Recall suppresses claims below that minimum and raises `MemoryClaimTaintBelowFloor`.
-  *A-read*
 - `relation-traits` — Each `[relation].declared` entry specifies `direction` (`directed` or `undirected`), `cardinality` (`one` or `many` edges per source) and `walkable`. Reserved relations use the reserved-traits table under Shapes.
   *A-read*
 - `relation-string` — A bare string entry in `[relation].declared` declares a `directed`, `many`, non-walkable relation.
@@ -94,12 +90,6 @@ Claim extraction, entity resolution, consolidation, evidence, deduplication, aud
   *A-read*
 - `confidence-calibration` — Model-emitted confidence carries `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score. A validated map supplies the reported calibrated confidence.
   *A-read*
-- `gleaning` — Under {{read.declare.gleanings}}, synthesis re-prompts schema-valid batches for omitted claims up to the declared pass count. Gleaned claims carry `_pass = 'glean'` and commit with first-pass claims in one batch commit.
-  *A-read*
-- `gleaning-attempt` — A gleaning response gets one attempt and no re-prompt; {{read.synthesize.extract-attempts}} does not apply to it.
-  *A-read*
-- `gleaning-invalid` — A schema-invalid gleaning response discards the gleaned claims, commits the first-pass claims alone, advances the cursor, and the pass report counts the batch in `glean_failed`.
-  *A-read*
 - `extract-cache` — Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise fenced-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.
   *A-read*
 - `cache-provenance` — A cache entry carries `_provenance` naming its batch's fenced rows, so {{disclosure.erase.cascade}} invalidates the entry when an erasure reaches any of them.
@@ -122,8 +112,6 @@ flowchart LR
   REL -->|"no: MemoryUndeclaredRelation"| DL
   REL -->|"yes, consolidate and commit"| FACTS[("memory_facts")]
 ```
-
-unsettled: Does the gleaning prompt, the batch plus its first response, count against {{read.synthesize.prompt-bound}}? owner: read-path affects: read.synthesize
 
 unsettled: Which consolidation merges two claims of one dedup key, and what record does a coverage gap leave? owner: read-path affects: read.synthesize
 

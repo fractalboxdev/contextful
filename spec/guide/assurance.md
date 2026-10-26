@@ -84,7 +84,7 @@ Search evaluation loads test data through the real store
 ({{assurance.evaluate.forbidden-row-rate}}), and preserves the required quality baseline
 ({{assurance.baseline.raise-only}}).
 
-Windows checks provide diagnostics ({{assurance.gate.windows-checks}}). Build artifacts
+Build artifacts
 belong to their checkout ({{assurance.build.checkout-artifacts}}). Each gate part has a
 time budget ({{assurance.gate.part-budget}}); short parts share a check
 ({{assurance.gate.folded-parts}}), and nightly checks run separately

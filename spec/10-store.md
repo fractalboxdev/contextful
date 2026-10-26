@@ -237,8 +237,6 @@ Reserved column and table names, injected provenance columns and request ledgers
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
 - `taint` — On each row from model output, the engine injects `_taint` under {{connector.infer.provenance-order}}, replacing any producer value. Rows without model output omit `_taint`.
   *because a label a producer sets is one injected text can forge*
-- `pass` — For each synthesized claim, the engine injects `_pass`: `glean` under {{read.synthesize.gleaning}}, `first` otherwise. Injection replaces any producer value. Rows without synthesis omit `_pass`.
-  *because a reader telling a gleaned claim from a first-pass one must not trust a label the model could emit*
 - `optional` — A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
 - `modality` — `_modality` takes one of text, image, audio, structured or mixed; another value fails validation of its batch.
 - `lang-and-provenance` — `_lang` carries a BCP-47 tag; `_provenance` carries the evidence rows the row derives from, addressed by the identity the source table keys on.

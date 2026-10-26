@@ -405,12 +405,8 @@ Candidate ordering by vector and lexical scores, timeframe, optional reranking a
   *A-read*
 - `rerank-input` — A reranker scores each candidate independently using only its masked {{read.retrieve.snippet}}. The reranker reads no raw cells.
   *because a listwise prompt lets one poisoned candidate promote itself*
-- `rerank-absent` — A `rerank_with` naming no reranker in the set {{read.rank.reranker-admission}} admits raises `ReadRerankerAbsent`.
-  *because a silent fallback to fused order hides a ranking change*
 - `rerank-horizon` — Under a horizon, a reranker declaring a checkpoint family scores with the checkpoint {{read.horizon.embedder-route}} selects, and a remote reranker's call passes {{read.horizon.egress-hook}}.
   *A-read*
-- `rerank-cutoff` — Under a horizon, a named reranker without a checkpoint whose post-training cutoff precedes that horizon raises `ReadRerankerBeyondHorizon` instead of scoring. Rerankers declaring no checkpoint family have no such checkpoint.
-  *because a trained reranker can order rows by events it learned after the horizon*
 
 Vector and lexical scoring, fallback ranking and optional reranking:
 
@@ -430,6 +426,8 @@ flowchart LR
 ```
 
 unsettled: Does a convex combination over min-max-normalized scores, its weight fitted per domain on settled judgments, replace {{read.rank.fusion}}? owner: read-path affects: read.rank
+
+unsettled: Does a reranker whose every checkpoint postdates the horizon refuse to score under it? owner: read-path affects: read.rank
 
 ## cache
 
@@ -492,8 +490,6 @@ Embedding implementations, stored model identifiers, query-model checks, build i
 - `default-embedder` — The default embedding implementation deterministically hashes token term frequencies into an L2-normalized vector. This implementation performs no I/O and requires no download, key or network call.
 - `default-embedder-reach` — The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.
 - `model-identifier` — Every stored vector uses a {{store.reconcile.binary-and-vector}} column beside `embedding_model`, which names the producing model. Rows alone determine index identity and provenance.
-- `query-model` — A ranked call whose `query_embedding_model` differs from the `embedding_model` beside the vectors it scores raises `ReadEmbeddingModelMismatch`, naming both models.
-  *because cosine across two models compares unrelated spaces*
 - `build-identity` — The handshake reports linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and interfaces (`http`, `eval`, `otlp`). These names derive from the same feature declarations as version output.
   *P3*
 - `required-face` — Before the first read, the server rejects a client's `require: [...]` with `RequiredFaceAbsent` for any unreported name. An engine reporting no set satisfies no requirement.

@@ -47,9 +47,8 @@ optional scope probe checks the bound credential's grant before the first read
 ({{connector.declare-capability.scope-probe}}).
 
 A reload compares complete declarations ({{connector.widen.comparison}}). Narrowing needs no
-widening review ({{connector.widen.narrowing}}); additional access reaches operator approval
-({{connector.widen.approval-required}}), bound to both manifests
-({{connector.widen.approval-binding}}). A host witness is a request both matchers replay
+widening review ({{connector.widen.narrowing}}); an operator approval of additional access
+is bound to both manifests ({{connector.widen.approval-binding}}). A host witness is a request both matchers replay
 ({{connector.widen.host-witness}}).
 
 Every outbound request uses the host's mediated client

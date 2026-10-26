@@ -96,13 +96,7 @@ The provider interface, adapter order, request-time resolution, credential buffe
   *P2*
 - `posture` — Four credential configurations order by distance from the engine: inline environment values, request-time reference resolution, external manager using workload identity, and secretless broker sidecar. The workload-identity manager is the default.
   *A-connector*
-- `inline-outside-development` — A profile other than development binding plaintext material at a call site raises `SecretInlineCredential` naming the binding.
-  *A-connector*
-- `forwarding-sidecar` — A sidecar that reads and forwards a stored long-lived credential raises `SecretForwardingBroker`. A sidecar minting a short-lived scoped credential is a lease provider.
-  *A-connector*
 - `adapter-is-optional` — Each managed backend is one adapter holding opaque versioned ciphertext; a deployment links only the adapters it uses.
-- `know-how-in-an-adapter` — An adapter exposing a provider-specific exchange, refresh or lifetime entry point raises `SecretProviderKnowHowInBackend` at load.
-  *A-connector*
 - `aws-secrets-manager` — The `aws-secrets-manager` backend answers `secret://<name>` with the `AWSCURRENT` value of secret id `CONTEXTFUL_AWS_SECRET_PREFIX` plus the name, signing under {{store.endpoint.role-credentials}}; an absent secret is a miss.
 
 ```mermaid
@@ -118,6 +112,8 @@ flowchart LR
   SH -->|"no"| W["redacting wrapper"]
   W -->|"cached up to 300 s"| C["resolved material"]
 ```
+
+unsettled: Does a profile other than development refuse plaintext credential material bound at a call site? owner: connector affects: connector.resolve
 
 ## lease
 

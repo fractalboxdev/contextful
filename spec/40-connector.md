@@ -171,10 +171,6 @@ Comparison of a candidate connector manifest with its admitted predecessor, and 
   *A-connector*
 - `host-witness` — Every reported host witness passes the candidate's outbound matcher and fails the predecessor's outbound matcher.
   *A-connector*
-- `unresolved` — A comparison establishing neither inclusion nor a replayed witness raises `ConnectorWidenUnresolved`, naming the dimension and reason; reload retains the admitted manifest.
-  *A-connector*
-- `approval-required` — Additional access without a matching operator approval raises `ConnectorWidenApprovalRequired`, carrying a witness for each widened dimension; reload retains the admitted manifest.
-  *A-connector*
 - `approval-binding` — An approval records the authenticated operator, connector identity and both complete manifest digests; publication atomically checks the admitted digest and applies only that candidate, preserving {{run.own.admission-pin}}.
   *A-connector*
 - `narrowing` — A candidate included in the admitted grant needs no widening approval; comparison grants no exemption from other load checks.
@@ -186,7 +182,6 @@ unsettled: Which operator authorization action and durable approval store serve 
 
 - `connector.widen.host-inclusion`: WHEN `*.eu.example.com` replaces `*.example.com`, THEN host inclusion succeeds.
 - `connector.widen.host-witness`: WHEN `*.example.com` replaces `x.example.com`, THEN a host witness differs from the already admitted exact host.
-- `connector.widen.approval-required`: WHEN a candidate adds environment name `REPORT_TOKEN` without operator approval, THEN reload retains the admitted manifest and names that environment access.
 - `connector.widen.approval-binding`: WHEN the admitted digest changes after review, THEN the approval does not match the new comparison.
 
 ## meter
@@ -231,10 +226,6 @@ Vendor quota declarations, limiter bindings, pre-send checks, permit reservation
 - `synthesized-throttle` — A denied reservation returns to the guest as a synthesized `429` carrying the retry-after. An unreachable limiter fails the request as a transport failure.
   *because a connector mapping vendor throttles needs no second interface*
 - `replay-reservation` — Replay issues no outbound request and makes no limiter call.
-- `built-in-grant-absent` — A compiled-in source reaching an outside vendor declares its grant in the pipeline's source configuration; the build raises `ConnectorGrantMissing` without it.
-  *A-connector*
-- `grant-unhonorable` — A declared grant on a compiled-in source that bypasses the mediated client raises `ConnectorGrantUnhonorable` at load.
-  *A-connector*
 - `metered-disclosure` — Where the project binds any quota, every compiled-in read records whether it ran metered, the run record states an unmetered read once, and validation warns per pipeline naming the connector.
 - `counting-not-pricing` — The limiter counts requests and prices none.
 
@@ -350,8 +341,6 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `local-unpinned` — With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of the bytes found.
   *A-connector*
 - `manifest-posture` — An adopted manifest carries a digest from the fixed builder platform. A template manifest carries a pin requirement and placeholder. The parser accepts a template; the loader refuses it.
-- `posture-undeclared` — A manifest carrying neither a digest nor both template markers raises `ConnectorPostureUndeclared` at merge.
-  *A-connector*
 - `build-source` — A manifest's `build.source` is its only build input; the fixed builder platform holds image, target, compiler, package manager and command, and a `build.source` leaving the manifest directory refuses under {{connector.package.manifest-keys}}.
   *A-connector*
 - `pin-verb` — `contextful connector pin <manifest>` builds the guest in a digest-pinned container on one fixed platform and writes the artifact and its digest. `--verify` rebuilds and compares without writing.
@@ -386,8 +375,6 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *because the body buffers in host memory, outside the guest's linear-memory cap*
 - `world-compatibility` — Compatibility is semver over the world: a guest built against one minor loads on any host advertising a compatible minor.
 - `world-drain` — On a major world bump no new run admits against the old world, in-flight runs complete or suspend on the world they pinned, and the old world then retires.
-  *A-connector*
-- `live-reresolution` — Re-resolving or reloading a connector while a journaled run holds it raises `ConnectorHotReload`; a new version applies to runs admitted after it.
   *A-connector*
 - `built-in-registry` — The names resolving to compiled-in sources form one enumerated list. A listed name carries no manifest or artifact, and a feature-gated entry stays listed and answers with a rebuild hint.
 

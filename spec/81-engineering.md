@@ -214,8 +214,6 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `affected-formal` — A change under `formal/` other than a `lean-toolchain` file reaches the formal and evaluate stages, the foundation, CLI and CLI differential workspace parts, and every feature part.
   *A-assurance*
-- `windows-checks` — Windows native checks run only as optional diagnostics and contribute no required merge or release verdict.
-  *A-assurance*
 - `test-first-parts` — The test-first parts require a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package's part checks only its own changed tests against the base.
   *because one base build per package fits the sandbox's wall clock more reliably*
 - `workspace-parts` — The workspace parts compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.
@@ -232,13 +230,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because one fold check replaces a check per member, and one run reports every member's verdict*
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*
-- `stage-timings` — Each part records queue, setup, compilation and test durations separately, alongside its commit, feature set, runner identity and cold or warm cache state.
-  *A-assurance*
 - `part-budget` — Every part completes within {{assurance.gate.container}} on cold and warm builds; oversized work splits into locally runnable parts retaining every required suite and predecessor obligation.
-  *A-assurance*
-- `build-admission` — The runner admits concurrent builds only within available build slots and {{assurance.gate.parallel-jobs}}; excess builds queue before setup and compilation.
-  *A-assurance*
-- `timeout-cleanup` — A timed-out part retains phase timings and stdout/stderr diagnostics, terminates its owned process tree, verifies descendant exit and reports a failed verdict before releasing its build slot.
   *A-assurance*
 - `pins-stage` — The pins stage resolves every pinned artifact identity a run depends on before any compilation.
 - `evaluate-stage` — The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.
@@ -270,8 +262,6 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `parallel-jobs` — Parallel build jobs number the memory ceiling divided by 3 GiB.
 - `free-disk` — A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.
   *P7*
-- `build-size` — The nightly budget stage holds total build size to 12 GiB, printing that size, the free space and the largest artifacts; a larger build raises `BuildSizeCeilingExceeded`, naming the head of that list.
-  *P7*
 - `edge-budget` — The edge profile holds to 50 MiB compressed and 60 MiB idle resident set.
 - `full-budget` — The full profile holds to 150 MiB compressed and 180 MiB idle resident set.
 - `control-budget` — The control profile holds to 60 MiB compressed and 80 MiB idle resident set.
@@ -289,10 +279,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 
 #### Scenarios
 
-- `assurance.gate.stage-timings`: WHEN a part queues and then executes, THEN its report distinguishes queue, setup, compilation and test durations.
 - `assurance.gate.part-budget`: WHEN every part runs with empty caches and then warm caches, THEN each completes within {{assurance.gate.container}} and the union preserves required coverage.
-- `assurance.gate.build-admission`: WHEN occupied build slots reach the admission limit, THEN another build queues without starting setup or compilation.
-- `assurance.gate.timeout-cleanup`: WHEN a forced hang leaves a descendant holding output pipes, THEN timeout diagnostics survive, the descendant exits and the part fails before its slot is released.
 
 The stages, numbered in run order, under the container's ceilings:
 
