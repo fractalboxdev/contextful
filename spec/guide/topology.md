@@ -4,37 +4,50 @@ contract: topology
 
 # System topology
 
-## What it is for
+## The problem topology solves
 
-Operators use this guide to choose a Contextful binary and deployment. Contextful runs connectors, stores their output as Parquet files and serves queries under access controls. Applications supply business rules and domain vocabulary ({{topology.bound-application.domain-neutral}}).
+An operator chooses a **Contextful** binary and a place to run it. Contextful runs
+connectors, stores their output as Parquet files and serves queries under access
+controls. The engine carries no business rules; applications supply domain meaning
+({{topology.bound-application.domain-neutral}}).
 
-## How it works
+## Three components, three shared contracts
 
-One Cargo workspace builds execution, storage and query code ({{topology.compose.workspace}}). Execution manages connector steps, scheduling, journal entries and cursors ({{topology.compose.run-path}}). Storage and queries manage files, the catalog, retrieval and bucket sync ({{topology.compose.read-path}}).
+One Cargo workspace builds execution, storage and query code ({{topology.compose.workspace}}).
+The components share exactly three contracts: the connector interface, the part and
+manifest layout, and the capability-token format ({{topology.compose.three-crossings}}).
 
-These components share three contracts: the connector interface, the part-and-manifest layout and capability tokens ({{topology.compose.three-crossings}}). Versions and conformance tests keep these contracts compatible ({{topology.compose.crossing-version}}). Dependency checks enforce the allowed connections ({{topology.compose.undeclared-crossing}}). A query-only binary reads a full-profile writer's output ({{topology.compose.run-path-droppable}}).
+Because the layout is shared, a query-only binary reads what a full binary wrote
+({{topology.compose.run-path-droppable}}). A function returning stored rows requires an
+access-control admission value, so a call omitting it fails to compile
+({{topology.compose.mediation}}).
 
-The type system requires access-control checks before functions return stored rows ({{topology.compose.mediation}}). Model requests use one configured OpenAI-compatible endpoint ({{topology.compose.inference-egress}}). Network access follows the deployment's sources and optional bucket sync ({{topology.compose.local-first}}).
+## Build profiles
 
-Choose a build profile for the process's job ({{topology.package.profile}}):
+Each build profile is a Cargo feature bundle chosen at build time
+({{topology.package.profile}}). `contextful-full` runs connectors, schedules work and
+serves queries ({{topology.package.full-profile}}). `contextful-edge` syncs stored files
+and serves read-only SQL ({{topology.package.edge-profile}}).
 
-| Profile | Process responsibility |
-| --- | --- |
-| `contextful-full` | Run connectors, schedule work and serve queries ({{topology.package.full-profile}}). |
-| `contextful-edge` | Sync stored files and serve read-only queries ({{topology.package.edge-profile}}). |
-| `contextful-control` | Edit team configuration and apply canonical TOML ({{topology.package.control-profile}}). |
+`contextful-control` edits team configuration and applies canonical TOML
+({{topology.package.control-profile}}). No run-time detection widens a running binary
+into another profile ({{topology.package.fixed-at-build}}). A subcommand needing an
+unlinked capability fails, naming the subcommand and profile
+({{topology.package.capability-absent}}).
 
-Profiles select capabilities at compilation ({{topology.package.fixed-at-build}}). An unavailable capability returns a named error ({{topology.package.capability-absent}}). `contextful --version` identifies the selected profile ({{topology.package.version-profile}}).
+## Coordinating writers
 
-The [deployment maps](../targets.md) identify Linux processes, macOS native execution, Docker's Linux VM and provider services. Cloudflare uses a Linux Container, D1 execution metadata and R2 files ({{topology.coordinate.backends}}). Deployment checks compare output against the reference deployment ({{topology.deploy.parity}}) and probe each hostname's access policy ({{topology.publish-hostname.posture-mismatch}}).
+Coordination rests on one property: a linearizable conditional write
+({{topology.coordinate.primitive}}). Each new lease holder gets a higher fence, so a
+stale writer is always distinguishable ({{topology.coordinate.fence-advances}}). A
+single node uses a local catalog file, a cluster uses Postgres, and Cloudflare uses D1
+({{topology.coordinate.backends}}).
 
-Writers coordinate through conditional updates ({{topology.coordinate.primitive}}). The `Catalog` trait connects the engine to the deployment's database ({{topology.coordinate.catalog-port}}). Lease fences distinguish successive writers ({{topology.coordinate.fence-advances}}).
+## One deployment, end to end
 
-## Worked example
-
-A Linux writer syncs corpus files to R2. A Cloudflare Linux Container reads a synchronized copy behind a routing Worker.
-
-The writer's Wasmtime host produces files; the replica's DuckDB library reads their synchronized copy.
+A Linux writer syncs corpus files to R2. A Cloudflare Linux Container reads a
+synchronized copy behind a routing Worker. The [deployment maps](../targets.md) show
+every provider's shapes.
 
 ```mermaid
 flowchart LR
@@ -65,18 +78,16 @@ flowchart LR
   SQL -- "scan snapshot" --> COPY
 ```
 
-1. The scheduler acquires and renews the deployment's cadence lease ({{topology.coordinate.cadence-lease-renewal}}).
-2. A run child invokes the connector through embedded Wasmtime ({{topology.package.component-host}}).
-3. The writer stores parts and a manifest, then advances the cursor conditionally ({{topology.coordinate.cursor-cas}}).
-4. Bucket sync copies the corpus to R2. The replica pulls the files and serves read-only SQL ({{topology.package.edge-profile}}).
-5. The deployment probe checks anonymous access against the hostname's declared policy ({{topology.publish-hostname.posture-mismatch}}).
-6. The routing Worker forwards a caller's request and credentials to the query container ({{topology.publish-hostname.container-readiness}}).
+The reconciler renews the deployment's cadence lease while the applied document
+schedules work ({{topology.coordinate.cadence-lease-renewal}}). A run child invokes the
+connector, and the writer advances its cursor by one conditional update
+({{topology.coordinate.cursor-cas}}).
 
-## Where to look
+Bucket sync copies the corpus to R2, and the edge replica pulls it and serves queries.
+The routing Worker forwards a caller's request to the query container, which reaches
+readiness before its snapshot hydration completes ({{topology.publish-hostname.container-readiness}}).
 
-- Component responsibilities and shared contracts: `topology.compose`.
-- What a binary links, and what it refuses: `topology.package`.
-- Provider services and startup instructions: `topology.deploy`.
-- What a hostname exposes: `topology.publish-hostname`.
-- Who may write concurrently: `topology.coordinate`.
-- Where the engine ends and an application begins: `topology.bound-application`.
+The deployment probe checks each hostname against its declared access policy. A public
+response on a private hostname fails the probe ({{topology.publish-hostname.posture-mismatch}}).
+A parity check compares each target's parts with the reference deployment's parts
+({{topology.deploy.parity}}).
