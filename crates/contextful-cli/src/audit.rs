@@ -17,7 +17,7 @@ use contextful_policy::audit::{self, AuditError, AuditLog, InclusionProof};
 use contextful_policy::explain::{self, Explanation, Window};
 use contextful_policy::issue::{SeedSigner, SignerKey};
 use contextful_policy::keyset::KeySource;
-use contextful_policy::replica::{verify_replicated, RootBucket};
+use contextful_policy::replica::{verify_replicated, RootBucket, RootReplicator, ROOT_REPLICATION_INTERVAL};
 use std::path::{Path, PathBuf};
 
 #[derive(clap::Subcommand)]
@@ -119,6 +119,23 @@ fn signer_keys(pins: &str) -> Result<Vec<SignerKey>> {
 fn roots_of(located: &crate::project::Located) -> Result<RootBucket> {
     crate::sync::root_bucket(located)?
         .with_context(|| format!("`{}` declares no `[sync]` bucket to hold replicated roots", located.project.store_root().join("config.toml").display()))
+}
+
+/// The replicator a face holding the chain under the issuer key runs for its life: it copies
+/// each signed root the `[sync]` bucket lacks at start and every interval. A store declaring
+/// no `[sync]` runs none, and a bucket that cannot open runs none and stops no face
+/// (`disclosure.attest.root-replication`).
+pub(crate) fn replicator(located: &crate::project::Located, audit: &crate::project::ReadAudit) -> Option<RootReplicator> {
+    if !matches!(audit, crate::project::ReadAudit::Signed { .. }) {
+        return None;
+    }
+    match crate::sync::root_bucket(located) {
+        Ok(roots) => roots.map(|roots| RootReplicator::spawn(located.project.audit_dir(), roots, ROOT_REPLICATION_INTERVAL)),
+        Err(e) => {
+            eprintln!("root replication: {e:#}; the roots stay local until `audit replicate`");
+            None
+        }
+    }
 }
 
 /// The chain directory of the located project.
