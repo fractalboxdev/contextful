@@ -12,8 +12,6 @@ A manifest parse establishes neither replay behavior nor receiver durability, an
 | Source-only integration tests | Consumer reproducibility | Consumers need the checkout and build toolchain. |
 | Manifest and version checks | Behavioral evidence | Parsing hides replay and acknowledgement defects. |
 
-Consequences: compatibility covers executed scenarios and named storage profiles; a foreign-target archive carries no native pass until a matching host runs its suite.
-
 ## assurance-claims-carry — Assurance claims carry their qualifiers, and the proof gate audits assumptions
 
 A hand-maintained inventory checks each constant's transitive assumption footprint against a two-entry allowlist. The package holds no dependency, so two machines reach one verdict offline.
@@ -23,7 +21,6 @@ A hand-maintained inventory checks each constant's transitive assumption footpri
 | Inventory plus transitive assumption audit, qualified claims, zero-dependency package *(chosen)* | — | Every lemma is hand-rolled; the inventory is maintained by hand. |
 | A source pattern over package files | Catching a proof of `False` | A parenthesized hole or a respelled tactic passes. |
 | Build and read the exit status | Catching a proof of `False` | A hole elaborates as a warning and exits zero. |
-| An inventory generated from the declarations | Independence | A weakened statement carries its inventory with it. |
 
 Revisit: a mathematics library elaborates inside the per-change budget.
 
@@ -35,7 +32,6 @@ An evaluation that bypasses enforcement never shows an over-restrictive policy a
 | --- | --- | --- |
 | Labeled corpora, two-guard golden isolation, store redaction, in-perimeter traces *(chosen)* | — | Labeling precedes the first number; a collector runs per environment. |
 | Bypass enforcement for evaluation runs | Coverage | An over-restrictive policy never surfaces as a recall regression. |
-| A redactor written for goldens | One implementation of the rules | A second redactor diverges toward preserving more text. |
 | Hosted trace collection for every run | Content | Primary data leaves the perimeter, beyond the store's deletion. |
 
 ## model-specifies-profile — The model specifies the profile-to-effective-authority mapping, each target bound to one query path
@@ -106,7 +102,6 @@ An autoloaded extension brings a second copy of the engine's type information. A
 | --- | --- | --- |
 | Link both function sets into every engine-linked build *(chosen)* | — | 55 MiB on every engine-linked binary, the read replica included. |
 | Autoload on first use | Correctness | Two type tables abort one platform and corrupt another. |
-| Extensions in a separate process | Read-path latency | Every columnar read and statement guard crosses a process boundary. |
 | Reimplement both capabilities | Correctness | The guard passes statements the engine parses differently. |
 
 Revisit: the engine resolves extensions against the host binary's type tables; a profile's footprint budget cannot absorb 55 MiB.
@@ -119,10 +114,8 @@ A test written after its code is textually identical to one written first, so on
 | --- | --- | --- |
 | Red-before-green over the diff, acceptance test before the first pin *(chosen)* | — | Every source change pays a second build at the base commit; a refactor declares itself by trailer. |
 | A line-coverage threshold | Order | A test written after its code satisfies it. |
-| A test file changed alongside source | Vacuity | A test green against the base specifies nothing the change adds. |
 | Per-change mutation testing | Wall clock | Minutes per mutated function across an engine-sized crate graph. |
 
-Consequences: inline unit tests satisfy the workspace stage but not the red check.
 Revisit: the base-commit build exceeds the stage wall clock; the refactor trailer appears on changes that alter a public surface.
 
 ## tracked-targets-gate — Tracked targets gate on counts and record per commit in notes
@@ -136,7 +129,6 @@ Wall-clock and resident-memory figures move on shared containers, so they annota
 | Count-first gate, trend tier, notes history *(chosen)* | — | A timing regression surfaces as an annotation; a missing baseline scans first-parent history. |
 | Gate on wall-clock p95 against a committed baseline | Determinism | Shared containers move p95 past any useful band. |
 | History as a committed JSONL file | Branch policy | A bot commit per run conflicts with every open change. |
-| History in an external artifact store | Offline verdicts and queries | A second store to operate, reachable only with network credentials. |
 
 Revisit: a dedicated runner class holds p95 within 5 percent across runs.
 
@@ -148,7 +140,6 @@ A consumer pinning a bare commit reads no promise. Derivability from computed st
 | --- | --- | --- |
 | Computed version, maintainer-invoked subcommand *(chosen)* | — | Tagging is a human step; a version bump commit precedes each tag. |
 | A tag cut by hand | Derivability | A version claims milestones its revision does not pass. |
-| A tag on every merge | Signal | A pin reads no more than a commit id. |
 | Minor equal to the highest milestone number | Monotonic meaning | Milestone 11 closing before 8 claims milestones never reached. |
 
 Revisit: an external consumer needs a compatibility promise on a public surface, which opens `v1`.
@@ -207,7 +198,6 @@ One verdict computed from two sources drifts. The gateway needs verification, ad
 | The policy package, the credential library's clock as the one import *(chosen)* | — | A 2.7 MB module; a credential-library release may rename the imports the host links. |
 | The domain crate alone, verification outside the module | Gateway need | The gateway verifies signatures from a second source. |
 | The credential library's JavaScript bindings | Host | The differential host and a native embedder run no JavaScript. |
-| A gateway reimplementation in TypeScript | One home | Two sources for one verdict. |
 
 ## profile-graphs-answer — Profile graphs answer to cargo-deny bans, one run per profile feature
 
@@ -294,7 +284,6 @@ Recency alone lifts accuracy near a cutoff, so a reported leak survives a model 
 | Reference-based estimate, separate tracks, declared execution metadata *(chosen)* | — | Every report declares a reference and an execution component; small tracks report wide intervals. |
 | Bare pre/post-cutoff gap | Survives a clean model | Recency reads as leakage near every cutoff. |
 | One pooled score across tracks | One figure, one question | A tool-using backtest lifts a prospective forecaster's rank. |
-| Costs inside the platform | One home per capability | Every venue's cost model becomes an engine release. |
 
 ## case-s-judge — The case's judge scores leakage against a pre-horizon reference
 

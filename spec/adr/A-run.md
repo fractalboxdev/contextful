@@ -12,8 +12,6 @@ A disposable disk loses paid-call records, callbacks and pending exports, so exe
 | Local execution files beside remote corpus objects | Replacement safety | A disposable disk loses paid-call records, callbacks and pending exports. |
 | Independently restored execution stores | Consistency | A restored owner can name a missing recorded value or an acknowledged outbox. |
 
-Consequences: startup validates recovery identity and schema without repairing restores; takeover waits while an admitted callback holds its guard.
-
 ## d1-execution-state — D1 execution state uses a private binding and durable callback guards
 
 D1's batch transaction ends with the request, so it holds no database lock across a provider call. A durable guard row blocks owner or lease transfer until release; automatic expiry could admit a second writer while the first effect is ambiguous.
@@ -52,7 +50,6 @@ A journaled step replays correctly only against the definition that produced it.
 | --- | --- | --- |
 | Compiled, content-hashed plan *(chosen)* | — | Every definition change is a compile; an expression no connector offers needs a new connector. |
 | An embedded script runtime for step bodies | Determinism and footprint | Replay runs a different definition, and every profile carries tens of megabytes of runtime. |
-| Pipelines as Rust code in the tree | Authoring ergonomics | Every agent-authored definition is a source change and rebuild. |
 | Row growth inside the chain | Journal granularity | Output stops mapping onto input, breaking cursor and dedup guarantees. |
 
 ## incremental-position-bound — An incremental position is bound to a named field and a seed is bounded
@@ -64,9 +61,6 @@ A cursor value means nothing without the field it was measured on.
 | Bind the position to its field; bound and fingerprint the seed *(chosen)* | — | A field rename or an export top-up needs an explicit reset. |
 | Reset the position silently on a rename | Silent wrongness | A window re-lands or is skipped with no record. |
 | Resolve cursor copies last-write-wins | Record skipping | A stale machine moves the position backwards or past unread rows. |
-| Reload automatically when the fingerprint moves | Cost control | Every touch of the export spends hours and vendor quota. |
-
-Consequences: a source supplying no fingerprint skips the load and warns each run that a top-up goes unnoticed.
 
 ## external-signals-single — External signals are single-valued catalog writes
 
@@ -89,7 +83,6 @@ The tier's own output table is the single record of what is done, failed or sett
 | --- | --- | --- |
 | Anti-join each tick against output rows and in-table markers *(chosen)* | — | The scan is linear in the parent table; every consumer filters marker rows. |
 | A watermark over the parent table | Stranding | A gap passed once stays underived. |
-| A dead-letter queue or sibling marker table | Visibility to the anti-join | Failed units are re-selected every tick. |
 | Permanence encoded as an attempt count | Permanence | Raising the ceiling revives every security refusal. |
 
 Revisit: the parent scan dominates tick cost on a real archive; a re-derive signal for changed parent rows becomes necessary.
@@ -102,7 +95,6 @@ An engine id alone never re-derives a corrected parent row. A unit's old rows an
 | --- | --- | --- |
 | Derivation key compared each tick *(chosen)* | — | Every consumer filters to the latest key; each tick hashes parent rows. |
 | Compare the engine id alone | Freshness | A corrected parent row never re-derives. |
-| A change event from the parent table | Stranding | A missed event strands the unit. |
 | Delete the unit's rows, then re-derive | Empty reads | The unit answers nothing until the engine returns. |
 
 Revisit: hashing parent rows dominates tick cost on a real archive.
@@ -136,7 +128,6 @@ Declaration order and independent schedules give no landing order. One tick carr
 | Infer dependencies from source tables and run parent-first *(chosen)* | — | A tick serializes dependent runs and reports a parent failure beside child work. |
 | Require authors to set `after` on each child | Completeness | A missing manual edge leaves a child one tick behind. |
 | Let each derive pipeline run independently | Freshness | Child selection can precede its parent's landing. |
-| Stop descendants after a failed parent | Availability | Committed rows from an earlier fire stay unprocessed. |
 
 ## selection-stays-bounded — Selection stays bounded and countable before a tick pays
 
@@ -146,7 +137,6 @@ Selection memory stays independent of archive size, and the outstanding count is
 | --- | --- | --- |
 | In-memory up to a row ceiling, streamed above it; a counting dry run *(chosen)* | — | Two selection paths agree on one anti-join; the ceiling is a chosen figure. |
 | Always scan in memory | Memory bound | A large archive exhausts the process before the first unit runs. |
-| Always stream | Tick latency | A small table pays batch setup on every tick. |
 | No dry run; read the run record after | Cost control | The first tick spends engine quota before anyone sees its size. |
 
 ## derive-engine-machine — A derive engine is a machine-bound argv child with a cleared environment
@@ -158,7 +148,6 @@ A manifest requests an engine by name; the machine's configuration defines what 
 | Machine-local binding, argv child, cleared environment, group kill *(chosen)* | — | A pipeline is not self-contained; the operator enumerates every variable a tool reads. |
 | Command carried in the manifest | Who may introduce a command | Any manifest author, including an agent, gains argv execution. |
 | A shell string, or escaped row data | Data becoming syntax | A filename containing `$()` reads as command text. |
-| Inherit the environment minus a denylist | Ambient reach | Every daemon credential reaches every spawned tool. |
 
 Revisit: operators routinely wrap steps in pinned scripts to recover shell features.
 
@@ -225,7 +214,6 @@ A host keeping its own transactional store would otherwise hold replay state twi
 | Three storage ports, file tree as default adapter *(chosen)* | — | Every adapter runs one conformance suite. |
 | The file backend with a movable root | One home for replay state | Recorded values persist as plaintext beyond the host's deletion and export. |
 | One combined port for journal, blobs and awakeables | Adapter reuse | An object store backs blobs only by faking a journal. |
-| Ports over lock, rename and exclusive create | I/O-free domain | Claim logic stays bound to filesystem semantics. |
 
 ## blob-put-may — A blob put may wait on its adapter's write lock
 
@@ -280,7 +268,6 @@ Configuration selects only engine-named code, and a task version change re-selec
 | Registered compiled task, version in the key, marker last *(chosen)* | — | A new task is a host release; retained versions occupy the table. |
 | A task as a command in configuration | Who may introduce code | A manifest author gains execution. |
 | Task version outside the derivation key | Freshness | A version bump leaves every settled unit stale. |
-| One atomic commit across output tables | Commit model | `run.own.one-commit-per-run` commits each table alone. |
 
 ## model-declared-sql — A model is a declared SQL table whose build publishes through its snapshot manifest
 
@@ -291,7 +278,6 @@ A reader comparing two figures needs the build each came from. No representable 
 | Snapshot of a store table, section in its manifest *(chosen)* | — | A refused build leaves no committed trace. |
 | A `view` key on the table block | Read cost | Every read pays the rollup, and no build id exists to echo. |
 | Build metadata in a side file beside the snapshot | Torn publication | A crash publishes data with another build's identity. |
-| A build log as the source of truth | One home per fact | Log and pointer disagree after a crash. |
 
 ## coordinated-exports-activate — Coordinated exports activate a complete immutable group in a receiver namespace
 
@@ -302,7 +288,6 @@ Output tables commit independently, and a downstream projection needs one comple
 | Immutable group barrier and fresh rebuild namespace *(chosen)* | — | The receiver retains accepted delivery identities. |
 | Independently activate each member | Atomic visibility | Interruption exposes mixed generations. |
 | Reset an existing export cursor | Recovery safety | An older checkpoint can reverse tombstones or reuse identities. |
-| Re-execute jobs during projection recovery | Effect isolation | Recovery repeats paid effects. |
 
 ## sweep-freezes-transaction — A sweep freezes one transaction-time bound and carries state through its own outputs
 
@@ -321,7 +306,6 @@ The newest input commit against the clock reads a quiet input stale forever. A r
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | A sequence frontier per input *(chosen)* | — | A run merged below `through` reads stale until a rebuild. |
-| The omitted runs listed per input | Size | An unfolded input adds one key per run to every watermark. |
 | The newest commit instant against the clock | Clearable | A quiet input reads stale, and no rebuild fixes it. |
 | A single-instant watermark | Comparability | Writers commit out of stamp order, so an instant names no landing set. |
 
@@ -384,7 +368,6 @@ A key answering forever promises deduplication the store cannot bound. No defaul
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | A declared window, a late key refused *(chosen)* | — | A late resend needs a new key. |
-| Keys answer forever | Bounded promise | Every key ever sent stays an answerable record. |
 | A late key lands as a fresh batch | No row lands twice | A resend after the window duplicates committed tables. |
 | A default window | Sender choice | The engine picks a retry horizon it cannot know. |
 
@@ -395,7 +378,6 @@ A batch landing its own run pays a commit, a part and a push. A malformed body f
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Leader lands what spooled behind the lock *(chosen)* | — | A lone writer's synced spool costs about a quarter of its throughput; a refused group lands twice. |
-| Answer on spool | Read-your-write | An acknowledged row reads after a later commit. |
 | A linger timer | Latency | A lone writer waits out the timer on every batch. |
 | One run per batch | Throughput | Commits, parts and pushes grow with batches. |
 
@@ -408,7 +390,6 @@ An isolated item's run ids are digests no reader inverts, and its receipt sits i
 | Reserved `_items` relation appended on receipt commit *(chosen)* | — | A crash between receipt commit and append leaves that item without a row. |
 | Job and entity fields on the attempt's `_runs` row | One row per run phase | A per-entity question folds every attempt's rows. |
 | Append before the receipt commits | No false terminal | A refused commit leaves a row claiming an unreached outcome. |
-| A relation over the catalog's cursor positions | Complete mediation | A read reaches catalog state outside registered relations. |
 
 ## backfill-commits-checkpoints — A backfill commits at checkpoints and walks one page per pull
 

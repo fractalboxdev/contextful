@@ -12,8 +12,6 @@ The guard walks the syntax tree the executor itself serializes, so what it admit
 | Token or regex blocklist over the text | Completeness | Every new engine verb or dialect spelling is a bypass until listed. |
 | An independent SQL parser | Parser agreement | What the guard admits is not what the executor runs. |
 
-Consequences: a preview and a query apply identical row restriction, masks and zone gate; a socket connection mutates nothing.
-
 ## pooled-engine-reuses — A pooled engine reuses a resolved session only while its whole key holds
 
 Each uncached call walks `tables/`, reads every granted schema and manifest, and builds one view per relation. The pool sits behind the guard, masks and zone gate. A `contextful-context` benchmark admits it: setup above 25% of warm p95 at 50 unfolded runs.
@@ -35,9 +33,6 @@ A dashboard issues one statement per panel over one frontier, and each repeat re
 | Key on touched relations and their read frontier *(chosen)* | — | A hit still admits the statement and stamps ledger files; a truncated result caches as truncated. |
 | Key on resolved snapshot ids | Freshness | A run committed before the next fold changes the result under the same ids. |
 | A time to live as the staleness guard | Invalidation by construction | Every commit reads stale until expiry. |
-| A default budget | Silence | A guessed number meets production memory unreviewed. |
-
-Consequences: a commit on an untouched table leaves an entry live.
 
 ## restricted-sidecar-probe — A restricted sidecar probe doubles for a bounded number of rounds and reports under-fill
 
@@ -70,11 +65,9 @@ A cross-encoder orders the leading rows better than fused order, at one model ca
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Pointwise rerank of a masked 50-row window, on request *(chosen)* | — | A reranked read costs up to 50 model scores and depends on the reranker's build. |
-| Rerank every ranked read by default | Determinism | Every answer changes with a model build the caller never named. |
 | Listwise reranking in one prompt | Injection resistance | One poisoned candidate can instruct the model to promote itself. |
 | Rerank before authority | Enforcement | Hidden rows reach a model, and their scores shape what the caller sees. |
 
-Consequences: the result cache keys on the reranker's identity and build, and the retrieval block names both.
 Revisit: the native evaluation measuring no gain for a declared reranker over fused order.
 
 ## zone-withheld-relation — A zone-withheld relation is named, with one whole-relation count
@@ -85,7 +78,6 @@ The count is a property of the relation, so no ranked position, filter or reques
 | --- | --- | --- |
 | Name plus a whole-relation count *(chosen)* | — | The count discloses how many in-scope rows a placement withholds; each withheld relation costs one count query per read. |
 | Empty result, nothing named | Distinguishability | A zone-emptied relation reads as a table holding no data. |
-| Refuse the read | Composition | One excluded arm fails a prefix-wide ranked read or a join. |
 | Count over the caller's statement | Oracle resistance | Varying a predicate turns the count into a probe of withheld values. |
 
 ## networked-read-transport — The networked read transport is MCP Streamable HTTP, admitted per request
@@ -97,7 +89,6 @@ The stdio tool server answers only its spawning process, under one startup crede
 | MCP Streamable HTTP around the tool server *(chosen)* | — | A tool result reaches a caller inside a JSON-RPC envelope; the face holds no session and no server stream. |
 | One HTTP route per read tool | MCP-client compatibility | An MCP client needs its own adapter, and the tool set gains a second envelope. |
 | Admission once per connection or session | Revocation latency | A revoked credential reads until its connection closes. |
-| A default ceiling | Silence | A guessed number meets production load unreviewed. |
 
 Consequences: an MCP client that signs nothing reads with a short-lived audience-bound bearer and re-exchanges it before expiry.
 Revisit: a caller needs server-initiated messages or resumable streams.
@@ -111,9 +102,6 @@ A hosted console distils claims after a read turn and owns no local store root. 
 | Separate route and direct memory write *(chosen)* | — | The hosted console needs a writing credential whose task names its reading session. |
 | Add `memory.write` to read MCP | Closed read tool set | A client-reachable tool can mutate a store. |
 | Spawn the CLI from the console | Hosted reach | The console needs the store's local project root and signing configuration. |
-| Keep claims in the console process | Durability | Restart loses conclusions and bypasses memory recall and erasure. |
-
-Integration: `CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM` names a stable signed claim that exchange maps to `task`. The console filters its exact actor and session scope before model input.
 
 ## memory-writes-validate — Memory writes validate or dead-letter, and outcomes settle under their source
 
@@ -122,7 +110,6 @@ A rejected candidate waits in the dead-letter table for a human rather than beco
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Validate, dead-letter, settle under the registered source *(chosen)* | — | Dead-lettered candidates wait for a human; extraction spends up to 3 model calls per batch. |
-| Parse a non-conforming response best-effort | Provenance | Unvalidated text becomes an untraceable row. |
 | Resolve an ambiguous mention to the highest score | Reversibility | A wrong merge propagates through every claim about both entities. |
 | Evaluate metric rules with an embedded expression engine | Attack surface | Anyone registering a prediction reaches the evaluator. |
 
@@ -157,7 +144,6 @@ Recall orders by tier, then score. A lower-standing contradiction gets a bounded
 | --- | --- | --- |
 | One derived tier with lexicographic precedence *(chosen)* | — | A high-scoring researched claim ranks below a weak curated one. |
 | A caller-supplied tier | Forgery | Any writer promotes its own output. |
-| A confidence ceiling per tier | Ordering | Scores across sources are incomparable, so ceilings leak. |
 | Retire on subject, predicate and scope alone | History | A past-anchored belief retires the present one. |
 
 ## agent-third-party — Agent and third-party writes stand derived
@@ -180,7 +166,6 @@ Every evidence entry resolves at recall, so revocation takes effect on the next 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Resolve every entry at recall; separate forget grant *(chosen)* | — | A claim whose source table is renamed goes silent; erasure needs a second credential. |
-| Serve the claim with an unresolved-evidence marker | Containment | The marker discloses the conclusion the gate holds. |
 | Resolve evidence once at write time and cache it | Revocation latency | Later masks, grants and erasures never reach the cached verdict. |
 | Forget inside the write grant | Blast radius | A routine synthesis credential erases curated claims. |
 
@@ -194,7 +179,6 @@ A fold drops superseded versions, so a citation by run and sequence alone withdr
 | --- | --- | --- |
 | Pepper-keyed digest of the key, stale claims counted *(chosen)* | — | A stale claim may contradict its key's live version; a pepper rotation returns citations to run-and-sequence resolution. |
 | Key cells copied into the citation | Containment | Every memory reader reads source key values outside the source table's grants, masks and erasure. |
-| The fold keeps every cited version | Erasure reach | Erasing a key must find each retained version. |
 | Withdraw the claim at the fold | Recall stability | A routine compaction silently forgets memory. |
 
 Revisit: stale counts dominating a recall; a reader needing the claim's cited version rather than its key's live one.
@@ -206,11 +190,8 @@ Query-time enforcement bounds a read, not the stored bytes, so the ceiling sits 
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Refuse at the write boundary; refuse twin APIs everywhere *(chosen)* | — | A security corpus needs an explicit exemption; full coverage means per-user ingestion. |
-| Store and flag the value, or withhold it at query time | Reach | The value sits in every replica, readable with an object-store credential. |
 | Ingest through the twin API and restrict at query time | The ceiling | No query-time restriction lowers what the store contains. |
 | Permit the twin API behind an organization-signed disclosure | Consent of the people ingested | The organization's signature is not their consent. |
-
-Consequences: removing a credential never needs a rewrite across replicas, because it never entered the store.
 
 ## nearness-parent-closure — Nearness is a parent closure over declared edges, and the engine holds no geospatial type
 
@@ -253,7 +234,6 @@ Decay changes ranking only; validity is history and ends only by expiry or erasu
 | Validated calibration, hard history and explicit decay *(chosen)* | — | Sparse shape-and-predicate groups remain uncalibrated. |
 | Treat model confidence as comparable | Calibration | Two outputs with the same number can have different outcome frequencies. |
 | Decay validity intervals by default | History | A later rank policy erases what the workspace once concluded. |
-| Resynthesize each stale read | Read latency | A query can launch an unbounded model job and move the source cursor. |
 
 ## memory-reads-expose — Memory reads expose use and resolve ownership from enforced rows
 
@@ -274,7 +254,6 @@ An unreadable edge is never crossed, because the node beyond it discloses the ed
 | Bounded breadth-first walk through the enforced session *(chosen)* | — | A dense neighbourhood returns incomplete; every walk resolves each reached edge's citations. |
 | Unbounded walk cut by the byte ceiling | Resource ceiling | A hub entity expands the whole graph before the cut. |
 | A caller-chosen hop count with no ceiling | Predictability | One call's cost follows the caller, not the declaration. |
-| Personalized PageRank over every entity | Explanation | A score over all edges reflects hidden structure and names no path. |
 
 Revisit: a graph arm seeded from the query's entities earns a place in fusion; truncation dominates native multi-hop cases.
 
@@ -297,4 +276,3 @@ A sweep over many past decision dates reads one sidecar rather than refusing or 
 | Filter by per-entry availability *(chosen)* | — | Eight bytes per entry; a horizon admitting few entries walks most of the graph. |
 | Refuse a sidecar indexing later rows | Recall | Every past horizon over a growing table refuses its ranking. |
 | Fall back to the exact scan | Latency | A sweep of N dates scans the table N times. |
-| Build a sidecar per horizon | Storage | Sidecars multiply with the dates read. |

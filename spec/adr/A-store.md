@@ -30,7 +30,6 @@ A zero-row result means either a complete empty inventory or a skipped unchanged
 | --- | --- | --- |
 | One promotion; keys excluded; refuse at the write *(chosen)* | — | A source flipping between text and number fails its batch until fixed. |
 | Widen every clash to text | Read-time recoverability | Every query casts; a numeric aggregate becomes a string comparison. |
-| Fail the read instead of the write | Who receives the error | The refusal reaches a reader who cannot fix the source. |
 | Key widening as an operator obligation | Irreversibility | One out-of-range value silently merges distinct keys. |
 
 Revisit: a second pairing that some source emits routinely and the scan resolves losslessly.
@@ -43,7 +42,6 @@ A fence the writer checks before commit lets a holder paused between check and w
 | --- | --- | --- |
 | Storage-enforced fences; per-table compaction lease *(chosen)* | — | One conditional write per commit, and a never-deleted lease object per pipeline and table. |
 | Compare the fence in the writer before commit | Pause safety | A holder pausing between check and write commits after its successor. |
-| Wall-clock expiry checked at commit | Clock trust | The paused machine has the least trustworthy clock. |
 | An embedded consensus cluster | Operational cost | A second system to run for a low request rate. |
 
 Consequences: a backend without demonstrated conditional writes runs single-writer by refusal, never by silent degradation.
@@ -56,7 +54,6 @@ A replica never answers from what is present and never fetches mid-query, so its
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | Read-only, whole-Parquet, sensitive tables off *(chosen)* | — | A replica stores full snapshots; a sensitive read needs a round trip to the proxying face. |
-| Accept local writes and push them on refresh | Merge soundness | Divergent writes need conflict resolution the store lacks. |
 | Hold a partition subset and check predicates at query time | Silent wrongness | A missed partition returns a short answer. |
 | Replicate sensitive tables and mask at the consumer | Failure direction | A misconfiguration has already moved the bytes onto the machine. |
 
@@ -69,7 +66,6 @@ The remote contributes an entry only where this writer has never written, so an 
 | Compare-and-set over a scoped union, bounded rebase *(chosen)* | — | Every writer-owned tier needs an ownership arm; an unowned key never propagates deletion. |
 | A blanket union of both indexes | Deletion propagation | The index grows forever against a shrinking tree. |
 | Replace the remote index wholesale | Visibility of committed objects | A race loser unlists the winner's objects. |
-| Replicated conflict-free types on the data plane | Necessity | The append-only layout already prevents most conflicts. |
 
 Consequences: a contended bucket can leave a writer's objects durable and unlisted, visible in the refusal.
 Revisit: a key shape whose ownership is not derivable from the key; the index outgrowing a single-object commit.
@@ -84,8 +80,6 @@ Metadata files carry names and values from rows, so a bound store holds zero pla
 | Cleartext metadata beside encrypted data | At-rest scope | Schema and manifest names expose row structure and canary values. |
 | Encrypt individual JSON fields | Zero plaintext | Keys and unselected values remain visible. |
 
-Consequences: a key-bound store starts from an empty tree or an explicit migration.
-
 ## machine-catalog-seals — The machine catalog seals a SQLite snapshot
 
 A bound store protects catalog row values on disk and keeps one linearizable compare-and-swap across processes.
@@ -95,8 +89,6 @@ A bound store protects catalog row values on disk and keeps one linearizable com
 | Sealed SQLite snapshot under a file lock *(chosen)* | — | Each write copies the catalog in memory and rewrites its full encrypted file. |
 | Plain SQLite file with encrypted row values | Zero plaintext | Index keys and SQLite pages still expose structure and old values. |
 | A plaintext temporary database | At-rest scope | A crash leaves readable pages beside the sealed file. |
-
-Consequences: a missing or invalid sealed snapshot refuses rather than rebuilding machine state.
 
 ## sidecar-memory-mapped — A sidecar is memory-mapped only over plaintext
 
@@ -119,7 +111,6 @@ Keyed, composite-key and unkeyed tables alike need a sidecar, with ids stable ac
 | A declared unique `id_column` shared by every kind *(chosen)* | — | An unkeyed producer emits a unique row id, such as a content digest. |
 | An encoded composite primary key | Unkeyed coverage | An append table has no key to encode. |
 | File and row ordinal | Stability across folds | Every fold renumbers rows, so no sidecar extends incrementally. |
-| An id declaration per sidecar kind | One declaration | Two arms fuse candidates only through a common id. |
 
 ## binary-fixed-size — Binary and fixed-size vector columns take no promotion
 
@@ -130,7 +121,6 @@ An embedding stored as a JSON array costs several times its float16 size and a p
 | Typed binary and vector columns; widen half floats on read *(chosen)* | — | A read materializes float16 vectors at twice their stored width. |
 | Hex text and JSON arrays in `Utf8` | Storage width | Five to eight times the float16 bytes, and a parse per vector read. |
 | A variable-length float list | Validation-free read | Every row checks its dimension before a builder accepts it. |
-| Half floats kept through the query face | Engine support | The engine has no half-precision type. |
 
 ## store-s-catalogs — The store's catalogs sit behind a port with SQLite in its own package
 
@@ -141,7 +131,6 @@ Cargo admits one `links = "sqlite3"` package per graph, so a store forcing a `li
 | Ports in core; SQLite adapter in its own package *(chosen)* | — | One more workspace package; a host on another `rusqlite` major writes its own adapter. |
 | A `rusqlite` version range in the store package | Write path free of SQLite | Every host resolving the store resolves SQLite. |
 | JSON catalogs beside the manifests | One conditional update | Lease and cursor rows lose their transactional update. |
-| Loading the system SQLite at run time | Host resolves its own build | Two SQLite builds share one process with no link-time check. |
 
 ## variant-column-keeps — A variant column keeps each row's scalar kind in one Struct
 
@@ -183,7 +172,6 @@ A record reads with its parent in one scan, and the lattice stays the one place 
 | Nested types, additive structs, path-named refusals *(chosen)* | — | A key outside a typed struct refuses its batch; a dynamic key set widens a struct. |
 | Child tables per list | One scan | A join per nested read. |
 | `Json` text throughout | One scan | Every read parses and casts. |
-| Struct fields fixed at first sight | Silent drops | A later field refuses or vanishes. |
 
 ## manifest-carries-format — A manifest carries a format version whose major refuses
 
@@ -203,7 +191,6 @@ A pass that rewrites every part writes bytes in proportion to the table, so each
 | --- | --- | --- |
 | Parts and segments by reference, tiered merge *(chosen)* | — | A restated key rewrites its part; an older build refuses a `2.0` table. |
 | Rewrite every part each pass | Bytes per byte landed | Write volume grows with history. |
-| Per-row deletion vectors over immutable parts | Readers | Every reader applies a mask the engine does not know. |
 | Hard links into each new snapshot directory | Object stores | A bucket has no link, so a push copies every part. |
 
 Consequences: a mixed fleet upgrades every reader before a writer folds by reference.
@@ -300,7 +287,6 @@ A backfill stamps `_ingested_at` with its commit instant, so a 2026 load of 2014
 | --- | --- | --- |
 | A declared column resolved at landing *(chosen)* | — | Each table declares the column or a lag. |
 | Overriding the transaction stamp | Monotonic `_commit_seq` | A backdated `_ingested_at` breaks commit order and `as_of` reproducibility. |
-| A basis resolved at read time | One answer per row | One row answers differently as lag rules change. |
 | Filtering in user SQL | Enforcement | Every tool restates the predicate, and one omission leaks. |
 
 Revisit: a source publishing a per-row availability stamp the engine verifies.
@@ -392,7 +378,6 @@ A container booting on an empty disk downloads every bucket object, and every de
 | Whole-part fetch into a bounded cache *(chosen)* | — | A first read of a cold table waits one object fetch per part. |
 | Byte-range reads under the engine | Network-free read face | A range layer beneath the engine; the guard refuses `httpfs`. |
 | Read-only bucket mount | POSIX write path | A privileged container; mount latency on every read. |
-| A separate fold staging bound | One budget | Two bounds to size per container. |
 
 Revisit: cold-table first reads past the wait bound under ordinary bucket latency.
 
@@ -404,5 +389,4 @@ On a disposable disk a run commits locally before its push, so a failed push lea
 | --- | --- | --- |
 | A mark on the execution-database run row from open *(chosen)* | — | One query per command start; a run killed before commit turns `lost` unread. |
 | A mark written after the local commit | Kill window | A process killed between commit and mark leaves a committed run unreported. |
-| A marker file in the store root | Disposable disk | The marker dies with the disk it describes. |
 | A marker object in the bucket | Failure correlation | The write recording the failure goes to the bucket that refused the push. |
