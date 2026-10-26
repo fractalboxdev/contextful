@@ -91,45 +91,9 @@ The hosted console's two pages, their API routes, identity gates, page grants an
 
 #### Scenarios
 
-- `surface.open-console.wrong-page`: WHEN a Query-only operator requests `/admin/api/workflows`, THEN it raises `ConsolePageForbidden` without dispatching.
-- `surface.open-console.admin-grant`: WHEN an Admin operator applies a document without the server-held admin capability, THEN it raises `ConsoleAdminGrantMissing` without a control call.
-- `surface.open-console.page-grants`: WHEN a verified operator holds only a Query grant, THEN Query admits the session and Admin refuses its page and API requests.
-- `surface.open-console.query-surface`: WHEN an operator asks on Query, THEN the question and grounded answer occupy one transcript beside its widgets.
 - `surface.open-console.saved-transcript`: WHEN a second operator opens Query in the tab where another saved a transcript, THEN Query restores none of its answers or rows.
-- `surface.open-console.narrow-sidebar`: WHEN Query renders on a phone-width viewport, THEN a header control opens the chat list with its create, switch and delete controls.
 - `surface.open-console.source-validation`: WHEN an HTTP source draft lacks its endpoint, THEN Admin identifies `source.config.endpoint` and the applied document retains its version.
 - `surface.open-console.source-first-run`: WHEN an identical source configuration claims another version, THEN older-version runs leave its first-run state pending.
-
-```mermaid
-flowchart LR
-  OP(["operator"])
-  subgraph access["identity gate"]
-    QG["Query policy"]
-    AG["Admin policy"]
-  end
-  subgraph browser["browser"]
-    QP["Query page"]
-    AP["Admin page"]
-  end
-  subgraph server["console server"]
-    QA["Query API"]
-    AA["Admin API"]
-  end
-  subgraph engine["engine"]
-    READ["read face"]
-    CTRL["control face"]
-  end
-  OP -->|"query session"| QG
-  OP -->|"admin session"| AG
-  QG -->|"Query grant"| QP
-  AG -->|"Admin grant"| AP
-  QP -->|"question"| QA
-  AP -->|"workflow request"| AA
-  QA -->|"governed read"| READ
-  AA -->|"admin capability"| CTRL
-  READ -->|"rows"| QA
-  CTRL -->|"workflow state"| AA
-```
 
 ## register-store
 
@@ -143,8 +107,6 @@ Which stores a deployment serves, how each store's credential and binding names 
   *because the entry otherwise reads the fixture's rows under its own name*
 - `authored-name` — An entry carrying its own credential or binding name raises `StoreNameAuthored`.
   *A-surface#configuration-reaches-engine*
-- `shared-registry` — Query, Admin and the embeddable client library resolve store identities from the same deployment registry.
-  *A-surface#configuration-reaches-engine*
 
 ## visualize
 
@@ -156,14 +118,12 @@ The Admin page's operational views.
   *because a graph the client infers from names draws edges the store never declared*
 - `external-step` — Admin draws each `[[external]]` declaration as a node marked as run outside the engine, joined by its inputs and outputs; the engine runs, schedules and records nothing for it.
   *because work around the store belongs on the canvas without becoming a job kind {{surface.fire.job-kind-unknown}} refuses*
-- `external-shape` — An `[[external]]` declares `name`, optional `label`, and `inputs` and `outputs` of typed references `table:<name>`, `pipeline:<id>` or `job:<name>`; any other key fails {{surface.apply.validation}}.
+- `external-shape` — An `[[external]]` declares {{type:contextful_core::surface::external::External}}, its `inputs` and `outputs` typed references `table:<name>`, `pipeline:<id>` or `job:<name>`; any other key fails {{surface.apply.validation}}.
   *because a typed reference keeps a table and a pipeline sharing a name distinct, and no command key makes it runnable*
 - `external-unbound` — An `[[external]]` input or output lacking a `table:`, `pipeline:` or `job:` prefix, or naming no declared table, model, pipeline or job, raises `ExternalStepUnbound` at validation.
   *because an edge to nothing draws a line the operator cannot trace*
 - `external-collision` — An `[[external]]` whose `name` repeats another external's name, a job's name or a pipeline's id raises `ExternalStepCollision` at validation.
   *because one name labelling two graph nodes leaves the reader to guess which one ran*
-- `operational-record` — Admin's inspector, pack file surface and learnings view present the store-published operational record.
-  *A-surface#connections-claim-version*
 
 ## package
 
@@ -175,39 +135,6 @@ The client library, its four deployment shapes and transports, and the credentia
   *A-topology#public-surfaces*
 - `owner-flag` — A process `--owner` admits the local owner context only with a verified signed claim bound to the selected store and an unrestricted read grant; any other credential raises `OwnerCredentialInvalid` before protocol framing.
   *A-surface#turn-compatibility-preserves*
-
-The client library's four shapes, and who holds the credential in each:
-
-```mermaid
-flowchart LR
-  LIB["client library"]
-  subgraph host["host backend"]
-    S1["same-origin proxy"]
-    S2["service binding"]
-  end
-  subgraph browser["browser"]
-    S3["engine-direct embed"]
-  end
-  subgraph local["local consumer"]
-    S4["spawned engine child"]
-  end
-  subgraph engine["engine"]
-    GW["gateway entrypoint"]
-    ENG["engine HTTP face"]
-  end
-  LIB -->|"host request"| S1
-  LIB -->|"bound call"| S2
-  LIB -->|"viewer request"| S3
-  LIB -->|"newline-framed JSON-RPC"| S4
-  S1 -->|"injects the token"| ENG
-  S2 -->|"forwarded call"| GW
-  GW -->|"container-side credential"| ENG
-  S3 -->|"per-viewer scoped token"| ENG
-  S4 -->|"on spawn"| CK{"credential and manifest found?"}
-  CK -->|"yes, answers"| LIB
-  CK -->|"no credential: StdioCredentialMissing"| LIB
-  CK -->|"no manifest: StoreSelectorAbsent"| LIB
-```
 
 ## speak
 
@@ -239,38 +166,6 @@ Where an answer's material comes from: the closed tool set, the two trust layers
 - `sources-per-turn` — A source list carries at most 8 entries.
 - `sources-block` — Every grounded answer includes a sources block citing only the governed results its admitted read tools returned.
   *A-surface#answer-surfaces-read*
-
-The two trust layers on one grounded turn, for a store on `exchange` authentication:
-
-```mermaid
-sequenceDiagram
-  box operator
-    participant B as browser
-  end
-  box perimeter
-    participant P as identity perimeter
-  end
-  box console
-    participant S as console server
-  end
-  box store
-    participant X as exchange route
-    participant E as store engine
-  end
-  B->>P: same-origin request
-  P->>S: request and the perimeter's assertion
-  S->>S: re-verify the assertion, take the operator's address
-  S->>X: post the verified assertion
-  alt mint refused
-    X-->>S: ConsoleTokenExchangeRefused, shared credential or refusal shown
-  else minted
-    X-->>S: per-operator credential, cached within its lifetime
-  end
-  S->>S: pick tool and arguments from the admitted packs
-  S->>E: read tool call under the operator's credential
-  E-->>S: rows through enforced relations
-  S-->>B: grounded prose and its source list
-```
 
 ## plan-turn
 
@@ -334,35 +229,6 @@ The three channels, the component union, deterministic component choice, view hi
 - `component-choice` — One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.
 - `older-transcript` — A client reading a transcript with an unknown component-union member renders its view as a table.
   *A-surface#answer-surfaces-read*
-
-A tool return split into three channels, and the view channel's path to a widget:
-
-```mermaid
-flowchart LR
-  subgraph server["console server"]
-    TR["tool return"]
-    SV{"built from a result?"}
-    H{"hint binds returned columns?"}
-    VAL{"props valid?"}
-    WALK["redactor"]
-    NONE["prose only"]
-  end
-  subgraph browser["browser"]
-    TP["trace panel"]
-    W["widget frame"]
-  end
-  TR -->|"grounding"| M(["model endpoint"])
-  TR -->|"internals, on request"| TP
-  TR -->|"view rows"| SV
-  CV(["client or model"]) -->|"authored view"| SV
-  SV -->|"yes"| H
-  SV -->|"no: ConsoleViewNotServerBuilt"| CV
-  H -->|"yes, hinted component"| VAL
-  H -->|"no, inferred component"| VAL
-  VAL -->|"no"| NONE
-  VAL -->|"yes"| WALK
-  WALK -->|"one frame per shape"| W
-```
 
 ## brief
 
@@ -477,21 +343,4 @@ The catch-up payload one greeting renders from:
     }
   ]
 }
-```
-
-One turn, from question to rendered answer:
-
-```mermaid
-flowchart LR
-  RDR(["operator"]) -->|"question"| PLAN["planner"]
-  MEM[("memory tables")] -->|"recall at vantage"| PLAN
-  PLAN -->|"plan over time window"| TOOLS["admitted read tools"]
-  TOOLS -->|"grounding rows"| A{"answered by the code test?"}
-  A -->|"no, first round"| PLAN
-  A -->|"no, second round"| RET["content-token retrieval"]
-  A -->|"yes"| SYN["synthesizer"]
-  RET -->|"retrieved passages"| SYN
-  SYN -->|"redacted, humanized prose"| PAGE["console page"]
-  PAGE -->|"prose, widget, sources"| RDR
-  SYN -->|"distilled conclusions"| MEM
 ```

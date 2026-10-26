@@ -93,25 +93,6 @@ Assertion construction, guard validation, suite placement, test-first and accept
 - `acceptance-surface` — An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`.
   *A-assurance#source-change-carries*
 
-#### Scenarios
-
-- `assurance.test.base-evidence`: WHEN a base assertion fails, THEN its diagnostic identifies test failure independently of infrastructure output.
-- `assurance.test.base-evidence`: WHEN base execution fails through infrastructure, THEN the failure supplies no failing-test evidence.
-
-The test-first check over one commit in a change's range:
-
-```mermaid
-flowchart LR
-  CH["commit altering Rust source"] -->|"trailers read"| TR{"refactor trailer?"}
-  TR -->|"yes"| WS["workspace stage"]
-  TR -->|"no"| T{"adds or alters a test?"}
-  T -->|"no: TestNotFirst"| AUTH(["change author"])
-  T -->|"yes"| B{"test fails on base?"}
-  B -->|"no: TestNotFirst"| AUTH
-  B -->|"yes"| OK["test-first stage"]
-  OK -->|"passing change"| WS
-```
-
 ## build
 
 Target directories, the engine-linked invocation, linked query functions, build targets, release artifacts and the dependency allowlist.
@@ -161,9 +142,6 @@ Target directories, the engine-linked invocation, linked query functions, build 
 
 #### Scenarios
 
-- `assurance.build.release-builder`: WHEN a Darwin cell selects `--builder zigbuild`, THEN the release command invokes `cargo zigbuild` for that profile and target.
-- `assurance.build.release-metadata`: WHEN a release cell packages an archive, THEN its JSON metadata names the archive, digest and SBOM.
-- `assurance.build.formula-manifest`: WHEN every cell's metadata is present without local archives, THEN formula generation writes the profile formulae and SHA256SUMS.
 - `assurance.build.checkout-artifacts`: WHEN checkout A and checkout B build different source into one target directory, THEN B's integration tests, doctests and binary execute B's behavior on cold and warm builds, and their shared dependency stays fresh.
 - `assurance.build.runtime-checkout`: WHEN a helper cached from checkout A receives checkout B's runtime inputs, THEN its workspace operations and binary execution reach B alone.
 
@@ -198,6 +176,14 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 - `semantic-separate` — Semantic quality reports use their own tier and input identity, exclude answer judging and deterministic mechanics verdicts, and compare baselines only for matching corpus, labels, model and configuration identities.
 - `run-verdict` — A run holds its report to the floors and, given `--baseline`, to that file; either red verdict exits non-zero, and `--update-baseline` applies {{assurance.baseline.raise-only}} on green alone.
 - `converter` — Each benchmark and application ground truth converts once into the case format through its own converter, and the runner reads nothing else.
+- `systems-metrics` — Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.
+- `checkpoint` — A run appends each case's result as JSONL, and a crash re-runs the in-flight case.
+- `run-report` — A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.
+
+### deterministic metrics
+
+Ranked metrics and floors computed with no model call.
+
 - `deterministic-tier` — Recall@k, R-precision, hit-rate@k, reciprocal rank and nDCG@k run with no model call, reported per leg — lexical, vector, hybrid — and per slice.
 - `distinct-top-k` — Membership in the top k is distinct, and a repeated id counts once.
 - `absent-truth` — A ranked metric over a case with no relevant set is NaN and drops out of every aggregate; an empty ranking against a non-empty relevant set scores zero.
@@ -208,6 +194,11 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 - `in-window-rate` — A case declaring a recency bound holds its in-window rate at or above 95 percent.
 - `abstention` — A must-abstain case returns zero rows.
 - `truth-per-surface` — Expected artifacts score the artifact retriever and expected edges score the edge retriever, reported apart; edge truth with no edge surface configured counts in an unscored tally.
+
+### judged tier
+
+The reader and the pinned judge score answers through the model endpoint.
+
 - `judged-dimensions` — The reading stage adds four judged dimensions: answer accuracy; abstention, as correct-refusal and hallucination-on-unknown rates; citation faithfulness; and temporal correctness against the bitemporal columns.
 - `grounded-reader` — The harness reader answers from retrieved rows alone, and the deterministic tier substitutes a stub reader.
 - `model-endpoint` — The judge and the reader reach a model through {{connector.infer.model-endpoint}}, and the harness holds no credential.
@@ -217,13 +208,9 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 - `cutoff-flags` — `contextful eval run` takes `--snapshot`, `--pretrain-cutoff` and `--posttrain-cutoff` for the reader and `--judge-snapshot`, `--judge-pretrain-cutoff` and `--judge-posttrain-cutoff` for the judge, each cutoff value a month and its tag, as `2024-10:documented`.
 - `judged-cutoffs` — A judged run block stamps the reader's and the judge's snapshot ids and their {{connector.infer.cutoffs}}.
   *because a score from a model trained past a case's resolution measures recall, not reading*
-- `systems-metrics` — Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.
-- `checkpoint` — A run appends each case's result as JSONL, and a crash re-runs the in-flight case.
-- `run-report` — A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.
 
 #### Scenarios
 
-- `assurance.evaluate.unlabeled-corpus`: WHEN a corpus's tables declare no policy and the run passes no `--zone`, THEN the run raises `EvalCorpusUnlabeled` and lands no row.
 - `assurance.evaluate.policy-labels`: WHEN a regression case names a row another agent owns under `owner = subject.agent`, THEN no leg returns it and the hybrid forbidden-row rate reads 0.
 - `assurance.evaluate.cutoff-flags`: WHEN a run passes `--pretrain-cutoff 2024-10:documented` and no `--posttrain-cutoff`, THEN the reader's post-training cutoff compares as each call's own instant.
 - `assurance.evaluate.judged-cutoffs`: WHEN a judged run passes `--judge-posttrain-cutoff 2025-03:estimated`, THEN the run block carries that cutoff tagged `estimated` beside the judge's snapshot id.
@@ -317,7 +304,6 @@ Historical evaluations, called backtests: bounded cases, model-knowledge control
 
 #### Scenarios
 
-- `assurance.backtest.label-interval`: WHEN a bounded case declares a horizon and no label interval, THEN the run raises `EvalLabelIntervalMissing` and reads nothing for that case.
 - `assurance.backtest.planted-future`: WHEN a bounded case's trajectory returns the row planted one day after its horizon, THEN the case fails and the report names the call that returned it.
 
 ## forecast
@@ -348,28 +334,6 @@ Probability forecasts over consumer-declared outcomes: freeze instant, settlemen
 unsettled: Which consumer-selected reference anchors difficulty-adjusted probability scores across case sets? owner: eval affects: assurance.forecast
 
 ## Shapes
-
-Where the build-time material sits:
-
-```
-tools/
-  ci/                     typed subcommands the gate invokes
-  spec/                   the corpus checker
-  eval/                   the quality harness's metrics, floors, baseline gate, ledger, records, trends,
-                          run checkpoint, trace store, and one converter per external ground-truth source
-crates/acceptance/
-  tests/integration/mNN.rs  one milestone's acceptance test, driving a built binary
-evals/
-  cases/                  version-controlled JSONL, one case per line
-  baselines/              one file per gated configuration
-  ledger.toml             one entry per tracked target, keyed to its clause
-  ledger.md               every entry's computed status, generated
-  generators/             graph walk, edge chain, absent entity
-crates/<name>/tests/
-  integration/main.rs     the crate's one integration binary
-  integration/<suite>.rs  a module, selected by path
-  <isolated>.rs           its own process, with a comment saying why
-```
 
 A baseline file:
 

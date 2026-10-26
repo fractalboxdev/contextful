@@ -167,23 +167,6 @@ The assumption allowlist, the transitive footprint audit over the elaborated env
 - `report` — The report names the commit, the resolved toolchain, the allowlist and inventory revision applied, and for each required constant its statement match and the assumptions it reaches.
 - `check-command` — `contextful formal check` elaborates the package, matches every inventory row, audits every footprint, writes the report, and exits non-zero naming the first failing constant.
 
-The verdict over one inventory row:
-
-```mermaid
-flowchart LR
-  C["required constant"] -->|"lookup"| P{"in the environment?"}
-  P -->|"no: TheoremConstantMissing"| X["failing row"]
-  P -->|"yes"| S{"statement matches?"}
-  S -->|"no: TheoremStatementDrift"| X
-  S -->|"yes, collect footprint"| H{"hole assumption?"}
-  H -->|"yes: ProofHoleAssumption"| X
-  H -->|"no"| N{"native-evaluation assumption?"}
-  N -->|"yes: NativeEvaluationAssumption"| X
-  N -->|"no"| A{"within the allowlist?"}
-  A -->|"no: AssumptionOutsideAllowlist"| X
-  A -->|"yes"| OK["passing row"]
-```
-
 ## recheck
 
 Rebuilding and re-auditing from pinned source in a credential-free environment.
@@ -257,75 +240,7 @@ The executable reference models, the case generators, the minimized counterexamp
   *A-assurance#protocol-package-holds*
 - `command` — `contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.
 
-One differential run:
-
-```mermaid
-sequenceDiagram
-    box harness
-        participant H as harness
-        participant K as counterexample corpus
-    end
-    box Lean model
-        participant R as reference binary
-    end
-    box Rust engine
-        participant E as native build
-        participant W as WebAssembly build
-    end
-    H->>K: replay every entry before fresh cases
-    loop each generated case, from the recorded seed
-        opt not a credential case
-            H->>R: case on standard input
-            R-->>H: decision
-        end
-        H->>E: the same case
-        E-->>H: decision
-        H->>W: the same case in linear memory
-        W-->>H: decision
-        opt decisions differ
-            H->>H: shrink to the minimized case
-            H->>K: record the minimized case
-            H->>H: ReferenceModelDrift, exit non-zero
-        end
-    end
-```
-
 ## Shapes
-
-The package on disk:
-
-```
-formal/
-  lakefile.toml            one lean_lib, no require stanza
-  lean-toolchain           one exact release string
-  Contextful.lean          library root, re-exports the five modules
-  Contextful/
-    Layer.lean             Layer, composed, composed_sound, composed_narrows
-    Placement.lean         placement inductive, allow-sets, floor, zone_layer_sound
-    Authority.lean         profile elements, effective authority, narrowing
-    Allowlist.lean         connector host patterns, inclusion, the widening witness
-    Mediation.lean         statement execution steps, reachability, the mediation theorem
-  inventory.toml           required constants and their expected statements
-  reference/               the executable model the differential harness drives
-  protocol/                second Lean package: lease, compare-and-swap and fence
-    lakefile.toml          one lean_lib, one lean_exe, no require stanza
-    lean-toolchain         the release string the policy package pins
-    Protocol/
-      Step.lean            state, steps, the total step function
-      Invariants.lean      the four invariant theorems
-      Journal.lean         journal state, port-call steps, the step function
-      JournalInvariants.lean  the seven journal theorems
-      JournalCheck.lean    the journal check and replay
-      Merge.lean           one writer's merge, decided per key
-      MergeTheorems.lean   the six merge theorems
-      MergeCheck.lean      the merge replay
-      Fold.lean            passes, pointer commit and collection
-      FoldTheorems.lean    the six fold theorems
-      FoldCheck.lean       the fold replay
-    Main.lean              executable: one step sequence in, one state per step out
-    inventory.toml         the invariant theorems and their expected statements
-    journal-regressions.jsonl  saved journal sequences and their grace mode
-```
 
 One inventory row:
 

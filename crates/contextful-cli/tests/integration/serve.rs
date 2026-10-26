@@ -378,7 +378,7 @@ fn a_differing_declaration_under_one_connection_id_conflicts_and_keeps_the_stand
 /// A create body outside `id`, `tenant`, `principal`, `file_ids`, `refresh_secret` and `schedule`, an unreadable
 /// schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.
 // spec: surface.connection.consent-boundary@cc44cea3
-// spec: surface.connection.malformed@54ab3015
+// spec: surface.connection.malformed@852b3b36
 #[test]
 fn a_connection_body_outside_its_fields_or_carrying_an_oauth_code_is_malformed() {
     let face = ConnectionFace::start();

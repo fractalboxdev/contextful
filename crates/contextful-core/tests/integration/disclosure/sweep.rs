@@ -49,8 +49,8 @@ full        = { every = "1d" }
 incremental = { every = "15m" }
 "#;
 
-/// An `[[acl_sweep]]` block declares one source's sweep: `source`, the `enumerate` table whose rows are its governed resources, `full` and `incremental` cadences as `{ every = <budget> }`, and optional `credential` and `events`.
-// spec: disclosure.sweep.sweep-block@d21acbdc
+/// An `[[acl_sweep]]` block declares one source's sweep as {{type:contextful_core::disclosure::sweep::RawBlock}}: `enumerate` names the table whose rows are its governed resources, and each cadence is `{ every = <budget> }`.
+// spec: disclosure.sweep.sweep-block@726360ee
 #[test]
 fn an_acl_sweep_block_declares_one_sources_sweep() {
     let blocks = SweepBlock::parse_manifest(MANIFEST).unwrap();
@@ -92,8 +92,8 @@ fn a_cadence_outside_the_budget_grammar_is_refused() {
     }
 }
 
-/// A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line, a grant carrying `resource_id`, `principal`, `principal_kind` and `level`, or `resource_id` with `"unread": true`; an unmarked resource with no grant line holds none.
-// spec: disclosure.sweep.grants-file@924214b9
+/// A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line, a {{type:contextful_core::disclosure::sweep::GrantLine}} or `resource_id` with `"unread": true`; an unmarked resource with no grant line holds none.
+// spec: disclosure.sweep.grants-file@fd11737c
 #[test]
 fn a_grants_file_is_the_read_of_every_governed_resource() {
     let text = "{\"resource_id\":\"p1\",\"principal\":\"dana@acme.example\",\"principal_kind\":\"user\",\"level\":\"viewer\"}\n\n{\"resource_id\":\"p1\",\"principal\":\"eng\",\"principal_kind\":\"group\",\"level\":\"editor\"}\n";

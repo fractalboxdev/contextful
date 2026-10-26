@@ -141,7 +141,7 @@ fn an_answer_verifies_for_its_request_within_the_skew_and_inside_the_vocabulary(
 
 /// An answer is `ok` with rows per declared output table, `defer` with a `retry_at` instant, `transient`, or
 /// `permanent` with a reason.
-// spec: surface.delegate.outcome@326a0759
+// spec: surface.delegate.outcome@a60f7b39
 #[test]
 fn the_outcome_vocabulary_round_trips() {
     let answers = [
@@ -157,10 +157,10 @@ fn the_outcome_vocabulary_round_trips() {
     assert_eq!(text, json!({"outcome": "transient"}));
 }
 
-/// A delegate request carries `job`, `execution_id`, `step`, `input_hash`, `idempotency_key`, `attempt`,
-/// `entity` with namespace, key and fence, `as_of`, `version` when fired from an applied snapshot, `pins`,
-/// `tables`, the input `row` and `deadline`.
-// spec: surface.delegate.envelope@3785b9f1
+/// A delegate request carries {{type:contextful_core::surface::delegate::Envelope}}: `idempotency_key`
+/// under {{run.journal.idempotency-key}}, `entity` with namespace, key and fence, and `version` when fired
+/// from an applied snapshot.
+// spec: surface.delegate.envelope@f63f7b4d
 #[test]
 fn the_envelope_serializes_every_field_it_names() {
     let mut envelope = Envelope {

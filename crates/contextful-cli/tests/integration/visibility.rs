@@ -42,6 +42,7 @@ fn sweep(dir: &Path, kind: &str) -> Output {
     cf(dir, &["visibility", "sweep", "--project", "wiki", "--source", "wiki", "--kind", kind, "--grants", "grants.jsonl"])
 }
 
+// spec: disclosure.sweep.sweep-verb@101aee40
 /// `visibility sweep --grants <file>` commits the file's read of a declared source as one run.
 #[test]
 fn a_sweep_of_a_declared_source_commits_the_grants_file_as_one_run() {

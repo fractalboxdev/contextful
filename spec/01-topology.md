@@ -139,7 +139,7 @@ Deployment configurations, provider services and comparison against the referenc
 - `unsupported-shape` — A target profile claiming a shape its provider does not provide raises `TargetShapeUnsupported`, naming the shape and the missing primitive.
   *A-topology#deploy-observation*
 - `wall-clock-cap` — A target capping per-invocation wall clock at 15 min hosts neither a first-time backfill nor a component connector, and its target profile records both exclusions.
-- `parity` — One declaration produces byte-identical table parts on every control-plane target. The parity check compares each target's object-store parts with the reference parts after a 24 h soak.
+- `parity` — One declaration produces byte-identical table parts on every control-plane target; `contextful-ci deploy parity` compares each target's object-store parts with the reference target's.
   *A-topology#deploy-observation*
 - `parity-divergence` — A byte difference from the reference output raises `ParityDivergence`, naming the target, the table and the first differing part.
   *A-topology#deploy-observation*
@@ -299,42 +299,6 @@ Hostname access policies, deployment checks and requests through the routing ser
   *P3*
 - `container-readiness` — A retrieval container reaches readiness within 8 s of a cold start, before its snapshot-set hydration completes.
 
-The deployment tool checks anonymous access. A caller then sends a request through the router to the query container.
-
-```mermaid
-sequenceDiagram
-  participant D as deploy
-  participant C as caller
-  box published store
-    participant H as routing hop
-    participant R as retrieval container
-  end
-  participant O as object storage
-
-  D->>H: anonymous GET /
-  alt answer matches the descriptor gate
-    H-->>D: access 302 · adminToken non-5xx · public 200
-  else outside the gate or unreachable
-    H-->>D: HostnamePostureMismatch, probe exits nonzero
-  end
-
-  C->>H: request + credential
-  alt no store configuration
-    H-->>C: 503 GatewayUnconfigured
-  else configured
-    H->>H: verify credential, route
-    H->>R: same credential bytes, unchanged
-    R->>R: re-verify, enforce grants, run query
-    alt warming
-      R-->>C: 503 + Retry-After, health reports warming
-    else ready
-      R-->>C: rows from the local snapshot set
-    end
-  end
-  Note over R: ready within 8 s of a cold start
-  O-->>R: snapshot-set hydration completes after readiness
-```
-
 ## coordinate
 
 Conditional metadata updates, writer leases and the databases that store coordination state.
@@ -379,42 +343,6 @@ Conditional metadata updates, writer leases and the databases that store coordin
 - `air-gap` — Single-node and edge deployments reach no process outside themselves for coordination, and run air-gapped with only their sources reachable.
 - `no-clustered-catalog` — Clustered availability behind the `Catalog` port comes from Postgres alone; the tree ships no self-contained clustered catalog.
   *because a separate clustered catalog duplicates Postgres replication*
-
-Every single-writer operation reduces to one linearizable conditional write behind the
-`Catalog` port.
-
-```mermaid
-flowchart LR
-  subgraph OPS["single-writer operations"]
-    LA["lease acquire"]
-    PTR["pointer commit"]
-    CL[("commit log")]
-    MAN["bucket manifest CAS"]
-    CUR["cursor compare-and-swap"]
-    APPLY["apply claims a version"]
-  end
-  PRIM["linearizable conditional write"]
-  PORT["Catalog port"]
-  CW{"conditional write supported?"}
-  SHAPE{"deployment shape?"}
-  subgraph BACKENDS["catalog backends"]
-    LOCAL[("local catalog file")]
-    PG[("Postgres via pg-catalog")]
-    D1[("D1")]
-  end
-  NOOPEN(["refused open"])
-  FENCED(["fenced writer"])
-
-  OPS -- "each needs" --> PRIM
-  PRIM -- "served through" --> PORT
-  PORT -- "opens backend" --> CW
-  CW -- "no: ConditionalWriteUnsupported" --> NOOPEN
-  CW -- "yes" --> SHAPE
-  SHAPE -- "single node" --> LOCAL
-  SHAPE -- "self-hosted cluster" --> PG
-  SHAPE -- "Cloudflare container" --> D1
-  PTR -. "stale fence: LeaseFenced" .-> FENCED
-```
 
 unsettled: Does an encrypted store seal its rows in the Postgres catalog, or keep refusing that pairing at open? owner: topology affects: topology.coordinate
 

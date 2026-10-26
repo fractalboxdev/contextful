@@ -1061,9 +1061,10 @@ fn v0_chain(dir: &Path, n: u64) -> Vec<AuditEntry> {
     all
 }
 
-/// A v1 entry carries `format: 1`, and its `entry_hash` is the chain header's digest over the RFC 8785 canonical
-/// JSON of the entry's `format`, `seq`, `prev_hash` and `attributes`.
-// spec: disclosure.record.entry-format@bda9d3a6
+/// A v1 {{type:contextful_policy::audit::AuditEntry}} carries `format: 1`, and its `entry_hash` is the chain
+/// header's digest over the RFC 8785 canonical JSON of the entry's `format`, `seq`, `prev_hash` and
+/// `attributes`.
+// spec: disclosure.record.entry-format@de6b08be
 #[test]
 fn a_v1_entry_digests_the_rfc_8785_form_of_its_whole_entry() {
     // Keys sort by UTF-16 code unit (U+1F600 before U+E000), numbers take the ECMAScript form,
@@ -1195,9 +1196,9 @@ fn a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link() {
 }
 
 /// Opening or verifying a chain whose header names another format or digest, a segment size outside
-/// {{disclosure.record.chain-header}}, or any field beyond `format`, `digest` and `segment_entries` raises
-/// `AuditHeaderUnsupported`.
-// spec: disclosure.record.header-unsupported@9994b8a3
+/// {{disclosure.record.chain-header}}, or any field beyond {{type:contextful_policy::audit::ChainHeader}}
+/// raises `AuditHeaderUnsupported`.
+// spec: disclosure.record.header-unsupported@548517e0
 #[test]
 fn a_header_naming_another_format_digest_or_segment_size_raises_audit_header_unsupported() {
     let unsupported = |r: Result<_, AuditError>| matches!(r, Err(AuditError::AuditHeaderUnsupported(_)));
@@ -1231,9 +1232,9 @@ fn a_header_naming_another_format_digest_or_segment_size_raises_audit_header_uns
     assert!(unsupported(AuditLog::open(dir.path(), key()).map(|_| ())));
 }
 
-/// Verifying a chain holding an entry with any field beyond `format`, `seq`, `prev_hash`, `attributes` and
-/// `entry_hash` raises {{disclosure.attest.broken-chain}} at that entry.
-// spec: disclosure.record.entry-fields@ef77f599
+/// Verifying a chain holding an entry with any field beyond {{type:contextful_policy::audit::AuditEntry}}
+/// raises {{disclosure.attest.broken-chain}} at that entry.
+// spec: disclosure.record.entry-fields@f50b7e6a
 #[test]
 fn an_entry_carrying_a_field_outside_its_digest_breaks_the_chain_at_that_entry() {
     let inject = |path: &Path, at: usize| {

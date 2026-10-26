@@ -536,6 +536,7 @@ fn revocation_from_denylist() -> Result<RevocationState, String> {
     Ok(RevocationState { denylist: parse_denylist(&text, "static"), ..RevocationState::default() })
 }
 
+// spec: authority.compose.session-build@a8212f32
 /// The server re-reads `--denylist` for each request and rejects a revoked credential on the next request without
 /// restarting. An unreadable denylist returns `503` and admits nothing.
 // spec: read.register.per-request-revocation@51b2efe5

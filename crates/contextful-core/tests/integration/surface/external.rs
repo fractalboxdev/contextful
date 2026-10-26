@@ -67,7 +67,7 @@ fn an_external_name_shared_with_another_step_collides() {
     }
 }
 
-// spec: surface.visualize.external-shape@abe25715
+// spec: surface.visualize.external-shape@5d9eee77
 /// A kind, command or schedule key refuses: an external step is never runnable.
 #[test]
 fn an_external_step_carries_no_kind_command_or_schedule() {

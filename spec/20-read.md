@@ -108,6 +108,11 @@ Registered relations, query tools, templates, the embedded SQL engine and HTTP t
 - `lexicon-surface` — The describe payload carries the store's numeric-identifier and badge vocabulary. Aliases, time-window phrases and distillation examples stay on the serving side.
 - `reserved-relation` — The engine's reserved table namespaces register like any other relation, with no privileged path underneath.
   *P5*
+
+### HTTP transport
+
+`contextful serve --http` admits each request, bounds its connections and drains on stop.
+
 - `network-transport` — `contextful serve --http <addr> --audience <aud> --max-in-flight <n>` serves MCP Streamable HTTP at `POST /mcp`. The stdio tool server answers each request's single JSON-RPC message as `application/json`.
   *A-read#networked-read-transport*
 - `concurrent-statements` — Requests on any number of connections run concurrently. Each statement uses its own engine connection under {{read.cache.pool-connections}} and delays no other request.
@@ -171,29 +176,6 @@ SQL validation, allowed relations, operator statements and template arguments.
 - `query-binding` — `context.query` binds `$name` or contiguous `$1`…`$n` from `parameters` typed under {{read.guard.template-declaration}}, without coercion. Positional `?`, missing, unused, untyped or mismatched parameters raise `QueryParameterRejected` before execution. Bound values pass {{authority.refuse.scope-guard}}.
   *because a value bound to a placeholder reaches no parser, and the tenant guard decides a bound value as it decides a literal*
 - `startup-time-check` — Template checks are caller-independent and run once at startup; a request pays nothing for them.
-
-Admission of one statement, by provenance, and of one template:
-
-```mermaid
-flowchart LR
-  OPR(["operator"]) -->|"raw statement"| EXEC["executor"]
-  TOK(["token caller"]) -->|"statement text"| ONE{"one read-only SELECT?"}
-  ONE -->|"no: StatementNotReadOnly"| TOK
-  ONE -->|"yes"| TF{"reaches a table function?"}
-  TF -->|"yes: TableFunctionRefused"| TOK
-  TF -->|"no"| REL{"every relation registered?"}
-  REL -->|"no: ungranted table"| TOK
-  REL -->|"yes"| PAR{"parameters match placeholders?"}
-  PAR -->|"no: QueryParameterRejected"| TOK
-  PAR -->|"yes"| EXEC
-  OPR -->|"authors at startup"| TPL["query template"]
-  TPL -->|"checked once"| START{"names store tables only?"}
-  START -->|"no: TemplateNamesForeignRelation"| OPR
-  START -->|"yes"| BIND{"arguments match parameters?"}
-  TOK -->|"template arguments"| BIND
-  BIND -->|"no: TemplateArgumentRejected"| TOK
-  BIND -->|"yes"| EXEC
-```
 
 ## respond
 
@@ -322,6 +304,11 @@ Candidate rows for ranked retrieval: query tokens, relevance thresholds, per-tab
   *A-read#restricted-sidecar-probe*
 - `snippet` — A snippet concatenates up to three text columns, using `retrieve.text` when declared. Label-priority columns, such as title, summary, description and thesis, come first; prose-worthy columns follow in schema order.
 - `identifiers-never-snippet` — Snippets exclude content hashes, URLs, identifiers and instant-valued columns.
+
+### index sidecars
+
+Vector and full-text sidecars add candidates that rejoin through the caller's relation.
+
 - `sidecar-generates-candidates` — Vector probes use query embeddings; full-text probes use content tokens. Each probe adds its top results to the recency window and rejoins through {{authority.compose.vector-arm}}. Per-row scores equal exact-scan scores.
   *P5*
 - `fulltext-probe` — Full-text probes rank the entire snapshot by BM25 with one should-clause per content token. Tokens split by the sidecar tokenizer match resulting terms at consecutive positions. ASCII word tokens match plurals under {{read.retrieve.script-split-matching}}.
@@ -336,27 +323,6 @@ Candidate rows for ranked retrieval: query tokens, relevance thresholds, per-tab
 - `sidecar-falls-back` — Retrieval uses an exact scan for missing snapshots, missing matching sidecars, masked or zone-withheld identifiers or indexed columns, classed text columns, dimension or manifest mismatches, or unreadable dumps.
   *P4*
 - `gain-never-loss` — For each reader, accelerated retrieval returns a superset of the exact scan's rows. Different readers querying one snapshot may receive different rows.
-
-Candidate generation for one ranked read:
-
-```mermaid
-flowchart LR
-  CALLER(["token caller"]) -->|"query and filter"| BUD{"inside the filter budget?"}
-  BUD -->|"no: FilterBudgetExceeded"| CALLER
-  BUD -->|"yes, one arm per table"| COL{"table has the filter column?"}
-  COL -->|"no"| DROPPED["dropped arm"]
-  COL -->|"yes"| SC{"sidecar preconditions hold?"}
-  SC -->|"yes, probe"| SIDE[("index sidecar")]
-  SC -->|"no, scan exactly"| TBL[("table parts")]
-  subgraph AUTHC["authority"]
-    REJ["composed restriction"]
-  end
-  SIDE -->|"candidate rows"| REJ
-  REJ -->|"permitted rows"| WIN["recency window"]
-  TBL -->|"exact rows"| WIN
-  WIN -->|"above relevance floor"| DEDUP["row-key deduplicator"]
-  DEDUP -->|"unique candidates"| RANK["ranker"]
-```
 
 #### Scenarios
 
@@ -397,20 +363,6 @@ Candidate ordering by vector and lexical scores, timeframe and reported confiden
 - `widened-window-statistics` — Lexical term statistics use the widened candidate window. Accelerated retrieval may therefore order rows differently from the exact scan.
 - `calibration-gate` — A lexical-leg calibration replaces the one {{read.rank.fusion}} names only when the native evaluation scores it at or above that one on every tracked measure.
   *A-read#reciprocal-rank-calibrates*
-
-Vector and lexical scoring and fallback ranking:
-
-```mermaid
-flowchart LR
-  C["candidate set"] -->|"cosine, weight 0.6"| FU["score fusion"]
-  C -->|"query terms"| L{"lexical backend linked?"}
-  L -->|"yes"| B["BM25 backend"]
-  L -->|"no"| TF["token fallback"]
-  B -->|"BM25, weight 0.4"| FU
-  FU -->|"fused scores"| ORD["window-first ordering"]
-  TF -->|"token scores"| ORD
-  ORD -->|"ordered rows"| OUT(["token caller"])
-```
 
 unsettled: Does a convex combination over min-max-normalized scores, its weight fitted per domain on settled judgments, replace {{read.rank.fusion}}? owner: read-path affects: read.rank
 
@@ -539,7 +491,7 @@ Committed-run notifications, durable replay, resume positions, queue limits and 
   *because an in-process hub ties every reader to the landing process and loses its state on restart*
 - `after-commit` — Subscriptions notify only runs committed under {{store.lay-out.uncommitted-run}}. Runs without manifests and logged runs absent from their node's commit log produce no notification.
   *P4*
-- `notification` — A notification carries `table`, `run_id`, `node_id`, `committed_at` and `frontier`, the pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows carry.
+- `notification` — A notification is {{type:contextful_core::read::subscribe::Notification}}; its `frontier` is the pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows carry.
 - `frontier-covers-run` — A read of the table bounded `as_of` a notification's frontier covers the notified run's files.
   *P4*
 - `commit-order` — Notifications of one table arrive in ascending `commit_seq`, the order {{store.reserve.commit-order}} makes runs readable, and each committed run notifies exactly once per subscription.
@@ -630,19 +582,4 @@ max_rows   = 500
     "properties": { "since": { "type": "string", "format": "date-time" }, "region": { "type": "string" } },
     "required": ["since", "region"] },
   "limits": { "max_rows": 500 } }
-```
-
-The path one ranked read takes:
-
-```mermaid
-flowchart LR
-  CALLER(["token caller"]) -->|"tool call or SQL"| GRD["statement guard"]
-  OPR(["operator"]) -->|"raw SQL"| REG["view registry"]
-  GRD -->|"admitted statement"| REG
-  REG -->|"registered relations"| GEN["candidate generator"]
-  GEN -->|"sidecar probe"| SIDE[("index sidecar")]
-  SIDE -->|"candidate rows"| RESTR["composed restriction"]
-  RESTR -->|"permitted rows"| FUSE["three-leg fusion"]
-  FUSE -->|"top-K rows"| PROJ["response projection"]
-  PROJ -->|"one response"| CALLER
 ```

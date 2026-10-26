@@ -410,6 +410,7 @@ fn a_refused_second_output_child_commit_retains_names_for_existing_discard() {
     assert!(ledger.source("scoring").unwrap().is_none(),"a partial producer publishes no coordinated completion frontier");
 }
 
+// spec: surface.fire.executable-pin@462b2270
 /// The rows every body emits land after the last input row completes and before the owner retires, one run per
 /// declared output table through {{run.land.stage-order}}.
 // spec: run.journal.row-output@90602540

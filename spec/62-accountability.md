@@ -59,11 +59,11 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
 - `segment` — Entries append to a numbered segment file in ascending `seq`, and a segment closes under one signed root once it holds its chain header's segment size, 4096 entries by default.
 - `chain-header` — `header.json`, written before a new chain's first entry, fixes the chain's format, its digest, `sha256` or `blake3`, and a segment size of at most 65536 entries; the first v1 entry's `prev_hash` is the canonical header's digest.
   *A-disclosure#audit-format-v1*
-- `header-unsupported` — Opening or verifying a chain whose header names another format or digest, a segment size outside {{disclosure.record.chain-header}}, or any field beyond `format`, `digest` and `segment_entries` raises `AuditHeaderUnsupported`.
+- `header-unsupported` — Opening or verifying a chain whose header names another format or digest, a segment size outside {{disclosure.record.chain-header}}, or any field beyond {{type:contextful_policy::audit::ChainHeader}} raises `AuditHeaderUnsupported`.
   *because a verifier guessing at a digest it does not implement checks nothing*
-- `entry-format` — A v1 entry carries `format: 1`, and its `entry_hash` is the chain header's digest over the RFC 8785 canonical JSON of the entry's `format`, `seq`, `prev_hash` and `attributes`.
+- `entry-format` — A v1 {{type:contextful_policy::audit::AuditEntry}} carries `format: 1`, and its `entry_hash` is the chain header's digest over the RFC 8785 canonical JSON of the entry's `format`, `seq`, `prev_hash` and `attributes`.
   *A-disclosure#audit-format-v1*
-- `entry-fields` — Verifying a chain holding an entry with any field beyond `format`, `seq`, `prev_hash`, `attributes` and `entry_hash` raises {{disclosure.attest.broken-chain}} at that entry.
+- `entry-fields` — Verifying a chain holding an entry with any field beyond {{type:contextful_policy::audit::AuditEntry}} raises {{disclosure.attest.broken-chain}} at that entry.
   *because the entry digest covers only `format`, `seq`, `prev_hash` and `attributes`, so without this an injected field verifies clean*
 - `inexact-integer` — Appending a v1 entry whose attributes hold an integer beyond ±(2^53 − 1) raises `AuditAttributeInexact` and appends nothing; verifying a chain holding such an entry raises {{disclosure.attest.broken-chain}}.
   *because RFC 8785 writes every number as an IEEE 754 double, so integers past 2^53 share a digest and an edit between two of them verifies*
@@ -85,6 +85,22 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *because the chain answers who read how much under which credential, and the attestation keeps an asserted member from reading as identity*
 - `memory-read-tables` — A `memory.recall` or `memory.explain` entry's `contextful.tables` lists each relation the read ran a statement on under the caller's session: the entities, the claims, every evidence table its gate read, and a labels table.
   *because the evidence gate reads source rows on the caller's behalf, and a read its entry omits is one no owner can account for*
+- `reads-view` — `audit query` runs one statement over `audit_reads`, one row per table a read entry names — `read_at`, `on_behalf_of`, `agent`, `table_name`, `policy`, `outcome`, `row_count`, `claims` — computed from the chain's segments on each call.
+  *A-disclosure#audit-reads-view*
+- `reads-view-types` — In `audit_reads`, `row_count` is an integer, and `claims` lists the claim ids a read entry records, null where it records none.
+  *because a count compared as text sorts wrong, and an empty list beside null gives one absence two spellings*
+- `erasures-view` — `audit query` exposes `audit_erasures` from canonical erasure entries: `transaction_id`, `subject_hash`, `affected_counts` and `executed_at`; the projection retains no state and exposes no selector or row payload.
+  *A-disclosure#audit-reads-view*
+- `bound-entry` — A bounded read's {{disclosure.record.read-attributes}} entry adds `contextful.bounds` as {{store.bound-time.echo}} echoes it, the snapshot id the read resolved, the query text and the response's SHA-256 digest.
+  *because a backtest judges the path a case took, and bounds absent from the trajectory prove only the configuration*
+- `refused-read` — A read enforcement refuses appends one entry with `outcome` `refused`, naming the relations the guard parsed, and releases no rows.
+  *A-disclosure#audit-reads-view*
+- `projection` — The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.
+
+### custody
+
+One append group holds the log at a time, under unanchored or signed custody.
+
 - `read-chain` — `contextful serve`, `contextful mcp` and {{read.reference.call}} open `.contextful/audit/` before answering; without an explicit startup signing port they use unanchored custody. A chain that does not open stops the process before any row reads.
   *A-disclosure#hash-chain-attestable*
 - `read-signer` — An explicit startup read signing port matches independently configured current public pins before opening and before each append; missing, wrong or retired signing authority refuses held-chain reads through {{disclosure.record.unpersisted-entry}} without inferring keys from requests or receipts.
@@ -107,17 +123,11 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *A-disclosure#audit-log-opens*
 - `signed-read` — A read verb's `--issuer-key` opens the chain held without anchoring it; over a chain carrying no `chain.held` it refuses as {{disclosure.record.unsigned-tip}} does, naming {{disclosure.attest.anchor-verb}}, and appends nothing.
   *because anchoring is one-way and {{disclosure.record.unanchored-over-signed}} then refuses every unsigned reader, so only the owner's explicit verb performs it*
-- `reads-view` — `audit query` runs one statement over `audit_reads`, one row per table a read entry names — `read_at`, `on_behalf_of`, `agent`, `table_name`, `policy`, `outcome`, `row_count`, `claims` — computed from the chain's segments on each call.
-  *A-disclosure#audit-reads-view*
-- `reads-view-types` — In `audit_reads`, `row_count` is an integer, and `claims` lists the claim ids a read entry records, null where it records none.
-  *because a count compared as text sorts wrong, and an empty list beside null gives one absence two spellings*
-- `erasures-view` — `audit query` exposes `audit_erasures` from canonical erasure entries: `transaction_id`, `subject_hash`, `affected_counts` and `executed_at`; the projection retains no state and exposes no selector or row payload.
-  *A-disclosure#audit-reads-view*
-- `bound-entry` — A bounded read's {{disclosure.record.read-attributes}} entry adds `contextful.bounds` as {{store.bound-time.echo}} echoes it, the snapshot id the read resolved, the query text and the response's SHA-256 digest.
-  *because a backtest judges the path a case took, and bounds absent from the trajectory prove only the configuration*
-- `refused-read` — A read enforcement refuses appends one entry with `outcome` `refused`, naming the relations the guard parsed, and releases no rows.
-  *A-disclosure#audit-reads-view*
-- `projection` — The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.
+
+### telemetry
+
+Spans leave the process over OTLP only when an endpoint is configured.
+
 - `trace-carrier` — A well-formed W3C `traceparent` names the trace and the parent of the operation's span; a malformed one is ignored and the operation starts a fresh trace.
   *because a caller's broken header must cost it the link to its trace, never the operation*
 - `span-export` — With `OTEL_EXPORTER_OTLP_ENDPOINT` set, spans leave as OTLP/HTTP JSON to its `/v1/traces` path, or to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as given, carrying the `OTEL_EXPORTER_OTLP_HEADERS` headers and `OTEL_SERVICE_NAME` as `service.name`.
@@ -125,25 +135,6 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *because egress reachable under a default configuration is telemetry the operator never chose*
 - `span-queue` — Spans leave off the operation's path through a queue of 2048 spans; a span past the cap, or lost to a failed export, is dropped and counted.
   *because an unreachable collector must add no latency to the read or run that made the span*
-
-One read's entry under group commit:
-
-```mermaid
-sequenceDiagram
-    participant R as read
-    participant C as audit chain
-    participant D as local durable storage
-    R->>C: span attributes
-    C->>C: link prev_hash to the tip, compute entry_hash
-    C->>D: one fsync shared by concurrent appends
-    alt persisted
-        D-->>C: durable
-        C-->>R: rows released
-    else persist fails
-        C->>C: pop the in-memory tip
-        C-->>R: AuditEntryUnpersisted, no rows
-    end
-```
 
 ## explain
 
@@ -245,7 +236,7 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, and th
   *A-disclosure#forced-rewrite-measured*
 - `cascade-unbounded` — A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.
   *A-disclosure#forced-rewrite-measured*
-- `physical-removal` — Within 24 h of the erasure's commit, every file holding an erased row — superseded snapshots inside {{store.fold.retention}} included — every {{read.synthesize.extract-cache}} entry whose batch held it, and every {{read.synthesize.dead-letter}} row holding its content is rewritten or collected.
+- `physical-removal` — Within 24 h of the erasure's commit, every file holding an erased row, superseded snapshots inside {{store.fold.retention}} included, is rewritten or collected.
   *A-disclosure#re-synthesis-after*
 - `tenant-column-type` — A tenant column of a non-string type raises `PurgeTenantColumnType`.
   *A-disclosure#forced-rewrite-measured*
@@ -256,30 +247,11 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, and th
 - `tenant-rewrite` — `context erase --tenant <id>` rewrites every row whose bare outermost partition column holds the identifier's exact bytes out of every table through {{disclosure.erase.atomic-publication}}, and prints a freshly signed receipt.
   *A-disclosure#forced-rewrite-measured*
 
-A subject erasure:
-
-```mermaid
-flowchart LR
-  REQ(["requester"]) -->|"context erase --subject"| G{"forget grant over every table?"}
-  G -->|"no: ErasureUngranted"| REQ
-  G -->|"yes, HMAC the subject"| CASC["erasure cascade"]
-  CASC -->|"selected row versions"| C{"provenance within 16 hops?"}
-  C -->|"no: ErasureCascadeUnbounded"| REQ
-  C -->|"yes, survivor rows"| STAGE[("staged replacement")]
-  STAGE -->|"signed erasure entry"| CHAINLOG[("audit chain")]
-  CHAINLOG -->|"entry hash"| CERT[("transaction certificate")]
-  CERT -->|"commit"| FRONT[("erasure frontier")]
-  FRONT -->|"working copies"| TABLES[("table directories")]
-  FRONT -->|"collected within 24 h"| FILES[("retired run files")]
-  FRONT -.->|"best-effort push"| BKT[("replication bucket")]
-  BKT -->|"refreshed copies"| REP[("replicas")]
-```
-
 unsettled: Is request-to-last-replica erasure within 72 h an engine bound or an operator objective, given the engine schedules no replica refresh? owner: disclosure affects: disclosure.erase
 
 unsettled: Does an erasure refuse fact reads, the free-form statement face included, until re-synthesis restores the facts the cascade invalidated? owner: disclosure affects: disclosure.erase
 
-unsettled: Which record of a committed batch's member rows lets erasure find its cache entries? owner: read-path affects: disclosure.erase
+unsettled: Does erasure rewrite each {{read.synthesize.dead-letter}} row holding an erased subject's content, and within which bound? owner: read-path affects: disclosure.erase
 
 ## receipt
 
@@ -299,26 +271,6 @@ The signed artifact a tenant purge returns: its claim, its coverage block, its p
   *because the audit chain already orders every receipt, and a keyed digest links repeat purges without a cleartext identifier or a second record*
 - `zero-rows` — A purge whose tenant holds no retained row rewrites nothing and signs a receipt with a zero count for every declared table and an empty `transaction_id`.
   *because an owner proves a tenant's absence with one artifact whether or not rows existed*
-
-A tenant purge, its receipt, and an offline check of it:
-
-```mermaid
-sequenceDiagram
-    participant O as store owner
-    box Contextful
-        participant P as purge
-        participant S as store files
-        participant L as audit chain
-    end
-    participant V as verifier
-    O->>P: context erase --tenant, no capability token
-    P->>S: rewrite run files, snapshots, builds, memory mirror
-    P->>P: hash tenant with fresh salt, sign payload
-    P->>L: append the receipt entry under request_id
-    P-->>O: receipt with prior_request_id
-    O->>V: receipt and the tenant identifier
-    V->>V: recompute hashes, check the signature
-```
 
 ## Shapes
 

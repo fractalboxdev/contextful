@@ -293,6 +293,29 @@ fn a_signed_read_over_an_unanchored_chain_refuses_and_unsigned_reads_go_on() {
     assert_eq!(entries(), 3);
 }
 
+// spec: disclosure.record.read-signer@decf0053
+#[test]
+fn a_signed_read_whose_signing_key_the_pins_omit_is_refused_and_appends_nothing() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    stdout(&run(p, &["audit", "anchor", "--project", "research", "--issuer-key", ".contextful/issuer.seed"], &[]));
+    stdout(&run(p, &["token", "keygen", "--out", ".contextful/other.seed"], &[]));
+    let entries = || contextful_policy::audit::entries(&p.join(".contextful/audit")).unwrap().len();
+    let before = entries();
+    let recall = ["memory", "recall", "--project", "research", "--table", "memory/facts", "--subject", "acme", "--public-key", &public, "--audience", AUD];
+    let mut wrong = recall.to_vec();
+    wrong.extend(["--issuer-key", ".contextful/other.seed"]);
+    let refused = run(p, &wrong, &[("CONTEXTFUL_TOKEN", &token)]);
+    assert!(!refused.status.success());
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("IssuerKeyUnresolvable"), "{stderr}");
+    assert_eq!(entries(), before, "a read under an unpinned signing key appends nothing");
+    let mut right = recall.to_vec();
+    right.extend(["--issuer-key", ".contextful/issuer.seed"]);
+    stdout(&run(p, &right, &[("CONTEXTFUL_TOKEN", &token)]));
+    assert_eq!(entries(), before + 1);
+}
+
 /// By default, `contextful memory synthesize` starts synthesis. A scheduled `[[job]]` of kind `synthesize` targeting
 /// the claims table replaces that default. Each execution advances only through {{read.synthesize.pass-cursor}}.
 // spec: read.synthesize.cadence@381c8db9

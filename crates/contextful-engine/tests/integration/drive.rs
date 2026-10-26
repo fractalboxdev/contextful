@@ -747,7 +747,7 @@ fn changed_or_removed_structure_refuses_pending_raw_replay_before_read_body_or_l
 
 /// A body learns the execution it runs under through its calls: the execution id, the resolved `as_of`, the
 /// engine's instant and, for an isolated item, the fence of the entity lease it holds; a batch row holds none
-/// (`surface.delegate.envelope`, `surface.delegate.currency`).
+/// (`surface.delegate.envelope`, `run.items.fence`).
 #[test]
 fn a_body_reads_its_execution_bounds_fence_and_clock_through_its_calls() {
     use contextful_core::run::drive::RowContext;

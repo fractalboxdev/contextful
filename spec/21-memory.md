@@ -86,24 +86,6 @@ Claim extraction, entity resolution, consolidation, evidence, deduplication, aud
   *A-read#gleaning-declared-single*
 - `confidence-calibration` — Model-emitted confidence carries `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score. A validated map supplies the reported calibrated confidence.
   *A-read#memory-confidence-retention*
-- `extract-cache` — Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise marked-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.
-  *A-read#extraction-cache-keys*
-
-One synthesis batch, from landed rows to a committed claim or the dead-letter table:
-
-```mermaid
-flowchart LR
-  ROWS[("landed rows")] -->|"batch since cursor"| MODEL(["extraction model"])
-  MODEL -->|"response"| VAL{"output valid?"}
-  VAL -->|"no, attempts left"| MODEL
-  VAL -->|"no: MemoryExtractExhausted"| DL[("dead-letter table")]
-  VAL -->|"yes"| RES{"mentions resolved?"}
-  RES -->|"ambiguous: MemoryEntityAmbiguous"| DL
-  RES -->|"endpoint missing: MemoryEdgeEndpointUnresolved"| DL
-  RES -->|"yes"| REL{"relation type declared?"}
-  REL -->|"no: MemoryUndeclaredRelation"| DL
-  REL -->|"yes, consolidate and commit"| FACTS[("memory_facts")]
-```
 
 unsettled: Which consolidation merges two claims of one dedup key, and what record does a coverage gap leave? owner: read-path affects: read.synthesize
 
@@ -112,7 +94,7 @@ unsettled: Which consolidation merges two claims of one dedup key, and what reco
 
 Claim replacement within a validity interval, confidence decay, direct writes, timestamps, expiry, retention and promotion.
 
-- `tier` — The writer assigns `tier` from write method and grounding, excluding payload values: synthesis uses `derived`, direct writes use `curated`, fetched results use `researched`. Mixed grounding takes the lowest tier.
+- `tier` — The writer assigns `tier`, a {{type:contextful_core::memory::revise::Tier}}, from write method and grounding, excluding payload values: synthesis uses `derived`, direct writes use `curated`, fetched results use `researched`. Mixed grounding takes the lowest tier.
   *A-read#claim-standing-derived*
 - `supersede` — An equal-or-higher-tier claim replaces a live prior matching subject, predicate and scope when both are open-ended or share valid-from, except {{read.revise.unscoped-collision}}. The prior ends at the successor's start and names the successor.
   *A-read#claim-standing-derived*
@@ -189,18 +171,6 @@ Ranked and keyed claim retrieval, read timestamps, tier ordering, scope and tomb
   *A-read#claim-standing-derived*
 - `usage-ledger` — `memory.recall`, `memory.explain` responses carrying claims, and `corpus.retrieve` responses containing `memory_facts` record returned claim ids as `contextful.memory.claims`. The read entry includes caller credential, subject and read instant.
   *A-read#memory-reads-expose*
-
-Evidence checks before returning a claim to the application:
-
-```mermaid
-flowchart LR
-  FACTS[("memory_facts")] -->|"live claim"| COUNT{"evidence entries per claim?"}
-  COUNT -->|"up to 256"| EV{"evidence readable in session?"}
-  COUNT -->|"257 to 4096: capped"| EV
-  COUNT -->|"over 4096: MemoryEvidenceOverflow"| HELD["withheld claim"]
-  EV -->|"yes, grounded turn"| APP(["application"])
-  EV -->|"unreadable: MemoryEvidenceUnresolved"| HELD
-```
 
 #### Scenarios
 
@@ -294,21 +264,6 @@ Prediction registration, observations, required verdict citations and outcome la
 - `calibration-verb` — `contextful memory calibration --table <claims>` joins verdict-bearing labels to claims by `prediction_id = claim_id` through the caller's session. The command prints {{read.settle.calibration-report}} with joined-prediction count, using JSON under `--json`.
   *because a prediction's shape, predicate and emitted confidence are those of the claim it scores*
 
-Registration, observation and the label view:
-
-```mermaid
-flowchart LR
-  APP(["application"]) -->|"registration"| RV{"registration well formed?"}
-  RV -->|"yes"| PRED[("predictions")]
-  RV -->|"no: OutcomeRegistrationInvalid"| APP
-  SRC(["resolution source"]) -->|"observation"| OV{"source and citation match?"}
-  OV -->|"yes"| OUT[("outcomes")]
-  OV -->|"source differs: OutcomeSourceMismatch"| SRC
-  OV -->|"no citation: OutcomeCitationMissing"| SRC
-  PRED -->|"joined within grace"| LAB[("outcome_labels")]
-  OUT -->|"joined within grace"| LAB
-```
-
 ## traverse
 
 Graph traversal from a seed entity, bounded by time, hop count and readable edges in the caller's session.
@@ -331,24 +286,6 @@ Graph traversal from a seed entity, bounded by time, hop count and readable edge
   *because a count of hidden edges discloses their existence, as {{read.recall.suppression-count}} avoids naming claims*
 - `cycle` — Traversal proceeds breadth-first by hop and expands each node at most once.
   *because a revisited node adds no edge and a cycle otherwise exhausts {{read.traverse.frontier-cap}}*
-
-One walk, from the caller's seed to the reached edges:
-
-```mermaid
-flowchart LR
-  APP(["agent"]) -->|"seed and relation types"| REL{"relations walkable?"}
-  REL -->|"no: MemoryTraverseRelationUnwalkable"| APP
-  REL -->|"yes"| HOP{"hops within bound?"}
-  HOP -->|"no: MemoryTraverseHopsExceeded"| APP
-  HOP -->|"yes, expand seed"| EDGES[("memory_edges")]
-  EDGES -->|"edges at hop"| GATE{"edge readable and cited?"}
-  GATE -->|"no, neither returned nor walked"| HIDDEN["hidden edge"]
-  GATE -->|"yes"| CAP{"within fan-out and frontier?"}
-  CAP -->|"no, counted in edges_omitted"| OMIT["omitted edge count"]
-  CAP -->|"yes"| REACHED["reached edges"]
-  REACHED -->|"unvisited targets, next hop"| EDGES
-  REACHED -->|"one projection"| APP
-```
 
 unsettled: Does a graph arm seeded by the query's resolved entities fuse into {{read.rank.fusion}} as a third leg, and at what weight? owner: read-path affects: read.traverse
 

@@ -42,6 +42,7 @@ fn visibility(t: &TableDecl) -> VisibilityError {
     }
 }
 
+// spec: disclosure.mirror.binding-keys@754d5677
 /// `max_acl_staleness` is a positive integer with one suffix from `s`, `m`, `h`, `d`. A compound form, a bare number or another suffix raises `VisibilityBudgetMalformed`, naming the table and the text read.
 // spec: disclosure.bound-staleness.budget-grammar@e6cf1d86
 #[test]

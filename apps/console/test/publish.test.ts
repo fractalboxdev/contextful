@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { answerDelivery, scheduledAudience } from "../src/publish.ts";
 
+// spec: surface.publish-answer.one-operator-principal@664a5cd4
 test("a normal answer is delivered only to its asking operator", () => {
   assert.deepEqual(answerDelivery({ operator: "alice", answer: "grounded", accessExplanation: false }), { recipient: "alice", answer: "grounded", share: false });
 });

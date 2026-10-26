@@ -63,7 +63,7 @@ The three-way conjunction, the access tables as store data, and the binding that
   *because a local store serves its owner first, so the organization-wide guardrails bind where a project declares an organization audience*
 - `incomplete-binding` — A binding at a servable level lacking a declared sweep for its source or a `max_acl_staleness` raises `VisibilityBindingIncomplete`.
   *P5*
-- `binding-keys` — A table's `visibility` block names its `source`, the `resource_key` column holding each row's `resource_id`, its `resource_kind`, `fidelity`, `family`, `max_acl_staleness`, and `on_stale` of `refuse`, the default, or `public_only`.
+- `binding-keys` — A table's `visibility` block declares {{type:contextful_core::disclosure::declare::RawBinding}}; `on_stale` takes `refuse`, the default, or `public_only`.
 - `memory-binding` — A memory `[[table]]` takes a `visibility` block under the keys of {{disclosure.mirror.binding-keys}}, parsed as a pipeline table's block, so an organization-wide face serves it bound.
 - `grants-table` — A sweep lands a source's access data as ordinary rows of `_visibility/<source>/resources`, `grants`, `principals`, `group_members`, `identity_links`, `tombstones` and `freshness`, through the land path and its write lock.
   *A-disclosure#grants-rows-under*
@@ -80,12 +80,12 @@ Observation of one source's permission state: sweep kinds, the observation clock
   *A-disclosure#mirrored-authorization-carries*
 - `orphan-grant` — A grant landing with no resource row, or on a resource of the unknown class, raises `VisibilityOrphanGrant` at commit and joins no reachable set.
   *P5*
-- `sweep-block` — An `[[acl_sweep]]` block declares one source's sweep: `source`, the `enumerate` table whose rows are its governed resources, `full` and `incremental` cadences as `{ every = <budget> }`, and optional `credential` and `events`.
+- `sweep-block` — An `[[acl_sweep]]` block declares one source's sweep as {{type:contextful_core::disclosure::sweep::RawBlock}}: `enumerate` names the table whose rows are its governed resources, and each cadence is `{ every = <budget> }`.
 - `cadence-grammar` — A sweep cadence's `every` takes the grammar of {{disclosure.bound-staleness.budget-grammar}}.
-- `sweep-verb` — `visibility sweep --source <s> --kind full|incremental|webhook [--grants <file>] [--directory <file>]` runs one sweep of a declared source, reading its permission endpoint under `credential`, or the file when `--grants` is given, and commits as one run.
-- `grants-file` — A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line, a grant carrying `resource_id`, `principal`, `principal_kind` and `level`, or `resource_id` with `"unread": true`; an unmarked resource with no grant line holds none.
+- `sweep-verb` — `visibility sweep --source <s> --kind full|incremental|webhook --grants <file> [--directory <file>]` runs one sweep of a declared source from its files and commits as one run.
+- `grants-file` — A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line, a {{type:contextful_core::disclosure::sweep::GrantLine}} or `resource_id` with `"unread": true`; an unmarked resource with no grant line holds none.
 - `bare-resource` — A `--grants` line carrying `resource_id` alone names a resource read holding no grant, so a webhook run naming it withdraws every grant that resource held.
-- `directory-file` — A `--directory` file is the identity provider's directory read, one JSON object per line: a link carrying `source_principal`, `subject`, `method` and `confidence`, or a membership carrying `group`, `member` and `member_kind`; a run without one keeps the current rows.
+- `directory-file` — A `--directory` file is the identity provider's directory read, one JSON object per line: a {{type:contextful_core::disclosure::sweep::LinkLine}} or a {{type:contextful_core::disclosure::sweep::Membership}}; a run without one keeps the current rows.
 - `full-run` — A full run replaces the source's resource and grant rows with those it read, writes a tombstone per grant it no longer observes, and sets `last_full_sweep_at`.
 - `incremental-run` — An incremental run replaces the grants of each resource it read, tombstoning those withdrawn, leaves every other resource's grants standing, and sets `last_incremental_at`.
 - `webhook-run` — A webhook run applies one delivery of the source's `events` stream: it replaces the grants of each resource its file names, leaves every other resource standing, and moves `watermark_at` to the instant it began reading.
@@ -95,6 +95,8 @@ Observation of one source's permission state: sweep kinds, the observation clock
 - `watermark-advance` — A run reading every governed resource sets the source's `watermark_at` to the instant it began reading; lag is now minus `watermark_at`.
 - `sweep-epoch` — A committed run advances its source's epoch by one.
   *A-disclosure#mirrored-authorization-carries*
+
+unsettled: Does `visibility sweep` given no `--grants` file read the source's permission endpoint under the block's `credential`? owner: disclosure affects: disclosure.sweep
 
 ## reach
 
@@ -110,25 +112,8 @@ Per-request resolution of a subject to the resources it reaches, the bounded gro
 - `semi-join` — The semi-join opening {{authority.compose.relation-order}} admits a row of a bound table when its `resource_key` value names a resource with a read-conferring, unexpired, untombstoned grant in the reader's reachable set.
 - `read-level` — A grant confers read when its `level`, mapped through the `level` table of the pack mapping its table, or taken verbatim where no pack maps that table, is `read`, `write` or `admin`.
 - `public-grant` — A grant whose `principal_kind`, mapped through the `principal_kind` table of the pack mapping its table, or taken verbatim where that table names no such kind, is `public` joins every subject's reachable set.
-- `closure-projection` — The group closure is a projection in `derived.sqlite`, rebuilt from the `_visibility` rows after each sweep and on a replica after each pull; no replica opens closure files.
-  *A-disclosure#grants-rows-under*
 - `cache-epochs` — The reachable-set cache keys on the subject, the directory epoch and the epoch of each source the read touches, so a sweep invalidates only sets reading its source.
   *A-disclosure#mirrored-authorization-carries*
-
-The per-request resolution of a subject to its reachable set:
-
-```mermaid
-flowchart LR
-  S(["subject"]) -->|"identity links"| SP["source principals"]
-  SP -->|"group edges"| DEPTH{"closure within 8 hops, 10000 nodes?"}
-  DEPTH -->|"no: VisibilityClosureDepth"| S
-  DEPTH -->|"yes, read-conferring grants"| RES["resources"]
-  RES -->|"known classes only"| RSET["reachable set"]
-  TOMB[("tombstones")] -->|"subtracted"| RSET
-  RSET -->|"keyed by source epochs"| CACHE[("reachable-set cache")]
-```
-
-unsettled: Where does a read replica keep the closure projection, when the edge profile links no SQLite adapter and an encrypted store holds `derived.sqlite` in memory? owner: disclosure affects: disclosure.reach
 
 ## bound-staleness
 
@@ -174,7 +159,7 @@ The reviewed unit landing one source: a manifest fragment plus a connector pin, 
 - `unsupported-coarse` — Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`.
   *A-disclosure#fidelity-bounded-what*
 - `pack-block` — A `[pack.<name>]` block names the `tables` it lands, its `excluded` tables, one `access.<table>` mapping per mapped table, and an optional container `allowlist` of `containers` with `evaluate = "all-of"`.
-- `mapping-keys` — An access mapping holds `resource_key`, `resource_kind`, `family`, `fidelity`, `container_key`, `principal_kind` and `level`, and no other key.
+- `mapping-keys` — An access mapping holds {{type:contextful_core::disclosure::pack::RawMapping}} and no other key.
 
 ## drive-sweep
 

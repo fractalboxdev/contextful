@@ -105,21 +105,6 @@ The group-size floor, the contributor-share ceiling, and the single signal a wit
 - `sentinel-row` — A release with `emit_sentinel = true` represents every suppressed group together as one `__suppressed__` row carrying no group key or exact figure.
   *A-disclosure#aggregate-disclosure-enforced*
 
-The decision over one group:
-
-```mermaid
-flowchart LR
-  G["group"] -->|"noised contributor count"| SZ{"clears min_group_size?"}
-  SZ -->|"no"| S["__suppressed__ sentinel"]
-  SZ -->|"yes"| SH{"share constraint declared?"}
-  SH -->|"no"| P["published row"]
-  SH -->|"yes"| AV{"per-contributor masses available?"}
-  AV -->|"no: DisclosureDominanceUnverifiable"| S
-  AV -->|"yes"| DOM{"above max_contributor_share?"}
-  DOM -->|"yes"| S
-  DOM -->|"no"| P
-```
-
 ## template
 
 Query templates a releasing principal calls by name: the single-statement rule, the checks they pass, and the truncation flag a capped read carries.

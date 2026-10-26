@@ -85,34 +85,6 @@ The schedule grammar and cron dialect, the trigger adapter and its durability, t
 - `unarmed-named` — An applied pipeline declaring no schedule, or held back by {{surface.arm.unreadable-schedule}}, arms no entry; serve names each such pipeline with its reason once per applied version, and `--cycle` lists them under `unarmed`.
   *because a pipeline silently left out of the armed set reads as armed until its data goes stale*
 
-Both trigger adapters reach one due-ness function:
-
-```mermaid
-flowchart LR
-  subgraph platform["platform"]
-    EXT["external adapter"]
-  end
-  subgraph plane["operator plane"]
-    SCH["schedule string"]
-    OK{"schedule readable?"}
-    SKIP["skipped entry"]
-    SET["armed set"]
-    IP["in-process adapter"]
-    WAKE["wake endpoint"]
-    DUE["due-ness function"]
-    FIRED["fired entries"]
-  end
-  SCH -- "parse" --> OK
-  OK -- "no: ScheduleUnreadable" --> SKIP
-  OK -- "yes" --> SET
-  IP -- "tick every 500 ms" --> DUE
-  EXT -- "HTTP wake" --> WAKE
-  WAKE -- "wake" --> DUE
-  SET -- "armed entries" --> DUE
-  DUE -- "due entries" --> FIRED
-  FIRED -- "answer within 25 s" --> EXT
-```
-
 ## reconcile
 
 The control source, snapshot pointer, signed pulled-head validation against local declarations, schedule diff, and what a failed poll leaves running.
@@ -134,30 +106,6 @@ The control source, snapshot pointer, signed pulled-head validation against loca
   *because one layout serves a snapshot directory unchanged over loopback HTTP*
 - `learns-by-reading` — A daemon learns of a new snapshot only by reading its control source, on each poll and on each wake; nothing pushes a snapshot to it.
   *A-surface#control-document-cas*
-
-One reconciler beat, polled every 30 s by default:
-
-```mermaid
-sequenceDiagram
-  box operator plane
-    participant R as reconciler
-    participant C as armed cursor
-    participant D as dispatch
-  end
-  participant S as snapshot store
-  R->>S: read manifest@current
-  alt pointer body not wholly a version
-    S-->>R: ControlPointerMalformed
-  else unreadable, unparseable or 5xx
-    S-->>R: ControlSnapshotUnreadable, armed set stays running
-  else newer version
-    R->>S: fetch manifest@vN.toml
-    R->>R: derive the scheduled set
-    R->>C: diff into added, removed, retimed, unchanged
-    R->>C: persist the cursor
-    R->>D: dispatch due units
-  end
-```
 
 #### Scenarios
 
@@ -227,8 +175,6 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
   *A-surface#due-units-admit*
 - `step-result` — A completion callback carries a pointer, an object-store key or a catalog row id, or the failed step's last error line, as JSON of at most 1 MiB; any other callback body raises `StepResultRefused` and records nothing.
   *because a step result rides one journal row, and bulk output belongs in the object store it points into*
-- `in-band-tool-error` — A step driving the engine over the tool protocol judges the tool result, not transport status: a `200` carrying a protocol error or a result flagged `isError` raises `StepToolError`.
-  *P2*
 - `callback-skew` — The relay accepts a callback timestamp within 300 s of its own clock.
 - `callback-rejected` — A heartbeat or callback whose signature fails, whose attempt is not the step's current attempt, whose timestamp falls outside {{surface.dispatch.callback-skew}}, or whose step has closed, raises `DispatchCallbackRejected` and changes no step.
   *because a partitioned worker's late result otherwise overwrites its successor's, and a captured callback replays indefinitely*
@@ -276,46 +222,17 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
 - `fire-credential-zone` — A serve under `--issuer-key`, whose applied snapshot schedules a store-driven or synthesize job, under a root whose `[project.zone]` declares no `default`, raises `FireCredentialZoneUnset` at start and fires nothing.
   *because a credential signing no zone asserts an undeclared zone, which {{authority.place.undeclared}} admits nowhere but `*`, so every fire reads no row*
 
-One step on a worker target, from submit to an accepted or rejected callback:
-
-```mermaid
-sequenceDiagram
-  box operator plane
-    participant RC as reconciler
-    participant RL as relay route
-  end
-  box worker
-    participant W as worker target
-  end
-  participant OS as object store
-  RC->>W: submit(job, idempotencyKey), attempt n
-  W-->>RC: handle, the existing job on a repeated key
-  loop every 15 s
-    W->>RC: heartbeat
-  end
-  W->>OS: output at an attempt-scoped key
-  W->>RL: callback, HMAC over run id, step, attempt, timestamp
-  alt attempt below current, or skew past 300 s
-    RL-->>W: DispatchCallbackRejected, step unchanged
-  else accepted
-    RL->>RC: result pointer, under the 1 MiB step-result cap
-  end
-  opt heartbeat lapse past 60 s
-    RC->>RC: reschedule onto another matching worker, attempt n+1
-  end
-```
-
 unsettled: Does an export on one node quiesce a serve on another, given the publication's intent and inputs locks are files on the exporting node's disk? owner: pipeline affects: surface.dispatch
 
 ## delegate
 
-A delegate is deploy-bound code outside the binary that runs a store-driven item's body over one signed HTTP request, in a synchronous `call` mode or the asynchronous `submit` mode, and answers with a closed outcome vocabulary.
+A delegate is deploy-bound code outside the binary that runs a store-driven item's body over one signed `call` request and answers with a closed outcome vocabulary.
 
 - `binding` — `[control.delegates.<name>]` binds a delegate by `url`, a `mode` of `call` or `submit`, and under `call` a `timeout`; a `store-driven` `body = { delegate = "<name>" }` naming no bound delegate raises `JobDelegateUnbound` at arm or fire.
   *A-surface#delegated-body-deploy*
 - `host` — A delegate `url` is `http` to a loopback host or the `contextful.delegate` virtual host, carrying no credential; any other spelling raises `DelegateHostRefused` at startup and arms nothing.
   *because the stock container reaches a delegate only through a loopback relay or the deploy's outbound interception, and a public URL turns daemon configuration into egress*
-- `envelope` — A delegate request carries `job`, `execution_id`, `step`, `input_hash`, `idempotency_key` under {{run.journal.idempotency-key}}, `attempt`, `entity` with namespace, key and fence, `as_of`, `version` when fired from an applied snapshot, `pins`, `tables`, the input `row` and `deadline`.
+- `envelope` — A delegate request carries {{type:contextful_core::surface::delegate::Envelope}}: `idempotency_key` under {{run.journal.idempotency-key}}, `entity` with namespace, key and fence, and `version` when fired from an applied snapshot.
   *because a delegate holds no state of its own, and a request naming its version and fence lets it refuse before a paid call*
 - `signed` — A request is signed under the worker key over `call`, its timestamp and body, and an answer over `answer`, the request's `idempotency_key`, its timestamp and body, each as {{surface.dispatch.submit-signed}} signs a submission.
   *because an answer bound to its request cannot be replayed onto another item's call*
@@ -328,45 +245,18 @@ A delegate is deploy-bound code outside the binary that runs a store-driven item
 - `call-timeout` — A `call` delegate's `timeout` defaults to 300 s.
 - `call-timeout-ceiling` — A `call` `timeout` above 3600 s raises `DelegateTimeoutRefused` at validation.
   *because an item holding a `max_in_flight` slot for over an hour is a stalled delegate, not a slow one*
-- `submit-mode` — Under `submit`, the request is a {{surface.dispatch.worker-target}} submission answered at once; the delegate heartbeats under {{surface.dispatch.heartbeat-beat}}, posts its answer to the callback, and a lapse follows {{surface.dispatch.heartbeat-lapse}}.
-  *A-surface#delegated-body-deploy*
-- `outcome` — An answer is `ok` with rows per declared output table, `defer` with a `retry_at` instant, `transient`, or `permanent` with a reason; `ok` lands as {{run.items.completion}}, `defer` parks, and `transient` and `permanent` follow {{run.items.retry-budget}}.
+- `outcome` — An answer is a {{type:contextful_core::surface::delegate::Answer}}; `ok` lands as {{run.items.completion}}, `defer` parks, and `transient` and `permanent` follow {{run.items.retry-budget}}.
   *A-surface#delegated-body-deploy*
 - `defer-parks` — A `defer` parks the item until its `retry_at` under {{run.items.retry-budget}}; the first fire after that instant re-admits it under {{run.items.replay}}, no run sleeps on it, and a row of a job without `isolated_items` closes `Transient` instead.
   *because a provider budget clears on the provider's clock, and a slot held through the wait starves every other entity*
-- `currency` — The fence in {{surface.delegate.envelope}} is checked immediately before the request under {{run.items.fence}}; under `submit`, the heartbeat `GET` answers the current attempt and fence, so a delegate learns before a paid call whether it is superseded.
-  *because a delegate that pays after its owner was replaced spends a call whose answer nothing records*
 - `version` — A binding's optional `version` joins the item's owner pins as a body dependency, so a changed version opens a fresh execution identity and a pending item under the old one refuses as {{run.own.pinned-plan-changed}}.
   *because a prompt or model change inside a delegate otherwise resumes recorded work under new semantics*
 - `clocks` — Signature timestamps on a request and an answer ride each side's system clock; the `deadline` and a `defer` wait ride the engine's instant.
   *because the engine's instant is injectable while a delegate shares only wall time, and a wait measured on two clocks never fires*
 
-One item on a `call` delegate, from the fence check to the recorded answer:
-
-```mermaid
-sequenceDiagram
-  box engine
-    participant I as item
-    participant J as journal
-  end
-  box delegate
-    participant D as delegate
-  end
-  I->>J: check owner and fence
-  I->>D: signed request with the envelope
-  alt answer within the timeout
-    D-->>I: signed answer
-    I->>J: record the answer under the entry key
-  else past the timeout
-    I->>J: close the attempt Transient
-  end
-  Note over I,D: a resume replays the recorded answer and sends nothing
-```
-
 #### Scenarios
 
 - `surface.delegate.call-mode`: WHEN a delegate answers `ok` with rows for one item and the daemon restarts before that item's landing commits, THEN the resumed item lands the recorded rows and the delegate receives no second request.
-- `surface.delegate.host`: WHEN a delegate `url` names a host that is neither loopback nor the virtual host, THEN startup refuses and arms nothing.
 - `surface.delegate.defer-parks`: WHEN a delegate answers `defer` with a `retry_at` ten minutes ahead, THEN the item's failed-attempt count is unchanged and the first fire after that instant sends the request again.
 
 ## edit
@@ -429,39 +319,8 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
 - `served-unavailable` — A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.
   *because a storage or owner fault message can disclose paths and endpoints to the console*
 
-One apply through the engine's store-scoped API:
-
-```mermaid
-sequenceDiagram
-  box operator plane
-    participant O as operator surface
-  end
-  box engine
-    participant E as store-scoped API
-    participant A as audit log
-  end
-  participant S as snapshot store
-  O->>E: apply under the admin capability
-  alt store took no guarded import
-    E-->>O: StoreNotInitialized, 409
-  else document fails validation
-    E-->>O: ApplyValidationRefused, no version claimed
-  else valid
-    E->>S: write manifest@vN.toml
-    E->>S: compare-and-swap manifest@current
-    alt swap lost
-      E-->>O: ManifestVersionConflict
-      O->>E: reload the winner, reapply pending edits
-    else swap won
-      E->>A: attributed to the verified identity
-      E-->>O: version N
-    end
-  end
-```
-
 #### Scenarios
 
-- `surface.apply.attestation-unavailable`: WHEN a synced apply presents no admin capability, THEN no version or receipt is claimed.
 - `surface.apply.receipt-message`: WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify.
 - `surface.apply.receipt-file`: WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version.
 - `surface.apply.guarded-import`: WHEN a warm synced node restarts through pull, import, apply and push, THEN import claims nothing, apply reports the version unchanged, and the restart succeeds.
@@ -492,7 +351,7 @@ Runtime lifecycle of one tenant's external source connection and its scheduled p
 - `idempotent-create` — Repeating create with the same connection id and declaration returns the standing version; a differing declaration raises `ConnectionIdConflict` without replacing it.
   *because a retried consent callback must not produce a second scheduled pipeline*
 - `answer` — Create answers `201` with the claimed connection, version and state; a repeat, pause or delete answers `200`; each claim advances the version by one, deleting an active connection claims twice, and a repeat claims nothing.
-- `malformed` — A create body outside `id`, `tenant`, `principal`, `file_ids`, `refresh_secret` and `schedule`, an unreadable schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.
+- `malformed` — A create body outside {{type:contextful_cli::connection::Declaration}}, an unreadable schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.
   *because a connection record binds exactly the declared selection, so an unrecognised field cannot ride along into the pipeline*
 - `unknown` — A pause or delete naming no standing connection raises `ConnectionUnknown`; a deleted id stays bound to its retired record, and create refuses its reuse as {{surface.connection.idempotent-create}}.
   *because a retired id reused by a new declaration restarts a pipeline whose credential is revoked*
@@ -506,11 +365,8 @@ unsettled: Which manifest block supplies a connection pipeline's OAuth client re
 
 #### Scenarios
 
-- `surface.connection.authority`: WHEN a caller names another tenant's connection, THEN `ConnectionScopeDenied` changes no control version.
 - `surface.connection.idempotent-create`: WHEN a consent callback retries the same declaration, THEN one pipeline and schedule remain.
 - `surface.connection.malformed`: WHEN a create body carries an OAuth `code` beside its secret name, THEN `ConnectionRequestMalformed` claims no version.
-- `surface.connection.unknown`: WHEN a deleted connection is paused, THEN `ConnectionUnknown` changes no version.
-- `surface.connection.pause`: WHEN a connection is paused before its due instant, THEN no new Drive fire starts.
 
 ## Shapes
 

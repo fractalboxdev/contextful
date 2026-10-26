@@ -30,22 +30,32 @@ test("unscoped learning refuses before distillation or landing", async () => {
   assert.equal(called, false);
 });
 
+function landInto(landed: unknown[], stream: string, distilled: { subject: string; key: string; learning: string }[]) {
+  return learnAfterAnswer({ scope: "s", question: "q", stream: (async function* () { yield stream; })(),
+    distill: async () => distilled, land: async (_scope: string, entry: unknown) => { landed.push(entry); } });
+}
+
+// spec: surface.learn.subject-resolution@d6e52751
 test("distillation preserves observed subject and permits zero entries", async () => {
   const landed: unknown[] = [];
-  const base = { scope: "s", question: "q", stream: (async function* () { yield "a"; })(), land: async (_scope: string, entry: unknown) => { landed.push(entry); } };
-  await learnAfterAnswer({ ...base, distill: async () => [{ subject: "Acme Incorporated", key: "priority", learning: "raised" }] });
+  await landInto(landed, "a", [{ subject: "Acme Incorporated", key: "priority", learning: "raised" }]);
   assert.deepEqual(landed, [{ subject: "Acme Incorporated", key: "priority", learning: "raised" }]);
-  await learnAfterAnswer({ ...base, stream: (async function* () { yield "b"; })(), distill: async () => [] });
+  await landInto(landed, "b", []);
   assert.equal(landed.length, 1);
 });
 
+function matchAcme(matches: string[]) {
+  return (question: string, subject: string) => {
+    matches.push(`${question}:${subject}`);
+    return subject === "Acme Incorporated";
+  };
+}
+
+// spec: surface.learn.subject-resolution@d6e52751
 test("recall resolves preserved subjects through entity matching", () => {
   const entries = [{ subject: "Acme Incorporated", key: "priority", learning: "raised" }, { subject: "Beta", key: "priority", learning: "steady" }];
   const matches: string[] = [];
-  const recalled = recallSubjects(entries, "Acme's priorities", (question, subject) => {
-    matches.push(`${question}:${subject}`);
-    return subject === "Acme Incorporated";
-  });
+  const recalled = recallSubjects(entries, "Acme's priorities", matchAcme(matches));
   assert.deepEqual(recalled, [entries[0]]);
   assert.deepEqual(matches, ["Acme's priorities:Acme Incorporated", "Acme's priorities:Beta"]);
 });

@@ -142,8 +142,10 @@ from a timed run:
 `RUSTC_BOOTSTRAP=1 cargo test -p contextful-cli --test integration -- --skip differential:: --test-threads 4 -Z unstable-options --format json --report-time > .tmp/cli-times.json`,
 then `contextful-ci cli-shards --report .tmp/cli-times.json --scale 4`.
 
-A release runs on the operator's machine, from the tag `contextful-ci tag` creates
-(`assurance.release.release-run`); `contextful-ci release --plan` lists its cells.
+A release runs on the operator's machine, from the tag `contextful-ci tag` creates:
+the operator pushes the tag, runs `contextful-ci release` per cell, `contextful-ci formula`
+and `contextful-ci image` per profile, then publishes the release from that tag.
+`contextful-ci release --plan` lists its cells.
 
 ### Landing
 
