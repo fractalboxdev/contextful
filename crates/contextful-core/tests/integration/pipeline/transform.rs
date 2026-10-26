@@ -13,9 +13,9 @@ fn ops(v: Value) -> Vec<TransformOp> {
     serde_json::from_value(v).unwrap()
 }
 
-/// The chain is an ordered list of `select`, `rename`, `cast`, `extract` and a single-column `filter`, declared
-/// once per pipeline and bound to the root table.
-// spec: run.transform.chain@33e858bd
+/// The chain is an ordered list of {{type:contextful_core::pipeline::transform::TransformOp}}, declared once per
+/// pipeline and bound to the root table; a `filter` takes exactly one column.
+// spec: run.transform.chain@63de1d69
 #[test]
 fn the_chain_runs_its_five_operations_in_order() {
     let chain = ops(json!([
@@ -79,7 +79,7 @@ fn a_cast_rewrites_the_type_in_place() {
 }
 
 /// `select` fixes the outgoing column set by name, and `rename` maps an incoming name onto an outgoing one.
-// spec: run.transform.projection@7ab51a12
+// spec: run.transform.chain@63de1d69
 #[test]
 fn select_fixes_the_column_set_and_rename_maps_a_name() {
     let batch = rows(json!([{"id": 1, "name": "a", "secret_note": "x"}]));

@@ -125,7 +125,7 @@ fn snapshot(created: &str, parent: Option<&SnapshotId>, publish: Option<PublishS
 }
 
 /// A model block carries its required identity and declared source, with no unknown key.
-// spec: run.model.model-block@aeb44362
+// spec: run.model.model-block@f1a84fc1
 #[test]
 fn a_model_block_carries_its_keys_and_refuses_an_unknown_one() {
     let m = model(&model_doc(
@@ -201,8 +201,10 @@ fn a_model_materializes_as_a_table_and_nothing_else() {
     assert!(matches!(&e, RunError::PipelineSpecInvalid(m) if m.contains("materialized")), "{e}");
 }
 
-/// `[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a `name`, a `type` spelled as {{store.reconcile.typed-landing}} reads it, and `nullable`, default true.
-// spec: run.model.contract-block@2515cc33
+/// `[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a
+/// {{type:contextful_core::pipeline::model::ContractColumn}} with `type` spelled as {{store.reconcile.typed-landing}}
+/// reads it and `nullable` defaulting to true.
+// spec: run.model.contract-block@863bccfb
 #[test]
 fn a_contract_declares_a_semantic_version_and_typed_columns() {
     let m = model(&model_doc(""));
@@ -282,7 +284,7 @@ fn the_schema_fingerprint_moves_with_columns_types_and_grain_alone() {
 }
 
 /// Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness follows `run.publish.staleness` and is never stored.
-// spec: run.publish.freshness@913523e1
+// spec: run.publish.manifest-section@f78aec70
 #[test]
 fn freshness_reads_off_the_section_and_no_field_records_staleness() {
     let mut s = section("snapshot-1", "1.0.0", "f", "2030-01-01T06:00:00Z");
@@ -448,8 +450,10 @@ fn a_model_cycle_names_every_member() {
     model_cycle(&edges(&[("a", &["a"])])).unwrap();
 }
 
-/// The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.
-// spec: run.publish.manifest-section@efa5adbc
+/// The manifest section is the newest publishing build's {{type:contextful_core::pipeline::model::PublishSection}},
+/// its `watermark` as {{run.model.watermark}}; freshness reads off it, and staleness follows
+/// {{run.publish.staleness}}, never stored.
+// spec: run.publish.manifest-section@f78aec70
 #[test]
 fn the_manifest_section_carries_its_keys_and_omits_an_absent_optional_one() {
     let mut s = section("snapshot-1", "1.0.0", "f", "2030-01-01T00:00:00Z");
@@ -512,8 +516,9 @@ fn the_recipe_names_every_injected_column_the_semantics_version_counts() {
     }
 }
 
-/// A build entry carries build id, start and completion instants, a status of published, refused, partial or failed, the contract identity, and the partition values it left unfilled.
-// spec: run.publish.build-entry@a96fa84e
+/// A `builds.jsonl` entry is a {{type:contextful_core::pipeline::model::BuildEntry}}, its status published, refused,
+/// partial or failed.
+// spec: run.publish.build-entry@0c0cb2bd
 #[test]
 fn a_build_entry_is_read_off_each_committed_section() {
     let mut first = section("", "1.0.0", "fa", "2030-01-01T00:00:00Z");

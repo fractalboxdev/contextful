@@ -119,8 +119,9 @@ fn a_scheduled_pass_skips_a_table_whose_trigger_has_not_fired() {
     assert!(report.starts_with("filings: folded"), "{report}");
 }
 
-/// `contextful context land --session` reads one JSON object per stdin line — `run_id`, `rows`, optional `now` — lands each as its own run through one landing session, and prints that run's outcome before reading the next line.
-// spec: run.land.session-input@1795c1dd
+/// `contextful context land --session` reads one {{type:contextful_cli::context::SessionBatch}} per stdin line, lands
+/// each as its own run through one landing session, and prints that run's outcome before reading the next line.
+// spec: run.land.session-input@2f874260
 #[test]
 fn a_session_land_commits_each_stdin_batch_as_its_own_run() {
     use std::io::Write;

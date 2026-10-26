@@ -195,7 +195,7 @@ fn isolated_aggregate_publication_records_only_successful_complete_frontiers() {
     assert!(ledger.source("scoring").unwrap().is_none(),"failed isolated aggregate publishes no completion frontier");
 }
 
-// spec: run.export.group-block@c7548991
+// spec: run.export.group-block@2ae97ac9
 // spec: run.export.group-rebuild@512f1c2b
 #[test]
 fn coordinated_job_exports_and_rebuilds_include_a_quiet_empty_member() {
@@ -736,7 +736,7 @@ fn recorded(dir: &Path, run_id: &str) -> serde_json::Value {
 /// Parallel branches rejoin only at an explicit join node. A failed branch reaching the join fails the run. With
 /// `allow_partial`, the join instead records each failed branch's label and failure tag on the run record.
 // spec: run.compile.lowering@a0f7f1c2
-// spec: run.compile.plan-node@c6088581
+// spec: run.compile.plan-node@0027f2a5
 // spec: surface.fire.plan-job@d1cb5814
 // spec: run.journal.fan-out-join@d9f77d0c
 #[test]

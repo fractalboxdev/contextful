@@ -532,8 +532,9 @@ fn a_model_reading_a_model_ages_by_its_rebuilds() {
     assert_eq!(status(&p.fx.store, "weekly", at("2030-05-01T00:00:00Z")).unwrap()["stale_inputs"], json!([]));
 }
 
-/// A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
-// spec: run.publish.hold@f4fa4cd4
+/// A hold is a {{type:contextful_core::pipeline::model::HoldRecord}}; collection skips a held build, and a hold
+/// confers no other authority.
+// spec: run.publish.hold@e8aeb770
 #[test]
 fn collection_skips_a_held_build() {
     let p = Project::new();
@@ -634,9 +635,10 @@ fn a_missing_build_log_is_recovered_before_retention_collects_its_manifests() {
         "committed manifests establish success before collection");
 }
 
-/// A build records a digest over its table's declared `class`, `policy` and `visibility`, sorting set-valued fields.
-/// The manifest and build log carry the digest. Any declaration sets `withheld_cells`.
-// spec: run.publish.disclosure-digest@ac1b7368
+/// A build records a digest over its table's {{type:contextful_core::store::declare::TableDecl}} `class`, `policy`
+/// and `visibility`, sorting set-valued fields; the manifest and build log carry it, and any declaration sets
+/// `withheld_cells`.
+// spec: run.publish.disclosure-digest@5283e83c
 #[test]
 fn the_disclosure_digest_covers_the_policy_the_model_table_reads_under() {
     let p = Project::new();
@@ -667,8 +669,9 @@ fn a_model_id_naming_a_landed_table_is_refused() {
     assert_eq!(p.rows("SELECT note FROM daily"), [[json!("keep-me")]]);
 }
 
-/// A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
-// spec: run.model.restricted-input@25682f0f
+/// A build reading a table whose {{type:contextful_core::store::declare::TableDecl}} declares `class`, `policy` or
+/// `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
+// spec: run.model.restricted-input@1cf9c278
 #[test]
 fn a_build_over_a_restricted_input_is_refused() {
     let p = Project::new();

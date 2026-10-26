@@ -55,9 +55,8 @@ flowchart LR
 
 Pipeline declarations: fields, manifest loading, content hashes, table names and lifecycle commands.
 
-- `pipeline-spec` — A specification carries `id`, `source` and `tables`, plus the optional `destination`, `schedule`, `incremental`, `transforms`, `redaction`, `normalize`, `backfill`, `seed`, `queries` and `on_table_error`.
+- `pipeline-spec` — A pipeline specification takes {{type:contextful_core::pipeline::declare::PipelineSpec}}, its `source` and `destination` each {{type:contextful_core::pipeline::declare::SourceBlock}}, and each `tables` entry a bare name or a table block, the two forms mixing in one array.
 - `serialization` — TOML and JSON deserialize into one `PipelineSpec`; the JSON Schema derived from it is the contract, and `contextful schema export` writes it to `.contextful/schema/pipeline.json`.
-- `source-block` — A `source` contains a connector name and free-form JSON config object. A `destination` contains the same two fields and defaults to the store.
 - `manifest-file` — Startup reads project config and inline `[[pipeline]]` blocks from `contextful.toml`, then reads `pipelines/*.toml` and `pipelines/*.json`. Startup collects specifications by `id`.
 - `manifest-missing` — `pipeline validate` reading no manifest file raises `PipelineManifestMissing`, naming the declaration path.
   *because a validation over a mistyped path otherwise checks nothing and exits zero*
@@ -72,7 +71,6 @@ Pipeline declarations: fields, manifest loading, content hashes, table names and
   *because two tables folding to one name land in one store table and interleave their rows*
 - `unbound-table-name` — A job target or model reference naming a destination table in a spelling the fold does not produce raises `PipelineUnboundTableName`, printing the expected spelling.
   *P1*
-- `table-entry` — A `tables` entry is a bare name or an object carrying that table's configuration; the two forms mix in one array.
 - `order-by-default` — `order_by` defaults to the injected ingest stamp and is inert on a keyless table; key semantics are {{store.declare.unkeyed-union}}.
 - `write-mode` — `write_mode` is `append`, the default, or `replace`. Under `append` a run adds rows and no key retires; under `replace` the landing run is the table's whole current state.
 - `replace-unsupported` — `replace` beside a `monotonic` or `opaque-token` cursor, a backfill chunk plan or a seed ceiling raises `PipelineReplaceUnsupported`, naming the table.
@@ -99,7 +97,7 @@ The compiler converts a pipeline specification into a versioned plan with a shar
 
 - `authoring-surface` — Authoring code runs only at build time and emits a content-hashed plan. No authoring code executes in the serving environment. No build profile embeds a scripting runtime.
   *A-run#plan-compiled-content*
-- `plan-node` — A plan is a flat node list with predecessor edges: `step` (connector, optional retry), `sleep` (duration string), `awaitEvent` (optional timeout), `branch` (predicate, label-to-node-id map), `parallel` (node ids) and `join` (parallel node id, `allow_partial`).
+- `plan-node` — A plan is a flat node list with predecessor edges, each node a {{type:contextful_core::run::nodes::NodeKind}}.
 - `plan-version` — A plan's version is the leading 16 chars of the sha256 over the RFC 8785 canonical JSON of its `{id, nodes}`.
 - `plan-schema` — One schema library defines the plan type. Every language binds to its JSON Schema. The execution engine deserializes plan JSON against that schema.
 - `inline-step-body` — A `step` body other than a connector reference raises `PipelineInlineStepBody`.
@@ -118,7 +116,7 @@ The compiler converts a pipeline specification into a versioned plan with a shar
 
 The engine applies declared transforms in order to rewrite a batch in place.
 
-- `chain` — The chain is an ordered list of `select`, `rename`, `cast`, `extract` and a single-column `filter`, declared once per pipeline and bound to the root table.
+- `chain` — The chain is an ordered list of {{type:contextful_core::pipeline::transform::TransformOp}}, declared once per pipeline and bound to the root table; a `filter` takes exactly one column.
 - `arity` — A chain operation emitting more rows than it consumed raises `PipelineTransformArity`.
   *A-run#plan-compiled-content*
 - `filter` — A filter dropping a root row drops that row's nested children with it.
@@ -126,7 +124,6 @@ The engine applies declared transforms in order to rewrite a batch in place.
 - `column-missing` — A value filter or cast naming a column the batch does not carry raises `PipelineTransformColumnMissing`, printing the column and the table.
   *because a cast over an absent column otherwise lands the batch untransformed*
 - `cast` — A cast rewrites one column's type and keeps its name and position.
-- `projection` — `select` fixes the outgoing column set by name, and `rename` maps an incoming name onto an outgoing one.
 - `typed-cast` — A cast to `binary`, `binary(n)`, `float32[n]` or `float16[n]` keeps a value that type's JSON form reads, nulls any other, and lands the column in that type.
 - `type-carry` — A `rename` carries a pulled column type to the new name, a `select` drops it with its column, and a cast to a scalar type drops it.
 - `extract` — `extract` copies the value at an RFC 6901 pointer into a named column, null where the pointer names nothing, keeps the source column, and lands the new column with no pulled type.
@@ -175,7 +172,7 @@ The secret guard masks credential-shaped text in pulled batches, dead letters an
 - `mask-only` — The guard is on by default and blocks no run; each pull logs the count of masked cells per column.
   *A-run#secret-guard-has*
 - `coverage` — The guard reads pre-normalize string cells for plaintext shapes; encoded material and a credential split across two cells pass through.
-- `dead-letter-reason` — A dead letter's `key`, `reason` and `sha256` pass the guard as a pulled row's cells do, so a reason quoting a credential lands masked.
+- `dead-letter-reason` — Every field of a {{type:contextful_core::run::ports::DeadLetter}} passes the guard as a pulled row's cells do, so a reason quoting a credential lands masked.
 - `recorded-body` — Registered body results pass through the same guard before shaping and canonical preparation; the engine reports per-column counts once per fresh paid preparation, excluding counts from the recorded wire and replay.
   *A-authority#body-projection*
 
@@ -201,7 +198,7 @@ The engine processes batches from pull to commit, records ingest counts and isol
 - `irreconcilable-schema` — An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}.
   *A-run#observed-batch-fixes*
 - `commit-visibility` — A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.
-- `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
+- `ingest-tally` — A fire reports, in total and per table, its runs' `fetched`, `kept` and `skipped` from {{type:contextful_core::run::record::RunRow}}, `dropped_low_quality` as `fetched` less `kept`, and `failed` tables; a non-zero `failed` exits non-zero.
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
 - `object-arrival-wake` — An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.
   *because a notification is a hint a provider may repeat, reorder or drop, and the held position already decides what lands*
@@ -212,7 +209,7 @@ A landing session commits each micro-batch read from stdin under one held table 
 
 - `session` — A landing session holds one store, node and table declaration across runs and commits each micro-batch as its own run; a later run rewrites no earlier run's parts or manifest.
   *because a writer flushing every second otherwise pays a process start, a store open and a node resolution per batch*
-- `session-input` — `contextful context land --session` reads one JSON object per stdin line — `run_id`, `rows`, optional `now` — lands each as its own run through one landing session, and prints that run's outcome before reading the next line.
+- `session-input` — `contextful context land --session` reads one {{type:contextful_cli::context::SessionBatch}} per stdin line, lands each as its own run through one landing session, and prints that run's outcome before reading the next line.
   *because a host running no serving process still needs one session across its batches*
 - `session-schema` — A landing session parses `schema.json` again only when its version — length, modification instant, file identity — moves; a land adding no column or type replaces no `schema.json` and takes no schema lock.
   *because a land per second otherwise rereads and rewrites the schema under the lock every writer of the table waits on*
@@ -297,11 +294,11 @@ Input a decoder cannot read fails alone, lands as a dead letter, and decodes in 
   *A-connector#untrusted-input-decodes*
 - `input-fault` — A failure over one input carries its fault: `input` when the input's own bytes defeat the decoder, `configuration` when the declaration or the build does. A source dead-letters an `input` fault alone, never by message.
   *because a message names an error for people, and branching on its text dead-letters any refusal that repeats the name*
-- `dead-letter` — A pull's dead letters land in the table `<table>_dead_letter`, one row per input carrying its `key`, `reason` and `sha256`, committed in the same run as the table's rows.
+- `dead-letter` — A pull's dead letters land in the table `<table>_dead_letter`, one {{type:contextful_core::run::ports::DeadLetter}} row per input, committed in the same run as the table's rows.
   *A-connector#untrusted-input-decodes*
 - `dead-letter-replace` — A replacing table whose read dead-letters any input fails the pull under {{run.land.unreadable-input}}, naming each input, and commits neither its rows nor its dead letters.
   *because dead letters committing alone record a success while the table stays stale, and repeat each dead letter every fire*
-- `dead-letter-occupied` — Dead letters whose `<table>_dead_letter` already holds a relational child table, or a store table lacking `key`, `reason` or `sha256`, refuse the pull under {{run.declare.table-name-collision}} and land nothing.
+- `dead-letter-occupied` — Dead letters whose `<table>_dead_letter` already holds a relational child table, or a store table lacking a {{type:contextful_core::run::ports::DeadLetter}} column, refuse the pull under {{run.declare.table-name-collision}} and land nothing.
   *because two shapes committing into one table mix their schemas*
 - `partial-parse` — A reader stopping partway through a multi-part input raises `PipelinePartialParse` over the whole input and lands none of its parts.
   *A-connector#untrusted-input-decodes*
@@ -366,7 +363,7 @@ unsettled: Does a dead group's first attempt that never committed close, once a 
 
 An export reads committed table rows and delivers them to an operator-declared target with at-least-once delivery.
 
-- `export-block` — An OTLP `[[export]]` block declares `name`, one landed `table`, an HTTP `endpoint`, `signal = "logs"` and optional `headers`; `contextful export run <name>` delivers every row its cursor has not passed.
+- `export-block` — An OTLP `[[export]]` block takes {{type:contextful_core::export::Block}} with one landed `table` and `signal = "logs"`; `contextful export run <name>` delivers every row its cursor has not passed.
   *A-topology#queue-ingress*
 - `signal-unknown` — If `signal` is not `logs`, the exporter raises `ExportSignalUnknown` before reading any row.
   *because the one built-in arm maps a row onto a log record, and a span or metric needs a column mapping no block declares*
@@ -378,7 +375,7 @@ An export reads committed table rows and delivers them to an operator-declared t
   *because a null never passes a cursor, and a row an export skips in silence is a row its mirror loses*
 - `batch-rows` — One delivery batch holds at most 500 rows.
   *because a batch that size sits below the face row ceiling and the request limits common collectors apply*
-- `log-record` — Each row becomes one OTLP log record: `timeUnixNano` from `_ingested_at`, each non-null column outside the `_` namespace an attribute, beside `contextful.table`, `contextful.run_id`, `contextful.commit_seq` and `contextful.row_seq`.
+- `log-record` — Each row becomes one OTLP log record: `timeUnixNano` from `_ingested_at`, each non-null column outside the `_` namespace an attribute, beside `contextful.{table,run_id,commit_seq,row_seq}`.
   *because the attributes a target deduplicates on travel with the record, and the engine's own columns stay its own*
 - `delivery` — The exporter sends each batch as one OTLP/HTTP JSON `POST` through the mediated client. The allowlist contains only the endpoint host. Each header follows {{connector.resolve.hydration-is-just-in-time}}.
   *A-topology#queue-ingress*
@@ -404,7 +401,7 @@ An export reads committed table rows and delivers them to an operator-declared t
 
 A typed export publishes keyed `changes-v1` events from a staged outbox and acknowledges them in sequence.
 
-- `typed-block` — A typed `[[export]]` block declares `format = "changes-v1"`, nonempty `key` columns and `schedule`, beside `name`, `table`, `endpoint` and optional `headers`.
+- `typed-block` — A typed {{type:contextful_core::export::Block}} declares `format = "changes-v1"`, nonempty `key` columns and a `schedule`.
   *because a consumer needs stable row identity and a delivery cadence*
 - `typed-state` — A typed export compares the latest stable committed table read through {{run.export.post-commit-read}} with its last acknowledged state; commits between reads coalesce into one publication.
   *because a scheduled state export promises the observed frontier rather than every intermediate write*
@@ -435,7 +432,7 @@ A typed export publishes keyed `changes-v1` events from a staged outbox and ackn
 
 A coordinated `[[publication]]` delivers every member of one producer completion and activates the members together.
 
-- `group-block` — A local `[[publication]]` declares `name`, producer `job` and typed export `members`; members cover every producer output exactly once and share one destination and header binding.
+- `group-block` — A local `[[publication]]` takes {{type:contextful_core::export::publication::PublicationDeclaration}}; its typed export `members` cover every producer output exactly once and share one destination and header binding.
   *A-run#coordinated-exports-activate*
 - `group-source` — A successful store-driven job or materialized model build records one immutable completion binding its run identifier, pinned input frontier and all output table frontiers, including empty outputs.
   *A-run#coordinated-exports-activate*
@@ -499,15 +496,15 @@ unsettled: Does a local-profile sender whose disk a replacement emptied continue
 The scheduler loads history through chunk plans with fenced leases and supports rewinding a declared range.
 
 - `phase` — A run row records the {{type:contextful_core::run::backfill::PipelinePhase}} it ran under by its snake-case name, and a row without a phase carries no field.
-- `chunk-plan` — Plan shape follows cursor kind: `monotonic` plans independent time-window or id-range chunks, `opaque-token` one sequential chunk walked in order, `snapshot-id` version ranges sequential per stream and parallel across streams.
-- `chunk` — A chunk row carries pipeline id, chunk id, predicate, status, attempt count, start and completion instants and a cursor-committed flag; an interrupted plan resumes at the first chunk not done.
+- `chunk-plan` — Plan shape follows {{type:contextful_core::run::advance::CursorKind}}: `monotonic` plans independent time-window or id-range chunks, `opaque-token` one sequential chunk walked in order, `snapshot-id` version ranges sequential per stream and parallel across streams.
+- `chunk` — A chunk row is {{type:contextful_core::run::backfill::ChunkRow}}; an interrupted plan resumes at the first chunk not done.
 - `chunk-lease` — A worker leases a chunk row, recording node id and attempt, for a 300 s time-to-live renewed every 60 s, and writes under a path segmented by run, node, chunk and attempt.
   *because an unquantified lease cannot be tested against a paused worker*
 - `fenced-commit` — A chunk commits in one catalog update conditioned on `attempt = :mine AND status != 'done'`; an update matching no row leaves that worker's files uncommitted.
   *because an expired holder otherwise commits over its successor*
 - `commit-signal` — The catalog row signals commit; directory presence does not. Retention collects files under paths without a done row according to a retention window.
 - `attempt-isolation` — An expired lease lets a second worker claim the chunk, increment the attempt and write under its own path.
-- `block` — `[pipeline.backfill]` declares `max_chunks`, the bound on a plan's chunk count; `chunk_size`, one clock-ranged chunk's width in cursor units; and `start_from`, the floor, default zero.
+- `block` — `[pipeline.backfill]` takes {{type:contextful_core::run::backfill::BackfillBlock}}; `start_from` defaults to zero.
 - `rewind` — A rewind returns every chunk overlapping the half-open range to pending.
 - `rewind-invalid` — An inverted, empty or scale-incomparable rewind window raises `PipelineRewindWindowInvalid`; a window overlapping no chunk is a no-op.
   *P4*
@@ -544,7 +541,7 @@ A seed source bulk-loads history below a declared ordering ceiling before live i
 
 The engine builds model tables from SQL over store tables, validates contracts and tests, and records freshness and holds.
 
-- `model-block` — A `[[model]]` block carries `id`, {{run.model.statement-source}}, optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]`, `[[model.test]]`, {{disclosure.release.model-policy}} and {{disclosure.set-mode.opt-out-record}}; an unknown key refuses as {{run.declare.spec-invalid}}.
+- `model-block` — A `[[model]]` block takes {{type:contextful_core::pipeline::model::ModelSpec}}, with {{run.model.statement-source}}, {{disclosure.release.model-policy}} and {{disclosure.set-mode.opt-out-record}}; an unknown key refuses as {{run.declare.spec-invalid}}.
   *A-run#model-declared-sql*
 - `statement-source` — A model declares exactly one of inline `sql` and `sql_file`; the latter reads UTF-8 text relative to the manifest containing the model.
   *because a manifest-relative statement file keeps a model portable across project roots*
@@ -555,7 +552,7 @@ The engine builds model tables from SQL over store tables, validates contracts a
 - `validate-statements` — `pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to {{run.model.restricted-input}}, and raises the error the build raises.
 - `validate-undeclared` — `pipeline validate` names on stderr each relation a model's `sql` or test reads that no manifest table, pipeline destination or model declares, and still validates the model; `build` resolves that relation against the store.
   *because a table landed without a manifest declaration is a legal input, while a misspelled name otherwise surfaces only at `build`*
-- `restricted-input` — A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
+- `restricted-input` — A build reading a table whose {{type:contextful_core::store::declare::TableDecl}} declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.
   *because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader*
 - `materialized` — `materialized` is `table`, the default: each build replaces the model's rows whole.
 - `unique-key` — `unique_key` defines the model's row identity. A build with duplicate key values or a null in a key column refuses as {{run.publish.contract-mismatch}}.
@@ -564,7 +561,7 @@ The engine builds model tables from SQL over store tables, validates contracts a
 
 A published model declares a versioned column contract, and a contract change publishes only under its version bump.
 
-- `contract-block` — `[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a `name`, a `type` spelled as {{store.reconcile.typed-landing}} reads it, and `nullable`, default true.
+- `contract-block` — `[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a {{type:contextful_core::pipeline::model::ContractColumn}} with `type` spelled as {{store.reconcile.typed-landing}} reads it and `nullable` defaulting to true.
 - `contract-required` — A model whose `publish` is true, the default, and which declares no `[model.contract]` raises `ModelContractUndeclared` at validation.
   *because a published table without a declared contract has no identity a reader can pin against*
 - `unpublished` — A model declaring `publish = false` commits its rows with no manifest section, so no build entry, hold or contract history names it.
@@ -639,10 +636,9 @@ Published tables: contract identity, snapshot publication, build history, freshn
 - `staging` — A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.
   *P4*
 - `history-logs` — `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` contain append-only history derived from committed manifests and build-attempt records. If a log disagrees with a source record, the engine regenerates the log from that record.
-- `build-entry` — A build entry carries build id, start and completion instants, a status of published, refused, partial or failed, the contract identity, and the partition values it left unfilled.
+- `build-entry` — A `builds.jsonl` entry is a {{type:contextful_core::pipeline::model::BuildEntry}}, its status published, refused, partial or failed.
 - `failed-attempt` — A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.
   *because a process killed before publication cannot write its own failure, while its attempt record and released lock survive*
-- `freshness` — Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness follows {{run.publish.staleness}} and is never stored.
 - `staleness` — A published model is stale at `t` when an input holds a committed run outside its watermark snapshot chain, its `commit_seq` above `through`, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.
   *A-run#build-stale-landings*
 - `staleness-omitted-check` — An input whose runs outside the watermark snapshot chain, at or below `through`, differ in count or digest from `omitted` holds a waiting run counted as committed before `t` minus `max_lag`.
@@ -655,10 +651,10 @@ Published tables: contract identity, snapshot publication, build history, freshn
   *A-run#build-stale-landings*
 - `staleness-collected-run` — A waiting run whose manifest retention collected counts as committed before `t` minus `max_lag`.
   *A-run#build-stale-landings*
-- `hold` — A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
-- `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` follows {{run.model.watermark}}.
+- `hold` — A hold is a {{type:contextful_core::pipeline::model::HoldRecord}}; collection skips a held build, and a hold confers no other authority.
+- `manifest-section` — The manifest section is the newest publishing build's {{type:contextful_core::pipeline::model::PublishSection}}, its `watermark` as {{run.model.watermark}}; freshness reads off it, and staleness follows {{run.publish.staleness}}, never stored.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
-- `disclosure-digest` — A build records a digest over its table's declared `class`, `policy` and `visibility`, sorting set-valued fields. The manifest and build log carry the digest. Any declaration sets `withheld_cells`.
+- `disclosure-digest` — A build records a digest over its table's {{type:contextful_core::store::declare::TableDecl}} `class`, `policy` and `visibility`, sorting set-valued fields; the manifest and build log carry it, and any declaration sets `withheld_cells`.
 
 ```mermaid
 flowchart LR

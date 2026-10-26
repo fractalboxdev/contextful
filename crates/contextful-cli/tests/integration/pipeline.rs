@@ -806,8 +806,10 @@ fn a_failing_table_is_named_with_its_kind_and_run() {
     assert!(vendor.targets().iter().all(|t| t.starts_with("/v1/bad")), "abort halts the fire: {:?}", vendor.targets());
 }
 
-/// A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
-// spec: run.land.ingest-tally@cd6727e0
+/// A fire reports, in total and per table, its runs' `fetched`, `kept` and `skipped` from
+/// {{type:contextful_core::run::record::RunRow}}, `dropped_low_quality` as `fetched` less `kept`, and `failed`
+/// tables; a non-zero `failed` exits non-zero.
+// spec: run.land.ingest-tally@b8e35400
 #[test]
 fn a_fire_tallies_fetched_kept_and_filtered_rows_and_failed_tables() {
     let serve = |t: &str| if t.starts_with("/v1/bad") {
@@ -2534,9 +2536,10 @@ fn a_relational_pipeline_shreds_lists_into_indexed_child_rows() {
     assert_eq!(child["rows"][1], serde_json::json!([parent_id, "1", "end", null, "BIGINT"]));
 }
 
-/// Dead letters whose `<table>_dead_letter` already holds a relational child table, or a store table lacking `key`,
-/// `reason` or `sha256`, refuse the pull under {{run.declare.table-name-collision}} and land nothing.
-// spec: run.land.dead-letter-occupied@42db8483
+/// Dead letters whose `<table>_dead_letter` already holds a relational child table, or a store table lacking a
+/// {{type:contextful_core::run::ports::DeadLetter}} column, refuse the pull under
+/// {{run.declare.table-name-collision}} and land nothing.
+// spec: run.land.dead-letter-occupied@ec90e396
 #[test]
 fn dead_letters_landing_in_a_relational_child_table_refuse_the_pull() {
     let vendor = Vendor::start(|_| (200, r#"[{"id":"a","letter":[{"n":1}]}]"#.into()));
