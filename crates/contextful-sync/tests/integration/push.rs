@@ -30,7 +30,7 @@ fn applied_control(node: &crate::support::Node, version: u64, parent: Option<&st
 }
 
 /// A push commits each signed snapshot, receipt and project head under the bucket prefix.
-// spec: store.push.control-artifact@d7274637
+// spec: store.push.control-artifact@90794a1d
 #[test]
 fn a_push_commits_the_signed_control_chain_and_project_head() {
     let dir = tempfile::tempdir().unwrap();
@@ -53,7 +53,7 @@ fn a_push_commits_the_signed_control_chain_and_project_head() {
 }
 
 /// A sibling head raises `SyncControlDiverged` and keeps the bucket's signed head.
-// spec: store.push.control-diverged@cbc7c52d
+// spec: store.push.control-diverged@84c6b157
 #[test]
 fn a_sibling_control_head_refuses_without_changing_the_bucket_head() {
     let dir = tempfile::tempdir().unwrap();
@@ -119,10 +119,10 @@ fn a_corrupted_control_receipt_prevents_manifest_publication() {
     assert!(b.get("team/manifest.json").unwrap().is_none());
 }
 
-/// A push conditionally uploads files whose digests the bucket lacks, under `<prefix>/<project>/<path>`. Eligible
-/// files belong to the pushing node or no node. Machine catalogs, `config.toml`, locks and staging directories stay
-/// local. Table pointers follow {{store.push.pointer-carry}}.
-// spec: store.push.wire-format@91d00de1
+/// A push conditionally uploads files the bucket lacks by digest under `<prefix>/<project>/<path>`, of the pushing
+/// node or none; machine catalogs, `config.toml`, locks and staging directories stay local, and pointers follow
+/// {{store.push.pointer-carry}}.
+// spec: store.push.wire-format@e2284933
 #[test]
 fn a_push_uploads_store_files_under_the_prefix_and_keeps_machine_state_local() {
     let dir = tempfile::tempdir().unwrap();
@@ -164,9 +164,9 @@ fn a_push_keeps_the_catalogs_transaction_files_local() {
     assert!(keys.iter().any(|k| k.ends_with("part-00000.parquet")), "{keys:?}");
 }
 
-/// A push commits by replacing `<prefix>/manifest.json` under `If-Match` on the ETag read for that copy. This bucket
-/// manifest lists each key's sha256, size and owner.
-// spec: store.push.manifest-commit@5fb17394
+/// A push commits by replacing `<prefix>/manifest.json` under `If-Match` on the ETag it read; this bucket manifest
+/// lists each key's sha256, size and owner.
+// spec: store.push.manifest-commit@dd04ad45
 #[test]
 fn the_manifest_commits_by_replace_on_the_etag_read() {
     let dir = tempfile::tempdir().unwrap();
@@ -191,7 +191,7 @@ fn the_manifest_commits_by_replace_on_the_etag_read() {
 /// A push of one store waits for the push guard another push on the machine holds, up to `[sync] push_wait_secs`,
 /// defaulting to 300 s, then raises `SyncPushInFlight`, naming the holder. A push whose wait outlasts the holder
 /// commits after it.
-// spec: store.push.in-flight@89745976
+// spec: store.push.in-flight@4fd8cf1f
 #[test]
 fn a_second_push_of_one_store_waits_for_the_first_then_refuses_past_its_bound() {
     assert_eq!(contextful_core::store::sync::PUSH_WAIT_SECS, 300);
@@ -240,9 +240,9 @@ fn a_second_push_of_one_store_waits_for_the_first_then_refuses_past_its_bound() 
     });
 }
 
-/// The probe creates a sentinel under `_contextful/cas-probe/`. The probe demonstrates `cas` when a second create and
-/// stale `If-Match` fail, while a current `If-Match` replaces the sentinel. The probe then deletes the sentinel.
-// spec: store.probe.sentinel@251a5263
+/// The probe creates a sentinel under `_contextful/cas-probe/`, demonstrates `cas` when a second create and a stale
+/// `If-Match` fail while a current `If-Match` replaces it, then deletes it.
+// spec: store.probe.sentinel@2a5a8aaf
 #[test]
 fn the_probe_demonstrates_cas_and_leaves_no_sentinel() {
     let dir = tempfile::tempdir().unwrap();
@@ -285,7 +285,7 @@ fn a_declared_cas_against_an_undemonstrated_backend_stops_the_push() {
 
 /// A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves
 /// `single-writer` without the sentinel, and a declared `cas` there meets `store.probe.unproven` naming the mount type.
-// spec: store.probe.network-volume@8189f1b6
+// spec: store.probe.network-volume@513af032
 #[test]
 fn a_bucket_on_a_network_volume_resolves_single_writer_and_refuses_a_declared_cas() {
     let dir = tempfile::tempdir().unwrap();
@@ -389,7 +389,7 @@ fn interfered(dir: &std::path::Path, plan: Box<dyn Fn(usize) -> Option<bool> + S
 
 /// `[sync] push_retries` bounds consecutive re-commit rounds whose re-read manifest carries no newer generation,
 /// defaulting to 5 attempts.
-// spec: store.merge.retries@15d8a962
+// spec: store.merge.retries@97a0a838
 #[test]
 fn the_re_commit_loop_takes_five_rounds_by_default_and_the_declared_bound_otherwise() {
     assert_eq!(contextful_core::store::sync::PUSH_RETRIES, 5);
@@ -454,7 +454,7 @@ fn a_push_overtaken_every_round_stops_at_sixty_four_rounds() {
 
 /// Exhausting the retries or the round ceiling raises `SyncManifestRebaseExhausted`, reports every uploaded object as
 /// already in the bucket, and asks for a re-run.
-// spec: store.merge.exhausted@c7d702ef
+// spec: store.merge.exhausted@196289a4
 #[test]
 fn exhausted_rounds_refuse_and_report_every_uploaded_object() {
     let dir = tempfile::tempdir().unwrap();
@@ -492,10 +492,9 @@ fn files(n: &crate::support::Node) -> Vec<String> {
     contextful_context::scan::scan(&n.syncer.store, &decl, Default::default()).unwrap().files
 }
 
-/// After committing the manifest, push conditionally publishes local table pointers with complete snapshots, keeping
-/// the bucket's fence. Publication requires {{store.lay-out.ancestors}} to name the bucket pointer's snapshot, or the
-/// bucket pointer to name none.
-// spec: store.push.pointer-carry@1b85e8cb
+/// After the manifest commit, push conditionally publishes local pointers of complete snapshots, keeping the bucket's
+/// fence, when {{store.lay-out.ancestors}} names the bucket pointer's snapshot or the bucket pointer names none.
+// spec: store.push.pointer-carry@51a9e129
 #[test]
 fn a_push_carries_a_local_folds_pointer_and_a_second_node_reads_its_snapshot() {
     let dir = tempfile::tempdir().unwrap();
@@ -553,9 +552,8 @@ fn a_push_leaves_a_leased_tables_pointer_to_the_lease_holder() {
     assert_eq!(bucket_pointer(b.as_ref()).unwrap(), json!({"snapshot_id": snapshot, "fence": held.lease.fence}));
 }
 
-/// If a local pointer's fence is below the bucket pointer's fence, the push keeps the pointer local and reports a
-/// warning beside its commit.
-// spec: store.push.pointer-fenced@717c8dd4
+/// A local pointer fenced below the bucket pointer stays local, and the push warns beside its commit.
+// spec: store.push.pointer-fenced@355e8eb8
 #[test]
 fn a_local_pointer_under_a_superseded_fence_stays_local() {
     let dir = tempfile::tempdir().unwrap();
@@ -632,9 +630,9 @@ fn a_pointer_carries_across_folds_whose_snapshots_retention_collected() {
     assert_eq!(files(&c), expected);
 }
 
-/// If snapshot ancestry ends at a collected manifest before reaching the bucket pointer's snapshot or a root, push
-/// keeps the pointer local. Push reports a warning beside its commit.
-// spec: store.push.pointer-unrooted@2dc43d9e
+/// Snapshot ancestry ending at a collected manifest before the bucket pointer's snapshot or a root keeps the
+/// pointer local, and the push warns beside its commit.
+// spec: store.push.pointer-unrooted@92c11eca
 #[test]
 fn a_pointer_whose_ancestry_retention_cut_stays_local_with_a_warning() {
     let dir = tempfile::tempdir().unwrap();
@@ -655,9 +653,9 @@ fn a_pointer_whose_ancestry_retention_cut_stays_local_with_a_warning() {
     assert_eq!(bucket_pointer(b.as_ref()).unwrap()["snapshot_id"], json!(first));
 }
 
-/// After the bucket accepts a published pointer, the push commits the manifest again. A generation therefore names a
-/// carried pointer only after the bucket pointer holds that value.
-// spec: store.push.pointer-recommit@7e76e690
+/// Once the bucket accepts a published pointer, the push commits the manifest again, so a generation names a carried
+/// pointer only after the bucket holds it.
+// spec: store.push.pointer-recommit@0cd1e1de
 #[test]
 fn a_generation_names_no_pointer_the_bucket_declined() {
     let dir = tempfile::tempdir().unwrap();
@@ -1078,9 +1076,9 @@ fn an_empty_held_record_keeps_the_prior_push_deletion_scope() {
     }
 }
 
-/// Push records locally held owned keys under its node id in `.sync-held.json`: adding before commit, replacing that
-/// node's keys after. Pull holding the push guard adds each such key listed in the bucket manifest.
-// spec: store.merge.held-record@36512981
+/// Push records locally held owned keys under its node id in `.sync-held.json`, adding before commit and replacing
+/// that node's keys after; a pull holding the push guard adds each such key the bucket manifest lists.
+// spec: store.merge.held-record@4f942f9d
 #[test]
 fn a_push_records_the_keys_it_holds_and_a_pull_adds_those_it_brings_home() {
     let dir = tempfile::tempdir().unwrap();
@@ -1165,9 +1163,9 @@ fn a_pull_extends_the_record_only_while_it_holds_the_push_guard() {
     }
 }
 
-/// If `.sync-held.json` lists no keys for the node, a surviving `.push.lock` means the store holds every remote node-
-/// owned key. Without that lock, the store holds none.
-// spec: store.merge.held-absent@abf43b62
+/// With no keys for the node in `.sync-held.json`, a surviving `.push.lock` means the store holds every remote key
+/// the node owns, and none without it.
+// spec: store.merge.held-absent@bce819b1
 #[test]
 fn a_store_without_a_record_holds_every_owned_key_once_it_pushed_and_none_before() {
     let dir = tempfile::tempdir().unwrap();
@@ -1263,7 +1261,7 @@ fn the_run_record_adds_a_bounded_object_count_per_tick() {
 
 /// A push of a store holding 256 unlisted files keeps 16 uploads in flight, and the manifest
 /// it commits lists every one.
-// spec: store.push.transfer-width@be963434
+// spec: store.push.transfer-width@343a8e87
 #[test]
 fn a_push_keeps_sixteen_uploads_in_flight_and_commits_after_them() {
     let dir = tempfile::tempdir().unwrap();
@@ -1284,7 +1282,7 @@ fn a_push_keeps_sixteen_uploads_in_flight_and_commits_after_them() {
 
 /// A push whose digest record names another digest for a file it uploads lists the digest of
 /// the bytes it sent.
-// spec: store.push.upload-digest@aef8244b
+// spec: store.push.upload-digest@c8f157bd
 #[test]
 fn a_push_lists_the_digest_of_the_bytes_it_uploaded() {
     use contextful_core::run::journal::sha256_hex;

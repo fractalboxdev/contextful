@@ -131,7 +131,7 @@ store-push-round-ceiling    = { clause = "store.merge.round-ceiling", value = 64
 store-push-wait             = { clause = "store.push.in-flight", value = 300, unit = "s", basis = "chosen", gloss = "Default wait for the push guard another push of the store holds.", const = "crates/contextful-core/src/store/sync.rs::PUSH_WAIT_SECS" }
 store-drain-deadline        = { clause = "store.drain.deadline", value = 15, unit = "s", basis = "chosen", gloss = "Longest push a stopping serve attempts before it exits.", const = "crates/contextful-cli/src/sync.rs::DRAIN_SECS" }
 store-lease-ttl             = { clause = "store.lease.ttl", value = 10, unit = "min", basis = "chosen", gloss = "Granted life of a lease.", const = "crates/contextful-core/src/store/lease.rs::TTL_SECS" }
-store-lease-renewal         = { clause = "store.lease.renewal", value = 200, unit = "s", basis = "chosen", gloss = "Interval at which a holder renews, a third of the grant." }
+store-lease-renewal         = { clause = "store.lease.renewal", value = 200, unit = "s", basis = "chosen", gloss = "Interval at which a holder renews, a third of the grant.", const = "crates/contextful-core/src/store/lease.rs::RENEWAL_SECS" }
 
 # Terms (`corpus.registry.term`): each term's defining clause and gloss.
 [term]

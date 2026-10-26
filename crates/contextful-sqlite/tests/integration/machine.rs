@@ -28,7 +28,7 @@ fn sealed_catalog(dir: &tempfile::TempDir, clock: &SetClock, key: u8) -> Machine
     .unwrap()
 }
 
-// spec: store.encrypt.machine-catalog-sealing@27a003bc
+// spec: store.encrypt.machine-catalog-sealing@36e6eb9e
 #[test]
 fn sealed_machine_catalog_persists_lease_cursor_and_run_without_plaintext() {
     let dir = tempfile::tempdir().unwrap();
@@ -277,7 +277,7 @@ fn retiring_an_owner_caches_its_position_in_the_same_transaction() {
 }
 
 /// The retiring transaction names the retired execution on its scope, so an open after a
-/// lost journal delete finds the rows to delete again (`run.journal.retire-order`).
+/// lost journal delete finds the rows to delete again (`run.journal.collection`).
 #[test]
 fn a_retirement_names_its_execution_on_the_scope_across_reopens() {
     let dir = tempfile::tempdir().unwrap();

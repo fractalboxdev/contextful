@@ -37,7 +37,7 @@ fn publication_groups_bind_the_base_members_and_empty_outputs() {
     assert!(serde_json::from_value::<contextful_core::export::publication::GroupEvent>(unknown).is_err());
 }
 
-// spec: run.export.typed-block@901de8c0
+// spec: run.export.typed-block@f74714dc
 #[test]
 fn a_typed_export_declares_a_key_and_schedule() {
     let block = "[[export]]\nname = \"state-copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n";
@@ -133,9 +133,8 @@ fn the_batch_statement_reads_past_the_cursor_in_commit_order() {
 }
 
 /// Each row becomes one OTLP log record: `timeUnixNano` from `_ingested_at`, each non-null column outside the `_`
-/// namespace an attribute, beside `contextful.table`, `contextful.run_id`, `contextful.commit_seq` and
-/// `contextful.row_seq`.
-// spec: run.export.log-record@37a18489
+/// namespace an attribute, beside `contextful.{table,run_id,commit_seq,row_seq}`.
+// spec: run.export.log-record@3354ca38
 #[test]
 fn each_row_becomes_one_log_record_carrying_its_commit_position() {
     let e = &parse_exports(BLOCK).unwrap()[0];

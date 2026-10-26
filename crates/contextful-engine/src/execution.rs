@@ -446,7 +446,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
     pub(crate) fn claim(&mut self) -> Result<(), Close> {
         // The journal deletes a retired owner's rows only after the catalog commits the
         // retirement, so a crash between the two leaves rows this open deletes again
-        // (`run.journal.retire-order`).
+        // (`run.journal.collection`).
         if let Some(retired) = self.engine.catalog.retired_at(&self.scope)? {
             if self.pending.as_ref().is_none_or(|o| o.execution_id != retired) {
                 self.engine.journal.collect(&retired)?;
@@ -599,7 +599,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         let token = &self.token;
         let label = key.step_label.as_str();
         // A schedule a crash interrupted mid-backoff resumes the budget its step's journal
-        // row persisted (`run.retry.attempt-counter`).
+        // row persisted (`run.retry.not-before`).
         let mut attempt = engine.journal.attempts(key)? + 1;
         // A resume honors the next-attempt instant its predecessor recorded
         // (`run.retry.resume-at`).
@@ -638,7 +638,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
                 }
             };
             // The count, then the instant, persist before any wait, so a restart honors both
-            // (`run.retry.attempt-counter`, `run.retry.not-before`).
+            // (`run.retry.not-before`).
             let next = NotBefore::after(self.now()?, delay_ms, attempt);
             engine.journal.note_attempts(key, &self.run_id, attempt)?;
             engine.journal.record(&not_before_key(key, attempt), &next.encode())?;

@@ -262,7 +262,7 @@ fn assignment(s: &str, lower: &str, out: &mut Vec<(Kind, Range<usize>)>) {
 }
 
 /// Every credential-shaped span of `s`, merged: overlapping spans join under the kind
-/// with the higher priority (`run.guard-secrets.mask-span`).
+/// with the higher priority (`run.guard-secrets.mask-replacement`).
 pub fn spans(s: &str) -> Vec<(Kind, Range<usize>)> {
     // ASCII lowercasing keeps every byte offset, so a span found in `lower` indexes `s`.
     let lower = s.to_ascii_lowercase();

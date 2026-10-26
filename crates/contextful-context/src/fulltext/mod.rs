@@ -18,7 +18,7 @@ use contextful_core::read::rank::{bm25_idf, bm25_term, fulltext_sealed_over_cap}
 use contextful_core::read::tokens::PLURAL_SUFFIX_FLOOR;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::index::{
-    own_rows, FulltextEntry, IndexDecl, IndexEntry, IndexKind, IndexSegment, FULLTEXT_BUILDER, FULLTEXT_BUILDER_VERSION,
+    own_rows, FulltextEntry, IndexDecl, IndexEntry, IndexKind, IndexSegment, Tokenizer, FULLTEXT_BUILDER, FULLTEXT_BUILDER_VERSION,
 };
 use contextful_core::store::lay_out::{SnapshotId, MANIFEST_FILE};
 use contextful_core::store::StoreError;
@@ -87,7 +87,7 @@ fn write(
         .as_any()
         .downcast_ref::<StringArray>()
         .ok_or_else(|| StoreError::StoreIndexColumnType(format!("table `{table}`: `{}` is not text", index.column)))?;
-    let tokenizer = index.tokenizer();
+    let tokenizer: Tokenizer = index.tokenizer();
     let available = crate::available::instants(decl, rows)?;
     let docs: Vec<postings::Doc> = ids
         .into_iter()

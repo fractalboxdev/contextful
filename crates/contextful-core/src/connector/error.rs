@@ -27,7 +27,7 @@ pub enum ConnectorError {
     /// A delimited clock column neither RFC 3339 nor a fixed-width digit stamp. (`connector.source.clock-column-spelling`)
     #[error("ConnectorClockColumnRejected: {0}")]
     ConnectorClockColumnRejected(String),
-    /// Both expansion pointer forms on one block. (`connector.source.pointer-ambiguity`)
+    /// Both expansion pointer forms on one block. (`connector.source.pagination-ambiguity`)
     #[error("ConnectorPointerAmbiguous: {0}")]
     ConnectorPointerAmbiguous(String),
     /// A failed expansion follow-up, failing the whole read. (`connector.source.follow-up-failure`)

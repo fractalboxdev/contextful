@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, Once};
 use url::Url;
 
-/// Re-admits the environment adapter to template hydration (`connector.reference.environment-opt-in`).
+/// Re-admits the environment adapter to template hydration (`connector.reference.environment-is-a-miss`).
 pub const ALLOW_ENV_TEMPLATES: &str = "CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES";
 /// Selects the adapters the chain assembles, comma-separated.
 pub const BACKEND: &str = "CONTEXTFUL_SECRETS_BACKEND";

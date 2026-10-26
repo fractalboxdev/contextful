@@ -22,7 +22,7 @@ from = "effective_from"
 to   = "effective_to"
 "#;
 
-// spec: store.declare.erasure-metadata@1d880303
+// spec: store.declare.erasure-metadata@643e8791
 #[test]
 fn erasure_declarations_keep_key_reference_and_survival_policy_typed() {
     let source = r#"
@@ -52,10 +52,10 @@ on_erase = "survive"
     }
 }
 
-/// A table block takes {{type:contextful_core::store::declare::TableDecl}}; canonical serialization omits unset
-/// keys. A key applies from the next read and rewrites no committed part; `columns` types every landing, pipeline
-/// runs included, under {{store.reconcile.typed-landing}}.
-// spec: store.declare.table-block@8cede22d
+/// A table block takes {{type:contextful_core::store::declare::TableDecl}}, canonical serialization omitting
+/// unset keys. A key applies from the next read, rewriting no committed part; `columns` types every landing under
+/// {{store.reconcile.typed-landing}}.
+// spec: store.declare.table-block@698a12a7
 #[test]
 fn a_table_block_parses_its_keys_and_omits_unset_ones() {
     let t = &TableDecl::parse_pipeline(SPEC_EXAMPLE).unwrap()[0];
@@ -132,8 +132,8 @@ fn a_table_block_declares_its_scored_text_columns() {
     assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\nretrieve = { columns = [\"title\"] }\n").is_err());
 }
 
-/// `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.
-// spec: store.declare.order-by-default@141fbb95
+/// `order_by` names the column picking each key's surviving row, default `_ingested_at`.
+// spec: store.declare.order-by-default@7504081d
 #[test]
 fn order_by_defaults_to_ingested_at() {
     assert_eq!(TableDecl::named("t").order_by(), "_ingested_at");
@@ -141,9 +141,9 @@ fn order_by_defaults_to_ingested_at() {
 }
 
 /// A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or
-/// `StoreOrderByUnknownColumn`, and a struct, list or map column in either role or in `cluster_by`, `partition_by` or `valid_time`
+/// `StoreOrderByUnknownColumn`, and a struct, list or map column in a key, ordering, clustering, partition or valid-time role
 /// raises `StoreNestedKeyColumn`, at validation.
-// spec: store.declare.key-unknown@3a910d40
+// spec: store.declare.key-unknown@7bc37486
 #[test]
 fn an_order_by_naming_no_column_is_refused() {
     let schema = Schema { columns: vec![Column::new("revised_at", ColumnType::Int64, true)] , ..Default::default() };
@@ -159,10 +159,10 @@ fn an_order_by_naming_no_column_is_refused() {
     t.validate(&schema).unwrap();
 }
 
-/// `write_mode` is `append`, the default, retiring no key, or `replace`, where a read covers the newest
-/// complete-state run and every later run; displaced runs stay on disk until `retain_runs` expires, with no
-/// erasure receipt or lineage traversal.
-// spec: store.declare.replace-frontier@45e65273
+/// `write_mode` is `append`, the default, retiring no key, or `replace`, whose read covers the newest
+/// complete-state run and every later run; displaced runs stay until `retain_runs` expires, with no erasure
+/// receipt or lineage traversal.
+// spec: store.declare.replace-frontier@d8f63047
 #[test]
 fn write_mode_is_append_by_default_or_replace() {
     assert_eq!(TableDecl::named("t").write_mode(), WriteMode::Append);
@@ -188,10 +188,10 @@ fn a_retain_runs_outside_the_grammar_is_refused_not_panicked_on() {
     }
 }
 
-/// `write_mode` is `append`, the default, retiring no key, or `replace`, where a read covers the newest complete-state
-/// run and every later run; displaced runs stay on disk until `retain_runs` expires, with no erasure receipt or lineage
+/// `write_mode` is `append`, the default, retiring no key, or `replace`, whose read covers the newest complete-state
+/// run and every later run; displaced runs stay until `retain_runs` expires, with no erasure receipt or lineage
 /// traversal.
-// spec: store.declare.replace-frontier@45e65273
+// spec: store.declare.replace-frontier@d8f63047
 #[test]
 fn replace_covers_the_newest_complete_run_and_what_follows() {
     let s0 = snapshot("2030-01-01T00:30:00Z", None, &["run-1"]);
@@ -223,7 +223,7 @@ fn replace_covers_the_newest_complete_run_and_what_follows() {
 }
 
 /// A marked no-part replacing run clears current files while an earlier bound still reaches the displaced run.
-// spec: store.declare.empty-replacement@889afa9e
+// spec: store.declare.empty-replacement@8a800864
 #[test]
 fn a_marked_empty_run_is_a_replacement_frontier() {
     use contextful_core::store::bound_time::Bound;
@@ -244,10 +244,9 @@ fn a_marked_empty_run_is_a_replacement_frontier() {
     assert_eq!(append.resolve(None).unwrap().files().len(), 1, "append ignores a replacement marker");
 }
 
-/// A `[[job]]` block of kind `fold` with a `schedule`, `enabled` absent or true and `target` absent or naming the
-/// table's destination covers the table; `pipeline validate` warns on stderr, failing nothing, for each keyed table
-/// no job covers.
-// spec: store.declare.fold-job@7759a47b
+/// A `[[job]]` of kind `fold` with a `schedule`, `enabled` absent or true and `target` absent or naming the table's
+/// destination covers the table; `pipeline validate` warns on stderr for each keyed table no job covers.
+// spec: store.declare.fold-job@aa32a6c0
 #[test]
 fn a_scheduled_enabled_fold_job_covers_its_target_or_every_table() {
     use contextful_core::store::declare::FoldCoverage;
@@ -283,8 +282,8 @@ fn a_scheduled_enabled_fold_job_covers_its_target_or_every_table() {
 }
 
 /// A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or `StoreOrderByUnknownColumn`, and a struct, list or map column in
-/// either role or in `cluster_by`, `partition_by` or `valid_time` raises `StoreNestedKeyColumn`, at validation.
-// spec: store.declare.key-unknown@3a910d40
+/// a key, ordering, clustering, partition or valid-time role raises `StoreNestedKeyColumn`, at validation.
+// spec: store.declare.key-unknown@7bc37486
 #[test]
 fn a_nested_column_in_a_key_or_ordering_role_is_refused() {
     let nested = [

@@ -60,7 +60,7 @@ fn kept(ch: char) -> bool {
     !ch.is_control() || ch == '\n' || ch == '\t'
 }
 
-/// A fenced value (`connector.infer.fenced-value-hygiene`, `connector.infer.value-cap`):
+/// A fenced value (`connector.infer.value-cap`):
 /// control characters other than newline and tab stripped, and a value past `cap`
 /// characters cut to its first `cap` and followed by [`TRUNCATION_MARK`].
 pub fn hygiene(value: &str, cap: usize) -> String {

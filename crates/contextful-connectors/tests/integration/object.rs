@@ -145,7 +145,7 @@ fn an_address_covers_exactly_the_keys_its_read_lists() {
 
 /// `compression = "gzip"`, or a `.gz` key with `compression` undeclared, decompresses before
 /// decode; `compression = "none"` reads the object as stored.
-// spec: connector.source.object-gzip@1d996fa5
+// spec: connector.source.object-gzip@255bd183
 #[test]
 fn a_gz_key_or_declared_gzip_decompresses_and_none_reads_as_stored() {
     let bucket = MemBucket::with(&[
@@ -274,7 +274,7 @@ fn an_unchanged_etag_lands_nothing_and_a_new_object_lands_alone() {
 
 /// `access_key_id` and `secret_access_key` each hold one `secret://<name>` reference,
 /// declared together; a literal in either is refused at parse.
-// spec: connector.source.object-credentials@6e3fed56
+// spec: connector.source.object-credentials@1c02d9dc
 #[test]
 fn a_literal_credential_is_refused_and_a_reference_parses() {
     let ok = ObjectConfig::parse(&json!({
@@ -413,7 +413,7 @@ pub(crate) fn zipped(members: &[(&str, &[u8])]) -> Vec<u8> {
 
 /// `compression = "zip"`, or a key ending `.zip` with `compression` undeclared, decodes the
 /// archive's member: a GDELT 2.0 export lands one row per line, every cell a string.
-// spec: connector.source.object-zip@7ceb4716
+// spec: connector.source.object-gzip@255bd183
 #[test]
 fn a_declared_or_zip_keyed_archive_lands_its_tab_delimited_headerless_member() {
     let archive = zipped(&[("20250101000000.export.CSV", GDELT)]);

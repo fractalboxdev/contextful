@@ -34,8 +34,8 @@ fn fresh() -> Snapshot {
     Snapshot::new("run-1", "filings-feed", v(0))
 }
 
-/// The wire snapshot carries run id, workflow id, a status from {{run.record.status-set}}, an ordered step list, an application metadata map, optional start and end instants, an optional tagged error and a version. Every deploy target emits it identically.
-// spec: run.project.wire-snapshot@4ec773ac
+/// The wire snapshot is a {{type:contextful_core::run::project::Snapshot}}, its status from {{run.record.status-set}}. Every deploy target emits it identically.
+// spec: run.project.wire-snapshot@562c9337
 #[test]
 fn the_wire_snapshot_carries_every_member_and_round_trips() {
     let mut s = fresh();
@@ -68,8 +68,8 @@ fn the_wire_snapshot_carries_every_member_and_round_trips() {
     assert_eq!(serde_json::from_str::<Snapshot>(&s.to_wire()).unwrap(), s);
 }
 
-/// A step view carries its label, a status of `pending`, `running`, `completed`, `failed` or `retrying`, its attempt count, optional instants, an optional output reference with byte count, and an optional tagged failure.
-// spec: run.project.step-view@f320728f
+/// A step view is a {{type:contextful_core::run::project::StepView}}, its status a {{type:contextful_core::run::project::StepStatus}}.
+// spec: run.project.step-view@c4ee6225
 #[test]
 fn a_step_view_carries_label_status_attempts_instants_output_and_failure() {
     let mut s = fresh();

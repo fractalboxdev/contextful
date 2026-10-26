@@ -268,7 +268,6 @@ fn a_decode_package_linking_the_network_stack_is_refused() {
 /// A model-vendor SDK or second outbound model path raises `VendorSdkLinked` in the dependency audit. The error names
 /// the crate and dependency.
 // spec: topology.compose.vendor-sdk@6d97e7bb
-// spec: connector.infer.vendor-sdk@d5681d57
 #[test]
 fn a_crate_declaring_a_model_vendor_sdk_is_refused() {
     let r = Repo::init();

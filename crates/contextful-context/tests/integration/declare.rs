@@ -11,7 +11,7 @@ use std::fs;
 
 #[cfg(feature = "read")]
 /// An unkeyed append table reads the byte-identical union of its visible committed runs.
-// spec: store.declare.unkeyed-union@f30dc41a
+// spec: store.declare.unkeyed-union@901343b8
 #[test]
 fn an_unkeyed_table_reads_as_the_union_of_its_runs() {
     let f = Fixture::new();
@@ -30,9 +30,8 @@ fn an_unkeyed_table_reads_as_the_union_of_its_runs() {
 
 #[cfg(feature = "read")]
 /// A keyed table reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC,
-/// _run_id DESC, _row_seq DESC) = 1`. The source unions the current snapshot, if present, with committed runs omitted
-/// by that snapshot.
-// spec: store.declare.dedup-view@c5b79dd2
+/// _run_id DESC, _row_seq DESC) = 1` over the current snapshot, if any, unioned with the committed runs it omits.
+// spec: store.declare.dedup-view@85fa540a
 #[test]
 fn a_keyed_table_reads_one_row_per_key_before_and_after_a_fold() {
     let f = Fixture::new();
@@ -86,7 +85,7 @@ fn the_last_write_per_key_wins_within_a_run_and_across_runs_at_one_instant() {
 
 #[cfg(feature = "read")]
 /// A run landing zero rows commits a manifest with no parts; without a complete replacement marker it replaces nothing.
-// spec: store.declare.empty-run@446304e6
+// spec: store.declare.empty-run@3de72f18
 #[test]
 fn a_zero_row_run_commits_no_parts_and_an_empty_table_registers() {
     let f = Fixture::new();
@@ -118,10 +117,9 @@ fn an_empty_keyed_table_registers_its_declared_columns() {
 }
 
 #[cfg(feature = "read")]
-/// A table block takes {{type:contextful_core::store::declare::TableDecl}}; canonical serialization omits unset keys. A key applies from
-/// the next read and rewrites no committed part; `columns` types every landing, pipeline runs included, under
-/// {{store.reconcile.typed-landing}}.
-// spec: store.declare.table-block@8cede22d
+/// A table block takes {{type:contextful_core::store::declare::TableDecl}}, canonical serialization omitting unset keys. A key applies
+/// from the next read, rewriting no committed part; `columns` types every landing under {{store.reconcile.typed-landing}}.
+// spec: store.declare.table-block@698a12a7
 #[test]
 fn a_key_added_after_rows_land_applies_at_the_next_read() {
     let f = Fixture::new();
@@ -150,10 +148,10 @@ fn a_key_added_after_rows_land_applies_at_the_next_read() {
 }
 
 #[cfg(feature = "read")]
-/// `write_mode` is `append`, the default, retiring no key, or `replace`, where a read covers the newest
-/// complete-state run and every later run; displaced runs stay on disk until `retain_runs` expires, with no
-/// erasure receipt or lineage traversal.
-// spec: store.declare.replace-frontier@45e65273
+/// `write_mode` is `append`, the default, retiring no key, or `replace`, whose read covers the newest
+/// complete-state run and every later run; displaced runs stay until `retain_runs` expires, with no erasure
+/// receipt or lineage traversal.
+// spec: store.declare.replace-frontier@d8f63047
 #[test]
 fn a_replacing_run_leaves_displaced_runs_until_retention() {
     let f = Fixture::new();
@@ -204,9 +202,9 @@ fn a_read_refuses_an_unknown_order_by_rather_than_emitting_it() {
 }
 
 /// A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or
-/// `StoreOrderByUnknownColumn`, and a struct, list or map column in either role or in `cluster_by`, `partition_by` or `valid_time`
+/// `StoreOrderByUnknownColumn`, and a struct, list or map column in a key, ordering, clustering, partition or valid-time role
 /// raises `StoreNestedKeyColumn`, at validation.
-// spec: store.declare.key-unknown@3a910d40
+// spec: store.declare.key-unknown@7bc37486
 #[test]
 fn an_unknown_primary_key_refuses_the_first_batch_before_any_parquet() {
     let f = Fixture::new();

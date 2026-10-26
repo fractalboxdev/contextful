@@ -465,7 +465,7 @@ fn the_reference_lists_the_operations_the_harness_accounts_for() {
 /// The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
 // spec: assurance.differential-test.harness@0f6edc10
 // spec: authority.attenuate.narrowing@d61d3afa
-// spec: authority.attenuate.widens@e63a5c30
+// spec: authority.attenuate.widens@6643708e
 // spec: authority.grant.pattern-forms@8bb6d690
 // spec: authority.grant.template-allowlist@417f09a0
 #[test]
@@ -922,6 +922,21 @@ fn seeded_generated_narrowing_cases_cover_horizon_and_child_expiry() {
     let decisions: Vec<Value> = narrowing.iter().map(engine).collect();
     assert!(decisions.iter().any(|d| d["dimension"] == "horizon"), "no case widens a horizon");
     assert!(decisions.iter().any(|d| d["error"] == "AttenuationExpiryExtended"), "no case extends an expiry");
+}
+
+#[test]
+fn seeded_generated_narrowing_cases_widen_each_ceiling() {
+    let s = Scratch::new(wasm_args_or_skip!());
+    let log = s.path("generated.jsonl");
+    let report = passed(&s.run(&s.logging(&log), &["--seed", "3", "--cases", "400"]));
+    assert_eq!(line_value(&report, "disagreements"), "0");
+    let narrowing: Vec<Value> = read_jsonl(&log).into_iter().filter(|case| case["op"] == "narrow").collect();
+    let decisions: Vec<Value> = narrowing.iter().map(engine).collect();
+    for ceiling in ["max_rows", "max_duration_ms", "max_response_bytes"] {
+        let names = |grants: &Value| grants.as_array().is_some_and(|g| g.iter().any(|g| g.get(ceiling).is_some()));
+        assert!(narrowing.iter().any(|c| names(&c["parent"]) && names(&c["child"])), "no case narrows `{ceiling}`");
+        assert!(decisions.iter().any(|d| d["dimension"] == ceiling), "no case widens `{ceiling}`");
+    }
 }
 
 /// A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.

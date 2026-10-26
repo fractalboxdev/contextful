@@ -1041,7 +1041,7 @@ impl HttpSource {
     }
 
     /// Read the one page `request`'s position names, answering its rows and the page
-    /// after it; `None` once the walk ends (`connector.export.native-read`).
+    /// after it; `None` once the walk ends.
     fn read_page(&mut self, request: &PullRequest) -> Result<(Vec<Row>, Option<String>), Failure> {
         let base = self.base_url(request)?;
         let token = match &request.position {
@@ -1311,7 +1311,7 @@ impl HttpSource {
 
     /// A conditional pull: one request for the one document, carrying the stored validators.
     /// The validators are the whole position, and the pull reports no further page
-    /// (`connector.source.conditional-position`).
+    /// (`connector.source.conditional-get`).
     fn conditional_pull(&self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Value, Failure> {
         let mut budget = ExpansionBudget::new(EXPANSION_BYTES, EXPANSION_TIME);
         if cancel.requested() {

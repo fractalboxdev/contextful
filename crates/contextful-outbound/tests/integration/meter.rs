@@ -96,7 +96,7 @@ fn the_declaration_names_the_quota_the_class_and_the_forwarded_headers() {
 
 /// The engine's shared client reserves ahead of each outbound request, a followed hop included, so one call
 /// following one redirect spends two permits.
-// spec: connector.meter.reservation-point@d6f1791b
+// spec: connector.meter.reservation-point@2c3f1188
 #[test]
 fn each_outbound_request_spends_one_permit() {
     let _env = proxy_env();
@@ -388,7 +388,7 @@ fn an_unresolved_limiter_token_is_named_as_such() {
 }
 
 /// A request the allowlist refuses fails with `SecretUnpermittedRequest` before any acquire.
-// spec: connector.meter.allowlist-precedence@0634050f
+// spec: connector.meter.hook-composition@dbf571aa
 #[test]
 fn a_refused_request_never_reaches_the_limiter() {
     let _env = proxy_env();

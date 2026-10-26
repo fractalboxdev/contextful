@@ -556,8 +556,7 @@ fn a_d1_callback_guard_blocks_owner_transfer_but_allows_run_metadata() {
     assert!(catalog.execution_guard(&admission).is_err());
 }
 
-// spec: run.journal.d1-atomicity@b4710ff8
-// spec: run.journal.d1-blob@964b0ecb
+// spec: run.journal.d1-blob@0af768ba
 #[test]
 fn a_recorded_r2_blob_survives_replacement_and_sweep() {
     let fixture = Fixture::start();

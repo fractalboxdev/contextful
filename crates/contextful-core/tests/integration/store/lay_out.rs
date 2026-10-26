@@ -8,9 +8,9 @@ use contextful_core::store::lay_out::{
 use contextful_core::store::index::IndexEntry;
 use contextful_core::store::StoreError;
 
-/// A snapshot id is `snapshot-` followed by a nanosecond value zero-padded to 20 chars. The value is the greater of
-/// the commit instant and the previous id plus one.
-// spec: store.lay-out.snapshot-id@85e07203
+/// A snapshot id is `snapshot-` and a nanosecond value zero-padded to 20 chars: the greater of the commit instant
+/// and the previous id plus one.
+// spec: store.lay-out.snapshot-id@872c2af9
 #[test]
 fn snapshot_id_is_the_greater_of_the_commit_instant_and_the_previous_plus_one() {
     let first = SnapshotId::next(at("2025-03-15T16:00:00Z"), None);
@@ -92,9 +92,9 @@ fn the_snapshot_manifest_and_pointer_decode_in_their_documented_shape() {
     assert_eq!(ptr.snapshot_id, snap.snapshot_id);
 }
 
-/// A snapshot's `_manifest.json` records `ancestors`: its parent followed by the parent's `ancestors`, at most 256
-/// entries. A root records none. If the parent lacks `ancestors`, the child omits the field.
-// spec: store.lay-out.ancestors@36db6b28
+/// A snapshot manifest records `ancestors`, its parent then the parent's `ancestors`, at most 256 entries; a root,
+/// or a child of a parent lacking the field, records none.
+// spec: store.lay-out.ancestors@5cd0a827
 #[test]
 fn a_snapshot_records_its_ancestors_nearest_first_up_to_the_bound() {
     assert_eq!(SNAPSHOT_ANCESTORS_MAX, 256);
@@ -148,8 +148,8 @@ fn a_manifest_missing_later_fields_decodes_with_defaults() {
     assert_eq!(snap.row_count, 0);
 }
 
-/// A node id longer than 64 chars or outside `^[A-Za-z0-9._-]+$` raises `StoreNodeIdInvalid` at process start, before any path, key or lease carries it.
-// spec: store.lay-out.node-id-shape@9672e912
+/// A node id over 64 chars or outside `^[A-Za-z0-9._-]+$` raises `StoreNodeIdInvalid` at process start, before any path, key or lease carries it.
+// spec: store.lay-out.node-id-shape@3a07b5bd
 #[test]
 fn a_node_id_outside_the_shape_is_invalid() {
     let longest = "a".repeat(NODE_ID_MAX_LEN);

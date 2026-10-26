@@ -189,7 +189,7 @@ fn the_input_is_read_once_and_recorded_as_the_first_step() {
 
 /// A resumed run iterates recorded input without re-reading the statement. Rows landed after the pinned `as_of`, or
 /// folded since, do not enter the input set.
-// spec: run.journal.input-replay@6315f300
+// spec: run.journal.open-as-of@e1287668
 #[test]
 fn a_resume_iterates_the_recorded_rows_whatever_the_store_holds_since() {
     let rig = Rig::new();
@@ -212,8 +212,9 @@ fn a_resume_iterates_the_recorded_rows_whatever_the_store_holds_since() {
 }
 
 /// A store-driven job declaring no `as_of` resolves it to the instant its execution opens, recorded in the input
-/// step, so every resume reads that instant.
-// spec: run.journal.open-as-of@41577ed5
+/// step; a resume iterates that recorded input without re-reading the statement, so rows landed after `as_of`,
+/// or folded since, stay out.
+// spec: run.journal.open-as-of@e1287668
 #[test]
 fn an_undeclared_as_of_is_the_open_instant_and_a_resume_keeps_it() {
     let rig = Rig::new();
@@ -254,9 +255,10 @@ fn an_undeclared_as_of_is_the_open_instant_and_a_resume_keeps_it() {
     assert_eq!(row.input.unwrap().as_of, T0);
 }
 
-/// A store-driven run's plan reference hashes its body name, statement and declared `as_of`, so a resume under a
-/// changed one meets {{run.own.pinned-plan-changed}} before any step replays.
-// spec: run.journal.input-pin@24cf14b0
+/// A store-driven run's plan reference hashes its body name, statement, declared `as_of` and any host-supplied
+/// structural identity, which also joins its owner pins, so a resume under a changed one meets
+/// {{run.own.pinned-plan-changed}} before any step replays.
+// spec: run.journal.input-pin@cd86371e
 #[test]
 fn a_resume_under_a_changed_statement_or_as_of_refuses_before_any_replay() {
     let rig = Rig::new();
@@ -407,7 +409,7 @@ fn a_failed_landing_holds_the_owner_and_its_resume_lands_without_paying_again() 
 
 /// A store-driven run's row carries its input: the resolved `as_of`, the snapshot id per table and the input row
 /// count.
-// spec: run.record.input-bounds@c5d2c5a6
+// spec: run.record.sweep-bounds@afe792ba
 #[test]
 fn the_run_row_carries_the_input_as_of_snapshots_and_row_count() {
     let rig = Rig::new();

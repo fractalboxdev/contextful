@@ -80,9 +80,7 @@ The derive source selects eligible parent rows each tick and limits each run's w
   *A-run#derivation-key-decides*
 - `derive-order` — A derive pipeline reading another derive pipeline's output table runs after that parent on the parent's tick, regardless of declaration order or its own schedule.
   *A-run#chained-derive-pipelines*
-- `derive-failed-parent` — A child derive pipeline runs after its parent fails and reads only the parent's committed rows.
-  *A-run#derive-work-set*
-- `parent-outcome` — A derived child starts only after its parent produces a completed run outcome; a local launch, wait or signal failure, or a worker dispatch error, stops the unit before that child starts.
+- `parent-outcome` — A derived child starts only once its parent produces a completed run outcome, a failed one included, and then reads only the parent's committed rows; a launch, wait or signal failure, or a worker dispatch error, stops the unit first.
   *A-run#chained-derive-pipelines*
 - `derive-cycle` — A build whose derive source-table dependencies return to a pipeline raises `DeriveCycle`, names every pipeline on the cycle and arms none.
   *A-run#chained-derive-pipelines*
@@ -102,10 +100,7 @@ unsettled: Does a host task joining another derive pipeline's output table run a
 #### Scenarios
 
 - `run.select.derive-order`: WHEN configuration declares a scheduled child before its parent and the child reads the parent's output, THEN the parent's tick lands its new row before the child reads it.
-- `run.select.derive-cycle`: WHEN two derive pipelines read each other's output tables, THEN the build raises `DeriveCycle` naming both; a self-reference names itself.
-- `run.select.derive-failed-parent`: WHEN a parent fails after earlier rows committed, THEN its child reads those committed rows in the same tick.
-- `run.select.parent-outcome`: WHEN the parent process fails to start, THEN its derived child does not start in that unit.
-- `run.select.derive-after-conflict`: WHEN a derive child names another pipeline in `after`, THEN the build raises `DeriveAfterConflict` naming the child and both parents.
+- `run.select.parent-outcome`: WHEN a parent fails after earlier rows committed, THEN its child reads those committed rows in the same tick.
 
 ## bind
 
@@ -113,7 +108,7 @@ Engine bindings select registered tasks, configure engine interfaces and constra
 
 - `unbound-engine` — An engine with no `[derive.<name>]` block raises `DeriveEngineUnbound`, naming the pipeline, the engine, the file to edit and every bound engine.
   *A-run#derive-engine-machine*
-- `command-in-manifest` — `command`, `preprocess`, `env` or `allow_hosts` inside `[pipeline.source.config]` raises `DeriveCommandInManifest`.
+- `command-in-manifest` — A {{type:contextful_core::run::derive::config::Binding}} key `preprocess`, `env` or `allow_hosts`, or a step's `command`, inside `[pipeline.source.config]` raises `DeriveCommandInManifest`.
   *A-run#derive-engine-machine*
 - `unknown-task` — `task` names `transcribe`, the default, `link_preview`, or a task the embedding binary registered; any other value raises `DeriveUnknownTask`, listing the built-in and registered names.
   *A-run#derive-engine-machine*
@@ -147,7 +142,7 @@ unsettled: Does a host task declaring no model reach refuse a socket it opens, a
 
 The executor runs operator-declared argument arrays as local processes with pinned binaries, restricted environments and bounded runtime and output.
 
-- `shell-command` — The executor runs `command` as an argument array without a shell. A string-valued `command` raises `DeriveShellCommand`.
+- `shell-command` — A string-valued `command` raises `DeriveShellCommand`; {{run.exec.no-shell}} runs the argument array.
   *A-run#derive-engine-machine*
 - `env-name` — An allowlist name that is not ASCII alphanumeric or underscore, or that leads with a digit, raises `DeriveEnvNameInvalid`.
   *A-run#derive-engine-machine*
@@ -178,26 +173,6 @@ The executor runs operator-declared argument arrays as local processes with pinn
 - `vendor-deadline` — A vendor engine, a binding naming an `endpoint_host`, holds `request_timeout_secs` as its engine step's deadline, clipped to the time {{run.exec.chain-deadline}} leaves, so a stalled vendor fails its unit before the chain elapses.
   *because a chain deadline alone lets one stalled vendor call spend the unit's whole budget with no step to name*
 
-```mermaid
-sequenceDiagram
-  box engine
-    participant T as derive tier
-  end
-  box step processes
-    participant P as preprocess step
-    participant E as engine step
-  end
-  T->>T: cleared environment + allowlist
-  loop each preprocess step whose when condition holds
-    T->>P: argument array, no shell, own process group
-    P-->>T: exit 0 and an output file
-  end
-  T->>E: argument array over the last media
-  E-->>T: cues as vtt, srt or contextful-json
-  Note over T,E: failures: DeriveStepExit, DeriveStepProducedNothing, DeriveOutputCap past 8 MiB
-  Note over T,E: past 1800 s: DeriveStepTimeout, the group signalled, then reaped
-```
-
 ## fetch
 
 The fetch driver follows third-party links with host and address checks, bounded redirects, document head scanning and image probes.
@@ -207,7 +182,7 @@ The fetch driver follows third-party links with host and address checks, bounded
 - `address-literal` — A host written as an address literal raises `DeriveAddressLiteral`.
   *A-connector#outbound-transport-origin*
 - `redirect-chain` — A redirect chain runs to at most 5 hops.
-- `binding-key` — `env`, `preprocess`, `engine` or `max_output_bytes` on a fetch binding raises `DeriveFetchBindingKey`, naming the key.
+- `binding-key` — A {{type:contextful_core::run::derive::config::Binding}} key `env`, `preprocess`, `engine` or `max_output_bytes` on a fetch binding raises `DeriveFetchBindingKey`, naming the key.
   *because a silently ignored key leaves an operator believing a fetch carries a credential or runs a process*
 - `document-prefix` — `max_document_bytes` bounds the scanned document prefix at 1 MiB by default, dropping the remainder.
 - `probe-prefix` — `max_probe_bytes` bounds one picture range request at 64 KiB by default.
@@ -223,24 +198,6 @@ The fetch driver follows third-party links with host and address checks, bounded
 #### Scenarios
 
 - `run.fetch.head-rows`: WHEN a page head declares a title, description and one image, THEN the output holds one text passage and one image passage with its probe status.
-
-```mermaid
-flowchart LR
-  PT[("landed parent table")] -->|"link address"| FORM{"address form?"}
-  FORM -->|"other scheme: DeriveSchemeUnsupported"| BAD["rejected address"]
-  FORM -->|"literal: DeriveAddressLiteral"| BAD
-  FORM -->|"http or https host"| HOST{"host allowed and public?"}
-  HOST -->|"unlisted: SecretUnpermittedRequest"| BLOCK["blocked host"]
-  HOST -->|"private: ConnectorPrivateAddress"| BLOCK
-  HOST -->|"yes, 20 s per hop"| SITE(["third-party site"])
-  SITE -->|"redirect, up to 5"| HOST
-  SITE -->|"1 MiB prefix"| TEXT{"document UTF-8?"}
-  TEXT -->|"other charset: DeriveCharsetUnsupported"| UNREAD["unreadable document"]
-  TEXT -->|"invalid: DeriveBytesNotUtf8"| UNREAD
-  TEXT -->|"yes, head scanned"| PICS["picture candidates"]
-  PICS -->|"64 KiB range each"| IMG(["image host"])
-  IMG -->|"probe_status per candidate"| ROWS[("link rows")]
-```
 
 ## emit
 
@@ -343,17 +300,3 @@ allow_image_hosts    = ["*.cdn.example.net"]
 request_timeout_secs = 20
 ```
 
-One tick:
-
-```mermaid
-flowchart LR
-  PT[("parent table")] -->|"scan, truncated per run"| SEL["outstanding units"]
-  OUT[("derive output table")] -->|"anti-join, markers included"| SEL
-  SEL -->|"engine call per unit"| UNIT{"engine answer?"}
-  UNIT -->|"passages"| ROWS["content rows"]
-  UNIT -->|"typed error or silence"| MARK["marker row"]
-  UNIT -->|"wall clock elapsed"| LAND["land path"]
-  ROWS -->|"cue_seq 0..N"| LAND
-  MARK -->|"cue_seq -1"| LAND
-  LAND -->|"append"| OUT
-```

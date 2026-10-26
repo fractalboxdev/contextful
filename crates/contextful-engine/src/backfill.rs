@@ -166,7 +166,7 @@ impl<'e, J: JournalStore, B: BlobStore> Backfill<'e, J, B> {
 
     /// Rewind every chunk of the plan overlapping `window`: each returns to pending and
     /// retires the owner its scope holds, collecting that owner's journal, in the one catalog
-    /// transaction that rewrites its row (`run.own.pin-recovery`). A window on another scale
+    /// transaction that rewrites its row (`run.own.pin-mismatch-recovery`). A window on another scale
     /// than the plan's raises `PipelineRewindWindowInvalid`; a window overlapping no chunk
     /// rewinds nothing. Answers the rewound rows.
     pub fn rewind(&self, pipeline_id: &str, table: &str, window: &Window) -> Result<Vec<ChunkRow>, EngineError> {

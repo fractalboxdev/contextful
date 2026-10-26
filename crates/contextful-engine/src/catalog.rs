@@ -37,7 +37,7 @@ struct ScopeRow {
     /// A chunk scope's plan row; a table or host scope's file carries none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     chunk: Option<ChunkRow>,
-    /// The execution the scope's last retirement retired (`run.journal.retire-order`).
+    /// The execution the scope's last retirement retired (`run.journal.collection`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     retired: Option<String>,
 }

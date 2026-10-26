@@ -22,16 +22,16 @@ A case is one JSON object naming its operation:
 
 A grant object carries `actions` and `tables` (arrays of strings), and optionally `tenant`
 (`{"table","value"}`), `templates` (array of strings), `aggregate` (`min_group_size`,
-`max_contributor_share`, `functions`, `max_groups`, optional `max_rows`), `max_rows` and
-`horizon`, Unix seconds.
+`max_contributor_share`, `functions`, `max_groups`, optional `max_rows`), `max_rows`,
+`max_duration_ms`, `max_response_bytes` and `horizon`, Unix seconds.
 An integer field holds an unsigned 64-bit integer written without fraction. A `null`
 optional field is absent; an unknown key is ignored.
 
 The decision is `{"verdict","error","dimension"}`, and `zone` beside them for a placement
 case, naming the zone it resolved. Decoding fails at the first fault, in
 this order: the case's own shape, then each grant in turn, parent grants before child
-grants — its shape, each action against the vocabulary, each table pattern — then every
-horizon against the instants a timestamp represents.
+grants — its shape, each action against the vocabulary, each table pattern, then its duration
+and response-byte ceilings — then every horizon against the instants a timestamp represents.
 -/
 
 namespace Reference
@@ -126,7 +126,10 @@ def decodeGrant (j : Json) : Decode Authority.Grant := do
     match parsePattern w with
     | some p => pure p
     | none => throw "GrantPatternMalformed"
-  pure { actions, tables, tenant, templates := templates.map (·.map String.toList), aggregate, maxRows, horizon }
+  let maxDurationMs ← optional j "max_duration_ms" nat64
+  let maxResponseBytes ← optional j "max_response_bytes" nat64
+  pure { actions, tables, tenant, templates := templates.map (·.map String.toList), aggregate, maxRows,
+         maxDurationMs, maxResponseBytes, horizon }
 
 def pattern (s : String) : Decode Authority.Pattern :=
   match parsePattern s with

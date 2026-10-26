@@ -69,9 +69,10 @@ fn doc(top: &str, table: &str) -> String {
     format!("[[pipeline]]\nid = \"orders\"\n{top}[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"https://api.example.test/v1\" }}\n[[pipeline.tables]]\nname = \"items\"\n{table}")
 }
 
-/// A specification carries `id`, `source` and `tables`, plus the optional `destination`, `schedule`,
-/// `incremental`, `transforms`, `redaction`, `normalize`, `backfill`, `seed`, `queries` and `on_table_error`.
-// spec: run.declare.pipeline-spec@f5518a9e
+/// A pipeline specification takes {{type:contextful_core::pipeline::declare::PipelineSpec}}, its `source` and
+/// `destination` each {{type:contextful_core::pipeline::declare::SourceBlock}}, and each `tables` entry a bare name
+/// or a table block, the two forms mixing in one array.
+// spec: run.declare.pipeline-spec@e8907380
 #[test]
 fn a_specification_carries_three_required_and_eleven_optional_keys() {
     let json = serde_json::json!({
@@ -95,7 +96,7 @@ fn a_specification_carries_three_required_and_eleven_optional_keys() {
 
 /// A `source` contains a connector name and free-form JSON config object. A `destination` contains the same two fields
 /// and defaults to the store.
-// spec: run.declare.source-block@15f13c5e
+// spec: run.declare.pipeline-spec@e8907380
 #[test]
 fn source_and_destination_are_a_name_and_a_config_object() {
     let s = spec(BASE);
@@ -159,7 +160,7 @@ fn a_destination_table_folds_the_pipeline_and_table_names() {
 
 /// A `tables` entry is a bare name or an object carrying that table's configuration; the two forms mix in one
 /// array.
-// spec: run.declare.table-entry@094d89af
+// spec: run.declare.pipeline-spec@e8907380
 #[test]
 fn bare_names_and_table_blocks_mix() {
     let s: PipelineSpec = serde_json::from_value(json!({

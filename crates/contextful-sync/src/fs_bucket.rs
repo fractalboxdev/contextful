@@ -92,8 +92,7 @@ impl FsBucket {
     /// by the mount type.
     pub fn open(root: &Path, bucket: &str) -> Result<FsBucket, ObjectError> {
         let dir = FsBucket::create(root, bucket)?;
-        let volume = VolumeClass::detect(&dir);
-        Ok(FsBucket { root: dir, volume })
+        FsBucket::open_with_volume(root, bucket, VolumeClass::detect(&dir))
     }
 
     /// Open the bucket as [`FsBucket::open`] does, on a volume of the given class.

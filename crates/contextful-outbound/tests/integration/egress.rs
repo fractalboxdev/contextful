@@ -208,9 +208,10 @@ fn a_listed_private_range_reaches_the_send_half_under_the_allowlist() {
     assert_eq!(t.sends(), 0);
 }
 
-/// The host resolves a permitted host name once per request and connects to the address it vetted, with no second
-/// lookup between check and connect.
-// spec: connector.attach.resolve-once@9bf12798
+/// After {{connector.meter.pre-send-hook}} admits the hop, the transport interface resolves the name once per
+/// request, the client checks each address under {{connector.attach.private-address}}, and the host connects to
+/// the address it vetted.
+// spec: connector.attach.resolve-once@3eba7683
 #[test]
 fn one_lookup_per_hop_and_the_connect_takes_its_answer() {
     let events: Arc<Mutex<Vec<String>>> = Arc::default();
@@ -222,7 +223,7 @@ fn one_lookup_per_hop_and_the_connect_takes_its_answer() {
 
 /// Name resolution runs through the port's resolve half, after the pre-send hook admits the hop; the client vets
 /// each address it answers.
-// spec: connector.attach.resolve-half@77758c95
+// spec: connector.attach.resolve-once@3eba7683
 #[test]
 fn resolution_follows_the_hook_and_runs_through_the_port() {
     let events: Arc<Mutex<Vec<String>>> = Arc::default();
@@ -358,9 +359,9 @@ fn limiter(server: &Server, clock: &SetClock) -> Arc<Limiter> {
     Arc::new(Limiter::new(binding, resolver, "run-7f3a", Arc::new(clock.clone())).unwrap())
 }
 
-/// The limiter reservation is the hook's innermost implementation. An operator hook composes in front of it, so a
-/// request the operator hook refuses makes no limiter call and spends no permit.
-// spec: connector.meter.hook-composition@0465cf7b
+/// The limiter reservation is the pre-send hook's innermost implementation, behind the allowlist and any operator
+/// hook, so a request either refuses makes no limiter call and spends no permit.
+// spec: connector.meter.hook-composition@dbf571aa
 #[test]
 fn an_operator_refusal_makes_no_limiter_call() {
     let _env = proxy_env();

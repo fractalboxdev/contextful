@@ -112,21 +112,21 @@ corpus-guide-pointer-words = { clause = "corpus.guide.pointer-density", value = 
 
 # Ratchets (`corpus.registry.ceiling`): each value is the live count it bounds.
 [ceiling]
-registry-committed-sites = 3
-anatomy-long-lists = 6
-clause-unowned = 54
+registry-committed-sites = 0
+anatomy-long-lists = 0
+clause-unowned = 0
 why-unscoped = 0
 term-first-use = 0
 
 [ceiling.contract-words]
 assurance = 10236
-authority = 7661
-connector = 11062
+authority = 7667
+connector = 10126
 corpus = 5091
 disclosure = 5217
 read = 9502
-run = 19090
-store = 10153
+run = 18244
+store = 9103
 surface = 6243
 topology = 2642
 

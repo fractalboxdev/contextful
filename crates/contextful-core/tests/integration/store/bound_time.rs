@@ -58,9 +58,9 @@ fn an_unbounded_read_is_the_current_snapshot_plus_omitted_runs() {
     assert_eq!(files, sorted, "the file list is sorted");
 }
 
-/// Inside each table's FROM-source, `as_of` selects the newest reachable snapshot created at or before the bound. The
-/// source adds committed runs at or before the bound that the snapshot omits.
-// spec: store.bound-time.as-of@202a301e
+/// Inside each table's FROM-source, `as_of` selects the newest reachable snapshot created at or before the bound plus
+/// the committed runs at or before it that the snapshot omits.
+// spec: store.bound-time.as-of@9f994b50
 #[test]
 fn as_of_resolves_to_the_newest_snapshot_at_or_before_it_plus_omitted_runs() {
     let st = state();
@@ -82,9 +82,9 @@ fn as_of_resolves_to_the_newest_snapshot_at_or_before_it_plus_omitted_runs() {
     assert_eq!(names(r.files()), ["data/runs/run-1"]);
 }
 
-/// If retention removed table history and `as_of` precedes the oldest retained snapshot, the read raises
-/// `StoreAsOfUnretained`, naming the oldest answerable instant.
-// spec: store.bound-time.as-of-unretained@1c05f91a
+/// An `as_of` before the oldest snapshot retention kept raises `StoreAsOfUnretained`, naming the oldest
+/// answerable instant.
+// spec: store.bound-time.as-of-unretained@4c41f1ef
 #[test]
 fn an_as_of_before_collected_history_is_unretained() {
     let mut st = state();
@@ -102,9 +102,9 @@ fn an_as_of_before_collected_history_is_unretained() {
     st.resolve(Some(Bound::parse("2030-01-01T00:30:00Z").unwrap())).unwrap();
 }
 
-/// Every bound compares instants as timestamps rather than strings. The code constructing a date-only literal resolves
-/// the literal to the start of the next day, exclusive.
-// spec: store.bound-time.instant-comparison@5ba32c22
+/// Every bound compares instants as timestamps, not strings; a date-only literal resolves to the start of the next
+/// day, exclusive.
+// spec: store.bound-time.instant-comparison@f1d28442
 #[test]
 fn bounds_compare_instants_and_a_date_resolves_to_the_next_day_exclusive() {
     // One instant at two offsets is one bound; string order would disagree.
@@ -121,9 +121,9 @@ fn bounds_compare_instants_and_a_date_resolves_to_the_next_day_exclusive() {
     assert!(Bound::parse("2030-13-01").is_err());
 }
 
-/// A bounded read returns `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`. Each instant uses RFC 3339 UTC
-/// with nine fractional digits and a `Z` suffix. An unbounded read omits `contextful.bounds`.
-// spec: store.bound-time.echo@8ba811f5
+/// A bounded read returns `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`, each instant RFC 3339 UTC with
+/// nine fractional digits and a `Z`; an unbounded read omits it.
+// spec: store.bound-time.echo@6e0cc0a7
 #[test]
 fn a_bounded_read_echoes_its_bounds() {
     assert_eq!(Bounds::default().echo(), None);
@@ -162,9 +162,9 @@ fn valid_as_of_on_a_table_declaring_no_pair_is_refused() {
     }
 }
 
-/// Transaction time is `_ingested_at`. Valid time uses a declared pair of table columns. The engine infers no valid-
-/// time pair and stamps no second transaction timestamp.
-// spec: store.bound-time.two-clocks@12aa5421
+/// Transaction time is `_ingested_at`; valid time is a declared pair of table columns, which the engine never
+/// infers, and it stamps no second transaction timestamp.
+// spec: store.bound-time.two-clocks@6f41b729
 #[test]
 fn transaction_time_is_ingested_at_and_valid_time_is_declared() {
     // A table with timestamp columns named like a pair still declares none.

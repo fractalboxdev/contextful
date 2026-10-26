@@ -32,7 +32,7 @@ fn version_bound_source_fires_travel_with_the_run_state_and_old_states_remain_re
     assert!(serde_json::to_value(old).unwrap().get("sources").is_none());
 }
 
-// spec: store.encrypt.run-state-envelope@b9f7aaa5
+// spec: store.encrypt.run-state-envelope@789f8ab4
 #[test]
 fn a_bound_run_state_stays_sealed_across_record_and_read() {
     let dir = tempfile::tempdir().unwrap();
@@ -118,9 +118,8 @@ fn the_newest_cursor_is_the_latest_committed_across_every_node() {
     assert!(run_state::newest_cursor(&c.syncer.store, "shop", "other").unwrap().is_none());
 }
 
-/// A run state records `format`, `1` for this layout. Readers take no run or cursor from run states whose `format`
-/// exceeds 1.
-// spec: store.push.run-state-format@96bd2414
+/// A run state records `format`, `1` for this layout; readers take no run or cursor from a run state above 1.
+// spec: store.push.run-state-format@bcb1717f
 #[test]
 fn a_run_state_of_a_newer_format_contributes_nothing() {
     let dir = tempfile::tempdir().unwrap();
@@ -168,7 +167,7 @@ fn a_pulled_run_state_carries_the_applied_control_version() {
 
 /// A generation pull holds no run state to `store.pull.generation-diverged`: a run state the generation does not
 /// list stays as it is. A project name of several segments reads its run states alike.
-// spec: store.pull.generation-run-state@b46a94d8
+// spec: store.pull.generation-run-state@724fc9df
 #[test]
 fn a_restore_keeps_a_run_state_its_generation_does_not_list() {
     for project in ["research", "acme/research"] {

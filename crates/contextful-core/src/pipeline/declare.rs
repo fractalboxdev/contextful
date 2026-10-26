@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// A connector name beside its free-form configuration object (`run.declare.source-block`).
+/// A connector name beside its free-form configuration object (`run.declare.pipeline-spec`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -46,7 +46,7 @@ fn canonical_index(index: &mut IndexDecl) {
 /// The destination every pipeline lands in unless it names another: the local store.
 pub const STORE_DESTINATION: &str = "store";
 
-/// A `tables` entry: a bare name or a table block (`run.declare.table-entry`).
+/// A `tables` entry: a bare name or a table block (`run.declare.pipeline-spec`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]

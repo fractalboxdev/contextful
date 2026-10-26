@@ -44,12 +44,19 @@ impl Scratch {
         copy_dir(&live.join(".vale"), &root.join(".vale"));
         let s = Scratch { _dir: dir, root };
         let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
+        // Each pointed-at type's own item, so no other definition in its file (an error variant,
+        // a bound constant) enters the scratch as a source site.
+        let mut items: std::collections::BTreeMap<String, Vec<String>> = Default::default();
         for record in lock["types"].as_object().into_iter().flat_map(|t| t.values()) {
-            let file = Path::new(record["file"].as_str().unwrap());
-            s.write(&file.to_string_lossy(), &std::fs::read_to_string(live.join(file)).unwrap());
-            let package = file.ancestors().find(|p| live.join(p).join("Cargo.toml").is_file()).unwrap();
+            let file = record["file"].as_str().unwrap().to_string();
+            let text = std::fs::read_to_string(live.join(&file)).unwrap();
+            items.entry(file.clone()).or_default().push(item_at(&text, record["line"].as_u64().unwrap() as usize));
+            let package = Path::new(&file).ancestors().find(|p| live.join(p).join("Cargo.toml").is_file()).unwrap();
             let manifest = package.join("Cargo.toml");
             s.write(&manifest.to_string_lossy(), &std::fs::read_to_string(live.join(&manifest)).unwrap());
+        }
+        for (file, kept) in items {
+            s.write(&file, &(kept.join("\n\n") + "\n"));
         }
         s.write("evals/ledger.toml", &std::fs::read_to_string(live.join("evals/ledger.toml")).unwrap());
         s.write("spec/pins.toml", "[pin]\n\n[floor]\n");
@@ -171,6 +178,37 @@ impl Scratch {
             .find(|id| id.starts_with(&format!("{operation}.")))
             .unwrap_or_else(|| panic!("no clause under {operation}"))
     }
+}
+
+/// The struct or enum declared on 1-based `line` of `text`, with the doc comments and
+/// attributes above it, through the brace or semicolon closing it.
+fn item_at(text: &str, line: usize) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut start = line - 1;
+    while start > 0 && {
+        let above = lines[start - 1].trim_start();
+        above.starts_with("///") || above.starts_with("#[")
+    } {
+        start -= 1;
+    }
+    let mut depth = 0i32;
+    let mut opened = false;
+    for (i, l) in lines.iter().enumerate().skip(line - 1) {
+        for ch in l.chars() {
+            match ch {
+                '{' => {
+                    depth += 1;
+                    opened = true;
+                }
+                '}' => depth -= 1,
+                _ => {}
+            }
+        }
+        if (opened && depth == 0) || (!opened && l.trim_end().ends_with(';')) {
+            return lines[start..=i].join("\n");
+        }
+    }
+    panic!("no item closes after line {line}")
 }
 
 fn copy_dir(from: &Path, to: &Path) {

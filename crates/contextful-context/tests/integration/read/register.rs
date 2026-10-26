@@ -196,7 +196,7 @@ fn every_bare_name_resolves_to_the_callers_relation() {
     assert_eq!(previewed, acme);
 }
 
-// spec: store.bound-time.beneath-enforcement@d2c06cd4
+// spec: store.bound-time.beneath-enforcement@9e6bbc99
 #[test]
 fn historical_retrieval_keeps_row_and_column_enforcement() {
     let r = Reads::new();
@@ -504,9 +504,8 @@ fn a_tenant_scoped_read_naming_the_ledger_is_refused() {
     assert!(message.contains("`research/contacts`") && message.contains("row policy"), "{message}");
 }
 
-/// An append locks its run's ledger file to serialize writes. The append returns after syncing its rows and the rename
-/// to disk.
-// spec: store.reserve.ledger-append@befb2af2
+/// An append locks its run's ledger file and returns after syncing its rows and the rename to disk.
+// spec: store.reserve.ledger-append@ac81fcec
 #[test]
 fn concurrent_flushes_of_one_run_keep_every_row() {
     let r = Reads::new();
@@ -560,10 +559,10 @@ fn reference_is_a_bounded_read_tool_over_registered_relations() {
     assert!(tool["inputSchema"]["properties"].get("max_response_bytes").is_some());
 }
 
-/// `available_as_of` filters the inner source with `<column> <= available_as_of` beneath access controls, under
-/// {{store.bound-time.beneath-enforcement}}, and combines with {{store.bound-time.as-of}} and
-/// {{store.bound-time.valid-as-of}} when the read supplies those bounds.
-// spec: store.available-time.available-as-of@01cafb83
+/// `available_as_of` filters the inner source with `<column> <= available_as_of` under
+/// {{store.bound-time.beneath-enforcement}}, combining with {{store.bound-time.as-of}} and
+/// {{store.bound-time.valid-as-of}} when the read supplies them.
+// spec: store.available-time.available-as-of@c0b32e59
 #[test]
 fn an_availability_bound_narrows_the_tenant_restricted_rows() {
     const FILINGS: &str = "\n[[pipeline.tables]]\nname = \"research/filings\"\nprimary_key = [\"filing_id\"]\npartition_by = [\"tenant\"]\ncontent_hash_column = \"digest\"\n\n[pipeline.tables.policy.columns]\nanalyst = { strategy = \"drop\" }\n\n[pipeline.tables.available_time]\ncolumn = \"accepted_at\"\n";
@@ -600,7 +599,8 @@ fn an_availability_bound_narrows_the_tenant_restricted_rows() {
 // spec: read.register.reserved-relation@b474b47e
 #[test]
 fn the_run_record_and_the_access_tables_register_as_ordinary_relations() {
-    use contextful_context::visibility::{sweep_grants, Landing};
+    use contextful_context::visibility::Landing;
+    use crate::support::sweep_run;
     use contextful_core::disclosure::declare::Binding;
     use contextful_core::disclosure::sweep::{GrantLine, SweepBlock, SweepKind};
     use contextful_core::run::record::RunRow;
@@ -621,7 +621,7 @@ fn the_run_record_and_the_access_tables_register_as_ordinary_relations() {
     let block = SweepBlock::parse_manifest("[[acl_sweep]]\nsource = \"wiki\"\nenumerate = \"pages\"\nfull = { every = \"1h\" }\nincremental = { every = \"5m\" }\n").unwrap().remove(0);
     let grant = GrantLine { resource_id: "p1".into(), principal: "dana".into(), principal_kind: "user".into(), level: "viewer".into() };
     let landing = Landing { node, site_id: "site-a".into() };
-    sweep_grants(&r.store, &landing, &block, &[Binding::of(&pages).unwrap().unwrap()], SweepKind::Full, vec![grant], at("2030-01-10T00:10:00Z"), at("2030-01-10T00:10:01Z")).unwrap();
+    sweep_run(&r.store, &landing, &block, &[Binding::of(&pages).unwrap().unwrap()], SweepKind::Full, vec![grant], None, at("2030-01-10T00:10:00Z"), at("2030-01-10T00:10:01Z")).unwrap();
 
     // Both namespaces list beside every other table the store holds.
     let tables = r.face.tables().unwrap();

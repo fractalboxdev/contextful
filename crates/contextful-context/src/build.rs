@@ -215,7 +215,7 @@ fn holds_dir(store: &Store, model: &str) -> Result<PathBuf> {
     Ok(store.table_dir(model)?.join(HOLDS_DIR))
 }
 
-/// Every hold manifest of the model (`run.model.hold-manifest`), ordered by build id.
+/// Every hold manifest of the model (`run.publish.hold`), ordered by build id.
 pub fn holds(store: &Store, model: &str) -> Result<Vec<HoldRecord>> {
     let dir = holds_dir(store, model)?;
     let entries = match fs::read_dir(&dir) {
@@ -291,7 +291,7 @@ fn write_log<T: Serialize>(store: &Store, path: &Path, entries: &[T]) -> Result<
 
 /// Regenerate `builds.jsonl`, `holds.jsonl` and `contract-history.jsonl` in the model's
 /// table directory from its committed snapshot and hold manifests
-/// (`run.publish.history-logs`, `run.model.log-regeneration`).
+/// (`run.publish.history-logs`).
 pub fn write_logs(store: &Store, model: &str) -> Result<()> {
     let dir = store.table_dir(model)?;
     fs::create_dir_all(&dir).at(&dir)?;

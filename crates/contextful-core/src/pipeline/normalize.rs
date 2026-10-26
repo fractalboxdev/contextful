@@ -4,7 +4,7 @@
 use crate::run::ports::{Row, Types};
 use crate::run::journal::sha256_hex;
 use crate::run::RunError;
-use crate::store::reconcile::{supertype, ColumnType, StructField};
+use crate::store::reconcile::{supertype, ColumnType};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use crate::redaction::ValueStep;
@@ -307,10 +307,8 @@ fn infer(v: &Value, level: u32, depth: u32) -> Option<ColumnType> {
             ColumnType::list(item)
         }
         Value::Object(o) if o.is_empty() => ColumnType::Null,
-        Value::Object(o) => ColumnType::Struct(
-            o.iter()
-                .map(|(k, x)| Some(StructField::new(k, infer(x, level + 1, depth)?)))
-                .collect::<Option<_>>()?,
+        Value::Object(o) => ColumnType::structure(
+            o.iter().map(|(k, x)| Some((k.as_str(), infer(x, level + 1, depth)?))).collect::<Option<Vec<_>>>()?,
         ),
     })
 }

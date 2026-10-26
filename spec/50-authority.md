@@ -189,7 +189,7 @@ Deriving a narrower child offline, and the narrowing legality of each grant dime
   *A-authority#offline-narrowing*
 - `narrowing` — Every dimension of a child obeys the narrowing table in Shapes, checked by the deriving holder and again across the whole chain at admission.
   *A-authority#offline-narrowing*
-- `widens` — A child broader than its parent on actions, tables, templates or aggregate constraints raises `AttenuationWidens`, naming the dimension.
+- `widens` — A child broader than its parent on actions, tables, templates, aggregate constraints, or a `max_rows`, `max_duration_ms` or `max_response_bytes` ceiling raises `AttenuationWidens`, naming the dimension.
   *A-authority#offline-narrowing*
 - `horizon-widens` — A child whose horizon falls later than its parent's is broader on `horizon` and refuses as {{authority.attenuate.widens}}, naming that dimension; a child naming no horizon inherits its parent's.
   *A-authority#horizon*

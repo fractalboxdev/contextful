@@ -123,7 +123,7 @@ Each struct or enum a `{{type:<path>}}` pointer names, with the keys `serde` rea
 
 ### `contextful_core::disclosure::declare::RawBinding`
 
-The struct at `crates/contextful-core/src/disclosure/declare.rs:112`, named by `disclosure.mirror.binding-keys`.
+The struct at `crates/contextful-core/src/disclosure/declare.rs:122`, named by `disclosure.mirror.binding-keys`.
 
 | Key | Doc |
 | --- | --- |
@@ -162,7 +162,7 @@ The struct at `crates/contextful-core/src/disclosure/sweep.rs:196`, named by `di
 
 ### `contextful_core::disclosure::sweep::LinkLine`
 
-The struct at `crates/contextful-core/src/disclosure/sweep.rs:337`, named by `disclosure.sweep.directory-file`.
+The struct at `crates/contextful-core/src/disclosure/sweep.rs:321`, named by `disclosure.sweep.directory-file`.
 
 | Key | Doc |
 | --- | --- |
@@ -173,7 +173,7 @@ The struct at `crates/contextful-core/src/disclosure/sweep.rs:337`, named by `di
 
 ### `contextful_core::disclosure::sweep::Membership`
 
-The struct at `crates/contextful-core/src/disclosure/sweep.rs:319`, named by `disclosure.sweep.directory-file`.
+The struct at `crates/contextful-core/src/disclosure/sweep.rs:303`, named by `disclosure.sweep.directory-file`.
 
 | Key | Doc |
 | --- | --- |

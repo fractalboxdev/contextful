@@ -296,6 +296,36 @@ fn a_container_profile_requires_a_recovery_identity_before_connecting() {
     assert!(!error.contains("canary-secret"), "{error}");
 }
 
+/// The `postgres` profile admits a project only over a remote S3-compatible corpus bucket
+/// with `pull_before_run` and `push_after_run`, before it connects to the catalog.
+// spec: run.journal.container-profile@aadd43f5
+#[test]
+#[cfg(all(feature = "pg-catalog", feature = "s3-sync"))]
+fn a_container_profile_requires_a_pulled_and_pushed_remote_corpus() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let store = root.join(".contextful/context/research");
+    std::fs::create_dir_all(&store).unwrap();
+    std::fs::write(root.join("contextful.toml"), "[[pipeline.tables]]\nname = 'filings'\n").unwrap();
+    let check = |sync: &str| {
+        std::fs::write(store.join("config.toml"), format!("[node]\nid = 'site'\n[sync]\nendpoint = 'http://127.0.0.1:1'\nbucket = 'corpus'\n{sync}")).unwrap();
+        let out = command()
+            .args(["storage", "check", "--project", "research"])
+            .current_dir(root)
+            .env("CONTEXTFUL_STORAGE_PROFILE", "postgres")
+            .env("CONTEXTFUL_CATALOG_URL", "host=127.0.0.1 port=1 dbname=execution")
+            .env("CONTEXTFUL_RECOVERY_ID", "generation")
+            .output()
+            .unwrap();
+        assert!(!out.status.success());
+        String::from_utf8_lossy(&out.stderr).into_owned()
+    };
+    let unpushed = check("pull_before_run = true\n");
+    assert!(unpushed.contains("StorageCapabilityMissing") && unpushed.contains("push_after_run"), "{unpushed}");
+    let durable = check("pull_before_run = true\npush_after_run = true\n");
+    assert!(!durable.contains("StorageCapabilityMissing"), "the durable corpus passes to the catalog: {durable}");
+}
+
 /// Batches queued behind the land lock under `push_after_run`: the bucket puts per 1000 one-row updates.
 #[test]
 #[cfg(feature = "s3-sync")]

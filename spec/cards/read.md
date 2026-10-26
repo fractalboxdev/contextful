@@ -184,6 +184,6 @@ The struct at `crates/contextful-core/src/read/subscribe.rs:26`, named by `read.
 | `A-read#served-claim-write` | `read.revise.served-write`, `read.revise.served-scope`, `read.revise.browser-request`, `read.revise.malformed-request`, `read.revise.served-dedup`, `read.revise.served-fault` |
 | `A-read#sidecar-serves-past` | `store.index.filter-copies`, `read.horizon.rank-statistics` |
 | `A-read#statement-owns-deadline` | `read.respond.duration-ceiling`, `read.respond.byte-ceiling`, `authority.grant.duration-ceiling`, `authority.grant.byte-ceiling` |
-| `A-read#store-holds-nothing` | `connector.source.twin-api`, `authority.resist.credential-shaped-value` |
+| `A-read#store-holds-nothing` | `authority.resist.credential-shaped-value` |
 | `A-read#traversal-walks-enforced` | `read.traverse.walkable`, `read.traverse.hop-bound`, `read.traverse.fan-out`, `read.traverse.frontier-cap` |
 | `A-read#zone-withheld-relation` | `read.respond.restriction-block`, `authority.place.excluded-disclosed` |

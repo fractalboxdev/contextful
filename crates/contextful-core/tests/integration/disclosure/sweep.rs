@@ -2,7 +2,7 @@
 //! run commits over a source's current state.
 
 use contextful_core::disclosure::sweep::{
-    commit, parse_grants, parse_read, Commit, Events, GrantLine, GrantsRead, Governed, Observation, SourceState, SweepBlock, SweepError, SweepKind,
+    commit, parse_read, Commit, Events, GrantLine, GrantsRead, Governed, Observation, SourceState, SweepBlock, SweepError, SweepKind,
 };
 use contextful_core::disclosure::VisibilityError;
 use contextful_core::time::Instant;
@@ -97,7 +97,7 @@ fn a_cadence_outside_the_budget_grammar_is_refused() {
 #[test]
 fn a_grants_file_is_the_read_of_every_governed_resource() {
     let text = "{\"resource_id\":\"p1\",\"principal\":\"dana@acme.example\",\"principal_kind\":\"user\",\"level\":\"viewer\"}\n\n{\"resource_id\":\"p1\",\"principal\":\"eng\",\"principal_kind\":\"group\",\"level\":\"editor\"}\n";
-    let lines = parse_grants(text).unwrap();
+    let lines = parse_read(text).unwrap().grants;
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[1], GrantLine { resource_id: "p1".into(), principal: "eng".into(), principal_kind: "group".into(), level: "editor".into() });
     for (bad, line) in [
@@ -106,7 +106,7 @@ fn a_grants_file_is_the_read_of_every_governed_resource() {
         ("\n[1,2]", 2),
         ("{\"resource_id\":\"\",\"principal\":\"dana\",\"principal_kind\":\"user\",\"level\":\"viewer\"}", 1),
     ] {
-        match parse_grants(bad) {
+        match parse_read(bad) {
             Err(SweepError::GrantLine { line: l, .. }) => assert_eq!(l, line, "{bad}"),
             other => panic!("{bad}: {other:?}"),
         }
@@ -129,8 +129,6 @@ fn a_grants_file_is_the_read_of_every_governed_resource() {
     assert_eq!(read.unread, BTreeSet::from(["p2".to_string()]));
     let obs = Observation::from_read("wiki", SweepKind::Incremental, "s2", at("2030-01-01T00:05:00Z"), governed(&["p1", "p2"]), read);
     assert_eq!(obs.read, BTreeSet::from(["p1".to_string()]));
-    // `parse_grants` reads grant lines alone.
-    assert!(matches!(parse_grants(text), Err(SweepError::GrantLine { line: 2, .. })));
     for (bad, line) in [
         ("{\"resource_id\":\"p2\",\"unread\":false}", 1),
         ("{\"resource_id\":\"\",\"unread\":true}", 1),
