@@ -4,6 +4,10 @@
 
 clauses = [
     "assurance.prove.restriction-preservation",
+    "authority.attenuate.narrowing",
+    "authority.attenuate.widens",
+    "authority.grant.pattern-forms",
+    "authority.grant.template-allowlist",
     "connector.widen.host-inclusion",
     "connector.widen.host-witness",
 ]
