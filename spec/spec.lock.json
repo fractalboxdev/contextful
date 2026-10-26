@@ -22635,7 +22635,7 @@
       "operation": "issue",
       "subject": "posture-key",
       "kind": "refusal",
-      "statement": "A manifest declares its posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.",
+      "statement": "A manifest declares its authoring posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 257

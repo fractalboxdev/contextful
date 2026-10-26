@@ -254,7 +254,7 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority#one-credential*
 - `authoring-posture` — Every table write verb {{authority.verify.write-verbs}} runs under its manifest's authoring posture. `session` authors every write by one verified ambient credential's principal; `per_request` holds no ambient principal, leaving an unaccompanied write unauthored.
   *A-authority#one-credential*
-- `posture-key` — A manifest declares its posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.
+- `posture-key` — A manifest declares its authoring posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.
   *A-authority#one-credential*
 - `session-credential` — Under `session`, a table write verb run with no credential raises `AuthoringCredentialMissing` before its first effect.
   *A-authority#one-credential*
@@ -298,7 +298,7 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
 - `bearer-cap-fixed` — No issuance policy, face or command setting raises the cap {{authority.verify.bearer-lifetime}} sets; a credential living longer admits over a network only bound to a holder key.
   *A-authority#issuance-ceiling*
 
-unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manifest declaring no `authoring_posture`, or does the posture bind table write verbs alone? owner: authority affects: authority.issue
+unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manifest declaring no `authoring_posture`, or does the authoring posture bind table write verbs alone? owner: authority affects: authority.issue
 
 ## verify
 
