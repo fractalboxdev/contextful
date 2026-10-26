@@ -318,6 +318,42 @@ fn a_base_run_past_its_bound_is_killed_and_counts_red() {
     assert!(started.elapsed() < std::time::Duration::from_secs(120), "{:?}", started.elapsed());
 }
 
+/// Test-first reports assertion failures, compilation failures and bounded test executions separately; infrastructure
+/// faults follow {{assurance.test.base-unrunnable}} and supply no failing-test evidence.
+// spec: assurance.test.base-evidence@2ac18307
+#[test]
+fn assertion_compile_and_bound_failures_report_apart() {
+    let r = Repo::init();
+    r.write("crates/other/Cargo.toml", &manifest("other", ""));
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 {\n    1\n}\n");
+    r.write("crates/slow/Cargo.toml", &manifest("slow", ""));
+    r.write("crates/slow/src/lib.rs", "pub fn ready() -> bool {\n    false\n}\n");
+    r.lock();
+    r.commit("two more packages and the workspace lock");
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod triple;\n");
+    r.write("crates/demo/tests/integration/triple.rs", "#[test]\nfn triples() {\n    assert_eq!(demo::triple(2), 6);\n}\n");
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 {\n    2\n}\n");
+    r.write("crates/other/tests/integration/main.rs", "#[test]\nfn two() {\n    assert_eq!(other::value(), 2);\n}\n");
+    r.write("crates/slow/src/lib.rs", "pub fn ready() -> bool {\n    true\n}\n");
+    r.write(
+        "crates/slow/tests/integration/main.rs",
+        "#[test]\nfn settles() {\n    while !slow::ready() {\n        std::thread::sleep(std::time::Duration::from_millis(10));\n    }\n}\n",
+    );
+    r.commit("triple, value and ready, test first");
+    let o = r.gate(&["--stage", "test-first", "--base", &base, "--base-bound-secs", "20"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    let line = err.lines().find_map(|l| l.strip_prefix("test-first: red against the base in ")).unwrap_or_else(|| panic!("{err}"));
+    let entries: Vec<&str> = line.split(", crates/").collect();
+    let entry = |package: &str| entries.iter().find(|e| e.trim_start_matches("crates/").starts_with(package)).unwrap_or_else(|| panic!("{package}: {line}"));
+    assert!(entry("demo").ends_with("which does not compile at base"), "{line}");
+    assert!(entry("slow").ends_with("killed at the 20 s bound"), "{line}");
+    let asserted = entry("other");
+    assert!(!asserted.contains("compile") && !asserted.contains("killed"), "{line}");
+}
+
 /// A base invocation whose output reports a full disk, an unloadable manifest or an unfetchable dependency raises
 /// `TestFirstBaseUnrunnable` instead of a verdict.
 // spec: assurance.test.base-unrunnable@60e4830e

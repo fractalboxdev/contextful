@@ -47805,6 +47805,16 @@
         "proved": false
       }
     ],
+    "assurance.test.base-evidence": [
+      {
+        "kind": "test",
+        "path": "tools/ci/tests/integration/test_first.rs",
+        "name": "assertion_compile_and_bound_failures_report_apart",
+        "line": 323,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "assurance.test.base-run-bound": [
       {
         "kind": "test",
@@ -47820,7 +47830,7 @@
         "kind": "test",
         "path": "tools/ci/tests/integration/test_first.rs",
         "name": "an_unloadable_base_fails_the_stage_instead_of_reading_red",
-        "line": 323,
+        "line": 359,
         "verdict": "performed",
         "proved": false
       }
@@ -55272,7 +55282,7 @@
         "kind": "test",
         "path": "tools/ci/tests/integration/test_first.rs",
         "name": "the_stage_prints_the_clauses_the_change_reaches_into_the_gate_log",
-        "line": 421,
+        "line": 457,
         "verdict": "performed",
         "proved": false
       },
