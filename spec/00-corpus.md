@@ -169,6 +169,8 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a pin matching any same-named function elsewhere demonstrates nothing about the named one*
 - `test-pin-is-test` — A `test` pin naming a function that carries no `#[test]` attribute does not resolve.
   *because a helper or production function proves presence, not behavior*
+- `unwired` — `contextful-ci unwired` raises `SpecUnwired` for each public item under `crates/*/src` that a performed pin's test names and no non-test source reaches, unless an `// entry: <clause id>` comment names the clause.
+  *because a clause performing through its test alone demonstrates code no binary runs*
 - `unfinished-test` — A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.
   *because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption*
 - `scaffold` — `contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function.

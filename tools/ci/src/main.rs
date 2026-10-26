@@ -23,6 +23,7 @@ mod tag;
 mod footprint;
 mod image;
 mod topology;
+mod unwired;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -131,6 +132,12 @@ enum Cmd {
     Secrets,
     /// Resolve every `mirrors:` comment under crates/, tools/, apps/ and packages/ to a clause id.
     Mirrors,
+    /// Refuse a public item that only a performed pin's test calls (`corpus.state.unwired`).
+    Unwired {
+        /// Report only the clauses of this contract; repeatable.
+        #[arg(long)]
+        contract: Vec<String>,
+    },
     /// Refuse subject claims formatted into SQL text in runtime crates.
     SourceLint,
     /// Run `shellcheck` over every tracked shell file, as the toolchain stage does.
@@ -388,6 +395,7 @@ fn main() {
         }
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
+        Cmd::Unwired { contract } => repo_root().and_then(|root| unwired::check(&root, &contract)),
         Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
         Cmd::Shellcheck => repo_root().and_then(|root| shell::check(&root)),
         Cmd::CliShards { report, scale } => repo_root().and_then(|root| shards::command(&root, report.as_deref(), scale, DIFFERENTIAL_FILTER)),

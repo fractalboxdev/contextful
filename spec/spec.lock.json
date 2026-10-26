@@ -485,6 +485,17 @@
       "line": 170
     },
     {
+      "id": "corpus.state.unwired",
+      "contract": "corpus",
+      "operation": "state",
+      "subject": "unwired",
+      "kind": "refusal",
+      "statement": "`contextful-ci unwired` raises `SpecUnwired` for each public item under `crates/*/src` that a performed pin's test names and no non-test source reaches, unless an `// entry: <clause id>` comment names the clause.",
+      "why": "because a clause performing through its test alone demonstrates code no binary runs",
+      "file": "spec/00-corpus.md",
+      "line": 172
+    },
+    {
       "id": "corpus.state.unfinished-test",
       "contract": "corpus",
       "operation": "state",
@@ -493,7 +504,7 @@
       "statement": "A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.",
       "why": "because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption",
       "file": "spec/00-corpus.md",
-      "line": 172
+      "line": 174
     },
     {
       "id": "corpus.state.scaffold",
@@ -504,7 +515,7 @@
       "statement": "`contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 174
+      "line": 176
     },
     {
       "id": "corpus.state.scaffold-lean",
@@ -515,7 +526,7 @@
       "statement": "`contextful-spec scaffold <contract>.<operation> --lean <file>` appends one tagged theorem per clause of the operation, its statement the docstring and its proposition and proof `sorry`, and rewrites no existing theorem.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 175
+      "line": 177
     },
     {
       "id": "corpus.state.migrate",
@@ -526,7 +537,7 @@
       "statement": "`contextful-spec pins --migrate` moves each `test` entry of `spec/pins.toml` into a tag above the one test it names, and leaves an entry naming no clause or no single test in place.",
       "why": "because a tag travels with its test, and a path in a separate file goes stale unseen",
       "file": "spec/00-corpus.md",
-      "line": 176
+      "line": 178
     },
     {
       "id": "corpus.state.retag",
@@ -537,7 +548,7 @@
       "statement": "`contextful-spec retag <clause>` rewrites every tag of the clause to its statement's rev, and a `///` copy above a tag reading at least 0.9 like the tagged statement, refusing while a check other than `state` or `render` reports.",
       "why": "because a reworded clause otherwise leaves each tag and copy for a hand edit, and a malformed statement takes no rev",
       "file": "spec/00-corpus.md",
-      "line": 178
+      "line": 180
     },
     {
       "id": "corpus.state.slice-file",
@@ -548,7 +559,7 @@
       "statement": "`contextful-spec slice --file <path>` prints each clause the file's tags name, with its current statement and the functions tagging it.",
       "why": "because a reviewer of a test reads what it claims to demonstrate",
       "file": "spec/00-corpus.md",
-      "line": 180
+      "line": 182
     },
     {
       "id": "corpus.state.slice-diff",
@@ -559,7 +570,7 @@
       "statement": "`contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage prints it into the gate log.",
       "why": "because an edited test can stop demonstrating its clause while every pin still computes performed",
       "file": "spec/00-corpus.md",
-      "line": 182
+      "line": 184
     },
     {
       "id": "corpus.state.coverage-floor",
@@ -570,7 +581,7 @@
       "statement": "`spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.",
       "why": "because deleting a failing pin must not read as progress",
       "file": "spec/00-corpus.md",
-      "line": 184
+      "line": 186
     },
     {
       "id": "corpus.state.bad-pin",
@@ -581,7 +592,7 @@
       "statement": "A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken or unexercised pin, and one clause pinned to two theorems raise `SpecBrokenPin`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 186
+      "line": 188
     },
     {
       "id": "corpus.state.roadmap",
@@ -592,7 +603,7 @@
       "statement": "`spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 188
+      "line": 190
     },
     {
       "id": "corpus.state.acceptance",
@@ -603,7 +614,7 @@
       "statement": "A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored or holding a body line that opens with `todo!`, and `passing` otherwise.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 190
+      "line": 192
     },
     {
       "id": "corpus.state.closed",
@@ -614,7 +625,7 @@
       "statement": "A milestone computes `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause, and `open` otherwise.",
       "why": "because one passing acceptance test drives one path through a milestone, and an operation without a performed clause demonstrates nothing",
       "file": "spec/00-corpus.md",
-      "line": 192
+      "line": 194
     },
     {
       "id": "corpus.state.acceptance-first",
@@ -625,7 +636,7 @@
       "statement": "A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 194
+      "line": 196
     },
     {
       "id": "corpus.state.deferred-depth",
@@ -636,7 +647,7 @@
       "statement": "A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.",
       "why": "because an unopened milestone fixes what it refuses and bounds, and its behavior is written against the code that opens it",
       "file": "spec/00-corpus.md",
-      "line": 196
+      "line": 198
     },
     {
       "id": "corpus.render.generated",
@@ -647,7 +658,7 @@
       "statement": "`contextful-spec state` regenerates `spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json`, and `contextful-spec extract` the lock file alone. A committed copy differing from regeneration raises `SpecStaleRender`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 203
+      "line": 205
     },
     {
       "id": "corpus.render.lock-file",
@@ -658,7 +669,7 @@
       "statement": "The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pin sites and verdict.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 205
+      "line": 207
     },
     {
       "id": "corpus.render.card",
@@ -669,7 +680,7 @@
       "statement": "`contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.",
       "why": "A-corpus",
       "file": "spec/00-corpus.md",
-      "line": 207
+      "line": 209
     },
     {
       "id": "corpus.render.dated-prose",
@@ -680,7 +691,7 @@
       "statement": "The words `planned`, `not yet`, `currently`, `today`, `shipped`, `implemented`, `previously`, `used to`, `legacy`, `TODO`, `FIXME` and `WIP`, and an ISO date, raise `SpecDatedProse` in any authored file.",
       "why": "because build state is computed, and a dated sentence is stale the day it lands",
       "file": "spec/00-corpus.md",
-      "line": 209
+      "line": 211
     },
     {
       "id": "corpus.render.counterfactual",
@@ -691,7 +702,7 @@
       "statement": "The words `will`, `would` and `shall` raise `SpecCounterfactual` in a contract file or a guide.",
       "why": "because a contract states present behavior, and a record's Options is where a path not taken is described",
       "file": "spec/00-corpus.md",
-      "line": 211
+      "line": 213
     },
     {
       "id": "corpus.render.banned-vocabulary",
@@ -702,7 +713,7 @@
       "statement": "The nouns `seam`, `load-bearing`, `wedge`, `rung`, `land-grab` and an unbackticked `axiom`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 213
+      "line": 215
     },
     {
       "id": "corpus.render.local-path",
@@ -713,7 +724,7 @@
       "statement": "A path beginning `/Users/`, `/home/`, `$HOME/` or `~/` raises `SpecLocalPath`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 215
+      "line": 217
     },
     {
       "id": "corpus.diagram.fence",
@@ -724,7 +735,7 @@
       "statement": "A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 221
+      "line": 223
     },
     {
       "id": "corpus.diagram.boundary",
@@ -735,7 +746,7 @@
       "statement": "A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 223
+      "line": 225
     },
     {
       "id": "corpus.diagram.node",
@@ -746,7 +757,7 @@
       "statement": "A flowchart node names one thing in at most 5 words: its label holds no `·`, `<br/>`, `,`, `;`, `: ` or error identifier, is no operation name, and sets no article second. A breach raises `SpecDiagramNode`.",
       "why": "because a box of bundled attributes or a verb hides the things and what flows between them; operations, limits and errors ride the edges",
       "file": "spec/00-corpus.md",
-      "line": 225
+      "line": 227
     },
     {
       "id": "corpus.diagram.shape",
@@ -757,7 +768,7 @@
       "statement": "A node labelled with a snake_case identifier or a phrase ending `table`, `store`, `log` or `queue` is a cylinder `[( )]`, and a label ending `?` is a decision `{ }`. A breach raises `SpecDiagramShape`.",
       "why": "because one shape meaning one kind lets a reader tell data from the parts acting on it at a glance",
       "file": "spec/00-corpus.md",
-      "line": 227
+      "line": 229
     },
     {
       "id": "corpus.diagram.edge",
@@ -768,7 +779,7 @@
       "statement": "A flowchart edge points one way; its label holds at most 5 words and no `·`, and an edge touching no decision node carries one. A breach raises `SpecDiagramEdge`.",
       "why": "because an unlabelled line says two things relate without saying how, and a two-way line hides which side acts",
       "file": "spec/00-corpus.md",
-      "line": 229
+      "line": 231
     },
     {
       "id": "corpus.diagram.decision",
@@ -779,7 +790,7 @@
       "statement": "A decision node asks a question or names a condition in at most 8 words and no error identifier, has an incoming edge, and has two or more outgoing edges each labelled with a distinct outcome. A breach raises `SpecDiagramDecision`.",
       "why": "because a branch without a guard on each exit leaves the reader to guess which path a case takes",
       "file": "spec/00-corpus.md",
-      "line": 231
+      "line": 233
     },
     {
       "id": "corpus.diagram.branch",
@@ -790,7 +801,7 @@
       "statement": "A non-decision node with an outgoing edge labelled `yes` or `no`, an outgoing error identifier beside another exit, or two exits opening `if`, `when`, `over`, `under` or `else` raises `SpecDiagramBranch`; a branch is a decision node.",
       "why": "because a condition hidden in edge labels off a box reads as parallel flow",
       "file": "spec/00-corpus.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "corpus.diagram.connected",
@@ -801,7 +812,7 @@
       "statement": "Every flowchart node, or a subgraph enclosing it, is an edge endpoint. A breach raises `SpecDiagramOrphan`.",
       "why": "because an unconnected element asserts nothing about the system",
       "file": "spec/00-corpus.md",
-      "line": 235
+      "line": 237
     },
     {
       "id": "corpus.diagram.unique-label",
@@ -812,7 +823,7 @@
       "statement": "No two nodes of one flowchart carry the same label; a second mention reuses the node id. A breach raises `SpecDiagramDuplicate`.",
       "why": "because one label naming two nodes leaves the reader to decide whether they are one thing",
       "file": "spec/00-corpus.md",
-      "line": 237
+      "line": 239
     },
     {
       "id": "corpus.diagram.layout",
@@ -823,7 +834,7 @@
       "statement": "A flowchart header declares `LR`, `TB` or `TD`, no subgraph declares `direction`, subgraphs nest at most 2 levels, and the chart holds at most 20 nodes and 25 edges. A breach raises `SpecDiagramLayout`.",
       "why": "because one reading direction keeps the flow followable, and a chart past that size or depth is two diagrams",
       "file": "spec/00-corpus.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "corpus.diagram.sequence",
@@ -834,7 +845,7 @@
       "statement": "A sequence diagram declares each participant it messages and messages each it declares, and holds at most 6 participants, 15 messages, 2 messages from a participant to itself and fragments nested 2 levels. A breach raises `SpecDiagramSequence`.",
       "why": "because a sequence diagram shows one scenario's interactions, and branching logic past that belongs in a flowchart",
       "file": "spec/00-corpus.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "corpus.diagram.message",
@@ -845,7 +856,7 @@
       "statement": "A sequence message label holds at most 8 words and a note at most 12 words. A breach raises `SpecDiagramMessage`.",
       "why": "because a message names one call; its parameters and bounds belong in clauses",
       "file": "spec/00-corpus.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "corpus.diagram.state",
@@ -856,7 +867,7 @@
       "statement": "A state diagram has one top-level `[*]` start reaching every state, every state has an outgoing transition, `[*]` counting as a target, and a transition label holds at most 6 words. A breach raises `SpecDiagramState`.",
       "why": "because an unreachable or dead-end state is a lifecycle the system cannot run",
       "file": "spec/00-corpus.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "corpus.targets.file",
@@ -867,7 +878,7 @@
       "statement": "Each deployment provider's target profile is `spec/targets/<provider>.toml`: named shapes, exactly one marked default, each with a kind, the profiles it hosts, an optional per-invocation wall-clock cap, its exclusions and the primitive filling each role.",
       "why": "A-topology",
       "file": "spec/00-corpus.md",
-      "line": 252
+      "line": 254
     },
     {
       "id": "corpus.targets.roles",
@@ -878,7 +889,7 @@
       "statement": "A shape fills eight roles — cron tick, reconciler, durable orchestrator, single-writer catalog, object store, hot-path query face, heavy compute and secrets — and may fill a realtime run projection and a queue.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 254
+      "line": 256
     },
     {
       "id": "corpus.targets.primitives",
@@ -889,7 +900,7 @@
       "statement": "A target file lists the primitives its provider offers, and each shape lists the primitives it uses; {{topology.deploy.unsupported-shape}} refuses a shape using one outside that list.",
       "why": "because a shape's roles name products, and only a primitive list makes a missing one checkable",
       "file": "spec/00-corpus.md",
-      "line": 255
+      "line": 257
     },
     {
       "id": "corpus.targets.incomplete",
@@ -900,7 +911,7 @@
       "statement": "A shape leaving a role unfilled, or a target file marking other than one default shape, raises `SpecTargetIncomplete`, naming the provider, the shape and the role.",
       "why": "because an unfilled role surfaces only when a deploy reaches it, on someone else's account",
       "file": "spec/00-corpus.md",
-      "line": 257
+      "line": 259
     },
     {
       "id": "corpus.targets.cap-unrecorded",
@@ -911,7 +922,7 @@
       "statement": "A shape whose cap sits at or below the {{topology.deploy.wall-clock-cap}} bound and whose exclusions omit `first-time-backfill` or `component-connector` raises `SpecTargetCapUnrecorded`.",
       "why": "because the exclusion is the difference between a refused dispatch and a job killed mid-run",
       "file": "spec/00-corpus.md",
-      "line": 259
+      "line": 261
     },
     {
       "id": "corpus.targets.function-profile",
@@ -922,7 +933,7 @@
       "statement": "A function-class shape listing a profile other than `edge` raises `SpecTargetFunctionProfile`, naming the provider and the shape.",
       "why": "because {{topology.package.edge-eligibility}} admits the edge profile alone on a function-class target",
       "file": "spec/00-corpus.md",
-      "line": 261
+      "line": 263
     },
     {
       "id": "corpus.targets.page",
@@ -933,7 +944,7 @@
       "statement": "`contextful-spec state` renders `spec/targets.md` from the target files: per provider, a role table across its shapes and a diagram of its default shape.",
       "why": "because a diagram drawn by hand beside the data it shows drifts from it",
       "file": "spec/00-corpus.md",
-      "line": 263
+      "line": 265
     },
     {
       "id": "corpus.guide.file",
@@ -944,7 +955,7 @@
       "statement": "Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose of at most 700 words outside diagrams.",
       "why": "A-corpus",
       "file": "spec/00-corpus.md",
-      "line": 270
+      "line": 272
     },
     {
       "id": "corpus.guide.non-normative",
@@ -955,7 +966,7 @@
       "statement": "A guide holds no clause item and names no registered error; it reaches a rule by `{{id}}`. No contract file links a guide.",
       "why": "because a rule restated in teaching prose is a second home that drifts from the first",
       "file": "spec/00-corpus.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "corpus.guide.bad-guide",
@@ -966,7 +977,7 @@
       "statement": "A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 274
+      "line": 276
     },
     {
       "id": "topology.compose.workspace",
@@ -38897,6 +38908,10 @@
           "SpecUnsettled": {
             "clause": "corpus.rationale.unsettled-line",
             "gloss": "A malformed unknown, or an appendix heading."
+          },
+          "SpecUnwired": {
+            "clause": "corpus.state.unwired",
+            "gloss": "A public item only a performed pin's test reaches."
           }
         },
         "limit": {
@@ -48510,6 +48525,12 @@
     "corpus.state.unfinished-test": {
       "sites": [
         "tools/spec/tests/integration/tags.rs::a_tag_on_a_todo_body_is_broken"
+      ],
+      "verdict": "performed"
+    },
+    "corpus.state.unwired": {
+      "sites": [
+        "tools/ci/tests/integration/unwired.rs::an_item_only_a_performed_test_calls_is_unwired_until_a_binary_calls_it_or_marks_its_entry"
       ],
       "verdict": "performed"
     },
