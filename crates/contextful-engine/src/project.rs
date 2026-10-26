@@ -62,7 +62,7 @@ impl Shared {
 }
 
 /// The hub: owns the observer end of the emission channel and every run's snapshot.
-/// A restart builds a new hub, which holds no snapshot (`run.project.restart-discards`).
+/// A restart builds a new hub, which holds no snapshot (`run.project.best-effort`).
 pub struct Hub {
     shared: Arc<Shared>,
     rx: Receiver<Delta>,

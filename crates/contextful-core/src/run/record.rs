@@ -398,7 +398,7 @@ pub struct HistoryPage {
 }
 
 /// Select a pipeline's history: rows inside the window, newest first, clipped at the
-/// ceiling. An empty window answers an empty page (`run.record.empty-window`).
+/// ceiling. An empty window answers an empty page (`run.record.truncation-flag`).
 pub fn select_history(rows: impl IntoIterator<Item = RunRow>, window: &Window) -> HistoryPage {
     let mut inside: Vec<RunRow> = rows.into_iter().filter(|r| window.admits(r)).collect();
     inside.sort_by(|a, b| b.started_at.cmp(&a.started_at).then_with(|| b.run_id.cmp(&a.run_id)));

@@ -75,7 +75,7 @@ The journal records step values, returns those values on replay and deletes reco
   *because recorded work is needed only while a replay can reach it, and an uncollected journal grows with total ingest*
 - `retire-order` — A journal store apart from the catalog deletes a retired owner's rows after the catalog commits the retirement, and the next open under that scope repeats the delete.
   *because a delete ahead of the commit strands a pending owner without its recorded steps, while a late delete leaves only rows no replay reaches*
-- `one-cutoff` — Every step kind follows {{run.journal.inline-cutoff}}: pulls, recorded effects, input steps and awakeable payloads. No step kind overrides the cutoff.
+- `one-cutoff` — Every step kind follows {{run.journal.inline-cutoff}}: pulls, recorded effects, input steps and awakeable payloads, whose pending row references an offloaded blob. No step kind overrides the cutoff.
   *because one placement rule lets every adapter and the blob sweep read a row without knowing which step kind wrote it*
 - `fan-out-join` — Parallel branches rejoin only at an explicit join node. A failed branch reaching the join fails the run. With `allow_partial`, the join instead records each failed branch's label and failure tag on the run record.
   *because an implicit join hides which branch failed, and a partial result recorded as complete reads as one*
@@ -120,14 +120,12 @@ Journal rows, blobs and awakeables persist through storage ports that SQLite, Po
   *A-run#run-substrate-storage*
 - `d1-profile` — `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1` selects D1 for catalog, journal, awakeables and export state through a private Worker outbound binding; R2 holds blob content and corpus objects.
   *A-run#run-substrate-storage, A-topology#cloudflare-d1, A-run#d1-execution-state*
-- `d1-blob` — D1 stores each blob digest, whose R2 object key is `blobs/<sha256>`; the R2 write precedes its D1 reference, and a read verifies the content digest.
+- `d1-blob` — D1 commits metadata atomically and stores each blob digest, whose R2 object key is `blobs/<sha256>`; an R2 write precedes its D1 reference, an R2 deletion follows removal of every reference, and a read verifies the digest.
   *A-run#run-substrate-storage*
 - `d1-transport` — A D1 read, health probe or content-addressed blob request left without an HTTP answer resends, within 3 attempts of at most 15 s each; a writing statement outside {{run.journal.d1-initialize}} goes once over a fresh connection and raises `StorageBindingUnavailable`.
   *because a write whose answer is lost may have committed, and resending it could apply it twice*
 - `d1-initialize` — Storage initialization's D1 batch, every statement `IF NOT EXISTS` DDL or an insert or update guarded to apply once, resends after a lost answer as a read does under {{run.journal.d1-transport}}.
   *because a second application of that batch leaves the state its first application left*
-- `d1-atomicity` — D1 commits metadata atomically. An interrupted R2 upload may leave an unreferenced object. R2 deletion follows removal of every D1 reference.
-  *A-run#run-substrate-storage*
 - `d1-guard` — A committed D1 guard prevents owner or lease transfer throughout an admitted external callback; a crash guard requires recorded receipt or idempotency evidence before takeover.
   *A-run#run-substrate-storage*
 - `d1-recovery` — The D1 recovery identity binds one project and schema to an R2 object frontier; a missing object or mismatched generation follows {{run.journal.execution-recovery}}.
@@ -241,13 +239,11 @@ The engine commits source positions according to cursor kind and re-reads rows a
 - `cursor-kind` — A cursor declares a {{type:contextful_core::run::advance::CursorKind}}. An undeclared kind resolves to `opaque-token`.
 - `concurrency-by-kind` — A `monotonic` position is concurrent-safe and commits the highest value observed. A position of another {{type:contextful_core::run::advance::CursorKind}} moves only under a single-writer lease. Last-write-wins governs no cursor.
   *because two writers resolving one continuation token by recency skip or duplicate records with no count showing it*
-- `engine-owned` — A connector moves its position only by committing through the engine; that commit is a recorded step and replays as a resolved read.
 - `commit-with-rows` — A table's run commit marker, {{store.lay-out.run-manifest}}, publishes its rows and new position together. The catalog cursor caches the newest committed marker.
   *because rows and position committed in two stores leave a crash window that re-lands a batch*
-- `cursor-bytes` — A position is opaque bytes the connector owns, and its kind is a manifest fact the engine reads. Each table carries its own position.
-- `inclusive-boundary` — A polled load admits a row whose clock value is at or after the stored position, re-landing the boundary instant's rows on every poll.
+- `cursor-bytes` — A position is opaque bytes the connector owns, one per table, and its kind a manifest fact; the connector moves it only by committing through the engine, a recorded step that replays as a resolved read.
+- `inclusive-boundary` — A polled load admits a row whose clock value is at or after the stored position, re-landing the boundary instant's rows on every poll, idempotently on a keyed table and accumulating in a keyless table's union view.
   *because a clock coarser than the row grain otherwise drops a sibling sharing the boundary value, permanently and invisibly*
-- `declared-key-required` — The boundary re-land is idempotent on a table declaring a key; on a keyless table the repeats accumulate in its union view.
 - `watermark-shape` — A watermark position serializes as `{"field": "<name>", "at": <value>}`. `field` names the column whose values determine the watermark.
 - `field-rename` — Opening a position whose stored field differs from the declared `incremental` field raises `CursorFieldMismatch` before any request leaves the host.
   *A-run#incremental-position-bound*
@@ -279,8 +275,7 @@ The engine suspends runs durably until an external callback resolves an awakeabl
 - `awakeable` — An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row through the awakeable store; an external party resumes by posting the token back.
   *A-run#awakeable-resumes-credentialed*
 - `resume-is-a-step-output` — The journal records a resume payload as the awaited step's output under key `sha256("awakeable:" + token)`. A run that resumes and then crashes reads the payload back without suspending again.
-- `deadline` — A deadline is the creation instant plus a time-to-live, both caller-supplied RFC3339 Zulu strings; the core reads no wall clock.
-- `timeout-is-sticky` — The engine evaluates expiry against an injected instant. A suspension past its deadline becomes `timed_out` and keeps that state under any later instant.
+- `deadline` — A deadline is the creation instant plus a time-to-live, both caller-supplied RFC3339 Zulu strings; the core reads no wall clock, and a suspension past its deadline at an injected instant stays `timed_out` under any later one.
 - `idempotent-resolution` — Resolving a token again with the identical payload returns the recorded value.
 - `conflicting-resolution` — A second resolution with a different payload raises `AwakeableAlreadyResolved` and leaves the recorded value untouched.
   *A-run#external-signals-single*
@@ -294,7 +289,6 @@ The engine suspends runs durably until an external callback resolves an awakeabl
   *A-run#awakeable-resumes-credentialed*
 - `caller-binding` — An awakeable may bind a verified caller subject at mint; resolving it then takes the token and a credential for that subject, and any other caller answers as {{run.suspend.unknown-token}}. An unbound token is its whole authority.
   *because a token leaked through a log otherwise resumes a run, and answering unknown discloses nothing to the wrong holder*
-- `payload-offload` — A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it.
 - `postgres-reconciliation` — A PostgreSQL callback row interrupted after its resume value commits recovers its resolved payload from that journal value; a conflicting resolution follows {{run.suspend.conflicting-resolution}}.
   *because a separately committed callback row cannot overwrite the journal value that already determines replay*
 - `survives-restart` — A durable awakeable store persists every registry row, so a process reopening it over the same location drops no pending callback; an in-process store ends with its process.
@@ -348,14 +342,12 @@ The runner classifies failures and schedules step retries through one retry laye
   *P6*
 - `retry-after` — A server-supplied `Retry-After` supersedes the computed delay; a remaining wait up to 300 s sleeps in process, and a longer one closes the attempt `RateLimited` under {{run.retry.waiting-state}} instead of sleeping.
   *because an unclamped upstream delay holds a run slot for as long as the vendor asks*
-- `not-before` — Before any wait, a retrying step records its next-attempt instant beside its attempt count in the execution's journal, so a restart, a container replacement included, reads both back.
+- `not-before` — Before any wait, a retrying step records its next-attempt instant and attempt count on its journal row, so a restart, a container replacement included, resumes the remaining budget and wait.
   *because a wait held only in memory restarts on every replacement and calls the vendor early*
 - `waiting-state` — An attempt closed on its next-attempt instant reports `waiting` with that instant on its run row, counts as neither refused nor failed, and keeps its owner; only exhausting the schedule's attempts fails the step.
   *because a vendor's requested pause is not evidence the work is wrong*
-- `resume-at` — An attempt reaching a step whose stored instant has not passed waits again without invoking the effect; the first attempt at or after it re-enters under the same work key, pins and attempt count.
+- `resume-at` — Until a step's stored instant passes, an attempt reaching it, a crash mid-sleep included, waits only the remaining time without invoking the effect; the first attempt once it passes re-enters under its work key, pins and attempt count.
   *because resuming under another key or a fresh budget repeats paid work or retries without bound*
-- `crash-resumes-wait` — An attempt resuming a step whose process died mid-sleep sleeps out only the remaining wait to the stored instant.
-  *because restarting the wait over-delays and skipping it calls the vendor early*
 - `wake` — A waiting attempt records its instant on its owner; the scheduler fires that owner's unit at the first beat at or after it, ahead of the unit's regular `schedule` fire, and the next attempt's claim clears it.
   *because a resume gated on the regular cadence adds up to a full interval to every rate-limited wait*
 - `shared-path` — An HTTP `Retry-After`, a throttled lease mint and a limiter denial each reach the step as a `RateLimited` failure carrying its wait, and each takes {{run.retry.not-before}}.
@@ -368,8 +360,6 @@ The runner classifies failures and schedules step retries through one retry laye
 - `partial-failure` — A run failing after it staged batches commits none of them under {{run.own.one-commit-per-run}} and closes `failed`, holding its owner so the journal keeps the resume point; only {{run.record.orphan-reap}} closes a run `partial_failure`.
 - `no-compensation` — The engine offers no compensation combinator; undoing a partial effect is an author-written recorded step, replayed like any other.
   *because compensation depends on each vendor's undo semantics, which the engine cannot know*
-- `attempt-counter` — An in-flight schedule's attempt counter persists on its step's journal row, so a crash mid-backoff resumes the remaining budget instead of restarting it.
-  *because a budget restarting at each crash retries a failing vendor without bound*
 - `pressure-is-local` — Rate-limit pressure against one source paces only that source's runs.
 - `bound-hit-is-transient` — A connector striking {{connector.package.linear-memory}} or {{connector.package.call-deadline}} fails the attempt `Transient`, the failure naming the bound it struck.
   *A-run#bound-hit-rides*
@@ -389,8 +379,7 @@ An execution owner binds pending work to a scope, connector build and plan ident
   *because a crash between marker and catalog otherwise replays a recorded pull into rows already committed*
 - `pinned-plan-changed` — While an owner is pending, a changed pin — connector identity, component world, pipeline `content_hash`, or a host's plan reference or identities — raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the scope and both pin sets.
   *A-connector#executables-content-pinned*
-- `pin-recovery` — Restoring the recorded build and resuming to completion clears a pending owner; {{run.own.rewind}} retires a host or table owner, and an explicit chunk rewind retires the owners its window covers.
-- `pin-mismatch-recovery` — The {{run.own.pinned-plan-changed}} refusal names restoring the recorded build or plan and, under a host or table scope, {{run.own.rewind}} with the pending execution id; it names no recovery the command line lacks.
+- `pin-mismatch-recovery` — Restoring the recorded build and resuming to completion clears a pending owner; {{run.own.rewind}} retires a host or table owner, a chunk rewind those its window covers. The {{run.own.pinned-plan-changed}} refusal names these recoveries with the pending execution id, and no other.
   *because an operator acts on the refusal's text, and a recovery no verb provides leaves the scope refusing every fire*
 - `scope-independence` — A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity.
 - `unclosed-execution` — An execution handle dropped without close records no status; its owner stays pending, and the next open under its scope resumes it once {{run.record.owner-lease}} lapses.
@@ -409,8 +398,7 @@ A registered body's owner pins bind its executable, its dependencies and its par
   *A-run#host-registered-derive, A-run#registered-bodies-pin*
 - `body-dependencies` — Registration declares prompt/template, public provider/model configuration and policy identities affecting execution; owner pins carry their digests independently of structural input and output declarations.
   *A-run#host-registered-derive, A-run#registered-bodies-pin*
-- `body-admission` — Body implementation and dependency pins bind before input reads, recorded-call replay or body entry; unavailable or changed pins follow {{run.own.pinned-plan-changed}}.
-- `body-compatibility` — Registrations without dependency declarations declare none and receive the verified host implementation pin; pending owners without implementation pins refuse before input reads or body entry under {{run.own.pinned-plan-changed}}.
+- `body-admission` — Body implementation and dependency pins bind before input reads, recorded-call replay or body entry; a registration declaring no dependency receives the host implementation pin alone, and unavailable, changed or absent pins follow {{run.own.pinned-plan-changed}}.
   *because an unversioned record cannot establish which executable produced its paid calls*
 - `body-fresh` — A fresh execution under changed implementation or dependencies receives a distinct plan identity and preserves earlier run records; pending work requires its recorded host build and registered dependencies.
 - `body-public-configuration` — Semantic provider configuration contains public endpoint, model and generation parameters; credential-bearing endpoints refuse registration, credentials enter neither exported diagnostics nor recorded pins, and credential rotation alone changes no semantic identity.
@@ -515,7 +503,7 @@ unsettled: Which pass collects the staged parts of a run that crashed before its
 
 The engine stops work at run or pipeline scope through a shared cancellation token and records the remaining durable state.
 
-- `catalog-channel` — The catalog stores each stop request on the run row: requested-at instant, scope and optional reason. The catalog is the only stop-request channel.
+- `catalog-channel` — The catalog stores each stop request on the run row as requested-at instant, scope and optional reason, a newer request overwriting an older mark. The catalog is the only stop-request channel.
 - `two-grains` — A `run`-scoped stop halts one run and the fire continues; a `pipeline`-scoped stop halts every in-flight run of the pipeline and every table or chunk the fire had left. An unrecognized stored scope reads as `run`.
 - `host-grain` — A `pipeline`-scoped stop on a host execution's run halts every in-flight run under the same host-declared scope and no run of another scope.
 - `one-token` — Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait and a subprocess wait. A meter reservation holds no wait of its own, under {{connector.meter.acquire-call}}.
@@ -533,7 +521,6 @@ The engine stops work at run or pipeline scope through a shared cancellation tok
 - `storage-blip` — A failed poll read warns and keeps polling.
 - `not-in-flight` — Only a row holding a non-terminal {{type:contextful_core::run::record::RunStatus}} accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.
   *A-run#external-signals-single*
-- `re-mark` — Marking an already-marked row overwrites it with the newer request.
 - `distinct-terminal-status` — `canceled` is a terminal status apart from `failed`, and upstream health observations skip it.
   *A-run#external-signals-single*
 - `resumable-remains` — A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position.
@@ -603,8 +590,7 @@ The store records run status, owner leases and execution history. History reques
 - `describe-window` — The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.
 - `bound-spelling` — A window lower bound is `YYYY-MM-DD` or a UTC RFC3339 instant ending `Z`; any other spelling raises `HistoryBoundSpelling` at every caller-facing surface.
   *because a bound read under a guessed zone silently moves the window*
-- `truncation-flag` — A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than the ceiling returned.
-- `empty-window` — An empty window answers `[]` and raises nothing.
+- `truncation-flag` — A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than the ceiling returned; an empty window answers `[]` and raises nothing.
 - `history-export` — History leaves the machine as a process listing and an NDJSON export over one run projection; the export's first line carries store, window, count and truncation flag, then one run per line. It resolves no bucket.
 - `export-ceiling` — The export returns 500 rows by default and clamps at 5000 rows. Each pipeline's window takes the full ceiling; the export clips the merged result once.
 - `error-cap` — The shared run projection masks credential-shaped spans in recorded errors and caps each error at 2 KiB with an ellipsis marker. Every surface serves that projection.
@@ -631,7 +617,7 @@ unsettled: Does a run the engine drives for a job continue the trace of the job'
 
 The runner publishes a best-effort live view of run progress to subscribers.
 
-- `best-effort` — Live run state is a best-effort projection of events the runner emits after durable state changes; execution never reads it.
+- `best-effort` — Live run state is a best-effort in-memory projection of events the runner emits after durable state changes; execution never reads it, and a restart discards it, so a subscriber recovers from the durable record.
 - `wire-snapshot` — The wire snapshot is a {{type:contextful_core::run::project::Snapshot}}, its status from {{run.record.status-set}}. Every deploy target emits it identically.
 - `step-view` — A step view is a {{type:contextful_core::run::project::StepView}}, its status a {{type:contextful_core::run::project::StepStatus}}.
 - `stopped-step` — A stopped run reports its executing step `failed` with the `Canceled` tag and leaves the run-level error unset.
@@ -649,12 +635,11 @@ The runner publishes a best-effort live view of run progress to subscribers.
 - `broadcast-ring` — The per-run broadcast holds 256 entries; a subscriber that overruns it resynchronizes to the latest snapshot.
 - `catch-up` — A late joiner may subscribe from the oldest snapshot {{run.project.broadcast-ring}} holds, reading each held snapshot in order before live updates.
   *because the folded snapshot shows where a run stands, and a late joiner animating the catch-up needs how it got there*
-- `channel-eviction` — The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the durable record as after {{run.project.restart-discards}}.
+- `channel-eviction` — The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the durable record.
   *because a channel allocated per run otherwise grows a long-lived process by every run it has seen*
 - `unauthenticated-upgrade` — The run-stream socket, `GET /runs/:run_id/stream`, authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.
   *A-read#networked-read-transport*
 - `read-only-socket` — A subscription permits reads only. Stop requests use an authenticated route.
-- `restart-discards` — A restart discards in-memory snapshots; a subscriber recovers history from the durable record.
 
 ## sweep
 

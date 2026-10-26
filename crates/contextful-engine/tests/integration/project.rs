@@ -166,7 +166,7 @@ fn connect_hands_over_the_folded_snapshot_then_every_later_update_once() {
 }
 
 /// A restart discards in-memory snapshots; a subscriber recovers history from the durable record.
-// spec: run.project.restart-discards@23bc3c4b
+// spec: run.project.best-effort@1ff0ae38
 #[test]
 fn a_restarted_hub_holds_nothing_and_recovers_from_the_record() {
     let before = Hub::new(tick(0));
@@ -223,8 +223,8 @@ fn a_late_joiner_replays_the_held_ring_before_live_updates() {
 }
 
 /// The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the
-/// durable record as after {{run.project.restart-discards}}.
-// spec: run.project.channel-eviction@c1fa246d
+/// durable record.
+// spec: run.project.channel-eviction@fd91fc4c
 #[test]
 fn a_terminal_channel_is_evicted_after_60_s() {
     assert_eq!(CHANNEL_EVICTION_SECS, 60);

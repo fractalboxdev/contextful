@@ -107,7 +107,7 @@ fn waiting(report: &ItemReport, id_count: usize) -> Vec<contextful_core::time::I
 /// that instant waits again without calling the vendor, and the first fire at or after it
 /// re-enters the step under the same work key.
 // spec: run.retry.waiting-state@37adfa96
-// spec: run.retry.resume-at@86a730b3
+// spec: run.retry.resume-at@4b7d88f4
 #[test]
 fn a_reschedule_above_the_ceiling_resumes_at_the_stored_time() {
     let rig = Rig::new();
@@ -207,7 +207,7 @@ fn restarted(rig: &Rig) -> Engine {
 
 /// A process dying during an in-ceiling sleep leaves the stored instant; its resume sleeps
 /// out the remaining wait, neither restarting it nor skipping it.
-// spec: run.retry.crash-resumes-wait@bcab6240
+// spec: run.retry.resume-at@4b7d88f4
 #[test]
 fn a_crash_during_an_in_ceiling_sleep_resumes_the_remaining_wait() {
     let rig = Rig::new();
@@ -258,7 +258,7 @@ fn a_crash_during_an_in_ceiling_sleep_resumes_the_remaining_wait() {
 
 /// A restart between a reschedule and its resume keeps the stored instant and the attempt
 /// count, and the attempt budget carries over to the resumed attempt.
-// spec: run.retry.not-before@7fffe392
+// spec: run.retry.not-before@bb80cde6
 // spec: run.retry.shared-path@2122850a
 #[test]
 fn a_restart_between_reschedule_and_resume_keeps_the_time_and_the_attempt_count() {

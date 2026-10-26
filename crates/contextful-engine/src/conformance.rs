@@ -187,7 +187,7 @@ pub fn journal_store<J: JournalStore + Clone, B: BlobStore + Clone>(adapter: &st
         other => panic!("{adapter}: a missing blob read as {other:?}"),
     }
 
-    // run.retry.attempt-counter: a schedule's closed attempts persist on its pending row,
+    // run.retry.not-before: a schedule's closed attempts persist on its pending row,
     // survive a takeover, and leave with a release or a record.
     let j = journal(fresh);
     let k = key("x-3");
@@ -268,7 +268,7 @@ pub fn awakeable_store<A: AwakeableStore + Clone, J: JournalStore + Clone, B: Bl
     assert_eq!(store.get(&e.token).unwrap().map(|row| row.state), Some(AwakeableState::TimedOut), "{adapter}: the timeout persists");
     assert_eq!(r.awaited("x-2", &e.token, at("2030-01-01T00:00:00Z")).unwrap(), Awaited::TimedOut, "{adapter}: a timeout is sticky under an earlier instant");
 
-    // run.suspend.payload-offload: a payload above the cutoff lands as a blob the row references.
+    // run.journal.one-cutoff: a payload above the cutoff lands as a blob the row references.
     let big = r.suspend("x-3", "upload", "2030-01-01T00:00:00Z", 60).unwrap();
     let payload = large(b'p');
     let sha = sha256_hex(&payload);

@@ -81,7 +81,7 @@ fn an_unknown_token_is_refused_and_writes_nothing() {
 
 /// A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row
 /// references it.
-// spec: run.suspend.payload-offload@533957e6
+// spec: run.journal.one-cutoff@cb049a23
 #[test]
 fn a_payload_above_the_cutoff_lands_in_the_blob_store() {
     let dir = tempfile::tempdir().unwrap();

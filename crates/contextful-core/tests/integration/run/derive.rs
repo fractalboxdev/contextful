@@ -350,9 +350,9 @@ fn a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts() {
     assert!(bind("doc-text", &link, &valid, "m").is_ok());
 }
 
-/// The executor runs `command` as an argument array without a shell. A string-valued `command` raises
-/// `DeriveShellCommand`.
-// spec: run.exec.shell-command@96a79818
+/// A string-valued `command` raises `DeriveShellCommand`; {{run.exec.no-shell}} runs the argument
+/// array.
+// spec: run.exec.shell-command@9c84aea4
 #[test]
 fn a_command_given_as_one_string_refuses() {
     let b = bindings("[derive.reader.engine]\ncommand = \"cat {input} | tr a-z A-Z\"\n").unwrap();

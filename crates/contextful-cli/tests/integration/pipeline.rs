@@ -2960,7 +2960,7 @@ fn enabling_incremental_over_a_held_position_starts_from_none_once() {
 
 /// The boundary re-land is idempotent on a table declaring a key; on a keyless table the repeats accumulate in its
 /// union view.
-// spec: run.advance.declared-key-required@93c712e7
+// spec: run.advance.inclusive-boundary@656562c8
 #[test]
 fn the_boundary_re_land_dedups_under_a_key_and_accumulates_without_one() {
     // Every poll answers the same boundary row at `at = 5`.

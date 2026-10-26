@@ -147,7 +147,7 @@ unsettled: Does a host task declaring no model reach refuse a socket it opens, a
 
 The executor runs operator-declared argument arrays as local processes with pinned binaries, restricted environments and bounded runtime and output.
 
-- `shell-command` — The executor runs `command` as an argument array without a shell. A string-valued `command` raises `DeriveShellCommand`.
+- `shell-command` — A string-valued `command` raises `DeriveShellCommand`; {{run.exec.no-shell}} runs the argument array.
   *A-run#derive-engine-machine*
 - `env-name` — An allowlist name that is not ASCII alphanumeric or underscore, or that leads with a digit, raises `DeriveEnvNameInvalid`.
   *A-run#derive-engine-machine*

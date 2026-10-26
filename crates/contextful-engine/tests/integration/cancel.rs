@@ -39,9 +39,9 @@ impl Source for StopsItself {
     }
 }
 
-/// The catalog stores each stop request on the run row: requested-at instant, scope and optional reason. The catalog
-/// is the only stop-request channel.
-// spec: run.cancel.catalog-channel@d013180c
+/// The catalog stores each stop request on the run row as requested-at instant, scope and optional reason, a newer
+/// request overwriting an older mark. The catalog is the only stop-request channel.
+// spec: run.cancel.catalog-channel@2af406f9
 #[test]
 fn a_stop_is_a_mark_on_the_run_row() {
     let rig = Rig::new();

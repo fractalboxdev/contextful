@@ -286,7 +286,7 @@ fn retirement_collects_the_executions_journal() {
 
 /// At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced
 /// it before any replay.
-// spec: run.advance.engine-owned@795c0abb
+// spec: run.advance.cursor-bytes@6fb825ec
 // spec: run.own.marker-reconciles@a8a124be
 #[test]
 fn a_marker_the_catalog_missed_retires_its_owner_before_replay() {
@@ -924,8 +924,9 @@ impl Source for Polled {
 }
 
 /// A polled load admits a row whose clock value is at or after the stored position, re-landing the boundary
-/// instant's rows on every poll.
-// spec: run.advance.inclusive-boundary@5a585ac1
+/// instant's rows on every poll, idempotently on a keyed table and accumulating in a keyless table's union
+/// view.
+// spec: run.advance.inclusive-boundary@656562c8
 #[test]
 fn every_poll_re_lands_the_boundary_instant() {
     let rig = Rig::new();
@@ -1443,9 +1444,9 @@ impl Source for Opaque {
     }
 }
 
-/// A position is opaque bytes the connector owns, and its kind is a manifest fact the engine reads. Each table carries
-/// its own position.
-// spec: run.advance.cursor-bytes@888988bb
+/// A position is opaque bytes the connector owns, one per table, and its kind a manifest fact; the connector moves it
+/// only by committing through the engine, a recorded step that replays as a resolved read.
+// spec: run.advance.cursor-bytes@6fb825ec
 #[test]
 fn a_position_round_trips_untouched_and_each_table_keeps_its_own() {
     let for_table = |table: &str, cursor: &str| {

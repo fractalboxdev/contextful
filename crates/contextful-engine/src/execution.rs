@@ -599,7 +599,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         let token = &self.token;
         let label = key.step_label.as_str();
         // A schedule a crash interrupted mid-backoff resumes the budget its step's journal
-        // row persisted (`run.retry.attempt-counter`).
+        // row persisted (`run.retry.not-before`).
         let mut attempt = engine.journal.attempts(key)? + 1;
         // A resume honors the next-attempt instant its predecessor recorded
         // (`run.retry.resume-at`).
@@ -638,7 +638,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
                 }
             };
             // The count, then the instant, persist before any wait, so a restart honors both
-            // (`run.retry.attempt-counter`, `run.retry.not-before`).
+            // (`run.retry.not-before`).
             let next = NotBefore::after(self.now()?, delay_ms, attempt);
             engine.journal.note_attempts(key, &self.run_id, attempt)?;
             engine.journal.record(&not_before_key(key, attempt), &next.encode())?;

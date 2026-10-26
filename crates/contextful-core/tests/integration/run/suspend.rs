@@ -9,8 +9,9 @@ fn minted() -> Awakeable {
 }
 
 /// A deadline is the creation instant plus a time-to-live, both caller-supplied RFC3339 Zulu strings; the core
-/// reads no wall clock.
-// spec: run.suspend.deadline@4fe90b97
+/// reads no wall clock, and a suspension past its deadline at an injected instant stays `timed_out` under any
+/// later one.
+// spec: run.suspend.deadline@313edc46
 #[test]
 fn the_deadline_is_creation_plus_ttl_from_caller_instants() {
     let a = minted();
@@ -26,7 +27,7 @@ fn the_deadline_is_creation_plus_ttl_from_caller_instants() {
 
 /// The engine evaluates expiry against an injected instant. A suspension past its deadline becomes `timed_out` and
 /// keeps that state under any later instant.
-// spec: run.suspend.timeout-is-sticky@9ecdd955
+// spec: run.suspend.deadline@313edc46
 #[test]
 fn a_timeout_sticks_under_any_later_instant() {
     let mut a = minted();

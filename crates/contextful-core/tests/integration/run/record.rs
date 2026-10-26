@@ -191,8 +191,8 @@ fn a_bound_is_a_date_or_a_zulu_instant() {
 }
 
 /// A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than
-/// the ceiling returned.
-// spec: run.record.truncation-flag@7daa39b3
+/// the ceiling returned; an empty window answers `[]` and raises nothing.
+// spec: run.record.truncation-flag@e9fc765a
 #[test]
 fn history_echoes_its_window_and_flags_truncation() {
     let rows: Vec<_> = (0..4).map(|i| row(&format!("run-{i}"), &format!("2030-01-01T00:00:0{i}Z"))).collect();
@@ -207,7 +207,7 @@ fn history_echoes_its_window_and_flags_truncation() {
 }
 
 /// An empty window answers `[]` and raises nothing.
-// spec: run.record.empty-window@6549694a
+// spec: run.record.truncation-flag@e9fc765a
 #[test]
 fn an_empty_window_answers_an_empty_list() {
     let rows = vec![row("run-0", "2030-01-01T00:00:00Z")];
