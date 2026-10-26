@@ -253,6 +253,9 @@ fn why_migrate_rewrites_a_citation_one_section_names_and_prints_the_rest() {
     cite_bare(&s, "non-blocking");
     cite_bare(&s, "supersedes");
     append(&s, "spec/adr/A-store.md", &format!("## non-blocking-pass — `store.fold.non-blocking` keeps reads off the pass\n\nText.\n\n{OPTIONS}"));
+    // Two sections naming one clause leave its citation ambiguous, whatever the live record says.
+    append(&s, "spec/adr/A-store.md", &format!("## supersedes-one — `store.fold.supersedes` first reading\n\nText.\n\n{OPTIONS}"));
+    append(&s, "spec/adr/A-store.md", &format!("## supersedes-two — `store.fold.supersedes` second reading\n\nText.\n\n{OPTIONS}"));
     let out = s.cmd(&["why-migrate", "A-store"]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(why_of(&s.read(STORE), "non-blocking"), "  *A-store#non-blocking-pass*");
