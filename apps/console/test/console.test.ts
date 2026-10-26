@@ -51,11 +51,14 @@ test("anonymous and forged Access assertions dispatch no page or API", async () 
   assert.deepEqual(calls, []);
 });
 
+// spec: surface.open-console.wrong-page@6239c073
 test("verified Access audiences grant only their page and API", async () => {
   const { request, calls } = fixture();
   assert.equal((await request("/query", access(queryAudience))).status, 200);
   assert.equal((await request("/query/api/stores", access(queryAudience))).status, 200);
-  assert.equal((await request("/admin", access(queryAudience))).status, 403);
+  const wrongPage = await request("/admin", access(queryAudience));
+  assert.equal(wrongPage.status, 403);
+  assert.match(await wrongPage.text(), /ConsolePageForbidden/);
   assert.equal((await request("/admin/api/workflows", access(queryAudience))).status, 403);
   assert.equal((await request("/query", access(adminAudience))).status, 403);
   assert.equal((await request("/admin", access(adminAudience))).status, 200);
@@ -127,6 +130,7 @@ test("Access Query rejects cross-origin and originless POST before a turn", asyn
   assert.deepEqual(calls, []);
 });
 
+// spec: surface.open-console.admin-grant@ec53c8d6
 test("Admin exposes workflows and requires a server-held capability for edit and apply", async () => {
   const { request, calls } = fixture();
   const workflows = await request("/admin/api/workflows", access(adminAudience));

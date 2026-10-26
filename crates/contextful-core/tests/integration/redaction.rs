@@ -42,10 +42,12 @@ fn array_path_indices_use_decimal_digits_without_a_sign() {
     assert!(CompiledRule::compile(rule(json!("whole"), Some("$.parts[+1]"))).is_err());
 }
 
+// spec: authority.redact.pattern-refusal@4e9cc683
 #[test]
 fn unsupported_and_empty_patterns_and_malformed_paths_refuse_at_declaration() {
     for pattern in ["(a)\\1", "(?=a)", "a*", "\\b", "["] {
-        assert!(CompiledRule::compile(rule(json!({"pattern":pattern}), None)).is_err(), "{pattern}");
+        let refused = CompiledRule::compile(rule(json!({"pattern":pattern}), None)).err().unwrap_or_else(|| panic!("{pattern}"));
+        assert_eq!(refused.identifier(), "EnforceRedactionInvalid", "{pattern}");
     }
     for path in ["$.parts[", "$..text", "$.parts[?(@.secret)]", "text"] {
         assert!(CompiledRule::compile(rule(json!("whole"), Some(path))).is_err(), "{path}");
@@ -151,6 +153,7 @@ fn source_and_expanded_automaton_limits_refuse_before_matching() {
     assert!(CompiledRule::compile(rule(json!({"pattern":"a{100000}"}), None)).is_err());
 }
 
+// spec: store.encrypt.redacted-index@97ec966e
 #[test]
 fn an_index_cannot_derive_a_copy_from_a_removed_column() {
     use contextful_core::store::declare::TableDecl;

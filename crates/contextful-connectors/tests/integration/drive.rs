@@ -241,6 +241,7 @@ fn bound_drive_rows_and_positions_keep_connection_identity() {
 }
 
 /// Ambiguous and oversized Picker selections refuse before any provider request.
+// spec: connector.drive-picks.file-selection-invalid@fb4f2166
 #[test]
 fn picker_file_ids_validate_before_requests() {
     let fake = Fake::start();
@@ -949,6 +950,7 @@ fn each_oauth_value_is_one_reference() {
 
 /// The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default
 /// port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.
+// spec: connector.source.provider-origin@a0e63ea1
 // spec: connector.source.drive-origin@e3de3af5
 #[test]
 fn a_google_credential_goes_to_google_hosts_alone() {
