@@ -1,8 +1,8 @@
 # Leases and coordination
 
-Who may write, for how long, and how a late holder is stopped: the bucket lease,
-the compaction owner, backfill chunk leases, the cadence lease and worker
-heartbeats. The executable model of the lease + CAS + fence protocol lives in
+Who may write, for how long, and how the store stops a late holder: the bucket lease,
+the compaction lease, backfill chunk leases, the cadence lease and worker
+heartbeats. The executable model of the lease + CAS + commit fence protocol lives in
 [formal-methods.md](./formal-methods.md) under *How Amazon Web Services Uses Formal
 Methods*.
 
@@ -16,7 +16,7 @@ Distributed File Cache Consistency." *SOSP*, pp. 202–210, 1989.
 - **Informs:** `store.lease`, `topology.coordinate`, `surface.dispatch`, `run.backfill`
 - **Question:** What clock-drift and process-pause bound makes a given TTL and
   renewal interval safe? A lease is correct only under bounded drift between holder
-  and arbiter; with no stated skew bound, the fence becomes the only safety net, and
+  and arbiter; with no stated skew bound, the commit fence becomes the only safety net, and
   every lease in the design — bucket, chunk, cadence — needs its TTL, renewal and
   skew limit stated together.
 
@@ -28,11 +28,11 @@ Burrows, M. "The Chubby lock service for loosely-coupled distributed systems."
 
 - **Priority:** must-read
 - **Informs:** `store.lease`, `store.push`, `surface.dispatch`
-- **Question:** Where must a sequencer be validated? Chubby's answer is the
-  downstream server, not the client. A writer that compares its fence before
+- **Question:** Which party validates a sequencer? Chubby's answer is the
+  downstream server, not the client. A writer that compares its commit fence before
   committing lets a paused holder commit after its successor; the refusal is
   enforceable only if the bucket-side commit is conditional on the lease object's
-  version (`If-Match` on the ETag held since acquisition), and the fence stays
+  version (`If-Match` on the ETag held since acquisition), and the commit fence stays
   monotonic only if release keeps the object and clears the holder rather than
   deleting it.
 
@@ -43,10 +43,10 @@ Kleppmann, M. "How to do distributed locking." 2016.
 
 - **Priority:** should-read
 - **Informs:** `store.lease`, `store.fold`, `run.backfill`, `surface.dispatch`
-- **Question:** Why does a lock for correctness need a fencing token checked by the
-  storage resource? The GC-pause timeline is the failure the compaction owner,
+- **Question:** Why does a lock for correctness need a commit fence checked by the
+  storage resource? The GC-pause timeline is the failure the compaction lease,
   chunk lease and cadence lease each face; the fix is the same in each — stamp the
-  fence into the committed object and let the store reject a lower one.
+  commit fence into the committed object and let the store reject a lower one.
 
 ### Borg, Omega, and Kubernetes
 

@@ -18,7 +18,7 @@ Against Indirect Prompt Injection Attacks With Spotlighting." arXiv:2403.14720,
 - **Question:** What residue do data boundary markers leave? The markers and their
   derivation are spotlighting (delimiting and datamarking), which cuts attack success
   from over 50% to under 2%, not to zero. The markers are therefore not a security
-  boundary, and model output that re-lands as data inherits the least-trusted label
+  boundary, and model output that re-enters as data inherits the least-trusted label
   among its inputs.
 
 ### CaMeL and FIDES
@@ -56,7 +56,7 @@ Injection Attacks on LLM Agents via Query-Only Interaction." arXiv:2503.03704, 2
 
 - **Priority:** must-read
 - **Informs:** `read.revise`, `read.declare`, `read.recall`, `read.synthesize`
-- **Question:** Can an attacker with no write access poison memory? MINJA plants
+- **Question:** Does poisoning memory need write access? No: MINJA plants
   malicious records through ordinary queries and observed outputs alone, at a 98.2%
   average injection success rate. Open for the decision: should a write a model chose
   stand below `curated`, so that an agent member on the credential, or third-party
@@ -74,6 +74,6 @@ Retrieval-Augmented Generation of Large Language Models." *USENIX Security*, 202
 - **Informs:** `read.declare`, `read.revise`, `read.retrieve`, `authority.resist`
 - **Question:** How few injected texts corrupt a retrieval corpus? Five texts per
   target question reach a 90% attack success rate in a knowledge database of millions
-  of texts. Rank cannot separate them from honest rows, so third-party taint follows
+  of texts. Rank does not separate them from honest rows, so third-party taint follows
   every claim extracted from such rows. Open for the decision: should a claims table
   declare the taint floor it serves?

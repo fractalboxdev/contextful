@@ -1,10 +1,10 @@
 # References
 
 The literature and practice the **Contextful** design answers to. The specification
-under `spec/` states behavior and never cites; this directory holds the sources
+under `spec/` states behavior and cites no source; this directory holds the sources
 behind that behavior, and points into the spec by contract and operation name
 (`store.lease`, `authority.attenuate`, `disclosure.release`). No file under `spec/`
-links here, so a source can be added, re-ranked or retired without touching a clause.
+links here, so a maintainer adds, re-ranks or retires a source without touching a clause.
 
 ## Entry shape
 
@@ -42,7 +42,7 @@ names it by title.
 | File | Area | Main operations |
 | --- | --- | --- |
 | [storage-and-table-formats.md](./storage-and-table-formats.md) | ACID tables on object storage, bitemporal time, local-first replication | `store.fold`, `store.push`, `store.merge`, `store.probe`, `store.bound-time`, `surface.edit` |
-| [leases-and-coordination.md](./leases-and-coordination.md) | Leases, fencing tokens, reconciliation loops | `store.lease`, `topology.coordinate`, `surface.dispatch`, `run.backfill`, `surface.reconcile` |
+| [leases-and-coordination.md](./leases-and-coordination.md) | Leases, commit fences, reconciliation loops | `store.lease`, `topology.coordinate`, `surface.dispatch`, `run.backfill`, `surface.reconcile` |
 | [durable-execution.md](./durable-execution.md) | Journaled replay, exactly-once effects, watermarks, retry amplification | `run.journal`, `run.advance`, `run.retry`, `run.declare`, `connector.meter` |
 | [access-control-and-capabilities.md](./access-control-and-capabilities.md) | Query-rewrite access control, ReBAC, attenuable tokens, hosted page gates, sandboxed connectors | `authority.compose`, `authority.refuse`, `authority.attenuate`, `authority.verify`, `disclosure.bound-staleness`, `connector.import`, `surface.open-console` |
 | [privacy-and-disclosure.md](./privacy-and-disclosure.md) | Differential privacy, reconstruction, declassification, keyed pseudonyms | `disclosure.release`, `disclosure.suppress`, `authority.mask` |

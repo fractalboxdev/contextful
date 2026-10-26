@@ -25,7 +25,7 @@ Transactional Stateful Serverless Workflows." *OSDI*, 2020.
 - **Priority:** should-read
 - **Informs:** `run.journal`, `run.own`, `surface.dispatch`, `connector.meter`
 - **Question:** Exactly-once effects or exactly-once records? Under insert-or-ignore
-  admission both racers compute and one row survives, so the value is recorded once
+  admission both racers compute and one row survives, so the store records the value once
   while the effect runs at least once — two billed calls, two meter permits. Beldi's
   intent log shows the two ways out: an idempotency key per outbound request, or
   claiming a pending row before the effect runs.

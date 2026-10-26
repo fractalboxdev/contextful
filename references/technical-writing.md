@@ -6,12 +6,12 @@ Technical guides give readers enough understanding to trace a mechanism, explain
 
 | Reader's task | Useful structure | Reading example |
 | --- | --- | --- |
-| Understand a mechanism | A concrete problem, a small example, successive mechanisms, then remaining limitations | *STARKs, Part I* and the SNARK introduction |
+| Understand a mechanism | A concrete problem, a worked example, successive mechanisms, then remaining limitations | *STARKs, Part I* and the SNARK introduction |
 | Compare alternatives | Shared goal, comparison criteria, repeated treatment of benefits and costs, exceptions | *The different types of ZK-EVMs* |
 | Evaluate a proposal | Existing mechanism, demonstrated limitation, proposed change, compatibility costs | *Multidimensional gas pricing* |
 | Understand a design direction | Goal, governing principle, consequences for each subsystem, transition strategy | *Simplifying the L1* |
 
-A diagram can precede detailed examples when it makes a comparison legible, as in the ZK-EVM taxonomy. Example-first is a useful teaching technique, not a mandatory page template.
+A diagram may precede detailed examples when it makes a comparison legible, as in the ZK-EVM taxonomy. Example-first is a useful teaching technique, not a mandatory page template.
 
 ## Editorial practices
 
@@ -21,9 +21,9 @@ A diagram can precede detailed examples when it makes a comparison legible, as i
 4. **Develop one example across related concepts.** Keep the caller, resource and request recognizable as permissions, checks and failures enter the explanation. Show the result when an assumption fails. Add another example when it exposes a distinct case.
 5. **Connect actions causally.** State who supplies an input, what checks it, what result follows and which later step consumes that result. Give a supported reason for a constraint; consult its Why or ADR instead of inventing a plausible rationale.
 6. **Put limits beside claims.** Name the object proved, assumptions trusted and behavior outside the proof. A model property, agreement on generated cases and end-to-end enforcement establish different claims. Show a counterexample to the stronger interpretation when useful.
-7. **Give technical artifacts an explanatory job.** A small code fragment, equation, request or configuration example demonstrates a point. Introduce its inputs and explain its output or consequence. Preserve the syntax and relevant conditions; references carry the exhaustive cases.
+7. **Give technical artifacts an explanatory job.** A code fragment, equation, request or configuration example demonstrates one point. Introduce its inputs and explain its output or consequence. Preserve the syntax and relevant conditions; references carry the exhaustive cases.
 8. **Repeat to connect ideas.** Reuse a term consistently and briefly restate what an example establishes before extending it. Recaps earn space when they connect earlier reasoning to the next step. Remove sentences that only announce a section or repeat its heading.
-9. **Allocate space by explanatory need.** A subtle exception may need more words than a large benefit. State importance explicitly; paragraph length does not rank design choices. Use full sentences with clear actors and concrete verbs.
+9. **Allocate space by explanatory need.** A subtle exception may need more words than an obvious benefit. State importance explicitly; paragraph length does not rank design choices. Use full sentences with clear actors and concrete verbs.
 
 ## Examples for Contextful
 
@@ -31,7 +31,7 @@ A diagram can precede detailed examples when it makes a comparison legible, as i
 | --- | --- |
 | A checkpoint admits authority. | A checkpoint is the code that verifies a caller's credential and produces the permissions used by reads and writes. See `authority.verify.admitted-authority`. |
 | A sandboxed component imports HTTP. | A sandboxed component is a WebAssembly component implementing the connector interface. Memory limits and per-call deadlines bound its execution; network requests pass through the host. See `connector.export`, `connector.import` and `connector.package`. |
-| A proof with a hole fails on its footprint. | Lean can compile a proof containing an unfinished step. The assumption audit detects that unfinished step and rejects the proof. See `assurance.audit-assumptions`. |
+| A proof with a hole fails on its footprint. | Lean compiles a proof containing an unfinished step (`sorry`) with only a warning. The assumption audit detects that unfinished step and rejects the proof. See `assurance.audit-assumptions`. |
 
 These examples illustrate explanatory wording. An edit checks the owning clauses and preserves their conditions. Guide prose reaches exact rules through clause pointers, following `corpus.guide`. Guide length and anatomy follow `corpus.guide.file`; this brief changes neither.
 

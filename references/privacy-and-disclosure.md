@@ -17,7 +17,7 @@ Gipson, B. "Differentially Private SQL with Bounded User Contribution." *PoPETs*
   not the row as the privacy unit — but suppressing groups on exact counts before
   noise is not differentially private. The paper's noisy thresholding (DP partition
   selection) is the fix, and its budget accounting argues for reserving spend in one
-  transaction before the release runs, so concurrent releases cannot overspend.
+  transaction before the release runs, so concurrent releases do not overspend the budget.
 
 ### Revealing information while preserving privacy
 
@@ -26,9 +26,9 @@ pp. 202–210, 2003. <https://dl.acm.org/doi/10.1145/773153.773173>
 
 - **Priority:** should-read
 - **Informs:** `disclosure.suppress`, `disclosure.release`, `disclosure.bound-cohort`
-- **Question:** Why can floors plus a dominance rule not be the privacy boundary?
-  Answering many subset-sum queries with perturbation below √n lets the data be
-  reconstructed; repeated releases are exactly that query stream, so the noise step
+- **Question:** Why do floors plus a dominance rule fall short as the privacy
+  boundary? Answering n log² n subset-sum queries with perturbation o(√n) lets an
+  attacker reconstruct the data; repeated releases are exactly that query stream, so the noise step
   stays mandatory for statistics releases.
 
 ### Declassification: Dimensions and principles
@@ -59,4 +59,4 @@ Privacy." *IEEE Communications Surveys & Tutorials* 20(1):551–565, 2018.
   leaves at least k candidates per bucket, which caps the width at
   `floor(log16(domain / k))` hex digits. A masking relation that embeds key material
   in SQL text lets any catalog reader compute the keyed hash, so the key lives in a
-  native function, never in a relation body.
+  native function, outside any relation body.
