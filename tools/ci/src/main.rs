@@ -1330,6 +1330,7 @@ fn test_first_parts(root: &Path, base: &str) -> Result<Vec<String>> {
 fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>) -> Result<()> {
     if only.is_none_or(|parts| parts.iter().any(|part| part == "validate")) {
         vacuous::check(root, &tracked(root)?.into_iter().filter(|p| is_test(p)).collect::<Vec<_>>())?;
+        reached_clauses(root, base);
     }
     let sources = sources_outside_refactors(base)?;
     if sources.is_empty() {
@@ -1396,6 +1397,24 @@ fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>)
     let red = verdict?;
     eprintln!("test-first: red against the base in {}", red.join(", "));
     Ok(())
+}
+
+/// Print `contextful-spec slice --diff <base>` into the gate log: each clause whose tagged
+/// test the change edits, for the author to confirm it still holds (`corpus.state.slice-diff`).
+/// A tree without a corpus prints nothing, and a failed listing warns without deciding the stage.
+fn reached_clauses(root: &Path, base: &str) {
+    if !root.join("spec/spec.lock.json").is_file() {
+        return;
+    }
+    let args = ["run", "--locked", "-q", "-p", "contextful-spec", "--", "slice", "--diff", base];
+    match Command::new("cargo").args(args).current_dir(root).output() {
+        Ok(out) if out.status.success() => {
+            eprintln!("test-first: confirm each clause below still holds for its edited test");
+            eprint!("{}", String::from_utf8_lossy(&out.stdout));
+        }
+        Ok(out) => eprintln!("test-first: `cargo {}` exited {}; no clause listing", args.join(" "), out.status.code().unwrap_or(-1)),
+        Err(e) => eprintln!("test-first: `cargo {}` did not start ({e}); no clause listing", args.join(" ")),
+    }
 }
 
 /// The tests one base invocation runs: a package's test target, filtered to the modules the
