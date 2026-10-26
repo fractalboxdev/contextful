@@ -49222,7 +49222,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "the_bootstrap_name_cannot_be_leased",
-        "line": 282,
+        "line": 285,
         "verdict": "performed",
         "proved": false
       }
@@ -49232,7 +49232,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "the_mint_credential_comes_from_the_adapters_behind_the_provider",
-        "line": 254,
+        "line": 257,
         "verdict": "performed",
         "proved": false
       }
@@ -49242,7 +49242,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "an_unanswered_bootstrap_refuses_before_any_mint",
-        "line": 269,
+        "line": 272,
         "verdict": "performed",
         "proved": false
       }
@@ -49332,7 +49332,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "the_mint_endpoint_is_tls_or_loopback_and_bypasses_the_proxy",
-        "line": 292,
+        "line": 295,
         "verdict": "performed",
         "proved": false
       }
@@ -49352,7 +49352,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "a_redirected_mint_refuses_and_the_target_sees_nothing",
-        "line": 314,
+        "line": 317,
         "verdict": "performed",
         "proved": false
       }
@@ -49392,7 +49392,7 @@
         "kind": "test",
         "path": "crates/contextful-outbound/tests/integration/lease.rs",
         "name": "each_leased_name_mints_alone",
-        "line": 340,
+        "line": 343,
         "verdict": "performed",
         "proved": false
       }
@@ -50282,7 +50282,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "credential_keys_bind_secret_or_environment_references",
-        "line": 336,
+        "line": 335,
         "verdict": "performed",
         "proved": false
       }
@@ -64254,7 +64254,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_unbound_or_literal_credential_key_is_refused_naming_the_key",
-        "line": 354,
+        "line": 353,
         "verdict": "performed",
         "proved": false
       }
@@ -64294,7 +64294,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "plaintext_http_opens_on_loopback_alone",
-        "line": 320,
+        "line": 319,
         "verdict": "performed",
         "proved": false
       }
@@ -64304,7 +64304,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "role_credentials_beside_a_key_or_on_r2_conflict_naming_the_endpoint",
-        "line": 378,
+        "line": 377,
         "verdict": "performed",
         "proved": false
       }
@@ -64344,7 +64344,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "each_endpoint_scheme_resolves_its_adapter_address",
-        "line": 285,
+        "line": 284,
         "verdict": "performed",
         "proved": false
       }
@@ -64384,7 +64384,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_endpoint_no_adapter_answers_is_refused_by_name",
-        "line": 308,
+        "line": 307,
         "verdict": "performed",
         "proved": false
       }
@@ -65464,7 +65464,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_expiry_judgment_allows_30_seconds_of_skew_on_the_judging_clock",
-        "line": 221,
+        "line": 220,
         "verdict": "performed",
         "proved": false
       }
@@ -65494,7 +65494,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_unexpired_lease_refuses_naming_its_holder_and_expiry_and_a_later_tick_takes_it",
-        "line": 238,
+        "line": 237,
         "verdict": "performed",
         "proved": false
       }
@@ -65504,7 +65504,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "a_bucket_lease_under_the_local_node_id_refuses_naming_the_variable",
-        "line": 269,
+        "line": 268,
         "verdict": "performed",
         "proved": false
       }
@@ -65524,7 +65524,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "releasing_another_nodes_lease_refuses",
-        "line": 257,
+        "line": 256,
         "verdict": "performed",
         "proved": false
       }
@@ -65553,16 +65553,6 @@
         "line": 343,
         "verdict": "performed",
         "proved": true
-      }
-    ],
-    "store.lease.renewal": [
-      {
-        "kind": "test",
-        "path": "crates/contextful-core/tests/integration/store/sync.rs",
-        "name": "a_holder_renews_every_200_seconds_on_the_etag_it_holds",
-        "line": 203,
-        "verdict": "performed",
-        "proved": false
       }
     ],
     "store.lease.stale-fence": [
