@@ -163,6 +163,7 @@ pub enum Role {
     Record,
     Plan,
     Guide,
+    Topic,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -449,6 +450,20 @@ impl Corpus {
             let text = std::fs::read_to_string(root.join(&rel))?;
             docs.push(parse(&rel, Role::Guide, &text));
         }
+        let mut topics: Vec<String> = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(spec.join("topics")) {
+            for e in rd {
+                let p = e?.path();
+                if p.extension().map(|x| x == "md").unwrap_or(false) {
+                    topics.push(format!("spec/topics/{}", p.file_name().unwrap().to_string_lossy()));
+                }
+            }
+        }
+        topics.sort();
+        for rel in topics {
+            let text = std::fs::read_to_string(root.join(&rel))?;
+            docs.push(parse(&rel, Role::Topic, &text));
+        }
         if let Ok(text) = std::fs::read_to_string(spec.join("roadmap.md")) {
             docs.push(parse("spec/roadmap.md", Role::Plan, &text));
         }
@@ -547,6 +562,10 @@ impl Corpus {
                 d.groups.iter().map(move |(key, t)| (format!("{c}.{key}"), t.as_str()))
             })
             .collect()
+    }
+
+    pub fn topics(&self) -> impl Iterator<Item = &Doc> {
+        self.docs.iter().filter(|d| d.role == Role::Topic)
     }
 
     pub fn records(&self) -> impl Iterator<Item = &Doc> {

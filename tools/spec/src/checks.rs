@@ -7,7 +7,7 @@ use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::LazyLock;
 
-pub const CHECKS: [&str; 10] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render", "diagram", "targets", "guide"];
+pub const CHECKS: [&str; 11] = ["address", "anatomy", "registry", "reference", "rationale", "state", "render", "diagram", "targets", "guide", "topic"];
 
 pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
     match name {
@@ -21,6 +21,7 @@ pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
         "diagram" => crate::diagram::check(c),
         "targets" => crate::targets::check(c),
         "guide" => guide(c),
+        "topic" => crate::topic::check(c),
         other => vec![Finding::new("lint", "", 0, "SpecUnknownCheck", format!("no check named `{other}`"))],
     }
 }
@@ -627,7 +628,7 @@ fn record_anatomy(d: &Doc, id: &str, out: &mut Vec<Finding>) {
     options_table(d, start, "Options", out);
 }
 
-fn words_of<'a>(lines: impl Iterator<Item = &'a str>) -> usize {
+pub fn words_of<'a>(lines: impl Iterator<Item = &'a str>) -> usize {
     lines.filter(|l| !is_separator(l)).map(|l| l.replace('|', " ").split_whitespace().count()).sum()
 }
 
@@ -1588,7 +1589,7 @@ fn render(c: &Corpus) -> Vec<Finding> {
             if d.role != Role::Plan && (DATED.is_match(&plain) || ISO_DATE.is_match(&plain)) {
                 out.push(f("render", &d.rel, n, "SpecDatedProse", "build-state or dated vocabulary".into()));
             }
-            if matches!(d.role, Role::Contract | Role::Guide) && COUNTERFACTUAL.is_match(&plain) {
+            if matches!(d.role, Role::Contract | Role::Guide | Role::Topic) && COUNTERFACTUAL.is_match(&plain) {
                 out.push(f("render", &d.rel, n, "SpecCounterfactual", format!("`{}` in a contract file or guide", COUNTERFACTUAL.find(&plain).unwrap().as_str())));
             }
             if BANNED.is_match(&plain) || BARE_ISSUE.is_match(&plain) {

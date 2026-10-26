@@ -57,6 +57,8 @@ their Why lines cite, the errors and bounds they own, and a milestone's `Reach:`
 | A new operation | A fragment entry, a `## <operation>` section opening with its lede, and its name in the file's `owns` |
 | A new subject area | A contract entry in [`spec/terms/contract.toml`](./spec/terms/contract.toml), a fragment, the file in the standard anatomy, and its guide |
 | Splitting a long file | Add a path to the contract's file list and move an `owns` entry. No clause id changes |
+| A new term | A `[term]` entry in the owning contract's fragment naming its defining clause and a gloss of at most 25 words; `state` renders it into [`spec/glossary.md`](./spec/glossary.md) |
+| A topic page | A `spec/topics/<slug>.md` page of at most 600 words and its [`spec/terms/topic.toml`](./spec/terms/topic.toml) entry, whose `answers` each sit within one pointer step of the page |
 
 ## Test first, acceptance first
 

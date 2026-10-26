@@ -53,3 +53,5 @@ levels   = { gloss = "nesting levels" }
 participants = { gloss = "sequence diagram participants" }
 messages = { gloss = "sequence diagram messages" }
 notifications = { gloss = "subscription notifications" }
+pages    = { gloss = "authored pages" }
+pointers = { gloss = "distinct clause pointers" }

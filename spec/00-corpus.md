@@ -11,6 +11,7 @@ owns:
   - diagram
   - targets
   - guide
+  - topic
 ---
 
 # Corpus law
@@ -29,6 +30,8 @@ spec/
                         and one <contract>.toml fragment per contract
   adr/                  P<n>-<slug>.md principles, A-<contract>.md decisions
   guide/                <contract>.md, one teaching page per contract
+  topics/               <slug>.md, one page per cross-contract question
+  glossary.md           generated
   cards/                <contract>.md, generated
   pins.toml             clause id -> demonstrating artifact, plus the coverage floor
   roadmap.md            milestone -> operation set
@@ -328,4 +331,21 @@ A non-normative teaching page per contract, and what keeps it from becoming a se
 - `non-normative` — A guide holds no clause item and names no registered error; it reaches a rule by `{{id}}`. No contract file links a guide.
   *because a rule restated in teaching prose is a second home that drifts from the first*
 - `bad-guide` — A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.
+  *P8*
+
+## topic
+
+A non-normative page answering one question that spans contracts, the clauses it answers, and the bounds that keep it a route into the contracts.
+
+- `file` — A topic page `spec/topics/<slug>.md` carries front matter `topic`, one `# ` title equal to its entry's `title` in `spec/terms/topic.toml`, then prose of at most 600 words outside diagrams.
+  *because a topic routes a reader to the clauses, and a page past one screen of reading starts restating them*
+- `pages` — The corpus holds at most 8 pages under `spec/topics/`.
+  *because each topic answers a question the contracts split, and a growing set of them becomes a second corpus*
+- `answers` — A topic entry lists under `answers` the clause ids its page answers; the page reaches each within one pointer step, by pointing at it or at a clause whose statement points at it.
+  *because a reader of a topic follows one link to the rule, and a longer path is the search the page exists to save*
+- `contract-pointers` — A topic page holds at most 3 pointers into any one contract, counting a repeated pointer once.
+  *because a page pointing at most of one contract is that contract's guide, and a topic crosses contracts*
+- `non-normative` — A topic page holds no clause item and names no registered error, reaching each rule by `{{id}}`; no contract file links a topic page.
+  *because a rule restated on a topic page is a second home that drifts from the first*
+- `bad-topic` — A page without an entry or an entry without a page, a page off its shape, words, pointer bound or {{corpus.topic.non-normative}}, more pages than {{corpus.topic.pages}}, and an unreachable or missing answer raise `SpecTopic`.
   *P8*

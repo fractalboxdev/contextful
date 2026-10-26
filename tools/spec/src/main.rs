@@ -14,6 +14,7 @@ mod size;
 mod slice;
 mod targets;
 mod terms;
+mod topic;
 mod scaffold;
 mod util;
 

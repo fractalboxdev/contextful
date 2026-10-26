@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `assurance` | 3 | 18 | 349 | 74 | 25 | 3 | 310 | 1 | 0 | 310 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 278 | 0 | 0 | 278 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 318 | 2 | 0 | 318 |
-| `corpus` | 1 | 10 | 111 | 45 | 10 | 0 | 111 | 0 | 0 | 110 |
+| `corpus` | 1 | 11 | 117 | 46 | 13 | 0 | 117 | 0 | 0 | 117 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 0 | 165 |
 | `read` | 2 | 20 | 327 | 58 | 30 | 16 | 285 | 0 | 0 | 285 |
 | `run` | 3 | 29 | 613 | 129 | 49 | 19 | 581 | 0 | 0 | 581 |
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 333 | 0 | 0 | 333 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 176 | 0 | 0 | 176 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 89 | 0 | 0 | 89 |
-| **total** | 26 | 177 | 2956 | 720 | 238 | 82 | 2646 | 3 | 0 | |
+| **total** | 26 | 178 | 2962 | 721 | 241 | 82 | 2652 | 3 | 0 | |
 
 Decision records: 18.
 
@@ -50,4 +50,4 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 22 — Drive change cursor | 1 | 6 | 0 | absent | open |
 | 23 — Workspace delegation | 1 | 4 | 0 | absent | open |
 
-Unscheduled operations: 13.
+Unscheduled operations: 14.

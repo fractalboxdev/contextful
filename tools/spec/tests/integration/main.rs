@@ -17,6 +17,7 @@ mod state;
 mod tags;
 mod targets;
 mod terms;
+mod topic;
 mod ts_pins;
 mod upkeep;
 

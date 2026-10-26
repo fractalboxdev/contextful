@@ -11,6 +11,7 @@ targets   = {}
 render    = {}
 diagram   = {}
 guide     = {}
+topic     = {}
 
 [error]
 SpecMalformedId        = { clause = "corpus.address.malformed-id", gloss = "A clause id with the wrong shape, contract or operation." }
@@ -57,6 +58,7 @@ SpecWordCeiling        = { clause = "corpus.anatomy.word-ceilings", gloss = "A c
 SpecClauseUnowned      = { clause = "corpus.state.unowned", gloss = "More unpinned, unscheduled and unquestioned clauses than the ceiling records." }
 SpecTerm               = { clause = "corpus.registry.bad-term", gloss = "A term registered twice, naming a missing or foreign clause, glossed out of bounds, or avoided as itself a term." }
 SpecTermFirstUse       = { clause = "corpus.registry.term-first-use", gloss = "More guide first uses of a term without its defining pointer than the ceiling records." }
+SpecTopic              = { clause = "corpus.topic.bad-topic", gloss = "A topic page out of its registry entry, shape or bounds, restating a rule, or leaving an answer unreachable." }
 SpecWhyUnscoped        = { clause = "corpus.rationale.why-scoped", gloss = "More Why citations naming a contract ADR without a section than the ceiling records." }
 
 [limit]
@@ -81,6 +83,9 @@ corpus-fragment-depth   = { clause = "corpus.diagram.sequence", value = 2, unit 
 corpus-message-words    = { clause = "corpus.diagram.message", value = 8, unit = "words", basis = "chosen", gloss = "Longest sequence message label." }
 corpus-note-words       = { clause = "corpus.diagram.message", value = 12, unit = "words", basis = "chosen", gloss = "Longest sequence note." }
 corpus-transition-words = { clause = "corpus.diagram.state", value = 6, unit = "words", basis = "chosen", gloss = "Longest state transition label." }
+corpus-topic-words      = { clause = "corpus.topic.file", value = 600, unit = "words", basis = "chosen", gloss = "Longest topic page, diagrams excluded." }
+corpus-topic-pages      = { clause = "corpus.topic.pages", value = 8, unit = "pages", basis = "chosen", gloss = "Most topic pages." }
+corpus-topic-contract-pointers = { clause = "corpus.topic.contract-pointers", value = 3, unit = "pointers", basis = "chosen", gloss = "Most distinct pointers from one topic page into one contract." }
 corpus-term-gloss-words = { clause = "corpus.registry.term", value = 25, unit = "words", basis = "chosen", gloss = "Longest term gloss." }
 corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "words", basis = "chosen", gloss = "Longest guide, diagrams excluded." }
 
@@ -95,6 +100,7 @@ corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "w
 "verdict"         = { clause = "corpus.state.verdict", gloss = "A clause's computed state: committed when unpinned, performed when its pins qualify, broken otherwise." }
 "ratchet"         = { clause = "corpus.registry.ceiling", gloss = "A recorded count the tree lowers and never raises; a live count off it fails lint." }
 "guide"           = { clause = "corpus.guide.file", gloss = "A contract's non-normative teaching page, reaching each rule by pointer." }
+"topic page"      = { clause = "corpus.topic.file", gloss = "A non-normative page answering one question that spans contracts by pointing at the clauses that answer it." }
 "card"            = { clause = "corpus.render.card", gloss = "A contract's generated page listing its operations, error cases and bounds." }
 
 # Ratchets (`corpus.registry.ceiling`): each value is the live count it bounds.
@@ -109,7 +115,7 @@ term-first-use = 32
 assurance = 10245
 authority = 7844
 connector = 11660
-corpus = 4387
+corpus = 4658
 disclosure = 5476
 read = 10128
 run = 19201
