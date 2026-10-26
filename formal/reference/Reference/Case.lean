@@ -169,6 +169,11 @@ def hostName (s : String) : Allowlist.Name :=
   (s.toList.reverse.dropWhile (· == '.')).map fun c =>
     if 'A' ≤ c && c ≤ 'Z' then c.toLower else c
 
+/-- The operations `decide` reads; `contextful-reference ops` prints them. -/
+def ops : List String :=
+  ["covers_name", "covers_pattern", "narrow", "zone_admits", "session_zone", "host_covers", "host_included",
+   "host_witness"]
+
 /-- Decode a case and decide it. -/
 def decide (j : Json) : Decode Decision := do
   unless isObject j do malformed

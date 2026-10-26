@@ -65,6 +65,38 @@ pub enum DifferentialError {
     /// (`assurance.differential-test.discarded-counterexample`)
     #[error("CounterexampleDiscarded: {0}")]
     CounterexampleDiscarded(String),
+    /// (`assurance.differential-test.reference-vocabulary`)
+    #[error("ReferenceVocabularyDrift: {0}")]
+    ReferenceVocabularyDrift(String),
+}
+
+/// The operations the reference decides, as `contextful-reference ops` lists them: every case
+/// the generator draws but the credential case, and the connector allowlist's host cases,
+/// which `contextful-core`'s widening test drives against the reference.
+pub const REFERENCE_OPS: [&str; 8] =
+    ["covers_name", "covers_pattern", "narrow", "zone_admits", "session_zone", "host_covers", "host_included", "host_witness"];
+
+/// The reference's operations equal the harness's, or the run raises `ReferenceVocabularyDrift`.
+fn check_vocabulary(reference: &Path) -> Result<()> {
+    let out = Command::new(reference)
+        .arg("ops")
+        .stdin(Stdio::null())
+        .output()
+        .with_context(|| format!("starting {}", reference.display()))?;
+    let listed = String::from_utf8_lossy(&out.stdout);
+    let mut model: Vec<&str> = listed.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let mut harness = REFERENCE_OPS.to_vec();
+    model.sort_unstable();
+    harness.sort_unstable();
+    if !out.status.success() || model != harness {
+        return Err(DifferentialError::ReferenceVocabularyDrift(format!(
+            "the reference operations are [{}] and the harness operations are [{}]",
+            model.join(", "),
+            harness.join(", ")
+        ))
+        .into());
+    }
+    Ok(())
 }
 
 #[derive(Args)]
@@ -117,6 +149,7 @@ pub fn run(args: DifferentialArgs) -> Result<()> {
         Some(exe) => exe,
         None => build_reference(&root)?,
     };
+    check_vocabulary(&reference)?;
     let corpus = args.corpus.unwrap_or_else(|| root.join(DEFAULT_CORPUS));
     let seed = args.seed.unwrap_or_else(fresh_seed);
     let wasm = wasm_build(&repo, args.wasm)?;

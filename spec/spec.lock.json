@@ -29443,6 +29443,17 @@
       "line": 205
     },
     {
+      "id": "assurance.differential-test.reference-vocabulary",
+      "contract": "assurance",
+      "operation": "differential-test",
+      "subject": "reference-vocabulary",
+      "kind": "refusal",
+      "statement": "Before any case, the harness reads the reference binary's operation listing; an operation one of the reference and the harness lists and the other lacks raises `ReferenceVocabularyDrift`, printing both lists.",
+      "why": "because the reference's case decoder and the harness spell the operations twice, and an operation one side lacks is never compared",
+      "file": "spec/80-formal.md",
+      "line": 207
+    },
+    {
       "id": "assurance.differential-test.harness",
       "contract": "assurance",
       "operation": "differential-test",
@@ -29451,7 +29462,7 @@
       "statement": "The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 207
+      "line": 209
     },
     {
       "id": "assurance.differential-test.builds",
@@ -29462,7 +29473,7 @@
       "statement": "The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 209
+      "line": 211
     },
     {
       "id": "assurance.differential-test.decision-cases",
@@ -29473,7 +29484,7 @@
       "statement": "A case names one decision: table-pattern coverage, grant narrowing, zone admission against an allow-set, session-zone resolution, or credential admission; a placement decision also carries the zone it resolved.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 211
+      "line": 213
     },
     {
       "id": "assurance.differential-test.credential-cases",
@@ -29484,7 +29495,7 @@
       "statement": "A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.",
       "why": "because the reference model carries no signature scheme, and a gateway admits the credential before it places the request",
       "file": "spec/80-formal.md",
-      "line": 212
+      "line": 214
     },
     {
       "id": "assurance.differential-test.case-classes",
@@ -29495,7 +29506,7 @@
       "statement": "Each run generates malformed inputs, boundary values and well-formed requests, and its report names the classes it drew from.",
       "why": "because a green run is evidence over the generated classes, not an equivalence proof",
       "file": "spec/80-formal.md",
-      "line": 214
+      "line": 216
     },
     {
       "id": "assurance.differential-test.malformed-bytes",
@@ -29506,7 +29517,7 @@
       "statement": "The malformed class draws case texts carrying invalid UTF-8 or an integer literal outside the unsigned 64-bit range, handed as bytes to every decider, and each decides such a text malformed.",
       "why": "because a 32-bit WebAssembly build and a 64-bit native build part ways first at byte decoding and integer width",
       "file": "spec/80-formal.md",
-      "line": 216
+      "line": 218
     },
     {
       "id": "assurance.differential-test.minimized",
@@ -29517,7 +29528,7 @@
       "statement": "A disagreement is shrunk until no single field removal, string shortening or byte removal keeps any two of the three decisions apart, and the minimized case is recorded.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 218
+      "line": 220
     },
     {
       "id": "assurance.differential-test.corpus-replay",
@@ -29528,7 +29539,7 @@
       "statement": "Every counterexample-corpus case replays before any freshly generated case.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 219
+      "line": 221
     },
     {
       "id": "assurance.differential-test.corpus-entries",
@@ -29539,7 +29550,7 @@
       "statement": "The counterexample corpus retains at most 256 entries, evicting the oldest case a fresh seed reproduces.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 220
+      "line": 222
     },
     {
       "id": "assurance.differential-test.run-budget",
@@ -29550,7 +29561,7 @@
       "statement": "One invocation, corpus replay included, completes within 300 s.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 221
+      "line": 223
     },
     {
       "id": "assurance.differential-test.disagreement",
@@ -29561,7 +29572,7 @@
       "statement": "A case on which any two of the three decisions differ raises `ReferenceModelDrift`, printing the minimized case and every decision.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 222
+      "line": 224
     },
     {
       "id": "assurance.differential-test.discarded-counterexample",
@@ -29572,7 +29583,7 @@
       "statement": "A run reporting a disagreement and writing no corpus entry raises `CounterexampleDiscarded`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 224
+      "line": 226
     },
     {
       "id": "assurance.differential-test.seed",
@@ -29583,7 +29594,7 @@
       "statement": "Each run records its generator seed, and re-running with that seed reproduces the same case sequence.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 226
+      "line": 228
     },
     {
       "id": "assurance.differential-test.protocol-cases",
@@ -29594,7 +29605,7 @@
       "statement": "Protocol cases are operation sequences and node interleavings a `proptest-state-machine` generator draws over grant, raise, renew, expire, release, send, deliver, pause, resume and crash steps across three nodes, each replayed on both lease paths.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 227
+      "line": 229
     },
     {
       "id": "assurance.differential-test.protocol-harness",
@@ -29605,7 +29616,7 @@
       "statement": "The harness drives the protocol executable and the store's own lease calls, `Syncer` over a scripted bucket and the local catalog with the commit log, through each case, comparing lease, fence, head, write count and node views after every step.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 228
+      "line": 230
     },
     {
       "id": "assurance.differential-test.protocol-drift",
@@ -29616,7 +29627,7 @@
       "statement": "A step after which the model's state and the store's projected state differ raises `ProtocolConformanceDrift`, printing the minimized operation sequence and both states.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 230
+      "line": 232
     },
     {
       "id": "assurance.differential-test.protocol-vocabulary",
@@ -29627,7 +29638,7 @@
       "statement": "Before any case, the harness reads the protocol executable's step listing; a step kind one of the model and the harness lists and the other lacks raises `ProtocolVocabularyDrift`, printing both lists.",
       "why": "because the step type and the harness enum spell the vocabulary twice, and a step one side lacks is never compared",
       "file": "spec/80-formal.md",
-      "line": 232
+      "line": 234
     },
     {
       "id": "assurance.differential-test.command",
@@ -29638,7 +29649,7 @@
       "statement": "`contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 234
+      "line": 236
     },
     {
       "id": "assurance.structure-tree.one-home",
@@ -36886,6 +36897,10 @@
             "clause": "assurance.differential-test.disagreement",
             "gloss": "The reference model and the engine's decision function disagree on a case."
           },
+          "ReferenceVocabularyDrift": {
+            "clause": "assurance.differential-test.reference-vocabulary",
+            "gloss": "The reference binary and the harness list different operations."
+          },
           "ReleaseTagVersionMismatch": {
             "clause": "assurance.release.release-tag-version",
             "gloss": "A release build over a version tag that differs from the workspace package version."
@@ -43483,7 +43498,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "a_webassembly_build_deciding_apart_from_the_native_build_is_a_disagreement",
-        "line": 722,
+        "line": 766,
         "verdict": "performed",
         "proved": false
       }
@@ -43493,7 +43508,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "the_report_names_the_three_case_classes",
-        "line": 454,
+        "line": 498,
         "verdict": "performed",
         "proved": false
       }
@@ -43503,7 +43518,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "the_command_replays_then_generates_and_stops_at_the_first_disagreement",
-        "line": 649,
+        "line": 693,
         "verdict": "performed",
         "proved": false
       }
@@ -43513,7 +43528,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "a_full_corpus_evicts_the_oldest_reproducible_case",
-        "line": 575,
+        "line": 619,
         "verdict": "performed",
         "proved": false
       }
@@ -43523,7 +43538,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "corpus_cases_replay_before_generated_cases",
-        "line": 488,
+        "line": 532,
         "verdict": "performed",
         "proved": false
       }
@@ -43533,7 +43548,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "credential_cases_run_through_both_builds_and_never_reach_the_reference",
-        "line": 884,
+        "line": 928,
         "verdict": "performed",
         "proved": false
       }
@@ -43543,7 +43558,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "placement_cases_resolve_zones_in_the_reference_and_the_native_build_alike",
-        "line": 795,
+        "line": 839,
         "verdict": "performed",
         "proved": false
       }
@@ -43553,7 +43568,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "a_disagreement_raises_reference_model_drift_with_both_decisions",
-        "line": 510,
+        "line": 554,
         "verdict": "performed",
         "proved": false
       }
@@ -43563,7 +43578,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "a_disagreement_the_corpus_cannot_hold_is_discarded_loudly",
-        "line": 608,
+        "line": 652,
         "verdict": "performed",
         "proved": false
       }
@@ -43573,7 +43588,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "the_engine_and_the_lean_reference_agree_over_generated_cases",
-        "line": 433,
+        "line": 466,
         "verdict": "performed",
         "proved": false
       }
@@ -43583,7 +43598,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "malformed_bytes_reach_every_decider_and_each_decides_them_malformed",
-        "line": 755,
+        "line": 799,
         "verdict": "performed",
         "proved": false
       }
@@ -43593,7 +43608,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "a_recorded_disagreement_is_minimal_under_every_shrinking_step",
-        "line": 527,
+        "line": 571,
         "verdict": "performed",
         "proved": false
       }
@@ -43643,7 +43658,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "the_reference_binary_reads_one_case_and_prints_one_decision",
-        "line": 386,
+        "line": 394,
         "verdict": "performed",
         "proved": false
       }
@@ -43658,12 +43673,22 @@
         "proved": false
       }
     ],
+    "assurance.differential-test.reference-vocabulary": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/differential.rs",
+        "name": "an_operation_the_reference_and_the_harness_do_not_share_raises_vocabulary_drift",
+        "line": 441,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "assurance.differential-test.run-budget": [
       {
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "a_run_past_its_budget_stops",
-        "line": 626,
+        "line": 670,
         "verdict": "performed",
         "proved": false
       }
@@ -43673,7 +43698,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "a_recorded_seed_reproduces_the_case_sequence",
-        "line": 473,
+        "line": 517,
         "verdict": "performed",
         "proved": false
       }
@@ -45433,7 +45458,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "the_native_and_webassembly_builds_agree_with_the_reference_over_the_seeded_budget",
-        "line": 691,
+        "line": 735,
         "verdict": "performed",
         "proved": false
       }
@@ -45661,11 +45686,19 @@
     "authority.attenuate.narrowing": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/differential.rs",
+        "name": "the_engine_and_the_lean_reference_agree_over_generated_cases",
+        "line": 467,
+        "verdict": "performed",
+        "proved": true
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "narrowing",
         "line": 140,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       },
       {
         "kind": "theorem",
@@ -45673,7 +45706,7 @@
         "name": "narrowing_every_dimension_every_hop",
         "line": 157,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       }
     ],
     "authority.attenuate.offline": [
@@ -45719,11 +45752,19 @@
     "authority.attenuate.widens": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/differential.rs",
+        "name": "the_engine_and_the_lean_reference_agree_over_generated_cases",
+        "line": 468,
+        "verdict": "performed",
+        "proved": true
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "widens",
         "line": 58,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       },
       {
         "kind": "theorem",
@@ -45731,7 +45772,7 @@
         "name": "narrow_widens_nearest",
         "line": 122,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       }
     ],
     "authority.bound-redistribution.before-diff": [
@@ -46327,11 +46368,19 @@
     "authority.grant.pattern-forms": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/differential.rs",
+        "name": "the_engine_and_the_lean_reference_agree_over_generated_cases",
+        "line": 469,
+        "verdict": "performed",
+        "proved": true
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "pattern_forms",
         "line": 95,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       },
       {
         "kind": "theorem",
@@ -46339,7 +46388,7 @@
         "name": "pattern_covers_forms",
         "line": 101,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       }
     ],
     "authority.grant.pipeline-not-covered": [
@@ -46395,11 +46444,19 @@
     "authority.grant.template-allowlist": [
       {
         "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/differential.rs",
+        "name": "the_engine_and_the_lean_reference_agree_over_generated_cases",
+        "line": 470,
+        "verdict": "performed",
+        "proved": true
+      },
+      {
+        "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "template_allowlist",
         "line": 210,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       },
       {
         "kind": "theorem",
@@ -46407,7 +46464,7 @@
         "name": "template_allowlist",
         "line": 515,
         "verdict": "performed",
-        "proved": false
+        "proved": true
       }
     ],
     "authority.grant.template-not-allowed": [

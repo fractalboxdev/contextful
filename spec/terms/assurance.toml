@@ -30,6 +30,7 @@ UnmodelledConstructor            = { clause = "assurance.model.unmodelled-constr
 ProtocolInvariantViolated        = { clause = "assurance.model.protocol-check", gloss = "A state the bounded check reaches breaks a protocol invariant." }
 ProtocolConformanceDrift         = { clause = "assurance.differential-test.protocol-drift", gloss = "The protocol model and the Rust store disagree on the state after a step." }
 ProtocolVocabularyDrift          = { clause = "assurance.differential-test.protocol-vocabulary", gloss = "The protocol model and the harness list different step kinds." }
+ReferenceVocabularyDrift         = { clause = "assurance.differential-test.reference-vocabulary", gloss = "The reference binary and the harness list different operations." }
 CommutationClaimed               = { clause = "assurance.prove.commutation-claim", gloss = "Order-independence asserted over stages whose order the composition theorem fixes." }
 ZoneInclusionSampled             = { clause = "assurance.prove.sampled-inclusion", gloss = "Inclusion decided by evaluating a fixed set of example values." }
 ProofTargetUnbound               = { clause = "assurance.prove.unbound-target", gloss = "A proof target named in the claim with no authenticated query path bound to it." }
