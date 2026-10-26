@@ -26448,7 +26448,7 @@
       "statement": "`poll` takes a schedule string, and a `[control]` block declaring none polls every 30 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 120
+      "line": 92
     },
     {
       "id": "surface.reconcile.pointer-malformed",
@@ -26459,7 +26459,7 @@
       "statement": "A pointer body that is not wholly a version raises `ControlPointerMalformed`.",
       "why": "because an integer read out of leading bytes arms a version nobody applied",
       "file": "spec/70-control-plane.md",
-      "line": 121
+      "line": 93
     },
     {
       "id": "surface.reconcile.fail-static",
@@ -26470,7 +26470,7 @@
       "statement": "An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.",
       "why": "A-surface#control-document-cas",
       "file": "spec/70-control-plane.md",
-      "line": 123
+      "line": 95
     },
     {
       "id": "surface.reconcile.loopback-only",
@@ -26481,7 +26481,7 @@
       "statement": "A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 125
+      "line": 97
     },
     {
       "id": "surface.reconcile.pulled-control",
@@ -26492,7 +26492,7 @@
       "statement": "A reconciler adopts the project-scoped head {{store.pull.control-head}} carries, descending from its local head, only after verifying the receipt under a locally pinned issuer key and validating the snapshot against this node's declarations.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 127,
+      "line": 99,
       "scenarios": [
         "WHEN a cold node holds a signed bucket head whose snapshot validates against its declarations, THEN it installs that head and arms its schedules.",
         "WHEN a signed bucket head contains one of two locally declared pipelines, THEN the reconciler adopts that partial apply and leaves the other pipeline unarmed."
@@ -26507,7 +26507,7 @@
       "statement": "A reconciler reads pulled-control issuer pins through {{authority.verify.pin-source}} and refuses a receipt whose signer is absent from those pins.",
       "why": "because a bucket writer can sign its own unauthorized snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 129
+      "line": 101
     },
     {
       "id": "surface.reconcile.pulled-control-untrusted",
@@ -26518,7 +26518,7 @@
       "statement": "A pulled control head with an invalid signature, project, digest, predecessor chain or local validation raises `ControlSnapshotUntrusted`, names the reason and arms none of that version.",
       "why": "A-surface#control-document-cas",
       "file": "spec/70-control-plane.md",
-      "line": 131,
+      "line": 103,
       "scenarios": [
         "WHEN a bucket writer replaces the snapshot bytes without a matching signature, THEN the node names the failed verification and arms none of that version."
       ]
@@ -26532,7 +26532,7 @@
       "statement": "A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.",
       "why": "because one layout serves a snapshot directory unchanged over loopback HTTP",
       "file": "spec/70-control-plane.md",
-      "line": 133
+      "line": 105
     },
     {
       "id": "surface.reconcile.learns-by-reading",
@@ -26543,7 +26543,7 @@
       "statement": "A daemon learns of a new snapshot only by reading its control source, on each poll and on each wake; nothing pushes a snapshot to it.",
       "why": "A-surface#control-document-cas",
       "file": "spec/70-control-plane.md",
-      "line": 135
+      "line": 107
     },
     {
       "id": "surface.fire.job-kind-unknown",
@@ -26554,7 +26554,7 @@
       "statement": "A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 172
+      "line": 120
     },
     {
       "id": "surface.fire.target-unbound",
@@ -26565,7 +26565,7 @@
       "statement": "A `fold` target naming no produced table, or a `build` target naming no declared `[[model]]`, raises `JobTargetUnbound` at validation.",
       "why": "P1",
       "file": "spec/70-control-plane.md",
-      "line": 174
+      "line": 122
     },
     {
       "id": "surface.fire.cycle-control-source",
@@ -26576,7 +26576,7 @@
       "statement": "A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 176
+      "line": 124
     },
     {
       "id": "surface.fire.store-driven-concurrency",
@@ -26587,7 +26587,7 @@
       "statement": "A `store-driven` block declaring no positive integer `max_in_flight` raises `JobConcurrencyUnset` at validation; no default applies.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 178
+      "line": 126
     },
     {
       "id": "surface.fire.store-driven-body",
@@ -26598,7 +26598,7 @@
       "statement": "A `store-driven` block whose `body` names no body the embedding binary registers and no delegate under {{surface.delegate.binding}} raises `JobBodyUnregistered` at validation.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 180
+      "line": 128
     },
     {
       "id": "surface.fire.scheduled-body",
@@ -26609,7 +26609,7 @@
       "statement": "A scheduled `store-driven` job runs through the cadence lease and dispatch pool under `job:<name>`, using the embedding executable's registered body or its bound delegate, and the applied snapshot's job declaration.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 182
+      "line": 130
     },
     {
       "id": "surface.fire.scheduled-history",
@@ -26620,7 +26620,7 @@
       "statement": "A scheduled `store-driven` job computes its next fire from its host execution's recorded start, including failed attempts; a restarted daemon resumes pending execution through {{run.journal.input-pin}}.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 184
+      "line": 132
     },
     {
       "id": "surface.fire.job-snapshot",
@@ -26631,7 +26631,7 @@
       "statement": "Import and full apply retain validated job declarations in the immutable snapshot; a pipeline-only apply preserves the snapshot's jobs, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 186
+      "line": 134
     },
     {
       "id": "surface.fire.model-snapshot",
@@ -26642,7 +26642,7 @@
       "statement": "Import and full apply retain validated model declarations with file SQL resolved inline; pipeline-only apply preserves applied models, and applied build dispatch reads that version's model, contract and tests without consulting draft definitions.",
       "why": "A-surface#configuration-reaches-engine, A-surface#native-model-builds",
       "file": "spec/70-control-plane.md",
-      "line": 188
+      "line": 136
     },
     {
       "id": "surface.fire.standalone-snapshot",
@@ -26653,7 +26653,7 @@
       "statement": "Import and full apply retain standalone table contracts in immutable snapshot metadata; pipeline-only apply preserves that metadata, including absent metadata.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 190
+      "line": 138
     },
     {
       "id": "surface.fire.applied-data-contract",
@@ -26664,7 +26664,7 @@
       "statement": "Applied store-driven and build jobs resolve standalone and pipeline table declarations and models from their snapshot; unapplied edits to them change neither input selection nor output landing contracts.",
       "why": "A-surface#configuration-reaches-engine, A-surface#applied-jobs-retain",
       "file": "spec/70-control-plane.md",
-      "line": 192
+      "line": 140
     },
     {
       "id": "surface.fire.applied-current-authority",
@@ -26675,7 +26675,7 @@
       "statement": "Before opening an applied job execution, differing current table authority or model disclosure refuses under {{surface.apply.validation}}; current writer admission remains authoritative.",
       "why": "because a pinned read structure must not preserve authority the live declaration has changed",
       "file": "spec/70-control-plane.md",
-      "line": 194
+      "line": 142
     },
     {
       "id": "surface.fire.applied-contract-missing",
@@ -26686,7 +26686,7 @@
       "statement": "Applied jobs lacking standalone contract metadata refuse under {{surface.apply.validation}} until full apply captures those contracts; no live declaration substitutes for missing snapshot metadata.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 196
+      "line": 144
     },
     {
       "id": "surface.fire.executable-pin",
@@ -26697,7 +26697,7 @@
       "statement": "Store-driven and build executions pin table declarations, model definitions, output membership, and memory shapes and relations; changed structure meets {{run.own.pinned-plan-changed}} before replay or publication.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 198
+      "line": 146
     },
     {
       "id": "surface.fire.scheduled-build",
@@ -26708,7 +26708,7 @@
       "statement": "A scheduled `build` job dispatches the native model publisher through the cadence lease and pool under `job:<name>`; its execution records starts and outcomes for restart cadence, including failed attempts.",
       "why": "A-surface#configuration-reaches-engine, A-surface#native-model-builds",
       "file": "spec/70-control-plane.md",
-      "line": 200
+      "line": 148
     },
     {
       "id": "surface.fire.build-dependency",
@@ -26719,7 +26719,7 @@
       "statement": "A build job's `after` names a pipeline and inherits its dependent-run head schedule; builds follow all pipeline steps and run only after a successful unit. Jobs without `after` read already committed inputs.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 202
+      "line": 150
     },
     {
       "id": "surface.fire.build-dependency-invalid",
@@ -26730,7 +26730,7 @@
       "statement": "Import and apply refuse a job dependency naming no pipeline, combining `after` with `schedule`, or naming a kind other than `build`, under {{surface.apply.validation}}.",
       "why": "because a dependency has one native cadence and never dispatches an unsupported job graph",
       "file": "spec/70-control-plane.md",
-      "line": 204
+      "line": 152
     },
     {
       "id": "surface.fire.job-identity",
@@ -26741,7 +26741,7 @@
       "statement": "A pipeline sharing a job's `job:<name>` dispatch identity fails {{surface.apply.validation}} before a version is claimed.",
       "why": "because one exclusion key cannot dispatch two distinct operations",
       "file": "spec/70-control-plane.md",
-      "line": 206
+      "line": 154
     },
     {
       "id": "surface.fire.plan-job",
@@ -26752,7 +26752,7 @@
       "statement": "A `plan` block names a compiled plan file beside its manifest; `job fire` lowers that plan onto one execution under host scope `job:<name>`, pinned to the plan's version.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 208
+      "line": 156
     },
     {
       "id": "surface.fire.cycle",
@@ -26763,7 +26763,7 @@
       "statement": "`serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 210
+      "line": 158
     },
     {
       "id": "surface.fire.cycle-exit",
@@ -26774,7 +26774,7 @@
       "statement": "`serve --cycle` exits non-zero when any unit it dispatched failed, after printing its answer; a cycle with no failed unit, or one finding the cadence lease held, exits zero.",
       "why": "because a scheduler running the cycle reads the exit status, and a zero over a failed fire reports success",
       "file": "spec/70-control-plane.md",
-      "line": 211
+      "line": 159
     },
     {
       "id": "surface.fire.cycle-drain",
@@ -26785,7 +26785,7 @@
       "statement": "After its dispatched units end and before it releases the cadence lease, `serve --cycle` drains the queue's object-arrival keys and queued batches once, leaving post-commit wake-ups for `contextful queue drain`, and its answer counts what that drain settled.",
       "why": "because an object-arrival key or a queued batch must reach its read between cadence fires, and the cadence lease keeps one drainer",
       "file": "spec/70-control-plane.md",
-      "line": 213
+      "line": 161
     },
     {
       "id": "surface.fire.cycle-drain-exit",
@@ -26796,7 +26796,7 @@
       "statement": "A cycle whose drain fails exits non-zero as {{surface.fire.cycle-exit}} does, its deliveries left queued for the next cycle.",
       "why": "because a drain failure leaves work queued, and a scheduler reading a zero retries none of it",
       "file": "spec/70-control-plane.md",
-      "line": 215
+      "line": 163
     },
     {
       "id": "surface.fire.daemon-drain",
@@ -26807,7 +26807,7 @@
       "statement": "While it holds the cadence lease, `pipeline serve` under the in-process trigger drains the queue as {{surface.fire.cycle-drain}} does, beside its ticks, starting each drain 5 s after the previous one ends.",
       "why": "because a daemon running no cycle still owes each object-arrival key and queued batch its read, and the cadence lease keeps one drainer",
       "file": "spec/70-control-plane.md",
-      "line": 217
+      "line": 165
     },
     {
       "id": "surface.fire.daemon-drain-retry",
@@ -26818,7 +26818,7 @@
       "statement": "A failed daemon drain logs its error and leaves its deliveries queued; the daemon keeps serving and drains again on its next pass.",
       "why": "because one unreachable source must not stop every schedule the daemon arms",
       "file": "spec/70-control-plane.md",
-      "line": 219
+      "line": 167
     },
     {
       "id": "surface.dispatch.not-a-head",
@@ -26829,7 +26829,7 @@
       "statement": "A `[[pipeline]]` block naming `after = \"<id>\"` is a landing step of that entry's dependent run; the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing.",
       "why": "A-surface#due-units-admit",
       "file": "spec/70-control-plane.md",
-      "line": 226
+      "line": 174
     },
     {
       "id": "surface.dispatch.step-result",
@@ -26840,18 +26840,7 @@
       "statement": "A completion callback carries a pointer, an object-store key or a catalog row id, or the failed step's last error line, as JSON of at most 1 MiB; any other callback body raises `StepResultRefused` and records nothing.",
       "why": "because a step result rides one journal row, and bulk output belongs in the object store it points into",
       "file": "spec/70-control-plane.md",
-      "line": 228
-    },
-    {
-      "id": "surface.dispatch.in-band-tool-error",
-      "contract": "surface",
-      "operation": "dispatch",
-      "subject": "in-band-tool-error",
-      "kind": "refusal",
-      "statement": "A step driving the engine over the tool protocol judges the tool result, not transport status: a `200` carrying a protocol error or a result flagged `isError` raises `StepToolError`.",
-      "why": "P2",
-      "file": "spec/70-control-plane.md",
-      "line": 230
+      "line": 176
     },
     {
       "id": "surface.dispatch.callback-skew",
@@ -26862,7 +26851,7 @@
       "statement": "The relay accepts a callback timestamp within 300 s of its own clock.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 232
+      "line": 178
     },
     {
       "id": "surface.dispatch.callback-rejected",
@@ -26873,7 +26862,7 @@
       "statement": "A heartbeat or callback whose signature fails, whose attempt is not the step's current attempt, whose timestamp falls outside {{surface.dispatch.callback-skew}}, or whose step has closed, raises `DispatchCallbackRejected` and changes no step.",
       "why": "because a partitioned worker's late result otherwise overwrites its successor's, and a captured callback replays indefinitely",
       "file": "spec/70-control-plane.md",
-      "line": 233
+      "line": 179
     },
     {
       "id": "surface.dispatch.heartbeat-beat",
@@ -26884,7 +26873,7 @@
       "statement": "A worker heartbeats every 15 s with a signed `GET` on its step's awakeable route, and posts its outcome to that route with a signed `POST`.",
       "why": "A-surface#workers-reach-orchestrator",
       "file": "spec/70-control-plane.md",
-      "line": 235
+      "line": 181
     },
     {
       "id": "surface.dispatch.worker-target",
@@ -26895,7 +26884,7 @@
       "statement": "`[control] workers` lists worker URLs and `[control] relay` the URL whose `/awake/:token` route `serve` binds; with workers listed, each landing step posts to a worker's `POST /submit`, keyed by run, step and attempt.",
       "why": "A-surface#workers-reach-orchestrator",
       "file": "spec/70-control-plane.md",
-      "line": 237
+      "line": 183
     },
     {
       "id": "surface.dispatch.worker-key",
@@ -26906,7 +26895,7 @@
       "statement": "Heartbeats and callbacks sign under the key `CONTEXTFUL_WORKER_KEY` holds; `serve` listing workers without a relay or without that key refuses at startup and binds nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 239
+      "line": 185
     },
     {
       "id": "surface.dispatch.submit-signed",
@@ -26917,7 +26906,7 @@
       "statement": "A worker admits a `POST /submit` only when it carries an HMAC under the worker key over its timestamp and body, within {{surface.dispatch.callback-skew}}, naming a callback under its own `[control] relay`; any other submission raises `DispatchSubmitRejected` and starts nothing.",
       "why": "because an unsigned submission lets any caller start a step and have the worker sign heartbeats and callbacks for a route of its choosing",
       "file": "spec/70-control-plane.md",
-      "line": 240
+      "line": 186
     },
     {
       "id": "surface.dispatch.submit-exhausted",
@@ -26928,7 +26917,7 @@
       "statement": "A step every listed worker refuses in turn at `POST /submit` fails its unit naming the last refusal, each worker tried once.",
       "why": "because a step bouncing between refusing workers holds its pool slot and exclusion key while never running",
       "file": "spec/70-control-plane.md",
-      "line": 242
+      "line": 188
     },
     {
       "id": "surface.dispatch.heartbeat-lapse",
@@ -26939,7 +26928,7 @@
       "statement": "A heartbeat lapse past 60 s reschedules that worker's in-flight work onto another matching worker under the next attempt number.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 244
+      "line": 190
     },
     {
       "id": "surface.dispatch.pool-bound",
@@ -26950,7 +26939,7 @@
       "statement": "A deployment's fire pool runs at most 4 units at once, `[control] pool` replacing the bound; a due unit past the bound stays armed and reports pending.",
       "why": "because one bound per deployment caps the process's concurrent pulls, where a bound per exclusion key caps nothing as pipelines are added",
       "file": "spec/70-control-plane.md",
-      "line": 245
+      "line": 191
     },
     {
       "id": "surface.dispatch.admission-order",
@@ -26961,7 +26950,7 @@
       "statement": "Due units start by earliest next fire, then highest `[[pipeline]]` `priority`, an integer defaulting to 0, then the least recent of each unit's last run start and last dispatch, a unit with neither first, then id.",
       "why": "A-surface#due-units-admit",
       "file": "spec/70-control-plane.md",
-      "line": 247
+      "line": 193
     },
     {
       "id": "surface.dispatch.refill",
@@ -26972,7 +26961,7 @@
       "statement": "A wake whose fire ends before its answer admits each unit its evaluation left pending into the freed slot, through the cadence lease; a unit falling due after the evaluation waits for the next wake.",
       "why": "A-surface#due-units-admit",
       "file": "spec/70-control-plane.md",
-      "line": 249
+      "line": 195
     },
     {
       "id": "surface.dispatch.exclusion-key",
@@ -26983,7 +26972,7 @@
       "statement": "A unit's exclusion key is its pipeline id: a unit due while another under its key is in flight starts no second instance, and its next fire recomputes once the first ends.",
       "why": "because two fires of one pipeline race for one cursor",
       "file": "spec/70-control-plane.md",
-      "line": 251
+      "line": 197
     },
     {
       "id": "surface.dispatch.export-quiesced",
@@ -26994,7 +26983,7 @@
       "statement": "A due unit whose head or a landing step writes a member of a publication, or a relation its producer reads, starts nothing while `contextful export group` holds that publication, and stays due, reporting pending.",
       "why": "because a producer commit between an export's frontier reads raises {{run.export.group-incompatible}}, and a deferred unit costs one beat where stopping serve costs every dispatch",
       "file": "spec/70-control-plane.md",
-      "line": 253
+      "line": 199
     },
     {
       "id": "surface.dispatch.export-deferred-slot",
@@ -27005,7 +26994,7 @@
       "statement": "A deferred unit takes no pool slot and writes no dispatch record: its slot passes to the next unit in admission order, and it waits for the next beat or a wake's refill.",
       "why": "because a deferred unit holding its slot stops unrelated units for the whole export, and a recorded dispatch moves its fire past the instant it never ran",
       "file": "spec/70-control-plane.md",
-      "line": 255
+      "line": 201
     },
     {
       "id": "surface.dispatch.export-claim",
@@ -27016,7 +27005,7 @@
       "statement": "A started unit writing a publication's inputs holds them shared from its start until it ends, so an export of that publication waits for it.",
       "why": "because serve admits a unit before its child commits, so a check at admission alone misses a unit already running",
       "file": "spec/70-control-plane.md",
-      "line": 257
+      "line": 203
     },
     {
       "id": "surface.dispatch.export-claim-unread",
@@ -27027,7 +27016,7 @@
       "statement": "A unit whose publication inputs serve cannot compute claims every declared publication; a unit whose claim serve cannot take starts nothing and stays due, logging the error.",
       "why": "because an unclaimed unit starting during an export commits between the frontier reads {{run.export.group-incompatible}} rechecks",
       "file": "spec/70-control-plane.md",
-      "line": 259
+      "line": 205
     },
     {
       "id": "surface.dispatch.lease-gated",
@@ -27038,7 +27027,7 @@
       "statement": "A serve process dispatches only while it holds its deployment's cadence lease; a process finding the lease held arms nothing and, under `--cycle`, exits naming the holder.",
       "why": "because two daemons reading one snapshot otherwise fire every due unit twice",
       "file": "spec/70-control-plane.md",
-      "line": 261
+      "line": 207
     },
     {
       "id": "surface.dispatch.children-reaped",
@@ -27049,7 +27038,7 @@
       "statement": "A serve process starts each child run in its own process group; on `SIGTERM`, `SIGINT`, a `--cycle` exit or an unwind it signals each live group `SIGTERM`, `SIGKILL`s the remainder after 10 s, and exits once every child has.",
       "why": "because a child outliving its serve also outlives the cadence lease, and a second scheduler then fires the same pipeline concurrently",
       "file": "spec/70-control-plane.md",
-      "line": 263
+      "line": 209
     },
     {
       "id": "surface.dispatch.fire-credential",
@@ -27060,7 +27049,7 @@
       "statement": "Under `--issuer-key`, serve mints each store-driven or synthesize child fire one credential for `svc://job/<name>` in the project's default zone, granting {{surface.dispatch.fire-reach}}, in that child's `CONTEXTFUL_TOKEN`; the seed reaches no child argument or variable.",
       "why": "because a serve outlives any credential the ceiling admits, and a credential minted per fire narrows each child to its own job's tables",
       "file": "spec/70-control-plane.md",
-      "line": 265
+      "line": 211
     },
     {
       "id": "surface.dispatch.fire-reach",
@@ -27071,7 +27060,7 @@
       "statement": "A store-driven fire reaches `read` on its statement's relations and `write` on its `tables`; a synthesize fire reaches `read` on its source, its target and the declared entities table, and `write` on its target.",
       "why": "because a synthesize pass consolidates against live claims and resolves mentions against entities, and writes no table but its claims and their dead letters",
       "file": "spec/70-control-plane.md",
-      "line": 267
+      "line": 213
     },
     {
       "id": "surface.dispatch.fire-credential-lifetime",
@@ -27082,7 +27071,7 @@
       "statement": "A fire credential lives 600 s, or {{authority.issue.ceiling}} when lower; the child admits it once at start.",
       "why": "because a fire admits its credential before its first read, and a short lifetime bounds a leaked fire credential's exposure",
       "file": "spec/70-control-plane.md",
-      "line": 269
+      "line": 215
     },
     {
       "id": "surface.dispatch.fire-credential-pins",
@@ -27093,7 +27082,7 @@
       "statement": "Each child holding a minted fire credential also receives `CONTEXTFUL_ISSUER_PUBKEY`, the seed's public key, and `CONTEXTFUL_AUDIENCE`, the issuance policy's default audience the credential carries, replacing values serve inherited.",
       "why": "because the child admits its credential from inherited variables, and a pin or audience other than the minting one refuses every fire",
       "file": "spec/70-control-plane.md",
-      "line": 271
+      "line": 217
     },
     {
       "id": "surface.dispatch.fire-credential-inherited",
@@ -27104,7 +27093,7 @@
       "statement": "A serve holding no `--issuer-key` passes its own `CONTEXTFUL_TOKEN` to each child it starts.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 273
+      "line": 219
     },
     {
       "id": "surface.dispatch.fire-credential-missing",
@@ -27115,7 +27104,7 @@
       "statement": "A serve dispatching to child processes, whose applied snapshot schedules a store-driven or synthesize job, holding neither `--issuer-key` nor `CONTEXTFUL_TOKEN`, raises `FireCredentialMissing` at start and fires nothing.",
       "why": "because a missing credential otherwise fails every fire while the serve reports healthy",
       "file": "spec/70-control-plane.md",
-      "line": 274
+      "line": 220
     },
     {
       "id": "surface.dispatch.fire-credential-zone",
@@ -27126,7 +27115,7 @@
       "statement": "A serve under `--issuer-key`, whose applied snapshot schedules a store-driven or synthesize job, under a root whose `[project.zone]` declares no `default`, raises `FireCredentialZoneUnset` at start and fires nothing.",
       "why": "because a credential signing no zone asserts an undeclared zone, which {{authority.place.undeclared}} admits nowhere but `*`, so every fire reads no row",
       "file": "spec/70-control-plane.md",
-      "line": 276
+      "line": 222
     },
     {
       "id": "surface.delegate.binding",
@@ -27137,7 +27126,7 @@
       "statement": "`[control.delegates.<name>]` binds a delegate by `url`, a `mode` of `call` or `submit`, and under `call` a `timeout`; a `store-driven` `body = { delegate = \"<name>\" }` naming no bound delegate raises `JobDelegateUnbound` at arm or fire.",
       "why": "A-surface#delegated-body-deploy",
       "file": "spec/70-control-plane.md",
-      "line": 314
+      "line": 231
     },
     {
       "id": "surface.delegate.host",
@@ -27148,7 +27137,7 @@
       "statement": "A delegate `url` is `http` to a loopback host or the `contextful.delegate` virtual host, carrying no credential; any other spelling raises `DelegateHostRefused` at startup and arms nothing.",
       "why": "because the stock container reaches a delegate only through a loopback relay or the deploy's outbound interception, and a public URL turns daemon configuration into egress",
       "file": "spec/70-control-plane.md",
-      "line": 316,
+      "line": 233,
       "scenarios": [
         "WHEN a delegate `url` names a host that is neither loopback nor the virtual host, THEN startup refuses and arms nothing."
       ]
@@ -27159,10 +27148,10 @@
       "operation": "delegate",
       "subject": "envelope",
       "kind": "behavior",
-      "statement": "A delegate request carries `job`, `execution_id`, `step`, `input_hash`, `idempotency_key` under {{run.journal.idempotency-key}}, `attempt`, `entity` with namespace, key and fence, `as_of`, `version` when fired from an applied snapshot, `pins`, `tables`, the input `row` and `deadline`.",
+      "statement": "A delegate request carries {{type:contextful_core::surface::delegate::Envelope}}: `idempotency_key` under {{run.journal.idempotency-key}}, `entity` with namespace, key and fence, and `version` when fired from an applied snapshot.",
       "why": "because a delegate holds no state of its own, and a request naming its version and fence lets it refuse before a paid call",
       "file": "spec/70-control-plane.md",
-      "line": 318
+      "line": 235
     },
     {
       "id": "surface.delegate.signed",
@@ -27173,7 +27162,7 @@
       "statement": "A request is signed under the worker key over `call`, its timestamp and body, and an answer over `answer`, the request's `idempotency_key`, its timestamp and body, each as {{surface.dispatch.submit-signed}} signs a submission.",
       "why": "because an answer bound to its request cannot be replayed onto another item's call",
       "file": "spec/70-control-plane.md",
-      "line": 320
+      "line": 237
     },
     {
       "id": "surface.delegate.rejected",
@@ -27184,7 +27173,7 @@
       "statement": "An answer unsigned or skewed past {{surface.dispatch.callback-skew}} raises `DelegateAnswerRejected` and closes the attempt `Transient`; one outside {{surface.delegate.outcome}} or over {{surface.dispatch.step-result}} raises it and closes the attempt `Permanent`.",
       "why": "because an unsigned answer lets any process on the loopback land rows, and a malformed one cannot change on retry",
       "file": "spec/70-control-plane.md",
-      "line": 322
+      "line": 239
     },
     {
       "id": "surface.delegate.call-mode",
@@ -27195,7 +27184,7 @@
       "statement": "Under `call`, one request per attempt holds its connection open and the response body is the attempt's answer; a response arriving after the delegate's `timeout` closes the attempt `Transient`, and its late body records nothing.",
       "why": "A-surface#delegated-body-deploy",
       "file": "spec/70-control-plane.md",
-      "line": 324,
+      "line": 241,
       "scenarios": [
         "WHEN a delegate answers `ok` with rows for one item and the daemon restarts before that item's landing commits, THEN the resumed item lands the recorded rows and the delegate receives no second request."
       ]
@@ -27209,7 +27198,7 @@
       "statement": "A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; a terminal receipt follows a signed `permanent` answer, a `Permanent` rejection or an exhausted budget under {{run.items.retry-budget}}.",
       "why": "because a refusal before work is deployment drift an operator fixes, and a terminal receipt outlives the fix",
       "file": "spec/70-control-plane.md",
-      "line": 326
+      "line": 243
     },
     {
       "id": "surface.delegate.call-timeout",
@@ -27220,7 +27209,7 @@
       "statement": "A `call` delegate's `timeout` defaults to 300 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 328
+      "line": 245
     },
     {
       "id": "surface.delegate.call-timeout-ceiling",
@@ -27231,18 +27220,7 @@
       "statement": "A `call` `timeout` above 3600 s raises `DelegateTimeoutRefused` at validation.",
       "why": "because an item holding a `max_in_flight` slot for over an hour is a stalled delegate, not a slow one",
       "file": "spec/70-control-plane.md",
-      "line": 329
-    },
-    {
-      "id": "surface.delegate.submit-mode",
-      "contract": "surface",
-      "operation": "delegate",
-      "subject": "submit-mode",
-      "kind": "behavior",
-      "statement": "Under `submit`, the request is a {{surface.dispatch.worker-target}} submission answered at once; the delegate heartbeats under {{surface.dispatch.heartbeat-beat}}, posts its answer to the callback, and a lapse follows {{surface.dispatch.heartbeat-lapse}}.",
-      "why": "A-surface#delegated-body-deploy",
-      "file": "spec/70-control-plane.md",
-      "line": 331
+      "line": 246
     },
     {
       "id": "surface.delegate.outcome",
@@ -27250,10 +27228,10 @@
       "operation": "delegate",
       "subject": "outcome",
       "kind": "behavior",
-      "statement": "An answer is `ok` with rows per declared output table, `defer` with a `retry_at` instant, `transient`, or `permanent` with a reason; `ok` lands as {{run.items.completion}}, `defer` parks, and `transient` and `permanent` follow {{run.items.retry-budget}}.",
+      "statement": "An answer is a {{type:contextful_core::surface::delegate::Answer}}; `ok` lands as {{run.items.completion}}, `defer` parks, and `transient` and `permanent` follow {{run.items.retry-budget}}.",
       "why": "A-surface#delegated-body-deploy",
       "file": "spec/70-control-plane.md",
-      "line": 333
+      "line": 248
     },
     {
       "id": "surface.delegate.defer-parks",
@@ -27264,21 +27242,10 @@
       "statement": "A `defer` parks the item until its `retry_at` under {{run.items.retry-budget}}; the first fire after that instant re-admits it under {{run.items.replay}}, no run sleeps on it, and a row of a job without `isolated_items` closes `Transient` instead.",
       "why": "because a provider budget clears on the provider's clock, and a slot held through the wait starves every other entity",
       "file": "spec/70-control-plane.md",
-      "line": 335,
+      "line": 250,
       "scenarios": [
         "WHEN a delegate answers `defer` with a `retry_at` ten minutes ahead, THEN the item's failed-attempt count is unchanged and the first fire after that instant sends the request again."
       ]
-    },
-    {
-      "id": "surface.delegate.currency",
-      "contract": "surface",
-      "operation": "delegate",
-      "subject": "currency",
-      "kind": "behavior",
-      "statement": "The fence in {{surface.delegate.envelope}} is checked immediately before the request under {{run.items.fence}}; under `submit`, the heartbeat `GET` answers the current attempt and fence, so a delegate learns before a paid call whether it is superseded.",
-      "why": "because a delegate that pays after its owner was replaced spends a call whose answer nothing records",
-      "file": "spec/70-control-plane.md",
-      "line": 337
     },
     {
       "id": "surface.delegate.version",
@@ -27289,7 +27256,7 @@
       "statement": "A binding's optional `version` joins the item's owner pins as a body dependency, so a changed version opens a fresh execution identity and a pending item under the old one refuses as {{run.own.pinned-plan-changed}}.",
       "why": "because a prompt or model change inside a delegate otherwise resumes recorded work under new semantics",
       "file": "spec/70-control-plane.md",
-      "line": 339
+      "line": 252
     },
     {
       "id": "surface.delegate.clocks",
@@ -27300,7 +27267,7 @@
       "statement": "Signature timestamps on a request and an answer ride each side's system clock; the `deadline` and a `defer` wait ride the engine's instant.",
       "why": "because the engine's instant is injectable while a delegate shares only wall time, and a wait measured on two clocks never fires",
       "file": "spec/70-control-plane.md",
-      "line": 341
+      "line": 254
     },
     {
       "id": "surface.edit.secret-in-document",
@@ -27311,7 +27278,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 376
+      "line": 267
     },
     {
       "id": "surface.edit.connector-upload",
@@ -27322,7 +27289,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 378
+      "line": 269
     },
     {
       "id": "surface.edit.store-draft",
@@ -27333,7 +27300,7 @@
       "statement": "An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.",
       "why": "A-surface#control-document-cas",
       "file": "spec/70-control-plane.md",
-      "line": 380
+      "line": 271
     },
     {
       "id": "surface.apply.version-race",
@@ -27344,7 +27311,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface#control-document-cas",
       "file": "spec/70-control-plane.md",
-      "line": 387
+      "line": 278
     },
     {
       "id": "surface.apply.validation",
@@ -27355,7 +27322,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 389
+      "line": 280
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -27366,7 +27333,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 391
+      "line": 282
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -27377,7 +27344,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/70-control-plane.md",
-      "line": 393
+      "line": 284
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -27388,7 +27355,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 395
+      "line": 286
     },
     {
       "id": "surface.apply.local-claim",
@@ -27399,7 +27366,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 397
+      "line": 288
     },
     {
       "id": "surface.apply.synced-attestation",
@@ -27410,7 +27377,7 @@
       "statement": "In a project with `[sync]`, import and apply admit an admin capability, then sign a receipt over the project, version, predecessor receipt digest and snapshot digest through {{authority.issue.signing-port}}.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 399
+      "line": 290
     },
     {
       "id": "surface.apply.receipt-message",
@@ -27421,7 +27388,7 @@
       "statement": "A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\\n<project>\\n<version>\\n<parent-or-minus>\\n<snapshot-sha256>\\n<signer>\\n`; its parent is `-` only for the first version.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 401,
+      "line": 292,
       "scenarios": [
         "WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify."
       ]
@@ -27435,7 +27402,7 @@
       "statement": "A predecessor and the bucket head name the lowercase SHA-256 hex digest of a receipt's RFC 8785 canonical JSON bytes.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 403
+      "line": 294
     },
     {
       "id": "surface.apply.receipt-file",
@@ -27446,7 +27413,7 @@
       "statement": "A synced claim writes immutable `receipt@v<N>.json` beside its snapshot before advancing the applied pointer.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 405,
+      "line": 296,
       "scenarios": [
         "WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version."
       ]
@@ -27460,7 +27427,7 @@
       "statement": "A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.",
       "why": "A-surface#synced-control-head",
       "file": "spec/70-control-plane.md",
-      "line": 407,
+      "line": 298,
       "scenarios": [
         "WHEN a synced apply presents no admin capability, THEN no version or receipt is claimed."
       ]
@@ -27474,7 +27441,7 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; an import over a directory holding a version claims nothing, names that version and exits zero.",
       "why": "because a restart on a warm disk runs import before apply, and a refusal there stops the restart",
       "file": "spec/70-control-plane.md",
-      "line": 409,
+      "line": 300,
       "scenarios": [
         "WHEN a warm synced node restarts through pull, import, apply and push, THEN import claims nothing, apply reports the version unchanged, and the restart succeeds."
       ]
@@ -27488,7 +27455,7 @@
       "statement": "Import or apply over a snapshot directory holding no version first adopts a pulled head verified under {{surface.reconcile.issuer-pin}} against the verb's `--public-key` and meeting {{surface.apply.self-valid}}, though the declarations drop its pipelines or jobs; an import that adopts claims nothing.",
       "why": "because a replacement host claiming a fresh v1 diverges from the bucket's signed head, and the claim that follows removes what a release dropped",
       "file": "spec/70-control-plane.md",
-      "line": 411,
+      "line": 302,
       "scenarios": [
         "WHEN a cold node pulls a signed bucket head and runs import, THEN import claims nothing, and apply of one added pipeline claims the head's successor and pushes.",
         "WHEN a release changes only the schedules of pipelines a build job runs `after`, THEN a cold node adopts the old head and apply claims its successor.",
@@ -27504,7 +27471,7 @@
       "statement": "Import and full apply retain validated `[[external]]` declarations in the snapshot; a pipeline-only apply preserves them, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.",
       "why": "because Admin reads external steps from the applied version, beside the jobs {{surface.fire.job-snapshot}} retains",
       "file": "spec/70-control-plane.md",
-      "line": 413
+      "line": 304
     },
     {
       "id": "surface.apply.self-valid",
@@ -27515,7 +27482,7 @@
       "statement": "Import, apply and adoption validate a snapshot's document, build plans and each job's `after` against that snapshot's own pipelines, so apply signs no head its adoption refuses.",
       "why": "because a signed head failing its own adoption refuses every cold start until a reset",
       "file": "spec/70-control-plane.md",
-      "line": 415
+      "line": 306
     },
     {
       "id": "surface.apply.draft-claim",
@@ -27526,7 +27493,7 @@
       "statement": "An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.",
       "why": "A-surface#connections-claim-version",
       "file": "spec/70-control-plane.md",
-      "line": 417
+      "line": 308
     },
     {
       "id": "surface.apply.operator-attestation",
@@ -27537,7 +27504,7 @@
       "statement": "An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.",
       "why": "because a shared store capability cannot identify the person who used the console",
       "file": "spec/70-control-plane.md",
-      "line": 419
+      "line": 310
     },
     {
       "id": "surface.apply.draft-table-contracts",
@@ -27548,7 +27515,7 @@
       "statement": "Pipeline editing preserves standalone table metadata from the draft's expected immutable version; apply regenerates that metadata and refuses an altered saved draft under {{surface.apply.validation}} before advancing the pointer.",
       "why": "A-surface#applied-jobs-retain",
       "file": "spec/70-control-plane.md",
-      "line": 421
+      "line": 312
     },
     {
       "id": "surface.apply.draft-absent",
@@ -27559,7 +27526,7 @@
       "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
       "why": "because an absent draft supplies no document for the version claim",
       "file": "spec/70-control-plane.md",
-      "line": 423
+      "line": 314
     },
     {
       "id": "surface.apply.served-admin-grant",
@@ -27570,7 +27537,7 @@
       "statement": "A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.",
       "why": "because the control document arms work over every table and tenant of the store",
       "file": "spec/70-control-plane.md",
-      "line": 425
+      "line": 316
     },
     {
       "id": "surface.apply.served-malformed",
@@ -27581,7 +27548,7 @@
       "statement": "A served Admin edit or apply whose body is not a JSON object holding exactly its route's fields raises `ControlRequestMalformed`, answered `400`, and changes nothing.",
       "why": "because an absent or extra field leaves the operator's intended version or draft ambiguous",
       "file": "spec/70-control-plane.md",
-      "line": 427
+      "line": 318
     },
     {
       "id": "surface.apply.served-unavailable",
@@ -27592,7 +27559,7 @@
       "statement": "A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.",
       "why": "because a storage or owner fault message can disclose paths and endpoints to the console",
       "file": "spec/70-control-plane.md",
-      "line": 429
+      "line": 320
     },
     {
       "id": "surface.reside.region-entries",
@@ -27603,7 +27570,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "A-surface#residency-divergence-detected",
       "file": "spec/70-control-plane.md",
-      "line": 476
+      "line": 337
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -27614,7 +27581,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 478
+      "line": 339
     },
     {
       "id": "surface.reside.site-regions",
@@ -27625,7 +27592,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface#residency-divergence-detected",
       "file": "spec/70-control-plane.md",
-      "line": 480
+      "line": 341
     },
     {
       "id": "surface.connection.routes",
@@ -27636,7 +27603,7 @@
       "statement": "`POST /connections` creates, `POST /connections/{id}/pause` pauses, and `DELETE /connections/{id}` deletes a connection outside the operator-only `/control/*` routes.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 487
+      "line": 348
     },
     {
       "id": "surface.connection.create",
@@ -27647,7 +27614,7 @@
       "statement": "A served connection create binds an admitted tenant, principal, source selection, secret name and pipeline id in one versioned control claim under {{surface.apply.version-race}}.",
       "why": "A-surface#connections-claim-version",
       "file": "spec/70-control-plane.md",
-      "line": 488
+      "line": 349
     },
     {
       "id": "surface.connection.authority",
@@ -27658,7 +27625,7 @@
       "statement": "A connection mutation requires an admitted write credential for its tenant and principal, checked on the request before reading and on the standing record before changing it; a mismatch raises `ConnectionScopeDenied`.",
       "why": "because a caller-controlled tenant or principal could otherwise point a pipeline at another user's credential",
       "file": "spec/70-control-plane.md",
-      "line": 490,
+      "line": 351,
       "scenarios": [
         "WHEN a caller names another tenant's connection, THEN `ConnectionScopeDenied` changes no control version."
       ]
@@ -27672,7 +27639,7 @@
       "statement": "Repeating create with the same connection id and declaration returns the standing version; a differing declaration raises `ConnectionIdConflict` without replacing it.",
       "why": "because a retried consent callback must not produce a second scheduled pipeline",
       "file": "spec/70-control-plane.md",
-      "line": 492,
+      "line": 353,
       "scenarios": [
         "WHEN a consent callback retries the same declaration, THEN one pipeline and schedule remain."
       ]
@@ -27686,7 +27653,7 @@
       "statement": "Create answers `201` with the claimed connection, version and state; a repeat, pause or delete answers `200`; each claim advances the version by one, deleting an active connection claims twice, and a repeat claims nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 494
+      "line": 355
     },
     {
       "id": "surface.connection.malformed",
@@ -27694,10 +27661,10 @@
       "operation": "connection",
       "subject": "malformed",
       "kind": "refusal",
-      "statement": "A create body outside `id`, `tenant`, `principal`, `file_ids`, `refresh_secret` and `schedule`, an unreadable schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.",
+      "statement": "A create body outside {{type:contextful_cli::connection::Declaration}}, an unreadable schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.",
       "why": "because a connection record binds exactly the declared selection, so an unrecognised field cannot ride along into the pipeline",
       "file": "spec/70-control-plane.md",
-      "line": 495,
+      "line": 356,
       "scenarios": [
         "WHEN a create body carries an OAuth `code` beside its secret name, THEN `ConnectionRequestMalformed` claims no version."
       ]
@@ -27711,7 +27678,7 @@
       "statement": "A pause or delete naming no standing connection raises `ConnectionUnknown`; a deleted id stays bound to its retired record, and create refuses its reuse as {{surface.connection.idempotent-create}}.",
       "why": "because a retired id reused by a new declaration restarts a pipeline whose credential is revoked",
       "file": "spec/70-control-plane.md",
-      "line": 497,
+      "line": 358,
       "scenarios": [
         "WHEN a deleted connection is paused, THEN `ConnectionUnknown` changes no version."
       ]
@@ -27725,7 +27692,7 @@
       "statement": "Pause disarms the connection's schedule and prevents new fires; an in-flight fire reaches its run cancellation boundary under {{run.cancel.two-grains}}.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 499,
+      "line": 360,
       "scenarios": [
         "WHEN a connection is paused before its due instant, THEN no new Drive fire starts."
       ]
@@ -27739,7 +27706,7 @@
       "statement": "Delete first pauses the connection, revokes its credential under {{connector.principal-secrets.disconnect}}, then retires its pipeline and schedule through a versioned claim.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 500
+      "line": 361
     },
     {
       "id": "surface.connection.schedule-scale",
@@ -27750,7 +27717,7 @@
       "statement": "Connection schedules share {{surface.dispatch.pool-bound}} and {{surface.arm.next-fire-from-history}}; each connection holds one armed entry rather than one timer or thread.",
       "why": "A-surface#connections-claim-version",
       "file": "spec/70-control-plane.md",
-      "line": 501
+      "line": 362
     },
     {
       "id": "surface.connection.consent-boundary",
@@ -27761,7 +27728,7 @@
       "statement": "The calling application owns Google authorization, callback and code exchange; connection create receives only a secret name, never an OAuth code or token.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 503
+      "line": 364
     },
     {
       "id": "surface.open-console.page-routes",
@@ -27961,7 +27928,7 @@
       "statement": "A `CONTEXTFUL_STORES_JSON` value that does not parse raises `StoreRegistryUnreadable` at startup, and no built-in store stands in for the configured set.",
       "why": "P3",
       "file": "spec/71-console.md",
-      "line": 138
+      "line": 107
     },
     {
       "id": "surface.register-store.malformed-entry",
@@ -27972,7 +27939,7 @@
       "statement": "One entry that does not decode raises `StoreEntryMalformed` naming it, and is dropped while its siblings are served.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/71-console.md",
-      "line": 140
+      "line": 109
     },
     {
       "id": "surface.register-store.reserved-id",
@@ -27983,7 +27950,7 @@
       "statement": "A configured entry claiming either built-in id raises `StoreIdReserved`.",
       "why": "because the entry otherwise reads the fixture's rows under its own name",
       "file": "spec/71-console.md",
-      "line": 142
+      "line": 111
     },
     {
       "id": "surface.register-store.authored-name",
@@ -27994,18 +27961,7 @@
       "statement": "An entry carrying its own credential or binding name raises `StoreNameAuthored`.",
       "why": "A-surface#configuration-reaches-engine",
       "file": "spec/71-console.md",
-      "line": 144
-    },
-    {
-      "id": "surface.register-store.shared-registry",
-      "contract": "surface",
-      "operation": "register-store",
-      "subject": "shared-registry",
-      "kind": "behavior",
-      "statement": "Query, Admin and the embeddable client library resolve store identities from the same deployment registry.",
-      "why": "A-surface#configuration-reaches-engine",
-      "file": "spec/71-console.md",
-      "line": 146
+      "line": 113
     },
     {
       "id": "surface.visualize.workflow-canvas",
@@ -28016,7 +27972,7 @@
       "statement": "Admin projects the store-published pipelines, jobs, models, publications and external steps as one node–edge graph under {{surface.visualize.dataflow-edges}}, with each pipeline's schedule, steps and latest run outcome.",
       "why": "A-surface#workers-reach-orchestrator",
       "file": "spec/71-console.md",
-      "line": 153
+      "line": 120
     },
     {
       "id": "surface.visualize.dataflow-edges",
@@ -28027,7 +27983,7 @@
       "statement": "The published workflow lists edges `{from, to, via}` between typed node ids: pipeline and build-job `after`, pipeline to produced table, table or model to its reading model or job, build job to model, job to written table and publication.",
       "why": "because a graph the client infers from names draws edges the store never declared",
       "file": "spec/71-console.md",
-      "line": 155
+      "line": 122
     },
     {
       "id": "surface.visualize.external-step",
@@ -28038,7 +27994,7 @@
       "statement": "Admin draws each `[[external]]` declaration as a node marked as run outside the engine, joined by its inputs and outputs; the engine runs, schedules and records nothing for it.",
       "why": "because work around the store belongs on the canvas without becoming a job kind {{surface.fire.job-kind-unknown}} refuses",
       "file": "spec/71-console.md",
-      "line": 157
+      "line": 124
     },
     {
       "id": "surface.visualize.external-shape",
@@ -28046,10 +28002,10 @@
       "operation": "visualize",
       "subject": "external-shape",
       "kind": "behavior",
-      "statement": "An `[[external]]` declares `name`, optional `label`, and `inputs` and `outputs` of typed references `table:<name>`, `pipeline:<id>` or `job:<name>`; any other key fails {{surface.apply.validation}}.",
+      "statement": "An `[[external]]` declares {{type:contextful_core::surface::external::External}}, its `inputs` and `outputs` typed references `table:<name>`, `pipeline:<id>` or `job:<name>`; any other key fails {{surface.apply.validation}}.",
       "why": "because a typed reference keeps a table and a pipeline sharing a name distinct, and no command key makes it runnable",
       "file": "spec/71-console.md",
-      "line": 159
+      "line": 126
     },
     {
       "id": "surface.visualize.external-unbound",
@@ -28060,7 +28016,7 @@
       "statement": "An `[[external]]` input or output lacking a `table:`, `pipeline:` or `job:` prefix, or naming no declared table, model, pipeline or job, raises `ExternalStepUnbound` at validation.",
       "why": "because an edge to nothing draws a line the operator cannot trace",
       "file": "spec/71-console.md",
-      "line": 161
+      "line": 128
     },
     {
       "id": "surface.visualize.external-collision",
@@ -28071,18 +28027,7 @@
       "statement": "An `[[external]]` whose `name` repeats another external's name, a job's name or a pipeline's id raises `ExternalStepCollision` at validation.",
       "why": "because one name labelling two graph nodes leaves the reader to guess which one ran",
       "file": "spec/71-console.md",
-      "line": 163
-    },
-    {
-      "id": "surface.visualize.operational-record",
-      "contract": "surface",
-      "operation": "visualize",
-      "subject": "operational-record",
-      "kind": "behavior",
-      "statement": "Admin's inspector, pack file surface and learnings view present the store-published operational record.",
-      "why": "A-surface#connections-claim-version",
-      "file": "spec/71-console.md",
-      "line": 165
+      "line": 130
     },
     {
       "id": "surface.package.stdio-credential",
@@ -28093,7 +28038,7 @@
       "statement": "The process transport requires a verified capability token; `--owner` selects its signed owner claim. An absent token raises `StdioCredentialMissing` before protocol framing and never resolves to owner context.",
       "why": "A-read#read-surface-admits",
       "file": "spec/71-console.md",
-      "line": 172
+      "line": 137
     },
     {
       "id": "surface.package.store-selector",
@@ -28104,7 +28049,7 @@
       "statement": "The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.",
       "why": "A-topology#public-surfaces",
       "file": "spec/71-console.md",
-      "line": 174
+      "line": 139
     },
     {
       "id": "surface.package.owner-flag",
@@ -28115,7 +28060,7 @@
       "statement": "A process `--owner` admits the local owner context only with a verified signed claim bound to the selected store and an unrestricted read grant; any other credential raises `OwnerCredentialInvalid` before protocol framing.",
       "why": "A-surface#turn-compatibility-preserves",
       "file": "spec/71-console.md",
-      "line": 176
+      "line": 141
     },
     {
       "id": "surface.speak.redactor-lookahead",
@@ -28126,7 +28071,7 @@
       "statement": "The streaming redactor buffers 128 chars across each chunk boundary, and no denylist entry is longer than the buffer.",
       "why": "because an identifier split between two chunks otherwise passes unredacted",
       "file": "spec/71-console.md",
-      "line": 216
+      "line": 148
     },
     {
       "id": "surface.speak.unanswerable-suggestion",
@@ -28137,7 +28082,7 @@
       "statement": "A suggested prompt whose answer under these rules is a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 218
+      "line": 150
     },
     {
       "id": "surface.speak.stream-redaction",
@@ -28148,7 +28093,7 @@
       "statement": "The server redacts each streamed model chunk before Query emits prose to the operator.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 220
+      "line": 152
     },
     {
       "id": "surface.ground.ungrounded-answer",
@@ -28159,7 +28104,7 @@
       "statement": "A path composing answer prose in a turn holding no tool result raises `ConsoleUngroundedAnswer`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 227
+      "line": 159
     },
     {
       "id": "surface.ground.unadmitted-tool",
@@ -28170,7 +28115,7 @@
       "statement": "A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 229
+      "line": 161
     },
     {
       "id": "surface.ground.mutating-tool",
@@ -28181,7 +28126,7 @@
       "statement": "The console's query endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 231
+      "line": 163
     },
     {
       "id": "surface.ground.org-face-read-only",
@@ -28192,7 +28137,7 @@
       "statement": "A pack registering a write tool on an organization-wide face raises `ConsoleWriteToolOnOrgFace` at startup, naming the pack and the tool, and the face serves nothing.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 233
+      "line": 165
     },
     {
       "id": "surface.ground.direct-file-read",
@@ -28203,7 +28148,7 @@
       "statement": "A table function resolving a path straight against stored bytes raises `ConsoleFileAccessDirect` on this surface.",
       "why": "P5",
       "file": "spec/71-console.md",
-      "line": 235
+      "line": 167
     },
     {
       "id": "surface.ground.mint-refused",
@@ -28214,7 +28159,7 @@
       "statement": "A refused mint raises `ConsoleTokenExchangeRefused`. A store carrying a shared credential falls back to it; one carrying none surfaces the refusal to the reader.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 237
+      "line": 169
     },
     {
       "id": "surface.ground.sources-per-turn",
@@ -28225,7 +28170,7 @@
       "statement": "A source list carries at most 8 entries.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 239
+      "line": 171
     },
     {
       "id": "surface.ground.sources-block",
@@ -28236,7 +28181,7 @@
       "statement": "Every grounded answer includes a sources block citing only the governed results its admitted read tools returned.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 240
+      "line": 172
     },
     {
       "id": "surface.plan-turn.planner-reached-memory",
@@ -28247,7 +28192,7 @@
       "statement": "Scaffolding and every deterministic fallback cover data tables; scaffolding naming a memory relation raises `ConsolePlannerReachedMemory`.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 279
+      "line": 179
     },
     {
       "id": "surface.plan-turn.code-path-bounds",
@@ -28258,7 +28203,7 @@
       "statement": "The code path reads at most 5000 rows per data table and stops after 10 s.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 281
+      "line": 181
     },
     {
       "id": "surface.plan-turn.overlay-cache",
@@ -28269,7 +28214,7 @@
       "statement": "The overlay caches for 5 min, a miss included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 282
+      "line": 182
     },
     {
       "id": "surface.plan-turn.overlay-length",
@@ -28280,7 +28225,7 @@
       "statement": "An overlay is truncated at 8000 chars.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 283
+      "line": 183
     },
     {
       "id": "surface.plan-turn.turn-flow",
@@ -28291,7 +28236,7 @@
       "statement": "A Query turn plans over admitted read tools, replans once after an unanswered first round, and synthesizes from the resulting governed rows.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 284
+      "line": 184
     },
     {
       "id": "surface.plan-turn.overlay-audience",
@@ -28302,7 +28247,7 @@
       "statement": "A store's prompt overlay reaches the operator-facing synthesis text and stays outside the planner's text.",
       "why": "A-surface#turn-compatibility-preserves",
       "file": "spec/71-console.md",
-      "line": 286
+      "line": 186
     },
     {
       "id": "surface.set-vantage.unparseable",
@@ -28313,7 +28258,7 @@
       "statement": "A vantage that is neither a calendar day nor an instant raises `ConsoleVantageUnparseable`, answered `400`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 293
+      "line": 193
     },
     {
       "id": "surface.set-vantage.web-bound-unparseable",
@@ -28324,7 +28269,7 @@
       "statement": "A web leg whose bound fails to parse fails that leg and raises `ConsoleWebBoundUnparseable`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 295
+      "line": 195
     },
     {
       "id": "surface.set-vantage.sample-labels",
@@ -28335,7 +28280,7 @@
       "statement": "A table's arrivals contribute at most 3 entries of sampled label.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 297
+      "line": 197
     },
     {
       "id": "surface.browse.discovered-chips",
@@ -28346,7 +28291,7 @@
       "statement": "Query builds pre-question chips from described tables admitted to the reader's zone and humanizes their table labels.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 303
+      "line": 203
     },
     {
       "id": "surface.browse.insights-panel",
@@ -28357,7 +28302,7 @@
       "statement": "The insights panel presents row counts returned by the reader's table descriptions.",
       "why": "because a row count from the read face already reflects the reader's relation",
       "file": "spec/71-console.md",
-      "line": 305
+      "line": 205
     },
     {
       "id": "surface.browse.file-gallery",
@@ -28368,7 +28313,7 @@
       "statement": "The file gallery presents only paths returned by the reader's governed file listing and previews them through the read face.",
       "why": "P5",
       "file": "spec/71-console.md",
-      "line": 307
+      "line": 207
     },
     {
       "id": "surface.browse.gallery-path-unlisted",
@@ -28379,7 +28324,7 @@
       "statement": "A gallery preview naming a path absent from the governed file listing under the request's `as_of` raises `ConsoleGalleryPathUnlisted` before preview dispatch.",
       "why": "because the browser must not turn an arbitrary path into a store read",
       "file": "spec/71-console.md",
-      "line": 309,
+      "line": 209,
       "scenarios": [
         "WHEN a Query client requests a path absent from the reader's bound file listing, THEN it raises `ConsoleGalleryPathUnlisted` without a preview call."
       ]
@@ -28393,7 +28338,7 @@
       "statement": "After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 320
+      "line": 220
     },
     {
       "id": "surface.learn.unscoped",
@@ -28404,7 +28349,7 @@
       "statement": "A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 321
+      "line": 221
     },
     {
       "id": "surface.learn.write-refused",
@@ -28415,7 +28360,7 @@
       "statement": "A served claim write that refuses or returns no scope-bound receipt raises `ConsoleLearningWriteRefused` to Query before answer publication.",
       "why": "because a failed write cannot count as a durable learning",
       "file": "spec/71-console.md",
-      "line": 323
+      "line": 223
     },
     {
       "id": "surface.learn.subject-resolution",
@@ -28426,7 +28371,7 @@
       "statement": "Distillation preserves the subject it observes; recall resolves that subject through entity matching.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 325
+      "line": 225
     },
     {
       "id": "surface.render.client-authored-view",
@@ -28437,7 +28382,7 @@
       "statement": "A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 332
+      "line": 232
     },
     {
       "id": "surface.render.component-choice",
@@ -28448,7 +28393,7 @@
       "statement": "One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 334
+      "line": 234
     },
     {
       "id": "surface.render.older-transcript",
@@ -28459,7 +28404,7 @@
       "statement": "A client reading a transcript with an unknown component-union member renders its view as a table.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 335
+      "line": 235
     },
     {
       "id": "surface.brief.absence-is-earned",
@@ -28470,7 +28415,7 @@
       "statement": "The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 371
+      "line": 242
     },
     {
       "id": "surface.brief.topic-tier",
@@ -28481,7 +28426,7 @@
       "statement": "The topic tier needs at least 2 tokens shared between the conclusion's subject and text and the row's label and topics, one of them naming the subject.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 373
+      "line": 244
     },
     {
       "id": "surface.brief.card-subjects",
@@ -28492,7 +28437,7 @@
       "statement": "A card carries at most 3 subjects.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 374
+      "line": 245
     },
     {
       "id": "surface.brief.articles-per-subject",
@@ -28503,7 +28448,7 @@
       "statement": "A subject carries at most 3 entries of matched article.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 375
+      "line": 246
     },
     {
       "id": "surface.brief.catchup-window",
@@ -28514,7 +28459,7 @@
       "statement": "The backend caps the requested window at 7 d.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 376
+      "line": 247
     },
     {
       "id": "surface.brief.greeting",
@@ -28525,7 +28470,7 @@
       "statement": "Query derives a greeting card from arrived rows matching live conclusions in a turnless present-time session.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 377
+      "line": 248
     },
     {
       "id": "surface.publish-answer.share-affordance",
@@ -28536,7 +28481,7 @@
       "statement": "A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 384
+      "line": 255
     },
     {
       "id": "surface.publish-answer.askerless-audience",
@@ -28547,7 +28492,7 @@
       "statement": "A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 386
+      "line": 257
     },
     {
       "id": "surface.publish-answer.one-operator-principal",
@@ -28558,7 +28503,7 @@
       "statement": "An answer uses one operator's credential; the console offers no room-intersection principal.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/71-console.md",
-      "line": 388
+      "line": 259
     },
     {
       "id": "assurance.model.package",
@@ -32826,7 +32771,7 @@
     "surface.brief": "The proactive greeting card: its derivation, payload, matching tiers, client-side clock and the absence it earns.",
     "surface.browse": "What a store advertises before a question: discovered chips, humanized labels, the insights panel and the file gallery.",
     "surface.connection": "Runtime lifecycle of one tenant's external source connection and its scheduled pipeline.",
-    "surface.delegate": "A delegate is deploy-bound code outside the binary that runs a store-driven item's body over one signed HTTP request, in a synchronous `call` mode or the asynchronous `submit` mode, and answers with a closed outcome vocabulary.",
+    "surface.delegate": "A delegate is deploy-bound code outside the binary that runs a store-driven item's body over one signed `call` request and answers with a closed outcome vocabulary.",
     "surface.dispatch": "The bounded fire pool and its exclusion keys, the reconciler's hold on the cadence lease, step results, and the worker adapter with its attempt-fenced callback.",
     "surface.edit": "The configuration document, the records it presents read-only, the structured schedule specification, and connector configuration.",
     "surface.fire": "Job declaration, the closed kind union, same-tick order, the fire watermark, and one-shot evaluation.",
@@ -34178,14 +34123,12 @@
       "surface.fire.plan-job",
       "surface.apply.weak-conditional-backend",
       "surface.register-store.malformed-entry",
-      "surface.register-store.authored-name",
-      "surface.register-store.shared-registry"
+      "surface.register-store.authored-name"
     ],
     "A-surface#connections-claim-version": [
       "surface.apply.draft-claim",
       "surface.connection.create",
-      "surface.connection.schedule-scale",
-      "surface.visualize.operational-record"
+      "surface.connection.schedule-scale"
     ],
     "A-surface#console-lives-beside": [
       "surface.open-console.engine-faces",
@@ -34207,7 +34150,6 @@
       "run.items.delegated-item",
       "surface.delegate.binding",
       "surface.delegate.call-mode",
-      "surface.delegate.submit-mode",
       "surface.delegate.outcome"
     ],
     "A-surface#due-units-admit": [
@@ -36876,18 +36818,6 @@
       "run.items.retry-budget"
     ],
     [
-      "surface.delegate.submit-mode",
-      "surface.dispatch.worker-target"
-    ],
-    [
-      "surface.delegate.submit-mode",
-      "surface.dispatch.heartbeat-beat"
-    ],
-    [
-      "surface.delegate.submit-mode",
-      "surface.dispatch.heartbeat-lapse"
-    ],
-    [
       "surface.delegate.outcome",
       "run.items.completion"
     ],
@@ -36902,14 +36832,6 @@
     [
       "surface.delegate.defer-parks",
       "run.items.replay"
-    ],
-    [
-      "surface.delegate.currency",
-      "surface.delegate.envelope"
-    ],
-    [
-      "surface.delegate.currency",
-      "run.items.fence"
     ],
     [
       "surface.delegate.version",
@@ -37213,6 +37135,34 @@
     ]
   ],
   "types": {
+    "contextful_cli::connection::Declaration": {
+      "file": "crates/contextful-cli/src/connection.rs",
+      "line": 59,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "tenant"
+        },
+        {
+          "name": "principal"
+        },
+        {
+          "name": "file_ids"
+        },
+        {
+          "name": "refresh_secret"
+        },
+        {
+          "name": "schedule"
+        }
+      ],
+      "clauses": [
+        "surface.connection.malformed"
+      ]
+    },
     "contextful_core::disclosure::declare::RawBinding": {
       "file": "crates/contextful-core/src/disclosure/declare.rs",
       "line": 112,
@@ -37627,6 +37577,109 @@
       ],
       "clauses": [
         "store.declare.table-block"
+      ]
+    },
+    "contextful_core::surface::delegate::Answer": {
+      "file": "crates/contextful-core/src/surface/delegate.rs",
+      "line": 221,
+      "kind": "enum",
+      "members": [
+        {
+          "name": "ok",
+          "doc": "Rows per declared output table; they land as the item's rows."
+        },
+        {
+          "name": "defer",
+          "doc": "Park the item until `retry_at`, spending no attempt (`surface.delegate.defer-parks`)."
+        },
+        {
+          "name": "transient",
+          "doc": "Spend one failed attempt."
+        },
+        {
+          "name": "permanent",
+          "doc": "Write a terminal receipt."
+        }
+      ],
+      "clauses": [
+        "surface.delegate.outcome"
+      ]
+    },
+    "contextful_core::surface::delegate::Envelope": {
+      "file": "crates/contextful-core/src/surface/delegate.rs",
+      "line": 157,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "job"
+        },
+        {
+          "name": "execution_id"
+        },
+        {
+          "name": "step",
+          "doc": "The row-scoped step label the answer records under."
+        },
+        {
+          "name": "input_hash",
+          "doc": "The SHA-256 hex of the input row's canonical bytes."
+        },
+        {
+          "name": "attempt",
+          "doc": "The delegate call's ordinal within the item's journal."
+        },
+        {
+          "name": "idempotency_key"
+        },
+        {
+          "name": "entity"
+        },
+        {
+          "name": "as_of"
+        },
+        {
+          "name": "version",
+          "doc": "The applied snapshot version the job fires from; absent for a fire from the local declaration."
+        },
+        {
+          "name": "pins",
+          "doc": "The execution's owner pins, as the engine compares them."
+        },
+        {
+          "name": "tables"
+        },
+        {
+          "name": "row"
+        },
+        {
+          "name": "deadline",
+          "doc": "The send instant plus the delegate's timeout on the engine's clock, RFC 3339 UTC."
+        }
+      ],
+      "clauses": [
+        "surface.delegate.envelope"
+      ]
+    },
+    "contextful_core::surface::external::External": {
+      "file": "crates/contextful-core/src/surface/external.rs",
+      "line": 46,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "name"
+        },
+        {
+          "name": "label"
+        },
+        {
+          "name": "inputs"
+        },
+        {
+          "name": "outputs"
+        }
+      ],
+      "clauses": [
+        "surface.visualize.external-shape"
       ]
     },
     "contextful_policy::audit::AuditEntry": {
@@ -43967,10 +44020,6 @@
           "StepResultRefused": {
             "clause": "surface.dispatch.step-result",
             "gloss": "A step callback body that is no pointer, object-store key, catalog row id or failure line, or passes the cap."
-          },
-          "StepToolError": {
-            "clause": "surface.dispatch.in-band-tool-error",
-            "gloss": "An in-band tool error on a step driving the engine over the tool protocol."
           },
           "StoreEntryMalformed": {
             "clause": "surface.register-store.malformed-entry",
@@ -60668,7 +60717,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "a_plan_compiles_at_validate_to_a_content_hashed_version_and_no_profile_links_a_script_runtime",
-        "line": 778,
+        "line": 779,
         "verdict": "performed",
         "proved": false
       }
@@ -60718,7 +60767,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch",
-        "line": 738,
+        "line": 739,
         "verdict": "performed",
         "proved": false
       }
@@ -60738,7 +60787,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch",
-        "line": 739,
+        "line": 740,
         "verdict": "performed",
         "proved": false
       }
@@ -61648,7 +61697,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/build.rs",
         "name": "a_cycle_defers_the_producer_while_its_publication_exports",
-        "line": 577,
+        "line": 578,
         "verdict": "performed",
         "proved": false
       }
@@ -62158,7 +62207,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/delegate.rs",
         "name": "a_call_delegate_takes_one_signed_envelope_per_item_and_a_later_fire_sends_nothing",
-        "line": 117,
+        "line": 118,
         "verdict": "performed",
         "proved": false
       }
@@ -62552,7 +62601,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch",
-        "line": 741,
+        "line": 742,
         "verdict": "performed",
         "proved": false
       }
@@ -62782,7 +62831,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "each_declared_output_table_lands_in_its_own_run_and_a_failed_landing_holds_the_owner",
-        "line": 415,
+        "line": 416,
         "verdict": "performed",
         "proved": false
       }
@@ -63938,7 +63987,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/build.rs",
         "name": "apply_leaves_an_owner_a_live_attempt_holds_and_names_the_verb",
-        "line": 554,
+        "line": 555,
         "verdict": "performed",
         "proved": false
       }
@@ -63948,7 +63997,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/build.rs",
         "name": "applying_a_changed_declaration_retires_a_plan_phase_interruption",
-        "line": 534,
+        "line": 535,
         "verdict": "performed",
         "proved": false
       }
@@ -64218,7 +64267,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/build.rs",
         "name": "a_rewound_plan_phase_interruption_leaves_the_job_fireable_after_a_declaration_change",
-        "line": 500,
+        "line": 501,
         "verdict": "performed",
         "proved": false
       }
@@ -64248,7 +64297,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/build.rs",
         "name": "a_rewound_plan_phase_interruption_leaves_the_job_fireable_after_a_declaration_change",
-        "line": 501,
+        "line": 502,
         "verdict": "performed",
         "proved": false
       }
@@ -70114,7 +70163,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/delegate.rs",
         "name": "a_response_after_the_timeout_closes_the_attempt_transient_and_lands_nothing",
-        "line": 252,
+        "line": 253,
         "verdict": "performed",
         "proved": false
       }
@@ -70154,7 +70203,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/delegate.rs",
         "name": "a_defer_answer_parks_the_item_without_spending_an_attempt_until_its_retry_at",
-        "line": 158,
+        "line": 159,
         "verdict": "performed",
         "proved": false
       }
@@ -70214,7 +70263,17 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/delegate.rs",
         "name": "a_non_200_answer_spends_one_attempt_and_a_permanent_answer_writes_a_terminal_receipt",
-        "line": 202,
+        "line": 203,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "surface.delegate.version": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/delegate.rs",
+        "name": "a_call_delegate_takes_one_signed_envelope_per_item_and_a_later_fire_sends_nothing",
+        "line": 114,
         "verdict": "performed",
         "proved": false
       }
@@ -70274,7 +70333,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/build.rs",
         "name": "an_export_waits_for_a_running_unit_writing_its_inputs",
-        "line": 626,
+        "line": 627,
         "verdict": "performed",
         "proved": false
       }
@@ -70284,7 +70343,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/build.rs",
         "name": "a_cycle_defers_a_unit_whose_publication_claim_fails",
-        "line": 692,
+        "line": 693,
         "verdict": "performed",
         "proved": false
       }
@@ -70314,7 +70373,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables",
-        "line": 565,
+        "line": 566,
         "verdict": "performed",
         "proved": false
       }
@@ -70324,7 +70383,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart",
-        "line": 524,
+        "line": 525,
         "verdict": "performed",
         "proved": false
       }
@@ -70334,7 +70393,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "an_issuer_key_mints_each_store_driven_fire_a_credential_over_its_own_tables",
-        "line": 566,
+        "line": 567,
         "verdict": "performed",
         "proved": false
       }
@@ -70344,7 +70403,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "a_serve_scheduling_a_store_driven_job_without_key_or_credential_refuses_at_start",
-        "line": 623,
+        "line": 624,
         "verdict": "performed",
         "proved": false
       }
@@ -70354,7 +70413,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "a_minted_fire_admits_under_the_minting_pin_and_audience_whatever_serve_inherited",
-        "line": 601,
+        "line": 602,
         "verdict": "performed",
         "proved": false
       }
@@ -70639,12 +70698,30 @@
         "proved": false
       }
     ],
+    "surface.fire.executable-pin": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/build.rs",
+        "name": "a_rewound_plan_phase_interruption_leaves_the_job_fireable_after_a_declaration_change",
+        "line": 498,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/job.rs",
+        "name": "each_declared_output_table_lands_in_its_own_run_and_a_failed_landing_holds_the_owner",
+        "line": 413,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "surface.fire.job-identity": [
       {
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "scheduled_jobs_validate_registration_schedule_and_dispatch_identity_before_import",
-        "line": 636,
+        "line": 637,
         "verdict": "performed",
         "proved": false
       }
@@ -70664,7 +70741,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "a_job_only_apply_changes_the_snapshot_and_stock_serve_refuses_its_body",
-        "line": 685,
+        "line": 686,
         "verdict": "performed",
         "proved": false
       }
@@ -70684,7 +70761,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch",
-        "line": 740,
+        "line": 741,
         "verdict": "performed",
         "proved": false
       }
@@ -70694,7 +70771,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart",
-        "line": 523,
+        "line": 524,
         "verdict": "performed",
         "proved": false
       }
@@ -70714,7 +70791,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "scheduled_jobs_resume_paid_calls_after_a_failed_child",
-        "line": 667,
+        "line": 668,
         "verdict": "performed",
         "proved": false
       }
@@ -70754,7 +70831,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/job.rs",
         "name": "a_job_target_naming_nothing_produced_is_refused_at_validation",
-        "line": 498,
+        "line": 499,
         "verdict": "performed",
         "proved": false
       }
@@ -70845,6 +70922,24 @@
         "path": "apps/console/test/learn.test.ts",
         "name": "apps/console/test/learn.test.ts::distillation runs after streaming and lands at most three scoped conclusions",
         "line": 14,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "surface.learn.subject-resolution": [
+      {
+        "kind": "test",
+        "path": "apps/console/test/learn.test.ts",
+        "name": "apps/console/test/learn.test.ts::distillation preserves observed subject and permits zero entries",
+        "line": 38,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "apps/console/test/learn.test.ts",
+        "name": "apps/console/test/learn.test.ts::recall resolves preserved subjects through entity matching",
+        "line": 54,
         "verdict": "performed",
         "proved": false
       }
@@ -71114,7 +71209,17 @@
         "kind": "test",
         "path": "apps/console/test/publish.test.ts",
         "name": "apps/console/test/publish.test.ts::a scheduled service post refuses an audience and names its destination",
-        "line": 14,
+        "line": 15,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "surface.publish-answer.one-operator-principal": [
+      {
+        "kind": "test",
+        "path": "apps/console/test/publish.test.ts",
+        "name": "apps/console/test/publish.test.ts::a normal answer is delivered only to its asking operator",
+        "line": 5,
         "verdict": "performed",
         "proved": false
       }
@@ -71124,7 +71229,7 @@
         "kind": "test",
         "path": "apps/console/test/publish.test.ts",
         "name": "apps/console/test/publish.test.ts::an access explanation cannot offer a share control",
-        "line": 9,
+        "line": 10,
         "verdict": "performed",
         "proved": false
       }

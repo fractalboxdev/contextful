@@ -45,7 +45,6 @@ JobTargetUnbound              = { clause = "surface.fire.target-unbound", gloss 
 CycleControlSourceUnresolved  = { clause = "surface.fire.cycle-control-source", gloss = "A control source that does not resolve under one-shot evaluation." }
 DispatchUnitNotAHead          = { clause = "surface.dispatch.not-a-head", gloss = "A due id that is a step of a dependent run rather than its head." }
 StepResultRefused             = { clause = "surface.dispatch.step-result", gloss = "A step callback body that is no pointer, object-store key, catalog row id or failure line, or passes the cap." }
-StepToolError                 = { clause = "surface.dispatch.in-band-tool-error", gloss = "An in-band tool error on a step driving the engine over the tool protocol." }
 DispatchCallbackRejected      = { clause = "surface.dispatch.callback-rejected", gloss = "A heartbeat or callback carrying a bad signature, a superseded attempt, a skewed timestamp or a closed step." }
 DispatchSubmitRejected        = { clause = "surface.dispatch.submit-signed", gloss = "A worker submission unsigned, skewed, or naming a callback off the worker's relay." }
 FireCredentialMissing         = { clause = "surface.dispatch.fire-credential-missing", gloss = "A serve scheduling a store-driven or synthesize job with neither an issuer key nor an inherited credential." }

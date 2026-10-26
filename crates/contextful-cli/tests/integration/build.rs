@@ -495,6 +495,7 @@ fn retirement_and_completions(p: &Path) -> (Value, usize) {
     (retired, completed)
 }
 
+// spec: surface.fire.executable-pin@462b2270
 /// `contextful run rewind` retires a pending execution pinned to a superseded plan reference, recording the reason
 /// and that reference, so the job's next fire plans fresh and completes and its publication exports again.
 // spec: run.own.rewind@7fbd9152
