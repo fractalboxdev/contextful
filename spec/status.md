@@ -365,12 +365,12 @@ Unscheduled operations: 13.
 | `authority.attenuate.bearer` | `crates/contextful-policy/tests/integration/attenuate.rs::a_derived_hop_proves_its_chain_and_attests_no_new_holder` | performed |
 | `authority.attenuate.expiry-extended` | `crates/contextful-core/tests/integration/attenuate.rs::expiry_extended` | performed |
 | `authority.attenuate.horizon-widens` | `crates/contextful-core/tests/integration/attenuate.rs::a_later_horizon_widens_and_an_absent_one_inherits` | performed |
-| `authority.attenuate.narrowing` | `crates/contextful-core/tests/integration/attenuate.rs::narrowing` | performed |
+| `authority.attenuate.narrowing` | `crates/contextful-core/tests/integration/attenuate.rs::narrowing`, `formal/reference/Reference/Narrowing.lean::narrowing_every_dimension_every_hop` | performed |
 | `authority.attenuate.offline` | `crates/contextful-policy/tests/integration/attenuate.rs::a_holder_derives_a_child_offline_and_the_parent_stays_intact` | performed |
 | `authority.attenuate.per-sub-agent` | `crates/contextful-policy/tests/integration/attenuate.rs::each_sub_agent_child_binds_that_sub_agents_own_key` | performed |
 | `authority.attenuate.tenant-dropped` | `crates/contextful-core/tests/integration/attenuate.rs::tenant_dropped` | performed |
 | `authority.attenuate.truncation` | `crates/contextful-policy/tests/integration/attenuate.rs::a_chain_truncated_to_a_broader_prefix_verifies_as_nothing` | performed |
-| `authority.attenuate.widens` | `crates/contextful-core/tests/integration/attenuate.rs::widens` | performed |
+| `authority.attenuate.widens` | `crates/contextful-core/tests/integration/attenuate.rs::widens`, `formal/reference/Reference/Narrowing.lean::narrow_widens_nearest` | performed |
 | `authority.bound-redistribution.before-diff` | `crates/contextful-sync/tests/integration/redistribute.rs::a_withheld_table_ships_no_object_and_no_manifest_name` | performed |
 | `authority.bound-redistribution.edge-filter` | `crates/contextful-sync/tests/integration/edge.rs::a_pull_through_the_edge_lands_only_granted_tables` | performed |
 | `authority.bound-redistribution.edge-whole-table` | `crates/contextful-sync/tests/integration/edge.rs::only_a_whole_table_read_grant_opens_a_table_at_the_edge` | performed |
