@@ -1,0 +1,16 @@
+// Copy to wrangler.jsonc and fill the placeholders; the filled file stays untracked.
+// BASIN_SQL_TOKEN is a secret: `wrangler secret put BASIN_SQL_TOKEN`.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "iceberg-export-probe",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-14",
+  "workers_dev": false,
+  "vars": {
+    "ACCOUNT_ID": "<account id>",
+    "BUCKET": "<catalog bucket>",
+    // hex SHA-256 of each audience credential → its namespace
+    "AUDIENCES": "{\"<sha256 of credential>\": \"audience_a\"}"
+  },
+  "secrets": { "required": ["BASIN_SQL_TOKEN"] }
+}
