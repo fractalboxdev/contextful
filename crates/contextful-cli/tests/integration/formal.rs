@@ -1255,6 +1255,38 @@ fn the_protocol_invariants_pass_the_same_audit() {
     }
 }
 
+/// Each theorem the reference package proves over a decision it executes is a required constant in its inventory, audited by {{assurance.audit-assumptions.check-command}} and bound to the differential test running that decision.
+// spec: assurance.differential-test.reference-theorems@1d16888f
+#[test]
+fn the_reference_theorems_pass_the_audit_bound_to_the_differential() {
+    let t = lean_or_skip!();
+    let p = Pkg::new(&t);
+    // The reference package elaborates the policy package's sources beside it.
+    tree_package("formal", &p);
+    let root = tree_package("formal/reference", &p);
+    if std::fs::read_to_string(root.join("lean-toolchain")).unwrap().trim() != t {
+        eprintln!("skipped: the pinned toolchain is not the installed default");
+        return;
+    }
+    let out = passed(&p.command().args(["formal", "check", "--root"]).arg(&root).output().unwrap());
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(root.join(".lake/contextful-report.json")).unwrap()).unwrap();
+    let inv = repo_inventory("formal/reference");
+    let rows = inv["constant"].as_table().unwrap();
+    for name in ["Reference.narrow_ok_iff_includedIn", "Reference.narrow_widens_nearest"] {
+        assert!(out.contains(name), "{out}");
+        let row = report["constants"].as_array().unwrap().iter().find(|r| r["name"] == name).unwrap().clone();
+        assert_eq!(row["verdict"], "ok", "{row}");
+    }
+    for (name, row) in rows {
+        let binding = row["binding"].as_str().unwrap();
+        assert!(
+            binding.contains("test crates/contextful-cli/tests/integration/differential.rs::"),
+            "{name} is bound to no differential test: {binding}"
+        );
+    }
+}
+
 /// The gate evaluates every invariant on each state reached by every step sequence over three nodes and four lease generations; a breaking state raises `ProtocolInvariantViolated`, printing the shortest sequence reaching it.
 // spec: assurance.model.protocol-check@2673f4f2
 #[test]

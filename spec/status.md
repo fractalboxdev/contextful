@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 347 | 73 | 25 | 3 | 306 | 0 | 306 |
+| `assurance` | 3 | 18 | 348 | 73 | 25 | 3 | 307 | 0 | 306 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 312 | 0 | 312 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 173 | 0 | 173 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 88 | 0 | 88 |
-| **total** | 26 | 177 | 2923 | 711 | 235 | 82 | 2597 | 0 | |
+| **total** | 26 | 177 | 2924 | 711 | 235 | 82 | 2598 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
-| 1 — The authority core | 14 | 248 | 247 | passing | closed |
+| 1 — The authority core | 14 | 249 | 248 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 318 | 307 | passing | closed |
 | 4 — Ingest | 25 | 651 | 551 | passing | closed |
@@ -176,6 +176,7 @@ Unscheduled operations: 13.
 | `assurance.differential-test.protocol-drift` | `spec/pins.toml` | performed |
 | `assurance.differential-test.protocol-harness` | `spec/pins.toml` | performed |
 | `assurance.differential-test.reference-model` | `crates/contextful-cli/tests/integration/differential.rs::the_reference_binary_reads_one_case_and_prints_one_decision` | performed |
+| `assurance.differential-test.reference-theorems` | `crates/contextful-cli/tests/integration/formal.rs::the_reference_theorems_pass_the_audit_bound_to_the_differential` | performed |
 | `assurance.differential-test.run-budget` | `crates/contextful-cli/tests/integration/differential.rs::a_run_past_its_budget_stops` | performed |
 | `assurance.differential-test.seed` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_seed_reproduces_the_case_sequence` | performed |
 | `assurance.evaluate.absent-truth` | `tools/eval/tests/integration/metrics.rs::a_case_with_no_truth_is_nan_and_leaves_the_aggregate` | performed |
