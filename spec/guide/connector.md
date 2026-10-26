@@ -4,120 +4,112 @@ contract: connector
 
 # Connectors and credentials
 
-## What it is for
+## The problem a connector solves
 
-A **vendor** is an external service provider, such as GitHub. A **connector** reads its
-data and tracks where reads resume. The **host** runs connectors, checks destinations,
-reserves quota, and attaches credentials
-({{connector.export.store-blindness}}, {{connector.attach.mediation-covers-every-egress}}).
+A **vendor** is an outside service, such as a reporting API. Reading its data needs code
+that knows the vendor's pages and cursors, and a credential the vendor accepts. That code
+runs inside the deployment, so it gets no store handle and never sees a credential value.
+A **connector** holds the vendor knowledge; the **host** process runs the connector,
+checks every destination, reserves quota and attaches credentials.
 
-## How it works
+The example is `vendor-metrics`, a connector reading reports from `api.vendor.example`
+with a bearer token named `vendor-token`.
 
-A **sandboxed component** is a **WebAssembly (Wasm) component** implementing the
-host-owned connector interface; compiled-in connectors implement the same interface
-({{connector.export.authoring-path}}). The component
-runs under memory limits and per-call deadlines ({{connector.package.linear-memory}},
-{{connector.package.call-deadline}}) and reaches the network only through the host.
-Its only imports are outgoing HTTP, logging and a wall clock
-({{connector.import.three-imports}}); connectors receive no store handle
-({{connector.export.store-blindness}}). Data batches cross the interface as **Arrow IPC**,
-a binary format for columnar data ({{connector.export.batch-encoding}}).
+## Loading the connector
 
-Connectors resolve from four distribution forms ({{connector.package.distribution-form}}). A
-remote artifact carries a content pin ({{connector.package.remote-unpinned}}), the host
-re-hashes the bytes ({{connector.package.digest-mismatch}}), reuses compatible host output ({{connector.package.artifact-cache}}), and runs retain
-admitted builds ({{run.own.admission-pin}}).
-HTTPS and OCI downloads stay within the reference's host and port
-({{connector.package.remote-transport}}).
-An OCI reference selects one component layer ({{connector.package.oci-component-layer}}),
-checks its descriptor ({{connector.package.oci-layer-integrity}}), and optionally uses a
-project-bound registry bearer ({{connector.package.oci-registry-bearer}}).
-Admitted bytes enter a digest-keyed project cache ({{connector.package.remote-cache}});
-damaged cached bytes refuse ({{connector.package.remote-cache-corrupt}}).
+A connector is either a sandboxed WebAssembly component or a native source compiled into
+the binary, and dispatch treats both alike ({{connector.export.authoring-path}}).
+`vendor-metrics` ships as a remote artifact, one of four distribution forms
+({{connector.package.distribution-form}}).
 
-A manifest declares keys, an artifact pin and one build input
-({{connector.package.manifest-keys}}, {{connector.package.manifest-pin}},
-{{connector.package.build-source}}). `connector pin` writes the pin from the fixed platform
-({{connector.package.pin-verb}}); `--local` writes nothing ({{connector.package.host-built-pin}}),
-and `--verify` reproduces ({{connector.package.path-remap}}).
+The host re-hashes the downloaded bytes and refuses a mismatch before the engine sees
+them ({{connector.package.digest-mismatch}}). The component then runs under a memory
+limit and a per-call deadline ({{connector.package.call-deadline}}).
 
-The manifest declares hosts and clock access; the host grants access at load ({{connector.declare-capability.declared-grant}});
-code reaching past it fails to load ({{connector.declare-capability.undeclared-access}}). An
-optional scope probe checks the bound credential's grant before the first read
-({{connector.declare-capability.scope-probe}}).
+Its manifest lists the hosts it reaches, and the host decides that grant at load
+({{connector.declare-capability.declared-grant}}). Code reaching past the list fails to
+load ({{connector.declare-capability.undeclared-access}}). When a new version lists
+another host, the reload compares the two manifests: a candidate host succeeds only
+when an admitted host already covers it ({{connector.widen.host-inclusion}}).
 
-A reload compares the candidate's hosts with the admitted manifest's
-({{connector.widen.host-inclusion}}). A host witness is a request both matchers replay
-({{connector.widen.host-witness}}).
+## What crosses the interface
 
-Every outbound request uses the host's mediated client
-({{connector.attach.mediation-covers-every-egress}}); an exec child alone holds its credential
-({{connector.attach.exec-environment}}). Each hop passes the allowlist and
-one pre-send hook ({{connector.meter.pre-send-hook}}) before host resolution
-({{connector.attach.resolve-half}}). The transport connects to the vetted address
-({{connector.attach.resolve-once}}), refuses internal ranges
-({{connector.attach.private-address}}), and attaches credentials only to the admitted
-destination ({{connector.attach.attach-block}}). Redirects stay on the configured origin
+The component imports outgoing HTTP, logging and a wall clock, and nothing else
+({{connector.import.three-imports}}). It receives credentials by reference, a position
+and its run id, but no store handle ({{connector.export.store-blindness}}). Batches cross
+the interface as Arrow IPC, a binary columnar format ({{connector.export.batch-encoding}}).
+
+## One request, end to end
+
+`vendor-metrics` asks for a report page. Every outbound request goes through the host's
+one mediated client ({{connector.attach.mediation-covers-every-egress}}). The host
+resolves the host name once and connects to the address it vetted
+({{connector.attach.resolve-once}}). A name resolving to a private or metadata address
+fails ({{connector.attach.private-address}}).
+
+The credential binding allows one exact host, `api.vendor.example`
+({{connector.attach.bound-host}}). An `[attach]` block maps the `Authorization` header to
+the template `Bearer ${secret://vendor-token}` ({{connector.reference.value-template}}).
+The host fills that template only on the admitted request ({{connector.attach.attach-block}}).
+
+A redirect keeps the credential only at the configured host and port
 ({{connector.attach.redirect-pinning}}).
 
-Credentials use `secret://<name>` ({{connector.reference.credential-plane}}). The provider
-chain answers each name once ({{connector.resolve.first-hit-wins}}) and rejects shadowing
-({{connector.resolve.shadowed-name}}). Values resolve per read
-({{connector.resolve.hydration-is-just-in-time}}); rotation preserves names
-({{connector.rotate.turnover-preserves-the-name}}) and reaches runs within
-{{connector.resolve.cache-ttl}}. Inventory follows configured bindings
-({{connector.record.inventory}}), optional operator descriptions
-({{connector.record.operator-record}}, {{connector.record.record-table}}), and provider custody
-({{connector.record.provider-custody}}). It reads metadata without secret values
-({{connector.record.observe-port}}), separates assertions from observations
-({{connector.record.observation-provenance}}), reports unknown expiry
-({{connector.record.expiry-unknown}}), and attributes runtime resolution
-({{connector.record.provider-attribution}}).
+## Where the credential comes from
 
-Model calls use one configured endpoint ({{connector.infer.model-endpoint}}).
-Ingested values travel fenced; the fence lowers injection odds and bounds nothing
-({{connector.infer.fence-is-not-a-boundary}}), and output inherits its least-trusted input's
-label ({{connector.infer.output-taint}}).
+A `secret://` name is a reference; a provider chain of adapters answers it. The first
+adapter answering a name serves it for the run ({{connector.resolve.first-hit-wins}}). A
+second adapter that also holds the name fails hydration, so no adapter shadows another
+silently ({{connector.resolve.shadowed-name}}).
 
-## Worked example
+The host hydrates the value per request, and no record or log line holds it
+({{connector.resolve.hydration-is-just-in-time}}). A cached value lives at most 300 s
+({{connector.resolve.cache-ttl}}).
 
-The `vendor-metrics` component reads reports with a bearer token named `vendor-token`, which
-the deployment lists as a leased scope ({{connector.lease.scope-declaration}}). Its
-credential binding allows one exact host, `api.vendor.example`
-({{connector.attach.bound-host}}).
+`vendor-token` is declared as a lease, so the lease adapter answers it first
+({{connector.lease.head-of-chain}}). The resolver keeps a leased credential in memory
+only, and evicts it at expiry ({{connector.lease.lease}}).
 
-The host re-hashes the artifact, checks the allowlist
-({{connector.declare-capability.allowlist-shape}}) and quota binding
-({{connector.meter.limiter-binding}}), and opens the session. The first read gets a permit,
-resolves a public address, and hydrates the `Authorization` template from a lease
-({{connector.lease.head-of-chain}}, {{connector.lease.lease}}). The vendor's quota headers
-ride the next usage report ({{connector.meter.report}}).
+Rotation replaces the value and keeps the logical name, so no declaration or pinned
+artifact changes ({{connector.rotate.turnover-preserves-the-name}}). An operator audits
+names with `contextful secrets list`, which shows configured bindings and reads no value
+({{connector.record.inventory}}).
 
-Midway, the limiter denies a permit. The guest sees an ordinary throttle response
-({{connector.meter.synthesized-throttle}}), which the run retries. Later
-the lease lapses with the mint endpoint down: the run sends the vendor nothing
-({{connector.lease.vendor-requests-on-failure}}), and the transient failure goes back to the
-step's schedule.
+## When quota or the lease fails
 
-A Drive pipeline selecting two folders in one Shared Drive declares its roots together
-({{connector.source.drive-root-set}}). It checks both before listing
-({{connector.source.drive-root-validation}}), walks their trees within that boundary
-({{connector.source.drive-root-walk}}), and resolves a file found under both to one row
-({{connector.source.drive-overlap}}). The selection lives in the position
-({{connector.source.drive-selection-position}}). A metadata-only pull records the exact
-byte digest and capture outcome ({{connector.source.drive-metadata-only}},
-{{connector.source.drive-capture-record}}), checking the file version after download
-({{connector.source.drive-version-consistency}}); a complete changed selection records removals
-({{connector.source.drive-selection-removals}}), while a capped listing refuses
-({{connector.source.drive-list-bound}}).
+The operator binds the vendor's quota name to a limiter
+({{connector.meter.limiter-binding}}). Midway through the pull the limiter denies a
+permit. The component sees an ordinary `429` with a retry delay, and the run's retry
+schedule handles it ({{connector.meter.synthesized-throttle}}).
 
-## Where to look
+Later the lease expires while its mint endpoint is down. The run then sends 0 requests
+to the vendor ({{connector.lease.vendor-requests-on-failure}}), and the transient failure
+returns to the step's schedule.
 
-| Question | Operation |
-| --- | --- |
-| What may a connector reach? | `connector.declare-capability` |
-| Does a manifest change need review? | `connector.widen` |
-| Why did a request never leave? | `connector.attach`, `connector.meter` |
-| Which adapter answered a name? | `connector.resolve`, `connector.record` |
-| How does a pin fail? | `connector.package` |
-| How does a built-in source behave? | `connector.source` |
+## Model calls
+
+Every model call resolves to one operator-configured endpoint
+({{connector.infer.model-endpoint}}). Ingested values travel inside a data fence, which
+lowers the success rate of injected instructions but bounds nothing
+({{connector.infer.fence-is-not-a-boundary}}). Model output carries the least-trusted
+label among its inputs ({{connector.infer.output-taint}}).
+
+## Built-in sources and Drive
+
+The engine compiles in sources such as a paginated HTTP walk; each walk declares exactly
+one pagination shape ({{connector.source.pagination}}).
+
+The Drive sources read Google Drive under an end user's grant. `gdrive-picks` serves
+files a person selects through Picker ({{connector.drive-picks.picker-source}}), and
+`gdrive-sheet` captures a Sheet as rows ({{connector.drive-sheet.source-name}}).
+
+A selection keeps a change token, committed with the first complete listing
+({{connector.drive-changes.initial-token}}). If Drive rejects the token, the source lists
+the selection again ({{connector.drive-changes.invalid-token}}).
+
+Under domain-wide delegation, each request names one admitted Workspace user as its
+subject ({{connector.drive-domain-auth.impersonated-principal}}). A subject outside the
+declared domain fails before any token mint ({{connector.drive-domain-auth.domain-boundary}}).
+
+A connection binds one secret name to its tenant and principal, and a run hydrates only
+that name ({{connector.principal-secrets.name-binding}}).

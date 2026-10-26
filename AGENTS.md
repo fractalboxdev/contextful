@@ -173,8 +173,11 @@ target ledger and the release tag. This file names the commands and points there
 
 Before writing or revising guides and technical explanations, read the
 [technical writing brief](./references/technical-writing.md). Its reading examples,
-editorial practices and review questions govern explanatory prose; contract clauses
-retain the grammar under `spec/00-corpus.md`.
+editorial practices and review questions inform explanatory prose; contract clauses
+retain the grammar under `spec/00-corpus.md`. Lint enforces the checkable subset in
+guides: operation reach (`corpus.guide.reach`), pointer density
+(`corpus.guide.pointer-density`), restated bounds (`corpus.guide.bound`) and first use
+of a registered term (`SpecTermFirstUse`).
 
 ### Domain neutrality
 

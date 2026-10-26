@@ -321,9 +321,15 @@ Per-provider deployment target files, the roles each shape fills, and the page r
 
 A non-normative teaching page per contract, and what keeps it from becoming a second home for a rule.
 
-- `file` — Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose of at most 700 words outside diagrams.
+- `file` — Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose outside diagrams of at most 400 words plus 20 words per operation its contract's fragment registers.
   *A-corpus*
-- `non-normative` — A guide holds no clause item and names no registered error; it reaches a rule by `{{id}}`. No contract file links a guide.
+- `non-normative` — A guide holds no clause item and names no registered error. It reaches a rule by `{{<clause id>}}` and an operation by `{{<contract>.<operation>}}`, which resolves against that contract's fragment. No contract file links a guide.
   *because a rule restated in teaching prose is a second home that drifts from the first*
+- `reach` — Each operation a contract's fragment registers appears in the contract's guide as an operation pointer or a pointer to one of its clauses; an operation the guide misses raises `SpecGuideReach`, naming it.
+  *because a guide that skips an operation leaves its reader no route from the flow to that operation's rules*
+- `pointer-density` — A guide paragraph, list item or table row holds at most 3 pointers to clauses and at least 8 words of prose per clause pointer; a denser one raises `SpecGuidePointerDensity`.
+  *because a paragraph of pointers is an index without the reasoning that connects its entries, and the card already is the index*
+- `bound` — A guide sentence holding a number equal to a bound value in its contract's fragment also holds the pointer to a clause owning a bound of that value; a sentence without one raises `SpecGuideBound`.
+  *because a restated number drifts when its bound changes, and the pointer names the one place to change it*
 - `bad-guide` — A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.
   *P8*

@@ -4,12 +4,12 @@ contract: run
 
 # Runs, pipelines and derive
 
-## What it is for
+## The problem a run solves
 
-A pipeline declares a source and tables. A run pins its plan, records effects for replay,
-and commits rows with their position ({{run.advance.commit-with-rows}}).
-
-## How it works
+A pipeline copies records from a source, such as a vendor API, into store tables. When
+a process dies halfway through a pull, the restart has to land each row once, keep the
+source position in step with those rows, and send no second paid request. A **run** is
+one execution of a pipeline over one scope.
 
 ```mermaid
 flowchart LR
@@ -28,89 +28,100 @@ flowchart LR
   R -->|"status"| P
 ```
 
-A pipeline specification ({{run.declare.pipeline-spec}}) hashes by content,
-ignoring no-op edits ({{run.declare.content-hash}}). It compiles into a flat node list ({{run.compile.plan-node}})
-carrying no script: branching is declared, never computed from data
-({{run.compile.control-flow}}), and the plan lowers onto one substrate interface
-({{run.journal.substrate-port}}) a target's orchestrator fills ({{run.orchestrate.role}}).
+## Declaring and compiling a pipeline
 
-The record opens before the first pull ({{run.record.row-at-open}}). An execution owner
-pins the connector and plan ({{run.own.pinned-plan-changed}}) until retired
-({{run.own.rewind}}); host jobs key their own scope ({{run.own.host-scope}}).
+The example pipeline, `record-sync`, declares a source, one table named `records` and
+`incremental = "updated_time"` ({{run.declare.pipeline-spec}}). That field is the
+stream clock: the source reports a cursor that stores the field name beside its value
+({{run.declare.incremental-field}}). An edit that restates a default leaves the
+content hash unchanged ({{run.declare.content-hash}}).
 
-Bodies: {{run.own.body-implementation}}, {{run.own.body-dependencies}}, {{run.own.body-compatibility}}.
-Items follow {{run.items.opt-in}} and {{run.items.identity}}; a delegate's answer records
-once ({{run.items.delegated-item}}).
-Outcomes: {{run.items.completion}}, {{run.items.outcomes}}, {{run.items.outcome-record}};
-admission follows {{run.items.entity-admission}}, {{run.items.overlap}} and {{run.items.fence}}.
-Retries follow {{run.items.retry-budget}} and {{run.items.replay}}.
+The compiler turns the declaration into a plan, a flat node list holding no script
+({{run.compile.plan-node}}). Branches and fan-out are declared nodes, never computed
+from data, so a replay walks the same graph ({{run.compile.control-flow}}).
 
-Each pull records its value once ({{run.journal.step-output}}); outbound requests carry
-idempotency keys ({{run.journal.idempotency-key}}). Journal state persists through file and SQLite
-ports ({{run.journal.storage-ports}},
-{{run.journal.sqlite-stores}}). A batch follows {{run.land.stage-order}}.
-Initialize {{run.journal.execution-recovery}} under {{run.journal.container-profile}}:
+Each deployment supplies a durable orchestrator implementing one execution interface
+({{run.orchestrate.role}}).
 
-```sh
-export CONTEXTFUL_STORAGE_PROFILE=postgres
-export CONTEXTFUL_CATALOG_URL='host=database.example user=contextful dbname=execution sslmode=require'
-export CONTEXTFUL_RECOVERY_ID=deployment-recovery-identity
-contextful storage initialize --project research
-contextful storage check --project research
-```
+## A run that dies and resumes
 
-```toml
-[sync]
-endpoint = "r2://ACCOUNT_ID"
-bucket = "CORPUS_BUCKET"
-pull_before_run = true
-push_after_run = true
-access_key_id = "env://CORPUS_ACCESS_KEY_ID"
-secret_access_key = "env://CORPUS_SECRET_ACCESS_KEY"
-```
+The engine writes the run row before the first pull, so a reader tells a zero-row
+success from no run ({{run.record.row-at-open}}). An **execution
+owner** binds the pending work to its scope, connector build and plan hash
+({{run.own.execution-owner}}), and the owner renews a lease while it runs
+({{run.record.owner-lease}}).
 
-Stop writers, capture {{run.journal.execution-backup}}, restore
-{{run.journal.execution-recovery}}, restart. Replacement uses
-{{run.journal.postgres-stores}}; exports follow {{run.export.remote-state}} and
-{{run.export.writer-fenced}}.
-Cloudflare recovery follows {{run.journal.d1-profile}}, {{run.journal.d1-guard}},
-{{run.journal.d1-backup}} and {{run.export.d1-state}}.
-The stage types its observed batch ({{run.land.observed-schema}}) and keeps nested
-columns or projects them into child rows ({{run.normalize.mode}}). A downgrade
-travels with its table's commit ({{run.record.schema-diff-home}}). The secret guard's
-catalogue and mask-only posture are fixed by {{run.guard-secrets.matchers}} and
-{{run.guard-secrets.mask-only}}. A decode that can die runs in a bounded child
-({{run.land.parse-child}}, {{run.land.parse-deadline}}, {{run.land.parse-memory}}).
+The pull admits rows at or after the stored position, so each poll re-lands the boundary
+instant ({{run.advance.inclusive-boundary}}). `records` declares a key, which makes those
+repeats idempotent; a keyless table accumulates them ({{run.advance.declared-key-required}}).
 
-Failures cross every port as one tagged type ({{run.retry.failure-taxonomy}}). Only the
-transient and rate-limited tags retry ({{run.retry.retryable-classes}}), under the step's
-schedule, the only retry layer ({{run.retry.one-layer}}). A stop is a mark on the
-run row every await observes through one token ({{run.cancel.one-token}}), and landing
-never stops mid-write ({{run.cancel.land-path-uncut}}). An awaiting run
-suspends durably until its single-use token returns ({{run.suspend.awakeable}}).
+The **journal** records each pulled page exactly once, although the request behind it
+runs at least once ({{run.journal.step-output}}). Each outbound request carries an
+idempotency key derived from the journal entry, so a repeated request names itself
+({{run.journal.idempotency-key}}). A value over 1 MiB moves to a content-addressed blob
+({{run.journal.inline-cutoff}}).
 
-A deployment declares its writing site once in `contextful.toml`
-({{run.record.writing-site}}); `--site-id` replaces it for one run
-({{run.record.site-id-unresolved}}).
+Now the process dies after its first page. Startup marks the row `partial_failure`
+because its owner lease has expired ({{run.record.orphan-reap}}). The next fire finds no
+commit marker newer than the cached position, so the pending owner stays
+({{run.own.marker-reconciles}}).
 
-Every run closes on one status ({{run.record.status-set}}); live progress is
-a best-effort projection the runner never reads ({{run.project.best-effort}}).
+The plan hash matches, so the run replays. The journal hands the recorded page to the
+land path byte for byte ({{run.journal.replay-lands}}), and the replay sends no request
+to the vendor ({{connector.meter.replay-reservation}}).
 
-A backfill splits history into leased chunks whose commits are fenced against a stale holder ({{run.backfill.fenced-commit}}); a seed bulk-loads
-consumer-held history below a ceiling through the same land path ({{run.seed.one-land-path}}).
-A model ({{run.model.statement-source}}) builds in staging ({{run.publish.staging}}) over
-committed inputs ({{run.model.build-frontier}}), refuses cycles ({{run.model.model-cycle}}),
-and stales by unread landings ({{run.publish.staleness}}).
-Derive anti-joins output ({{run.select.rows-per-run}}), runs a machine-bound engine
-({{run.bind.command-in-manifest}}), records unit fate and key
-({{run.emit.unit-status}}, {{run.emit.derivation-key}}), and keeps rows until replacement
-({{run.emit.stale-supersedes}}). Passage modality names output ({{run.emit.output-modality}});
-bytes refresh units ({{run.emit.local-content-key}}).
-Chained derives follow
-{{run.select.derive-order}}, {{run.select.derive-failed-parent}} and {{run.select.parent-outcome}}; {{run.select.derive-cycle}}
-prevents circular chains. A conflicting `after` refuses under {{run.select.derive-after-conflict}}.
+The remaining pages pull live. The commit publishes the rows and the new position
+together ({{run.advance.commit-with-rows}}), and `success` releases the owner
+({{run.own.pin-release}}).
 
-A sweep follows {{run.sweep.origins}}, {{run.sweep.frozen-as-of}} and {{run.sweep.simulated-write}}:
+Two changes stop the replay instead. A declaration whose hash changed while the owner
+was pending fails the open, naming both pin sets ({{run.own.pinned-plan-changed}}). A
+renamed `updated_time` fails the open before any request leaves the host
+({{run.advance.field-rename}}).
+
+## Inside one batch
+
+A batch passes a fixed stage order from pull to commit ({{run.land.stage-order}}). The
+secret guard runs before the recorded pull, so a replay never reintroduces a credential
+({{run.guard-secrets.placement}}). The guard masks credential-shaped text and logs a
+count per column; it blocks no run ({{run.guard-secrets.mask-only}}).
+
+Normalize keeps the nesting a sink supports, or flattens it into child tables joined by
+a foreign key ({{run.normalize.mode}}). The declared transform chain then selects,
+renames, casts, extracts and filters columns of the root table ({{run.transform.chain}}).
+A commit makes one table's rows visible in one step, and a crash before it leaves a
+recoverable partial run ({{run.land.commit-visibility}}).
+
+## Failures, stops and waits
+
+One tagged failure type crosses every port, and a caller branches on the tag, never on a
+message ({{run.retry.failure-taxonomy}}). Only `Transient` and `RateLimited` retry, under
+the step's schedule ({{run.retry.retryable-classes}}). In the example, a vendor rate limit retries the page,
+and an expired credential ends the step.
+
+A stop marks the run, and every await observes it through one cancellation token
+({{run.cancel.one-token}}). The stop never cuts landing: received bytes finish landing first ({{run.cancel.land-path-uncut}}).
+
+A run waiting on an outside party suspends on an awakeable, a single-use token the party
+posts back ({{run.suspend.awakeable}}). The caller supplies the deadline, and the
+core reads no wall clock ({{run.suspend.deadline}}).
+
+A store-driven job that declares isolated items gives each item a completion receipt,
+so a later fire skips finished items ({{run.items.completion}}).
+
+## Loading history
+
+A backfill splits history into chunks that workers lease. The
+chunk commits only while that worker's attempt holds the row, so a stale worker's
+files never commit ({{run.backfill.fenced-commit}}).
+
+A seed bulk-loads consumer-held history through the same stage order as live pulls
+({{run.seed.one-land-path}}). A seeded row at or past the declared ceiling fails its
+chunk, which lands nothing ({{run.seed.ceiling-breached}}).
+
+A sweep runs one job per origin across a span, every origin under one frozen
+transaction-time bound ({{run.sweep.frozen-as-of}}). Under carried state, each
+origin also reads the output the preceding origin committed ({{run.sweep.carried-state}}).
 
 ```mermaid
 flowchart LR
@@ -137,46 +148,37 @@ flowchart LR
   ST -->|"fresh: frozen bound"| NS
 ```
 
-## Worked example
+## Models
 
-The `record-sync` pipeline pulls source records incrementally. Its declaration names `updated_time`
-as the stream clock ({{run.declare.incremental-field}}), so the source reports a monotonic
-cursor that stores the field name beside the value ({{run.advance.watermark-shape}}).
+A model builds a table from SQL over store tables ({{run.model.statement-source}}).
+`build` reads each input at its committed frontier and fires no pipeline
+({{run.model.build-frontier}}). A model whose SQL reaches its own id fails validation
+before any read ({{run.model.model-cycle}}).
 
-Without a pending owner, a fire receives a fresh execution id ({{run.own.retirement}}). The pull admits rows at or after the stored position, re-landing
-the boundary instant ({{run.advance.inclusive-boundary}}); `records` declares a
-`primary_key`, so those repeats are idempotent ({{run.advance.declared-key-required}}).
+A build materializes into staging, so a refused build leaves the last published state
+serving readers ({{run.publish.staging}}).
 
-The process dies after its first page.
+## Derive
 
-Startup marks the row `partial_failure`, its lease expired
-({{run.record.orphan-reap}}). The next fire finds no commit marker newer than the cached
-position ({{run.own.marker-reconciles}}), sees the same plan hash, and replays. The
-journal hit hands the recorded page to the land path byte for byte
-({{run.journal.replay-lands}}), and replay spends no vendor request
-({{connector.meter.replay-reservation}}). The remaining pages pull live and commit with the
-position, and `success` releases the owner ({{run.own.pin-release}}).
+Derive runs a task, such as passage extraction, over parent rows.
+Each tick selects the parent rows that hold no settled output under the current
+derivation key ({{run.select.anti-join}}). A binding names a registered engine, and a
+command written into the manifest fails ({{run.bind.command-in-manifest}}).
 
-A rename of `updated_time` between fires refuses the open ({{run.advance.field-rename}});
-restarting is explicit ({{run.advance.turning-incremental-on}}).
+An exec engine runs a pinned binary as an argument array, with no shell and a cleared
+environment ({{run.exec.no-shell}}). A fetch engine follows third-party links, and a host
+written as an address literal fails ({{run.fetch.address-literal}}).
 
-## Where to look
+The caption parser reads SubRip and WebVTT
+through one grammar ({{run.parse-cues.grammar}}). Each unit lands one status: `ok`, `empty`,
+`unavailable` or `failed` ({{run.emit.unit-status}}). The command in {{run.test-engine}}
+runs one engine against one file, outside any pipeline.
 
-For downstream projections, follow {{run.export.group-block}} to producer completion
-({{run.export.group-source}}), delivery barrier ({{run.export.group-delivery}}) and
-receiver activation ({{run.export.group-activation}}). Recovery follows
-{{run.export.group-checkpoint}} or {{run.export.group-rebuild}}; admission
-follows {{run.export.group-storage}}; Cloudflare groups follow
-{{run.export.group-d1-state}}, {{run.export.group-d1-lease}}, {{run.export.group-d1-spill}},
-{{run.export.group-d1-acknowledge}}, {{run.export.group-d1-resume}},
-{{run.export.group-d1-takeover}} and {{run.export.group-d1-recovery}}.
+## Delivering and watching
 
-| Question | Operation |
-| --- | --- |
-| Why did a replay skip the vendor? | `run.journal` |
-| When does the cursor move? | `run.advance` |
-| Why did a step stop retrying? | `run.retry` |
-| What does a stop leave behind? | `run.cancel` |
-| How does a batch reach the store? | `run.land` |
-| How does history load? | `run.backfill`, `run.seed` |
-| How does derive pick and settle units? | `run.select`, `run.emit` |
+An export delivers committed rows to a declared target. Its cursor commits after the
+target acknowledges a batch, so a run ending between the two resends that batch
+({{run.export.at-least-once}}).
+
+A live progress view projects runner events, and execution never reads that view
+({{run.project.best-effort}}).

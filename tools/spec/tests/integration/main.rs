@@ -5,6 +5,7 @@ mod address;
 mod anatomy;
 mod diagram;
 mod grammar;
+mod guide;
 mod lean;
 mod rationale;
 mod readable;
