@@ -27,6 +27,9 @@ def dimensionName : Dimension → String
   | .tables => "tables"
   | .templates => "templates"
   | .aggregate => "aggregate"
+  | .maxRows => "max_rows"
+  | .maxDurationMs => "max_duration_ms"
+  | .maxResponseBytes => "max_response_bytes"
   | .horizon => "horizon"
 
 /-- The first of the shortest lists: a later list replaces the held one only when strictly
@@ -119,7 +122,7 @@ theorem fewest_spec :
 parent grant on the widening dimensions, the decision is `AttenuationWidens` whatever the
 expiry and tenant scope, naming, for the first such child grant, a dimension on which it is
 broader than a nearest parent grant, one it widens on the fewest dimensions. -/
--- spec: authority.attenuate.widens@e63a5c30
+-- spec: authority.attenuate.widens@6643708e
 theorem narrow_widens_nearest :
     ∀ (parent : List Grant) (pe : Nat) (child : List Grant) (ce : Option Nat),
       (∃ c ∈ child, ∀ p ∈ parent, (c.widened p).isEmpty = false) →

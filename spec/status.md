@@ -5,21 +5,21 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 4 | 18 | 343 | 76 | 24 | 4 | 339 | 1 | 0 | 334 |
-| `authority` | 2 | 16 | 290 | 79 | 28 | 8 | 290 | 4 | 0 | 286 |
+| `assurance` | 4 | 18 | 343 | 76 | 24 | 4 | 339 | 1 | 0 | 339 |
+| `authority` | 2 | 16 | 290 | 79 | 28 | 8 | 290 | 4 | 0 | 290 |
 | `connector` | 3 | 19 | 400 | 87 | 23 | 15 | 335 | 2 | 0 | 335 |
 | `corpus` | 1 | 11 | 125 | 50 | 13 | 0 | 125 | 0 | 0 | 125 |
-| `disclosure` | 3 | 17 | 184 | 64 | 14 | 5 | 172 | 0 | 0 | 167 |
-| `read` | 2 | 20 | 302 | 53 | 29 | 16 | 290 | 0 | 0 | 286 |
-| `run` | 3 | 29 | 609 | 128 | 49 | 19 | 590 | 4 | 0 | 590 |
-| `store` | 6 | 20 | 315 | 67 | 23 | 13 | 311 | 13 | 0 | 311 |
-| `surface` | 2 | 22 | 194 | 69 | 24 | 2 | 190 | 0 | 0 | 186 |
-| `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 91 | 0 | 0 | 90 |
-| **total** | 27 | 178 | 2854 | 699 | 235 | 85 | 2733 | 24 | 0 | |
+| `disclosure` | 3 | 17 | 184 | 64 | 14 | 5 | 172 | 0 | 0 | 172 |
+| `read` | 2 | 20 | 302 | 53 | 29 | 16 | 291 | 0 | 0 | 291 |
+| `run` | 3 | 29 | 609 | 128 | 49 | 19 | 591 | 4 | 0 | 591 |
+| `store` | 6 | 20 | 316 | 67 | 23 | 13 | 313 | 13 | 0 | 313 |
+| `surface` | 2 | 22 | 194 | 69 | 24 | 2 | 191 | 0 | 0 | 191 |
+| `topology` | 1 | 6 | 92 | 26 | 8 | 3 | 91 | 0 | 0 | 91 |
+| **total** | 27 | 178 | 2855 | 699 | 235 | 85 | 2738 | 24 | 0 | |
 
 Decision records: 18.
 
-Clauses restating a code type: 45.
+Clauses restating a code type: 46.
 
 ## Milestones
 
@@ -31,13 +31,13 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 260 | 260 | passing | closed |
 | 2 — The store | 9 | 183 | 180 | passing | closed |
 | 3 — The run path | 12 | 317 | 312 | passing | closed |
-| 4 — Ingest | 25 | 624 | 580 | passing | closed |
+| 4 — Ingest | 25 | 624 | 581 | passing | closed |
 | 5 — The read face under enforcement | 17 | 301 | 301 | passing | closed |
-| 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
-| 7 — Memory | 6 | 86 | 85 | passing | closed |
+| 6 — Sync and replicas | 9 | 119 | 119 | passing | closed |
+| 7 — Memory | 6 | 86 | 86 | passing | closed |
 | 8 — Accountability | 5 | 93 | 93 | passing | closed |
 | 9 — Visibility | 6 | 49 | 49 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 119 | 117 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 119 | 118 | passing | closed |
 | 11 — The derive tier | 7 | 97 | 97 | passing | closed |
 | 12 — The operator console | 12 | 64 | 64 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |

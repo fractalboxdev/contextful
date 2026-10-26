@@ -13,11 +13,11 @@ pub enum VisibilityError {
     BudgetMalformed { table: String, text: String },
     /// A table declared a level its source family does not permit.
     /// (`disclosure.declare-fidelity.family-bound`)
-    #[error("VisibilityFamilyBound: table `{table}`: family `{family}` does not permit fidelity `{fidelity}`")]
-    FamilyBound { table: String, family: &'static str, fidelity: &'static str },
+    #[error("VisibilityFamilyBound: table `{table}`: family `{}` does not permit fidelity `{}`; it permits {}", family.as_str(), fidelity.as_str(), family.permitted())]
+    FamilyBound { table: String, family: crate::disclosure::declare::Family, fidelity: crate::disclosure::declare::Fidelity },
     /// A mapping landed a table without naming its family.
     /// (`disclosure.declare-fidelity.family-undeclared`)
-    #[error("VisibilityFamilyUndeclared: table `{table}` names no family")]
+    #[error("VisibilityFamilyUndeclared: table `{table}` names no family; declare one of {}", crate::disclosure::declare::Family::names())]
     FamilyUndeclared { table: String },
     /// A sweep run that missed a governed resource advanced the watermark. (`disclosure.sweep.coverage-watermark`)
     #[error("VisibilityWatermarkUncovered: source `{origin}`: the run did not read {missed} governed resource(s), first `{first}`; watermark_at stays where it stood")]

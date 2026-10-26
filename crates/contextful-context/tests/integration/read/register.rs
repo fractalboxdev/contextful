@@ -600,7 +600,8 @@ fn an_availability_bound_narrows_the_tenant_restricted_rows() {
 // spec: read.register.reserved-relation@b474b47e
 #[test]
 fn the_run_record_and_the_access_tables_register_as_ordinary_relations() {
-    use contextful_context::visibility::{sweep_grants, Landing};
+    use contextful_context::visibility::Landing;
+    use crate::support::sweep_run;
     use contextful_core::disclosure::declare::Binding;
     use contextful_core::disclosure::sweep::{GrantLine, SweepBlock, SweepKind};
     use contextful_core::run::record::RunRow;
@@ -621,7 +622,7 @@ fn the_run_record_and_the_access_tables_register_as_ordinary_relations() {
     let block = SweepBlock::parse_manifest("[[acl_sweep]]\nsource = \"wiki\"\nenumerate = \"pages\"\nfull = { every = \"1h\" }\nincremental = { every = \"5m\" }\n").unwrap().remove(0);
     let grant = GrantLine { resource_id: "p1".into(), principal: "dana".into(), principal_kind: "user".into(), level: "viewer".into() };
     let landing = Landing { node, site_id: "site-a".into() };
-    sweep_grants(&r.store, &landing, &block, &[Binding::of(&pages).unwrap().unwrap()], SweepKind::Full, vec![grant], at("2030-01-10T00:10:00Z"), at("2030-01-10T00:10:01Z")).unwrap();
+    sweep_run(&r.store, &landing, &block, &[Binding::of(&pages).unwrap().unwrap()], SweepKind::Full, vec![grant], None, at("2030-01-10T00:10:00Z"), at("2030-01-10T00:10:01Z")).unwrap();
 
     // Both namespaces list beside every other table the store holds.
     let tables = r.face.tables().unwrap();

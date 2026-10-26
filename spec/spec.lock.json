@@ -5143,10 +5143,21 @@
       "operation": "lease",
       "subject": "renewal",
       "kind": "limit",
-      "statement": "A holder renews every 200 s by `If-Match` replace on the ETag it holds.",
+      "statement": "The process holding a compaction lease renews it every 200 s by `If-Match` replace on its ETag; `sync compact` renews while it pulls, folds and pushes.",
       "why": "",
       "file": "spec/10-store.md",
       "line": 692
+    },
+    {
+      "id": "store.lease.operator-renew",
+      "contract": "store",
+      "operation": "lease",
+      "subject": "operator-renew",
+      "kind": "behavior",
+      "statement": "`sync lease renew <table>` renews the compaction lease this node holds, for `sync compact --held`.",
+      "why": "",
+      "file": "spec/10-store.md",
+      "line": 693
     },
     {
       "id": "store.lease.clock-skew",
@@ -5157,7 +5168,7 @@
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
       "why": "because correctness rests on the commit fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
-      "line": 693
+      "line": 694
     },
     {
       "id": "store.lease.held",
@@ -5168,7 +5179,7 @@
       "statement": "If a run finds an unexpired lease, the engine raises `LeaseHeld`, names the holder and expiry, and skips the run. The engine retries the run at the next reconciliation tick.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 695
+      "line": 696
     },
     {
       "id": "store.lease.stale-fence",
@@ -5179,7 +5190,7 @@
       "statement": "If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher commit fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 697
+      "line": 698
     },
     {
       "id": "store.lease.not-held",
@@ -5190,7 +5201,7 @@
       "statement": "Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 699
+      "line": 700
     },
     {
       "id": "store.lease.cursor-kind",
@@ -5201,7 +5212,7 @@
       "statement": "A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/10-store.md",
-      "line": 701
+      "line": 702
     },
     {
       "id": "store.lease.local-node",
@@ -5212,7 +5223,7 @@
       "statement": "A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 703
+      "line": 704
     },
     {
       "id": "store.lease.acquire",
@@ -5223,7 +5234,7 @@
       "statement": "Acquisition creates the lease object under `If-None-Match` or replaces an expired or released object under `If-Match` on its ETag. The acquired commit fence is one above the object's commit fence.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 705
+      "line": 706
     },
     {
       "id": "store.lease.pointer-fence",
@@ -5234,7 +5245,7 @@
       "statement": "Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 707
+      "line": 708
     },
     {
       "id": "store.lease.network-volume",
@@ -5245,7 +5256,7 @@
       "statement": "A compaction lease on a bucket resolving `single-writer` under {{store.probe.network-volume}} meets {{store.probe.unproven}}, naming the mount type. Acquisition writes no lease object or pointer fence.",
       "why": "because a conditional put holding on one machine only lets two machines each take the lease",
       "file": "spec/10-store.md",
-      "line": 709
+      "line": 710
     },
     {
       "id": "store.lease.commit-log",
@@ -5256,7 +5267,7 @@
       "statement": "Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`. Acquisition creates an entry carrying its fence. A manifest marked `logged` becomes readable when that log records the manifest.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 711
+      "line": 712
     },
     {
       "id": "store.snapshot.capture",
@@ -21711,7 +21722,7 @@
       "operation": "attenuate",
       "subject": "widens",
       "kind": "refusal",
-      "statement": "A child broader than its parent on actions, tables, templates or aggregate constraints raises `AttenuationWidens`, naming the dimension.",
+      "statement": "A child broader than its parent on actions, tables, templates, aggregate constraints, or a `max_rows`, `max_duration_ms` or `max_response_bytes` ceiling raises `AttenuationWidens`, naming the dimension.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 192
@@ -37218,7 +37229,7 @@
     },
     "contextful_core::disclosure::declare::RawBinding": {
       "file": "crates/contextful-core/src/disclosure/declare.rs",
-      "line": 112,
+      "line": 122,
       "kind": "struct",
       "members": [
         {
@@ -37302,7 +37313,7 @@
     },
     "contextful_core::disclosure::sweep::LinkLine": {
       "file": "crates/contextful-core/src/disclosure/sweep.rs",
-      "line": 337,
+      "line": 321,
       "kind": "struct",
       "members": [
         {
@@ -37324,7 +37335,7 @@
     },
     "contextful_core::disclosure::sweep::Membership": {
       "file": "crates/contextful-core/src/disclosure/sweep.rs",
-      "line": 319,
+      "line": 303,
       "kind": "struct",
       "members": [
         {
@@ -43537,7 +43548,8 @@
             "value": 200,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Interval at which a holder renews, a third of the grant."
+            "gloss": "Interval at which a holder renews, a third of the grant.",
+            "const": "crates/contextful-core/src/store/lease.rs::RENEWAL_SECS"
           },
           "store-lease-ttl": {
             "clause": "store.lease.ttl",
@@ -45691,7 +45703,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/differential.rs",
         "name": "credential_cases_run_through_both_builds_and_never_reach_the_reference",
-        "line": 928,
+        "line": 943,
         "verdict": "performed",
         "proved": false
       }
@@ -47465,7 +47477,7 @@
         "kind": "theorem",
         "path": "formal/Contextful/Authority.lean",
         "name": "authorityMapping_inclusion_narrowing_meaning_restriction",
-        "line": 677,
+        "line": 718,
         "verdict": "performed",
         "proved": false
       }
@@ -47483,7 +47495,7 @@
         "kind": "theorem",
         "path": "formal/Contextful/Authority.lean",
         "name": "attenuateAll_permits_every_parent_block",
-        "line": 662,
+        "line": 703,
         "verdict": "performed",
         "proved": true
       }
@@ -47991,7 +48003,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "expiry_extended",
-        "line": 107,
+        "line": 136,
         "verdict": "performed",
         "proved": false
       }
@@ -48001,7 +48013,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "a_later_horizon_widens_and_an_absent_one_inherits",
-        "line": 192,
+        "line": 221,
         "verdict": "performed",
         "proved": false
       }
@@ -48019,7 +48031,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "narrowing",
-        "line": 140,
+        "line": 169,
         "verdict": "performed",
         "proved": true
       },
@@ -48027,7 +48039,7 @@
         "kind": "theorem",
         "path": "formal/reference/Reference/Narrowing.lean",
         "name": "narrowing_every_dimension_every_hop",
-        "line": 157,
+        "line": 160,
         "verdict": "performed",
         "proved": true
       }
@@ -48057,7 +48069,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "tenant_dropped",
-        "line": 120,
+        "line": 149,
         "verdict": "performed",
         "proved": false
       }
@@ -48085,7 +48097,15 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/attenuate.rs",
         "name": "widens",
-        "line": 58,
+        "line": 59,
+        "verdict": "performed",
+        "proved": true
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/attenuate.rs",
+        "name": "a_broader_ceiling_widens_and_an_absent_one_inherits",
+        "line": 109,
         "verdict": "performed",
         "proved": true
       },
@@ -48093,7 +48113,7 @@
         "kind": "theorem",
         "path": "formal/reference/Reference/Narrowing.lean",
         "name": "narrow_widens_nearest",
-        "line": 122,
+        "line": 125,
         "verdict": "performed",
         "proved": true
       }
@@ -48813,7 +48833,7 @@
         "kind": "theorem",
         "path": "formal/Contextful/Authority.lean",
         "name": "template_allowlist",
-        "line": 515,
+        "line": 556,
         "verdict": "performed",
         "proved": true
       }
@@ -48913,7 +48933,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/visibility.rs",
         "name": "every_agent_acting_for_a_principal_reaches_that_principal_set_and_no_more",
-        "line": 267,
+        "line": 268,
         "verdict": "performed",
         "proved": false
       }
@@ -48933,7 +48953,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/visibility.rs",
         "name": "links_come_from_the_directory_read_alone",
-        "line": 205,
+        "line": 206,
         "verdict": "performed",
         "proved": false
       }
@@ -49023,7 +49043,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/visibility.rs",
         "name": "a_subject_with_no_link_reaches_only_the_public_resources_of_the_source",
-        "line": 228,
+        "line": 229,
         "verdict": "performed",
         "proved": false
       }
@@ -49193,7 +49213,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_minting_face_with_no_issuer_key_names_the_keygen_command_and_binds_nothing",
-        "line": 1282,
+        "line": 1336,
         "verdict": "performed",
         "proved": false
       }
@@ -50033,7 +50053,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "introspection_answers_on_the_command_line_and_on_no_served_route",
-        "line": 1258,
+        "line": 1312,
         "verdict": "performed",
         "proved": false
       }
@@ -50483,7 +50503,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_running_face_drops_a_key_retired_by_compromise_from_the_next_request",
-        "line": 1451,
+        "line": 1505,
         "verdict": "performed",
         "proved": false
       }
@@ -50503,7 +50523,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_running_face_refuses_a_credential_below_the_scoped_epoch_from_the_next_request",
-        "line": 1424,
+        "line": 1478,
         "verdict": "performed",
         "proved": false
       }
@@ -50543,7 +50563,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_face_below_the_project_root_reads_the_root_ledger_and_refuses_once_it_vanishes",
-        "line": 1477,
+        "line": 1531,
         "verdict": "performed",
         "proved": false
       }
@@ -52653,7 +52673,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "credential_keys_bind_secret_or_environment_references",
-        "line": 335,
+        "line": 337,
         "verdict": "performed",
         "proved": false
       }
@@ -54743,7 +54763,7 @@
         "kind": "test",
         "path": "tools/spec/tests/integration/rationale.rs",
         "name": "each_adr_section_lists_the_clauses_citing_it_in_the_card_and_the_lock",
-        "line": 266,
+        "line": 269,
         "verdict": "performed",
         "proved": false
       }
@@ -55741,7 +55761,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/visibility.rs",
         "name": "a_read_past_the_budget_refuses_through_the_face",
-        "line": 166,
+        "line": 167,
         "verdict": "performed",
         "proved": false
       }
@@ -55781,7 +55801,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/visibility.rs",
         "name": "a_public_only_table_past_its_budget_serves_its_public_rows_marked_degraded",
-        "line": 313,
+        "line": 314,
         "verdict": "performed",
         "proved": false
       }
@@ -55831,7 +55851,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/declare.rs",
         "name": "a_block_naming_no_family_is_refused",
-        "line": 122,
+        "line": 125,
         "verdict": "performed",
         "proved": false
       }
@@ -55841,7 +55861,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/visibility.rs",
         "name": "a_federated_table_registers_on_no_read_face",
-        "line": 195,
+        "line": 196,
         "verdict": "performed",
         "proved": false
       }
@@ -56231,7 +56251,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/visibility.rs",
         "name": "a_sweep_lands_all_seven_access_tables_as_ordinary_rows",
-        "line": 169,
+        "line": 170,
         "verdict": "performed",
         "proved": false
       }
@@ -56361,7 +56381,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/visibility.rs",
         "name": "a_closure_overflow_refuses_only_reads_of_its_table",
-        "line": 236,
+        "line": 237,
         "verdict": "performed",
         "proved": false
       }
@@ -57141,7 +57161,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_bare_resource_line_withdraws_every_grant_a_webhook_names",
-        "line": 299,
+        "line": 297,
         "verdict": "performed",
         "proved": false
       }
@@ -57161,7 +57181,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_full_run_missing_a_governed_resource_is_refused_and_the_watermark_holds",
-        "line": 233,
+        "line": 231,
         "verdict": "performed",
         "proved": false
       }
@@ -57181,7 +57201,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/visibility.rs",
         "name": "an_empty_webhook_delivery_lands_nothing_and_holds_the_watermark",
-        "line": 306,
+        "line": 307,
         "verdict": "performed",
         "proved": false
       }
@@ -57191,7 +57211,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_full_run_replaces_resources_and_grants_and_tombstones_the_withdrawn",
-        "line": 148,
+        "line": 146,
         "verdict": "performed",
         "proved": false
       }
@@ -57211,7 +57231,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "an_incremental_run_replaces_only_the_grants_of_resources_it_read",
-        "line": 172,
+        "line": 170,
         "verdict": "performed",
         "proved": false
       }
@@ -57221,7 +57241,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_grant_with_no_resource_row_or_of_the_unknown_class_is_refused",
-        "line": 351,
+        "line": 349,
         "verdict": "performed",
         "proved": false
       }
@@ -57231,7 +57251,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/visibility.rs",
         "name": "a_run_collects_every_superseded_run_of_the_current_state_tables",
-        "line": 255,
+        "line": 256,
         "verdict": "performed",
         "proved": false
       }
@@ -57251,7 +57271,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "each_committed_run_advances_the_source_epoch_by_one",
-        "line": 220,
+        "line": 218,
         "verdict": "performed",
         "proved": false
       }
@@ -57271,7 +57291,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_webhook_run_from_a_stream_not_declared_gap_detectable_is_refused",
-        "line": 331,
+        "line": 329,
         "verdict": "performed",
         "proved": false
       }
@@ -57281,7 +57301,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_run_reading_every_governed_resource_moves_the_watermark_to_its_start",
-        "line": 194,
+        "line": 192,
         "verdict": "performed",
         "proved": false
       }
@@ -57291,7 +57311,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "a_webhook_run_replaces_the_grants_of_the_resources_it_names",
-        "line": 272,
+        "line": 270,
         "verdict": "performed",
         "proved": false
       }
@@ -58581,7 +58601,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_connection_unanswered_at_the_drain_bound_is_cut_off_and_the_exit_is_non_zero",
-        "line": 2280,
+        "line": 2334,
         "verdict": "performed",
         "proved": false
       }
@@ -58591,7 +58611,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_terminated_face_answers_its_accepted_request_and_sheds_new_ones_before_exiting",
-        "line": 2257,
+        "line": 2311,
         "verdict": "performed",
         "proved": false
       }
@@ -58811,7 +58831,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_terminated_face_answers_its_accepted_request_and_sheds_new_ones_before_exiting",
-        "line": 2256,
+        "line": 2310,
         "verdict": "performed",
         "proved": false
       }
@@ -59776,6 +59796,16 @@
         "proved": false
       }
     ],
+    "read.revise.served-fault": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/serve.rs",
+        "name": "a_served_claim_write_whose_store_refuses_lands_nothing",
+        "line": 1238,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "read.revise.served-scope": [
       {
         "kind": "test",
@@ -60641,7 +60671,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_served_stop_authorizes_against_the_recorded_pipeline_not_the_request",
-        "line": 1746,
+        "line": 1800,
         "verdict": "performed",
         "proved": false
       }
@@ -60721,7 +60751,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_stop_on_a_finished_run_answers_409_and_exits_non_zero",
-        "line": 1728,
+        "line": 1782,
         "verdict": "performed",
         "proved": false
       }
@@ -60771,7 +60801,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_served_stop_route_marks_the_run_and_answers_its_ids",
-        "line": 1698,
+        "line": 1752,
         "verdict": "performed",
         "proved": false
       }
@@ -61792,6 +61822,16 @@
         "path": "crates/contextful-cli/tests/integration/build.rs",
         "name": "a_cycle_defers_the_producer_while_its_publication_exports",
         "line": 578,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export.group-quiesce-wait": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/src/export/publication.rs",
+        "name": "an_export_past_its_wait_raises_publication_inputs_busy",
+        "line": 501,
         "verdict": "performed",
         "proved": false
       }
@@ -63271,7 +63311,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_receive_route_admits_before_the_body_and_answers_after_both_tables_commit",
-        "line": 1913,
+        "line": 1967,
         "verdict": "performed",
         "proved": false
       }
@@ -63281,7 +63321,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_receive_route_maps_each_refusal_to_its_status",
-        "line": 1982,
+        "line": 2036,
         "verdict": "performed",
         "proved": false
       }
@@ -63331,7 +63371,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_receive_route_refuses_a_delivery_without_a_batch_key",
-        "line": 1949,
+        "line": 2003,
         "verdict": "performed",
         "proved": false
       }
@@ -63341,7 +63381,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_receive_route_answers_404_for_a_pipeline_that_receives_nothing",
-        "line": 1965,
+        "line": 2019,
         "verdict": "performed",
         "proved": false
       }
@@ -64641,7 +64681,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_served_run_stream_carries_the_snapshot_and_takes_no_stop",
-        "line": 1765,
+        "line": 1819,
         "verdict": "performed",
         "proved": false
       }
@@ -64981,7 +65021,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "a_run_declaring_push_after_run_publishes_on_success_and_on_failure",
-        "line": 486,
+        "line": 487,
         "verdict": "performed",
         "proved": false
       }
@@ -65841,7 +65881,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_bound_token_answers_unknown_to_every_other_subject",
-        "line": 1835,
+        "line": 1889,
         "verdict": "performed",
         "proved": false
       }
@@ -65941,7 +65981,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_served_resume_route_answers_the_recorded_payload_and_each_refusal",
-        "line": 1800,
+        "line": 1854,
         "verdict": "performed",
         "proved": false
       }
@@ -66567,7 +66607,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "a_pipeline_file_keeps_a_replicate_off_table_off_the_pull",
-        "line": 404,
+        "line": 405,
         "verdict": "performed",
         "proved": false
       }
@@ -66951,7 +66991,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_unbound_or_literal_credential_key_is_refused_naming_the_key",
-        "line": 353,
+        "line": 355,
         "verdict": "performed",
         "proved": false
       }
@@ -66991,7 +67031,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "plaintext_http_opens_on_loopback_alone",
-        "line": 319,
+        "line": 321,
         "verdict": "performed",
         "proved": false
       }
@@ -67001,7 +67041,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "role_credentials_beside_a_key_or_on_r2_conflict_naming_the_endpoint",
-        "line": 377,
+        "line": 379,
         "verdict": "performed",
         "proved": false
       }
@@ -67041,7 +67081,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "each_endpoint_scheme_resolves_its_adapter_address",
-        "line": 284,
+        "line": 286,
         "verdict": "performed",
         "proved": false
       }
@@ -67081,7 +67121,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_endpoint_no_adapter_answers_is_refused_by_name",
-        "line": 307,
+        "line": 309,
         "verdict": "performed",
         "proved": false
       }
@@ -67121,7 +67161,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/fold.rs",
         "name": "a_failed_collection_does_not_unpublish_the_snapshot",
-        "line": 378,
+        "line": 381,
         "verdict": "performed",
         "proved": false
       }
@@ -67177,7 +67217,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/fold.rs",
         "name": "a_pass_losing_the_pointer_publishes_nothing",
-        "line": 254,
+        "line": 257,
         "verdict": "performed",
         "proved": true
       },
@@ -67335,7 +67375,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/fold.rs",
         "name": "the_next_pass_collects_staging_and_unreachable_snapshots",
-        "line": 282,
+        "line": 285,
         "verdict": "performed",
         "proved": true
       },
@@ -67361,7 +67401,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/fold.rs",
         "name": "a_new_snapshot_supersedes_without_deleting",
-        "line": 299,
+        "line": 302,
         "verdict": "performed",
         "proved": true
       },
@@ -68249,7 +68289,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_expiry_judgment_allows_30_seconds_of_skew_on_the_judging_clock",
-        "line": 220,
+        "line": 222,
         "verdict": "performed",
         "proved": false
       }
@@ -68279,7 +68319,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_unexpired_lease_refuses_naming_its_holder_and_expiry_and_a_later_tick_takes_it",
-        "line": 237,
+        "line": 239,
         "verdict": "performed",
         "proved": false
       }
@@ -68289,7 +68329,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "a_bucket_lease_under_the_local_node_id_refuses_naming_the_variable",
-        "line": 268,
+        "line": 270,
         "verdict": "performed",
         "proved": false
       }
@@ -68309,7 +68349,17 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "releasing_another_nodes_lease_refuses",
-        "line": 256,
+        "line": 258,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.lease.operator-renew": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/sync/lease.rs",
+        "name": "an_operator_held_lease_renewed_by_its_holder_outlasts_its_grant",
+        "line": 13,
         "verdict": "performed",
         "proved": false
       }
@@ -68338,6 +68388,24 @@
         "line": 343,
         "verdict": "performed",
         "proved": true
+      }
+    ],
+    "store.lease.renewal": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/store/sync.rs",
+        "name": "a_holder_renews_every_200_seconds_on_the_etag_it_holds",
+        "line": 204,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/lease.rs",
+        "name": "a_holder_renews_its_lease_while_its_work_runs_and_stops_after",
+        "line": 20,
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "store.lease.stale-fence": [
@@ -68647,7 +68715,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "a_cold_node_pulls_the_bucket_before_its_run_reads",
-        "line": 237,
+        "line": 238,
         "verdict": "performed",
         "proved": false
       }
@@ -68927,7 +68995,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "a_run_declaring_push_after_run_publishes_on_success_and_on_failure",
-        "line": 484,
+        "line": 485,
         "verdict": "performed",
         "proved": false
       }
@@ -69878,6 +69946,16 @@
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "control_routes_require_admin_and_project_applied_workflows",
         "line": 592,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "surface.apply.served-unavailable": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/serve.rs",
+        "name": "a_served_control_fault_answers_unavailable_without_internal_text",
+        "line": 1267,
         "verdict": "performed",
         "proved": false
       }
@@ -71183,7 +71261,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "source_first_run_outcomes_survive_push_pull_to_a_serving_node_without_a_machine_catalog",
-        "line": 69,
+        "line": 70,
         "verdict": "performed",
         "proved": false
       }
@@ -71513,7 +71591,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "two_sites_declaring_different_residency_diverge_at_push",
-        "line": 432,
+        "line": 433,
         "verdict": "performed",
         "proved": false
       }
@@ -72503,7 +72581,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "serve_refuses_to_start_without_its_declarations_or_an_issuer_key",
-        "line": 1337,
+        "line": 1391,
         "verdict": "performed",
         "proved": false
       }

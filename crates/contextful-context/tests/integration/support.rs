@@ -101,3 +101,21 @@ pub fn query(sql: &str) -> Vec<Vec<Option<String>>> {
 pub fn s(v: &str) -> Option<String> {
     Some(v.to_string())
 }
+
+/// [`sweep_read`](contextful_context::visibility::sweep_read) over grant lines alone, every
+/// governed resource read.
+#[allow(clippy::too_many_arguments)]
+pub fn sweep_run(
+    store: &Store,
+    at: &contextful_context::visibility::Landing,
+    block: &contextful_core::disclosure::sweep::SweepBlock,
+    bindings: &[contextful_core::disclosure::declare::Binding],
+    kind: contextful_core::disclosure::sweep::SweepKind,
+    grants: Vec<contextful_core::disclosure::sweep::GrantLine>,
+    directory: Option<contextful_core::disclosure::sweep::Directory>,
+    began_at: Instant,
+    committed_at: Instant,
+) -> Result<contextful_core::disclosure::sweep::Commit> {
+    let read = contextful_core::disclosure::sweep::GrantsRead { grants, ..Default::default() };
+    contextful_context::visibility::sweep_read(store, at, block, bindings, kind, read, directory, began_at, committed_at)
+}

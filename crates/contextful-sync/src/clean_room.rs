@@ -15,9 +15,9 @@ use contextful_core::store::object::{Condition, ObjectError, ObjectStore, Put};
 use contextful_policy::issue::{sign_through, SignerKey};
 
 /// The manifest object under an owner's prefix.
-pub const MANIFEST: &str = "manifest.json";
+const MANIFEST: &str = "manifest.json";
 /// The hex signature over [`manifest_message`] beside it.
-pub const MANIFEST_SIGNATURE: &str = "manifest.sig";
+const MANIFEST_SIGNATURE: &str = "manifest.sig";
 /// The key the write probe targets under each other owner's prefix.
 pub const PROBE: &str = "clean-room-probe";
 /// An ETag no object carries: the probe's condition never holds.

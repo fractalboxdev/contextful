@@ -2,7 +2,8 @@
 //! through the land path.
 
 use crate::support::{at, decl, Fixture};
-use contextful_context::visibility::{committed, group_members, identity_links, principals, reach, state, sweep_grants, sweep_read, sweep_run, tombstones, Landing};
+use contextful_context::visibility::{committed, principals, reach, state, sweep_read, tombstones, Landing};
+use crate::support::sweep_run;
 use contextful_context::ContextError;
 use contextful_core::disclosure::declare::Binding;
 use contextful_core::disclosure::sweep::{parse_directory, parse_read, GrantLine, SweepBlock, SweepKind};
@@ -36,7 +37,7 @@ fn a_sweep_lands_access_rows_under_the_visibility_namespace() {
     let block = SweepBlock::parse_manifest(MANIFEST).unwrap().remove(0);
     let bindings = vec![Binding::of(&pages).unwrap().unwrap()];
 
-    let full = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana"), grant("p2", "dana")], at("2030-01-01T00:10:00Z"), at("2030-01-01T00:10:01Z")).unwrap();
+    let full = sweep_run(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana"), grant("p2", "dana")], None, at("2030-01-01T00:10:00Z"), at("2030-01-01T00:10:01Z")).unwrap();
     assert_eq!(full.freshness.epoch, 1);
     assert_eq!(full.freshness.budget_seconds, Some(900));
     let tables = f.store.tables().unwrap();
@@ -57,7 +58,7 @@ fn a_sweep_lands_access_rows_under_the_visibility_namespace() {
 
     // The incremental run withdraws dana's p2: the grant row leaves the current set and a
     // tombstone lands.
-    let inc = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Incremental, vec![grant("p1", "dana")], at("2030-01-01T00:15:00Z"), at("2030-01-01T00:15:01Z")).unwrap();
+    let inc = sweep_run(&f.store, &landing(), &block, &bindings, SweepKind::Incremental, vec![grant("p1", "dana")], None, at("2030-01-01T00:15:00Z"), at("2030-01-01T00:15:01Z")).unwrap();
     assert_eq!(inc.freshness.epoch, 2);
     let held = state(&f.store, "wiki").unwrap();
     assert_eq!(held.grants.iter().map(|g| g.resource_id.as_str()).collect::<Vec<_>>(), ["p1"]);
@@ -82,7 +83,7 @@ fn an_orphan_grant_lands_nothing() {
     f.land(&pages, "run-0001", json!([{"page_id": "p1"}]), "2030-01-01T00:00:00Z").unwrap();
     let block = SweepBlock::parse_manifest(MANIFEST).unwrap().remove(0);
     let bindings = vec![Binding::of(&pages).unwrap().unwrap()];
-    match sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p9", "dana")], at("2030-01-01T00:10:00Z"), at("2030-01-01T00:10:01Z")) {
+    match sweep_run(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p9", "dana")], None, at("2030-01-01T00:10:00Z"), at("2030-01-01T00:10:01Z")) {
         Err(ContextError::Visibility(VisibilityError::OrphanGrant { .. })) => {}
         other => panic!("{other:?}"),
     }
@@ -102,8 +103,8 @@ fn a_run_stopped_before_freshness_revokes_nothing() {
     f.land(&pages, "run-0001", json!([{"page_id": "p1"}, {"page_id": "p2"}]), "2030-01-01T00:00:00Z").unwrap();
     let block = SweepBlock::parse_manifest(MANIFEST).unwrap().remove(0);
     let bindings = vec![Binding::of(&pages).unwrap().unwrap()];
-    let full = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana"), grant("p2", "erin")], at("2030-01-01T00:10:00Z"), at("2030-01-01T00:10:01Z")).unwrap();
-    let stopped = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], at("2030-01-01T00:20:00Z"), at("2030-01-01T00:20:01Z")).unwrap();
+    let full = sweep_run(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana"), grant("p2", "erin")], None, at("2030-01-01T00:10:00Z"), at("2030-01-01T00:10:01Z")).unwrap();
+    let stopped = sweep_run(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], None, at("2030-01-01T00:20:00Z"), at("2030-01-01T00:20:01Z")).unwrap();
     assert_eq!(stopped.tombstones.len(), 1);
 
     // The stopped run's `freshness` never committed.
@@ -118,7 +119,7 @@ fn a_run_stopped_before_freshness_revokes_nothing() {
     assert!(tombstones(&f.store, "wiki").unwrap().is_empty());
 
     // The retry commits, and its one revocation is the only tombstone a reader sees.
-    let retry = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], at("2030-01-01T00:30:00Z"), at("2030-01-01T00:30:01Z")).unwrap();
+    let retry = sweep_run(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], None, at("2030-01-01T00:30:00Z"), at("2030-01-01T00:30:01Z")).unwrap();
     assert_eq!(retry.freshness.epoch, 2);
     let revoked = tombstones(&f.store, "wiki").unwrap();
     assert_eq!(revoked.iter().map(|t| (t.resource_id.as_str(), t.principal.as_deref())).collect::<Vec<_>>(), [("p2", Some("erin"))]);
@@ -184,12 +185,12 @@ fn a_sweep_lands_all_seven_access_tables_as_ordinary_rows() {
     }
     assert!(d.f.scan(&decl("name = \"_visibility/drive/identity_links\""), Default::default()).unwrap().files.iter().any(|f| f.contains(&first.freshness.sweep_id)));
 
-    let links = identity_links(&d.f.store, "drive").unwrap();
+    let links = state(&d.f.store, "drive").unwrap().links;
     assert_eq!(
         links.iter().map(|l| (l.source_principal.as_str(), l.on_behalf_of.as_str(), l.method, l.confidence)).collect::<Vec<_>>(),
         [("u-1001", "user://dana@acme.example", LinkMethod::ScimEmail, 0.9), ("u-1002", "user://erin@acme.example", LinkMethod::OidcSub, 0.7)]
     );
-    let members = group_members(&d.f.store, "drive").unwrap();
+    let members = state(&d.f.store, "drive").unwrap().members;
     assert_eq!(members.iter().map(|m| (m.group.as_str(), m.member.as_str(), m.member_kind.as_str())).collect::<Vec<_>>(), [("g-finance", "u-1001", "user")]);
     assert_eq!(members[0].observed_at, at("2030-01-01T00:10:00Z"), "a carried membership keeps the instant its read began");
     assert_eq!(tombstones(&d.f.store, "drive").unwrap().len(), 1);
@@ -210,13 +211,13 @@ fn links_come_from_the_directory_read_alone() {
     // principal her subject spells, which needs no link, and not f2 through the unlinked `u-1001`.
     d.sweep(SweepKind::Full, vec![drive_grant("f1", "dana@acme.example", "user"), drive_grant("f2", "u-1001", "user")], None, "2030-01-01T00:10:00Z");
     assert_eq!(principals(&d.f.store, "drive").unwrap().len(), 2);
-    assert!(identity_links(&d.f.store, "drive").unwrap().is_empty());
+    assert!(state(&d.f.store, "drive").unwrap().links.is_empty());
     assert_eq!(reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f1"]);
 
     // The directory read writes the links, and a later run given none keeps them.
     d.sweep(SweepKind::Full, vec![drive_grant("f2", "u-1001", "user")], Some(DIRECTORY), "2030-01-01T00:20:00Z");
     d.sweep(SweepKind::Incremental, vec![drive_grant("f2", "u-1001", "user")], None, "2030-01-01T00:25:00Z");
-    assert_eq!(identity_links(&d.f.store, "drive").unwrap().len(), 2);
+    assert_eq!(state(&d.f.store, "drive").unwrap().links.len(), 2);
     assert_eq!(reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f2"]);
 
     // A directory read without dana's account withdraws her link and her reach with it.
@@ -274,8 +275,8 @@ fn a_run_collects_every_superseded_run_of_the_current_state_tables() {
     assert_eq!(held.freshness.as_ref().map(|f| f.epoch), Some(4));
     assert_eq!(held.grants.len(), 2);
     assert_eq!(held.resources.len(), 3);
-    assert_eq!(identity_links(&d.f.store, "drive").unwrap().len(), 2);
-    assert_eq!(group_members(&d.f.store, "drive").unwrap().len(), 1);
+    assert_eq!(state(&d.f.store, "drive").unwrap().links.len(), 2);
+    assert_eq!(state(&d.f.store, "drive").unwrap().members.len(), 1);
     assert_eq!(reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f1"]);
 }
 
@@ -289,13 +290,13 @@ fn a_first_committed_run_collects_every_stopped_run_before_it() {
     let bindings = vec![Binding::of(&pages).unwrap().unwrap()];
     // Two first runs land their rows and stop before `freshness`.
     for began in ["2030-01-01T00:10:00Z", "2030-01-01T00:20:00Z"] {
-        let stopped = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], at(began), at(began)).unwrap();
+        let stopped = sweep_run(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], None, at(began), at(began)).unwrap();
         std::fs::remove_dir_all(f.table_dir("_visibility/wiki/freshness").join("data/runs").join(&stopped.freshness.sweep_id)).unwrap();
         assert!(state(&f.store, "wiki").unwrap().freshness.is_none());
     }
     // The second stopped run collected the first.
     assert_eq!(run_dirs(&f, "_visibility/wiki/resources").len(), 1);
-    let first = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], at("2030-01-01T00:30:00Z"), at("2030-01-01T00:30:01Z")).unwrap();
+    let first = sweep_run(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], None, at("2030-01-01T00:30:00Z"), at("2030-01-01T00:30:01Z")).unwrap();
     for t in ["resources", "grants", "principals"] {
         assert_eq!(run_dirs(&f, &format!("_visibility/wiki/{t}")), std::slice::from_ref(&first.freshness.sweep_id), "{t}");
     }
@@ -312,7 +313,7 @@ fn an_empty_webhook_delivery_lands_nothing_and_holds_the_watermark() {
     let manifest = MANIFEST.replace("[[acl_sweep]]\n", "[[acl_sweep]]\nevents = { stream = \"wiki.permissions\", gap_detectable = true }\n");
     let block = SweepBlock::parse_manifest(&manifest).unwrap().remove(0);
     let bindings = vec![Binding::of(&pages).unwrap().unwrap()];
-    let full = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], at("2030-01-01T00:10:00Z"), at("2030-01-01T00:10:01Z")).unwrap();
+    let full = sweep_run(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], None, at("2030-01-01T00:10:00Z"), at("2030-01-01T00:10:01Z")).unwrap();
     match sweep_read(&f.store, &landing(), &block, &bindings, SweepKind::Webhook, parse_read("").unwrap(), None, at("2030-01-01T00:20:00Z"), at("2030-01-01T00:20:01Z")) {
         Err(ContextError::Invalid(m)) => assert!(m.contains("wiki") && m.contains("names no resource"), "{m}"),
         other => panic!("{other:?}"),
