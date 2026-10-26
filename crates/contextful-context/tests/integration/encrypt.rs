@@ -69,6 +69,7 @@ fn an_aes_gcm_file_round_trips_without_plaintext_or_key_reuse() {
     assert!(cipher.open(&tampered).is_err());
 }
 
+// spec: store.encrypt.metadata-envelope@2b39f8f0
 #[test]
 fn sealed_metadata_files_round_trip_without_plaintext_or_fallback() {
     use contextful_context::encrypt::{AesGcmFileCipher, MetadataFiles};
@@ -551,6 +552,7 @@ max_lag = "1d"
     }
 }
 
+// spec: store.encrypt.metadata-envelope@2b39f8f0
 #[test]
 fn a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload() {
     use contextful_context::land::{land, Batch, RunContext};

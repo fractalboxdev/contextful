@@ -425,7 +425,7 @@ Sidecar index types, identifiers and builds; row clustering, partitions and tena
 
 ## encrypt
 
-At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and node run-state files; key derivation and rotation.
+At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and node run-state files.
 
 - `key-binding` — A project enables at-rest encryption by binding `[encryption] key_source` to `env:<NAME>` or a key-management service. Without that binding, encryption is off.
 - `key-unbound` — A `key_source` naming a binding the process lacks raises `StoreEncryptionKeyUnbound` at startup, with no cleartext fallback.
@@ -440,14 +440,12 @@ At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and
   *A-store#sidecar-memory-mapped, A-store#machine-catalog-seals*
 - `redacted-index` — An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.
   *A-authority#redaction-no-copy*
-- `at-rest-scope` — A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material.
 - `sidecar-reader` — For unencrypted projects, readers memory-map sidecars read-only. For encrypted projects, readers decrypt each sealed sidecar file into anonymous process memory without writing cleartext to disk.
   *A-store#sidecar-memory-mapped*
-- `rotation` — After rotation, writes use the rotated key version. Published files keep their key versions until collection. A key version retires when no retained file names that version.
 
 unsettled: How long does a sidecar decrypted into process memory stay resident across reads, and what evicts it? owner: store affects: store.encrypt
 
-unsettled: What reseals a part carried by reference under a retiring key version, given only a restatement, retention or merge rewrites it, so {{store.encrypt.rotation}} retires that version? owner: store affects: store.encrypt
+unsettled: How does a project rotate its key, and what reseals a part carried by reference under the retiring key version? owner: store affects: store.encrypt
 
 ## emit
 
