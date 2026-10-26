@@ -479,6 +479,7 @@ fn reference(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    out.extend(crate::types::unresolved(c));
     out
 }
 

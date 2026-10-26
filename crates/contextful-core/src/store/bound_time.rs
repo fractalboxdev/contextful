@@ -37,7 +37,7 @@ impl Bound {
 }
 
 /// Which vintage a read of a vintage table resolves per key
-/// (`store.available-time.vintage-resolution`, `store.available-time.vintage-first`).
+/// (`store.available-time.vintage-rows`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum Vintage {
     /// The vintage with the latest availability instant the read admits.

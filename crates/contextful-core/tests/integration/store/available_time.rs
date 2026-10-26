@@ -13,10 +13,11 @@ fn available(s: &str) -> Bounds {
     Bounds { available_as_of: Some(Bound::parse(s).unwrap()), ..Bounds::default() }
 }
 
-/// `[pipeline.tables.available_time]` declares `column`, the source availability instant as `timestamptz`, and
-/// optional `zone`, default UTC. Landing preserves the source instant without substituting an engine timestamp.
-/// Availability bounds compare only that column.
-// spec: store.available-time.declaration@6592814b
+/// `[pipeline.tables.available_time]` declares {{type:contextful_core::store::declare::AvailableTime}}, absent
+/// from canonical serialization when unset. `column` holds the source availability instant as `timestamptz`,
+/// which landing keeps without substituting an engine timestamp and availability bounds compare alone; `zone`
+/// defaults to UTC.
+// spec: store.available-time.declaration@e9eca557
 #[test]
 fn an_available_time_block_declares_its_column_and_zone() {
     let t = TableDecl::parse_pipeline(EARNINGS).unwrap().remove(0);
@@ -31,8 +32,10 @@ fn an_available_time_block_declares_its_column_and_zone() {
     assert!(!rel.contains("\"_ingested_at\" <="), "{rel}");
 }
 
-/// Beyond {{store.declare.table-block}}, a table block may declare `available_time`, absent from the canonical serialization when unset.
-// spec: store.available-time.table-key@940b0709
+/// `[pipeline.tables.available_time]` declares {{type:contextful_core::store::declare::AvailableTime}}, absent from canonical
+/// serialization when unset. `column` holds the source availability instant as `timestamptz`, which landing keeps without substituting
+/// an engine timestamp and availability bounds compare alone; `zone` defaults to UTC.
+// spec: store.available-time.declaration@e9eca557
 #[test]
 fn an_unset_available_time_is_absent_from_the_canonical_serialization() {
     let plain = TableDecl::named("prices");
@@ -71,8 +74,9 @@ fn an_availability_bound_joins_the_echo() {
     assert_eq!(both.transaction().echo().unwrap(), serde_json::json!({ "as_of": "2030-06-02T00:00:00.000000000Z", "inclusive": false }));
 }
 
-/// An `available_as_of` read naming a table that declares no `available_time` raises `StoreAvailableTimeUndeclared`, naming the table.
-// spec: store.available-time.undeclared@e1e991f5
+/// An `available_as_of` read naming a table that declares no `available_time` raises `StoreAvailableTimeUndeclared`, naming the table;
+/// landing a row whose resolved availability instant is null raises `StoreAvailableTimeNull`, naming the table and the run.
+// spec: store.available-time.undeclared@02015bb7
 #[test]
 fn available_as_of_on_a_table_declaring_no_availability_time_is_refused() {
     let t = TableDecl::named("prices");
@@ -98,8 +102,9 @@ fn schema(columns: &[(&str, ColumnType)]) -> Schema {
     Schema { columns: columns.iter().map(|(n, t)| Column::new(*n, t.clone(), true)).collect() , ..Default::default() }
 }
 
-/// A vintage table declaring no `content_hash_column` raises `StoreVintageHashUndeclared` at validation, naming the table.
-// spec: store.available-time.vintage-hash-undeclared@56bcb6bc
+/// A vintage table declaring no `content_hash_column` raises `StoreVintageHashUndeclared`, and one declaring
+/// {{store.declare.retain-rows}} raises `StoreVintageRetainRows`, at validation, naming the table.
+// spec: store.available-time.vintage-validation@b148b050
 #[test]
 fn a_vintage_table_without_a_content_hash_is_refused() {
     let columns = schema(&[("filing_id", ColumnType::Utf8), ("accepted_at", ColumnType::Timestamp)]);
@@ -113,8 +118,9 @@ fn a_vintage_table_without_a_content_hash_is_refused() {
     unkeyed.validate(&columns).unwrap();
 }
 
-/// A vintage table declaring {{store.declare.retain-rows}} raises `StoreVintageRetainRows` at validation, naming the table.
-// spec: store.available-time.vintage-retain-rows@b01a1bfc
+/// A vintage table declaring no `content_hash_column` raises `StoreVintageHashUndeclared`, and one declaring
+/// {{store.declare.retain-rows}} raises `StoreVintageRetainRows`, at validation, naming the table.
+// spec: store.available-time.vintage-validation@b148b050
 #[test]
 fn a_vintage_table_retaining_rows_by_age_is_refused() {
     let declared = VINTAGES.replace("content_hash_column = \"digest\"\n", "content_hash_column = \"digest\"\nretain_rows = { column = \"_ingested_at\", age = \"30d\" }\n");
@@ -132,8 +138,9 @@ fn a_vintage_table_retaining_rows_by_age_is_refused() {
     }
 }
 
-/// A vintage table reads through {{store.declare.dedup-view}} with the availability column appended to its partition key, then resolves one row per {{store.available-time.vintage-resolution}}.
-// spec: store.available-time.vintage-dedup-key@f1788c35
+/// A vintage table reads through {{store.declare.dedup-view}}, or {{store.bound-time.interval-rows}} under `valid_time`, and folds under {{store.declare.dedup-view}} or
+/// {{store.fold.valid-time-line}}, each adding the availability column to the key and keeping every vintage; an unclustered `valid_time` fold sorts by `from`, then primary key.
+// spec: store.available-time.vintage-dedup-key@3ed4d637
 #[test]
 fn a_vintage_table_dedupes_per_availability_instant_then_resolves() {
     let t = TableDecl::parse_pipeline(&VINTAGES.replace("[pipeline.tables.valid_time]\nfrom = \"period\"\n\n", "")).unwrap().remove(0);
@@ -144,8 +151,10 @@ fn a_vintage_table_dedupes_per_availability_instant_then_resolves() {
     assert!(resolve < dedup, "{rel}");
 }
 
-/// A vintage table declaring `valid_time` dedupes as {{store.bound-time.interval-rows}} with the availability column added to the key, so every interval keeps every vintage.
-// spec: store.available-time.vintage-interval-key@f03493c7
+/// A vintage table reads through {{store.declare.dedup-view}}, or {{store.bound-time.interval-rows}} under `valid_time`, and folds under {{store.declare.dedup-view}} or
+/// {{store.fold.valid-time-line}}, each adding the availability column to the key and keeping every vintage; an unclustered `valid_time` fold sorts by `from`, then primary
+/// key.
+// spec: store.available-time.vintage-dedup-key@3ed4d637
 #[test]
 fn a_vintage_table_with_valid_time_keys_on_interval_and_vintage() {
     let t = TableDecl::parse_pipeline(VINTAGES).unwrap().remove(0);

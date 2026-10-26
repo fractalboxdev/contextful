@@ -129,12 +129,18 @@ Where a spelling is registered, the single owner of an error or a bound, the col
 
 ## reference
 
-The one legal way a statement reaches a fact another clause owns, and the ban on restatement and literature.
+The one legal way a statement reaches a fact another clause or a code type owns, and the ban on restatement and literature.
 
 - `pointer` — `{{<clause id>}}` is the one way a statement reaches a fact another clause owns. The lock file records every pointer as an edge.
   *P8*
 - `dangling` — A `{{id}}` naming no clause raises `SpecDanglingReference`.
   *P8*
+- `type-pointer` — `{{type:<crate>::<module>::<Type>}}` names a Rust struct or enum in place of its keys; the lock file records its file, line and each field or variant with its `serde` spelling and doc comment, and the contract's card lists them.
+  *because a key list copied from code drifts from the code, and the type already holds every key with its gloss*
+- `type-unresolved` — A type pointer whose crate and module part names no file defining that struct or enum raises `SpecTypeUnresolved`.
+  *because a pointer to a moved or renamed type shows the reader no keys*
+- `restates-code` — `contextful-spec state` prints a `SpecRestatesCode` advisory naming each clause that backticks three or more keys of one deserialized struct or enum and carries no pointer to it; `spec/status.md` records their count.
+  *because a key list in a clause is a second home for its type, and which list a pointer replaces is a reviewer's judgment*
 - `no-literature` — A spec file carries no hyperlink to an external document and no path under `references/`; either raises `SpecExternalLink`. Literature lives in `references/`, which cites clause ids.
   *because the contract is judged by behavior, and a citation invites arguing from authority*
 

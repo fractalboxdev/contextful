@@ -303,7 +303,7 @@ pub(crate) fn bloom_columns(decl: &TableDecl) -> Vec<String> {
 
 /// `batch` with each row's availability instant resolved and the availability flags set by
 /// the engine alone: a producer's own flags are dropped. A date-only value resolves to the
-/// start of the next day in the declared zone (`store.available-time.date-end`); a null
+/// start of the next day in the declared zone (`store.available-time.live-since`); a null
 /// value fills from valid time plus the row's class lag, flagged `_available_imputed`
 /// (`store.available-time.lag-fill`); a row available before `live_since` is flagged
 /// `_available_reconstructed` (`store.available-time.live-since`). A row still holding no

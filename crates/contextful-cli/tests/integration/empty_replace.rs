@@ -52,7 +52,7 @@ fn start(dir: &Path, run: &str, now: &str) -> Output {
     cf(dir, &["run", "start", "--plan", "feed.toml", "--project", "research", "--run-id", run, "--site-id", "site-a", "--now", now])
 }
 
-// spec: store.declare.empty-frontier-preserved@4e5e03e7
+// spec: store.declare.empty-replacement@889afa9e
 // spec: run.advance.snapshot-completion@9ce96da7
 // spec: run.advance.zero-row-commit@7f0ed685
 #[test]

@@ -200,7 +200,7 @@ fn bounds(args: &Map<String, Value>) -> Result<Bounds, Protocol> {
 const VINTAGE: &str = "vintage";
 
 /// The vintage a read resolves on a vintage table: `first`, or `latest` by default
-/// (`store.available-time.vintage-first`).
+/// (`store.available-time.vintage-rows`).
 fn vintage(args: &Map<String, Value>) -> Result<Vintage, Protocol> {
     match string(args, VINTAGE)?.as_deref() {
         None | Some("latest") => Ok(Vintage::Latest),

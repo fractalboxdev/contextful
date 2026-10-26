@@ -1,6 +1,7 @@
 //! `spec/cards/<contract>.md`: one generated page per contract — its operations with
 //! their ledes and proved-clause counts, its refusals and its bounds, each naming the
-//! clause that owns it, and the clauses citing each section of its ADR.
+//! clause that owns it, the types its clauses point at, and the clauses citing each
+//! section of its ADR.
 
 use crate::corpus::*;
 use std::collections::BTreeMap;
@@ -59,6 +60,21 @@ fn page(c: &Corpus, contract: &str) -> String {
             let _ = writeln!(s, "| `{id}` | {} {} | {} | `{}` |", l.value_text(), l.unit, l.basis, l.clause);
         }
         s.push('\n');
+    }
+
+    let types: Vec<(&String, &crate::types::TypeRecord)> =
+        crate::types::records(c).iter().filter(|(_, t)| t.clauses.iter().any(|id| position.contains_key(id.as_str()))).collect();
+    if !types.is_empty() {
+        s.push_str("## Types\n\nEach struct or enum a `{{type:<path>}}` pointer names, with the keys `serde` reads and their doc comments.\n\n");
+        for (path, t) in types {
+            let named: Vec<String> = t.clauses.iter().map(|id| format!("`{id}`")).collect();
+            let _ = writeln!(s, "### `{path}`\n\nThe {} at `{}:{}`, named by {}.\n", t.kind, t.file, t.line, named.join(", "));
+            s.push_str("| Key | Doc |\n| --- | --- |\n");
+            for m in &t.members {
+                let _ = writeln!(s, "| `{}` | {} |", m.name, m.doc.replace('|', "\\|"));
+            }
+            s.push('\n');
+        }
     }
 
     let prefix = format!("A-{contract}#");

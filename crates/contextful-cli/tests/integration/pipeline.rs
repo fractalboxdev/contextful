@@ -972,9 +972,10 @@ const FOLD_ITEMS: &str = "\n[[job]]\nname = \"fold-items\"\nschedule = \"0 3 * *
 
 const KEYED_ITEMS: &str = "[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\norder_by = \"updated_at\"\n";
 
-/// If a table declares `primary_key` without coverage under {{store.declare.fold-job}}, `pipeline validate` warns on
-/// stderr and names the table. The warning alone causes no failure.
-// spec: store.declare.fold-coverage@91a4a92a
+/// A `[[job]]` block of kind `fold` with a `schedule`, `enabled` absent or true and `target` absent or naming the
+/// table's destination covers the table; `pipeline validate` warns on stderr, failing nothing, for each keyed table
+/// no job covers.
+// spec: store.declare.fold-job@7759a47b
 #[test]
 fn a_keyed_table_no_fold_job_covers_warns_and_validates() {
     let keyed = pipeline("orders", "https://api.vendor.example/v1", "", KEYED_ITEMS);
