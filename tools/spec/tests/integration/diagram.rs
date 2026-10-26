@@ -136,7 +136,6 @@ fn a_sequence_with_undeclared_or_too_many_parts_is_a_sequence_finding() {
     assert_eq!(found.len(), 4, "{found:?}");
 }
 
-// spec: corpus.diagram.message@8d390cf8
 // spec: corpus.diagram.fence@2bd37815
 #[test]
 fn box_drawing_outside_a_mermaid_fence_is_an_ascii_diagram() {
@@ -150,6 +149,7 @@ fn box_drawing_outside_a_mermaid_fence_is_an_ascii_diagram() {
     assert_eq!(after.len(), before.len() + 3, "{after:?}");
 }
 
+// spec: corpus.diagram.message@8d390cf8
 #[test]
 fn a_long_message_or_note_is_a_message_finding() {
     let wrong = "sequenceDiagram\n  participant A as caller\n  participant B as server\n  A->>B: query the table and every sidecar it declares at once\n  Note over A,B: one note that runs on well past the twelve words it may hold here\n";

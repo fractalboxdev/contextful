@@ -319,6 +319,7 @@ fn a_bare_caller_declaration_cannot_omit_the_durable_writer_rule() {
     assert_eq!(body(&path), "[REDACTED:phone]");
 }
 
+// spec: authority.redact.every-land-entry@64bb79d3
 #[test]
 fn a_staged_part_contains_the_same_removed_form_before_commit() {
     let (_direct_dir, direct) = declared();
@@ -585,6 +586,7 @@ redaction = [{ table = "messages", column = "body", match = { pattern = "[0-9]{3
     assert_eq!(body(&path), "{\"parts\":[{\"kind\":\"prompt\",\"text\":\"☎ call [REDACTED:phone] now\"}],\"z\":\"public 415-555-0100\"}");
 }
 
+// spec: authority.redact.rewritten-identities@753656de
 #[test]
 fn independently_declared_child_rules_precede_all_persisted_group_identities() {
     use contextful_context::land::{stage_normalized_group, NormalizedStage};
@@ -628,6 +630,7 @@ redaction = [{ table = "messages_body", column = "text", operation = "replace", 
     assert_eq!(outputs[0], outputs[1], "a removed child value contributes no root, parent or child identity");
 }
 
+// spec: authority.redact.child-selector-lineage@678d0ad2
 #[test]
 fn a_child_row_selector_without_typed_sibling_lineage_refuses_before_files() {
     use contextful_context::land::{stage_normalized_group, NormalizedStage};

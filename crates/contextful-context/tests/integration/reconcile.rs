@@ -12,6 +12,7 @@ use contextful_core::store::StoreError;
 use serde_json::json;
 use std::fs;
 
+// spec: store.reconcile.variant@b554b919
 #[cfg(feature = "read")]
 #[test]
 fn one_variant_column_keeps_each_scalar_kind_through_land_fold_and_read() {

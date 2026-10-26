@@ -49,7 +49,7 @@ fn a_registration_names_one_form_one_source_and_a_metric_comparator() {
     assert_eq!(Registration::check(watch).unwrap().deadline(), None);
     invalid(RawRegistration { horizon_secs: Some(60), ..raw(Some("manual"), None) });
     invalid(RawRegistration { deadline_at: None, ..raw(Some("manual"), None) });
-    invalid(raw(None, None));
+    assert!(matches!(Registration::check(raw(None, None)), Err(MemoryError::OutcomeRegistrationInvalid(_))));
     invalid(raw(Some("oracle"), None));
     invalid(raw(Some("metric"), None));
     invalid(raw(Some("manual"), Some("x > 1")));

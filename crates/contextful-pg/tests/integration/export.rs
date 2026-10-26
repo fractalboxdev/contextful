@@ -144,6 +144,7 @@ fn log_checkpoints_survive_replacement_and_refuse_backwards_progress() {
     assert_eq!(replacement.checkpoint("logs").unwrap(), cursor);
 }
 
+// spec: run.export.writer-fenced@7ebbf9ff
 #[test]
 fn ownership_transfer_waits_for_an_admitted_outbound_effect() {
     let Some(server) = super::server::start() else {
@@ -185,7 +186,8 @@ fn ownership_transfer_waits_for_an_admitted_outbound_effect() {
     });
     let mut replacement = PgExportLedger::connect(&server.conninfo).unwrap();
     replacement.claim("sink", "replacement", 90).unwrap();
-    assert!(writer
+    let error = writer
         .dispatch("sink", || panic!("old effect entered after transfer"))
-        .is_err());
+        .unwrap_err();
+    assert!(error.message.contains("ExecutionWriterFenced"), "{error}");
 }

@@ -107,6 +107,8 @@ fn publication<'a>(source: &'a str, id: &'a str) -> ExportPublication<'a> {
     ExportPublication { source, id, identity: "view-1", destination: "target-1" }
 }
 
+// spec: run.export.typed-ack@535f29b5
+// spec: run.export.typed-outbox@32a6a820
 #[test]
 fn typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker() {
     let dir = tempfile::tempdir().unwrap();

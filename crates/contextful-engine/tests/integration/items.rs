@@ -77,6 +77,7 @@ fn input(ids: &[&str]) -> InputSet {
     }
 }
 
+// spec: run.items.identity@1331dc7f
 #[test]
 fn item_failures_commit_healthy_siblings_and_reordered_retry_skips_paid_work() {
     let rig = Rig::new();
@@ -222,6 +223,7 @@ fn terminal_receipts_name_the_job_entity_attempts_and_outcome() {
     );
 }
 
+// spec: run.items.outcomes@cfb9aa7c
 #[test]
 fn item_parked_and_entity_overlap_report_individual_outcomes() {
     let rig = Rig::new();
@@ -345,6 +347,8 @@ fn superseded_aggregate_parent_refuses_an_items_paid_callback() {
     assert_eq!(body.called.load(Ordering::SeqCst),0,"parent takeover must fence the paid item callback");
 }
 
+// spec: run.items.replay@0f205a6a
+// spec: run.items.retry-budget@bc933ae0
 #[test]
 fn independent_retries_keep_paid_results_and_stop_at_the_durable_attempt_bound() {
     struct Retry {
@@ -390,6 +394,7 @@ fn independent_retries_keep_paid_results_and_stop_at_the_durable_attempt_bound()
     assert_eq!(body.paid.load(Ordering::SeqCst), 1);
 }
 
+// spec: run.items.entity-admission@025ca6cf
 #[test]
 fn another_job_version_defers_the_same_entity_while_unrelated_entities_progress() {
     struct Other<'a> {
@@ -515,6 +520,7 @@ fn raw_item_publication_refuses_a_fence_transferred_during_staging() {
     assert!(sink.commits.is_empty());
 }
 
+// spec: run.items.terminal-input@9ceb7e46
 #[test]
 fn terminal_sibling_failure_does_not_pin_later_fires_to_old_input() {
     let rig = Rig::new();

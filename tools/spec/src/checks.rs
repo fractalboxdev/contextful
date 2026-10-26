@@ -665,42 +665,21 @@ pub enum Resolution {
     Defined,
 }
 
-/// Resolve an artifact path under the given roots: `Defined` when its final segment
-/// is defined there, `Ignored` when that definition is a test carrying `#[ignore]`.
+/// Resolve an artifact path under the given roots, its file or module part naming where
+/// the definition sits (`crate::pins::locate`): `Defined` when it is defined there,
+/// `Ignored` when that definition is a test carrying `#[ignore]`, and `Absent` for a
+/// `test` path naming a function that carries no `#[test]`.
 pub fn resolve(c: &Corpus, kind: &str, path: &str, roots: &[&str]) -> Resolution {
-    let last = path.rsplit([':', '.']).next().unwrap_or(path);
-    let pat = match kind {
-        "test" => format!(r"\bfn\s+{}\b", regex::escape(last)),
-        "theorem" => format!(r"\b(theorem|lemma)\s+{}\b", regex::escape(last)),
-        _ => format!(r"\b(fn|struct|enum|trait|type|const|static|mod)\s+{}\b", regex::escape(last)),
-    };
-    let re = Regex::new(&pat).unwrap();
-    for root in roots {
-        let dir = c.root.join(root);
-        let walk = walkdir::WalkDir::new(dir).into_iter().filter_entry(|e| {
-            let n = e.file_name().to_string_lossy();
-            n != "target" && n != "node_modules"
-        });
-        for e in walk.flatten() {
-            let p = e.path();
-            if !p.extension().map(|x| x == "rs" || x == "lean").unwrap_or(false) {
-                continue;
-            }
-            let Ok(s) = std::fs::read_to_string(p) else { continue };
-            if let Some(m) = re.find(&s) {
-                return if kind == "theorem" && lean_unfinished(&s[m.start()..]) {
-                    Resolution::Unfinished
-                } else if kind != "test" {
-                    Resolution::Defined
-                } else if ignored(&s[..m.start()]) {
-                    Resolution::Ignored
-                } else if unfinished(&s[m.start()..]) {
-                    Resolution::Unfinished
-                } else {
-                    Resolution::Defined
-                };
-            }
-        }
+    for site in crate::pins::locate(c, kind, path, roots) {
+        let Ok(s) = std::fs::read_to_string(c.root.join(&site.file)) else { continue };
+        let def = &s[site.offset..];
+        return match kind {
+            "theorem" if lean_unfinished(def) => Resolution::Unfinished,
+            "test" if !crate::pins::is_test(&s, site.offset) => continue,
+            "test" if ignored(&s[..site.offset]) => Resolution::Ignored,
+            "test" if unfinished(def) => Resolution::Unfinished,
+            _ => Resolution::Defined,
+        };
     }
     Resolution::Absent
 }
@@ -738,25 +717,73 @@ fn lean_unfinished(decl: &str) -> bool {
     SORRY.is_match(&text)
 }
 
-/// Whether the body of the function starting `def` holds a line opening with `todo!`.
-fn unfinished(def: &str) -> bool {
-    let Some(open) = def.find('{') else { return false };
-    let mut depth = 0usize;
-    let mut end = def.len();
-    for (i, ch) in def[open..].char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
+/// The byte range of the body of the function starting `def`, between its outer braces;
+/// the rest of `def` when the braces never balance, `None` when no brace opens. Braces
+/// inside string, raw-string and char literals and comments do not count.
+pub fn body_range(def: &str) -> Option<std::ops::Range<usize>> {
+    let b = def.as_bytes();
+    let (mut i, mut depth, mut open) = (0usize, 0usize, None);
+    while i < b.len() {
+        match b[i] {
+            b'/' if b.get(i + 1) == Some(&b'/') => {
+                i = def[i..].find('\n').map_or(b.len(), |n| i + n);
+                continue;
+            }
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                i = def[i + 2..].find("*/").map_or(b.len(), |n| i + 2 + n + 2);
+                continue;
+            }
+            b'r' if (b.get(i + 1) == Some(&b'"') || b.get(i + 1) == Some(&b'#')) && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_')) => {
+                let hashes = def[i + 1..].bytes().take_while(|c| *c == b'#').count();
+                if b.get(i + 1 + hashes) == Some(&b'"') {
+                    let close = format!("\"{}", "#".repeat(hashes));
+                    i = def[i + 2 + hashes..].find(&close).map_or(b.len(), |n| i + 2 + hashes + n + close.len());
+                    continue;
+                }
+            }
+            b'"' => {
+                i += 1;
+                while i < b.len() && b[i] != b'"' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+            }
+            b'\'' => {
+                // A char literal `'x'` or `'\x..'`; a lifetime `'a` has no closing quote.
+                if b.get(i + 1) == Some(&b'\\') {
+                    i = def[i + 2..].find('\'').map_or(b.len(), |n| i + 2 + n);
+                } else if b.get(i + 2) == Some(&b'\'') {
+                    i += 2;
+                } else if let Some(ch) = def[i + 1..].chars().next().filter(|ch| ch.len_utf8() > 1) {
+                    if def[i + 1 + ch.len_utf8()..].starts_with('\'') {
+                        i += 1 + ch.len_utf8();
+                    }
+                }
+            }
+            b'{' => {
+                depth += 1;
+                open.get_or_insert(i);
+            }
+            b'}' if open.is_some() => {
                 depth -= 1;
                 if depth == 0 {
-                    end = open + i;
-                    break;
+                    return open.map(|o| o + 1..i);
                 }
             }
             _ => {}
         }
+        i += 1;
     }
-    def[open + 1..end].lines().any(|l| l.trim_start().starts_with("todo!"))
+    open.map(|o| o + 1..def.len())
+}
+
+/// The body of the function starting `def`, between its outer braces.
+pub fn body(def: &str) -> &str {
+    body_range(def).map(|r| &def[r]).unwrap_or("")
+}
+
+/// Whether the body of the function starting `def` holds a line opening with `todo!`.
+fn unfinished(def: &str) -> bool {
+    body(def).lines().any(|l| l.trim_start().starts_with("todo!"))
 }
 
 /// A milestone's acceptance test: `absent`, `open` when ignored or holding `todo!`,
@@ -793,6 +820,8 @@ pub struct Tagged {
     pub function: Option<String>,
     pub ignored: bool,
     pub unfinished: bool,
+    /// The tagged function's body text; empty for a Lean declaration.
+    pub body: String,
 }
 
 /// One pin: a `spec/pins.toml` entry, or a `// spec: <id>@<rev>` tag above a test.
@@ -807,11 +836,6 @@ pub struct Pin {
 }
 
 impl Pin {
-    /// The test function this pin names, when it names one.
-    pub fn test_name(&self) -> Option<&str> {
-        self.name_of("test")
-    }
-
     /// The theorem this pin names, when it names one.
     pub fn theorem_name(&self) -> Option<&str> {
         self.name_of("theorem")
@@ -845,6 +869,11 @@ pub enum PinState {
     Unfinished,
     Unattached,
     Stale,
+    /// A refusal clause's test whose body names none of the clause's errors.
+    Unexercised,
+    /// A finished theorem beside test pins whose inventory row binds none of them: it
+    /// neither performs nor breaks the clause.
+    Unbound,
 }
 
 /// Every `// spec:` tag under Rust, Lean and TypeScript surface roots, in path and line order.
@@ -863,47 +892,58 @@ pub fn scan_tags(c: &Corpus) -> Vec<Pin> {
             }
             let Ok(s) = std::fs::read_to_string(p) else { continue };
             let rel = p.strip_prefix(&c.root).unwrap_or(p).to_string_lossy().replace('\\', "/");
-            if ext == "lean" {
-                out.extend(lean_tags(&s, &rel));
-                continue;
-            }
-            if ext == "ts" || ext == "tsx" {
-                out.extend(ts_tags(c, &s, &rel));
-                continue;
-            }
-            let mut offsets = Vec::new();
-            let mut at = 0;
-            for l in s.split_inclusive('\n') {
-                offsets.push(at);
-                at += l.len();
-            }
-            let lines: Vec<&str> = s.lines().collect();
-            for (i, l) in lines.iter().enumerate() {
-                let Some(cap) = TAG.captures(l.trim()) else { continue };
-                let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false };
-                for (j, next) in lines.iter().enumerate().skip(i + 1) {
-                    let t = next.trim();
-                    if t.is_empty() || t.starts_with("//") || t.starts_with("#[") {
-                        continue;
-                    }
-                    if let Some(f) = FN_LINE.captures(t) {
-                        let def = offsets[j];
-                        tagged.function = Some(f[1].to_string());
-                        tagged.ignored = ignored(&s[..def]);
-                        tagged.unfinished = unfinished(&s[def..]);
-                    }
-                    break;
-                }
-                out.push(Pin {
-                    clause: cap[1].to_string(),
-                    kind: "test".into(),
-                    path: tagged.function.clone().unwrap_or_default(),
-                    file: rel.clone(),
-                    line: i + 1,
-                    tag: Some(tagged),
-                });
-            }
+            out.extend(tags_in(c, &rel, &s));
         }
+    }
+    out
+}
+
+/// Every `// spec:` or `-- spec:` tag in one Rust, Lean or TypeScript file, `rel` naming it
+/// relative to the corpus root.
+pub fn tags_in(c: &Corpus, rel: &str, s: &str) -> Vec<Pin> {
+    let ext = rel.rsplit('.').next().unwrap_or_default();
+    if ext == "lean" {
+        return lean_tags(s, rel);
+    }
+    if ext == "ts" || ext == "tsx" {
+        return ts_tags(c, s, rel);
+    }
+    if ext != "rs" {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut offsets = Vec::new();
+    let mut at = 0;
+    for l in s.split_inclusive('\n') {
+        offsets.push(at);
+        at += l.len();
+    }
+    let lines: Vec<&str> = s.lines().collect();
+    for (i, l) in lines.iter().enumerate() {
+        let Some(cap) = TAG.captures(l.trim()) else { continue };
+        let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false, body: String::new() };
+        for (j, next) in lines.iter().enumerate().skip(i + 1) {
+            let t = next.trim();
+            if t.is_empty() || t.starts_with("//") || t.starts_with("#[") {
+                continue;
+            }
+            if let Some(f) = FN_LINE.captures(t) {
+                let def = offsets[j];
+                tagged.function = Some(f[1].to_string());
+                tagged.ignored = ignored(&s[..def]);
+                tagged.unfinished = unfinished(&s[def..]);
+                tagged.body = body(&s[def..]).to_string();
+            }
+            break;
+        }
+        out.push(Pin {
+            clause: cap[1].to_string(),
+            kind: "test".into(),
+            path: tagged.function.clone().unwrap_or_default(),
+            file: rel.to_string(),
+            line: i + 1,
+            tag: Some(tagged),
+        });
     }
     out
 }
@@ -924,7 +964,7 @@ fn ts_tags(c: &Corpus, s: &str, rel: &str) -> Vec<Pin> {
     let mut out = Vec::new();
     for (i, line) in lines.iter().enumerate() {
         let Some((clause, rev)) = crate::native_ts::tag(line) else { continue };
-        let mut tagged = Tagged { rev: rev.to_string(), function: None, ignored: false, unfinished: false };
+        let mut tagged = Tagged { rev: rev.to_string(), function: None, ignored: false, unfinished: false, body: String::new() };
         for (j, next) in lines.iter().enumerate().skip(i + 1) {
             let trimmed = next.trim();
             if trimmed.is_empty() || trimmed.starts_with("//") { continue }
@@ -932,7 +972,9 @@ fn ts_tags(c: &Corpus, s: &str, rel: &str) -> Vec<Pin> {
                 tagged.function = Some(format!("{rel}::{}", test.title));
                 tagged.ignored = test.disabled;
                 let unique = lines.iter().filter_map(|line| crate::native_ts::test_call(line)).filter(|found| found.title == test.title).count() == 1;
-                tagged.unfinished = !runnable || !test_file || !native_test || !unique || ts_unfinished(&lines[j..].join("\n"));
+                let rest = lines[j..].join("\n");
+                tagged.unfinished = !runnable || !test_file || !native_test || !unique || ts_unfinished(&rest);
+                tagged.body = rest.find("=>").map(|arrow| body(&rest[arrow..]).to_string()).unwrap_or_default();
             }
             break;
         }
@@ -1011,7 +1053,7 @@ fn lean_tags(s: &str, rel: &str) -> Vec<Pin> {
     }
     for (i, l) in lines.iter().enumerate() {
         let Some(cap) = LEAN_TAG.captures(l.trim()) else { continue };
-        let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false };
+        let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false, body: String::new() };
         let mut kind = "theorem";
         let mut in_doc = false;
         for (j, next) in lines.iter().enumerate().skip(i + 1) {
@@ -1062,7 +1104,8 @@ pub fn pins_by_clause(c: &Corpus) -> BTreeMap<String, Vec<Pin>> {
 }
 
 pub fn pin_state(c: &Corpus, pin: &Pin) -> PinState {
-    match &pin.tag {
+    let clause = c.clauses().find(|cl| cl.id == pin.clause);
+    let state = match &pin.tag {
         None => match resolve(c, &pin.kind, &pin.path, &PIN_ROOTS) {
             Resolution::Defined => PinState::Performed,
             Resolution::Ignored => PinState::Ignored,
@@ -1070,7 +1113,7 @@ pub fn pin_state(c: &Corpus, pin: &Pin) -> PinState {
             Resolution::Absent => PinState::Absent,
         },
         Some(t) => {
-            let current = c.clauses().find(|cl| cl.id == pin.clause).map(|cl| statement_rev(&cl.statement));
+            let current = clause.map(|cl| statement_rev(&cl.statement));
             if t.function.is_none() {
                 PinState::Unattached
             } else if current.as_deref() != Some(t.rev.as_str()) {
@@ -1083,12 +1126,37 @@ pub fn pin_state(c: &Corpus, pin: &Pin) -> PinState {
                 PinState::Performed
             }
         }
+    };
+    match clause {
+        Some(cl) if state == PinState::Performed && pin.kind == "test" && !exercises(c, cl, pin) => PinState::Unexercised,
+        _ => state,
     }
 }
 
-/// The distinct test functions pinning one clause.
-pub fn pinned_tests(pins: &[Pin]) -> BTreeSet<&str> {
-    pins.iter().filter_map(Pin::test_name).collect()
+/// The errors a clause owns in its contract's fragment.
+pub fn owned_errors<'a>(c: &'a Corpus, cl: &Clause) -> Vec<&'a str> {
+    c.reg.fragments.get(&cl.contract).map(|f| f.error.iter().filter(|(_, e)| e.clause == cl.id).map(|(k, _)| k.as_str()).collect()).unwrap_or_default()
+}
+
+/// `corpus.state.unexercised`: a test pin of a refusal clause names one of the clause's
+/// errors in its body — the id itself, or a variant path `::<Suffix>` whose suffix keeps
+/// at least two of the id's trailing CamelCase words.
+fn exercises(c: &Corpus, cl: &Clause, pin: &Pin) -> bool {
+    let errors = owned_errors(c, cl);
+    if cl.kind != "refusal" || errors.is_empty() {
+        return true;
+    }
+    let text = match &pin.tag {
+        Some(t) => t.body.clone(),
+        None => crate::pins::locate(c, "test", &pin.path, &PIN_ROOTS)
+            .first()
+            .and_then(|site| std::fs::read_to_string(c.root.join(&site.file)).ok().map(|s| body(&s[site.offset..]).to_string()))
+            .unwrap_or_default(),
+    };
+    errors.iter().any(|id| {
+        let words: Vec<usize> = id.char_indices().filter(|(_, ch)| ch.is_ascii_uppercase()).map(|(i, _)| i).collect();
+        text.contains(id) || words.iter().rev().skip(1).filter(|i| **i > 0).any(|i| text.contains(&format!("::{}", &id[*i..])) && words.len() > 2)
+    })
 }
 
 /// The distinct theorems pinning one clause.
@@ -1096,16 +1164,91 @@ pub fn pinned_theorems(pins: &[Pin]) -> BTreeSet<&str> {
     pins.iter().filter_map(Pin::theorem_name).collect()
 }
 
-/// `performed` when every pin of the clause performs and at most one test and one
-/// theorem pin it; `broken` otherwise.
+/// The tests each `formal/**/inventory.toml` constant's `binding` names, as file and
+/// function, keyed by the constant's last name segment.
+pub fn bindings(c: &Corpus) -> BTreeMap<String, Vec<(String, String)>> {
+    static TEST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\btest\s+(\S+?)::([A-Za-z0-9_]+)").unwrap());
+    let mut out: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let walk = walkdir::WalkDir::new(c.root.join("formal")).sort_by_file_name().into_iter().filter_entry(|e| {
+        let n = e.file_name().to_string_lossy();
+        n != ".lake" && n != "target"
+    });
+    for e in walk.flatten().filter(|e| e.file_name() == "inventory.toml") {
+        let Some(table) = std::fs::read_to_string(e.path()).ok().and_then(|t| t.parse::<toml::Table>().ok()) else { continue };
+        for (key, row) in table.get("constant").and_then(toml::Value::as_table).into_iter().flatten() {
+            let name = key.rsplit('.').next().unwrap_or(key).to_string();
+            let binding = row.get("binding").and_then(toml::Value::as_str).unwrap_or_default();
+            out.entry(name).or_default().extend(TEST.captures_iter(binding).map(|m| (m[1].to_string(), m[2].to_string())));
+        }
+    }
+    out
+}
+
+/// Each pin's state within its clause (`corpus.state.bound-theorem`): a finished theorem
+/// beside test pins computes `Unbound` unless its inventory row binds one of them.
+pub fn pin_states(c: &Corpus, pins: &[Pin]) -> Vec<PinState> {
+    let mut states: Vec<PinState> = pins.iter().map(|p| pin_state(c, p)).collect();
+    let tests: Vec<(String, String)> = pins
+        .iter()
+        .filter(|p| p.kind == "test")
+        .filter_map(|p| match &p.tag {
+            Some(t) => Some((p.file.clone(), t.function.clone()?)),
+            None => crate::pins::locate(c, "test", &p.path, &PIN_ROOTS).first().map(|site| (site.file.clone(), p.path.rsplit("::").next().unwrap_or_default().to_string())),
+        })
+        .collect();
+    if tests.is_empty() || !pins.iter().any(|p| p.kind == "theorem") {
+        return states;
+    }
+    let bound = bindings(c);
+    for (p, state) in pins.iter().zip(states.iter_mut()) {
+        let Some(name) = p.theorem_name().filter(|_| *state == PinState::Performed) else { continue };
+        let name = name.rsplit('.').next().unwrap_or(name);
+        if !bound.get(name).is_some_and(|b| b.iter().any(|t| tests.contains(t))) {
+            *state = PinState::Unbound;
+        }
+    }
+    states
+}
+
+/// `performed` when every counted pin of the clause performs and at most one theorem pins
+/// it; `broken` otherwise. A clause takes any number of test pins; an `Unbound` theorem is
+/// not counted.
 pub fn clause_verdict(c: &Corpus, pins: &[Pin]) -> &'static str {
-    let single = pinned_tests(pins).len() <= 1 && pinned_theorems(pins).len() <= 1;
-    if single && pins.iter().all(|p| pin_state(c, p) == PinState::Performed) {
+    let single = pinned_theorems(pins).len() <= 1;
+    let states = pin_states(c, pins);
+    if single && states.iter().all(|s| matches!(s, PinState::Performed | PinState::Unbound)) && states.contains(&PinState::Performed) {
         "performed"
     } else {
         "broken"
     }
 }
+
+/// `corpus.state.proved`: the clause performs and a counted theorem pin and a test pin of
+/// it both perform.
+pub fn proved(c: &Corpus, pins: &[Pin]) -> bool {
+    let states = pin_states(c, pins);
+    let performing = |kind: &str| pins.iter().zip(&states).any(|(p, s)| p.kind == kind && *s == PinState::Performed);
+    clause_verdict(c, pins) == "performed" && performing("theorem") && performing("test")
+}
+
+/// The clause ids `formal/obligations.toml` lists, each with its line.
+pub fn obligations(c: &Corpus) -> Vec<(String, usize)> {
+    let text = std::fs::read_to_string(c.root.join(OBLIGATIONS)).unwrap_or_default();
+    let ids: Vec<String> = text
+        .parse::<toml::Table>()
+        .ok()
+        .and_then(|t| t.get("clauses").and_then(toml::Value::as_array).cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_string))
+        .collect();
+    ids.into_iter().map(|id| {
+        let line = text.lines().position(|l| l.contains(&format!("\"{id}\""))).map_or(0, |n| n + 1);
+        (id, line)
+    }).collect()
+}
+
+pub const OBLIGATIONS: &str = "formal/obligations.toml";
 
 /// A milestone's `Reach:` and `Acceptance:` lines: heading, heading line, reach text, acceptance test path.
 pub struct MilestoneLines {
@@ -1220,17 +1363,18 @@ fn state(c: &Corpus) -> Vec<Finding> {
             }
             continue;
         };
-        for p in group {
+        for (p, state) in group.iter().zip(pin_states(c, group)) {
             if p.kind == "item" && cl.kind != "behavior" {
                 out.push(f("state", &p.file, p.line, "SpecBrokenPin", format!("{} `{id}` takes a test or theorem, not an item", cl.kind)));
             }
-            let msg = match pin_state(c, p) {
-                PinState::Performed => continue,
+            let msg = match state {
+                PinState::Performed | PinState::Unbound => continue,
                 PinState::Ignored => format!("pin for `{id}` names a test carrying `#[ignore]`"),
                 PinState::Unfinished if p.kind == "test" => format!("pin for `{id}` names a test whose body still opens a line with `todo!`"),
                 PinState::Unfinished => format!("pin for `{id}` names a declaration still holding `sorry`"),
                 PinState::Absent => format!("pin for `{id}` does not resolve under crates/, tools/ or formal/"),
                 PinState::Unattached => format!("tag for `{id}` sits above no function"),
+                PinState::Unexercised => format!("pin for `{id}` names a test whose body names none of {}", owned_errors(c, cl).iter().map(|e| format!("`{e}`")).collect::<Vec<_>>().join(", ")),
                 PinState::Stale => {
                     let rev = p.tag.as_ref().map(|t| t.rev.as_str()).unwrap_or("");
                     let msg = format!("tag for `{id}` records rev `{rev}`; the statement's rev is `{}`", statement_rev(&cl.statement));
@@ -1245,18 +1389,6 @@ fn state(c: &Corpus) -> Vec<Finding> {
             let names: Vec<&str> = theorems.into_iter().collect();
             out.push(f("state", &group[0].file, group[0].line, "SpecBrokenPin", format!("`{id}` is pinned to two theorems, {}", names.join(" and "))));
         }
-        let tests = pinned_tests(group);
-        if tests.len() > 1 {
-            let names: Vec<&str> = tests.into_iter().collect();
-            let sites: Vec<String> = group.iter().map(Pin::site).collect();
-            out.push(f(
-                "state",
-                &group[0].file,
-                group[0].line,
-                "SpecBrokenPin",
-                format!("`{id}` is pinned to two tests, {} ({})", names.join(" and "), sites.join(", ")),
-            ));
-        }
         if clause_verdict(c, group) == "performed" {
             *count.entry(cl.contract.clone()).or_default() += 1;
         }
@@ -1268,6 +1400,11 @@ fn state(c: &Corpus) -> Vec<Finding> {
         }
         if !c.reg.contracts.contains_key(contract) {
             out.push(f("state", "spec/pins.toml", 0, "SpecBrokenPin", format!("floor names unknown contract `{contract}`")));
+        }
+    }
+    for (id, line) in obligations(c) {
+        if !all.get(&id).is_some_and(|group| proved(c, group)) {
+            out.push(f("state", OBLIGATIONS, line, "SpecProofObligationUnpinned", format!("`{id}` is listed as a proof obligation but does not compute proved")));
         }
     }
     let (claim, found) = expand_roadmap(c);

@@ -188,10 +188,10 @@ sql = "SELECT day FROM a"
 publish = false
 "#;
 
-fn cycle_refused(out: &Output) {
-    assert!(!out.status.success(), "expected ModelCycle, got: {}", String::from_utf8_lossy(&out.stdout));
+fn cycle_refused(out: &Output, error: &str) {
+    assert!(!out.status.success(), "expected {error}, got: {}", String::from_utf8_lossy(&out.stdout));
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("ModelCycle") && stderr.contains("`a`, `b`"), "{stderr}");
+    assert!(stderr.contains(error) && stderr.contains("`a`, `b`"), "{stderr}");
 }
 
 // spec: run.model.model-cycle@31a50a17
@@ -200,15 +200,15 @@ fn validate_apply_and_build_refuse_a_two_model_cycle() {
     let dir = project();
     let p = dir.path();
     std::fs::write(p.join("contextful.toml"), CYCLE).unwrap();
-    cycle_refused(&run(p, &["pipeline", "validate"]));
-    cycle_refused(&run(p, &["pipeline", "import", "--project", "research"]));
-    cycle_refused(&run(p, &["build", "a", "--site-id", "site-a", "--now", "2030-01-01T01:00:00Z"]));
+    cycle_refused(&run(p, &["pipeline", "validate"]), "ModelCycle");
+    cycle_refused(&run(p, &["pipeline", "import", "--project", "research"]), "ModelCycle");
+    cycle_refused(&run(p, &["build", "a", "--site-id", "site-a", "--now", "2030-01-01T01:00:00Z"]), "ModelCycle");
     assert!(!p.join(".contextful/context/research/tables/a").exists());
     let acyclic = CYCLE.replace("SELECT day FROM a", "SELECT day FROM events");
     std::fs::write(p.join("contextful.toml"), &acyclic).unwrap();
     stdout(&run(p, &["pipeline", "import", "--project", "research"]));
     std::fs::write(p.join("contextful.toml"), CYCLE).unwrap();
-    cycle_refused(&run(p, &["pipeline", "apply", "--project", "research"]));
+    cycle_refused(&run(p, &["pipeline", "apply", "--project", "research"]), "ModelCycle");
 }
 
 // spec: run.model.build-frontier@3cc993c1

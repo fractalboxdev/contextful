@@ -143,7 +143,7 @@ Where an argument lives: the Why line, the record and its anatomy, and the words
 
 Pins, verdicts, the coverage floor, the roadmap's operation claims and each milestone's acceptance test.
 
-- `status-is-computed` — `spec/status.md` is the sole statement of which clauses the tree demonstrates. No authored file says whether something is built.
+- `status-is-computed` — `contextful-spec state` computes which clauses the tree demonstrates: per contract and milestone into `spec/status.md`, per clause into the lock file's `pins`. No authored file says whether something is built.
   *P8*
 - `pin` — `spec/pins.toml` maps a clause id to one artifact: a `test` function path, a `theorem` constant under `formal/` or an `item` path. A refusal or a limit takes a test or a theorem.
   *P8*
@@ -157,17 +157,41 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a test that cannot demonstrate an assertion demonstrates no clause*
 - `lean-tag` — A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}.
   *because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale*
-- `theorem-beside-test` — A clause carries at most one theorem pin and one test pin, and computes `performed` when both perform: the theorem proves the model, the test ties the model to the code.
+- `theorem-beside-test` — A clause carries at most one theorem pin beside its test pins. A theorem pin alone states a property of a model, and performs once its proof holds no `sorry`.
   *A-assurance*
+- `bound-theorem` — Beside test pins, a theorem pin counts only when the `binding` of its row in a `formal/` inventory names one of those tests; an uncounted theorem leaves the clause's verdict to its tests.
+  *because a proof of a model the code never drives says nothing about the code the clause names*
+- `proved` — A performed clause computes `proved` when a counted theorem pin and a test pin of it both perform; `spec/status.md` counts proved clauses per contract and each card per operation.
+  *because performed and proved are different strengths of evidence, and one count hides which a contract holds*
+- `proof-obligation` — `formal/obligations.toml` lists clause ids under `clauses`; a listed clause that does not compute `proved` raises `SpecProofObligationUnpinned`, so an entry joins once its theorem counts and stays while it does.
+  *because a proof dropped silently reads as a clause still proved*
 - `stale-pin` — A tag whose `<rev>` differs from the digest of its clause's current statement raises `SpecStalePin`, and its clause computes `broken`.
   *because a reworded clause no longer says what its test was written to demonstrate*
+- `several-tests` — A clause takes any number of test pins and computes `performed` only when every one of them performs.
+  *because a conjunctive clause takes one test per conjunct, and one passing test of half a clause reads as the whole*
+- `unexercised` — A test pin of a refusal clause computes `broken` unless its function body names one of the clause's errors: the id itself, or a `::` variant path keeping at least two of the id's trailing words.
+  *because a test that never observes the error demonstrates some other behavior*
+- `module-path` — A path pin resolves only where its file or module part points: `<file>.rs::<fn>` to that file, `<crate>::<module>::<fn>` to a file of that package opening that module path, `A.B.<theorem>` to `A/B.lean`.
+  *because a pin matching any same-named function elsewhere demonstrates nothing about the named one*
+- `test-pin-is-test` — A `test` pin naming a function that carries no `#[test]` attribute does not resolve.
+  *because a helper or production function proves presence, not behavior*
+- `unwired` — `contextful-ci unwired` raises `SpecUnwired` for each public item under `crates/*/src` that a performed pin's test names and no non-test source reaches, unless an `// entry: <clause id>` comment names the clause.
+  *because a clause performing through its test alone demonstrates code no binary runs*
 - `unfinished-test` — A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.
   *because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption*
 - `scaffold` — `contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function.
 - `scaffold-lean` — `contextful-spec scaffold <contract>.<operation> --lean <file>` appends one tagged theorem per clause of the operation, its statement the docstring and its proposition and proof `sorry`, and rewrites no existing theorem.
+- `migrate` — `contextful-spec pins --migrate` moves each `test` entry of `spec/pins.toml` into a tag above the one test it names, and leaves an entry naming no clause or no single test in place.
+  *because a tag travels with its test, and a path in a separate file goes stale unseen*
+- `retag` — `contextful-spec retag <clause>` rewrites every tag of the clause to its statement's rev, and a `///` copy above a tag reading at least 0.9 like the tagged statement, refusing while a check other than `state` or `render` reports.
+  *because a reworded clause otherwise leaves each tag and copy for a hand edit, and a malformed statement takes no rev*
+- `slice-file` — `contextful-spec slice --file <path>` prints each clause the file's tags name, with its current statement and the functions tagging it.
+  *because a reviewer of a test reads what it claims to demonstrate*
+- `slice-diff` — `contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage prints it into the gate log.
+  *because an edited test can stop demonstrating its clause while every pin still computes performed*
 - `coverage-floor` — `spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.
   *because deleting a failing pin must not read as progress*
-- `bad-pin` — A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken pin, and one clause pinned to two tests or two theorems raise `SpecBrokenPin`.
+- `bad-pin` — A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken or unexercised pin, and one clause pinned to two theorems raise `SpecBrokenPin`.
   *P8*
 - `roadmap` — `spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.
   *P8*
@@ -184,9 +208,9 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
 
 The generated files, and the vocabulary no authored file carries.
 
-- `generated` — `spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json` are regenerated by `contextful-spec state` and `contextful-spec extract`. A committed copy differing from regeneration raises `SpecStaleRender`.
+- `generated` — `contextful-spec state` regenerates `spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json`, and `contextful-spec extract` the lock file alone. A committed copy differing from regeneration raises `SpecStaleRender`.
   *P8*
-- `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry and the pointer graph.
+- `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pin sites and verdict.
   *P8*
 - `card` — `contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.
   *A-corpus*

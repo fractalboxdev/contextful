@@ -13,6 +13,7 @@ fn mirrors(r: &Repo) -> Output {
         .unwrap()
 }
 
+// spec: assurance.structure-tree.mirror-unresolved@73aa90c8
 #[test]
 fn an_annotation_naming_no_clause_is_refused() {
     let r = Repo::init();

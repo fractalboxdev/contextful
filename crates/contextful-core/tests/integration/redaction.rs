@@ -60,6 +60,7 @@ fn greedy_quantifiers_rewrite_one_leftmost_first_span() {
     assert_eq!(value, "[REDACTED:phone] b [REDACTED:phone]");
 }
 
+// spec: authority.redact.in-value@ffe1f9f4
 #[test]
 fn a_rewritten_span_leaves_no_matched_byte_of_its_leftmost_match() {
     for (pattern, text) in [("password=\\S+", "password=hunter2 ok"), ("ab+c|b", "xabbbcx")] {
@@ -103,6 +104,7 @@ fn ordinary_patterns_rewrite_a_mebibyte_in_one_pass() {
     assert!(!value.as_str().unwrap().contains("415"));
 }
 
+// spec: authority.redact.rules-per-pipeline@77e297af
 #[test]
 fn pipeline_removal_rejects_unknown_tables_and_bounds_all_declared_rules() {
     use contextful_core::pipeline::declare::PipelineSpec;
@@ -145,6 +147,8 @@ fn relational_lineage_rewrites_children_before_deriving_persisted_identities() {
     assert_eq!(normalize("415-555-0100"), normalize("415-555-0999"), "no identity retains a digest of either removed value");
 }
 
+// spec: authority.redact.compiled-pattern-size@38edb64a
+// spec: authority.redact.pattern-bytes@bbed5a2a
 #[test]
 fn source_and_expanded_automaton_limits_refuse_before_matching() {
     assert!(CompiledRule::compile(rule(json!({"pattern":"a".repeat(4097)}), None)).is_err());

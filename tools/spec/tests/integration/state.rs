@@ -4,6 +4,7 @@ use crate::{codes, Scratch};
 
 const LIMIT_CLAUSE: &str = "corpus.anatomy.statement-words";
 
+// spec: corpus.state.verdict@c864a3ec
 #[test]
 fn ignored_test_pin_is_broken() {
     let s = Scratch::copy();
@@ -30,6 +31,28 @@ fn a_pin_resolves_under_tools() {
     assert!(codes(&s.lint("state"), "SpecBrokenPin").is_empty());
 }
 
+// spec: corpus.state.module-path@14448703
+// spec: corpus.state.test-pin-is-test@f34dca4b
+#[test]
+fn a_pin_resolves_only_where_its_file_or_module_part_points_and_only_to_a_test() {
+    let s = Scratch::copy();
+    s.write("crates/x/src/lib.rs", "pub fn words_over_forty_refused() {}\n");
+    s.write("crates/x/tests/integration/words.rs", "#[test]\nfn words_over_forty_refused() {}\n");
+    s.pin(LIMIT_CLAUSE, "test", "x::other::words_over_forty_refused");
+    assert_eq!(s.verdict(LIMIT_CLAUSE).as_deref(), Some("broken"));
+    assert!(codes(&s.lint("state"), "SpecBrokenPin").iter().any(|m| m.contains("does not resolve")));
+    s.write("spec/pins.toml", "[pin]\n\n[floor]\n");
+    s.pin(LIMIT_CLAUSE, "test", "x::words_over_forty_refused");
+    assert_eq!(s.verdict(LIMIT_CLAUSE).as_deref(), Some("broken"), "the crate root holds a function carrying no #[test]");
+    s.write("spec/pins.toml", "[pin]\n\n[floor]\n");
+    s.pin(LIMIT_CLAUSE, "test", "x::words::words_over_forty_refused");
+    assert_eq!(s.verdict(LIMIT_CLAUSE).as_deref(), Some("performed"));
+    s.write("spec/pins.toml", "[pin]\n\n[floor]\n");
+    s.pin(LIMIT_CLAUSE, "test", "crates/x/tests/integration/words.rs::words_over_forty_refused");
+    assert_eq!(s.verdict(LIMIT_CLAUSE).as_deref(), Some("performed"));
+}
+
+// spec: corpus.state.roadmap@8d15e1a8
 #[test]
 fn a_milestone_without_an_acceptance_line_is_a_roadmap_finding() {
     let s = Scratch::copy();
@@ -46,6 +69,7 @@ fn the_live_roadmap_names_an_acceptance_test_per_milestone() {
     assert!(codes(&s.lint("state"), "SpecRoadmap").is_empty());
 }
 
+// spec: corpus.state.acceptance-first@89a31931
 #[test]
 fn a_pin_in_a_milestone_with_no_acceptance_test_is_refused_until_one_exists() {
     let s = Scratch::copy();
@@ -67,6 +91,7 @@ fn milestone_row(status: &str, heading: &str) -> String {
     status.lines().find(|l| l.starts_with(&format!("| {heading} "))).unwrap_or_default().to_string()
 }
 
+// spec: corpus.state.acceptance@7673ae28
 #[test]
 fn status_reports_each_milestone_acceptance_verdict() {
     let s = Scratch::copy();
@@ -82,6 +107,14 @@ fn status_reports_each_milestone_acceptance_verdict() {
     assert!(milestone_row(&status, "6 — Sync and replicas").ends_with("| absent | open |"), "{status}");
 }
 
+/// The first behavior clause of `<contract>.<operation>`, which an empty test body performs.
+fn behavior_of(s: &Scratch, operation: &str) -> String {
+    let lock: serde_json::Value = serde_json::from_str(&s.read("spec/spec.lock.json")).unwrap();
+    let found = lock["clauses"].as_array().unwrap().iter().find(|c| c["kind"] == "behavior" && c["id"].as_str().unwrap().starts_with(&format!("{operation}.")));
+    found.unwrap_or_else(|| panic!("no behavior clause under {operation}"))["id"].as_str().unwrap().to_string()
+}
+
+// spec: corpus.state.closed@0904fb49
 #[test]
 fn a_milestone_closes_only_when_every_operation_it_names_holds_a_performed_clause() {
     let s = Scratch::copy();
@@ -91,7 +124,7 @@ fn a_milestone_closes_only_when_every_operation_it_names_holds_a_performed_claus
     for (i, op) in ops.iter().enumerate() {
         lib.push_str(&format!("#[test]\nfn covers_{i}() {{}}\n"));
         if i + 1 < ops.len() {
-            s.pin(&s.clause_of(op), "test", &format!("x::covers_{i}"));
+            s.pin(&behavior_of(&s, op), "test", &format!("x::covers_{i}"));
         }
     }
     s.write("crates/x/src/lib.rs", &lib);
@@ -99,7 +132,7 @@ fn a_milestone_closes_only_when_every_operation_it_names_holds_a_performed_claus
     let row = milestone_row(&s.read("spec/status.md"), "7 — Memory");
     assert!(row.ends_with("| passing | open |"), "`read.settle` holds no performed clause: {row}");
 
-    s.pin(&s.clause_of("read.settle"), "test", "x::covers_5");
+    s.pin(&behavior_of(&s, "read.settle"), "test", "x::covers_5");
     assert!(s.cmd(&["state"]).status.success());
     let row = milestone_row(&s.read("spec/status.md"), "7 — Memory");
     assert!(row.ends_with("| passing | closed |"), "{row}");
@@ -119,6 +152,7 @@ fn mark_operation_depth(s: &Scratch, heading: &str) {
     s.write("spec/roadmap.md", &format!("{}\nDepth: operation\n{}", &roadmap[..end], &roadmap[end..]));
 }
 
+// spec: corpus.state.deferred-depth@5debffdc
 #[test]
 fn a_behavior_clause_in_an_operation_depth_milestone_is_refused() {
     let s = Scratch::copy();
@@ -152,24 +186,19 @@ fn the_live_roadmap_holds_no_deferred_behavior() {
     assert!(codes(&s.lint("state"), "SpecDeferredBehavior").is_empty());
 }
 
-/// The verdict column of `clause`'s row in `spec/status.md`, if the row exists.
-fn status_row(s: &Scratch, clause: &str) -> Option<String> {
-    assert!(s.cmd(&["state"]).status.success());
-    let status = s.read("spec/status.md");
-    status.lines().find(|l| l.starts_with(&format!("| `{clause}` |"))).map(|row| row.trim_end_matches(" |").rsplit("| ").next().unwrap().to_string())
-}
-
-// spec: corpus.state.status-is-computed@093655f6
+// spec: corpus.state.status-is-computed@175204e9
 #[test]
 fn status_is_regenerated_from_pins_alone() {
     let s = Scratch::copy();
-    assert_eq!(status_row(&s, LIMIT_CLAUSE), None);
+    assert_eq!(s.verdict(LIMIT_CLAUSE), None);
     s.write("crates/x/src/lib.rs", "#[test]\nfn words_over_forty_refused() {}\n");
     s.pin(LIMIT_CLAUSE, "test", "x::words_over_forty_refused");
-    assert_eq!(status_row(&s, LIMIT_CLAUSE).as_deref(), Some("performed"));
+    assert_eq!(s.verdict(LIMIT_CLAUSE).as_deref(), Some("performed"));
     assert!(s.read("spec/status.md").starts_with("# Status\n\nGenerated by `contextful-spec state`"));
+    assert!(!s.read("spec/status.md").contains(LIMIT_CLAUSE), "status.md carries contract and milestone tables only");
+    assert_eq!(s.pin_row(LIMIT_CLAUSE)["sites"], serde_json::json!(["spec/pins.toml"]));
     s.write("crates/x/src/lib.rs", "#[test]\n#[ignore]\nfn words_over_forty_refused() {}\n");
-    assert_eq!(status_row(&s, LIMIT_CLAUSE).as_deref(), Some("broken"));
+    assert_eq!(s.verdict(LIMIT_CLAUSE).as_deref(), Some("broken"));
 }
 
 // spec: corpus.state.pin@c5f33380
@@ -180,8 +209,8 @@ fn a_pin_maps_a_clause_to_a_test_or_a_behavior_to_an_item() {
     s.pin(LIMIT_CLAUSE, "test", "x::words_over_forty_refused");
     s.pin("corpus.anatomy.lede", "item", "x::Lede");
     assert!(codes(&s.lint("state"), "SpecBrokenPin").is_empty(), "{:?}", s.lint("state"));
-    assert_eq!(status_row(&s, LIMIT_CLAUSE).as_deref(), Some("performed"));
-    assert_eq!(status_row(&s, "corpus.anatomy.lede").as_deref(), Some("performed"));
+    assert_eq!(s.verdict(LIMIT_CLAUSE).as_deref(), Some("performed"));
+    assert_eq!(s.verdict("corpus.anatomy.lede").as_deref(), Some("performed"));
 }
 
 // spec: corpus.state.coverage-floor@15b71f16
@@ -199,7 +228,7 @@ fn a_live_count_below_its_floor_is_a_coverage_regression() {
     assert!(found[0].contains("`corpus` holds 1 performed pins under floor 2"), "{found:?}");
 }
 
-// spec: corpus.state.bad-pin@18147168
+// spec: corpus.state.bad-pin@a0ed851c
 #[test]
 fn a_pin_naming_no_clause_an_item_on_a_limit_or_an_unresolved_test_is_a_broken_pin() {
     let s = Scratch::copy();

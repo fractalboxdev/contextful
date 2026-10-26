@@ -78,6 +78,7 @@ fn a_bound_off_its_unit_basis_or_statement_value_is_a_registry_finding() {
 // spec: corpus.registry.unregistered@c38f02e6
 #[test]
 fn an_unregistered_error_or_an_entry_naming_a_missing_clause_is_a_registry_finding() {
+    let registry = |s: &Scratch| codes(&s.lint("registry"), "SpecRegistry");
     let s = Scratch::copy();
     assert!(registry(&s).is_empty());
     extend(&s, "includes-runs", "A torn read raises `StoreNoSuchError`.");

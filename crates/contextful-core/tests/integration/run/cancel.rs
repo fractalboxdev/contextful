@@ -52,6 +52,7 @@ fn a_second_mark_overwrites_the_first() {
     assert_eq!(stop.reason.as_deref(), Some("second"));
 }
 
+// spec: run.cancel.two-grains@900d4d25
 #[test]
 fn only_an_in_flight_row_accepts_a_mark_and_scopes_read_by_grain() {
     assert_eq!(POLL_INTERVAL_MS, 500);

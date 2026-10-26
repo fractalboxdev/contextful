@@ -8,6 +8,7 @@ use contextful_outbound::infer::Endpoint;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+// spec: topology.compose.inference-egress@d35cf48e
 #[test]
 fn a_completion_posts_the_conversation_and_returns_the_content() {
     let _env = proxy_env();

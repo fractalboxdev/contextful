@@ -562,6 +562,7 @@ fn direct_and_pull_landing_rewrite_the_same_span_fixture_identically() {
     assert_eq!(std::fs::read(part(direct.path(), "messages")).unwrap(), std::fs::read(part(pull.path(), "feed_messages")).unwrap());
 }
 
+// spec: authority.redact.relational-journal@b78944ed
 #[test]
 fn canonical_child_rules_bind_prepared_relational_journaling_and_preserve_independent_native_sources() {
     for mode in ["relational", "native"] {
@@ -633,6 +634,7 @@ fn an_image_source_lands_a_png_embedded_capture_instant() {
     assert_eq!(out["rows"], serde_json::json!([["2030-01-02T03:04:05Z"]]));
 }
 
+// spec: connector.source.image-header@41664d01
 #[test]
 fn an_image_source_refuses_a_bad_header_with_its_path() {
     let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x03\x08\x02\x00\x00\x00\x36\x88\x49\xd6";
@@ -2651,6 +2653,7 @@ target = "inventory"
 "#)
 }
 
+// spec: surface.fire.model-snapshot@ac070ecf
 #[test]
 fn native_model_schedule_pins_sql_refreshes_and_preserves_restart_cadence() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
@@ -2710,6 +2713,7 @@ fn a_build_job_after_a_pipeline_records_the_landed_run_in_its_watermark() {
     }
 }
 
+// spec: surface.fire.scheduled-build@4312c4b5
 #[test]
 fn standalone_model_schedule_uses_durable_job_starts() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
@@ -2789,6 +2793,7 @@ fn native_model_daemon_refreshes_and_restarts_under_one_cadence_lease() {
     assert!(read["rows"][0][0].as_str().unwrap().parse::<u64>().unwrap() >= 3, "{read}");
 }
 
+// spec: surface.fire.build-dependency@b1c6bf26
 #[test]
 fn dependent_build_requires_the_entire_pipeline_unit_to_succeed() {
     let source = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));

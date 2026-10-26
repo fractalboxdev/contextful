@@ -107,6 +107,7 @@ fn a_shape_fills_eight_roles_and_may_fill_a_realtime_projection_and_a_queue() {
     }
 }
 
+// spec: corpus.targets.incomplete@66f65e15
 #[test]
 fn a_shape_leaving_a_role_unfilled_is_refused() {
     let s = Scratch::copy();
@@ -116,6 +117,7 @@ fn a_shape_leaving_a_role_unfilled_is_refused() {
     assert!(found[0].contains("catalog") && found[0].contains("cloudflare"), "{found:?}");
 }
 
+// spec: corpus.targets.cap-unrecorded@3b2aa61b
 #[test]
 fn a_capped_shape_not_recording_its_exclusions_is_refused() {
     let s = Scratch::copy();
@@ -126,6 +128,7 @@ fn a_capped_shape_not_recording_its_exclusions_is_refused() {
     assert_eq!(found.len(), 1, "{found:?}");
 }
 
+// spec: corpus.targets.function-profile@55abe00d
 #[test]
 fn a_function_class_shape_hosting_the_full_profile_is_refused() {
     let s = Scratch::copy();
@@ -136,6 +139,7 @@ fn a_function_class_shape_hosting_the_full_profile_is_refused() {
     assert_eq!(found.len(), 1, "{found:?}");
 }
 
+// spec: corpus.targets.page@b11b4618
 #[test]
 fn the_targets_page_is_rendered_from_the_files() {
     let s = Scratch::copy();

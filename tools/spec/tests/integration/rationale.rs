@@ -16,6 +16,7 @@ fn the_live_adrs_pass_their_anatomy() {
     assert!(found.is_empty(), "{found:?}");
 }
 
+// spec: corpus.rationale.contract-adr@bb5a459d
 #[test]
 fn a_contract_adr_section_over_its_word_limit_is_a_record_finding() {
     let s = Scratch::copy();

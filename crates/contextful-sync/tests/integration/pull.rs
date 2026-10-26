@@ -162,6 +162,7 @@ fn pushed() -> (tempfile::TempDir, Arc<dyn ObjectStore>, crate::support::Node) {
     (dir, b, a)
 }
 
+// spec: store.pull.identity-conflict@47d85ece
 #[test]
 fn a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it() {
     let dir = tempfile::tempdir().unwrap();

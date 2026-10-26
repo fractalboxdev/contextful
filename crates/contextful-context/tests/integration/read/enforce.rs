@@ -73,6 +73,7 @@ fn protection_is_compiled_into_the_relation() {
 }
 
 /// Every read of stored rows traverses the layers. A path reaching stored rows outside a registered relation is a defect, never a documented limitation.
+// spec: topology.compose.mediation@2727ab3f
 // spec: authority.compose.complete-mediation@0978d4bb
 #[test]
 fn every_row_path_takes_the_session() {
@@ -144,6 +145,8 @@ fn masks_substitute_columns_where_they_stand() {
     assert!(column(&named, "email").iter().all(|e| e.as_str().unwrap().len() == 5));
 }
 
+// spec: authority.mask.row-class-fallback@fb7a2a30
+// spec: authority.mask.row-class@508d1869
 #[test]
 fn one_admitted_read_applies_row_selected_masks_and_strict_unknown_fallback() {
     let mut r = Reads::new();

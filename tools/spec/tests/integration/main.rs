@@ -16,6 +16,7 @@ mod state;
 mod tags;
 mod targets;
 mod ts_pins;
+mod upkeep;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -80,6 +81,33 @@ impl Scratch {
     pub fn scaffold(&self, target: &str, package: &str) {
         let out = self.cmd(&["scaffold", target, "--package", package]);
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    /// Run `state`, then return `clause`'s entry under the lock file's `pins`, or `Null`.
+    pub fn pin_row(&self, clause: &str) -> serde_json::Value {
+        let out = self.cmd(&["state"]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let lock: serde_json::Value = serde_json::from_str(&self.read("spec/spec.lock.json")).unwrap();
+        lock["pins"][clause].clone()
+    }
+
+    /// `clause`'s computed verdict from the lock file's `pins`, once `state` has run.
+    pub fn verdict(&self, clause: &str) -> Option<String> {
+        self.pin_row(clause)["verdict"].as_str().map(str::to_string)
+    }
+
+    /// Replace each `todo!(<message>);` line of `rel` with an assertion over the same
+    /// message, so a scaffolded test still names the error or bound it was written for.
+    pub fn implement(&self, rel: &str) {
+        let text: Vec<String> = self
+            .read(rel)
+            .lines()
+            .map(|l| match l.trim_start().strip_prefix("todo!(").and_then(|m| m.strip_suffix(");")) {
+                Some(message) => format!("    assert!(!{message}.is_empty());"),
+                None => l.to_string(),
+            })
+            .collect();
+        self.write(rel, &(text.join("\n") + "\n"));
     }
 
     /// Every clause id of `<contract>.<operation>`, from the lock file.

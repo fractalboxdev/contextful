@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 const BLOCK: &str = "[[export]]\nname = \"spans-mirror\"\ntable = \"spans\"\nendpoint = \"https://otel.example.com/v1/logs\"\nsignal = \"logs\"\nheaders = { Authorization = \"Bearer ${secret://otel-token}\" }\n";
 
+// spec: run.export.group-identity@9042f9d5
 #[test]
 fn publication_groups_bind_the_base_members_and_empty_outputs() {
     contextful_core::pipeline::model::check_blocks("contextful.toml", &toml::from_str("[[publication]]\nname='projection'\njob='producer'\nmembers=['copy']\n").unwrap()).unwrap();
@@ -36,6 +37,7 @@ fn publication_groups_bind_the_base_members_and_empty_outputs() {
     assert!(serde_json::from_value::<contextful_core::export::publication::GroupEvent>(unknown).is_err());
 }
 
+// spec: run.export.typed-block@901de8c0
 #[test]
 fn a_typed_export_declares_a_key_and_schedule() {
     let block = "[[export]]\nname = \"state-copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n";
@@ -49,6 +51,9 @@ fn a_typed_export_declares_a_key_and_schedule() {
     assert!(parse_exports(&block.replace("schedule = \"every 30s\"", "schedule = \"every 0s\"")).is_err());
 }
 
+// spec: run.export.typed-complete@cab79bfd
+// spec: run.export.typed-events@871e84c3
+// spec: run.export.typed-order@2eb57e17
 #[test]
 fn typed_changes_include_deletions_and_a_final_publication_marker() {
     let export = parse_exports("[[export]]\nname = \"copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n").unwrap().remove(0);
@@ -220,6 +225,7 @@ fn a_group_header_carries_a_digest_of_any_producer_input() {
     assert!(serde_json::to_vec(&batch).unwrap().len() < 1024);
 }
 
+// spec: run.export.group-request-bound@44480894
 #[test]
 fn staging_refuses_a_group_whose_requests_exceed_the_ceiling() {
     use contextful_core::export::publication::GroupSender;
@@ -234,6 +240,7 @@ fn staging_refuses_a_group_whose_requests_exceed_the_ceiling() {
     assert_eq!(sender, GroupSender::default());
 }
 
+// spec: run.export.group-stranded@9d45f5f1
 #[test]
 fn a_never_offered_stranded_group_yields_to_the_next_stage() {
     use contextful_core::export::publication::publication;

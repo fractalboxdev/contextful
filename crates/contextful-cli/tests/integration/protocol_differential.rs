@@ -22,6 +22,7 @@ fn run(seed: &str) -> std::process::Output {
         .unwrap()
 }
 
+// spec: assurance.differential-test.protocol-harness@c80473cf
 #[test]
 fn fixed_seed_replays_protocol_cases_against_the_store() {
     if Command::new("lake").arg("--version").output().is_err() {
@@ -53,6 +54,7 @@ fn reference(dir: &Path, steps: &str) -> std::path::PathBuf {
     path
 }
 
+// spec: assurance.differential-test.protocol-drift@4f5dc46f
 #[test]
 fn a_protocol_difference_prints_the_minimal_sequence_and_both_states() {
     let dir = tempfile::tempdir().unwrap();
@@ -112,6 +114,7 @@ fn the_model_lists_the_steps_the_harness_drives() {
     assert_eq!(String::from_utf8_lossy(&out.stdout), STEPS);
 }
 
+// spec: assurance.differential-test.protocol-cases@ce25f65c
 #[test]
 fn generated_protocol_cases_cover_the_three_nodes_and_every_step() {
     let dump = || Command::new(BIN).args(["formal", "protocol-differential", "--seed", "76004", "--cases", "64", "--dump-cases"]).output().unwrap();
