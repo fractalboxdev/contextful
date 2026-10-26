@@ -2,7 +2,7 @@
 
 How the spec's diagrams stay readable: a flowchart draws things as nodes and what flows
 between them as labelled edges, a sequence diagram shows one scenario, and a state
-diagram shows a lifecycle the system can run. `corpus.diagram` states the rules and
+diagram shows a lifecycle the system runs. `corpus.diagram` states the rules and
 `contextful-spec lint --check diagram` enforces them over every `mermaid` fence.
 
 ## Practices
@@ -10,7 +10,7 @@ diagram shows a lifecycle the system can run. `corpus.diagram` states the rules 
 | Practice | Source | Informs | What the corpus takes from it |
 | --- | --- | --- | --- |
 | C4 review checklist and notation: every element and relationship labelled, every line one-directional with a label matching its direction, one notation per diagram | <https://c4model.com/diagrams/checklist> · <https://c4model.com/diagrams/notation> | `corpus.diagram` (`edge`, `unique-label`, `shape`, `layout`) | An edge names what flows in at most 5 words and points one way; one shape means one kind across a diagram; one declared reading direction. |
-| ISO 5807 flowchart symbols: a decision symbol with one entry and a labelled exit per outcome | <https://www.iso.org/standard/11955.html> | `corpus.diagram` (`decision`, `branch`) | A branch is a `{ }` decision with an incoming edge and two or more distinctly labelled exits; a box never branches through its edge labels. |
+| ISO 5807 flowchart symbols: a decision symbol with one entry and a labelled exit per outcome | <https://www.iso.org/standard/11955.html> | `corpus.diagram` (`decision`, `branch`) | A branch is a `{ }` decision with an incoming edge and two or more distinctly labelled exits; a box does not branch through its edge labels. |
 | UML 2.5.1 state machines (§14) and interactions (§17) | <https://www.omg.org/spec/UML/2.5.1> | `corpus.diagram` (`state`, `sequence`) | One initial pseudostate, every state reachable, no dead end; lifelines declared and used, combined fragments nested shallowly. |
 | Mermaid flowchart, sequence and state grammar | <https://mermaid.js.org/syntax/flowchart.html> · <https://mermaid.js.org/syntax/sequenceDiagram.html> · <https://mermaid.js.org/syntax/stateDiagram.html> | `corpus.diagram` | The grammar the checker parses: node shapes, `&` fan-out, pipe and inline edge labels, subgraphs, fragments and composite states. |
 | arc42 building-block and runtime views | <https://docs.arc42.org> | `corpus.diagram` (`connected`, `layout`, `boundary`) | Containers hold components and take edges on their behalf; a level of nesting past container and component is a second diagram. |
@@ -37,8 +37,8 @@ for Processing Information." *Psychological Review* 63(2), 1956.
 
 - **Priority:** optional
 - **Informs:** `corpus.diagram`
-- **Question:** How many chunks does a reader hold at once? The origin of the small
-  caps on node words and sequence participants.
+- **Question:** How many chunks does a reader hold at once? The origin of the word cap
+  on nodes and the participant cap on sequence diagrams.
 
 ### The magical number 4 in short-term memory
 

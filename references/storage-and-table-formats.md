@@ -17,7 +17,7 @@ Object Stores." *PVLDB* 13(12):3411–3424, 2020.
 - **Question:** How does a table commit on a store with no atomic rename, travel in
   time by snapshot selection rather than by row timestamp, and record the source
   offset (`txn(appId, version)`) inside the same log commit so a crash between
-  snapshot and cursor never re-lands a batch? The paper is the same architecture as
+  snapshot and cursor commits no batch twice? The paper is the same architecture as
   `store` — Parquet parts, a log compacted into checkpoints, optimistic commit by
   put-if-absent — and bears on three open questions: whether the catalog is a
   rebuildable cache or the commit point (a per-table pointer object committed by
@@ -72,8 +72,8 @@ Amazon Web Services. "Conditional writes." *Amazon S3 User Guide*.
 - **Informs:** `store.probe`, `store.push`, `store.lease`
 - **Question:** Which preconditions does the commit rest on? `If-None-Match: *`
   creates only when absent and `If-Match: <etag>` replaces only the version read.
-  The probe exercises exactly these two, and reads back the result because some
-  S3-compatible backends answer success while ignoring the precondition.
+  The probe exercises exactly these two, and reads back the result because an
+  S3-compatible backend that ignores the precondition still answers success.
 
 ## Time
 
@@ -114,6 +114,5 @@ Kleppmann, M., Beresford, A. R. "A Conflict-Free Replicated JSON Datatype."
 - **Priority:** optional
 - **Informs:** `surface.edit`, `surface.apply`
 - **Question:** What convergence does the edit-time configuration document guarantee
-  before `surface.apply` materializes it? A merge converges yet can still produce a
-  document that fails validation, so apply validates the merged result, never the
-  inputs.
+  before `surface.apply` materializes it? Convergence does not imply validity, so
+  apply validates the merged result rather than the inputs.

@@ -17,9 +17,9 @@ Logging." *USENIX Security*, pp. 317–334, 2009.
 - **Question:** How does the chain give O(log n) membership and consistency proofs,
   and delete old events without breaking them? A linear
   `sha256(seq ‖ prev_hash ‖ attributes)` chain verifies only by a full walk and
-  cannot prove a receipt's inclusion compactly; a history tree does both. The same
+  has no compact inclusion proof for a receipt; a history tree does both. The same
   model treats an absent segment while a tip or signed root exists as a broken chain,
-  never as a fresh genesis.
+  not as a fresh genesis.
 
 ### Certificate Transparency
 
@@ -81,10 +81,11 @@ arXiv:2606.18497, 2026. <https://arxiv.org/abs/2606.18497>
 - **Question:** Does a deleted row leave its vector behind? An HNSW delete marks the
   node and keeps the embedding in the index files, from which inversion recovers
   25.5% of exact person names and 46.4% of locations. An erasure receipt holds only
-  when every vector sidecar is rebuilt from the surviving rows, never tombstoned.
-  Open for the decision: should the extraction cache and dead-letter rows holding the
-  erased row be collected in the same window? The paper's epoch key rotation is crypto-shredding, which forced
-  rewrite already answers; its results belong on that decision's Revisit line.
+  when compaction rebuilds every vector sidecar from the surviving rows rather than
+  tombstoning it.
+  Open for the decision: should collection remove the extraction cache and dead-letter rows
+  holding the erased row in the same window? The paper's epoch key rotation is
+  crypto-shredding, which the forced rewrite already answers; its results belong on that decision's Revisit line.
 
 ### Text Embeddings Reveal (Almost) As Much As Text
 
@@ -94,8 +95,8 @@ Morris, J. X., Kuleshov, V., Shmatikov, V., Rush, A. M. "Text Embeddings Reveal
 - **Priority:** should-read
 - **Informs:** `disclosure.erase`, `authority.mask`, `read.embed`
 - **Question:** Is an embedding personal data? vec2text inverts an embedding back to
-  its text, recovering 92% of 32-token inputs exactly, so a vector is erased and
-  masked as the text it encodes. A vector computed over a masked or erased value
+  its text, recovering 92% of 32-token inputs exactly, so erasure and masking treat
+  a vector as the text it encodes. A vector computed over a masked or erased value
   discloses that value to anyone who reads the vector.
 
 ### Provenance Semirings
@@ -105,11 +106,11 @@ pp. 31–40, 2007. <https://web.cs.ucdavis.edu/~green/papers/pods07.pdf>
 
 - **Priority:** should-read
 - **Informs:** `disclosure.erase`, `disclosure.erase`, `read.recall`, `read.synthesize`
-- **Question:** When is a one-hop lineage cascade sound? Evidence row ids on claims,
-  the erasure cascade and derive-tier citation keys are why-provenance; one hop
+- **Question:** When is a one-level lineage cascade sound? Evidence row ids on claims,
+  the erasure cascade and derive-tier citation keys are why-provenance; one level
   reaches everything derived only when every derived row records its complete
-  witness set, and multi-hop synthesis needs the transitive closure or a claim
-  restated as one hop.
+  witness set, and multi-level synthesis needs the transitive closure or a claim
+  restated as one level.
 
 ### Redactable Blockchain
 

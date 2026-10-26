@@ -15,7 +15,7 @@ Retrieval." *ACM TOIS* 42(1), Article 20, 2023. <https://arxiv.org/abs/2210.1193
 - **Informs:** `read.rank`, `read.retrieve`, `assurance.evaluate`
 - **Question:** Does a convex combination over min-max-normalized scores, its weight
   fitted per domain on settled judgments, beat the fused score of `read.rank`, which
-  adds a clamped raw cosine to a reciprocal-rank score of the BM25 leg at fixed 60/40
+  adds a clamped raw cosine to a reciprocal-rank score of the BM25 arm at fixed 60/40
   weights? Convex combination wins only with weights tuned per domain, and
   normalization matters less than tuning; a sum of a raw score and a rank score is
   neither scheme, so the evaluation harness settles the choice against both on
@@ -78,7 +78,7 @@ Microsoft. "Configuration: settings.yaml." *GraphRAG documentation*.
   Gleaning re-prompts a batch for entities the first pass omitted, with
   `max_gleanings = 1` as the default, and the cache keeps every model response so a
   re-run makes no new call. Open for the decision: whether a declared, single,
-  optional pass bounds the first, and whether a cache keyed on the fenced batch bytes,
+  optional pass bounds the first, and whether a cache keyed on the batch bytes inside their data boundary markers,
   template and model, held as an enforced table, keeps the second inside the store's
   visibility and erasure. Community summaries carry no per-sentence citation and are
   not adopted.
@@ -108,8 +108,8 @@ Non-Parametric Continual Learning for Large Language Models." *ICML*, 2025.
 - **Informs:** `read.resolve-entity`, `read.rank`, `read.retrieve`
 - **Question:** What is the cheapest graph retrieval that wins on multi-hop questions?
   Personalized PageRank seeded from the query's resolved entities over an
-  entity-passage graph. Whether such a graph arm fuses as a third leg beside the
-  lexical and vector legs, and at what weight, is the question a bounded walk over
+  entity-passage graph. Whether such a graph arm fuses as a third arm beside the
+  lexical and vector arms, and at what weight, is the question a bounded walk over
   admitted memory edges leaves open.
 
 ### GraphRAG-Bench
@@ -123,7 +123,7 @@ arXiv:2506.05690, 2025. <https://arxiv.org/abs/2506.05690>
 - **Question:** When does graph retrieval pay for itself? Only on multi-hop and
   summarization tasks: Personalized PageRank costs about 1,008 prompt tokens per query
   against 879 for plain RAG, while community-summary global search costs 38k to 331k.
-  A graph walk earns its place by bounded hops and edges per call, measured per task
+  A graph walk earns its place by bounded walk depth and edge count per call, measured per task
   level rather than as one average.
 
 ## Memory
@@ -140,7 +140,8 @@ Knowledge Graph Architecture for Agent Memory." arXiv:2501.13956, 2025.
   with validity intervals and invalidates the loser by time instead of deleting it.
   Open for the decision: should a one-cardinality relation let a new edge from one
   source end the prior live edge at its own `valid_from` and name it as successor,
-  since an undeclared predicate cannot tell one true object from several? Graphiti's newest-wins rule ignores tier and is not
+  since a predicate with no declared cardinality does not say whether it holds one true
+  object or more? Graphiti's newest-wins rule ignores tier and is not
   adopted.
 
 ### MemTX
@@ -153,8 +154,8 @@ Transactional Belief Commit for Stateful Agent Memory." arXiv:2607.23929, 2026.
 - **Informs:** `read.revise`, `read.synthesize`, `read.recall`, `disclosure.erase`
 - **Question:** When does a memory write become a belief? MemTX stages writes and
   admits them through validate-and-commit: a higher-authority candidate supersedes,
-  a lower one aborts, and equal authority from different sources is quarantined for
-  review. A retraction walks the derivation graph and invalidates the summaries and
+  a lower one aborts, and MemTX quarantines equal authority from different sources
+  for review. A retraction walks the derivation graph and invalidates the summaries and
   index entries built on it, which is the cascade an erasure takes through claims and
   sidecars.
 
@@ -187,8 +188,8 @@ Benchmarking Chat Assistants on Long-Term Interactive Memory." *ICLR*, 2025.
   update, abstention. Temporal reasoning reads at `observed_at`; abstention meets the
   recall evidence gate. Open for the decision: should knowledge update become a
   supersession-correctness measure, the rate of superseded claims served at their
-  successor's anchor? A converted public set
-  is reported and decides nothing beside the native cases.
+  successor's anchor? The evaluation report
+  lists a converted public set, and that set decides nothing beside the native cases.
 
 ### MemoryAgentBench
 
@@ -216,7 +217,7 @@ via Poisoning Memory or Knowledge Bases." *NeurIPS*, 2024.
   signal? Extraction turns ingested third-party text into durable claims that later
   ground answers, which is exactly the path trigger-optimized poisoning targets. Open
   for the decision: should a claims table declare a minimum serving taint and withhold
-  claims below it? A claim's provenance tier outweighs how many sources agree, since
+  claims below it? A claim's provenance tier outweighs the count of agreeing sources, since
   agreement fails once an attacker controls volume. The same concern covers distillation: a
   conclusion drawn from one reader's rows carries those rows' labels to any later
   reader. Query-only injection lives in [prompt-injection.md](./prompt-injection.md)
