@@ -60,7 +60,7 @@ fn migrate_writes_one_tag_line_per_clause_above_a_shared_test() {
     let text = s.read(FILE);
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines[..3], ["fn helper() {}", "", "/// Two clauses."], "{text}");
-    assert!(lines[3..5].iter().all(|l| l.starts_with("// spec: corpus.anatomy.")), "{text}");
+    assert!(lines[3].starts_with("// spec: corpus.anatomy.") && lines[4].starts_with("// spec: corpus.anatomy."), "{text}");
     assert_eq!(lines[5..7], ["#[test]", "fn shared() {"], "{text}");
     assert_eq!(s.verdict(CLAUSE).as_deref(), Some("performed"));
     assert_eq!(s.verdict(OTHER).as_deref(), Some("performed"));
