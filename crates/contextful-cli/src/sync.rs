@@ -89,7 +89,7 @@ pub enum SyncCmd {
         #[command(flatten)]
         args: SyncArgs,
     },
-    /// Take or release a table's compaction lease in the bucket.
+    /// Take, renew or release a table's compaction lease in the bucket.
     #[command(subcommand)]
     Lease(LeaseCmd),
     /// Fold a table under its compaction lease and publish the snapshot under the lease's fence.
@@ -106,6 +106,12 @@ pub enum SyncCmd {
 #[derive(Subcommand)]
 pub enum LeaseCmd {
     Acquire {
+        table: String,
+        #[command(flatten)]
+        args: SyncArgs,
+    },
+    /// Renew the compaction lease this node holds, for a later `sync compact --held`.
+    Renew {
         table: String,
         #[command(flatten)]
         args: SyncArgs,
@@ -765,6 +771,13 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             println!("{table}: lease held at fence {} until {}", held.lease.fence, held.lease.expires_at.map(|e| e.to_string()).unwrap_or_default());
             Ok(())
         }
+        SyncCmd::Lease(LeaseCmd::Renew { table, args }) => {
+            let (s, _) = open(&args)?;
+            let held = s.held(&table)?.ok_or_else(|| contextful_core::store::StoreError::LeaseNotHeld(format!("this node holds no lease on `{table}`")))?;
+            let renewed = s.renew(&table, &held, now(&args.now)?)?;
+            println!("{table}: lease renewed at fence {} until {}", renewed.lease.fence, renewed.lease.expires_at.map(|e| e.to_string()).unwrap_or_default());
+            Ok(())
+        }
         SyncCmd::Lease(LeaseCmd::Release { table, args }) => {
             let (s, _) = open(&args)?;
             s.release(&table)?;
@@ -779,7 +792,9 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             } else {
                 s.acquire(&table, at)?
             };
-            let outcome = compact(&s, &decls, &table, &lease, at);
+            // The pass renews its lease while it pulls, folds and pushes (`store.lease.renewal`).
+            let every = std::time::Duration::from_secs(contextful_core::store::lease::RENEWAL_SECS);
+            let outcome = s.renewing(&table, &lease, at, every, || compact(&s, &decls, &table, &lease, at));
             if !held {
                 s.release(&table)?;
             }

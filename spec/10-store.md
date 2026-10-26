@@ -689,7 +689,8 @@ Merging bucket manifests across writers, verifying tombstones and retrying condi
 Exclusive pipeline and compaction writer leases, their commit fences, and cursor commits in the commit log.
 
 - `ttl` — A writer lease grants ownership for 10 min.
-- `renewal` — A holder renews every 200 s by `If-Match` replace on the ETag it holds.
+- `renewal` — The process holding a compaction lease renews it every 200 s by `If-Match` replace on its ETag; `sync compact` renews while it pulls, folds and pushes.
+- `operator-renew` — `sync lease renew <table>` renews the compaction lease this node holds, for `sync compact --held`.
 - `clock-skew` — Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.
   *because correctness rests on the commit fence, and the skew bound only sets how early a holder stops committing*
 - `held` — If a run finds an unexpired lease, the engine raises `LeaseHeld`, names the holder and expiry, and skips the run. The engine retries the run at the next reconciliation tick.
@@ -722,7 +723,7 @@ stateDiagram-v2
     Held --> Expired: no renewal within the grant
 ```
 
-unsettled: Which process carries out `renewal` for a compaction lease held across `sync lease acquire` and `sync compact --held`, and for a pipeline lease? owner: store affects: store.lease
+unsettled: Which process carries out `renewal` for a pipeline lease? owner: store affects: store.lease
 
 ## Shapes
 

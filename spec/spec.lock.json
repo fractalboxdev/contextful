@@ -5143,10 +5143,21 @@
       "operation": "lease",
       "subject": "renewal",
       "kind": "limit",
-      "statement": "A holder renews every 200 s by `If-Match` replace on the ETag it holds.",
+      "statement": "The process holding a compaction lease renews it every 200 s by `If-Match` replace on its ETag; `sync compact` renews while it pulls, folds and pushes.",
       "why": "",
       "file": "spec/10-store.md",
       "line": 692
+    },
+    {
+      "id": "store.lease.operator-renew",
+      "contract": "store",
+      "operation": "lease",
+      "subject": "operator-renew",
+      "kind": "behavior",
+      "statement": "`sync lease renew <table>` renews the compaction lease this node holds, for `sync compact --held`.",
+      "why": "",
+      "file": "spec/10-store.md",
+      "line": 693
     },
     {
       "id": "store.lease.clock-skew",
@@ -5157,7 +5168,7 @@
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
       "why": "because correctness rests on the commit fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
-      "line": 693
+      "line": 694
     },
     {
       "id": "store.lease.held",
@@ -5168,7 +5179,7 @@
       "statement": "If a run finds an unexpired lease, the engine raises `LeaseHeld`, names the holder and expiry, and skips the run. The engine retries the run at the next reconciliation tick.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 695
+      "line": 696
     },
     {
       "id": "store.lease.stale-fence",
@@ -5179,7 +5190,7 @@
       "statement": "If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher commit fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 697
+      "line": 698
     },
     {
       "id": "store.lease.not-held",
@@ -5190,7 +5201,7 @@
       "statement": "Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 699
+      "line": 700
     },
     {
       "id": "store.lease.cursor-kind",
@@ -5201,7 +5212,7 @@
       "statement": "A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.",
       "why": "A-run#incremental-position-bound",
       "file": "spec/10-store.md",
-      "line": 701
+      "line": 702
     },
     {
       "id": "store.lease.local-node",
@@ -5212,7 +5223,7 @@
       "statement": "A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 703
+      "line": 704
     },
     {
       "id": "store.lease.acquire",
@@ -5223,7 +5234,7 @@
       "statement": "Acquisition creates the lease object under `If-None-Match` or replaces an expired or released object under `If-Match` on its ETag. The acquired commit fence is one above the object's commit fence.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 705
+      "line": 706
     },
     {
       "id": "store.lease.pointer-fence",
@@ -5234,7 +5245,7 @@
       "statement": "Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 707
+      "line": 708
     },
     {
       "id": "store.lease.network-volume",
@@ -5245,7 +5256,7 @@
       "statement": "A compaction lease on a bucket resolving `single-writer` under {{store.probe.network-volume}} meets {{store.probe.unproven}}, naming the mount type. Acquisition writes no lease object or pointer fence.",
       "why": "because a conditional put holding on one machine only lets two machines each take the lease",
       "file": "spec/10-store.md",
-      "line": 709
+      "line": 710
     },
     {
       "id": "store.lease.commit-log",
@@ -5256,7 +5267,7 @@
       "statement": "Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`. Acquisition creates an entry carrying its fence. A manifest marked `logged` becomes readable when that log records the manifest.",
       "why": "A-store#coordination-probed-compare",
       "file": "spec/10-store.md",
-      "line": 711
+      "line": 712
     },
     {
       "id": "store.snapshot.capture",
@@ -43224,7 +43235,8 @@
             "value": 200,
             "unit": "s",
             "basis": "chosen",
-            "gloss": "Interval at which a holder renews, a third of the grant."
+            "gloss": "Interval at which a holder renews, a third of the grant.",
+            "const": "crates/contextful-core/src/store/lease.rs::RENEWAL_SECS"
           },
           "store-lease-ttl": {
             "clause": "store.lease.ttl",
@@ -52253,7 +52265,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "credential_keys_bind_secret_or_environment_references",
-        "line": 335,
+        "line": 337,
         "verdict": "performed",
         "proved": false
       }
@@ -64491,7 +64503,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "a_run_declaring_push_after_run_publishes_on_success_and_on_failure",
-        "line": 486,
+        "line": 487,
         "verdict": "performed",
         "proved": false
       }
@@ -66077,7 +66089,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "a_pipeline_file_keeps_a_replicate_off_table_off_the_pull",
-        "line": 404,
+        "line": 405,
         "verdict": "performed",
         "proved": false
       }
@@ -66461,7 +66473,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_unbound_or_literal_credential_key_is_refused_naming_the_key",
-        "line": 353,
+        "line": 355,
         "verdict": "performed",
         "proved": false
       }
@@ -66501,7 +66513,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "plaintext_http_opens_on_loopback_alone",
-        "line": 319,
+        "line": 321,
         "verdict": "performed",
         "proved": false
       }
@@ -66511,7 +66523,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "role_credentials_beside_a_key_or_on_r2_conflict_naming_the_endpoint",
-        "line": 377,
+        "line": 379,
         "verdict": "performed",
         "proved": false
       }
@@ -66551,7 +66563,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "each_endpoint_scheme_resolves_its_adapter_address",
-        "line": 284,
+        "line": 286,
         "verdict": "performed",
         "proved": false
       }
@@ -66591,7 +66603,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_endpoint_no_adapter_answers_is_refused_by_name",
-        "line": 307,
+        "line": 309,
         "verdict": "performed",
         "proved": false
       }
@@ -67759,7 +67771,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_expiry_judgment_allows_30_seconds_of_skew_on_the_judging_clock",
-        "line": 220,
+        "line": 222,
         "verdict": "performed",
         "proved": false
       }
@@ -67789,7 +67801,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "an_unexpired_lease_refuses_naming_its_holder_and_expiry_and_a_later_tick_takes_it",
-        "line": 237,
+        "line": 239,
         "verdict": "performed",
         "proved": false
       }
@@ -67799,7 +67811,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "a_bucket_lease_under_the_local_node_id_refuses_naming_the_variable",
-        "line": 268,
+        "line": 270,
         "verdict": "performed",
         "proved": false
       }
@@ -67819,7 +67831,17 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/store/sync.rs",
         "name": "releasing_another_nodes_lease_refuses",
-        "line": 256,
+        "line": 258,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "store.lease.operator-renew": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/sync/lease.rs",
+        "name": "an_operator_held_lease_renewed_by_its_holder_outlasts_its_grant",
+        "line": 13,
         "verdict": "performed",
         "proved": false
       }
@@ -67848,6 +67870,24 @@
         "line": 343,
         "verdict": "performed",
         "proved": true
+      }
+    ],
+    "store.lease.renewal": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/store/sync.rs",
+        "name": "a_holder_renews_every_200_seconds_on_the_etag_it_holds",
+        "line": 204,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-sync/tests/integration/lease.rs",
+        "name": "a_holder_renews_its_lease_while_its_work_runs_and_stops_after",
+        "line": 20,
+        "verdict": "performed",
+        "proved": false
       }
     ],
     "store.lease.stale-fence": [
@@ -68157,7 +68197,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "a_cold_node_pulls_the_bucket_before_its_run_reads",
-        "line": 237,
+        "line": 238,
         "verdict": "performed",
         "proved": false
       }
@@ -68437,7 +68477,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "a_run_declaring_push_after_run_publishes_on_success_and_on_failure",
-        "line": 484,
+        "line": 485,
         "verdict": "performed",
         "proved": false
       }
@@ -70647,7 +70687,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "source_first_run_outcomes_survive_push_pull_to_a_serving_node_without_a_machine_catalog",
-        "line": 69,
+        "line": 70,
         "verdict": "performed",
         "proved": false
       }
@@ -70967,7 +71007,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/sync/mod.rs",
         "name": "two_sites_declaring_different_residency_diverge_at_push",
-        "line": 432,
+        "line": 433,
         "verdict": "performed",
         "proved": false
       }

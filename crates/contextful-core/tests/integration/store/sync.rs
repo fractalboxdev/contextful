@@ -199,7 +199,9 @@ fn acquisition_creates_or_replaces_on_the_etag_with_the_next_fence() {
     assert!(matches!(BucketLease::acquire(Some((&second, "etag-2")), "ingest-a", now.plus_secs(600 + 29)), Err(StoreError::LeaseHeld(_))));
 }
 
-/// A holder renews every 200 s by `If-Match` replace on the ETag it holds.
+/// The process holding a compaction lease renews it every 200 s by `If-Match` replace on its ETag; `sync compact`
+/// renews while it pulls, folds and pushes.
+// spec: store.lease.renewal@176cf746
 #[test]
 fn a_holder_renews_every_200_seconds_on_the_etag_it_holds() {
     assert_eq!(RENEWAL_SECS, 200);

@@ -5,6 +5,7 @@
 mod catalogs;
 mod generations;
 mod hydrate;
+mod lease;
 mod run_state;
 mod node_id;
 mod redistribute;
