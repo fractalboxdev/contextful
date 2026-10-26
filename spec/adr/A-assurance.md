@@ -91,11 +91,11 @@ Revisit: a pinned, reproducible translation toolchain exists; a production diver
 
 ## The store protocol is modelled in Lean 4
 
-`assurance.model` holds the lease, compare-and-swap and fence protocol as an executable Lean 4 state machine in a second package; its four invariants are audited theorems, and a bounded check over three nodes and four lease generations raises `ProtocolInvariantViolated`. `assurance.differential-test` drives the model's compiled executable and the Rust store through generated operation sequences and interleavings; a disagreement raises `ProtocolConformanceDrift`.
+`assurance.model` holds the lease, compare-and-swap and fence protocol as an executable Lean 4 state machine over both lease paths: the compaction lease guarding a table pointer and the run lease guarding a commit log. Acquisition is a grant, then a raise. Safety is no lost update and no commit after a successor's acquisition; a commit between a successor's grant and raise lands below the highest grant, losing nothing. Five invariants are audited theorems; a bounded check over three nodes and four lease generations raises `ProtocolInvariantViolated`. `assurance.differential-test` drives the executable and the store's lease calls through generated sequences; a disagreement raises `ProtocolConformanceDrift`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Lean 4 executable model, conformance through the differential harness *(chosen)* | — | Invariant proofs are hand-written until SMT automation is proven; generated interleavings are samples, and exhaustiveness holds only inside the bounded check. |
+| Lean 4 executable model, conformance through the differential harness *(chosen)* | — | Invariant proofs are hand-written; generated interleavings are samples, exhaustive only inside the bounded check. |
 | Quint with quint-connect | One formal language | A second specification language, and a v0.1 bridge crate from one young vendor. |
 | TLA+ with a harness over ITF traces | Maintained Rust bridge | We build and keep action dispatch, state projection and comparison, in a second language. |
 | TLA+ trace validation of an instrumented store | Java-only instrumentation | A Rust logging API is built from scratch, and a run checks only the interleavings it provokes. |

@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 347 | 73 | 25 | 3 | 306 | 0 | 306 |
+| `assurance` | 3 | 18 | 348 | 74 | 25 | 3 | 307 | 0 | 306 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 312 | 0 | 312 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 173 | 0 | 173 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 88 | 0 | 88 |
-| **total** | 26 | 177 | 2923 | 711 | 235 | 82 | 2597 | 0 | |
+| **total** | 26 | 177 | 2924 | 712 | 235 | 82 | 2598 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
-| 1 — The authority core | 14 | 248 | 247 | passing | closed |
+| 1 — The authority core | 14 | 249 | 248 | passing | closed |
 | 2 — The store | 9 | 199 | 189 | passing | closed |
 | 3 — The run path | 12 | 318 | 307 | passing | closed |
 | 4 — Ingest | 25 | 651 | 551 | passing | closed |
@@ -175,6 +175,7 @@ Unscheduled operations: 13.
 | `assurance.differential-test.protocol-cases` | `spec/pins.toml` | performed |
 | `assurance.differential-test.protocol-drift` | `spec/pins.toml` | performed |
 | `assurance.differential-test.protocol-harness` | `spec/pins.toml` | performed |
+| `assurance.differential-test.protocol-vocabulary` | `crates/contextful-cli/tests/integration/protocol_differential.rs::a_step_the_model_and_the_harness_do_not_share_raises_vocabulary_drift` | performed |
 | `assurance.differential-test.reference-model` | `crates/contextful-cli/tests/integration/differential.rs::the_reference_binary_reads_one_case_and_prints_one_decision` | performed |
 | `assurance.differential-test.run-budget` | `crates/contextful-cli/tests/integration/differential.rs::a_run_past_its_budget_stops` | performed |
 | `assurance.differential-test.seed` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_seed_reproduces_the_case_sequence` | performed |
@@ -2263,9 +2264,9 @@ Unscheduled operations: 13.
 | `store.lease.local-node` | `crates/contextful-core/tests/integration/store/sync.rs::a_bucket_lease_under_the_local_node_id_refuses_naming_the_variable` | performed |
 | `store.lease.network-volume` | `crates/contextful-sync/tests/integration/push.rs::a_compaction_lease_on_a_network_volume_is_refused` | performed |
 | `store.lease.not-held` | `crates/contextful-core/tests/integration/store/sync.rs::releasing_another_nodes_lease_refuses` | performed |
-| `store.lease.pointer-fence` | `crates/contextful-sync/tests/integration/pull.rs::a_publish_under_a_superseded_fence_loses_its_condition`, `formal/protocol/Protocol/Invariants.lean::no_commit_below_granted` | performed |
+| `store.lease.pointer-fence` | `crates/contextful-sync/tests/integration/pull.rs::a_publish_under_a_superseded_fence_loses_its_condition`, `formal/protocol/Protocol/Invariants.lean::no_commit_after_successor_acquire` | performed |
 | `store.lease.renewal` | `crates/contextful-core/tests/integration/store/sync.rs::a_holder_renews_every_200_seconds_on_the_etag_it_holds` | performed |
-| `store.lease.stale-fence` | `crates/contextful-context/tests/integration/run_commit.rs::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable`, `formal/protocol/Protocol/Invariants.lean::no_commit_below_granted` | performed |
+| `store.lease.stale-fence` | `crates/contextful-context/tests/integration/run_commit.rs::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable`, `formal/protocol/Protocol/Invariants.lean::no_commit_after_successor_acquire` | performed |
 | `store.lease.ttl` | `crates/contextful-core/tests/integration/store/sync.rs::a_lease_is_granted_for_10_minutes` | performed |
 | `store.merge.cursor-recency` | `crates/contextful-core/tests/integration/store/sync.rs::differing_copies_of_a_commit_log_entry_refuse` | performed |
 | `store.merge.exhausted` | `crates/contextful-sync/tests/integration/push.rs::exhausted_rounds_refuse_and_report_every_uploaded_object` | performed |

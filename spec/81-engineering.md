@@ -263,7 +263,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because some deployments run with no external reach, and a call nobody configured moves data outside every grant, zone and audit record*
 - `interpolated-claim` — A source lint over the runtime crates finding a subject claim formatted into SQL text raises `EnforceInterpolatedSubjectClaim`, naming the file and line.
   *P1*
-- `formal-stage` — The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}} and {{assurance.model.protocol-check}}; a non-zero exit from any reds the run.
+- `formal-stage` — The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}}, {{assurance.model.protocol-check}} and the protocol differential over 10000 generated cases on both lease paths; a non-zero exit from any reds the run.
   *P7*
 - `container` — The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a 45 min per-stage wall clock — and a run dies on any one.
   *A-assurance*
