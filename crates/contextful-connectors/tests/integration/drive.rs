@@ -950,6 +950,7 @@ fn each_oauth_value_is_one_reference() {
 /// The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default
 /// port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.
 // spec: connector.source.drive-origin@e3de3af5
+// spec: connector.source.provider-origin@a0e63ea1
 #[test]
 fn a_google_credential_goes_to_google_hosts_alone() {
     let refs = json!({"refresh_token": "${secret://r}", "client_id": "${secret://i}", "client_secret": "${secret://s}"});

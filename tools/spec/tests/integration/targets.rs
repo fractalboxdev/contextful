@@ -116,6 +116,7 @@ fn a_shape_leaving_a_role_unfilled_is_refused() {
     assert!(found[0].contains("catalog") && found[0].contains("cloudflare"), "{found:?}");
 }
 
+// spec: topology.deploy.wall-clock-cap@9aa5dd75
 #[test]
 fn a_capped_shape_not_recording_its_exclusions_is_refused() {
     let s = Scratch::copy();

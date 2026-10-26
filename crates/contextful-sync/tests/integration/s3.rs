@@ -355,6 +355,7 @@ mod transport {
         assert_eq!(endpoint.requests().len(), 3);
     }
 
+    // spec: store.endpoint.unavailable@60d38ce3
     #[test]
     fn an_unanswered_or_server_failed_request_fails_as_unavailable() {
         let endpoint = Endpoint::start(vec![Answer::Drop; 3]);

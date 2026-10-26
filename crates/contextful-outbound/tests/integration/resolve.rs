@@ -20,6 +20,7 @@ fn vars(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
 /// One provider interface resolves a reference to credential material. Each backend implements this interface as an
 /// adapter. `CONTEXTFUL_SECRETS_BACKEND` selects the adapters in the chain.
 // spec: connector.resolve.provider-port@acb93111
+// spec: connector.reference.backend-independence@f4575393
 #[test]
 fn the_backend_variable_selects_the_adapters() {
     let clock = SetClock::new();

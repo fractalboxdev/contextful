@@ -42,6 +42,7 @@ function fixture(adminCapability = "server-secret") {
   return { request, calls };
 }
 
+// spec: surface.open-console.identity-gate@2ec2ed5b
 test("anonymous and forged Access assertions dispatch no page or API", async () => {
   const { request, calls } = fixture();
   for (const path of ["/query", "/query/api/stores", "/admin", "/admin/api/workflows"]) {
@@ -51,6 +52,8 @@ test("anonymous and forged Access assertions dispatch no page or API", async () 
   assert.deepEqual(calls, []);
 });
 
+// spec: surface.open-console.page-routes@e4d22b89
+// spec: surface.open-console.page-grants@c46504b8
 test("verified Access audiences grant only their page and API", async () => {
   const { request, calls } = fixture();
   assert.equal((await request("/query", access(queryAudience))).status, 200);
@@ -100,6 +103,7 @@ test("each page serves its prerendered document with only an inline-font allowan
   }
 });
 
+// spec: surface.open-console.query-surface@f1450168
 test("Query keeps one composer and transcript and delegates a sourced answer", async () => {
   const { request, calls } = fixture();
   const page = await (await request("/query", access(queryAudience))).text();
@@ -127,6 +131,8 @@ test("Access Query rejects cross-origin and originless POST before a turn", asyn
   assert.deepEqual(calls, []);
 });
 
+// spec: surface.open-console.engine-faces@ea1d9b38
+// spec: surface.open-console.admin-grant@ec53c8d6
 test("Admin exposes workflows and requires a server-held capability for edit and apply", async () => {
   const { request, calls } = fixture();
   const workflows = await request("/admin/api/workflows", access(adminAudience));

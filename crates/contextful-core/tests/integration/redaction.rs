@@ -119,6 +119,7 @@ fn pipeline_removal_rejects_unknown_tables_and_bounds_all_declared_rules() {
     assert!(declared(json!(vec![valid; 257])).validate().is_err(), "the pipeline owns the aggregate bound");
 }
 
+// spec: authority.redact.after-normalization@40434495
 #[test]
 fn relational_lineage_rewrites_children_before_deriving_persisted_identities() {
     use contextful_core::pipeline::normalize::NormalizedGroup;
@@ -151,6 +152,7 @@ fn source_and_expanded_automaton_limits_refuse_before_matching() {
     assert!(CompiledRule::compile(rule(json!({"pattern":"a{100000}"}), None)).is_err());
 }
 
+// spec: store.encrypt.redacted-index@97ec966e
 #[test]
 fn an_index_cannot_derive_a_copy_from_a_removed_column() {
     use contextful_core::store::declare::TableDecl;

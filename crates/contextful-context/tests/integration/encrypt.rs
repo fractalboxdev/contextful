@@ -401,6 +401,7 @@ fn encrypted_parquet_has_no_plaintext_canary_and_decrypts() {
 }
 
 /// Persistent adapters share the opened store's cipher without receiving key material.
+// spec: store.encrypt.key-binding@447c159e
 #[test]
 fn a_bound_store_shares_one_opaque_cipher_with_persistent_adapters() {
     let key_var = "CONTEXTFUL_TEST_KEY_74_SHARED_BINDING";

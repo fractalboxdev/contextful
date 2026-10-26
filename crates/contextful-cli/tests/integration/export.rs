@@ -751,6 +751,7 @@ fn an_unresolved_header_reference_refuses_before_any_request() {
 /// The cursor, the last delivered `_commit_seq` and `_row_seq`, commits to `.contextful/exports/<project>/<name>.json`,
 /// outside the synced store root, only after the target answers 2xx for the batch.
 // spec: run.export.cursor-after-ack@7312cad1
+// spec: run.export.local-state@754bd8a9
 #[test]
 fn the_cursor_commits_after_the_target_acknowledges() {
     let collector = Collector::start();

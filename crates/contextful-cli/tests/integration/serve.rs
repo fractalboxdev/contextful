@@ -621,6 +621,7 @@ fn control_routes_require_admin_and_project_applied_workflows() {
     assert_eq!(view["pipelines"][0]["schedule"], "every 1d");
 }
 
+// spec: surface.apply.draft-table-contracts@9d966271
 #[test]
 fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() {
     let (dir, public) = project();

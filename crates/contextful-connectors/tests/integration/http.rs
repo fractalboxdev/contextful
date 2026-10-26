@@ -388,6 +388,7 @@ fn a_json_key_on_another_format_is_refused_at_build() {
 /// A walk declares exactly one pagination shape: a page parameter with a start page, a next-cursor path with a
 /// cursor parameter, a next-URL path, or link-header following.
 // spec: connector.source.pagination@472ace8f
+// spec: connector.source.json-body-paths@542f7526
 #[test]
 fn each_pagination_shape_walks_to_its_end() {
     // Page parameter from a start page, ending on an empty page.
@@ -1129,6 +1130,7 @@ fn json_object_next_url_and_link_walks_keep_the_full_root() {
     }
 }
 
+// spec: connector.source.json-object-pagination@e938dad7
 #[test]
 fn json_object_page_number_pagination_refuses_before_io() {
     let vendor = Server::start(|_| Response::json(200, "{}"));

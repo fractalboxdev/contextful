@@ -117,6 +117,7 @@ fn artifact_runs_with_an_empty_provider_environment() {
         .contains("credential-material"));
 }
 
+// spec: assurance.consumer.verdict@58ba38bf
 #[test]
 #[cfg(unix)]
 fn unknown_storage_or_scenario_never_counts_as_a_pass() {
