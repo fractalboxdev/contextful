@@ -13,9 +13,9 @@ owns:
 
 Two Lean 4 packages stand beside the engine: one specifying the policy core, and one holding
 an executable state machine of the store's lease, compare-and-swap and fence protocol, its
-invariants stated as theorems. The gate checks both on every change, and one differential
+invariants stated as theorems. The nightly formal stage checks both, and one differential
 harness ties each model to the code it describes: the policy model to both builds of the
-decision module, the protocol model to the Rust store.
+decision module, the protocol model to the store's two lease paths.
 
 The two models, the checks over them, and where each meets the engine:
 
@@ -69,7 +69,7 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `toolchain-drift` — A build whose resolved toolchain string differs from the pinned one raises `ProofToolchainDrift`, printing both strings.
   *A-assurance*
 - `build-cost` — A cold elaboration of the package completes within 60 s and writes at most 2048 KiB of artifacts.
-  *because the check runs on every change*
+  *because the nightly formal stage elaborates it cold on every run*
 - `build-command` — `lake build` at the package root elaborates every declaration and writes the environment the audit reads.
 - `module-layout` — Five modules carry the package — the layer algebra, placement with the floor, the authority mapping, connector host containment and statement execution — and the library root re-exports all five.
 - `layer` — A layer is a total function from a row identifier to `Bool`; `composed` folds a list of layers by conjunction, admitting a row when every member admits it.
@@ -83,14 +83,15 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `out-of-model` — The policy package defines no credential bytes, signature verification, SQL semantics, journal write, process state or attacker observation, and no theorem reaches one.
 - `protocol-package` — The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` target, one `lean_exe` target and no `require` stanza.
   *A-assurance*
-- `protocol-model` — The protocol model is a total, computable step function over lease acquisition, renewal, expiry and release, the fenced compare-and-swap on the catalog row and the cursor object, holder pause, message delay and crash.
+- `protocol-model` — The protocol model is a total, computable step function over two lease paths, the compaction lease guarding a table pointer and the run lease guarding a commit log: grant, raise, renewal, expiry, release, fenced commit, pause, message delay and crash.
   *A-assurance*
-- `protocol-safety` — Four invariants are Lean theorems over every reachable state: one lease holder per fence, fences only increase, no commit lands carrying a fence below the highest granted, and release keeps the lease object and its fence.
+- `protocol-safety` — Five invariants are Lean theorems over every reachable state of both paths: one lease holder per fence, fences only increase, no commit after a successor's acquisition, no lost update, and release keeps the lease object and its fence.
+  *A-assurance*
 - `protocol-theorems` — Each protocol invariant theorem is a required constant in the protocol package's inventory, audited by {{assurance.audit-assumptions.check-command}} against the same allowlist.
 - `protocol-check` — The gate evaluates every invariant on each state reached by every step sequence over three nodes and four lease generations; a breaking state raises `ProtocolInvariantViolated`, printing the shortest sequence reaching it.
   *P7*
-- `protocol-pins` — {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_below_granted`.
-  *because the model's guarded objects are the catalog row and the cursor object, and a snapshot's sidecars lie outside it*
+- `protocol-pins` — {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_after_successor_acquire`.
+  *because the model's guarded objects are the table pointer and the commit log; the catalog cursor row and a snapshot's sidecars lie outside it*
 
 ## prove
 
@@ -225,11 +226,13 @@ The executable reference models, the case generators, the minimized counterexamp
 - `discarded-counterexample` — A run reporting a disagreement and writing no corpus entry raises `CounterexampleDiscarded`.
   *A-assurance*
 - `seed` — Each run records its generator seed, and re-running with that seed reproduces the same case sequence.
-- `protocol-cases` — Protocol cases are operation sequences and node interleavings a `proptest-state-machine` generator draws over acquire, renew, release, expire, commit, pause, delay and crash steps across three nodes.
-- `protocol-harness` — The harness drives the protocol package's compiled executable and the Rust store through each protocol case, comparing lease holder, fence, pointer ETag and commit outcome after every step.
+- `protocol-cases` — Protocol cases are operation sequences and node interleavings a `proptest-state-machine` generator draws over grant, raise, renew, expire, release, send, deliver, pause, resume and crash steps across three nodes, each replayed on both lease paths.
+- `protocol-harness` — The harness drives the protocol executable and the store's own lease calls, `Syncer` over a scripted bucket and the local catalog with the commit log, through each case, comparing lease, fence, head, write count and node views after every step.
   *A-assurance*
 - `protocol-drift` — A step after which the model's state and the store's projected state differ raises `ProtocolConformanceDrift`, printing the minimized operation sequence and both states.
   *A-assurance*
+- `protocol-vocabulary` — Before any case, the harness reads the protocol executable's step listing; a step kind one of the model and the harness lists and the other lacks raises `ProtocolVocabularyDrift`, printing both lists.
+  *because the step type and the harness enum spell the vocabulary twice, and a step one side lacks is never compared*
 - `command` — `contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.
 
 One differential run:

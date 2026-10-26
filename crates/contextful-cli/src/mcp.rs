@@ -63,6 +63,7 @@ pub fn run(args: McpArgs) -> Result<()> {
     crate::sync::pull_before_run(&located)?;
     let face = crate::admit::face_with_pins(&located, args.admit.public_key.as_deref(), args.admit.keyset.as_deref())?;
     let audit = crate::project::read_audit(&located.project, args.issuer_key.as_deref(), args.admit.public_key.as_deref(), args.admit.keyset.as_deref())?;
+    let _replicator = crate::audit::replicator(&located, &audit);
     let clock = SystemClock;
     let boundary = |a: &AdmittedAuthority| -> Result<(), AuthorityError> { effect_boundary(a, &Admission::new(clock.now(), &revocation)) };
     let server = Server::new(&face, authority, &boundary, &clock, &audit).map_err(anyhow::Error::msg)?.with_build(crate::build_identity());

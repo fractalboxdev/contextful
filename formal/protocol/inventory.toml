@@ -1,42 +1,51 @@
-# Required constants of the protocol model: the four invariant theorems and their
-# conjunction, matched by `contextful formal check --root formal/protocol`.
+# Required constants of the protocol model: the five invariant theorems over both lease
+# paths and their conjunction, matched by `contextful formal check --root formal/protocol`.
+# The differential harness ties the step function to the store's two lease paths.
 
 [constant."Protocol.one_holder_per_fence"]
 module    = "Protocol.Invariants"
-statement = "∀ {s : Protocol.State}, Protocol.Reachable s → ∀ (n m : Protocol.Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m"
+statement = "∀ {p : Protocol.Path} {s : Protocol.State}, Protocol.Reachable p s → ∀ (n m : Protocol.Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled. Speaks of the fence a node believes it holds, not of which node the lease object names.
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares. Speaks of the fence a node believes it holds, not of which node the lease object names.
 """
 
 [constant."Protocol.fences_only_increase"]
 module    = "Protocol.Invariants"
-statement = "∀ (s : Protocol.State) (st : Protocol.Step), s.granted ≤ (Protocol.step s st).granted ∧ s.catalogFence ≤ (Protocol.step s st).catalogFence ∧ s.cursorFence ≤ (Protocol.step s st).cursorFence"
+statement = "∀ (p : Protocol.Path) (s : Protocol.State) (st : Protocol.Step), s.granted ≤ (Protocol.step p s st).granted ∧ s.fence ≤ (Protocol.step p s st).fence"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled. Holds for every state, reachable or not; says nothing about how far a fence rises.
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares. Holds for every state, reachable or not; says nothing about how far a fence rises.
 """
 
-[constant."Protocol.no_commit_below_granted"]
+[constant."Protocol.no_commit_after_successor_acquire"]
 module    = "Protocol.Invariants"
-statement = "∀ {s : Protocol.State}, Protocol.Reachable s → ∀ (st : Protocol.Step) (t : Protocol.Target) (f : Nat), Protocol.landed s st = some (t, f) → s.granted ≤ f"
+statement = "∀ {p : Protocol.Path} {s : Protocol.State}, Protocol.Reachable p s → ∀ (st : Protocol.Step) (f : Nat), Protocol.landed s st = some f → ∀ (m : Protocol.Node) (g : Nat), s.acquire m = some g → g ≤ f"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled. Covers the two guarded objects, the catalog row and the cursor object; the sidecars a snapshot declares lie outside the model.
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares. Speaks of a completed acquisition, its raise written; a commit landing between a successor's grant and its raise lands, and the successor reads it after its raise.
+"""
+
+[constant."Protocol.no_lost_update"]
+module    = "Protocol.Invariants"
+statement = "∀ {p : Protocol.Path} {s : Protocol.State}, Protocol.Reachable p s → ∀ (st : Protocol.Step), ¬Protocol.lostUpdate p s st"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares. Speaks of the guarded object's head, the last commit applied; a snapshot's content beyond the fence it was published under lies outside the model.
 """
 
 [constant."Protocol.release_keeps_lease"]
 module    = "Protocol.Invariants"
-statement = "∀ (s : Protocol.State) (n : Protocol.Node), Option.map Protocol.Lease.fence (Protocol.step s (Protocol.Step.release n)).lease = Option.map Protocol.Lease.fence s.lease"
+statement = "∀ (p : Protocol.Path) (s : Protocol.State) (n : Protocol.Node), Option.map Protocol.Lease.fence (Protocol.step p s (Protocol.Step.release n)).lease = Option.map Protocol.Lease.fence s.lease"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled. Holds for every state; a refused release leaves the state unchanged.
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares. Holds for every state; a refused release leaves the lease object unchanged.
 """
 
 [constant."Protocol.protocol_safety"]
 module    = "Protocol.Invariants"
-statement = "∀ {s : Protocol.State}, Protocol.Reachable s → (∀ (n m : Protocol.Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m) ∧ (∀ (st : Protocol.Step), s.granted ≤ (Protocol.step s st).granted ∧ s.catalogFence ≤ (Protocol.step s st).catalogFence ∧ s.cursorFence ≤ (Protocol.step s st).cursorFence) ∧ (∀ (st : Protocol.Step) (t : Protocol.Target) (f : Nat), Protocol.landed s st = some (t, f) → s.granted ≤ f) ∧ ∀ (n : Protocol.Node), Option.map Protocol.Lease.fence (Protocol.step s (Protocol.Step.release n)).lease = Option.map Protocol.Lease.fence s.lease"
+statement = "∀ {p : Protocol.Path} {s : Protocol.State}, Protocol.Reachable p s → (∀ (n m : Protocol.Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m) ∧ (∀ (st : Protocol.Step), s.granted ≤ (Protocol.step p s st).granted ∧ s.fence ≤ (Protocol.step p s st).fence) ∧ (∀ (st : Protocol.Step) (f : Nat), Protocol.landed s st = some f → ∀ (m : Protocol.Node) (g : Nat), s.acquire m = some g → g ≤ f) ∧ (∀ (st : Protocol.Step), ¬Protocol.lostUpdate p s st) ∧ ∀ (n : Protocol.Node), Option.map Protocol.Lease.fence (Protocol.step p s (Protocol.Step.release n)).lease = Option.map Protocol.Lease.fence s.lease"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled.
+Leaves open: that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled; the catalog cursor row a run retires and the sidecars a snapshot declares.
 """
