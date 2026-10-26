@@ -83,7 +83,9 @@ fn a_type_pointer_records_each_member_with_its_spelling_and_doc() {
     assert_eq!(members[1].1, "Columns the shape sorts by, first to last.");
     let fill: Vec<&str> = lock["types"]["contextful_demo::shape::Fill"]["members"].as_array().unwrap().iter().map(|m| m["name"].as_str().unwrap()).collect();
     assert_eq!(fill, ["carry_forward", "zero"]);
-    assert!(!lock["pointers"].as_array().unwrap().iter().any(|p| p[1].as_str().is_some_and(|t| t.starts_with("type:"))), "a type pointer is no clause edge");
+    let pointers = lock["pointers"].as_array().unwrap();
+    assert!(pointers.iter().any(|p| p[1].as_str().is_some_and(|t| t.starts_with("store."))), "the lock keeps its clause edges");
+    assert!(!pointers.iter().any(|p| p[1].as_str().is_some_and(|t| t.starts_with("type:"))), "a type pointer is no clause edge");
 
     let card = s.read("spec/cards/store.md");
     assert!(card.contains("## Types"), "{card}");
@@ -124,13 +126,17 @@ fn a_clause_backticking_three_keys_of_one_type_draws_an_advisory() {
     add_clause(&s, "shape-keys", "A shape block declares `name`, `sort_columns` and `max-rows`.");
     add_clause(&s, "two-keys", "A shape block declares `name` and `sort_columns`.");
     add_clause(&s, "plain-keys", "A helper holds `left`, `right` and `middle`.");
-    let found = advisories(&s);
+    let all = advisories(&s);
+    let found: Vec<&String> = all.iter().filter(|l| l.contains("`store.fold.")).collect();
     assert_eq!(found.len(), 1, "two keys, or a type no declaration reads, draw none: {found:?}");
     assert!(found[0].contains("store.fold.shape-keys") && found[0].contains("contextful_demo::shape::Shape"), "{found:?}");
-    assert!(s.read("spec/status.md").contains("Clauses restating a code type: 1."), "{}", s.read("spec/status.md"));
+    let count = format!("Clauses restating a code type: {}.", all.len());
+    assert!(s.read("spec/status.md").contains(&count), "{count}\n{}", s.read("spec/status.md"));
     assert!(codes(&s.lint("reference"), "SpecRestatesCode").is_empty());
 
     let s = with_shape();
     add_clause(&s, "shape-keys", "A shape block takes {{type:contextful_demo::shape::Shape}}; `name`, `sort_columns` and `max-rows` are required.");
-    assert!(advisories(&s).is_empty());
+    let pointed = advisories(&s);
+    assert!(!pointed.is_empty(), "the live corpus's own advisories remain");
+    assert!(!pointed.iter().any(|l| l.contains("`store.fold.")), "{pointed:?}");
 }
