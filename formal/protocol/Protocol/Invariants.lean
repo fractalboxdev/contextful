@@ -339,7 +339,7 @@ theorem fences_only_increase :
 /-- No commit after a successor's acquisition: once a node's acquisition of fence `g`
 completes, raising `g` into the guarded object, every commit a step of a reachable state
 lands carries a fence of at least `g`. -/
--- spec: store.lease.stale-fence@ec8153dd
+-- spec: store.lease.stale-fence@97140f35
 -- spec: store.lease.pointer-fence@037c9e49
 theorem no_commit_after_successor_acquire :
     ∀ {p : Path} {s : State}, Reachable p s → ∀ (st : Step) (f : Nat), landed s st = some f →

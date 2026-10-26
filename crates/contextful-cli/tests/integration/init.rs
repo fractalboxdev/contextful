@@ -149,7 +149,7 @@ fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
 
 /// An init declaring its authoring posture yields a project whose first write lands with no manifest edit; an init
 /// declaring none leaves every table write refused until one is declared.
-// spec: store.init.posture@305bb407
+// spec: store.init.posture@dfd369cb
 #[test]
 fn an_init_with_a_posture_lands_its_first_write_unedited() {
     let land = ["context", "land", "filings", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "s", "--now", "2030-01-01T00:00:00Z"];

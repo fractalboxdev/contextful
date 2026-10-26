@@ -2405,7 +2405,7 @@
       "operation": "lay-out",
       "subject": "table-pointer",
       "kind": "behavior",
-      "statement": "`tables/<t>/_pointer.json` names the table's current snapshot and publishing fence. Readers access only snapshots reachable from the pointer directly or through `parent` links.",
+      "statement": "`tables/<t>/_pointer.json` names the table's current snapshot and its commit fence. Readers access only snapshots reachable from the pointer directly or through `parent` links.",
       "why": "A-store",
       "file": "spec/10-store.md",
       "line": 102
@@ -2669,7 +2669,7 @@
       "operation": "init",
       "subject": "repeat",
       "kind": "behavior",
-      "statement": "If `contextful.toml` declares the same `[project] name`, init succeeds and preserves store content. Init rewrites only the posture under {{store.init.posture}} and a missing {{store.init.store-identity}}.",
+      "statement": "If `contextful.toml` declares the same `[project] name`, init succeeds and preserves store content. Init rewrites only the authoring posture under {{store.init.posture}} and a missing {{store.init.store-identity}}.",
       "why": "because a repeated init converges on the state the first one wrote, so scripts and onboarding run it unconditionally",
       "file": "spec/10-store.md",
       "line": 150,
@@ -2694,8 +2694,8 @@
       "operation": "init",
       "subject": "posture",
       "kind": "behavior",
-      "statement": "`contextful init <name> --authoring-posture <posture>` prepends top-level `authoring_posture = \"<posture>\"` under {{authority.issue.posture-key}} when `contextful.toml` declares none, preserving every other byte. Init preserves a declared posture. Without the flag, init writes no posture.",
-      "why": "because the posture decides whether a write without a credential lands, so no default chooses it for the operator",
+      "statement": "`contextful init <name> --authoring-posture <posture>` prepends top-level `authoring_posture = \"<posture>\"` under {{authority.issue.posture-key}} when `contextful.toml` declares none, preserving every other byte. Init preserves a declared authoring posture. Without the flag, init writes none.",
+      "why": "because the authoring posture decides whether a write without a credential lands, so no default chooses it for the operator",
       "file": "spec/10-store.md",
       "line": 153,
       "scenarios": [
@@ -5143,7 +5143,7 @@
       "operation": "lease",
       "subject": "ttl",
       "kind": "limit",
-      "statement": "A lease grants ownership for 10 min.",
+      "statement": "A writer lease grants ownership for 10 min.",
       "why": "",
       "file": "spec/10-store.md",
       "line": 713
@@ -5166,7 +5166,7 @@
       "subject": "clock-skew",
       "kind": "limit",
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
-      "why": "because correctness rests on the fence, and the skew bound only sets how early a holder stops committing",
+      "why": "because correctness rests on the commit fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
       "line": 715
     },
@@ -5187,7 +5187,7 @@
       "operation": "lease",
       "subject": "stale-fence",
       "kind": "refusal",
-      "statement": "If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.",
+      "statement": "If a commit-log create, pointer replacement or catalog `UPDATE` loses its condition to a higher commit fence, the operation raises `LeaseFenced`. The associated run or snapshot stays unreadable.",
       "why": "A-store",
       "file": "spec/10-store.md",
       "line": 719
@@ -5231,7 +5231,7 @@
       "operation": "lease",
       "subject": "acquire",
       "kind": "behavior",
-      "statement": "Acquisition creates the lease object under `If-None-Match` or replaces an expired or released object under `If-Match` on its ETag. The acquired fence is one above the object's fence.",
+      "statement": "Acquisition creates the lease object under `If-None-Match` or replaces an expired or released object under `If-Match` on its ETag. The acquired commit fence is one above the object's commit fence.",
       "why": "A-store",
       "file": "spec/10-store.md",
       "line": 727
@@ -5966,7 +5966,7 @@
       "subject": "role-credentials",
       "kind": "behavior",
       "statement": "`[sync] credentials = \"role\"` on an `s3://` or `https://` endpoint signs with workload-role credentials in place of both keys: the ECS container credential endpoint, then a web identity token exchanged through STS, then IMDSv2.",
-      "why": "because a task role or service account supplies short-lived keys, and a long-lived key in a secret store is the posture a regulated account refuses",
+      "why": "because a task role or service account supplies short-lived keys, and a long-lived key in a secret store is the credential posture a regulated account refuses",
       "file": "spec/15-endpoint.md",
       "line": 26
     },
@@ -33885,7 +33885,7 @@
     "store.index": "Sidecar index types, identifiers and builds; row clustering, partitions and tenant identifiers.",
     "store.init": "Project initialization, repeated initialization and project discovery when a command omits `--project`.",
     "store.lay-out": "Store directories, run and snapshot manifests, table pointers, local catalogs and node identifiers.",
-    "store.lease": "Exclusive pipeline and compaction leases, fencing values and cursor commits in the commit log.",
+    "store.lease": "Exclusive pipeline and compaction writer leases, their commit fences, and cursor commits in the commit log.",
     "store.merge": "Merging bucket manifests across writers, verifying tombstones and retrying conditional manifest commits.",
     "store.probe": "Testing conditional writes with a sentinel object and selecting the backend's coordination mode.",
     "store.pull": "Downloading bucket files, verifying digests, advancing table pointers and restoring named generations.",
