@@ -39,12 +39,12 @@ flowchart LR
 
 ## Models and proofs
 
-Each model definition is written from the specification text and from no engine source
+Authors write each model definition from the specification text and from no engine source
 ({{assurance.model.from-the-spec}}). Every definition is total, so the model answers
 every input ({{assurance.model.total-definitions}}).
 
-The policy proofs cover combining enforcement layers. For example, a row the composed
-filter admits is admitted by every member layer ({{assurance.prove.composition-sound}}).
+The policy proofs cover combining enforcement layers. For example, every member layer
+admits a row the composed filter admits ({{assurance.prove.composition-sound}}).
 Each theorem states its negative space: what it leaves open, such as whether execution
 reaches the filter at all ({{assurance.prove.negative-space}}).
 
@@ -79,7 +79,7 @@ form and records it ({{assurance.differential-test.minimized}}). Every later run
 replays that case before any fresh one ({{assurance.differential-test.corpus-replay}}).
 
 The full formal stage runs nightly, not on every change ({{assurance.gate.formal-stage}}).
-A change merged between two nightly runs therefore holds no formal verdict until the
+A change merged between two nightly runs therefore holds no formal result until the
 next run.
 
 The claim stays within its evidence. A composition proof offered as a mediation proof
@@ -88,7 +88,7 @@ fails, because composition says nothing about whether every read passes the filt
 
 ## Engineering checks
 
-Enforcement, credential resolution and statement guarding each resolve to one
+Enforcement and credential resolution each resolve to one
 implementation ({{assurance.structure-tree.one-home}}). Contributors and the gate run
 the same typed subcommands ({{assurance.automate.one-path}}).
 
@@ -104,7 +104,7 @@ Evaluation loads its corpus through the real store and retriever
 returned rows ({{assurance.evaluate.forbidden-row-rate}}). A baseline update only moves
 entries in the improving direction ({{assurance.baseline.raise-only}}).
 
-A **backtest** replays historical cases. Each case is placed by its resolution instant
+A **backtest** replays historical cases. The report places each case by its resolution instant
 relative to the reader model's training cutoff ({{assurance.backtest.cutoff-slice}}).
 
 ```mermaid
@@ -121,9 +121,9 @@ flowchart LR
   FOLD -->|"clear of both"| TRAIN["training fold"]
 ```
 
-Forecast tracks keep separate scores and never pool into one figure
+Forecast tracks keep separate scores and pool into no single figure
 ({{assurance.forecast.tracks-separate}}). The target ledger ties each measured target to
-its owning clause ({{assurance.measure.ledger}}).
+the specification rule it serves ({{assurance.measure.ledger}}).
 
 ## Releases and consumers
 

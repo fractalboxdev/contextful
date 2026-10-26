@@ -7,7 +7,7 @@ contract: run
 ## The problem a run solves
 
 A pipeline copies records from a source, such as a vendor API, into store tables. When
-a process dies halfway through a pull, the restart has to land each row once, keep the
+a process dies halfway through a pull, the restart has to write each row once, keep the
 source position in step with those rows, and send no second paid request. A **run** is
 one execution of a pipeline over one scope.
 
@@ -37,7 +37,7 @@ stream clock: the source reports a cursor that stores the field name beside its 
 content hash unchanged ({{run.declare.content-hash}}).
 
 The compiler turns the declaration into a plan, a flat node list holding no script
-({{run.compile.plan-node}}). Branches and fan-out are declared nodes, never computed
+({{run.compile.plan-node}}). Branches and fan-out come from declared nodes, not
 from data, so a replay walks the same graph ({{run.compile.control-flow}}).
 
 Each deployment supplies a durable orchestrator implementing one execution interface
@@ -51,7 +51,7 @@ owner** binds the pending work to its scope, connector build and plan hash
 ({{run.own.execution-owner}}), and the owner renews a lease while it runs
 ({{run.record.owner-lease}}).
 
-The pull admits rows at or after the stored position, so each poll re-lands the boundary
+The pull admits rows at or after the stored position, so each poll re-reads the boundary
 instant ({{run.advance.inclusive-boundary}}). `records` declares a key, which makes those
 repeats idempotent; a keyless table accumulates them ({{run.advance.declared-key-required}}).
 
@@ -75,14 +75,14 @@ together ({{run.advance.commit-with-rows}}), and `success` releases the owner
 ({{run.own.pin-release}}).
 
 Two changes stop the replay instead. A declaration whose hash changed while the owner
-was pending fails the open, naming both pin sets ({{run.own.pinned-plan-changed}}). A
+was pending fails the open, naming both identity sets ({{run.own.pinned-plan-changed}}). A
 renamed `updated_time` fails the open before any request leaves the host
 ({{run.advance.field-rename}}).
 
 ## Inside one batch
 
 A batch passes a fixed stage order from pull to commit ({{run.land.stage-order}}). The
-secret guard runs before the recorded pull, so a replay never reintroduces a credential
+secret guard runs before the recorded pull, so a replay reintroduces no credential
 ({{run.guard-secrets.placement}}). The guard masks credential-shaped text and logs a
 count per column; it blocks no run ({{run.guard-secrets.mask-only}}).
 
@@ -94,13 +94,13 @@ recoverable partial run ({{run.land.commit-visibility}}).
 
 ## Failures, stops and waits
 
-One tagged failure type crosses every port, and a caller branches on the tag, never on a
+One tagged failure type crosses every port, and a caller branches on the tag, not on a
 message ({{run.retry.failure-taxonomy}}). Only `Transient` and `RateLimited` retry, under
 the step's schedule ({{run.retry.retryable-classes}}). In the example, a vendor rate limit retries the page,
 and an expired credential ends the step.
 
 A stop marks the run, and every await observes it through one cancellation token
-({{run.cancel.one-token}}). The stop never cuts landing: received bytes finish landing first ({{run.cancel.land-path-uncut}}).
+({{run.cancel.one-token}}). A stop leaves landing uncut: received bytes finish landing first ({{run.cancel.land-path-uncut}}).
 
 A run waiting on an outside party suspends on an awakeable, a single-use token the party
 posts back ({{run.suspend.awakeable}}). The caller supplies the deadline, and the
@@ -113,11 +113,11 @@ so a later fire skips finished items ({{run.items.completion}}).
 
 A backfill splits history into chunks that workers lease. The
 chunk commits only while that worker's attempt holds the row, so a stale worker's
-files never commit ({{run.backfill.fenced-commit}}).
+files stay uncommitted ({{run.backfill.fenced-commit}}).
 
 A seed bulk-loads consumer-held history through the same stage order as live pulls
 ({{run.seed.one-land-path}}). A seeded row at or past the declared ceiling fails its
-chunk, which lands nothing ({{run.seed.ceiling-breached}}).
+chunk, which writes nothing ({{run.seed.ceiling-breached}}).
 
 A sweep runs one job per origin across a span, every origin under one frozen
 transaction-time bound ({{run.sweep.frozen-as-of}}). Under carried state, each
@@ -170,7 +170,7 @@ environment ({{run.exec.no-shell}}). A fetch engine follows third-party links, a
 written as an address literal fails ({{run.fetch.address-literal}}).
 
 The caption parser reads SubRip and WebVTT
-through one grammar ({{run.parse-cues.grammar}}). Each unit lands one status: `ok`, `empty`,
+through one grammar ({{run.parse-cues.grammar}}). Each unit records one status: `ok`, `empty`,
 `unavailable` or `failed` ({{run.emit.unit-status}}). The command in {{run.test-engine}}
 runs one engine against one file, outside any pipeline.
 
@@ -180,5 +180,5 @@ An export delivers committed rows to a declared target. Its cursor commits after
 target acknowledges a batch, so a run ending between the two resends that batch
 ({{run.export.at-least-once}}).
 
-A live progress view projects runner events, and execution never reads that view
+A live progress view projects runner events, and no execution step reads that view
 ({{run.project.best-effort}}).

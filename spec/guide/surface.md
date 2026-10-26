@@ -7,8 +7,8 @@ contract: surface
 ## The problem the surfaces solve
 
 An **operator** configures what runs and asks questions of the results. Two failures
-matter most. A configuration edit can race another operator's edit or arm a broken
-schedule. A question answered by a model can drift from the stored rows. The control
+matter most: a configuration edit that races another operator's edit or arms a broken
+schedule, and a model answer that drifts from the stored rows. The control
 plane makes edits versioned and validated, and the console makes every answer rest on
 rows read under the operator's own credential.
 
@@ -66,7 +66,7 @@ surface reloads the winning version and reapplies the pending edit onto it
 ({{surface.apply.version-race}}). Admin edits and applies also need the server's admin
 capability ({{surface.open-console.admin-grant}}).
 
-The reconciler polls the snapshot pointer and diffs the schedule set
+The reconciler polls the applied document's pointer and diffs the schedule set
 ({{surface.reconcile.poll-cadence}}). If a poll fails, the armed set keeps running
 unchanged ({{surface.reconcile.fail-static}}).
 
@@ -79,14 +79,14 @@ the fold goes silent, and its work moves to another worker under the next attemp
 number ({{surface.dispatch.heartbeat-lapse}}). The silent worker's late callback carries
 the old attempt and changes nothing ({{surface.dispatch.callback-rejected}}).
 
-A store-driven item can run on a **delegate**, code deployed outside the binary and
+A store-driven item whose body names a **delegate** runs on it: code deployed outside the binary and
 reached over one signed HTTP request ({{surface.delegate.binding}}). Its answer is a
 closed outcome: rows, a deferral, or a transient or permanent failure
 ({{surface.delegate.outcome}}).
 
 A data plane serving from a region its policy omits refuses to start
-({{surface.reside.region-mismatch}}). A tenant's source connection is created, paused
-and deleted through versioned claims ({{surface.connection.create}}).
+({{surface.reside.region-mismatch}}). Served routes create, pause
+and delete a tenant's source connection through versioned claims ({{surface.connection.create}}).
 
 Admin projects pipelines, jobs and models as one node and edge graph, with each latest
 run outcome ({{surface.visualize.workflow-canvas}}).
@@ -99,7 +99,7 @@ a per-reader credential; a refused mint falls back to a shared credential or sur
 the refusal ({{surface.ground.mint-refused}}).
 
 Before any question, Query offers chips built from the tables the reader may describe
-({{surface.browse.discovered-chips}}). The operator asks which records landed this
+({{surface.browse.discovered-chips}}). The operator asks which records arrived this
 week. The vantage, the session's time basis, parses as a calendar day
 ({{surface.set-vantage.unparseable}}).
 
@@ -116,7 +116,7 @@ a line chart ({{surface.render.component-choice}}). A view arriving from the cli
 fails, because the server builds every view ({{surface.render.client-authored-view}}).
 
 After the answer, a second pass distils the exchange into learnings for later turns
-({{surface.learn.distillation}}). A greeting card appears only when a new row matches
+({{surface.learn.distillation}}). A greeting at session start appears only when a new row matches
 an earlier conclusion within budget ({{surface.brief.absence-is-earned}}).
 
 Posting an answer to a team channel under a service identity, on a schedule, fails

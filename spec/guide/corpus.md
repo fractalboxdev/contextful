@@ -6,10 +6,10 @@ contract: corpus
 
 ## The problem a corpus solves
 
-Code is built and tested against this specification, so a reader needs to find each
+Contributors build and test code against this specification, so a reader needs to find each
 obligation, know why it holds and see whether code meets it. Corpus law is the grammar
-that lets `contextful-spec lint` answer those questions; a rule the checker cannot
-enforce is not written down.
+that lets `contextful-spec lint` answer those questions; the corpus states no rule
+the checker leaves unenforced.
 
 ## One clause, followed through
 
@@ -45,14 +45,14 @@ clause is behavior ({{corpus.anatomy.kind-is-computed}}).
 Suppose a second clause also names the error. The checker raises a registry finding,
 because one error belongs to exactly one clause
 ({{corpus.registry.one-error-one-clause}}). Suppose the statement carries a calendar
-date. The date fails lint, because no authored file says when or whether something is
-built ({{corpus.render.dated-prose}}).
+date. The date fails lint, because no authored file states a date or a
+build state ({{corpus.render.dated-prose}}).
 
-## Build state is computed
+## Computed build state
 
 `contextful-spec state` lists the new clause as `committed` and adds the error to the
 generated store card ({{corpus.render.card}}). A test tagged with the clause id and a
-digest of the statement supplies a pin ({{corpus.state.tag-pin}}).
+digest of the statement supplies a pin ({{corpus.state.tag-pin}}, {{corpus.state.pin}}).
 
 An ignored test, an unfinished body or a stale tag computes `broken`
 ({{corpus.state.verdict}}). A reworded statement leaves the tag stale until someone
@@ -66,13 +66,13 @@ cylinders, and a question is a decision with a labelled exit per outcome
 provider primitive filling each role, and the checker refuses a shape that leaves a role
 unfilled ({{corpus.targets.incomplete}}).
 
-Each contract has three views. The contract file is reference, and the card is
-generated from the fragment. The guide teaches the flow and reaches each rule only by
-pointer, so the guide never becomes a second home for a rule
+Each contract has three views. The contract file is reference, and the checker
+generates the card from the fragment. The guide teaches the flow ({{corpus.guide.file}}) and
+reaches each rule only by pointer, so the contract file stays the only place stating a rule
 ({{corpus.guide.non-normative}}).
 
 A guide reaches every operation of its contract ({{corpus.guide.reach}}). Each paragraph
-carries prose between its pointers, so a guide never collapses into an index
+carries prose between its pointers, so a guide stays more than an index
 ({{corpus.guide.pointer-density}}). A number equal to a bound value travels with that
 bound's pointer ({{corpus.guide.bound}}).
 

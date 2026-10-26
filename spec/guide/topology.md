@@ -17,7 +17,7 @@ One Cargo workspace builds execution, storage and query code ({{topology.compose
 The components share exactly three contracts: the connector interface, the part and
 manifest layout, and the capability-token format ({{topology.compose.three-crossings}}).
 
-Because the layout is shared, a query-only binary reads what a full binary wrote
+Because every binary shares the layout, a query-only binary reads what a full binary wrote
 ({{topology.compose.run-path-droppable}}). A function returning stored rows requires an
 access-control admission value, so a call omitting it fails to compile
 ({{topology.compose.mediation}}).
@@ -39,7 +39,7 @@ unlinked capability fails, naming the subcommand and profile
 
 Coordination rests on one property: a linearizable conditional write
 ({{topology.coordinate.primitive}}). Each new lease holder gets a higher fence, so a
-stale writer is always distinguishable ({{topology.coordinate.fence-advances}}). A
+stale writer's fence sits below the holder's ({{topology.coordinate.fence-advances}}). A
 single node uses a local catalog file, a cluster uses Postgres, and Cloudflare uses D1
 ({{topology.coordinate.backends}}).
 
@@ -78,14 +78,15 @@ flowchart LR
   SQL -- "scan snapshot" --> COPY
 ```
 
-The reconciler renews the deployment's cadence lease while the applied document
+One reconciler at a time holds the deployment's cadence lease
+({{topology.coordinate.cadence-lease-ttl}}) and renews it while the applied document
 schedules work ({{topology.coordinate.cadence-lease-renewal}}). A run child invokes the
 connector, and the writer advances its cursor by one conditional update
 ({{topology.coordinate.cursor-cas}}).
 
-Bucket sync copies the corpus to R2, and the edge replica pulls it and serves queries.
+Bucket sync copies the corpus to R2, and the edge binary pulls it and serves queries.
 The routing Worker forwards a caller's request to the query container, which reaches
-readiness before its snapshot hydration completes ({{topology.publish-hostname.container-readiness}}).
+readiness before it finishes loading stored data ({{topology.publish-hostname.container-readiness}}).
 
 The deployment probe checks each hostname against its declared access policy. A public
 response on a private hostname fails the probe ({{topology.publish-hostname.posture-mismatch}}).

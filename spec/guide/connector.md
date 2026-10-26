@@ -8,7 +8,7 @@ contract: connector
 
 A **vendor** is an outside service, such as a reporting API. Reading its data needs code
 that knows the vendor's pages and cursors, and a credential the vendor accepts. That code
-runs inside the deployment, so it gets no store handle and never sees a credential value.
+runs inside the deployment, so it gets no store handle and sees no credential value.
 A **connector** holds the vendor knowledge; the **host** process runs the connector,
 checks every destination, reserves quota and attaches credentials.
 
@@ -57,16 +57,18 @@ A redirect keeps the credential only at the configured host and port
 
 ## Where the credential comes from
 
-A `secret://` name is a reference; a provider chain of adapters answers it. The first
+A `secret://` name is a reference, and a provider chain of adapters answers it,
+starting with the lease provider ({{connector.resolve.provider-chain}}). The first
 adapter answering a name serves it for the run ({{connector.resolve.first-hit-wins}}). A
-second adapter that also holds the name fails hydration, so no adapter shadows another
+second adapter that also holds the name fails the lookup, so no adapter shadows another
 silently ({{connector.resolve.shadowed-name}}).
 
-The host hydrates the value per request, and no record or log line holds it
+Hydration places the resolved value into an outbound request. The host hydrates per
+request, and no record or log line holds the value
 ({{connector.resolve.hydration-is-just-in-time}}). A cached value lives at most 300 s
 ({{connector.resolve.cache-ttl}}).
 
-`vendor-token` is declared as a lease, so the lease adapter answers it first
+The deployment declares `vendor-token` as a lease, so the lease adapter answers it first
 ({{connector.lease.head-of-chain}}). The resolver keeps a leased credential in memory
 only, and evicts it at expiry ({{connector.lease.lease}}).
 
