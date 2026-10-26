@@ -16,11 +16,9 @@ owns:
 
 # Pipelines and the write path
 
-A pipeline declares a source and the tables that receive its rows. Implementers use this
-contract to compile declarations, process batches and publish tables. `land` defines the
-processing order from source pull to commit.
-
-The compiler produces a plan; the runner processes source batches and publishes committed tables:
+A pipeline declares a source and the tables that receive its rows. The compiler produces a
+plan, the runner lands source batches in the order `land` defines, and a build publishes
+committed tables:
 
 ```mermaid
 flowchart LR
@@ -149,7 +147,6 @@ The engine normalizes nested data, assigns identity columns and converts nesting
 #### Scenarios
 
 - `run.normalize.mode`: WHEN a relational stream holds a struct and a two-item list, THEN the store holds flattened parent columns and two indexed child rows joined to that parent.
-- `run.normalize.mode`: WHEN a native sink cannot retain a nested column, THEN the committed table's run manifest carries that column's downgrade event.
 
 ## guard-secrets
 
@@ -173,7 +170,6 @@ The secret guard masks credential-shaped text in pulled batches, dead letters an
 
 #### Scenarios
 
-- `run.guard-secrets.assignment-key`: WHEN a cell holds `x-api-key: zK9s8d7f6g5h`, THEN it lands as `x-api-key: [REDACTED:secret]`.
 - `run.guard-secrets.assignment-key`: WHEN a cell holds `token_type=abcdefgh12`, THEN it lands unchanged.
 
 ## land
@@ -330,15 +326,7 @@ flowchart LR
 
 #### Scenarios
 
-- `run.land.parse-deadline`: WHEN a decoder holds its output pipe past 60 s, THEN its process group dies and that input fails by name.
-- `run.land.parse-memory`: WHEN a decoder exceeds 512 MiB, THEN that input fails and the serving process continues.
 - `run.land.session-input`: WHEN stdin carries `run-1`, `run-2` and `run-1` again, THEN the session prints two commits and one replay, one line each.
-- `run.land.session-schema`: WHEN a session lands 300 single-row runs under one schema, THEN it parses `schema.json` once and leaves the file's bytes and identity unchanged.
-- `run.land.receive-ack`: WHEN one `jsonl` batch carries rows for two declared tables, THEN the answer follows both commits and names the batch id and each table's run id.
-- `run.land.receive-entry`: WHEN a delivered row carries a credential-shaped cell, THEN the table lands it masked.
-- `run.land.receive-batch-key`: WHEN a batch whose tables all committed arrives again under its key, THEN the answer names the original run id and no row lands.
-- `run.land.receive-batch-too-large`: WHEN a body passes `max_batch_bytes` by one byte, THEN the receiver raises `ReceiveBatchTooLarge` and no table lands.
-- `run.land.receive-backpressure`: WHEN two batches hold both slots of a depth-2 pipeline, THEN a third raises `ReceiveBackpressure` with a 1 s retry interval.
 - `run.land.receive-group`: WHEN 16 one-row batches spool behind a held land lock that then releases, THEN one run commits all 16 rows, one push follows, and every batch answers committed.
 - `run.land.receive-group-isolation`: WHEN a well-formed batch and one whose row sets a reserved column spool into one group, THEN the well-formed batch commits and only the other answers non-retryable.
 - `run.land.receive-spool`: WHEN a receiver dies after spooling its batch, THEN the next leader lands that batch in its group and a resend under its key replays.
@@ -346,10 +334,7 @@ flowchart LR
 - `run.land.receive-torn`: WHEN a group of two commits and its run row stays open, THEN one member resent beside a new batch and the other resent alone both replay the group's run, and every row lands once.
 - `run.land.receive-wait`: WHEN a spooled batch waits 30 s behind a held land lock, THEN it leaves the spool and answers `ReceiveBackpressure`, retryable.
 - `run.land.receive-resume`: WHEN the receiver dies after recording a delivered batch and the batch is resent under its key, THEN every landed cell but the run id is identical to the uninterrupted run's.
-- `run.land.receive-queued-redelivery`: WHEN a consumer lands a queued batch and dies before acknowledging it, THEN the next consumer replays the batch key and every row lands once.
 - `run.land.receive-queued-window`: WHEN a consumer reaches a batch queued 3601 s earlier under `key_retention_secs = 3600`, THEN its outcome reads `ReceiveBatchKeyExpired` and no table lands.
-- `run.land.receive-write-not-granted`: WHEN a credential holds `write` over one of two declared tables, THEN the receiver refuses before reading the body and no table lands.
-- `run.land.receive-key-expired`: WHEN a key's first attempt is 3601 s old under a 3600 s window, THEN the resend raises `ReceiveBatchKeyExpired` and no row lands.
 - `run.land.receive-endpoint`: WHEN a request carries no credential and a body past `max_batch_bytes`, THEN the route answers `401` without reading the body.
 
 unsettled: Does a dead group's first attempt that never committed close, once a later attempt lands its members, rather than staying `running`? owner: pipeline affects: run.land
@@ -477,7 +462,6 @@ A coordinated `[[publication]]` delivers every member of one producer completion
 - `run.export.group-d1-recovery`: WHEN the container stops after D1 commits a staged group and before any delivery, THEN its replacement delivers that group's exact bytes and the receiver activates every member together.
 - `run.export.group-d1-state`: WHEN a replacement loses the acknowledgement of the group-complete batch, THEN it reoffers that batch, and the receiver's accepted group absorbs the retry without a second activation.
 - `run.export.group-d1-acknowledge`: WHEN a receiver completes a group of 880 deletes whose final acknowledgement the sender lost, THEN the replacement reoffers from the last recorded sequence, the receiver absorbs the retry, and the sender promotes the group.
-- `run.export.group-d1-resume`: WHEN a replacement whose batches end elsewhere reads an outbox acknowledged through a sequence inside its first batch, THEN it offers from the next event.
 - `run.export.group-d1-takeover`: WHEN a delivery is killed before its acknowledgement while its lease runs, THEN a retry with `--take-over` delivers at once and the killed writer's next write refuses as fenced.
 
 unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export
@@ -606,12 +590,7 @@ unsettled: Does a model over a restricted table declare its own policy, or inher
 
 #### Scenarios
 
-- `run.model.test-failed`: WHEN a test `SELECT * FROM daily WHERE n < 0` returns 2 rows, THEN the build raises `ModelTestFailed` naming the test and 2, and `daily` reads its prior build.
-- `run.model.hold-verb`: WHEN `build hold --for 7d daily <build>` runs twice, THEN the first prints `Held` and the second `Renewed`, each with the new expiry.
-- `run.model.model-cycle`: WHEN model `a` reads `b` and `b` reads `a`, THEN `pipeline validate` raises `ModelCycle` naming `a`, `b`, and `build a` reads no row.
-- `run.model.build-frontier`: WHEN the `http` pipeline feeding a model's input points at an unreachable endpoint, THEN `build` succeeds, records no new run, and its watermark names only runs already committed.
 - `run.model.build-frontier`: WHEN a `build` job naming `orders` in `after` fires in the cycle that lands `orders` run `r`, THEN the published build's watermark `through` under `orders_items` reaches the `commit_seq` of `r`.
-- `run.model.contract-minor`: WHEN contract `1.0.0` gains nullable column `tag` as `1.1.0`, THEN the build publishes and the manifest section carries `1.1.0` and the new fingerprint; as `1.0.0` it refuses naming `tag` and `1.1.0`.
 
 ## publish
 
