@@ -261,10 +261,24 @@ fn body_names(tokens: TokenStream, name: &str) -> Option<BTreeSet<String>> {
     None
 }
 
-/// `contextful-ci unwired [--contract <name>]…`: report every unwired item of a performed
-/// clause, of the named contracts or of all, and refuse when one exists.
-pub fn check(root: &Path, contracts: &[String]) -> Result<()> {
-    let text = std::fs::read_to_string(root.join(LOCK)).with_context(|| format!("reading {LOCK}"))?;
+/// The file holding the unwired count's ceiling, which only falls (`corpus.state.unwired-ceiling`).
+const CEILING: &str = "tools/ci/unwired.toml";
+
+/// The recorded ceiling; an absent file admits none.
+fn ceiling(root: &Path) -> Result<usize> {
+    let Ok(text) = std::fs::read_to_string(root.join(CEILING)) else { return Ok(0) };
+    let table: toml::Table = text.parse().with_context(|| format!("parsing {CEILING}"))?;
+    Ok(table.get("ceiling").and_then(toml::Value::as_integer).and_then(|n| usize::try_from(n).ok()).unwrap_or(0))
+}
+
+/// `contextful-ci unwired [--contract <name>]… [--lower]`: report every unwired item of a
+/// performed clause. With contracts named, refuse any of theirs; otherwise refuse a count
+/// over the ceiling, and with `--lower` set the ceiling to a lower live count.
+pub fn check(root: &Path, contracts: &[String], lower: bool) -> Result<()> {
+    let Ok(text) = std::fs::read_to_string(root.join(LOCK)) else {
+        println!("unwired: the tree holds no {LOCK}, so no clause performs");
+        return Ok(());
+    };
     let lock: serde_json::Value = serde_json::from_str(&text).with_context(|| format!("parsing {LOCK}"))?;
     let sources = sources(root);
     // Each public key's defining files, and each file's reached keys.
@@ -306,9 +320,20 @@ pub fn check(root: &Path, contracts: &[String]) -> Result<()> {
     for f in &found {
         eprintln!("SpecUnwired: {f}");
     }
-    if !found.is_empty() {
-        return Err(refuse("SpecUnwired", format!("{} item(s) only a performed pin's test calls", found.len())));
+    let limit = if contracts.is_empty() { ceiling(root)? } else { 0 };
+    if found.len() > limit {
+        return Err(refuse("SpecUnwired", format!("{} item(s) only a performed pin's test calls, over the ceiling of {limit} in {CEILING}", found.len())));
     }
-    println!("unwired: non-test source reaches every item a performed pin's test calls");
+    if lower && found.len() < limit {
+        let text = std::fs::read_to_string(root.join(CEILING)).unwrap_or_default();
+        let mut lines: Vec<String> = text.lines().filter(|l| !l.trim_start().starts_with("ceiling")).map(str::to_string).collect();
+        lines.push(format!("ceiling = {}", found.len()));
+        std::fs::write(root.join(CEILING), lines.join("\n") + "\n").with_context(|| format!("writing {CEILING}"))?;
+        println!("unwired: {CEILING} ceiling lowered from {limit} to {}", found.len());
+    } else if found.len() < limit {
+        println!("unwired: {} item(s) under the ceiling of {limit}; `contextful-ci unwired --lower` records the fall", found.len());
+    } else {
+        println!("unwired: {} item(s), at the ceiling of {limit}", found.len());
+    }
     Ok(())
 }

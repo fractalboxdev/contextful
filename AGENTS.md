@@ -137,10 +137,12 @@ or any member by its own name. A selected subset runs in run order and refuses a
 stage whose predecessor's output is absent; `--predecessors` runs those too.
 `contextful-ci`'s suite asserts 17 parts covering 28 stage parts.
 
-The nightly tier holds the `features`, `formal` and `budget` stages:
-`contextful-ci stages --parts --tier nightly` prints their 22 parts,
-`features.<package>`, `features.<binary|formal>-<set>`, `formal` and `budget.<profile>`
-(`assurance.gate.nightly-tier`). They run on demand: `contextful-ci gate --stage <part>`
+The nightly tier holds the `features`, `formal`, `unwired` and `budget` stages:
+`contextful-ci stages --parts --tier nightly` prints their 23 parts,
+`features.<package>`, `features.<binary|formal>-<set>`, `formal`, `unwired` and
+`budget.<profile>` (`assurance.gate.nightly-tier`). The `unwired` stage refuses more public items
+that only a performed pin's test calls than the ceiling in `tools/ci/unwired.toml`, which
+`contextful-ci unwired --lower` lowers as the count falls. They run on demand: `contextful-ci gate --stage <part>`
 runs one against the default-branch head, `contextful-ci gate` with no stage runs both
 tiers, and `gate --plan` prints a run's stages without running them.
 `contextful-ci measure --tier all` runs every ledger tier, `measure-report` writes a run

@@ -26,7 +26,7 @@ fn fixture() -> Repo {
     r
 }
 
-// spec: corpus.state.unwired@79b919c7
+// spec: corpus.state.unwired@9ed1dfd5
 #[test]
 fn an_item_only_a_performed_test_calls_is_unwired_until_a_binary_calls_it_or_marks_its_entry() {
     let r = fixture();
@@ -53,4 +53,24 @@ fn a_contract_filter_reports_only_that_contracts_clauses() {
     let o = unwired(&r, &["--contract", "disclosure"]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(!unwired(&r, &["--contract", "store"]).status.success());
+}
+
+// spec: corpus.state.unwired-ceiling@57f2aa28
+#[test]
+fn the_count_holds_under_a_ceiling_that_only_falls() {
+    let r = fixture();
+    r.write("tools/ci/unwired.toml", "ceiling = 2\n");
+    let o = unwired(&r, &[]);
+    assert!(o.status.success(), "two unwired items sit at a ceiling of 2: {}", stderr(&o));
+    r.write("tools/ci/unwired.toml", "ceiling = 1\n");
+    let o = unwired(&r, &[]);
+    assert!(!o.status.success() && stderr(&o).contains("SpecUnwired"), "{}", stderr(&o));
+    r.write("tools/ci/unwired.toml", "ceiling = 5\n");
+    assert!(unwired(&r, &[]).status.success());
+    assert!(unwired(&r, &["--lower"]).status.success());
+    assert_eq!(std::fs::read_to_string(r.root.join("tools/ci/unwired.toml")).unwrap(), "ceiling = 2\n");
+    r.commit("an unwired fixture under its ceiling");
+    let o = r.gate(&["--stage", "unwired"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("--- stage unwired"), "{}", stderr(&o));
 }
