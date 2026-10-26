@@ -13,6 +13,7 @@ mod records;
 mod size;
 mod slice;
 mod targets;
+mod terms;
 mod scaffold;
 mod util;
 
@@ -45,7 +46,8 @@ enum Cmd {
     },
     /// Write `spec/spec.lock.json`.
     Extract,
-    /// Write `spec/status.md`, `spec/targets.md`, `spec/cards/` and the lock file's pins.
+    /// Write `spec/status.md`, `spec/targets.md`, `spec/glossary.md`, `spec/cards/`, the Vale term
+    /// rule and the lock file's pins.
     State,
     /// Print the context pack for `<contract>.<operation>`, `<contract>.*` or a milestone number,
     /// or the clauses a test file or a diff reaches.
@@ -102,6 +104,9 @@ fn main() -> Result<()> {
         Cmd::Extract => Ok(std::fs::write(root.join("spec/spec.lock.json"), lock_text(&c))?),
         Cmd::State => {
             std::fs::write(root.join("spec/targets.md"), targets::page(&c))?;
+            std::fs::write(root.join(terms::GLOSSARY), terms::glossary(&c))?;
+            std::fs::create_dir_all(root.join(terms::VALE_TERMS).parent().unwrap())?;
+            std::fs::write(root.join(terms::VALE_TERMS), terms::vale_terms(&c))?;
             std::fs::create_dir_all(root.join("spec/cards"))?;
             for (contract, text) in cards::pages(&c) {
                 std::fs::write(root.join(format!("spec/cards/{contract}.md")), text)?;

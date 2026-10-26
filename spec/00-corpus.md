@@ -106,7 +106,7 @@ unsettled: Does a replica that has never pulled report an empty store or refuse 
 
 ## registry
 
-Where a spelling is registered, the single owner of an error or a bound, the collision test, the source sites checked against each error, and the ratchets the registry records.
+Where a spelling is registered, the single owner of an error or a bound, the collision test, the source sites checked against each error, the ratchets the registry records, and the term table with the glossary and first-use rule it drives.
 
 - `fragment` — Each contract owns `spec/terms/<contract>.toml`, holding its operations, and its errors and named bounds each with a gloss.
   *P8*
@@ -126,6 +126,16 @@ Where a spelling is registered, the single owner of an error or a bound, the col
   *because a ratchet that only refuses growth leaves a reduction unrecorded, and the next change spends it unseen*
 - `drift` — A breach of {{corpus.registry.variant-shape}} or {{corpus.registry.variant-gloss}}, a performed refusal whose error has no defining site, and committed refusals with one past the `registry-committed-sites` ceiling raise `SpecRegistryDrift`.
   *because a committed clause with code is work status cannot see, and a performed refusal with no code passes on its test alone*
+- `term` — A fragment's `[term]` table maps a lowercase term to the clause of its own contract that defines it, a gloss of at most 25 words, and optional `avoid` spellings the term replaces.
+  *because a reader assumes two words name two things, and one registered spelling per meaning makes that assumption hold*
+- `bad-term` — A term registered in two fragments, a term naming a missing clause or another contract's clause, an empty or longer gloss, and an `avoid` spelling that is itself a term raise `SpecTerm`.
+  *because one spelling naming two meanings is the homonym the term table exists to refuse*
+- `glossary` — `contextful-spec state` renders `spec/glossary.md`: every registered term in alphabetical order with its gloss and its defining clause as a pointer; a committed copy differing from regeneration counts under {{corpus.render.generated}}.
+  *because a definition a reader cannot find by name serves only its writer*
+- `vale-terms` — `contextful-spec state` writes `.vale/styles/WriteTechnically/Terms.yml`, a Vale substitution rule mapping each `avoid` spelling to its term; a committed copy differing from regeneration counts under {{corpus.render.generated}}.
+  *because the registry decides each term, and a hand-edited copy of its list drifts from it*
+- `term-first-use` — A guide's first use of a registered term, in any case or inflection, sits in a paragraph carrying the term's defining clause as a pointer; first uses without one past the `term-first-use` ceiling raise `SpecTermFirstUse`.
+  *because a reader meets a term at its first use, and a definition reached later arrives after the misreading*
 
 ## reference
 

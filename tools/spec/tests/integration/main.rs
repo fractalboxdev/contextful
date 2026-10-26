@@ -16,6 +16,7 @@ mod size;
 mod state;
 mod tags;
 mod targets;
+mod terms;
 mod ts_pins;
 mod upkeep;
 
@@ -36,6 +37,7 @@ impl Scratch {
         let root = dir.path().to_path_buf();
         let live = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         copy_dir(&live.join("spec"), &root.join("spec"));
+        copy_dir(&live.join(".vale"), &root.join(".vale"));
         let s = Scratch { _dir: dir, root };
         s.write("evals/ledger.toml", &std::fs::read_to_string(live.join("evals/ledger.toml")).unwrap());
         s.write("spec/pins.toml", "[pin]\n\n[floor]\n");

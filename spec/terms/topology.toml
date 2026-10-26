@@ -46,3 +46,10 @@ topology-queue-sqs-wait       = { clause = "topology.compose.queue-sqs-wait", va
 topology-queue-sqs-batch      = { clause = "topology.compose.queue-sqs-batch", value = 10, unit = "messages", basis = "standard:aws-sqs-receive-message", gloss = "Messages one SQS receive call asks for, the most SQS answers." }
 topology-queue-sqs-visibility = { clause = "topology.compose.queue-sqs-visibility", value = 300, unit = "s", basis = "chosen", gloss = "Window a received SQS message stays hidden before it redelivers." }
 topology-queue-sqs-cap        = { clause = "topology.compose.queue-sqs-cap", value = 1, unit = "MiB", basis = "standard:aws-sqs-quotas", gloss = "Largest SQS message; a receive body past it spills to the store bucket." }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"build profile"     = { clause = "topology.package.profile", gloss = "A Cargo feature bundle selected at build time: `contextful-edge`, `contextful-full` or `contextful-control`." }
+"conditional write" = { clause = "topology.coordinate.primitive", gloss = "A write that succeeds only while a stored precondition holds; the one coordination primitive." }
+"lease row"         = { clause = "topology.coordinate.lease-row", gloss = "A catalog row naming one writer lease's key, holder, expiry and commit fence." }
+"cadence lease"     = { clause = "topology.coordinate.cadence-lease-ttl", gloss = "The writer lease a reconciler holds on a deployment's cadence, so one fire runs per tick." }

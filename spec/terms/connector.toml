@@ -155,3 +155,15 @@ connector-lease-retire-cap      = { clause = "connector.lease.retirement-margin"
 connector-lease-vendor-requests = { clause = "connector.lease.vendor-requests-on-failure", value = 0, unit = "requests", basis = "chosen", gloss = "Vendor requests on an expired lease whose provider is unreachable." }
 connector-lease-mint-calls      = { clause = "connector.lease.calls-per-resolver", value = 1, unit = "calls", basis = "chosen", gloss = "Mint calls per resolver per declared name per lease window." }
 connector-record-expiry-warning = { clause = "connector.record.expiry-warning", value = 30, unit = "d", basis = "chosen", gloss = "Window within which the inventory marks an expiring credential." }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"credential lease"     = { clause = "connector.lease.lease", gloss = "A short-lived credential minted per scope and held in memory with its expiry; it never enters a file.", avoid = ["secret lease"] }
+"data boundary marker" = { clause = "connector.infer.data-fence", gloss = "One of the paired markers enclosing an ingested value in a model prompt, carrying its provenance label.", avoid = ["data fence", "prompt fence"] }
+"provenance label"     = { clause = "connector.infer.provenance-order", gloss = "The trust label a model input carries: `operator`, `ingested:first-party` or `ingested:third-party`." }
+"credential reference" = { clause = "connector.reference.reference-scheme", gloss = "A `secret://<name>` value naming a credential by logical name, never by storage path." }
+"provider chain"       = { clause = "connector.resolve.provider-chain", gloss = "The ordered adapters a reference resolves through, first answer winning." }
+"hydration"            = { clause = "connector.resolve.hydration-is-just-in-time", gloss = "Resolving a credential reference to material when a request is built, never at declaration." }
+"mint credential"      = { clause = "connector.lease.bootstrap-credential", gloss = "The one standing credential the engine presents to the mint endpoint to obtain credential leases." }
+"credential posture"   = { clause = "connector.resolve.posture", gloss = "One of four credential configurations ordered by distance from the engine; the workload-identity manager is the default." }
+"manifest posture"     = { clause = "connector.package.manifest-posture", gloss = "Whether a connector manifest is adopted, carrying a digest, or a template carrying a pin requirement." }

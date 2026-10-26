@@ -135,3 +135,21 @@ store-push-wait             = { clause = "store.push.in-flight", value = 300, un
 store-drain-deadline        = { clause = "store.drain.deadline", value = 15, unit = "s", basis = "chosen", gloss = "Longest push a stopping serve attempts before it exits." }
 store-lease-ttl             = { clause = "store.lease.ttl", value = 10, unit = "min", basis = "chosen", gloss = "Granted life of a lease." }
 store-lease-renewal         = { clause = "store.lease.renewal", value = 200, unit = "s", basis = "chosen", gloss = "Interval at which a holder renews, a third of the grant." }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"writer lease"         = { clause = "store.lease.ttl", gloss = "Time-bounded exclusive ownership of a pipeline, partition or table compaction, held by one node and renewed by conditional replace.", avoid = ["ownership lease"] }
+"commit fence"         = { clause = "store.lease.acquire", gloss = "The integer each writer lease acquisition raises by one; a commit carrying a lower commit fence loses its condition.", avoid = ["fencing token", "fencing value"] }
+"commit lock"          = { clause = "store.reserve.commit-lock-span", gloss = "A table's lock held while a commit assigns its commit sequence and writes its manifest." }
+"commit log"           = { clause = "store.lease.commit-log", gloss = "The `cursors/` objects through which a run under a machine writer lease commits." }
+"compaction lease"     = { clause = "store.fold.compaction-lease", gloss = "The writer lease a compaction pass holds on one table, stamped into its snapshot and pointer." }
+"node id"              = { clause = "store.lay-out.node-id-order", gloss = "The path-safe name of one writing process, keying its run directories and writer leases." }
+"store identity"       = { clause = "store.init.store-identity", gloss = "The UUID naming one store across its synced copies." }
+"run manifest"         = { clause = "store.lay-out.run-manifest", gloss = "The `_manifest.json` whose conditional create commits one run's parts." }
+"snapshot"             = { clause = "store.lay-out.snapshot-id", gloss = "An immutable compacted version of a table, named by its creation instant." }
+"snapshot manifest"    = { clause = "store.lay-out.snapshot-manifest", gloss = "The `_manifest.json` listing a snapshot's parts and indexes with their key versions." }
+"table pointer"        = { clause = "store.lay-out.table-pointer", gloss = "`_pointer.json`, naming a table's current snapshot; readers reach only snapshots it reaches." }
+"sidecar"              = { clause = "store.index.declaration", gloss = "An index file beside a snapshot's parts: a vector graph, full-text index or key map, built at compaction." }
+"replacement frontier" = { clause = "store.declare.replace-frontier", gloss = "The newest run carrying a `replace` source's complete state; reads cover it and every later run." }
+"replica"              = { clause = "store.replicate.descriptor", gloss = "A read-only copy of a store pulled from its bucket, refusing every write verb." }
+"retention window"     = { clause = "store.fold.retention", gloss = "How long folded runs and superseded snapshots stay before collection removes them." }

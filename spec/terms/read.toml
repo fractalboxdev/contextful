@@ -127,3 +127,10 @@ memory-traverse-frontier     = { clause = "read.traverse.frontier-cap", value = 
 outcome-statement-bytes      = { clause = "read.settle.statement-bound", value = 4096, unit = "B", basis = "chosen", gloss = "Longest registration statement." }
 outcome-grace-window         = { clause = "read.settle.grace-window", value = 86400, unit = "s", basis = "chosen", gloss = "Inclusive window past a deadline within which an observation is scored." }
 read-subscribe-queue         = { clause = "read.subscribe.overrun", value = 1000, unit = "notifications", basis = "chosen", gloss = "Most notifications a subscription holds undelivered before its terminal overrun message." }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"read frontier"         = { clause = "read.cache.frontier-invalidates", gloss = "A table's current snapshot and runs; a commit, fold or ledger append changes it and invalidates cached results." }
+"signed store frontier" = { clause = "read.reference.frontier", gloss = "The signed statement of a store's state a reference resolver validates before resolving and answering." }
+"statement guard"       = { clause = "read.guard.single-read-only-statement", gloss = "The check admitting caller SQL only as one read-only SELECT over registered relations." }
+"retrieval container"   = { clause = "read.cache.hot-local-parquet", gloss = "A container serving reads from a locally synced, memory-mapped snapshot set." }

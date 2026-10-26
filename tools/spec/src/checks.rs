@@ -436,6 +436,8 @@ fn registry(c: &Corpus) -> Vec<Finding> {
         }
     }
     out.extend(crate::drift::check(c));
+    out.extend(crate::terms::check(c));
+    out.extend(crate::terms::first_use(c));
     out
 }
 
@@ -1560,6 +1562,8 @@ fn render(c: &Corpus) -> Vec<Finding> {
         ("spec/status.md".to_string(), crate::status_text(c)),
         ("spec/spec.lock.json".to_string(), crate::lock_text(c)),
         ("spec/targets.md".to_string(), crate::targets::page(c)),
+        (crate::terms::GLOSSARY.to_string(), crate::terms::glossary(c)),
+        (crate::terms::VALE_TERMS.to_string(), crate::terms::vale_terms(c)),
     ];
     for (contract, text) in crate::cards::pages(c) {
         generated.push((format!("spec/cards/{contract}.md"), text));

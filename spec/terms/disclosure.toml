@@ -111,3 +111,11 @@ span-queue                    = { clause = "disclosure.record.span-queue", value
 audit-root-cadence            = { clause = "disclosure.attest.root-replication", value = 10, unit = "min", basis = "chosen", gloss = "Cadence at which signed roots reach the replication bucket." }
 erasure-cascade-depth         = { clause = "disclosure.erase.cascade", value = 16, unit = "hops", basis = "chosen", gloss = "Deepest provenance chain an erasure cascade follows." }
 erasure-physical-removal      = { clause = "disclosure.erase.physical-removal", value = 24, unit = "h", basis = "chosen", gloss = "Commit of an erasure to rewrite or collection of every file, extraction-cache entry and dead-letter row holding an erased row." }
+
+# Terms (`corpus.registry.term`): each term's defining clause and gloss.
+[term]
+"narrowing posture" = { clause = "disclosure.bound-staleness.public-only", gloss = "Serving only publicly granted rows of a `public_only` table once its mirrored permissions pass their staleness budget." }
+"staleness budget"  = { clause = "disclosure.bound-staleness.budget-grammar", gloss = "`max_acl_staleness`: the age mirrored source permissions reach before a read refuses." }
+"reachable set"     = { clause = "disclosure.reach.subject-principals", gloss = "The principals and resources one subject reaches through identity links and group closure." }
+"audit chain"       = { clause = "disclosure.record.segment", gloss = "The hash-linked, segment-signed log of reads and erasures." }
+"purge receipt"     = { clause = "disclosure.receipt.coverage", gloss = "The signed artifact a tenant purge returns, stating what the purge covers." }

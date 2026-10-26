@@ -59,6 +59,17 @@ impl LimitEntry {
     }
 }
 
+/// A `[term]` entry (`corpus.registry.term`): the clause defining the term, its gloss, and
+/// the spellings it replaces.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct TermEntry {
+    pub clause: String,
+    #[serde(default)]
+    pub gloss: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub avoid: Vec<String>,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
 pub struct Fragment {
     #[serde(default)]
@@ -67,6 +78,8 @@ pub struct Fragment {
     pub error: BTreeMap<String, ErrorEntry>,
     #[serde(default)]
     pub limit: BTreeMap<String, LimitEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub term: BTreeMap<String, TermEntry>,
     /// Ratchets (`corpus.registry.ceiling`): a count, or a table of counts by name.
     #[serde(default, skip_serializing)]
     pub ceiling: BTreeMap<String, toml::Value>,
