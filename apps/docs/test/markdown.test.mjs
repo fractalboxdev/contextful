@@ -79,6 +79,10 @@ test("a clause's pins from the lock render in its margin beside the id", async (
   assert.ok(margin.includes('href="https://github.com/fractalboxdev/contextful/blob/main/crates/contextful-context/tests/integration/commit.rs#L42"'));
   assert.ok(margin.includes('class="clause-pin pin-theorem"'));
   assert.ok(!clauseItem(html, "store.reserve.column-name").includes("clause-pins"));
+  // A pin whose path resolves to nothing names spec/pins.toml at line 0, and links to no line.
+  assert.ok(clauseItem(html, "store.reserve.table-name").includes('href="https://github.com/fractalboxdev/contextful/blob/main/spec/pins.toml"'));
+  // The verdict stays off the page: the site renders where a clause is pinned, not its state.
+  assert.ok(!html.includes("performed") && !html.includes("broken"));
   const unpinned = await render(fixture("grouped-operation.md"), "10-store.md", { lock: { clauses: [] } });
   assert.ok(!unpinned.includes("clause-pins"));
 });
