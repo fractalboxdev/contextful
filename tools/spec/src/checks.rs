@@ -375,6 +375,7 @@ fn registry(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    out.extend(crate::drift::check(c));
     out
 }
 

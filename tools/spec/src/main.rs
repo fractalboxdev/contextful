@@ -5,7 +5,9 @@ mod cards;
 mod checks;
 mod corpus;
 mod diagram;
+mod drift;
 mod native_ts;
+mod ratchet;
 mod slice;
 mod targets;
 mod scaffold;
@@ -50,6 +52,8 @@ enum Cmd {
     },
     /// Set every contract's coverage floor to its live performed count.
     Pins,
+    /// Lower each ratchet in `spec/terms/corpus.toml` to its live count.
+    Ceilings,
     /// Write one failing, tagged test per refusal and limit clause of an operation.
     Scaffold {
         /// `<contract>.<operation>`.
@@ -79,6 +83,7 @@ fn main() -> Result<()> {
             Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?)
         }
         Cmd::Pins => raise_floor(&c),
+        Cmd::Ceilings => ratchet::lower(&c),
         Cmd::Slice { target, json } => {
             let sl = slice::build(&c, &target)?;
             if json {

@@ -98,7 +98,7 @@ unsettled: Does a replica that has never pulled report an empty store or refuse 
 
 ## registry
 
-Where a spelling is registered, the single owner of an error or a bound, and the collision test.
+Where a spelling is registered, the single owner of an error or a bound, the collision test, the source sites checked against each error, and the ratchets the registry records.
 
 - `fragment` — Each contract owns `spec/terms/<contract>.toml`, holding its operations, and its errors and named bounds each with a gloss.
   *P8*
@@ -108,6 +108,16 @@ Where a spelling is registered, the single owner of an error or a bound, and the
   *because an unmeasured number presented as a measurement is a hypothesis stated as fact*
 - `unregistered` — An unregistered error after `raises`, an entry naming a missing clause, an error absent from its clause or present in another, and a malformed bound raise `SpecRegistry`.
   *P8*
+- `defining-site` — A Rust variant whose `#[error]` text opens `<Id>:`, or a string literal holding `<Id>` alone or opening `<Id>:`, under `crates/*/src`, `tools/*/src`, `apps/*/src` or `formal/`, defines the registered error `<Id>`.
+  *because the checker compares code against the registry only where the code spells the identifier*
+- `variant-shape` — An error has at most one defining variant. It is named the error, or the error less the prefix its enum's name holds before `Error`, and its enum's other variants define errors of the same contract.
+  *because a second variant, a foreign name or a mixed enum hides from a reader of the code which contract raises the error*
+- `variant-gloss` — A defining variant's `///` text before its clause pointer is absent or equals its error's registry gloss byte for byte; text after the pointer documents the variant.
+  *because the fragment is the one home of a gloss, and a variant copy that differs states a second meaning*
+- `ceiling` — The `[ceiling]` table of `spec/terms/corpus.toml` records each ratchet's live count. A count above its ceiling raises the ratchet's error, and so does a count below it until `contextful-spec ceilings` lowers the ceiling.
+  *because a ratchet that only refuses growth leaves a reduction unrecorded, and the next change spends it unseen*
+- `drift` — A breach of {{corpus.registry.variant-shape}} or {{corpus.registry.variant-gloss}}, a performed refusal whose error has no defining site, and committed refusals with one past the `registry-committed-sites` ceiling raise `SpecRegistryDrift`.
+  *because a committed clause with code is work status cannot see, and a performed refusal with no code passes on its test alone*
 
 ## reference
 

@@ -67,6 +67,9 @@ pub struct Fragment {
     pub error: BTreeMap<String, ErrorEntry>,
     #[serde(default)]
     pub limit: BTreeMap<String, LimitEntry>,
+    /// Ratchets (`corpus.registry.ceiling`): a count, or a table of counts by name.
+    #[serde(default, skip_serializing)]
+    pub ceiling: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Deserialize, Default)]

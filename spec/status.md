@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `assurance` | 3 | 18 | 347 | 73 | 25 | 3 | 308 | 0 | 308 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 278 | 0 | 278 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 318 | 0 | 318 |
-| `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
+| `corpus` | 1 | 10 | 85 | 38 | 7 | 0 | 85 | 0 | 85 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 327 | 58 | 30 | 16 | 285 | 0 | 285 |
 | `run` | 3 | 29 | 613 | 129 | 49 | 19 | 581 | 0 | 581 |
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 333 | 0 | 333 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 176 | 0 | 176 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 89 | 0 | 89 |
-| **total** | 26 | 177 | 2923 | 711 | 235 | 82 | 2613 | 0 | |
+| **total** | 26 | 177 | 2928 | 712 | 235 | 82 | 2618 | 0 | |
 
 Decision records: 18.
 
@@ -1004,9 +1004,14 @@ Unscheduled operations: 13.
 | `corpus.reference.no-literature` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::an_autolink_to_an_external_document_is_an_external_link_finding` | performed |
 | `corpus.reference.pointer` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::a_pointer_is_recorded_as_a_lock_edge` | performed |
 | `corpus.registry.bound-entry` | `tools/spec/tests/integration/registry.rs::a_bound_off_its_unit_basis_or_statement_value_is_a_registry_finding` | performed |
+| `corpus.registry.ceiling` | `tools/spec/tests/integration/registry.rs::a_count_off_its_ceiling_is_a_finding_until_ceilings_lowers_it` | performed |
+| `corpus.registry.defining-site` | `tools/spec/tests/integration/registry.rs::a_variant_a_quoted_literal_or_a_lean_message_defines_an_error` | performed |
+| `corpus.registry.drift` | `tools/spec/tests/integration/registry.rs::a_committed_refusal_whose_error_has_a_defining_site_is_drift` | performed |
 | `corpus.registry.fragment` | `tools/spec/tests/integration/registry.rs::each_contract_registers_its_operations_errors_and_bounds_in_its_own_fragment` | performed |
 | `corpus.registry.one-error-one-clause` | `tools/spec/tests/integration/registry.rs::an_error_named_by_a_second_clause_or_dropped_by_its_own_is_a_registry_finding` | performed |
 | `corpus.registry.unregistered` | `tools/spec/tests/integration/registry.rs::an_unregistered_error_or_an_entry_naming_a_missing_clause_is_a_registry_finding` | performed |
+| `corpus.registry.variant-gloss` | `tools/spec/tests/integration/registry.rs::a_variant_gloss_differing_from_the_registry_is_drift` | performed |
+| `corpus.registry.variant-shape` | `tools/spec/tests/integration/registry.rs::a_second_variant_a_foreign_name_or_a_mixed_enum_is_drift` | performed |
 | `corpus.render.banned-vocabulary` | `tools/spec/tests/integration/render.rs::a_banned_noun_a_bare_issue_number_or_a_pull_request_link_is_a_banned_word` | performed |
 | `corpus.render.card` | `tools/spec/tests/integration/readable.rs::state_writes_a_card_per_contract_and_a_stale_card_is_a_render_finding` | performed |
 | `corpus.render.counterfactual` | `tools/spec/tests/integration/readable.rs::a_guide_in_the_future_tense_is_counterfactual` | performed |
