@@ -79,33 +79,13 @@ Store directories, run and snapshot manifests, table pointers, local catalogs an
   *because a wall clock that steps backwards breaks lexical order equalling commit order*
 - `part-name` — A data file is `part-<ordinal>.parquet`, the ordinal zero-padded to five digits and unique within its directory.
 - `staging` — A running fold writes under `data/snapshots/<id>.staging/`. File lists exclude that directory.
-- `run-manifest` — A run commits by conditionally creating its node directory's `_manifest.json`, a `lay_out::RunManifest` whose `node_id` equals the directory's node segment.
-- `run-replay` — Re-landing an unlogged run committed on its node, at its manifest's position with rows reconstructing its parts column for column, writes nothing and returns the committed manifest as a replay.
-  *because a retry after a lost acknowledgement cannot tell whether its first landing committed*
-- `run-conflict` — Any other landing under a run id committed on its node raises `StoreRunConflict` and changes nothing.
-  *because other rows under a committed id are another run*
-- `run-id-shape` — A run id holds at most 128 chars of letters, digits, dot, underscore and hyphen; landing and request-ledger append reject any other before writing a file.
-  *because a run id is interpolated into run directories and request-ledger filenames*
-- `uncommitted-run` — A node directory without `_manifest.json` holds an uncommitted run, whose parts file lists exclude; a leased pipeline's run also waits for its commit-log entry.
-  *P4*
-- `cursor-in-commit` — A pipeline's committed position is its newest commit-log cursor when leased, else its highest run-manifest cursor; `machine.sqlite` caches it.
-  *because a position committed apart from its rows re-lands the batch after a crash*
 - `snapshot-manifest` — A snapshot's `_manifest.json` holds a `lay_out::SnapshotManifest`, and each entry of `parts` and `indexes` carries its `key_version`.
 - `ancestors` — A snapshot manifest records `ancestors`, its parent then the parent's `ancestors`, at most 256 entries; a root, or a child of a parent lacking the field, records none.
   *because retention collects superseded snapshots, and a push decides descent from the snapshot's own manifest*
 - `unrecognised-index-entry` — An `indexes` entry of unsupported kind or fields parses as unrecognised: the manifest stays readable, probes ignore the entry and rewrites keep it byte for byte.
-  *because a newer builder's sidecar neither refuses an older build's reads nor vanishes on its rewrite*
+  *because an older build neither refuses nor drops a newer builder's sidecar*
 - `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and commit fence; readers reach only snapshots reachable from it directly or through `parent` links.
   *A-store#manifest-carries-format*
-- `manifest-default` — A field added to a manifest carries a default value.
-- `format-version` — Run and snapshot manifests carry `format_version` as `<major>.<minor>`: `2.0` for snapshots referencing parts or segments, else `1.0`, which an absent version reads as. Readers parse a newer minor as their own.
-  *A-store#manifest-carries-format*
-- `format-newer` — A run or snapshot manifest of a newer `format_version` major raises `StoreManifestFormatNewer`, naming the file and both versions, and the table refuses reads until a newer build reads it.
-  *A-store#manifest-carries-format*
-- `format-migrate` — A major-`2` reader reads a `1.x` snapshot manifest as one part per directory, counting rows from footers; the next pass references those parts under `2.0`, rewriting no manifest in place.
-  *A-store#manifest-carries-format*
-- `manifest-unreadable` — A run manifest or reachable snapshot manifest failing to parse raises `StoreManifestUnreadable`, naming the table and file; the table refuses reads until it parses.
-  *P4*
 - `schema-file` — A table's schema is `schema.json` in Arrow JSON form, which each arriving batch's schema merges into and the merged result replaces.
 - `immutable-files` — The store writes each run file once and edits none; snapshot directories are immutable, so a fold writes a new snapshot.
 - `landed-blob` — A body landed by reference occupies `blobs/<sha256>` under the store root, named by its bytes' SHA-256 and written whole through a rename before the referencing run commits.
@@ -118,6 +98,41 @@ Store directories, run and snapshot manifests, table pointers, local catalogs an
   *A-store#store-s-catalogs*
 - `unknown-table` — A table name absent from every `schema.json` raises `StoreUnknownTable` rather than returning an empty result.
   *P1*
+
+### run manifests
+
+A run commits through its manifest, and a repeated landing replays or refuses.
+
+- `run-manifest` — A run commits by conditionally creating its node directory's `_manifest.json`, a `lay_out::RunManifest` whose `node_id` equals the directory's node segment.
+- `run-replay` — Re-landing an unlogged run committed on its node, at its manifest's position with rows reconstructing its parts column for column, writes nothing and returns the committed manifest as a replay.
+  *because a retry after a lost acknowledgement cannot tell whether its first landing committed*
+- `run-conflict` — Any other landing under a run id committed on its node raises `StoreRunConflict` and changes nothing.
+  *because other rows under a committed id are another run*
+- `run-id-shape` — A run id holds at most 128 chars of letters, digits, dot, underscore and hyphen; landing and request-ledger append reject any other before writing a file.
+  *because a run id is interpolated into run directories and request-ledger filenames*
+- `uncommitted-run` — A node directory without `_manifest.json` holds an uncommitted run, whose parts file lists exclude; a leased pipeline's run also waits for its commit-log entry.
+  *P4*
+- `cursor-in-commit` — A pipeline's committed position is its newest commit-log cursor when leased, else its highest run-manifest cursor; `machine.sqlite` caches it.
+  *because a position committed apart from its rows re-lands the batch after a crash*
+
+### format versions
+
+Each manifest names its layout version.
+
+- `manifest-default` — A field added to a manifest carries a default value.
+- `format-version` — Run and snapshot manifests carry `format_version` as `<major>.<minor>`: `2.0` for snapshots referencing parts or segments, else `1.0`, which an absent version reads as. Readers parse a newer minor as their own.
+  *A-store#manifest-carries-format*
+- `format-newer` — A run or snapshot manifest of a newer `format_version` major raises `StoreManifestFormatNewer`, naming the file and both versions, and the table refuses reads until a newer build reads it.
+  *A-store#manifest-carries-format*
+- `format-migrate` — A major-`2` reader reads a `1.x` snapshot manifest as one part per directory, counting rows from footers; the next pass references those parts under `2.0`, rewriting no manifest in place.
+  *A-store#manifest-carries-format*
+- `manifest-unreadable` — A run manifest or reachable snapshot manifest failing to parse raises `StoreManifestUnreadable`, naming the table and file; the table refuses reads until it parses.
+  *P4*
+
+### node identity
+
+Each machine resolves one node id that keeps its files apart.
+
 - `node-segment` — The `<node-id>` segment of run directories and ledger filenames keeps apart two machines writing one logical run id.
 - `node-id-order` — A process resolves its node id once: `CONTEXTFUL_NODE_ID`, then `[node] id`, then {{store.lay-out.node-id-project}}.
 - `node-id-project` — A project's default node id is `node-<8 hex>` of SHA-256 over the host id and absolute store root, so two checkouts on one host write as distinct nodes.
@@ -186,7 +201,7 @@ Table declarations, primary keys, row ordering, write modes and replacement beha
 - `fold-job` — A `[[job]]` of kind `fold` with a `schedule`, `enabled` absent or true and `target` absent or naming the table's destination covers the table; `pipeline validate` warns on stderr for each keyed table no job covers.
   *A-store#sidecar-names-id*
 - `declaration-set` — The project's tables combine its declaration with adjacent `pipelines/*.toml` and `pipelines/*.json`, `[pipeline]` tables as named and specification tables under {{run.declare.table-name}}; queries and every `sync` verb use this set.
-  *because a key declared only where `pipeline run` reads it leaves reads, pulls and folds treating the table as unkeyed*
+  *because a key declared only where `pipeline run` reads it leaves every other verb treating the table as unkeyed*
 
 unsettled: What retires a key a source stops serving under `append`, given the source-side deletion is invisible in the tree? owner: store affects: store.declare
 
@@ -198,7 +213,7 @@ Reserved column and table names, injected columns, `_commit_seq` assignment and 
 - `injected` — The engine injects non-null `_ingested_at` as Parquet `TIMESTAMP(UTC, NANOS)`, `_run_id`, `_site_id`, int32 `_batch_seq` within a batch scope, and `_authored_by` for writes an authenticated subject authorized, replacing producer values.
   *because a string instant does not sort by time once fractions or offsets appear*
 - `authored-agent` — Where an authenticated subject with an agent member authorized the write, the engine injects that agent as `_authored_agent` beside `_authored_by`, replacing any producer value.
-  *because a `[[principal]]` names an agent and the person it acts for, and {{authority.place.per-principal}} matches either*
+  *because {{authority.place.per-principal}} matches an agent or the person it acts for*
 - `row-seq` — The engine injects `_row_seq`, a non-null int64 numbering a run's rows from 0 in batch order, replacing any producer value.
   *because a run's rows share `_ingested_at` and `_run_id`, and last-write-per-key needs an order among them*
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
@@ -357,12 +372,6 @@ sequenceDiagram
 Sidecar indexes, bloom filters, row clustering and partitions.
 
 - `kinds` — Five index kinds exist: footer zone maps, sorted-Parquet sparse-map primary-key lookups, HNSW vector graphs, positional full-text indexes and opt-in per-column bloom filters.
-- `bloom-parts` — Without a project encryption key, each landed or folded part carries bloom filters, sized to its row count, on the columns `bloom_filter` names; erasure rewrites carry none.
-  *A-store#sidecar-names-id*
-- `bloom-vintage-key` — Without a project encryption key, each landed or folded vintage-table part carries a bloom filter on every primary-key column, whatever `bloom_filter` declares.
-  *because interleaved writers write parts with overlapping key bounds, which only a key filter separates*
-- `bloom-encrypted` — A project binding an encryption key writes no bloom filter in any part, whatever `bloom_filter` names.
-  *because Parquet modular encryption leaves a bloom filter in plaintext, answering key membership*
 - `declaration` — Each table declares sidecars under `indexes` as {{type:contextful_core::store::index::IndexBlock}}. A vector sidecar requires `model` and `dim`, and a key outside its kind refuses the declaration.
 - `id-column` — Without `valid_time`, `id_column` defaults to the table's single-column primary key; a table's sidecars share one `id_column`, whether it is keyed, composite-keyed or unkeyed.
   *A-store#sidecar-names-id*
@@ -372,9 +381,34 @@ Sidecar indexes, bloom filters, row clustering and partitions.
   *A-store#sidecar-names-id*
 - `paths` — A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `indexes/fts-<col>-<tokenizer>/`, inside the snapshot directory it indexes.
 - `path-collision` — Two sidecar declarations of one table resolving to one path under {{store.index.paths}} raise `StoreIndexPathCollision`, naming both, at manifest validation before either builds.
-  *because a second build overwrites the first sidecar's files, leaving a manifest entry no reader opens*
+  *because a second build overwrites the first sidecar's files*
 - `identity` — A sidecar's identity is its one path under {{store.index.paths}}; `derived.sqlite` records the builder and builder version of each sidecar a reachable snapshot holds.
   *A-store#sidecar-s-builder*
+- `filter-copies` — A sidecar copies only `id_column`, the indexed column, and the tenant column, zone label and availability instant filtered traversal needs; every other filter applies at {{store.index.candidate-ids}}.
+  *A-store#sidecar-copies-tenant, A-read#sidecar-serves-past*
+- `dies-with-snapshot` — Collecting a snapshot collects its sidecars in the same step, save a segment {{store.fold.reference-retention}} keeps.
+- `candidate-ids` — A sidecar returns only candidate `id_column` values, which retrieval joins on that column through the relation access controls protect before finalizing top-K.
+  *P5*
+- `column-absent` — A reconciled schema lacking an index's column or `id_column` makes fold raise `StoreIndexColumnAbsent` before staging that build.
+  *because an index over a missing column builds empty and reads as no match*
+- `column-type` — `StoreIndexColumnType` refuses an `id_column` other than text or integer, a vector-sidecar column other than vectors of `dim`, and a fulltext column other than text, at manifest validation when `columns` types them, otherwise before landing rows.
+  *because a builder reading another type indexes rows no reader finds*
+
+### bloom filters
+
+Only a project without an encryption key writes bloom filters.
+
+- `bloom-parts` — Without a project encryption key, each landed or folded part carries bloom filters, sized to its row count, on the columns `bloom_filter` names; erasure rewrites carry none.
+  *A-store#sidecar-names-id*
+- `bloom-vintage-key` — Without a project encryption key, each landed or folded vintage-table part carries a bloom filter on every primary-key column, whatever `bloom_filter` declares.
+  *because interleaved writers write parts with overlapping key bounds*
+- `bloom-encrypted` — A project binding an encryption key writes no bloom filter in any part, whatever `bloom_filter` names.
+  *because Parquet modular encryption leaves a bloom filter in plaintext, answering key membership*
+
+### sidecar builds
+
+Fold passes build, extend and rebuild each declared sidecar.
+
 - `rebuild` — A pass rebuilds in full, into a new snapshot, a current sidecar whose builder or builder version differs from this build's; readers keep the prior snapshot until pointer publication.
   *A-store#sidecar-s-builder*
 - `declared-unbuilt` — A pass builds a declared sidecar the current snapshot lacks, or records with other `id_column` or builder parameters, over those rows, publishing a new snapshot even without a landed run.
@@ -385,25 +419,21 @@ Sidecar indexes, bloom filters, row clustering and partitions.
   *A-store#sidecar-s-builder*
 - `sidecar-segments` — A delta replacing and removing no stored row adds a segment to each current sidecar, referencing earlier ones; probes read every segment, scoring full text over their summed statistics.
   *A-store#sidecar-s-builder*
-- `filter-copies` — A sidecar copies only `id_column`, the indexed column, and the tenant column, zone label and availability instant filtered traversal needs; every other filter applies at {{store.index.candidate-ids}}.
-  *A-store#sidecar-copies-tenant, A-read#sidecar-serves-past*
-- `dies-with-snapshot` — Collecting a snapshot collects its sidecars in the same step, save a segment {{store.fold.reference-retention}} keeps.
-- `candidate-ids` — A sidecar returns only candidate `id_column` values, which retrieval joins on that column through the relation access controls protect before finalizing top-K.
-  *P5*
 - `vector-by-fold` — Fold builds each declared vector sidecar from staged rows with non-null identifiers and non-zero vectors, of the declared model where `embedding_model` exists, and records it in the snapshot manifest.
   *A-store#sidecar-names-id*
 - `graph` — A vector sidecar is an HNSW graph over unit-length `Float32` vectors, its layers seeded from the snapshot id and column, so one staged row set yields a byte-identical graph.
-  *because a rebuilt sidecar then differs only where the rows do, and a recall figure replays*
+  *because a recall figure then replays from its snapshot*
 - `fulltext-by-fold` — Fold builds each declared full-text sidecar from staged rows with non-null identifiers and text yielding a term, recording it in the snapshot manifest.
   *A-store#sidecar-names-id*
 - `postings` — Each full-text segment is one file holding a sorted term dictionary and each term's row identifiers and positions, which readers binary-search mapped or decrypted.
-  *because one layout serves mapped and decrypted files, and a probe reads only its terms' postings*
+  *because a probe then reads only its own terms' postings, mapped or decrypted*
 - `tokenizer` — The default `unicode` tokenizer indexes each lowercased alphanumeric run as one term; `cjk` indexes each Han, Kana or Hangul stretch within a run as overlapping character bigrams.
   *because an unspaced script puts no boundary inside a sentence*
-- `column-absent` — A reconciled schema lacking an index's column or `id_column` makes fold raise `StoreIndexColumnAbsent` before staging that build.
-  *because an index over a missing column builds empty and reads as no match*
-- `column-type` — `StoreIndexColumnType` refuses an `id_column` other than text or integer, a vector-sidecar column other than vectors of `dim`, and a fulltext column other than text, at manifest validation when `columns` types them, otherwise before landing rows.
-  *because a builder reading another type indexes rows no reader finds*
+
+### partitions
+
+Clustering orders rows within files, and partitioning splits a table's files.
+
 - `clustering` — `cluster_by` sorts file rows lexicographically by its columns in order, so zone maps skip row groups with no manifest entry or sidecar.
 - `partitioning` — A table uses partitioning only when the table declares `partition_by`.
 - `partition-type` — A `partition_by` column typed binary or vector raises `StorePartitionColumnType` at validation, before any Parquet.
@@ -470,11 +500,11 @@ Uploading local files, constraining bucket prefixes and committing the bucket ma
   *because a restore or pre-push gate names one committed state*
 - `commit-stamp` — Each manifest commit records `committed_at`, the push instant, and `committed_by`, the pushing node id; a plan records neither.
 - `generation-floor` — A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.
-  *because a format-1 writer drops `generation`, and reusing a taken number collides with its immutable copy*
+  *because reusing a taken number collides with its immutable copy*
 - `generation-probe` — Push lists `gen-<G>.json`, G the read manifest's generation, and each later generation's key one by one until the first absent key; only a manifest without `generation` lists all of `manifests/`.
   *because the prefix gains one copy per commit and is never pruned*
 - `generation-heal` — Before each manifest commit, a push finding no `gen-<N>.json` for the read manifest's generation creates it from the bytes it read.
-  *because a commit of N+1 while `gen-<N>.json` is absent leaves a gap no later push sees*
+  *because a missing `gen-<N>.json` otherwise leaves a gap no later push sees*
 - `generation-conflict` — A push whose create of `gen-<N>.json` meets another commit's bytes raises `SyncGenerationConflict`, naming N, after its manifest commit applied.
   *because the immutable copy keeps the first commit, so `pull --generation` restores another state*
 - `run-state` — `sync push` and `sync manifest --emit` first write `nodes/<node-id>/run-state.json`, recording each pipeline's newest run and each cursor row with its commit marker.
@@ -482,7 +512,7 @@ Uploading local files, constraining bucket prefixes and committing the bucket ma
 - `run-state-upload` — A push uploads its node's run state whatever digest the bucket manifest lists.
   *because an interrupted push leaves the key holding bytes its listed digest misdescribes*
 - `control-version` — `sync push` and `sync manifest --emit` record the default local applied control version in each node's run state, which replicas use only for verification.
-  *because a cold node needs the version a writer applied, and an unverified snapshot arms no work*
+  *because a cold node needs the version a writer applied*
 - `run-state-format` — A run state records `format`, `1` for this layout; readers take no run or cursor from a run state above 1.
 - `control-artifact` — A push uploads each immutable applied control snapshot and its {{surface.apply.synced-attestation}} receipt under `<project>/control/`, then commits their digests and project-scoped head in the bucket manifest.
   *A-surface#synced-control-head*
@@ -501,7 +531,7 @@ Uploading local files, constraining bucket prefixes and committing the bucket ma
 - `pointer-unrooted` — Snapshot ancestry ending at a collected manifest before the bucket pointer's snapshot or a root keeps the pointer local, and the push warns beside its commit.
   *because a publish over an unproven descent drops rows the bucket reaches*
 - `pointer-recommit` — Once the bucket accepts a published pointer, the push commits the manifest again, so a generation names a carried pointer only after the bucket holds it.
-  *because a generation naming a pointer the bucket never held restores a state no node read*
+  *because a generation otherwise names a pointer the bucket never held*
 - `stranded` — Push reports local keys other nodes own that the committed bucket manifest neither lists nor tombstones, grouped by owner on stderr with the `CONTEXTFUL_NODE_ID` pushing each group.
   *because a moved store root re-derives the node id, stranding runs under the old one*
 - `after-run` — With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, a failed push failing the command.
@@ -547,7 +577,7 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
 - `digest-mismatch` — A downloaded object whose digest differs from its manifest entry is discarded and raises `SyncObjectDigestMismatch`; run states follow {{store.pull.run-state-torn}} instead.
   *P4*
 - `run-state-torn` — A downloaded `nodes/<node-id>/run-state.json` differing from its listed digest is discarded with a warning naming the key, and the pull continues without it.
-  *because an interrupted push leaves a run state its manifest never committed, which otherwise refuses every later pull*
+  *because an interrupted push leaves a run state its manifest never committed*
 - `identity-conflict` — A pull into a store holding a different {{store.init.store-identity}} raises `StoreIdentityConflict` before downloading files.
   *because importing another UUID lets that store's owner credential read local rows*
 - `convergence` — A named key disappearing mid-download makes the pull re-fetch the manifest and retry the shortfall, up to 3 attempts.
@@ -585,15 +615,15 @@ Downloading bucket files, verifying digests, advancing table pointers and restor
   *because retention collects a superseded snapshot's parts while a container holding its pointer reads them*
 - `generation` — `contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads its in-scope keys at their listed digests and writes exactly its pointers regardless of fence.
 - `generation-list` — `contextful sync generations` lists the bucket's `gen-<N>.json` files in ascending order with `committed_at`, `committed_by` and the project's entry and tombstone counts, a missing stamp printing as `-`.
-  *because a restore picks the last commit before an unwanted tombstone, and a number carries no time*
+  *because generation numbers carry no time*
 - `generation-absent` — A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.
   *because a restore falling back to another generation reads a state nobody named*
 - `generation-diverged` — A local syncable file in scope that the generation omits makes generation pull raise `SyncGenerationDiverged`, naming the file, and write nothing.
-  *because a kept unlisted run adds rows the generation never held, and deleting it loses work*
+  *because a kept unlisted run adds rows the generation never held*
 - `generation-schema` — A generation pull merges the bucket's current `schema.json` under {{store.pull.schema-merge}}, refusing nothing over a differing generation digest.
   *because the lattice keeps every column an earlier generation carried*
 - `generation-run-state` — Generation pull exempts `nodes/<node-id>/run-state.json` from {{store.pull.generation-diverged}}, keeping run states the generation omits; other unlisted files under `nodes/` meet that refusal.
-  *because a run state summarizes history outside the store root, and an older restore otherwise refuses every later node*
+  *because a run state summarizes history outside the store root*
 - `run-state-cursor` — At run open, a run resumes from a pulled run state's cursor when that pipeline and table's commit marker is newer than every local one.
   *because a collected run takes its cursor out of the bucket, so a cold node re-reads the source*
 - `control-head` — Pull downloads the bucket manifest's project-scoped control head, snapshot and receipt ancestry at their listed digests. The local applied pointer stays unchanged for {{surface.reconcile.pulled-control}}.

@@ -16,7 +16,7 @@ Tracking unpushed runs, retrying pushes before reads, pushing during shutdown an
 - `mark` — Under `postgres` or `cloudflare-d1`, opening a run marks its row `unpushed` with the node before landing commits; closing clears the mark when no table the push includes holds a manifest of the run.
   *A-store#unpushed-run-marked*
 - `record-unmarked` — The store's run record keeps each run row without `unpushed`; only the execution database holds the mark.
-  *because a rebuilt execution database restores rows from the run record, resurrecting any mark it held*
+  *because a rebuilt execution database restores rows from the run record*
 - `clear` — A committed push clears the marks of manifests its included tables held at push start, and sets `lost` on marked runs with no local manifest and no live owner, naming them on stderr.
   *because no retry restores a commit the store has lost*
 - `before-read` — Under these profiles, {{store.pull.before-run}} pushes after pulling for unlost marks on its node with a local manifest or expired owner lease. A failed push names those runs and stops the command before its first read.

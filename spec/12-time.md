@@ -46,7 +46,7 @@ The source availability timestamp, its value at landing and row selection under 
 - `lag-fill` — At landing, `available_time.lag` fills a null availability column with valid-time `to`, else `from`, plus the duration `lag.classes` maps the row's `lag.class_column` value to, and injects `_available_imputed` true; a class without an entry leaves the instant null.
   *because a source can publish different record classes after different declared delays*
 - `live-since` — A date-typed availability value resolves at landing to the start of the next day in the declared `zone`; rows available before `available_time.live_since`, when the source began publishing live, get injected `_available_reconstructed` true.
-  *because a date gives no publication time within its day, and history before the live date was rebuilt*
+  *because a date gives no publication time within its day*
 - `available-as-of` — `available_as_of` filters the inner source with `<column> <= available_as_of` under {{store.bound-time.beneath-enforcement}}, combining with {{store.bound-time.as-of}} and {{store.bound-time.valid-as-of}} when the read supplies them.
   *A-store#availability-declared-column, P5*
 - `bound-echo` — A read carrying `available_as_of` adds it, in the same instant form, to the object {{store.bound-time.echo}} returns.
@@ -57,7 +57,7 @@ The source availability timestamp, its value at landing and row selection under 
 - `vintage-hash` — A landing row whose `content_hash_column` value equals that of its key's latest vintage lands no new vintage.
   *because a re-pulled unchanged window otherwise lands a false restatement*
 - `vintage-validation` — A vintage table declaring no `content_hash_column` raises `StoreVintageHashUndeclared`, and one declaring {{store.declare.retain-rows}} raises `StoreVintageRetainRows`, at validation, naming the table.
-  *because without a hash a re-pull reads as a restatement, and a row-age cutoff shrinks a past answer*
+  *because a re-pull without a hash reads as a restatement, and a row-age cutoff shrinks a past answer*
 - `vintage-dedup-key` — A vintage table reads through {{store.declare.dedup-view}}, or {{store.bound-time.interval-rows}} under `valid_time`, and folds under {{store.declare.dedup-view}} or {{store.fold.valid-time-line}}, each adding the availability column to the key and keeping every vintage; an unclustered `valid_time` fold sorts by `from`, then primary key.
   *A-store#restatement-vintage-row, A-store#validity-interval-row, A-store#adjustment-factors-apply*
 - `vintage-scope` — A vintage landing compares only its own keys' stored vintages, skipping row groups that text or signed-integer key bloom filters, or footer bounds on text, integer or temporal keys or temporal valid time, exclude.
