@@ -134,8 +134,12 @@ pub(crate) fn hold_inputs(project_dir: &Path, project: &str, name: &str) -> Resu
 /// Take publication `name`'s intent, then its inputs, exclusively; both together wait at most
 /// [`QUIESCE_WAIT_SECS`] for serve's units or another export (`run.export.group-quiesce-wait`).
 fn quiesce(located: &crate::project::Located, name: &str) -> Result<(std::fs::File, std::fs::File)> {
-    let (intent, inputs) = quiesce_files(&located.project.dir, &located.project.name, name)?;
-    lock_within(&[(&intent, "dispatch intent"), (&inputs, "inputs")], std::time::Duration::from_secs(QUIESCE_WAIT_SECS))
+    quiesce_within(&located.project.dir, &located.project.name, name, std::time::Duration::from_secs(QUIESCE_WAIT_SECS))
+}
+
+fn quiesce_within(project_dir: &Path, project: &str, name: &str, wait: std::time::Duration) -> Result<(std::fs::File, std::fs::File)> {
+    let (intent, inputs) = quiesce_files(project_dir, project, name)?;
+    lock_within(&[(&intent, "dispatch intent"), (&inputs, "inputs")], wait)
         .map_err(|e| anyhow::anyhow!("PublicationInputsBusy: publication `{name}`: {e}"))?;
     Ok((intent, inputs))
 }
@@ -490,5 +494,23 @@ mod quiesce_tests {
         assert!(began.elapsed() < std::time::Duration::from_millis(2900), "waited {:?}", began.elapsed());
         release.join().unwrap();
         drop(second_holder);
+    }
+
+    /// An export still waiting for the publication's intent and inputs 300 s after it began waiting for either raises
+    /// `PublicationInputsBusy` before its pull, read or staging; the outbox stays unchanged.
+    // spec: run.export.group-quiesce-wait@b2194422
+    #[test]
+    fn an_export_past_its_wait_raises_publication_inputs_busy() {
+        assert_eq!(super::QUIESCE_WAIT_SECS, 300);
+        let dir = tempfile::tempdir().unwrap();
+        // A serve unit holds the inputs shared; the export's intent lock succeeds, its inputs lock waits.
+        let held = super::hold_inputs(dir.path(), "research", "daily").unwrap().expect("no export holds the inputs");
+        let wait = std::time::Duration::from_millis(300);
+        let began = std::time::Instant::now();
+        let err = super::quiesce_within(dir.path(), "research", "daily", wait).unwrap_err().to_string();
+        assert!(began.elapsed() >= wait, "refused before the wait elapsed: {:?}", began.elapsed());
+        assert!(err.starts_with("PublicationInputsBusy: publication `daily`") && err.contains("inputs"), "{err}");
+        drop(held);
+        assert!(super::quiesce_within(dir.path(), "research", "daily", wait).is_ok(), "released inputs quiesce");
     }
 }

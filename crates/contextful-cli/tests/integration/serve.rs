@@ -1234,6 +1234,60 @@ fn served_claim_write_is_durable_actor_bound_and_outside_read_mcp() {
     assert_eq!(post_claim(&addr, &alice, &claim, false).0, 401, "revoked authority commits nothing");
 }
 
+/// A served claim write whose store effect refuses raises `MemoryClaimWriteRefused` and lands nothing.
+// spec: read.revise.served-fault@6924a099
+#[test]
+fn a_served_claim_write_whose_store_refuses_lands_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+    let memory = "\n[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+    let (dir, public) = project_declaring(memory);
+    let p = dir.path();
+    let alice = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://alice",
+        "--task", "session-1", "--zone", "on-prem:hq", "--action", "read", "--action", "write",
+        "--table", "memory/facts", "--table", "research/notes", "--ttl", "900"]));
+    let claim = json!({ "into": "memory/facts", "actor": "user://alice", "session": "session-1", "dedup_key": "turn-1",
+        "claim": { "subject": "Northwind", "predicate": "filings", "object": "arrived", "confidence": 0.9,
+            "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] } });
+    let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let tables = p.join(".contextful/context/research/tables");
+    std::fs::create_dir_all(&tables).unwrap();
+    let before = std::fs::read_dir(&tables).unwrap().count();
+    std::fs::set_permissions(&tables, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let (status, refused) = post_claim(&addr, &alice, &claim, false);
+    std::fs::set_permissions(&tables, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!((status, refused["error"]["identifier"].clone()), (503, json!("MemoryClaimWriteRefused")), "{refused}");
+    assert_eq!(std::fs::read_dir(&tables).unwrap().count(), before, "the refused write lands nothing");
+    let (status, first) = post_claim(&addr, &alice, &claim, false);
+    assert_eq!((status, &first["landed"]), (200, &json!(true)), "the refused write left no dedup record: {first}");
+}
+
+/// A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered
+/// `503`, and returns no internal error text.
+// spec: surface.apply.served-unavailable@e940ed92
+#[test]
+fn a_served_control_fault_answers_unavailable_without_internal_text() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let pipeline = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(control(&addr, "GET", "/control/workflows", Some(&admin), "").0, 200);
+
+    // The declaration the handler reads disappears: a storage fault, neither an authority nor a surface refusal.
+    let declaration = root.join("contextful.toml");
+    let kept = std::fs::read(&declaration).unwrap();
+    std::fs::remove_file(&declaration).unwrap();
+    let (status, answer) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    std::fs::write(&declaration, kept).unwrap();
+    assert_eq!(status, 503, "{answer}");
+    assert_eq!(answer, json!({ "error": { "identifier": "ControlUnavailable" } }));
+    assert_eq!(control(&addr, "GET", "/control/workflows", Some(&admin), "").0, 200);
+}
+
 #[test]
 fn served_exchange_without_policy_returns_the_unconfigured_refusal() {
     let (dir, public) = project();

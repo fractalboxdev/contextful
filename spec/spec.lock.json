@@ -48833,7 +48833,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_minting_face_with_no_issuer_key_names_the_keygen_command_and_binds_nothing",
-        "line": 1282,
+        "line": 1336,
         "verdict": "performed",
         "proved": false
       }
@@ -49663,7 +49663,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "introspection_answers_on_the_command_line_and_on_no_served_route",
-        "line": 1258,
+        "line": 1312,
         "verdict": "performed",
         "proved": false
       }
@@ -50103,7 +50103,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_running_face_drops_a_key_retired_by_compromise_from_the_next_request",
-        "line": 1451,
+        "line": 1505,
         "verdict": "performed",
         "proved": false
       }
@@ -50123,7 +50123,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_running_face_refuses_a_credential_below_the_scoped_epoch_from_the_next_request",
-        "line": 1424,
+        "line": 1478,
         "verdict": "performed",
         "proved": false
       }
@@ -50163,7 +50163,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_face_below_the_project_root_reads_the_root_ledger_and_refuses_once_it_vanishes",
-        "line": 1477,
+        "line": 1531,
         "verdict": "performed",
         "proved": false
       }
@@ -58121,7 +58121,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_connection_unanswered_at_the_drain_bound_is_cut_off_and_the_exit_is_non_zero",
-        "line": 2280,
+        "line": 2334,
         "verdict": "performed",
         "proved": false
       }
@@ -58131,7 +58131,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_terminated_face_answers_its_accepted_request_and_sheds_new_ones_before_exiting",
-        "line": 2257,
+        "line": 2311,
         "verdict": "performed",
         "proved": false
       }
@@ -58351,7 +58351,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_terminated_face_answers_its_accepted_request_and_sheds_new_ones_before_exiting",
-        "line": 2256,
+        "line": 2310,
         "verdict": "performed",
         "proved": false
       }
@@ -59306,6 +59306,16 @@
         "proved": false
       }
     ],
+    "read.revise.served-fault": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/serve.rs",
+        "name": "a_served_claim_write_whose_store_refuses_lands_nothing",
+        "line": 1238,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "read.revise.served-scope": [
       {
         "kind": "test",
@@ -60171,7 +60181,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_served_stop_authorizes_against_the_recorded_pipeline_not_the_request",
-        "line": 1746,
+        "line": 1800,
         "verdict": "performed",
         "proved": false
       }
@@ -60251,7 +60261,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_stop_on_a_finished_run_answers_409_and_exits_non_zero",
-        "line": 1728,
+        "line": 1782,
         "verdict": "performed",
         "proved": false
       }
@@ -60301,7 +60311,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_served_stop_route_marks_the_run_and_answers_its_ids",
-        "line": 1698,
+        "line": 1752,
         "verdict": "performed",
         "proved": false
       }
@@ -61322,6 +61332,16 @@
         "path": "crates/contextful-cli/tests/integration/build.rs",
         "name": "a_cycle_defers_the_producer_while_its_publication_exports",
         "line": 577,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "run.export.group-quiesce-wait": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/src/export/publication.rs",
+        "name": "an_export_past_its_wait_raises_publication_inputs_busy",
+        "line": 501,
         "verdict": "performed",
         "proved": false
       }
@@ -62801,7 +62821,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_receive_route_admits_before_the_body_and_answers_after_both_tables_commit",
-        "line": 1913,
+        "line": 1967,
         "verdict": "performed",
         "proved": false
       }
@@ -62811,7 +62831,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_receive_route_maps_each_refusal_to_its_status",
-        "line": 1982,
+        "line": 2036,
         "verdict": "performed",
         "proved": false
       }
@@ -62861,7 +62881,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_receive_route_refuses_a_delivery_without_a_batch_key",
-        "line": 1949,
+        "line": 2003,
         "verdict": "performed",
         "proved": false
       }
@@ -62871,7 +62891,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_receive_route_answers_404_for_a_pipeline_that_receives_nothing",
-        "line": 1965,
+        "line": 2019,
         "verdict": "performed",
         "proved": false
       }
@@ -64171,7 +64191,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_served_run_stream_carries_the_snapshot_and_takes_no_stop",
-        "line": 1765,
+        "line": 1819,
         "verdict": "performed",
         "proved": false
       }
@@ -65371,7 +65391,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "a_bound_token_answers_unknown_to_every_other_subject",
-        "line": 1835,
+        "line": 1889,
         "verdict": "performed",
         "proved": false
       }
@@ -65471,7 +65491,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "the_served_resume_route_answers_the_recorded_payload_and_each_refusal",
-        "line": 1800,
+        "line": 1854,
         "verdict": "performed",
         "proved": false
       }
@@ -69440,6 +69460,16 @@
         "proved": false
       }
     ],
+    "surface.apply.served-unavailable": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/serve.rs",
+        "name": "a_served_control_fault_answers_unavailable_without_internal_text",
+        "line": 1267,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "surface.apply.synced-attestation": [
       {
         "kind": "test",
@@ -71995,7 +72025,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/serve.rs",
         "name": "serve_refuses_to_start_without_its_declarations_or_an_issuer_key",
-        "line": 1337,
+        "line": 1391,
         "verdict": "performed",
         "proved": false
       }
