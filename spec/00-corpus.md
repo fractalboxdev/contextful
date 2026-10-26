@@ -159,7 +159,7 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale*
 - `theorem-beside-test` — A clause carries at most one theorem pin beside its test pins. A theorem pin alone states a property of a model, and performs once its proof holds no `sorry`.
   *A-assurance*
-- `bound-theorem` — Beside test pins, a theorem pin counts only when the `binding` of its row in a `formal/` inventory names one of those tests; an uncounted theorem leaves the clause's verdict to its tests.
+- `bound-theorem` — Beside test pins, a theorem pin counts only when the `binding` of its row in an `inventory.toml` under `formal/` names one of those tests; an uncounted theorem leaves the clause's verdict to its tests.
   *because a proof of a model the code never drives says nothing about the code the clause names*
 - `proved` — A performed clause computes `proved` when a counted theorem pin and a test pin of it both perform; `spec/status.md` counts proved clauses per contract and each card per operation.
   *because performed and proved are different strengths of evidence, and one count hides which a contract holds*
@@ -210,7 +210,7 @@ The generated files, and the vocabulary no authored file carries.
 
 - `generated` — `contextful-spec state` regenerates `spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json`, and `contextful-spec extract` the lock file alone. A committed copy differing from regeneration raises `SpecStaleRender`.
   *P8*
-- `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pin sites and verdict.
+- `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pins: kind, path, name, line, verdict, proof.
   *P8*
 - `card` — `contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.
   *A-corpus*

@@ -178,7 +178,7 @@ pub fn lock_text(c: &Corpus) -> String {
         ledes: BTreeMap<String, &'a str>,
         pointers: Vec<(&'a str, String)>,
         registry: &'a Registry,
-        pins: BTreeMap<String, PinRow>,
+        pins: BTreeMap<&'a String, &'a Vec<PinEntry>>,
     }
     let clauses: Vec<&Clause> = c.clauses().collect();
     let pointers = clauses
@@ -186,19 +186,49 @@ pub fn lock_text(c: &Corpus) -> String {
         .flat_map(|cl| pointers(&cl.statement).into_iter().map(move |p| (cl.id.as_str(), p)))
         .collect();
     let owns = c.contracts().map(|d| (d.rel.as_str(), &d.owns)).collect();
-    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, ledes: c.ledes(), pointers, registry: &c.reg, pins: pin_rows(c).clone() }).unwrap();
+    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, ledes: c.ledes(), pointers, registry: &c.reg, pins: pin_rows(c).iter().map(|(id, r)| (id, &r.pins)).collect() }).unwrap();
     s.push('\n');
     s
 }
 
-/// One pinned clause in the lock file: where its pins are written, and its verdict.
-/// One pinned clause in the lock file: where its pins are written, its verdict, and
-/// whether it computes proved.
+/// One pin in the lock file's `pins` list for its clause: the artifact's kind, the file
+/// defining it, its name, the line of its tag or definition, and its clause's verdict and
+/// proof.
 #[derive(Serialize, Clone)]
-pub struct PinRow {
-    pub sites: Vec<String>,
+pub struct PinEntry {
+    pub kind: String,
+    pub path: String,
+    pub name: String,
+    pub line: usize,
     pub verdict: &'static str,
     pub proved: bool,
+}
+
+/// One pinned clause: its pins, its verdict, and whether it computes proved.
+pub struct PinRow {
+    pub pins: Vec<PinEntry>,
+    pub verdict: &'static str,
+    pub proved: bool,
+}
+
+/// Where a pin sits: a tag's own file and line, or the definition a `spec/pins.toml` path
+/// resolves to (`spec/pins.toml`, line 0, when it resolves to none).
+fn entry(c: &Corpus, p: &checks::Pin, verdict: &'static str, proved: bool) -> PinEntry {
+    let name = match &p.tag {
+        Some(t) => t.function.clone().unwrap_or_default(),
+        None => p.path.rsplit(if p.kind == "theorem" { "." } else { "::" }).next().unwrap_or_default().to_string(),
+    };
+    let (path, line) = match &p.tag {
+        Some(_) => (p.file.clone(), p.line),
+        None => pins::locate(c, &p.kind, &p.path, &checks::PIN_ROOTS)
+            .first()
+            .and_then(|site| {
+                let text = std::fs::read_to_string(c.root.join(&site.file)).ok()?;
+                Some((site.file.clone(), text[..site.offset].matches('\n').count() + 1))
+            })
+            .unwrap_or((p.file.clone(), 0)),
+    };
+    PinEntry { kind: p.kind.clone(), path, name, line, verdict, proved }
 }
 
 /// Every pinned clause by id (`corpus.state.status-is-computed`), computed once per run.
@@ -208,8 +238,9 @@ pub fn pin_rows(c: &Corpus) -> &'static BTreeMap<String, PinRow> {
         checks::pins_by_clause(c)
             .into_iter()
             .map(|(id, group)| {
-                let row = PinRow { sites: group.iter().map(checks::Pin::site).collect(), verdict: checks::clause_verdict(c, &group), proved: checks::proved(c, &group) };
-                (id, row)
+                let (verdict, proved) = (checks::clause_verdict(c, &group), checks::proved(c, &group));
+                let pins = group.iter().map(|p| entry(c, p, verdict, proved)).collect();
+                (id, PinRow { pins, verdict, proved })
             })
             .collect()
     })

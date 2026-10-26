@@ -277,13 +277,17 @@ pub fn check(root: &Path, contracts: &[String]) -> Result<()> {
     let mut live: BTreeMap<usize, BTreeSet<String>> = BTreeMap::new();
     let entries: BTreeSet<&str> = sources.iter().flat_map(|s| s.entries.iter().map(String::as_str)).collect();
     let mut found = BTreeSet::new();
-    for (id, row) in lock["pins"].as_object().into_iter().flatten() {
+    // Each clause maps to its pins: `kind`, `path`, `name`, `line`, and the clause's `verdict`.
+    for (id, pins) in lock["pins"].as_object().into_iter().flatten() {
         let contract = id.split('.').next().unwrap_or_default();
-        if row["verdict"] != "performed" || entries.contains(id.as_str()) || !(contracts.is_empty() || contracts.iter().any(|c| c == contract)) {
+        let pins = pins.as_array().map(Vec::as_slice).unwrap_or_default();
+        let performed = pins.first().is_some_and(|p| p["verdict"] == "performed");
+        if !performed || entries.contains(id.as_str()) || !(contracts.is_empty() || contracts.iter().any(|c| c == contract)) {
             continue;
         }
-        for site in row["sites"].as_array().into_iter().flatten().filter_map(|s| s.as_str()) {
-            let Some((file, function)) = site.rsplit_once("::") else { continue };
+        for pin in pins.iter().filter(|p| p["kind"] == "test") {
+            let (Some(file), Some(function)) = (pin["path"].as_str(), pin["name"].as_str()) else { continue };
+            let site = format!("{file}::{function}");
             let Some(tokens) = file.ends_with(".rs").then(|| std::fs::read_to_string(root.join(file)).ok()).flatten().and_then(|t| t.parse::<TokenStream>().ok()) else {
                 continue;
             };

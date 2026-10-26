@@ -4,8 +4,8 @@ use crate::{stderr, Repo};
 use std::process::{Command, Output};
 
 const LOCK: &str = r#"{"clauses": [], "pins": {
-  "store.replicate.periodic": {"sites": ["crates/demo/tests/integration/replicate.rs::replicates"], "verdict": "performed"},
-  "store.replicate.broken": {"sites": ["crates/demo/tests/integration/replicate.rs::broken"], "verdict": "broken"}
+  "store.replicate.periodic": [{"kind": "test", "path": "crates/demo/tests/integration/replicate.rs", "name": "replicates", "line": 1, "verdict": "performed", "proved": false}],
+  "store.replicate.broken": [{"kind": "test", "path": "crates/demo/tests/integration/replicate.rs", "name": "broken", "line": 6, "verdict": "broken", "proved": false}]
 }}
 "#;
 

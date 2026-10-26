@@ -83,7 +83,7 @@ impl Scratch {
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     }
 
-    /// Run `state`, then return `clause`'s entry under the lock file's `pins`, or `Null`.
+    /// Run `state`, then return `clause`'s pin list under the lock file's `pins`, or `Null`.
     pub fn pin_row(&self, clause: &str) -> serde_json::Value {
         let out = self.cmd(&["state"]);
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -93,7 +93,7 @@ impl Scratch {
 
     /// `clause`'s computed verdict from the lock file's `pins`, once `state` has run.
     pub fn verdict(&self, clause: &str) -> Option<String> {
-        self.pin_row(clause)["verdict"].as_str().map(str::to_string)
+        self.pin_row(clause)[0]["verdict"].as_str().map(str::to_string)
     }
 
     /// Replace each `todo!(<message>);` line of `rel` with an assertion over the same
