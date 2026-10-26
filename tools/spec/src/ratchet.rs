@@ -40,7 +40,7 @@ pub fn compare(c: &Corpus, live: &Live) -> Option<Finding> {
 
 /// Every ratchet's live count.
 pub fn all(c: &Corpus) -> Vec<Live> {
-    vec![crate::drift::committed_sites(c)]
+    vec![crate::drift::committed_sites(c), crate::checks::long_lists(c)]
 }
 
 /// Lower each ceiling above its live count to that count; a count over its ceiling

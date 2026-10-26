@@ -16,6 +16,8 @@ pub struct Row {
     pub why: String,
     pub file: String,
     pub line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -57,6 +59,9 @@ pub struct Slice {
     pub operations: Vec<String>,
     /// Each named operation's lede, by `<contract>.<operation>`.
     pub ledes: BTreeMap<String, String>,
+    /// Each group's lede within the named operations, by `<contract>.<operation>.<group>`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub groups: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub milestone: Option<MilestoneLine>,
     pub clauses: Vec<Row>,
@@ -99,7 +104,7 @@ fn resolve(c: &Corpus, target: &str) -> Result<(Vec<String>, Option<MilestoneLin
 }
 
 fn row(cl: &Clause) -> Row {
-    Row { id: cl.id.clone(), statement: cl.statement.clone(), why: cl.why.clone(), file: cl.file.clone(), line: cl.line }
+    Row { id: cl.id.clone(), statement: cl.statement.clone(), why: cl.why.clone(), file: cl.file.clone(), line: cl.line, group: cl.group.clone() }
 }
 
 pub fn build(c: &Corpus, target: &str) -> Result<Slice> {
@@ -159,11 +164,18 @@ pub fn build(c: &Corpus, target: &str) -> Result<Slice> {
 
     let all_ledes = c.ledes();
     let ledes = operations.iter().filter_map(|o| all_ledes.get(o).map(|t| (o.clone(), t.to_string()))).collect();
+    let groups = c
+        .group_ledes()
+        .into_iter()
+        .filter(|(key, _)| key.rsplit_once('.').is_some_and(|(op, _)| ops.contains(op)))
+        .map(|(key, t)| (key, t.to_string()))
+        .collect();
     let summary = Summary { clauses: own.len(), pointed: pointed.len(), pointers: edges.len(), records: records.len() };
     Ok(Slice {
         target: target.to_string(),
         operations,
         ledes,
+        groups,
         milestone,
         clauses: own.into_iter().map(row).collect(),
         pointed: pointed.into_iter().map(row).collect(),
@@ -174,12 +186,36 @@ pub fn build(c: &Corpus, target: &str) -> Result<Slice> {
     })
 }
 
-fn table(s: &mut String, rows: &[Row]) {
+fn table(s: &mut String, rows: &[&Row]) {
     s.push_str("| Clause | Statement | Why | Home |\n| --- | --- | --- | --- |\n");
     for r in rows {
         let _ = writeln!(s, "| `{}` | {} | {} | {}:{} |", r.id, r.statement, r.why, r.file, r.line);
     }
     s.push('\n');
+}
+
+/// The target's clauses, one table per run of an operation's ungrouped clauses and one
+/// per `### <group>`, each group under its heading and lede.
+fn grouped(s: &mut String, sl: &Slice) {
+    let mut runs: Vec<(Option<String>, Vec<&Row>)> = Vec::new();
+    for r in &sl.clauses {
+        let op = r.id.rsplit_once('.').map(|(op, _)| op).unwrap_or_default();
+        let key = r.group.as_ref().map(|g| format!("{op}.{g}"));
+        match runs.last_mut() {
+            Some((k, rows)) if *k == key => rows.push(r),
+            _ => runs.push((key, vec![r])),
+        }
+    }
+    for (key, rows) in runs {
+        if let Some(key) = &key {
+            let (op, g) = key.rsplit_once('.').unwrap_or_default();
+            let _ = writeln!(s, "### `{op}` · {g}\n");
+            if let Some(lede) = sl.groups.get(key) {
+                let _ = writeln!(s, "{lede}\n");
+            }
+        }
+        table(s, &rows);
+    }
 }
 
 pub fn markdown(sl: &Slice) -> String {
@@ -207,10 +243,10 @@ pub fn markdown(sl: &Slice) -> String {
     }
     s.push('\n');
     s.push_str("## Clauses\n\n");
-    table(&mut s, &sl.clauses);
+    grouped(&mut s, sl);
     if !sl.pointed.is_empty() {
         s.push_str("## Pointed-to clauses\n\n");
-        table(&mut s, &sl.pointed);
+        table(&mut s, &sl.pointed.iter().collect::<Vec<_>>());
     }
     if !sl.errors.is_empty() {
         s.push_str("## Errors\n\n| Error | Clause | Gloss |\n| --- | --- | --- |\n");

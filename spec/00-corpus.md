@@ -60,14 +60,18 @@ The three segments of a clause id and what makes each legal.
 
 ## anatomy
 
-The section order of a contract file, the lede and clause list of each operation, and the computed kind of a clause.
+The section order of a contract file, the lede, clause list and groups of each operation, and the computed kind of a clause.
 
 - `file-headings` — A contract file carries front matter with `contract` and `owns`, one `# ` title matching its contract entry, one `## <operation>` section per owned operation in `owns` order, then an optional `## Shapes`.
   *P8*
 - `lede` — An operation section opens with a lede: one paragraph stating what the operation covers. The lede is the operation's only description; its fragment entry carries no gloss.
   *A-corpus*
-- `clause-list` — After the lede, one contiguous list holds the section's clauses, each item `` - `<subject>` — <statement> `` on one line, optionally followed by its Why on a two-space-indented `*…*` line.
+- `clause-list` — After the lede, one contiguous list holds the section's ungrouped clauses, each item `` - `<subject>` — <statement> `` on one line, optionally followed by its Why on a two-space-indented `*…*` line.
   *A-corpus*
+- `group` — After an operation's clause list, each `### <group>` section holds a one-sentence lede and its own contiguous clause list. A group names no segment of a clause id and follows no content after a list.
+  *because a long operation reads as named parts, and a group renames no clause*
+- `group-clauses` — A clause list, an operation's or a group's, holds at most 30 clauses; each list past it counts toward the `anatomy-long-lists` ceiling.
+  *because a reader scanning one list for its rule loses the thread past about thirty items*
 - `after-list` — Prose, diagrams, tables, scenarios and unsettled lines follow the clause list and state no obligation.
   *A-corpus*
 - `scenario` — A `#### Scenarios` list under an operation holds items `` - `<clause id>`: WHEN <trigger>, THEN <outcome> `` or a backticked `tests/fixtures/` path; the lock file attaches each to its clause.
@@ -80,7 +84,7 @@ The section order of a contract file, the lede and clause list of each operation
   *because one item states one obligation; a longer item is two clauses or carries rationale*
 - `file-length` — A contract file holds at most 900 lines.
   *because a file past that splits by adding a path to its contract entry, which renames nothing*
-- `bad-anatomy` — A missing, extra or out-of-order `##` section, a missing lede, a broken clause list, a malformed item, a title differing from the registry, a file over its length or an overlong statement raises `SpecAnatomy`.
+- `bad-anatomy` — A missing, extra or out-of-order `##` section, a missing lede, a broken list, a malformed group or item, a title off the registry, an oversized file or statement, or a long-list count off its ceiling raises `SpecAnatomy`.
   *P8*
 
 An operation section, with one clause carrying its Why, and an unsettled line:

@@ -153,27 +153,7 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
                 format!("sections [{}] differ from owns order [{}]", names.join(", "), want.join(", ")),
             ));
         }
-        // every owned section opens with a lede, then at most one contiguous clause list
-        let mut breaks: BTreeMap<String, usize> = BTreeMap::new();
-        let mut cur = String::new();
-        let mut last: Option<usize> = None; // line of the latest item or Why line in `cur`
-        for (n, l, k) in d.each() {
-            match k {
-                LineKind::Heading if l.starts_with("## ") => {
-                    cur = l[3..].trim().to_string();
-                    last = None;
-                }
-                LineKind::ClauseItem => {
-                    if matches!(last, Some(p) if p + 1 != n) {
-                        breaks.entry(cur.clone()).or_insert(n);
-                    }
-                    last = Some(n);
-                }
-                LineKind::ClauseWhy => last = Some(n),
-                LineKind::BadClause => out.push(a(n, "clause item is not `` - `<subject>` — <statement> ``".into())),
-                _ => {}
-            }
-        }
+        let breaks = clause_lists(d, &mut out);
         for op in &d.owns {
             let line = sections.iter().find(|s| &s.1 == op).map(|s| s.0).unwrap_or(1);
             if let Some(n) = breaks.get(op) {
@@ -190,6 +170,7 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    out.extend(crate::ratchet::compare(c, &long_lists(c)));
     let ids: BTreeSet<String> = c.clauses().map(|cl| cl.id.clone()).collect();
     for sc in c.scenarios() {
         let own = ids.contains(&sc.clause) && sc.clause.split('.').nth(1) == Some(sc.operation.as_str());
@@ -203,6 +184,84 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
         }
     }
     out
+}
+
+/// The anatomy of each operation's clause lists (`corpus.anatomy.clause-list`, `group`):
+/// returns the first line breaking each operation's list, and records malformed groups
+/// and items in `out`.
+fn clause_lists(d: &Doc, out: &mut Vec<Finding>) -> BTreeMap<String, usize> {
+    let a = |line: usize, msg: String| f("anatomy", &d.rel, line, "SpecAnatomy", msg);
+    let mut breaks: BTreeMap<String, usize> = BTreeMap::new();
+    let mut cur = String::new();
+    let mut group: Option<(String, usize)> = None;
+    let mut last: Option<usize> = None; // line of the latest item or Why line in the current list
+    let mut listed = false; // a clause list has ended in this operation
+    let mut content = false; // a line other than a heading or a blank follows the last list
+    let mut late = false; // the current group's heading follows such a line
+    for (n, l, k) in d.each() {
+        match k {
+            LineKind::Heading if l.starts_with("## ") => {
+                cur = l[3..].trim().to_string();
+                (group, last, listed, content, late) = (None, None, false, false, false);
+            }
+            LineKind::Heading if l.starts_with("### ") => {
+                group = Some((l[4..].trim().to_string(), n));
+                late = listed && content;
+                (last, content) = (None, false);
+            }
+            LineKind::Heading => {}
+            LineKind::ClauseItem => {
+                if matches!(last, Some(p) if p + 1 != n) {
+                    breaks.entry(cur.clone()).or_insert(n);
+                }
+                if let (None, Some((g, at))) = (last, &group) {
+                    let key = format!("{cur}.{g}");
+                    if late {
+                        out.push(a(*at, format!("group `{key}` follows content after a clause list")));
+                    }
+                    match d.groups.get(&key).map(|t| sentences(t)) {
+                        None | Some(0) => out.push(a(*at, format!("group `{key}` opens without a lede"))),
+                        Some(1) => {}
+                        Some(k) => out.push(a(*at, format!("group `{key}` lede is {k} sentences, want 1"))),
+                    }
+                }
+                last = Some(n);
+                (listed, content) = (true, false);
+            }
+            LineKind::ClauseWhy => last = Some(n),
+            LineKind::BadClause => out.push(a(n, "clause item is not `` - `<subject>` — <statement> ``".into())),
+            LineKind::Blank => {}
+            _ => content |= listed,
+        }
+    }
+    breaks
+}
+
+/// How many sentences `text` holds: each `.`, `?` or `!` closing a word outside backticks.
+fn sentences(text: &str) -> usize {
+    let plain = without_ticks(text);
+    let chars: Vec<char> = plain.chars().collect();
+    (0..chars.len())
+        .filter(|&i| matches!(chars[i], '.' | '?' | '!') && i > 0 && chars[i - 1].is_alphanumeric() && chars.get(i + 1).is_none_or(|c| c.is_whitespace()))
+        .count()
+}
+
+/// The `anatomy-long-lists` ratchet: clause lists, one per operation and per group,
+/// holding more clauses than `corpus-group-clauses` (`corpus.anatomy.group-clauses`).
+pub fn long_lists(c: &Corpus) -> crate::ratchet::Live {
+    let bound = c
+        .reg
+        .fragments
+        .get("corpus")
+        .and_then(|fr| fr.limit.get("corpus-group-clauses"))
+        .and_then(|l| l.value.as_integer())
+        .unwrap_or(30) as usize;
+    let mut lists: BTreeMap<(String, String, Option<String>), usize> = BTreeMap::new();
+    for cl in c.clauses() {
+        *lists.entry((cl.contract.clone(), cl.operation.clone(), cl.group.clone())).or_default() += 1;
+    }
+    let count = lists.values().filter(|n| **n > bound).count();
+    crate::ratchet::Live { key: "anatomy-long-lists".into(), count, check: "anatomy", code: "SpecAnatomy" }
 }
 
 // ---------------------------------------------------------------- guide

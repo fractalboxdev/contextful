@@ -147,6 +147,8 @@ pub fn lock_text(c: &Corpus) -> String {
         clauses: Vec<&'a Clause>,
         owns: BTreeMap<&'a str, &'a Vec<String>>,
         ledes: BTreeMap<String, &'a str>,
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        groups: BTreeMap<String, &'a str>,
         pointers: Vec<(&'a str, String)>,
         registry: &'a Registry,
     }
@@ -156,7 +158,7 @@ pub fn lock_text(c: &Corpus) -> String {
         .flat_map(|cl| pointers(&cl.statement).into_iter().map(move |p| (cl.id.as_str(), p)))
         .collect();
     let owns = c.contracts().map(|d| (d.rel.as_str(), &d.owns)).collect();
-    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, ledes: c.ledes(), pointers, registry: &c.reg }).unwrap();
+    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, ledes: c.ledes(), groups: c.group_ledes(), pointers, registry: &c.reg }).unwrap();
     s.push('\n');
     s
 }

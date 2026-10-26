@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `assurance` | 3 | 18 | 347 | 73 | 25 | 3 | 308 | 0 | 308 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 278 | 0 | 278 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 318 | 0 | 318 |
-| `corpus` | 1 | 10 | 85 | 38 | 7 | 0 | 85 | 0 | 85 |
+| `corpus` | 1 | 10 | 87 | 38 | 8 | 0 | 87 | 0 | 87 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 327 | 58 | 30 | 16 | 285 | 0 | 285 |
 | `run` | 3 | 29 | 613 | 129 | 49 | 19 | 581 | 0 | 581 |
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 333 | 0 | 333 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 176 | 0 | 176 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 89 | 0 | 89 |
-| **total** | 26 | 177 | 2928 | 712 | 235 | 82 | 2618 | 0 | |
+| **total** | 26 | 177 | 2930 | 712 | 236 | 82 | 2620 | 0 | |
 
 Decision records: 18.
 
@@ -973,6 +973,8 @@ Unscheduled operations: 13.
 | `corpus.anatomy.clause-list` | `tools/spec/tests/integration/readable.rs::a_clause_list_split_by_prose_is_an_anatomy_finding` | performed |
 | `corpus.anatomy.file-headings` | `tools/spec/tests/integration/anatomy.rs::sections_out_of_owns_order_or_a_second_title_are_anatomy_findings` | performed |
 | `corpus.anatomy.file-length` | `tools/spec/tests/integration/anatomy.rs::a_contract_file_over_nine_hundred_lines_is_an_anatomy_finding` | performed |
+| `corpus.anatomy.group` | `tools/spec/tests/integration/anatomy.rs::a_group_heading_splits_a_list_without_changing_an_id` | performed |
+| `corpus.anatomy.group-clauses` | `tools/spec/tests/integration/anatomy.rs::each_list_over_its_bound_counts_toward_the_long_list_ceiling` | performed |
 | `corpus.anatomy.kind-is-computed` | `tools/spec/tests/integration/anatomy.rs::the_lock_carries_the_kind_the_fragment_assigns` | performed |
 | `corpus.anatomy.lede` | `tools/spec/tests/integration/readable.rs::the_lede_lands_in_the_lock_and_its_absence_is_an_anatomy_finding` | performed |
 | `corpus.anatomy.scenario` | `tools/spec/tests/integration/grammar.rs::a_scenario_attaches_to_its_clause_in_the_lock` | performed |
