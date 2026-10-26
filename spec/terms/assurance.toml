@@ -1,4 +1,5 @@
-# Registry fragment — contract `assurance`, files spec/80-formal.md and spec/81-engineering.md.
+# Registry fragment — contract `assurance`, files spec/80-formal.md, spec/81-engineering.md,
+# spec/82-consumer.md and spec/83-gate.md.
 
 [operation]
 model             = {}

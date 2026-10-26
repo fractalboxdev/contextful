@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 338 | 70 | 25 | 4 | 302 | 0 | 302 |
+| `assurance` | 4 | 18 | 338 | 70 | 25 | 4 | 302 | 0 | 302 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 3 | 19 | 416 | 87 | 23 | 15 | 312 | 0 | 312 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 342 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 201 | 70 | 25 | 2 | 173 | 0 | 173 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 88 | 0 | 88 |
-| **total** | 26 | 177 | 2888 | 687 | 235 | 84 | 2593 | 0 | |
+| **total** | 27 | 177 | 2888 | 687 | 235 | 84 | 2593 | 0 | |
 
 Decision records: 18.
 
