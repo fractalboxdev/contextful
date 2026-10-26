@@ -1922,7 +1922,7 @@
       "subject": "empty-probe",
       "kind": "refusal",
       "statement": "An absent descriptor directory, absent probe table or empty hostname set raises `ProbeSetEmpty`, naming the path. A passing probe checks at least one hostname.",
-      "why": "because a probe that checks nothing and exits zero reads as a proven posture to the pipeline that invoked it.",
+      "why": "because a probe that checks nothing and exits zero reads as a proven access policy to the pipeline that invoked it.",
       "file": "spec/01-topology.md",
       "line": 292
     },

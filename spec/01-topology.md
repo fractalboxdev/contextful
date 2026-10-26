@@ -290,7 +290,7 @@ Hostname access policies, deployment checks and requests through the routing ser
 - `probe-table` — Before probing hostnames, the deploy tool compares descriptor and probe-table entries. An entry missing from either set raises `ProbeTableDrift`, naming the hostname and missing side.
   *A-topology#posture-probe*
 - `empty-probe` — An absent descriptor directory, absent probe table or empty hostname set raises `ProbeSetEmpty`, naming the path. A passing probe checks at least one hostname.
-  *because a probe that checks nothing and exits zero reads as a proven posture to the pipeline that invoked it.*
+  *because a probe that checks nothing and exits zero reads as a proven access policy to the pipeline that invoked it.*
 - `unknown-field` — An unmodelled descriptor property raises `DescriptorUnknownField`, naming the key and contract version. The decoder rejects the descriptor.
   *P1*
 - `unconfigured-gateway` — A routing hop with no store configuration answers `503` on every route and raises `GatewayUnconfigured`.
