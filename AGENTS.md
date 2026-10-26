@@ -128,7 +128,7 @@ specifies the stages, parts, folds, shards, ceilings, target ledger and release 
 ```sh
 cargo run --locked -q -p contextful-ci -- stages --parts                          # parts a change runs before merge
 cargo run --locked -q -p contextful-ci -- stages --parts --base <rev> --affected  # parts the diff reaches, test-first parts included
-cargo run --locked -q -p contextful-ci -- stages --parts --tier nightly           # nightly parts: features, formal, budget
+cargo run --locked -q -p contextful-ci -- stages --parts --tier nightly           # nightly parts: features, formal, unwired, budget
 cargo run --locked -q -p contextful-ci -- stages --folds                          # each fold's members
 cargo run --locked -q -p contextful-ci -- gate --stage <part>                     # one part, a fold label or a member
 cargo run --locked -q -p contextful-ci -- gate --plan                             # a run's stages, unrun

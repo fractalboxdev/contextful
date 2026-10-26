@@ -33,8 +33,8 @@ Typed subcommands over compiled binaries, and the boundary shell keeps.
 
 Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.
 
-- `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — all of both tiers when none is named, else the named subset, which `--plan` prints unrun.
-- `nightly-tier` — `contextful-ci stages --parts --tier nightly` prints the features, formal and budget parts in run order; `stages --parts` prints the remaining parts, those a change runs before merge, and `gate --stage` runs a part of either tier.
+- `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, unwired, budget — all of both tiers when none is named, else the named subset, which `--plan` prints.
+- `nightly-tier` — `contextful-ci stages --parts --tier nightly` prints the features, formal, unwired and budget parts in run order; `stages --parts` prints the remaining parts, those a change runs before merge, and `gate --stage` runs a part of either tier.
   *A-assurance*
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
   *A-assurance*

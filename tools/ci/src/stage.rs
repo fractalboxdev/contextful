@@ -12,7 +12,7 @@ use std::time::Instant;
 use crate::{refuse, run, tracked, Exited};
 
 /// Gate stages in run order, each runnable alone.
-pub const STAGES: [&str; 13] = [
+pub const STAGES: [&str; 14] = [
     "pins",
     "toolchain",
     "schema",
@@ -25,13 +25,14 @@ pub const STAGES: [&str; 13] = [
     "connectors",
     "surfaces",
     "formal",
+    "unwired",
     "budget",
 ];
 
 /// The stages whose parts form the nightly tier (`assurance.gate.nightly-tier`): `gate --stage`
 /// runs them on demand, and `stages --parts` omits them from the parts a change runs before
 /// merge.
-pub const NIGHTLY: [&str; 3] = ["features", "formal", "budget"];
+pub const NIGHTLY: [&str; 4] = ["features", "formal", "unwired", "budget"];
 
 /// The folded parts that each run several stage parts (`assurance.gate.folded-parts`):
 /// a label and its members in run order. Every other part runs as itself, and each
