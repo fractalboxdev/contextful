@@ -119,7 +119,7 @@ why-unscoped = 0
 term-first-use = 24
 
 [ceiling.contract-words]
-assurance = 10169
+assurance = 10264
 authority = 7793
 connector = 11062
 corpus = 5091
@@ -131,7 +131,7 @@ surface = 6428
 topology = 2647
 
 [ceiling.adr-words]
-A-assurance = 5726
+A-assurance = 5737
 A-authority = 4476
 A-connector = 3600
 A-corpus = 383

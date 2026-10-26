@@ -427,13 +427,13 @@ Decision: `assurance.gate.affected-parts` lists the required parts the diff from
 
 Consequences: a change confined to `spec/`, `references/`, `apps/`, `packages/` or `formal/` runs a fraction of the parts. A part the map omits wrongly stays green until a change under `crates/` or `tools/` runs it.
 
-## protocol-package-holds — The protocol package holds the journal and merge machines
+## protocol-package-holds — The protocol package holds the journal, merge and fold machines
 
 **Status:** accepted
 
 Context: `run.journal` and `store.merge` carry the engine's concurrency risk. Criteria: one toolchain and audit, a differential driving the engine's own code, and five policy modules.
 
-Decision: `formal/protocol` holds the journal as port-call steps and the merge per key. The journal harness runs `Journal::step` over gated adapters; the merge harness calls `merge_verified`.
+Decision: `formal/protocol` holds the journal as port-call steps, the merge per key, and the fold with the lease invariant as its commit guard. The journal harness runs `Journal::step` over gated adapters; the merge harness calls `merge_verified`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

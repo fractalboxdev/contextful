@@ -84,3 +84,31 @@ fn the_merge_theorems_pass_the_protocol_audit() {
         assert_eq!(row["verdict"], "ok", "{row}");
     }
 }
+
+/// Six fold properties are Lean theorems: commits conditioned on the version read, lost commits publishing nothing, collection sparing reachable and in-flight directories, supersession without deletion, readers' snapshots present, and lease-ordered fences.
+// spec: assurance.model.fold-theorems@05d0364e
+#[test]
+fn the_fold_theorems_pass_the_protocol_audit() {
+    if Command::new("lake").arg("--version").output().is_err() {
+        assert!(std::env::var_os("CONTEXTFUL_REQUIRE_LEAN").is_none(), "Lean is required");
+        return;
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../formal/protocol");
+    let dir = tempfile::tempdir().unwrap();
+    let report_path = dir.path().join("report.json");
+    let out = Command::new(BIN).args(["formal", "check", "--root"]).arg(&root).arg("--report").arg(&report_path).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&report_path).unwrap()).unwrap();
+    for theorem in [
+        "commit_conditioned_on_version",
+        "lost_commit_publishes_nothing",
+        "collect_leaves_reachable",
+        "commit_supersedes_without_deleting",
+        "reader_snapshot_present",
+        "chain_fences_follow_the_lease",
+    ] {
+        let name = format!("Protocol.Fold.{theorem}");
+        let row = report["constants"].as_array().unwrap().iter().find(|r| r["name"] == name.as_str()).unwrap_or_else(|| panic!("{name} is inventoried"));
+        assert_eq!(row["verdict"], "ok", "{row}");
+    }
+}

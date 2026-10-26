@@ -171,6 +171,7 @@ def main (args : List String) : IO UInt32 := do
     return 0
   | "journal" :: rest => Protocol.Journal.main rest
   | "merge" :: rest => Protocol.Merge.main rest
+  | "fold" :: rest => Protocol.Fold.main rest
   | _ =>
-    IO.eprintln "usage: protocol [check [--unfenced] | run <compaction|run> | steps | journal (check | run) [--no-grace] | merge run]"
+    IO.eprintln "usage: protocol [check [--unfenced] | run <compaction|run> | steps | journal (check | run) [--no-grace] | merge run | fold run]"
     return 2

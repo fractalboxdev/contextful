@@ -172,3 +172,57 @@ binding   = "crates/contextful-core/src/store/sync.rs::merge_verified; test crat
 negative  = """
 Leaves open: that `merge_verified` refines `mergeKey`, which the merge differential samples key by key; tombstone signatures, which the model reduces to one verified flag per key; key ownership, which the model reads off each entry rather than off the key. Fixes one writer, one store and one `now`: refusals answer on the first merge only, and two writers holding different copies of an unowned key alternate.
 """
+
+[constant."Protocol.Fold.commit_conditioned_on_version"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ (s : Protocol.Fold.State) (p : Protocol.Fold.Pass) (id v f : Nat), s.passes p = Protocol.Fold.PassState.staged id v f → (Protocol.Fold.step s (Protocol.Fold.Step.commit p)).version ≠ s.version → v = s.version"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Speaks of the pointer's version, the ETag's image; a lost commit still moves its staged directory into place.
+"""
+
+[constant."Protocol.Fold.lost_commit_publishes_nothing"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ (s : Protocol.Fold.State) (p : Protocol.Fold.Pass) (id v f : Nat), s.passes p = Protocol.Fold.PassState.staged id v f → v ≠ s.version → (Protocol.Fold.step s (Protocol.Fold.Step.commit p)).chain = s.chain ∧ (Protocol.Fold.step s (Protocol.Fold.Step.commit p)).version = s.version"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Says nothing of the lost snapshot's directory, which collection removes once a later snapshot is current.
+"""
+
+[constant."Protocol.Fold.collect_leaves_reachable"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ {s : Protocol.Fold.State}, Protocol.Fold.Reachable s → ∀ (id cur : Nat), s.current = some cur → id < cur → ((Protocol.Fold.step s Protocol.Fold.Step.collect).staging id = true → s.inFlight id = true) ∧ ((Protocol.Fold.step s Protocol.Fold.Step.collect).final id = true → s.reachable id = true)"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Speaks of ids below the current snapshot; a directory at or above it survives collection.
+"""
+
+[constant."Protocol.Fold.commit_supersedes_without_deleting"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ (s : Protocol.Fold.State) (p : Protocol.Fold.Pass) (id v f : Nat), s.passes p = Protocol.Fold.PassState.staged id v f → f = s.granted → v = s.version → (Protocol.Fold.step s (Protocol.Fold.Step.commit p)).chain = (id, f) :: s.chain ∧ ∀ (i : Nat), s.final i = true → (Protocol.Fold.step s (Protocol.Fold.Step.commit p)).final i = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Speaks of a publishing commit under the current fence.
+"""
+
+[constant."Protocol.Fold.reader_snapshot_present"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ {s : Protocol.Fold.State}, Protocol.Fold.Reachable s → ∀ (r : Protocol.Fold.Reader) (id : Nat), s.readers r = some id → s.final id = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Holds without retention: a retention window shorter than a read removes the snapshot under it.
+"""
+
+[constant."Protocol.Fold.chain_fences_follow_the_lease"]
+module    = "Protocol.FoldTheorems"
+statement = "∀ {s : Protocol.Fold.State}, Protocol.Fold.Reachable s → List.Pairwise (fun a b => b.snd ≤ a.snd) s.chain ∧ ∀ (e : Nat × Nat), e ∈ s.chain → e.snd ≤ s.granted"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-context/src/fold/mod.rs::commit; test crates/contextful-context/tests/integration/fold_model.rs::the_store_and_the_fold_model_agree_after_every_step"
+negative  = """
+Leaves open: that `prepare`, `commit` and `collect` refine the step function, which the fold differential samples over a file-backed store; two passes and two readers; retention and publish holds, which the model omits; the lease invariant, which enters as the commit guard. Assumes the lease invariant: a pass whose fence a successor's acquisition superseded commits nothing.
+"""

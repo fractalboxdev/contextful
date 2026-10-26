@@ -6,3 +6,6 @@ import Protocol.JournalCheck
 import Protocol.Merge
 import Protocol.MergeTheorems
 import Protocol.MergeCheck
+import Protocol.Fold
+import Protocol.FoldTheorems
+import Protocol.FoldCheck
