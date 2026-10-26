@@ -96,7 +96,7 @@ clause-unowned = 98
 why-unscoped = 749
 
 [ceiling.contract-words]
-assurance = 10082
+assurance = 10177
 authority = 7792
 connector = 11054
 corpus = 4525
@@ -108,7 +108,7 @@ surface = 6422
 topology = 2646
 
 [ceiling.adr-words]
-A-assurance = 5912
+A-assurance = 5923
 A-authority = 4473
 A-connector = 3600
 A-corpus = 383

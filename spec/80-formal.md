@@ -101,6 +101,9 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `merge-model` — The merge model decides each key from its local entry, remote entry, remote tombstone, held flag and verification flag; one differing commit-log copy refuses the whole merge.
   *A-assurance#protocol-package-holds*
 - `merge-theorems` — Six merge properties are Lean theorems over every input: the scoped union, a foreign or unverified tombstone keeping its entry, only live tombstones listed, the commit-log refusal, and one writer's convergence at a fixed `now`.
+- `fold-model` — The fold model is a total, computable step function over two passes staging, committing and dying, lease acquisition, collection and two readers; a pass commits only while its fence is the highest granted.
+  *A-assurance#protocol-package-holds*
+- `fold-theorems` — Six fold properties are Lean theorems: commits conditioned on the version read, lost commits publishing nothing, collection sparing reachable and in-flight directories, supersession without deletion, readers' snapshots present, and lease-ordered fences.
 
 ## prove
 
@@ -250,6 +253,8 @@ The executable reference models, the case generators, the minimized counterexamp
 - `merge-harness` — `contextful formal merge-differential` compares the merge model with `merge_verified` key by key on each generated case: entry, tombstone and refusal, or {{store.merge.cursor-recency}}.
 - `merge-drift` — A case on which the merge model and `merge_verified` differ raises `MergeConformanceDrift`, printing the minimized case and both merges.
   *A-assurance#protocol-package-holds*
+- `fold-harness` — The fold differential replays seeded step sequences through `prepare_under`, `commit` and `collect` over a file-backed store, comparing pointer, chain, directories and readers with `protocol fold run` after every step.
+  *A-assurance#protocol-package-holds*
 - `command` — `contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.
 
 One differential run:
@@ -314,6 +319,9 @@ formal/
       Merge.lean           one writer's merge, decided per key
       MergeTheorems.lean   the six merge theorems
       MergeCheck.lean      the merge replay
+      Fold.lean            passes, pointer commit and collection
+      FoldTheorems.lean    the six fold theorems
+      FoldCheck.lean       the fold replay
     Main.lean              executable: one step sequence in, one state per step out
     inventory.toml         the invariant theorems and their expected statements
     journal-regressions.jsonl  saved journal sequences and their grace mode
