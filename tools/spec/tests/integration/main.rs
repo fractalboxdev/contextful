@@ -96,6 +96,20 @@ impl Scratch {
         self.pin_row(clause)["verdict"].as_str().map(str::to_string)
     }
 
+    /// Replace each `todo!(<message>);` line of `rel` with an assertion over the same
+    /// message, so a scaffolded test still names the error or bound it was written for.
+    pub fn implement(&self, rel: &str) {
+        let text: Vec<String> = self
+            .read(rel)
+            .lines()
+            .map(|l| match l.trim_start().strip_prefix("todo!(").and_then(|m| m.strip_suffix(");")) {
+                Some(message) => format!("    assert!(!{message}.is_empty());"),
+                None => l.to_string(),
+            })
+            .collect();
+        self.write(rel, &(text.join("\n") + "\n"));
+    }
+
     /// Every clause id of `<contract>.<operation>`, from the lock file.
     pub fn clauses_of(&self, operation: &str) -> Vec<String> {
         let lock: serde_json::Value = serde_json::from_str(&self.read("spec/spec.lock.json")).unwrap();

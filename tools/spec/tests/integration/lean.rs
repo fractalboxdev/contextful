@@ -71,7 +71,7 @@ fn a_stale_lean_tag_raises_spec_stale_pin() {
     assert_eq!(stale.len(), 1, "{stale:?}");
 }
 
-// spec: corpus.state.theorem-beside-test@e4b272b0
+// spec: corpus.state.theorem-beside-test@38d445d8
 #[test]
 fn a_clause_carries_one_theorem_beside_one_test() {
     let s = Scratch::copy();
@@ -79,8 +79,7 @@ fn a_clause_carries_one_theorem_beside_one_test() {
     prove(&s);
     s.scaffold("corpus.anatomy", "crates/x");
     let module = "crates/x/tests/integration/anatomy.rs";
-    let rust: String = s.read(module).lines().map(|l| if l.trim_start().starts_with("todo!") { "    assert!(true);" } else { l }).collect::<Vec<_>>().join("\n");
-    s.write(module, &(rust + "\n"));
+    s.implement(module);
     assert!(codes(&s.lint("state"), "SpecBrokenPin").is_empty());
     assert_eq!(verdict(&s, CLAUSE), "performed");
 

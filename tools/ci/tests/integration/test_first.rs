@@ -418,6 +418,7 @@ fn a_module_filter_selects_that_module_alone() {
     assert!(err.contains("TestNotFirst"), "{err}");
 }
 
+// spec: corpus.state.slice-diff@f46eee8e
 #[test]
 fn the_stage_prints_the_clauses_the_change_reaches_into_the_gate_log() {
     let r = Repo::init();

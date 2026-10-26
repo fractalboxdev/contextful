@@ -157,10 +157,18 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a test that cannot demonstrate an assertion demonstrates no clause*
 - `lean-tag` — A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}.
   *because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale*
-- `theorem-beside-test` — A clause carries at most one theorem pin and one test pin, and computes `performed` when both perform: the theorem proves the model, the test ties the model to the code.
+- `theorem-beside-test` — A clause carries at most one theorem pin beside its test pins, and computes `performed` when all perform: the theorem proves the model, the tests tie the model to the code.
   *A-assurance*
 - `stale-pin` — A tag whose `<rev>` differs from the digest of its clause's current statement raises `SpecStalePin`, and its clause computes `broken`.
   *because a reworded clause no longer says what its test was written to demonstrate*
+- `several-tests` — A clause takes any number of test pins and computes `performed` only when every one of them performs.
+  *because a conjunctive clause takes one test per conjunct, and one passing test of half a clause reads as the whole*
+- `unexercised` — A test pin of a refusal clause computes `broken` unless its function body names one of the clause's errors: the id itself, or a `::` variant path keeping at least two of the id's trailing words.
+  *because a test that never observes the error demonstrates some other behavior*
+- `module-path` — A path pin resolves only where its file or module part points: `<file>.rs::<fn>` to that file, `<crate>::<module>::<fn>` to a file of that package opening that module path, `A.B.<theorem>` to `A/B.lean`.
+  *because a pin matching any same-named function elsewhere demonstrates nothing about the named one*
+- `test-pin-is-test` — A `test` pin naming a function that carries no `#[test]` attribute does not resolve.
+  *because a helper or production function proves presence, not behavior*
 - `unfinished-test` — A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.
   *because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption*
 - `scaffold` — `contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function.
@@ -175,7 +183,7 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because an edited test can stop demonstrating its clause while every pin still computes performed*
 - `coverage-floor` — `spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.
   *because deleting a failing pin must not read as progress*
-- `bad-pin` — A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken pin, and one clause pinned to two tests or two theorems raise `SpecBrokenPin`.
+- `bad-pin` — A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken or unexercised pin, and one clause pinned to two theorems raise `SpecBrokenPin`.
   *P8*
 - `roadmap` — `spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.
   *P8*
