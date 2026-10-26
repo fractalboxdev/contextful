@@ -39,22 +39,6 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance#feature-runs-formal*
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
   *A-assurance#stage-subset-runs*
-- `affected-parts` — `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including `preflight`.
-  *A-assurance#pull-request-runs*
-- `affected-every` — A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every part of either tier.
-  *A-assurance#pull-request-runs*
-- `affected-spec` — A change under `spec/` or `references/` reaches test-first validation, one under `spec/` the foundation workspace part, and each clause whose statement or `spec/pins.toml` entry changed the parts running its pinned test or theorem.
-  *A-assurance#pull-request-runs*
-- `affected-spec-inputs` — A change to `spec/01-topology.md` or `spec/capabilities.toml` reaches crate-graph, to `spec/adr/A-assurance.md` the formal stage, and to `spec/terms/assurance.toml` every budget part.
-  *because those stages read the file directly, apart from any clause pin*
-- `affected-removed` — A clause the merge base's lock holds and HEAD's lacks reaches the evaluate stage.
-  *because the evaluate stage refuses a ledger entry naming a clause the lock lacks*
-- `affected-unplaced` — An unreadable spec lock or pins file, or a changed clause pinned outside every workspace package, reaches every required part.
-  *because a pin the listing cannot place runs on a part the listing cannot name*
-- `affected-surfaces` — A change under `apps/` or `packages/` reaches the TypeScript surfaces, acceptance and crate-graph parts.
-  *A-assurance#pull-request-runs*
-- `affected-formal` — A change under `formal/` other than a `lean-toolchain` file reaches the formal and evaluate stages, the foundation, CLI and CLI differential workspace parts, and every feature part.
-  *A-assurance#pull-request-runs*
 - `test-first-parts` — The test-first parts require a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package's part checks only its own changed tests against the base.
   *because one base build per package fits the sandbox's wall clock more reliably*
 - `workspace-parts` — The workspace parts compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.
@@ -80,6 +64,39 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because a tracked file reaches every clone, and only dotenvx ciphertext is safe there while its private key stays untracked*
 - `secret-scope` — In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file whose block — the assignments above it, up to the first blank line — opens with no comment carrying text raises `SecretScopeMissing`, naming file and key.
   *because a provider token cannot report its own grants, so the comment above it is the one record of what it reaches*
+- `formal-stage` — The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}}, {{assurance.model.protocol-check}}, the protocol differential over 10000 generated cases on both lease paths, and {{assurance.model.journal-check}}; a non-zero exit from any reds the run.
+  *P7*
+- `typescript-surfaces` — The TypeScript surfaces run each declared typecheck, test and build script in one stage; an absent script skips only that script.
+- `native-test-files` — The surfaces stage runs every regular native `.test.ts` file under a direct TypeScript surface's `test/` or `tests/` tree through Node's TypeScript strip runner, and refuses absent passing tests or pinned names.
+  *because a package script can omit a pinned test while reporting success*
+- `surface-check-failed` — A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.
+  *P7*
+
+### affected parts
+
+`stages --affected` maps a diff to the parts it reaches.
+
+- `affected-parts` — `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including `preflight`.
+  *A-assurance#pull-request-runs*
+- `affected-every` — A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every part of either tier.
+  *A-assurance#pull-request-runs*
+- `affected-spec` — A change under `spec/` or `references/` reaches test-first validation, one under `spec/` the foundation workspace part, and each clause whose statement or `spec/pins.toml` entry changed the parts running its pinned test or theorem.
+  *A-assurance#pull-request-runs*
+- `affected-spec-inputs` — A change to `spec/01-topology.md` or `spec/capabilities.toml` reaches crate-graph, to `spec/adr/A-assurance.md` the formal stage, and to `spec/terms/assurance.toml` every budget part.
+  *because those stages read the file directly, apart from any clause pin*
+- `affected-removed` — A clause the merge base's lock holds and HEAD's lacks reaches the evaluate stage.
+  *because the evaluate stage refuses a ledger entry naming a clause the lock lacks*
+- `affected-unplaced` — An unreadable spec lock or pins file, or a changed clause pinned outside every workspace package, reaches every required part.
+  *because a pin the listing cannot place runs on a part the listing cannot name*
+- `affected-surfaces` — A change under `apps/` or `packages/` reaches the TypeScript surfaces, acceptance and crate-graph parts.
+  *A-assurance#pull-request-runs*
+- `affected-formal` — A change under `formal/` other than a `lean-toolchain` file reaches the formal and evaluate stages, the foundation, CLI and CLI differential workspace parts, and every feature part.
+  *A-assurance#pull-request-runs*
+
+### dependency rules
+
+The crate-graph stage holds the dependency graph and runtime source to their rules.
+
 - `crate-graph` — The crate-graph stage holds run-path crates to reaching read-path crates through the three crossing crates alone; another edge raises `CrateGraphViolation`, naming both crates.
   *P5*
 - `locked-resolve` — The crate-graph stage resolves every graph `--locked` against the committed `Cargo.lock`, so a lock behind its manifests, or one rewritten before the stage starts, fails the stage before any rule runs; the stage never rewrites it.
@@ -96,8 +113,11 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because some deployments run with no external reach, and a call nobody configured moves data outside every grant, zone and audit record*
 - `interpolated-claim` — A source lint over the runtime crates finding a subject claim formatted into SQL text raises `EnforceInterpolatedSubjectClaim`, naming the file and line.
   *P1*
-- `formal-stage` — The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}}, {{assurance.model.protocol-check}}, the protocol differential over 10000 generated cases on both lease paths, and {{assurance.model.journal-check}}; a non-zero exit from any reds the run.
-  *P7*
+
+### footprint
+
+Build resources and each profile's artifact size stay within their bounds.
+
 - `container` — The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a 45 min per-stage wall clock — and a run dies on any one.
   *A-assurance#gate-parts-run*
 - `parallel-jobs` — Parallel build jobs number the memory ceiling divided by 3 GiB.
@@ -111,11 +131,6 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `budget-stage` — The budget stage runs {{assurance.gate.footprint}} over every profile, in one nightly-tier part per profile, and the evaluate stage builds no profile.
   *because one link-time-optimized release build of the full profile fills most of one stage's wall clock*
 - `footprint-exceeded` — An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile.
-  *P7*
-- `typescript-surfaces` — The TypeScript surfaces run each declared typecheck, test and build script in one stage; an absent script skips only that script.
-- `native-test-files` — The surfaces stage runs every regular native `.test.ts` file under a direct TypeScript surface's `test/` or `tests/` tree through Node's TypeScript strip runner, and refuses absent passing tests or pinned names.
-  *because a package script can omit a pinned test while reporting success*
-- `surface-check-failed` — A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.
   *P7*
 
 unsettled: Which workload, cadence and drift bound does the idle-resident soak run under, given that a multi-day soak fits no per-change gate? owner: build affects: assurance.gate

@@ -244,6 +244,19 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *because a ledger read from a subdirectory hides every retirement and epoch bump the root records*
 - `unresolvable-key` — A set issuer key reference that resolves to no material raises `IssuerKeyUnresolvable`; no local key is fabricated.
   *P3*
+- `unauthorized-mint` — A mint request presenting no grant carrying `admin` raises `IssuanceUnauthorized`.
+  *because issuance authorizes itself with the same primitive as every other action, and a separate mint secret is a second perimeter to guard*
+- `replica-mint` — A replica holds the issuer's public key and no signing material; a mint there raises `ReplicaCannotIssue`.
+  *because a replica verifies every credential the primary mints and needs no power to produce one*
+- `zone-wildcard` — A mint whose subject declares a wildcard inference zone raises `IssuanceZoneWildcard`.
+  *A-authority#placement-breadth*
+- `bearer-cap-fixed` — No issuance policy, face or command setting raises the cap {{authority.verify.bearer-lifetime}} sets; a credential living longer admits over a network only bound to a holder key.
+  *A-authority#issuance-ceiling*
+
+### signing keys
+
+One signing port signs every credential, and its key rotates on a recorded cadence.
+
 - `signing-port` — One signing port signs every credential's authority block and every audit root and tip; no mint path reads a private key. Seed files, secret references resolved at mint time and remote signing oracles are its adapters.
   *A-authority#pinned-keys*
 - `oracle-custody` — Under the oracle adapter the seed stays inside the custodian, which records each mint as a signing call.
@@ -259,20 +272,12 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *A-authority#pinned-keys*
 - `algorithm-mismatch` — A credential naming a scheme other than its pinned key's raises `SignatureAlgorithmMismatch`.
   *A-authority#pinned-keys*
-- `unauthorized-mint` — A mint request presenting no grant carrying `admin` raises `IssuanceUnauthorized`.
-  *because issuance authorizes itself with the same primitive as every other action, and a separate mint secret is a second perimeter to guard*
-- `replica-mint` — A replica holds the issuer's public key and no signing material; a mint there raises `ReplicaCannotIssue`.
-  *because a replica verifies every credential the primary mints and needs no power to produce one*
-- `zone-wildcard` — A mint whose subject declares a wildcard inference zone raises `IssuanceZoneWildcard`.
-  *A-authority#placement-breadth*
 - `key-rotation` — The issuer signing key rotates every 90 d, and at once on suspected compromise.
   *A-authority#pinned-keys*
 - `rotation-not-due` — A rotation without `--compromise` before {{authority.issue.key-rotation}} falls due raises `IssuerKeyRotationNotDue`, naming the instant it falls due.
   *because a scheduled rotation ahead of its cadence churns every verifier's pins with nothing withdrawn*
 - `unrecorded-key` — A rotation without `--compromise` of an issuer key the key-set ledger does not date raises `IssuerKeyUnrecorded`; `contextful token record --since` dates it.
   *because an undated key otherwise rotates at once, skipping the cadence the ledger enforces*
-- `bearer-cap-fixed` — No issuance policy, face or command setting raises the cap {{authority.verify.bearer-lifetime}} sets; a credential living longer admits over a network only bound to a holder key.
-  *A-authority#issuance-ceiling*
 
 unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manifest declaring no `authoring_posture`, or does the authoring posture bind table write verbs alone? owner: authority affects: authority.issue
 
@@ -312,6 +317,17 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *A-authority#sender-constrained*
 - `replayed-nonce` — A proof whose nonce repeats inside the replay window raises `PossessionProofReplayed`.
   *A-authority#sender-constrained*
+- `network-bearer` — A network checkpoint admits a credential with no confirmation claim as a bearer when it names the checkpoint's declared audience and meets {{authority.verify.bearer-lifetime}}; the peer fallback never applies over a network.
+  *A-authority#network-bearer*
+- `bearer-lifetime` — A bearer whose expiry falls more than 3600 s after its issue instant raises `BearerLifetimeExceeded` at a network checkpoint and admits nothing; its holder refreshes through {{authority.exchange.surface}}.
+  *A-authority#network-bearer*
+- `nonce-cache` — A checkpoint's nonce cache holds at most 100000 entries; a proof arriving while it is full answers `503` and admits nothing.
+  *because a proof the cache cannot record is a replay it cannot detect*
+
+### local transport
+
+A pipe or Unix socket admits a credential through a holder proof or the peer's uid.
+
 - `local-transport` — A local transport is a stdio pipe the checkpoint inherited from the process that spawned it, or a Unix socket; every other transport is a network transport.
   *A-authority#local-transport*
 - `local-holder-proof` — On a local transport, a credential whose confirmation claim holds a thumbprint admits only with a proof as {{authority.verify.possession-binding}}; the peer fallback never applies to it, and a missing or failing proof is refused as {{authority.verify.possession-invalid}}.
@@ -327,14 +343,13 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *A-authority#local-transport*
 - `peer-mismatch` — A socket peer presenting a credential with no confirmation claim, whose kernel-reported uid differs from the checkpoint process's uid or which the platform cannot report, raises `TransportPeerMismatch` and admits nothing.
   *A-authority#local-transport*
-- `network-bearer` — A network checkpoint admits a credential with no confirmation claim as a bearer when it names the checkpoint's declared audience and meets {{authority.verify.bearer-lifetime}}; the peer fallback never applies over a network.
-  *A-authority#network-bearer*
-- `bearer-lifetime` — A bearer whose expiry falls more than 3600 s after its issue instant raises `BearerLifetimeExceeded` at a network checkpoint and admits nothing; its holder refreshes through {{authority.exchange.surface}}.
-  *A-authority#network-bearer*
 - `connection-scoped` — A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.
   *A-authority#network-bearer*
-- `nonce-cache` — A checkpoint's nonce cache holds at most 100000 entries; a proof arriving while it is full answers `503` and admits nothing.
-  *because a proof the cache cannot record is a replay it cannot detect*
+
+### key sets
+
+A checkpoint verifies against pinned or published issuer keys and calls no issuer.
+
 - `public-key-only` — A checkpoint holds public key material and no signing secret, and admits with no call to an issuer, identity provider or policy service.
   *A-authority#pinned-keys*
 - `key-set` — A checkpoint accepts a set of issuer keys: comma-separated static pins, or a project-published unauthenticated key route returning the current and non-retired versions, opted into per key.

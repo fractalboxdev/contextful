@@ -192,6 +192,27 @@ Column classes, strategies and combines, guardrails over an exhaustible value sp
   *A-authority#exhaustible-digest*
 - `combine-generalizes` — A `bucket` or `range` combine behind `hash` or `tokenize` raises `EnforceCombineWithoutGeneralization`; `truncate` is the one combine that generalizes a digest.
   *A-authority#exhaustible-digest*
+- `subject-exception` — A mask carries exceptions, each a subject condition in the row-predicate grammar bound through the subject relation.
+  *P1*
+- `in-place` — The masked projection substitutes named columns where they stand; the caller receives the column set and order the unmasked statement produces, and `*` expands to it.
+  *A-authority#exhaustible-digest*
+- `equality` — An equality filter on a `drop` column matches nothing; on a `hash` column it matches equal digests.
+  *A-authority#exhaustible-digest*
+- `aggregates` — Aggregation reads the masked column.
+  *A-authority#exhaustible-digest*
+- `summarize-only` — `summarize_only` is a flag, not a strategy: the value stays legible to grounding and citation.
+  *A-authority#exhaustible-digest*
+- `typed-strategy` — A binary column masks by `drop` or by `hash` over its bytes, a vector or nested column by `drop` alone over the whole column; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.
+  *A-store#binary-fixed-size*
+- `absent-column` — A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.
+  *because a skipped declaration serves reads under a policy its author believed covered a column*
+- `masks-per-table` — A table carries at most 128 entries in its column mask set.
+  *because a table beyond it needs a drop, not a mask per column*
+
+### keyed digest
+
+`hash` and `tokenize` digest under one pepper, truncated within the class's crowd.
+
 - `hash-width` — `hash` emits 32 chars of hexadecimal.
   *A-authority#exhaustible-digest*
 - `token-width` — `tokenize` emits 20 chars.
@@ -212,22 +233,6 @@ Column classes, strategies and combines, guardrails over an exhaustible value sp
   *A-authority#exhaustible-digest*
 - `key-material` — A compiled relation, query plan or session catalog entry carrying pepper-derived key state raises `EnforceKeyMaterialInRelation`.
   *A-authority#exhaustible-digest*
-- `subject-exception` — A mask carries exceptions, each a subject condition in the row-predicate grammar bound through the subject relation.
-  *P1*
-- `in-place` — The masked projection substitutes named columns where they stand; the caller receives the column set and order the unmasked statement produces, and `*` expands to it.
-  *A-authority#exhaustible-digest*
-- `equality` — An equality filter on a `drop` column matches nothing; on a `hash` column it matches equal digests.
-  *A-authority#exhaustible-digest*
-- `aggregates` — Aggregation reads the masked column.
-  *A-authority#exhaustible-digest*
-- `summarize-only` — `summarize_only` is a flag, not a strategy: the value stays legible to grounding and citation.
-  *A-authority#exhaustible-digest*
-- `typed-strategy` — A binary column masks by `drop` or by `hash` over its bytes, a vector or nested column by `drop` alone over the whole column; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.
-  *A-store#binary-fixed-size*
-- `absent-column` — A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.
-  *because a skipped declaration serves reads under a policy its author believed covered a column*
-- `masks-per-table` — A table carries at most 128 entries in its column mask set.
-  *because a table beyond it needs a drop, not a mask per column*
 
 ## refuse
 

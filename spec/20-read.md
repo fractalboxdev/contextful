@@ -108,6 +108,11 @@ Registered relations, query tools, templates, the embedded SQL engine and HTTP t
 - `lexicon-surface` — The describe payload carries the store's numeric-identifier and badge vocabulary. Aliases, time-window phrases and distillation examples stay on the serving side.
 - `reserved-relation` — The engine's reserved table namespaces register like any other relation, with no privileged path underneath.
   *P5*
+
+### HTTP transport
+
+`contextful serve --http` admits each request, bounds its connections and drains on stop.
+
 - `network-transport` — `contextful serve --http <addr> --audience <aud> --max-in-flight <n>` serves MCP Streamable HTTP at `POST /mcp`. The stdio tool server answers each request's single JSON-RPC message as `application/json`.
   *A-read#networked-read-transport*
 - `concurrent-statements` — Requests on any number of connections run concurrently. Each statement uses its own engine connection under {{read.cache.pool-connections}} and delays no other request.
@@ -299,6 +304,11 @@ Candidate rows for ranked retrieval: query tokens, relevance thresholds, per-tab
   *A-read#restricted-sidecar-probe*
 - `snippet` — A snippet concatenates up to three text columns, using `retrieve.text` when declared. Label-priority columns, such as title, summary, description and thesis, come first; prose-worthy columns follow in schema order.
 - `identifiers-never-snippet` — Snippets exclude content hashes, URLs, identifiers and instant-valued columns.
+
+### index sidecars
+
+Vector and full-text sidecars add candidates that rejoin through the caller's relation.
+
 - `sidecar-generates-candidates` — Vector probes use query embeddings; full-text probes use content tokens. Each probe adds its top results to the recency window and rejoins through {{authority.compose.vector-arm}}. Per-row scores equal exact-scan scores.
   *P5*
 - `fulltext-probe` — Full-text probes rank the entire snapshot by BM25 with one should-clause per content token. Tokens split by the sidecar tokenizer match resulting terms at consecutive positions. ASCII word tokens match plurals under {{read.retrieve.script-split-matching}}.

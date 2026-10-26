@@ -85,6 +85,22 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *because the chain answers who read how much under which credential, and the attestation keeps an asserted member from reading as identity*
 - `memory-read-tables` — A `memory.recall` or `memory.explain` entry's `contextful.tables` lists each relation the read ran a statement on under the caller's session: the entities, the claims, every evidence table its gate read, and a labels table.
   *because the evidence gate reads source rows on the caller's behalf, and a read its entry omits is one no owner can account for*
+- `reads-view` — `audit query` runs one statement over `audit_reads`, one row per table a read entry names — `read_at`, `on_behalf_of`, `agent`, `table_name`, `policy`, `outcome`, `row_count`, `claims` — computed from the chain's segments on each call.
+  *A-disclosure#audit-reads-view*
+- `reads-view-types` — In `audit_reads`, `row_count` is an integer, and `claims` lists the claim ids a read entry records, null where it records none.
+  *because a count compared as text sorts wrong, and an empty list beside null gives one absence two spellings*
+- `erasures-view` — `audit query` exposes `audit_erasures` from canonical erasure entries: `transaction_id`, `subject_hash`, `affected_counts` and `executed_at`; the projection retains no state and exposes no selector or row payload.
+  *A-disclosure#audit-reads-view*
+- `bound-entry` — A bounded read's {{disclosure.record.read-attributes}} entry adds `contextful.bounds` as {{store.bound-time.echo}} echoes it, the snapshot id the read resolved, the query text and the response's SHA-256 digest.
+  *because a backtest judges the path a case took, and bounds absent from the trajectory prove only the configuration*
+- `refused-read` — A read enforcement refuses appends one entry with `outcome` `refused`, naming the relations the guard parsed, and releases no rows.
+  *A-disclosure#audit-reads-view*
+- `projection` — The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.
+
+### custody
+
+One append group holds the log at a time, under unanchored or signed custody.
+
 - `read-chain` — `contextful serve`, `contextful mcp` and {{read.reference.call}} open `.contextful/audit/` before answering; without an explicit startup signing port they use unanchored custody. A chain that does not open stops the process before any row reads.
   *A-disclosure#hash-chain-attestable*
 - `read-signer` — An explicit startup read signing port matches independently configured current public pins before opening and before each append; missing, wrong or retired signing authority refuses held-chain reads through {{disclosure.record.unpersisted-entry}} without inferring keys from requests or receipts.
@@ -107,17 +123,11 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *A-disclosure#audit-log-opens*
 - `signed-read` — A read verb's `--issuer-key` opens the chain held without anchoring it; over a chain carrying no `chain.held` it refuses as {{disclosure.record.unsigned-tip}} does, naming {{disclosure.attest.anchor-verb}}, and appends nothing.
   *because anchoring is one-way and {{disclosure.record.unanchored-over-signed}} then refuses every unsigned reader, so only the owner's explicit verb performs it*
-- `reads-view` — `audit query` runs one statement over `audit_reads`, one row per table a read entry names — `read_at`, `on_behalf_of`, `agent`, `table_name`, `policy`, `outcome`, `row_count`, `claims` — computed from the chain's segments on each call.
-  *A-disclosure#audit-reads-view*
-- `reads-view-types` — In `audit_reads`, `row_count` is an integer, and `claims` lists the claim ids a read entry records, null where it records none.
-  *because a count compared as text sorts wrong, and an empty list beside null gives one absence two spellings*
-- `erasures-view` — `audit query` exposes `audit_erasures` from canonical erasure entries: `transaction_id`, `subject_hash`, `affected_counts` and `executed_at`; the projection retains no state and exposes no selector or row payload.
-  *A-disclosure#audit-reads-view*
-- `bound-entry` — A bounded read's {{disclosure.record.read-attributes}} entry adds `contextful.bounds` as {{store.bound-time.echo}} echoes it, the snapshot id the read resolved, the query text and the response's SHA-256 digest.
-  *because a backtest judges the path a case took, and bounds absent from the trajectory prove only the configuration*
-- `refused-read` — A read enforcement refuses appends one entry with `outcome` `refused`, naming the relations the guard parsed, and releases no rows.
-  *A-disclosure#audit-reads-view*
-- `projection` — The projection answers which agent read which table under which policy across a rolling 24 h window, within 1 s.
+
+### telemetry
+
+Spans leave the process over OTLP only when an endpoint is configured.
+
 - `trace-carrier` — A well-formed W3C `traceparent` names the trace and the parent of the operation's span; a malformed one is ignored and the operation starts a fresh trace.
   *because a caller's broken header must cost it the link to its trace, never the operation*
 - `span-export` — With `OTEL_EXPORTER_OTLP_ENDPOINT` set, spans leave as OTLP/HTTP JSON to its `/v1/traces` path, or to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as given, carrying the `OTEL_EXPORTER_OTLP_HEADERS` headers and `OTEL_SERVICE_NAME` as `service.name`.
