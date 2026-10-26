@@ -319,6 +319,7 @@ mod transport {
 
     const LISTING: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>corpus</Name><Prefix></Prefix><KeyCount>1</KeyCount><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>a</Key><LastModified>2030-01-01T00:00:00.000Z</LastModified><ETag>\"e1\"</ETag><Size>1</Size><StorageClass>STANDARD</StorageClass></Contents></ListBucketResult>";
 
+    // spec: store.endpoint.transport@1770bc91
     #[test]
     fn a_stalled_get_gives_up_its_attempt_within_the_answer_bound_and_resends() {
         let endpoint = Endpoint::start(vec![Answer::Stall, Answer::Status(200, "x")]);

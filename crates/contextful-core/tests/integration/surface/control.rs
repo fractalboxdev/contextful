@@ -73,6 +73,7 @@ fn a_poll_takes_a_schedule_and_defaults_to_thirty_seconds() {
 
 /// A conditional-write owner on a filesystem whose exclusive create and lock are not linearizable raises
 /// `ConditionalWriteUnsupported`; a local filesystem, or one whose kind does not read, is admitted.
+// spec: topology.coordinate.weak-backend@5c02c99d
 // spec: surface.apply.weak-conditional-backend@925a004b
 #[test]
 fn a_conditional_write_owner_refuses_a_network_filesystem() {

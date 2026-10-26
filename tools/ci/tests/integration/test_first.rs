@@ -14,6 +14,7 @@ fn a_change_touching_no_source_passes() {
     assert!(o.status.success(), "{}", stderr(&o));
 }
 
+// spec: assurance.test.test-first@b25e1506
 #[test]
 fn source_change_without_test_is_refused() {
     let r = Repo::init();
@@ -212,6 +213,7 @@ fn validation_runs_beside_selected_package_parts() {
     assert!(!o.status.success() && stderr(&o).contains("source package `demo`"), "{}", stderr(&o));
 }
 
+// spec: assurance.test.refactor-trailer@8003d595
 #[test]
 fn a_refactor_trailer_exempts_the_range() {
     let r = Repo::init();

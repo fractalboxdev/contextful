@@ -260,6 +260,7 @@ fn refused(answer: &(u16, Value), status: u16, identifier: &str) {
     assert_eq!(answer.1["error"]["identifier"], identifier, "{}", answer.1);
 }
 
+// spec: surface.connection.routes@49a218b5
 #[test]
 fn tenant_connection_routes_create_pause_and_delete_once() {
     let face = ConnectionFace::start();
@@ -376,6 +377,7 @@ fn a_differing_declaration_under_one_connection_id_conflicts_and_keeps_the_stand
 
 /// A create body outside `id`, `tenant`, `principal`, `file_ids`, `refresh_secret` and `schedule`, an unreadable
 /// schedule, or a pause or delete body other than `{}` raises `ConnectionRequestMalformed` and claims nothing.
+// spec: surface.connection.consent-boundary@cc44cea3
 // spec: surface.connection.malformed@54ab3015
 #[test]
 fn a_connection_body_outside_its_fields_or_carrying_an_oauth_code_is_malformed() {
@@ -547,6 +549,7 @@ fn pending_control_mutation(apply: bool, expired: bool) {
     assert_eq!(snapshots.join("manifest@draft.json").exists(), apply);
 }
 
+// spec: surface.apply.operator-attestation@feb4a692
 #[test]
 fn admin_changes_require_fresh_console_attestation_and_record_the_operator() {
     let (dir, public) = project();
@@ -621,6 +624,9 @@ fn control_routes_require_admin_and_project_applied_workflows() {
     assert_eq!(view["pipelines"][0]["schedule"], "every 1d");
 }
 
+// spec: surface.apply.draft-absent@7bab4ffa
+// spec: surface.apply.draft-claim@b91fbf6b
+// spec: surface.edit.store-draft@b51dfac1
 #[test]
 fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() {
     let (dir, public) = project();
@@ -1143,6 +1149,11 @@ fn post_claim(addr: &str, token: &str, body: &Value, browser_origin: bool) -> (u
     (head.split(' ').nth(1).unwrap().parse().unwrap(), serde_json::from_str(data).unwrap_or(Value::Null))
 }
 
+// spec: read.revise.browser-request@8f0636c9
+// spec: read.revise.malformed-request@016f9c20
+// spec: read.revise.served-dedup@79bfaea7
+// spec: read.revise.served-scope@49e82ff9
+// spec: read.revise.served-write@499e9869
 #[test]
 fn served_claim_write_is_durable_actor_bound_and_outside_read_mcp() {
     let memory = "\n[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";

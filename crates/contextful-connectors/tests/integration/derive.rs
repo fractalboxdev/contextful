@@ -292,6 +292,7 @@ fn a_link_preview_fetches_a_head_document_through_the_mediated_client() {
     assert_eq!(site.received("/article").len(), 1);
 }
 
+// spec: run.select.metered-client@44c0b9ef
 #[test]
 fn a_link_preview_refuses_a_missing_mediation_hook_before_a_socket() {
     let site = Server::start(|_| Response::json(200, "{}"));
@@ -369,6 +370,7 @@ fn a_link_preview_uses_sixty_seconds_for_a_429_without_retry_after() {
 }
 
 /// Each fetch hop has its own `request_timeout_secs` wall clock.
+// spec: run.fetch.hop-timeout@87308a46
 #[test]
 fn a_link_preview_times_out_one_slow_hop_but_allows_two_short_hops() {
     let site = Server::start(|request| match request.path() {
@@ -449,6 +451,7 @@ fn unit<'a>(rows: &'a [Value], key: &str) -> &'a Value {
 const SRT_ENGINE: &str = "[derive.reader.engine]\ncommand = [\"awk\", \"NF { n++; printf \\\"%d\\\\n00:00:0%d,000 --> 00:00:0%d,500\\\\n%s\\\\n\\\\n\\\", n, n, n, $0 }\", \"{input}\"]\noutput_format = \"srt\"\n";
 
 /// A video transcript passage names its text output modality.
+// spec: run.emit.output-modality@80a65daa
 #[test]
 fn a_transcript_passage_carries_text_modality() {
     let dir = tempfile::tempdir().unwrap();
@@ -459,6 +462,7 @@ fn a_transcript_passage_carries_text_modality() {
 }
 
 /// Changing canonical file bytes under one media path selects a new derivation key.
+// spec: run.emit.local-content-key@8b27ca20
 #[test]
 fn changed_local_bytes_reselect_the_same_media_path() {
     let dir = tempfile::tempdir().unwrap();

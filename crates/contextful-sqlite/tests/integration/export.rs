@@ -15,6 +15,7 @@ fn publication() -> ExportPublication<'static> {
     ExportPublication { source: "frontier-1", id: "publication-1", identity: "reader-1", destination: "target-1" }
 }
 
+// spec: run.export.group-activation@d3a190d4
 #[test]
 fn coordinated_receiver_activates_all_members_once_and_refuses_rollback() {
     use contextful_core::export::publication::{publication as group, GroupBatch, PublicationPlan};
@@ -64,6 +65,7 @@ fn coordinated_receiver_activates_all_members_once_and_refuses_rollback() {
     assert!(receiver.receive(&GroupBatch {version:1,group:foreign.group,events:foreign.events}).is_err());
 }
 
+// spec: run.export.group-incompatible@d5947973
 #[test]
 fn coordinated_outbox_retries_identical_bytes_and_checkpoint_rejects_incompatibility() {
     use contextful_core::export::publication::PublicationPlan;
@@ -90,6 +92,7 @@ fn coordinated_outbox_retries_identical_bytes_and_checkpoint_rejects_incompatibi
     assert!(ledger.stage(&PublicationPlan {members:BTreeMap::new(),..plan}, &BTreeMap::new(), "read-identity").is_err());
 }
 
+// spec: run.export.group-checkpoint@41efe5dd
 #[test]
 fn restored_publication_checkpoint_cannot_reverse_a_durable_receiver_tombstone() {
     use contextful_core::export::publication::PublicationPlan;

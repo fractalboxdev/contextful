@@ -21,6 +21,7 @@ fn run(seed: &str) -> std::process::Output {
         .unwrap()
 }
 
+// spec: assurance.differential-test.protocol-harness@8a0331da
 #[test]
 fn fixed_seed_replays_protocol_cases_against_the_store() {
     if Command::new("lake").arg("--version").output().is_err() {
@@ -49,6 +50,7 @@ fn fixed_seed_replays_protocol_cases_against_the_store() {
     contextful_eval::record::emit("stale-fence-differential", 0.0, 12 + replayed, 76004);
 }
 
+// spec: assurance.differential-test.protocol-drift@4f5dc46f
 #[test]
 fn a_protocol_difference_prints_the_minimal_sequence_and_both_states() {
     let dir = tempfile::tempdir().unwrap();
@@ -71,6 +73,7 @@ fn a_protocol_difference_prints_the_minimal_sequence_and_both_states() {
     assert!(error.contains("store=lease[none] catalog=0"), "{error}");
 }
 
+// spec: assurance.differential-test.protocol-cases@98ebe785
 #[test]
 fn generated_protocol_cases_cover_the_three_nodes_and_every_step() {
     let first = Command::new(BIN)

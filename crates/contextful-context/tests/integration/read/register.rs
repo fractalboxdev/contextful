@@ -136,6 +136,7 @@ fn a_session_connection_registers_views_over_the_current_file_lists() {
 
 /// Every profile serving reads links an embedded columnar SQL engine that reads Parquet with standard SQL. External
 /// processes read the same files without that embedded engine.
+// spec: topology.compose.open-store@2cc9932f
 // spec: read.register.engine@f0b7d667
 #[test]
 fn the_embedded_engine_reads_the_parquet_an_external_reader_opens() {
@@ -413,6 +414,7 @@ pub(super) fn record_calls(r: &Reads, table: &str, run: &str, calls: &[RequestRe
 }
 
 /// Each table's per-run request ledger registers as the child relation `<table>__requests`, holding identifiers, connector, method, host, status and timing of mediated outbound calls.
+// spec: topology.compose.two-spines@72de297e
 // spec: read.register.ledger-relation@0a97be3c
 #[test]
 fn a_tables_request_ledger_reads_as_its_child_relation() {

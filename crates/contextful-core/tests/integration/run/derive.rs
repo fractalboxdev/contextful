@@ -179,6 +179,7 @@ fn a_host_task_declaring_a_shared_quota_grant_refuses() {
         Err(RunError::DeriveUnmeteredGrant(message)) if message.contains("word-split") && message.contains("split")));
 }
 
+// spec: run.select.unmetered-grant@9035fd6f
 #[test]
 fn a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses() {
     let granted = with("grant", json!("vendor-quota"));

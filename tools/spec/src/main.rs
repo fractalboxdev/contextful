@@ -6,6 +6,7 @@ mod checks;
 mod corpus;
 mod diagram;
 mod native_ts;
+mod pins;
 mod slice;
 mod targets;
 mod scaffold;
@@ -42,14 +43,31 @@ enum Cmd {
     Extract,
     /// Write `spec/status.md`, `spec/targets.md`, `spec/cards/` and the lock file's pins.
     State,
-    /// Print the context pack for `<contract>.<operation>`, `<contract>.*` or a milestone number.
+    /// Print the context pack for `<contract>.<operation>`, `<contract>.*` or a milestone number,
+    /// or the clauses a test file or a diff reaches.
     Slice {
-        target: String,
+        #[arg(required_unless_present_any = ["file", "diff"], conflicts_with_all = ["file", "diff"])]
+        target: Option<String>,
+        /// Print each clause the file's tags name, with its current statement.
+        #[arg(long, conflicts_with = "diff")]
+        file: Option<PathBuf>,
+        /// Print each clause whose tagged test the working tree changes against the merge base of this revision.
+        #[arg(long)]
+        diff: Option<String>,
         #[arg(long)]
         json: bool,
     },
     /// Set every contract's coverage floor to its live performed count.
-    Pins,
+    Pins {
+        /// Move each `test` entry of `spec/pins.toml` into a tag above its test, and set no floor.
+        #[arg(long)]
+        migrate: bool,
+    },
+    /// Rewrite the rev on every tag of each clause, and a close `///` statement copy above it.
+    Retag {
+        #[arg(required = true)]
+        clauses: Vec<String>,
+    },
     /// Write one failing, tagged test per refusal and limit clause of an operation.
     Scaffold {
         /// `<contract>.<operation>`.
@@ -79,9 +97,24 @@ fn main() -> Result<()> {
             std::fs::write(root.join("spec/spec.lock.json"), lock_text(&c))?;
             Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?)
         }
-        Cmd::Pins => raise_floor(&c),
-        Cmd::Slice { target, json } => {
-            let sl = slice::build(&c, &target)?;
+        Cmd::Pins { migrate: true } => pins::migrate(&c),
+        Cmd::Pins { migrate: false } => raise_floor(&c),
+        Cmd::Retag { clauses } => pins::retag(&c, &clauses),
+        Cmd::Slice { file, diff, json, .. } if file.is_some() || diff.is_some() => {
+            let (heading, rows) = match (file, diff) {
+                (Some(file), _) => (format!("tagged in `{}`", file.display()), pins::by_file(&c, &file)?),
+                (None, Some(rev)) => (format!("reached by the diff from `{rev}`"), pins::by_diff(&c, &rev)?),
+                (None, None) => unreachable!("guarded above"),
+            };
+            if json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else {
+                print!("{}", pins::markdown(&heading, &rows));
+            }
+            Ok(())
+        }
+        Cmd::Slice { target, json, .. } => {
+            let sl = slice::build(&c, target.as_deref().unwrap_or_default())?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&sl)?);
             } else {

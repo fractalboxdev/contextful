@@ -77,6 +77,7 @@ fn body(entered: &Arc<AtomicUsize>, paid: &Arc<AtomicUsize>) -> Arc<Body> {
     })
 }
 
+// spec: run.own.body-implementation@5467256b
 #[test]
 fn same_name_replacement_refuses_before_input_replay_or_body_entry() {
     let rig = Rig::new();
@@ -120,6 +121,9 @@ fn same_name_replacement_refuses_before_input_replay_or_body_entry() {
     assert_eq!(paid.load(Ordering::SeqCst), 1);
 }
 
+// spec: run.own.body-dependencies@dcbd5258
+// spec: run.own.body-fresh@70ef68e2
+// spec: run.record.plan-identity@4ca5ecd9
 #[test]
 fn dependency_only_changes_refuse_and_unchanged_resume_reuses_paid_calls() {
     for changed in [
@@ -201,6 +205,7 @@ fn dependency_only_changes_refuse_and_unchanged_resume_reuses_paid_calls() {
     }
 }
 
+// spec: run.own.body-compatibility@f41f65b1
 #[test]
 fn owners_without_implementation_pins_refuse_before_input_or_body() {
     let rig = Rig::new();
@@ -229,6 +234,7 @@ fn owners_without_implementation_pins_refuse_before_input_or_body() {
     assert_eq!(entered.load(Ordering::SeqCst), 0);
 }
 
+// spec: run.own.body-admission@b05de6ed
 #[test]
 fn isolated_items_pin_semantic_dependencies_before_replaying_the_input_set() {
     use contextful_engine::drive::ItemPolicy;

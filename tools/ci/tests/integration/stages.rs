@@ -496,6 +496,7 @@ fn a_failing_surface_check_is_refused_naming_the_surface_and_the_script() {
     }
 }
 
+// spec: assurance.gate.native-test-files@6fe541ef
 #[test]
 fn the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script() {
     let r = surface_repo();

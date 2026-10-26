@@ -126,6 +126,9 @@ fn zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata() {
     assert_eq!(metadata["sha256"].as_str().unwrap().len(), 64);
 }
 
+// spec: assurance.consumer.d1-release@c17a366d
+// spec: assurance.consumer.foreign-target@936be90b
+// spec: assurance.consumer.release-distribution@e235748a
 #[test]
 fn release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence() {
     let bin = tempfile::tempdir().unwrap();

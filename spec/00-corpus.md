@@ -165,6 +165,14 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption*
 - `scaffold` — `contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function.
 - `scaffold-lean` — `contextful-spec scaffold <contract>.<operation> --lean <file>` appends one tagged theorem per clause of the operation, its statement the docstring and its proposition and proof `sorry`, and rewrites no existing theorem.
+- `migrate` — `contextful-spec pins --migrate` moves each `test` entry of `spec/pins.toml` into a tag above the one test it names, and leaves an entry naming no clause or no single test in place.
+  *because a tag travels with its test, and a path in a separate file goes stale unseen*
+- `retag` — `contextful-spec retag <clause>` rewrites every tag of the clause to its statement's rev, and a `///` copy above a tag reading at least 0.9 like the tagged statement, refusing while a check other than `state` or `render` reports.
+  *because a reworded clause otherwise leaves each tag and copy for a hand edit, and a malformed statement takes no rev*
+- `slice-file` — `contextful-spec slice --file <path>` prints each clause the file's tags name, with its current statement and the functions tagging it.
+  *because a reviewer of a test reads what it claims to demonstrate*
+- `slice-diff` — `contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage prints it into the gate log.
+  *because an edited test can stop demonstrating its clause while every pin still computes performed*
 - `coverage-floor` — `spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.
   *because deleting a failing pin must not read as progress*
 - `bad-pin` — A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken pin, and one clause pinned to two tests or two theorems raise `SpecBrokenPin`.

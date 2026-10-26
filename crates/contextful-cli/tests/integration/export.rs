@@ -138,6 +138,8 @@ fn typed_events(request: &Received) -> Vec<serde_json::Value> {
     request.body["events"].as_array().cloned().unwrap_or_default()
 }
 
+// spec: run.export.group-delivery@aecb9d24
+// spec: run.export.group-storage@3d5a3919
 #[test]
 fn coordinated_exports_require_a_completed_producer_and_rebuild_full_state() {
     let collector = Collector::start();
@@ -186,6 +188,7 @@ fn coordinated_exports_require_a_completed_producer_and_rebuild_full_state() {
     assert_eq!(collector.received().len(),3);
 }
 
+// spec: run.export.group-input-digest@36d716b6
 #[test]
 fn a_coordinated_export_sends_a_digest_of_a_large_producer_input() {
     let collector = Collector::start();
@@ -338,6 +341,7 @@ fn encrypted_typed_exports_replay_pending_events_without_cleartext_rows() {
     scan(&p.join(".contextful"));
 }
 
+// spec: run.export.typed-state@d30e4dba
 #[test]
 fn typed_export_sends_deletion_after_a_replace_publication() {
     let collector = Collector::start();
@@ -356,6 +360,7 @@ fn typed_export_sends_deletion_after_a_replace_publication() {
     assert_eq!(second.last().unwrap()["kind"], "publication_complete");
 }
 
+// spec: run.export.typed-view-recheck@bf34aca7
 #[test]
 fn typed_export_republishes_a_changed_read_policy_without_a_new_commit() {
     let collector = Collector::start();
@@ -400,6 +405,7 @@ fn typed_export_rekeys_without_a_new_commit() {
     assert_eq!(events.last().unwrap()["kind"], "publication_complete");
 }
 
+// spec: run.export.typed-publication-id@1de87934
 #[test]
 fn typed_export_marks_a_schema_change_without_a_new_commit() {
     let collector = Collector::start();
@@ -439,6 +445,7 @@ fn typed_export_refuses_a_changed_target_under_the_same_name() {
     assert!(second.received().is_empty());
 }
 
+// spec: run.export.typed-identity-changed@42024b65
 #[test]
 fn typed_export_refuses_pending_replay_under_an_ungranted_credential() {
     let collector = Collector::start();
@@ -458,6 +465,7 @@ fn typed_export_refuses_pending_replay_under_an_ungranted_credential() {
     assert_eq!(collector.received().len(), 2, "an ungranted credential cannot silently reuse the acknowledged view");
 }
 
+// spec: run.export.typed-watch@8d8d0e78
 #[test]
 fn typed_export_watch_retries_a_refused_publication() {
     let collector = Collector::start();
@@ -484,6 +492,8 @@ fn typed_export_watch_retries_a_refused_publication() {
     watcher.wait().unwrap();
 }
 
+// spec: run.export.typed-byte-limit@72555a72
+// spec: run.export.typed-event-too-large@64316ad4
 #[test]
 fn typed_export_splits_requests_by_bytes_and_refuses_an_oversized_event() {
     let collector = Collector::start();

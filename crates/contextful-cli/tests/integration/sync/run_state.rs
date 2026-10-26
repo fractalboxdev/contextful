@@ -117,6 +117,7 @@ fn a_cold_node_keeps_the_cadence_another_node_fired() {
 }
 
 /// `sync push` records the default control pointer's applied version beside run history.
+// spec: store.push.control-version@d2870dfb
 #[test]
 fn a_push_records_the_default_applied_control_version() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"s1\",\"at\":5}]".into()));

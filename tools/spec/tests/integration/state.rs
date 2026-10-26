@@ -4,6 +4,7 @@ use crate::{codes, Scratch};
 
 const LIMIT_CLAUSE: &str = "corpus.anatomy.statement-words";
 
+// spec: corpus.state.verdict@c864a3ec
 #[test]
 fn ignored_test_pin_is_broken() {
     let s = Scratch::copy();
@@ -30,6 +31,7 @@ fn a_pin_resolves_under_tools() {
     assert!(codes(&s.lint("state"), "SpecBrokenPin").is_empty());
 }
 
+// spec: corpus.state.roadmap@8d15e1a8
 #[test]
 fn a_milestone_without_an_acceptance_line_is_a_roadmap_finding() {
     let s = Scratch::copy();
@@ -46,6 +48,7 @@ fn the_live_roadmap_names_an_acceptance_test_per_milestone() {
     assert!(codes(&s.lint("state"), "SpecRoadmap").is_empty());
 }
 
+// spec: corpus.state.acceptance-first@89a31931
 #[test]
 fn a_pin_in_a_milestone_with_no_acceptance_test_is_refused_until_one_exists() {
     let s = Scratch::copy();
@@ -67,6 +70,7 @@ fn milestone_row(status: &str, heading: &str) -> String {
     status.lines().find(|l| l.starts_with(&format!("| {heading} "))).unwrap_or_default().to_string()
 }
 
+// spec: corpus.state.acceptance@7673ae28
 #[test]
 fn status_reports_each_milestone_acceptance_verdict() {
     let s = Scratch::copy();
@@ -82,6 +86,7 @@ fn status_reports_each_milestone_acceptance_verdict() {
     assert!(milestone_row(&status, "6 — Sync and replicas").ends_with("| absent | open |"), "{status}");
 }
 
+// spec: corpus.state.closed@0904fb49
 #[test]
 fn a_milestone_closes_only_when_every_operation_it_names_holds_a_performed_clause() {
     let s = Scratch::copy();
@@ -119,6 +124,7 @@ fn mark_operation_depth(s: &Scratch, heading: &str) {
     s.write("spec/roadmap.md", &format!("{}\nDepth: operation\n{}", &roadmap[..end], &roadmap[end..]));
 }
 
+// spec: corpus.state.deferred-depth@5debffdc
 #[test]
 fn a_behavior_clause_in_an_operation_depth_milestone_is_refused() {
     let s = Scratch::copy();

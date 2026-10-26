@@ -738,9 +738,10 @@ fn lean_unfinished(decl: &str) -> bool {
     SORRY.is_match(&text)
 }
 
-/// Whether the body of the function starting `def` holds a line opening with `todo!`.
-fn unfinished(def: &str) -> bool {
-    let Some(open) = def.find('{') else { return false };
+/// The byte range of the body of the function starting `def`, between its outer braces;
+/// the rest of `def` when the braces never balance, `None` when no brace opens.
+pub fn body_range(def: &str) -> Option<std::ops::Range<usize>> {
+    let open = def.find('{')?;
     let mut depth = 0usize;
     let mut end = def.len();
     for (i, ch) in def[open..].char_indices() {
@@ -756,7 +757,17 @@ fn unfinished(def: &str) -> bool {
             _ => {}
         }
     }
-    def[open + 1..end].lines().any(|l| l.trim_start().starts_with("todo!"))
+    Some(open + 1..end)
+}
+
+/// The body of the function starting `def`, between its outer braces.
+pub fn body(def: &str) -> &str {
+    body_range(def).map(|r| &def[r]).unwrap_or("")
+}
+
+/// Whether the body of the function starting `def` holds a line opening with `todo!`.
+fn unfinished(def: &str) -> bool {
+    body(def).lines().any(|l| l.trim_start().starts_with("todo!"))
 }
 
 /// A milestone's acceptance test: `absent`, `open` when ignored or holding `todo!`,
@@ -863,47 +874,57 @@ pub fn scan_tags(c: &Corpus) -> Vec<Pin> {
             }
             let Ok(s) = std::fs::read_to_string(p) else { continue };
             let rel = p.strip_prefix(&c.root).unwrap_or(p).to_string_lossy().replace('\\', "/");
-            if ext == "lean" {
-                out.extend(lean_tags(&s, &rel));
-                continue;
-            }
-            if ext == "ts" || ext == "tsx" {
-                out.extend(ts_tags(c, &s, &rel));
-                continue;
-            }
-            let mut offsets = Vec::new();
-            let mut at = 0;
-            for l in s.split_inclusive('\n') {
-                offsets.push(at);
-                at += l.len();
-            }
-            let lines: Vec<&str> = s.lines().collect();
-            for (i, l) in lines.iter().enumerate() {
-                let Some(cap) = TAG.captures(l.trim()) else { continue };
-                let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false };
-                for (j, next) in lines.iter().enumerate().skip(i + 1) {
-                    let t = next.trim();
-                    if t.is_empty() || t.starts_with("//") || t.starts_with("#[") {
-                        continue;
-                    }
-                    if let Some(f) = FN_LINE.captures(t) {
-                        let def = offsets[j];
-                        tagged.function = Some(f[1].to_string());
-                        tagged.ignored = ignored(&s[..def]);
-                        tagged.unfinished = unfinished(&s[def..]);
-                    }
-                    break;
-                }
-                out.push(Pin {
-                    clause: cap[1].to_string(),
-                    kind: "test".into(),
-                    path: tagged.function.clone().unwrap_or_default(),
-                    file: rel.clone(),
-                    line: i + 1,
-                    tag: Some(tagged),
-                });
-            }
+            out.extend(tags_in(c, &rel, &s));
         }
+    }
+    out
+}
+
+/// Every `// spec:` or `-- spec:` tag in one Rust, Lean or TypeScript file, `rel` naming it
+/// relative to the corpus root.
+pub fn tags_in(c: &Corpus, rel: &str, s: &str) -> Vec<Pin> {
+    let ext = rel.rsplit('.').next().unwrap_or_default();
+    if ext == "lean" {
+        return lean_tags(s, rel);
+    }
+    if ext == "ts" || ext == "tsx" {
+        return ts_tags(c, s, rel);
+    }
+    if ext != "rs" {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut offsets = Vec::new();
+    let mut at = 0;
+    for l in s.split_inclusive('\n') {
+        offsets.push(at);
+        at += l.len();
+    }
+    let lines: Vec<&str> = s.lines().collect();
+    for (i, l) in lines.iter().enumerate() {
+        let Some(cap) = TAG.captures(l.trim()) else { continue };
+        let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false };
+        for (j, next) in lines.iter().enumerate().skip(i + 1) {
+            let t = next.trim();
+            if t.is_empty() || t.starts_with("//") || t.starts_with("#[") {
+                continue;
+            }
+            if let Some(f) = FN_LINE.captures(t) {
+                let def = offsets[j];
+                tagged.function = Some(f[1].to_string());
+                tagged.ignored = ignored(&s[..def]);
+                tagged.unfinished = unfinished(&s[def..]);
+            }
+            break;
+        }
+        out.push(Pin {
+            clause: cap[1].to_string(),
+            kind: "test".into(),
+            path: tagged.function.clone().unwrap_or_default(),
+            file: rel.to_string(),
+            line: i + 1,
+            tag: Some(tagged),
+        });
     }
     out
 }

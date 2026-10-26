@@ -313,6 +313,7 @@ fn describe_reports_the_session_zone_and_each_tables_admission() {
     assert_eq!((vendor["session_zone"].clone(), vendor["zone_admitted"].clone()), (json!("public-cloud:us-east-1"), json!(true)));
 }
 
+// spec: topology.compose.memory-substrate@ba54724f
 #[test]
 fn describe_marks_declared_memory_tables_regardless_of_name() {
     let manifest = format!("{MANIFEST}\n[[table]]\nname = \"research/insights\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n");

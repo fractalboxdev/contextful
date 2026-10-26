@@ -20,6 +20,7 @@ fn verdict(s: &Scratch) -> String {
     s.verdict(CLAUSE).unwrap()
 }
 
+// spec: corpus.state.typescript-tag-pin@b8746239
 #[test]
 fn a_running_surface_test_tag_performs_its_clause() {
     let s = fixture();
@@ -28,6 +29,7 @@ fn a_running_surface_test_tag_performs_its_clause() {
     assert_eq!(verdict(&s), "performed");
 }
 
+// spec: corpus.state.typescript-unfinished@7aeef625
 #[test]
 fn a_skipped_or_todo_surface_test_is_broken() {
     for call in ["test.skip", "test.todo"] {

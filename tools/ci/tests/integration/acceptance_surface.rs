@@ -11,6 +11,7 @@ fn with_acceptance(deps: &str) -> Repo {
     r
 }
 
+// spec: assurance.test.acceptance-surface@eea4f7b2
 #[test]
 fn an_acceptance_package_linking_a_workspace_package_is_refused() {
     let r = with_acceptance("demo = { path = \"../demo\" }\n");

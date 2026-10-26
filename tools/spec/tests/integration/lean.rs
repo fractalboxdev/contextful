@@ -30,6 +30,7 @@ fn a_theorem_pin_resolves_under_formal() {
     assert_eq!(verdict(&s, CLAUSE), "performed");
 }
 
+// spec: corpus.state.scaffold-lean@8064bb28
 #[test]
 fn scaffold_lean_writes_one_tagged_sorry_theorem_per_clause() {
     let s = Scratch::copy();
@@ -45,6 +46,7 @@ fn scaffold_lean_writes_one_tagged_sorry_theorem_per_clause() {
     assert_eq!(s.read(LEAN), text, "a second run changes nothing");
 }
 
+// spec: corpus.state.lean-tag@f0b03491
 #[test]
 fn a_tagged_theorem_holding_sorry_is_broken_until_proved() {
     let s = Scratch::copy();
@@ -69,6 +71,7 @@ fn a_stale_lean_tag_raises_spec_stale_pin() {
     assert_eq!(stale.len(), 1, "{stale:?}");
 }
 
+// spec: corpus.state.theorem-beside-test@e4b272b0
 #[test]
 fn a_clause_carries_one_theorem_beside_one_test() {
     let s = Scratch::copy();

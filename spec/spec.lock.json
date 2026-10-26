@@ -474,6 +474,50 @@
       "line": 167
     },
     {
+      "id": "corpus.state.migrate",
+      "contract": "corpus",
+      "operation": "state",
+      "subject": "migrate",
+      "kind": "behavior",
+      "statement": "`contextful-spec pins --migrate` moves each `test` entry of `spec/pins.toml` into a tag above the one test it names, and leaves an entry naming no clause or no single test in place.",
+      "why": "because a tag travels with its test, and a path in a separate file goes stale unseen",
+      "file": "spec/00-corpus.md",
+      "line": 168
+    },
+    {
+      "id": "corpus.state.retag",
+      "contract": "corpus",
+      "operation": "state",
+      "subject": "retag",
+      "kind": "behavior",
+      "statement": "`contextful-spec retag <clause>` rewrites every tag of the clause to its statement's rev, and a `///` copy above a tag reading at least 0.9 like the tagged statement, refusing while a check other than `state` or `render` reports.",
+      "why": "because a reworded clause otherwise leaves each tag and copy for a hand edit, and a malformed statement takes no rev",
+      "file": "spec/00-corpus.md",
+      "line": 170
+    },
+    {
+      "id": "corpus.state.slice-file",
+      "contract": "corpus",
+      "operation": "state",
+      "subject": "slice-file",
+      "kind": "behavior",
+      "statement": "`contextful-spec slice --file <path>` prints each clause the file's tags name, with its current statement and the functions tagging it.",
+      "why": "because a reviewer of a test reads what it claims to demonstrate",
+      "file": "spec/00-corpus.md",
+      "line": 172
+    },
+    {
+      "id": "corpus.state.slice-diff",
+      "contract": "corpus",
+      "operation": "state",
+      "subject": "slice-diff",
+      "kind": "behavior",
+      "statement": "`contextful-spec slice --diff <rev>` prints each clause whose tag or tagged function holds a line the working tree changes against the merge base of `<rev>` and `HEAD`; the `test-first` stage prints it into the gate log.",
+      "why": "because an edited test can stop demonstrating its clause while every pin still computes performed",
+      "file": "spec/00-corpus.md",
+      "line": 174
+    },
+    {
       "id": "corpus.state.coverage-floor",
       "contract": "corpus",
       "operation": "state",
@@ -482,7 +526,7 @@
       "statement": "`spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.",
       "why": "because deleting a failing pin must not read as progress",
       "file": "spec/00-corpus.md",
-      "line": 168
+      "line": 176
     },
     {
       "id": "corpus.state.bad-pin",
@@ -493,7 +537,7 @@
       "statement": "A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken pin, and one clause pinned to two tests or two theorems raise `SpecBrokenPin`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 170
+      "line": 178
     },
     {
       "id": "corpus.state.roadmap",
@@ -504,7 +548,7 @@
       "statement": "`spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 172
+      "line": 180
     },
     {
       "id": "corpus.state.acceptance",
@@ -515,7 +559,7 @@
       "statement": "A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored or holding a body line that opens with `todo!`, and `passing` otherwise.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 174
+      "line": 182
     },
     {
       "id": "corpus.state.closed",
@@ -526,7 +570,7 @@
       "statement": "A milestone computes `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause, and `open` otherwise.",
       "why": "because one passing acceptance test drives one path through a milestone, and an operation without a performed clause demonstrates nothing",
       "file": "spec/00-corpus.md",
-      "line": 176
+      "line": 184
     },
     {
       "id": "corpus.state.acceptance-first",
@@ -537,7 +581,7 @@
       "statement": "A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 178
+      "line": 186
     },
     {
       "id": "corpus.state.deferred-depth",
@@ -548,7 +592,7 @@
       "statement": "A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.",
       "why": "because an unopened milestone fixes what it refuses and bounds, and its behavior is written against the code that opens it",
       "file": "spec/00-corpus.md",
-      "line": 180
+      "line": 188
     },
     {
       "id": "corpus.render.generated",
@@ -559,7 +603,7 @@
       "statement": "`contextful-spec state` regenerates `spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json`, and `contextful-spec extract` the lock file alone. A committed copy differing from regeneration raises `SpecStaleRender`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 187
+      "line": 195
     },
     {
       "id": "corpus.render.lock-file",
@@ -570,7 +614,7 @@
       "statement": "The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pin sites and verdict.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 189
+      "line": 197
     },
     {
       "id": "corpus.render.card",
@@ -581,7 +625,7 @@
       "statement": "`contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.",
       "why": "A-corpus",
       "file": "spec/00-corpus.md",
-      "line": 191
+      "line": 199
     },
     {
       "id": "corpus.render.dated-prose",
@@ -592,7 +636,7 @@
       "statement": "The words `planned`, `not yet`, `currently`, `today`, `shipped`, `implemented`, `previously`, `used to`, `legacy`, `TODO`, `FIXME` and `WIP`, and an ISO date, raise `SpecDatedProse` in any authored file.",
       "why": "because build state is computed, and a dated sentence is stale the day it lands",
       "file": "spec/00-corpus.md",
-      "line": 193
+      "line": 201
     },
     {
       "id": "corpus.render.counterfactual",
@@ -603,7 +647,7 @@
       "statement": "The words `will`, `would` and `shall` raise `SpecCounterfactual` in a contract file or a guide.",
       "why": "because a contract states present behavior, and a record's Options is where a path not taken is described",
       "file": "spec/00-corpus.md",
-      "line": 195
+      "line": 203
     },
     {
       "id": "corpus.render.banned-vocabulary",
@@ -614,7 +658,7 @@
       "statement": "The nouns `seam`, `load-bearing`, `wedge`, `rung`, `land-grab` and an unbackticked `axiom`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 197
+      "line": 205
     },
     {
       "id": "corpus.render.local-path",
@@ -625,7 +669,7 @@
       "statement": "A path beginning `/Users/`, `/home/`, `$HOME/` or `~/` raises `SpecLocalPath`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 199
+      "line": 207
     },
     {
       "id": "corpus.diagram.fence",
@@ -636,7 +680,7 @@
       "statement": "A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 205
+      "line": 213
     },
     {
       "id": "corpus.diagram.boundary",
@@ -647,7 +691,7 @@
       "statement": "A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 207
+      "line": 215
     },
     {
       "id": "corpus.diagram.node",
@@ -658,7 +702,7 @@
       "statement": "A flowchart node names one thing in at most 5 words: its label holds no `·`, `<br/>`, `,`, `;`, `: ` or error identifier, is no operation name, and sets no article second. A breach raises `SpecDiagramNode`.",
       "why": "because a box of bundled attributes or a verb hides the things and what flows between them; operations, limits and errors ride the edges",
       "file": "spec/00-corpus.md",
-      "line": 209
+      "line": 217
     },
     {
       "id": "corpus.diagram.shape",
@@ -669,7 +713,7 @@
       "statement": "A node labelled with a snake_case identifier or a phrase ending `table`, `store`, `log` or `queue` is a cylinder `[( )]`, and a label ending `?` is a decision `{ }`. A breach raises `SpecDiagramShape`.",
       "why": "because one shape meaning one kind lets a reader tell data from the parts acting on it at a glance",
       "file": "spec/00-corpus.md",
-      "line": 211
+      "line": 219
     },
     {
       "id": "corpus.diagram.edge",
@@ -680,7 +724,7 @@
       "statement": "A flowchart edge points one way; its label holds at most 5 words and no `·`, and an edge touching no decision node carries one. A breach raises `SpecDiagramEdge`.",
       "why": "because an unlabelled line says two things relate without saying how, and a two-way line hides which side acts",
       "file": "spec/00-corpus.md",
-      "line": 213
+      "line": 221
     },
     {
       "id": "corpus.diagram.decision",
@@ -691,7 +735,7 @@
       "statement": "A decision node asks a question or names a condition in at most 8 words and no error identifier, has an incoming edge, and has two or more outgoing edges each labelled with a distinct outcome. A breach raises `SpecDiagramDecision`.",
       "why": "because a branch without a guard on each exit leaves the reader to guess which path a case takes",
       "file": "spec/00-corpus.md",
-      "line": 215
+      "line": 223
     },
     {
       "id": "corpus.diagram.branch",
@@ -702,7 +746,7 @@
       "statement": "A non-decision node with an outgoing edge labelled `yes` or `no`, an outgoing error identifier beside another exit, or two exits opening `if`, `when`, `over`, `under` or `else` raises `SpecDiagramBranch`; a branch is a decision node.",
       "why": "because a condition hidden in edge labels off a box reads as parallel flow",
       "file": "spec/00-corpus.md",
-      "line": 217
+      "line": 225
     },
     {
       "id": "corpus.diagram.connected",
@@ -713,7 +757,7 @@
       "statement": "Every flowchart node, or a subgraph enclosing it, is an edge endpoint. A breach raises `SpecDiagramOrphan`.",
       "why": "because an unconnected element asserts nothing about the system",
       "file": "spec/00-corpus.md",
-      "line": 219
+      "line": 227
     },
     {
       "id": "corpus.diagram.unique-label",
@@ -724,7 +768,7 @@
       "statement": "No two nodes of one flowchart carry the same label; a second mention reuses the node id. A breach raises `SpecDiagramDuplicate`.",
       "why": "because one label naming two nodes leaves the reader to decide whether they are one thing",
       "file": "spec/00-corpus.md",
-      "line": 221
+      "line": 229
     },
     {
       "id": "corpus.diagram.layout",
@@ -735,7 +779,7 @@
       "statement": "A flowchart header declares `LR`, `TB` or `TD`, no subgraph declares `direction`, subgraphs nest at most 2 levels, and the chart holds at most 20 nodes and 25 edges. A breach raises `SpecDiagramLayout`.",
       "why": "because one reading direction keeps the flow followable, and a chart past that size or depth is two diagrams",
       "file": "spec/00-corpus.md",
-      "line": 223
+      "line": 231
     },
     {
       "id": "corpus.diagram.sequence",
@@ -746,7 +790,7 @@
       "statement": "A sequence diagram declares each participant it messages and messages each it declares, and holds at most 6 participants, 15 messages, 2 messages from a participant to itself and fragments nested 2 levels. A breach raises `SpecDiagramSequence`.",
       "why": "because a sequence diagram shows one scenario's interactions, and branching logic past that belongs in a flowchart",
       "file": "spec/00-corpus.md",
-      "line": 225
+      "line": 233
     },
     {
       "id": "corpus.diagram.message",
@@ -757,7 +801,7 @@
       "statement": "A sequence message label holds at most 8 words and a note at most 12 words. A breach raises `SpecDiagramMessage`.",
       "why": "because a message names one call; its parameters and bounds belong in clauses",
       "file": "spec/00-corpus.md",
-      "line": 227
+      "line": 235
     },
     {
       "id": "corpus.diagram.state",
@@ -768,7 +812,7 @@
       "statement": "A state diagram has one top-level `[*]` start reaching every state, every state has an outgoing transition, `[*]` counting as a target, and a transition label holds at most 6 words. A breach raises `SpecDiagramState`.",
       "why": "because an unreachable or dead-end state is a lifecycle the system cannot run",
       "file": "spec/00-corpus.md",
-      "line": 229
+      "line": 237
     },
     {
       "id": "corpus.targets.file",
@@ -779,7 +823,7 @@
       "statement": "Each deployment provider's target profile is `spec/targets/<provider>.toml`: named shapes, exactly one marked default, each with a kind, the profiles it hosts, an optional per-invocation wall-clock cap, its exclusions and the primitive filling each role.",
       "why": "A-topology",
       "file": "spec/00-corpus.md",
-      "line": 236
+      "line": 244
     },
     {
       "id": "corpus.targets.roles",
@@ -790,7 +834,7 @@
       "statement": "A shape fills eight roles — cron tick, reconciler, durable orchestrator, single-writer catalog, object store, hot-path query face, heavy compute and secrets — and may fill a realtime run projection and a queue.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 238
+      "line": 246
     },
     {
       "id": "corpus.targets.primitives",
@@ -801,7 +845,7 @@
       "statement": "A target file lists the primitives its provider offers, and each shape lists the primitives it uses; {{topology.deploy.unsupported-shape}} refuses a shape using one outside that list.",
       "why": "because a shape's roles name products, and only a primitive list makes a missing one checkable",
       "file": "spec/00-corpus.md",
-      "line": 239
+      "line": 247
     },
     {
       "id": "corpus.targets.incomplete",
@@ -812,7 +856,7 @@
       "statement": "A shape leaving a role unfilled, or a target file marking other than one default shape, raises `SpecTargetIncomplete`, naming the provider, the shape and the role.",
       "why": "because an unfilled role surfaces only when a deploy reaches it, on someone else's account",
       "file": "spec/00-corpus.md",
-      "line": 241
+      "line": 249
     },
     {
       "id": "corpus.targets.cap-unrecorded",
@@ -823,7 +867,7 @@
       "statement": "A shape whose cap sits at or below the {{topology.deploy.wall-clock-cap}} bound and whose exclusions omit `first-time-backfill` or `component-connector` raises `SpecTargetCapUnrecorded`.",
       "why": "because the exclusion is the difference between a refused dispatch and a job killed mid-run",
       "file": "spec/00-corpus.md",
-      "line": 243
+      "line": 251
     },
     {
       "id": "corpus.targets.function-profile",
@@ -834,7 +878,7 @@
       "statement": "A function-class shape listing a profile other than `edge` raises `SpecTargetFunctionProfile`, naming the provider and the shape.",
       "why": "because {{topology.package.edge-eligibility}} admits the edge profile alone on a function-class target",
       "file": "spec/00-corpus.md",
-      "line": 245
+      "line": 253
     },
     {
       "id": "corpus.targets.page",
@@ -845,7 +889,7 @@
       "statement": "`contextful-spec state` renders `spec/targets.md` from the target files: per provider, a role table across its shapes and a diagram of its default shape.",
       "why": "because a diagram drawn by hand beside the data it shows drifts from it",
       "file": "spec/00-corpus.md",
-      "line": 247
+      "line": 255
     },
     {
       "id": "corpus.guide.file",
@@ -856,7 +900,7 @@
       "statement": "Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose of at most 700 words outside diagrams.",
       "why": "A-corpus",
       "file": "spec/00-corpus.md",
-      "line": 254
+      "line": 262
     },
     {
       "id": "corpus.guide.non-normative",
@@ -867,7 +911,7 @@
       "statement": "A guide holds no clause item and names no registered error; it reaches a rule by `{{id}}`. No contract file links a guide.",
       "why": "because a rule restated in teaching prose is a second home that drifts from the first",
       "file": "spec/00-corpus.md",
-      "line": 256
+      "line": 264
     },
     {
       "id": "corpus.guide.bad-guide",
@@ -878,7 +922,7 @@
       "statement": "A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 258
+      "line": 266
     },
     {
       "id": "topology.compose.workspace",
@@ -43098,97 +43142,97 @@
     },
     "assurance.consumer.command-diagnostic": {
       "sites": [
-        "spec/pins.toml"
+        "crates/acceptance/tests/integration/conformance.rs::a_failed_command_names_its_error_identifier_and_withholds_its_message"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.credential-isolation": {
       "sites": [
-        "spec/pins.toml"
+        "crates/acceptance/tests/integration/conformance.rs::artifact_runs_with_an_empty_provider_environment"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.d1-absent": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/verdict.rs::a_full_cell_without_a_d1_binding_declares_the_d1_pass_absent"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.d1-admission": {
       "sites": [
-        "spec/pins.toml"
+        "crates/acceptance/tests/integration/conformance.rs::a_live_d1_admission_lease_refuses_a_second_suite_before_any_reset"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.d1-profile": {
       "sites": [
-        "spec/pins.toml"
+        "crates/acceptance/tests/integration/conformance.rs::a_d1_consumer_replays_after_empty_disk_replacement"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.d1-release": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.foreign-target": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.mutation-controls": {
       "sites": [
-        "spec/pins.toml"
+        "crates/acceptance/tests/integration/conformance.rs::consumer_scenarios_reject_cursor_skips_duplicate_identity_and_premature_acknowledgement"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.provenance": {
       "sites": [
-        "spec/pins.toml"
+        "crates/acceptance/tests/integration/conformance.rs::missing_capability_reports_unsupported_without_admitting_work"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.release-distribution": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.release-notes": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/verdict.rs::formula_writes_release_notes_stating_every_cells_verdict"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.report": {
       "sites": [
-        "spec/pins.toml"
+        "crates/acceptance/tests/integration/conformance.rs::the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.requirements": {
       "sites": [
-        "spec/pins.toml"
+        "crates/acceptance/tests/integration/conformance.rs::missing_capability_reports_unsupported_without_admitting_work"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.scenarios": {
       "sites": [
-        "spec/pins.toml"
+        "crates/acceptance/tests/integration/conformance.rs::the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.suite": {
       "sites": [
-        "spec/pins.toml"
+        "crates/acceptance/tests/integration/conformance.rs::the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution"
       ],
       "verdict": "performed"
     },
     "assurance.consumer.verdict-exit": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/verdict.rs::a_suite_exiting_on_its_failing_verdict_records_no_process_failure"
       ],
       "verdict": "performed"
     },
@@ -43266,19 +43310,19 @@
     },
     "assurance.differential-test.protocol-cases": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/protocol_differential.rs::generated_protocol_cases_cover_the_three_nodes_and_every_step"
       ],
       "verdict": "performed"
     },
     "assurance.differential-test.protocol-drift": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/protocol_differential.rs::a_protocol_difference_prints_the_minimal_sequence_and_both_states"
       ],
       "verdict": "performed"
     },
     "assurance.differential-test.protocol-harness": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/protocol_differential.rs::fixed_seed_replays_protocol_cases_against_the_store"
       ],
       "verdict": "performed"
     },
@@ -43698,7 +43742,7 @@
     },
     "assurance.gate.native-test-files": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/stages.rs::the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script"
       ],
       "verdict": "performed"
     },
@@ -43728,13 +43772,13 @@
     },
     "assurance.gate.secret-ciphertext": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/secrets.rs::a_plaintext_value_in_a_tracked_env_file_is_refused"
       ],
       "verdict": "performed"
     },
     "assurance.gate.secret-scope": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/secrets.rs::a_key_with_no_scope_comment_above_it_is_refused"
       ],
       "verdict": "performed"
     },
@@ -44314,7 +44358,7 @@
     },
     "assurance.structure-tree.mirror-unresolved": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/mirrors.rs::an_annotation_naming_no_clause_is_refused"
       ],
       "verdict": "performed"
     },
@@ -44326,7 +44370,7 @@
     },
     "assurance.test.acceptance-surface": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/acceptance_surface.rs::an_acceptance_package_linking_a_workspace_package_is_refused"
       ],
       "verdict": "performed"
     },
@@ -44386,13 +44430,13 @@
     },
     "assurance.test.refactor-trailer": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/test_first.rs::a_refactor_trailer_exempts_the_range"
       ],
       "verdict": "performed"
     },
     "assurance.test.test-first": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/test_first.rs::source_change_without_test_is_refused"
       ],
       "verdict": "performed"
     },
@@ -45310,19 +45354,19 @@
     },
     "authority.mask.row-class": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/read/enforce.rs::one_admitted_read_applies_row_selected_masks_and_strict_unknown_fallback"
       ],
       "verdict": "performed"
     },
     "authority.mask.row-class-fallback": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/read/enforce.rs::one_admitted_read_applies_row_selected_masks_and_strict_unknown_fallback"
       ],
       "verdict": "performed"
     },
     "authority.mask.row-class-selector": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-policy/tests/integration/enforce/mask.rs::the_requested_from_selector_shares_one_policy_and_refuses_ambiguous_fields"
       ],
       "verdict": "performed"
     },
@@ -45634,19 +45678,19 @@
     },
     "authority.redact.canonical-journal": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/run.rs::omitting_caller_rules_cannot_omit_canonical_source_preparation"
       ],
       "verdict": "performed"
     },
     "authority.redact.child-selector-lineage": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/redaction.rs::a_child_row_selector_without_typed_sibling_lineage_refuses_before_files"
       ],
       "verdict": "performed"
     },
     "authority.redact.compiled-pattern-size": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/redaction.rs::source_and_expanded_automaton_limits_refuse_before_matching"
       ],
       "verdict": "performed"
     },
@@ -45658,37 +45702,37 @@
     },
     "authority.redact.every-land-entry": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/redaction.rs::a_staged_part_contains_the_same_removed_form_before_commit"
       ],
       "verdict": "performed"
     },
     "authority.redact.in-value": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/redaction.rs::a_rewritten_span_leaves_no_matched_byte_of_its_leftmost_match"
       ],
       "verdict": "performed"
     },
     "authority.redact.pattern-bytes": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/redaction.rs::source_and_expanded_automaton_limits_refuse_before_matching"
       ],
       "verdict": "performed"
     },
     "authority.redact.recorded-body": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::canonical_output_removal_refuses_before_recorded_body_calls_but_unprotected_jobs_run"
       ],
       "verdict": "performed"
     },
     "authority.redact.relational-journal": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/pipeline.rs::canonical_child_rules_bind_prepared_relational_journaling_and_preserve_independent_native_sources"
       ],
       "verdict": "performed"
     },
     "authority.redact.rewritten-identities": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/redaction.rs::independently_declared_child_rules_precede_all_persisted_group_identities"
       ],
       "verdict": "performed"
     },
@@ -45700,7 +45744,7 @@
     },
     "authority.redact.rules-per-pipeline": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/redaction.rs::pipeline_removal_rejects_unknown_tables_and_bounds_all_declared_rules"
       ],
       "verdict": "performed"
     },
@@ -47620,7 +47664,7 @@
     },
     "connector.source.image-header": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/pipeline.rs::an_image_source_refuses_a_bad_header_with_its_path"
       ],
       "verdict": "performed"
     },
@@ -48144,7 +48188,7 @@
     },
     "corpus.rationale.contract-adr": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/rationale.rs::a_contract_adr_section_over_its_word_limit_is_a_record_finding"
       ],
       "verdict": "performed"
     },
@@ -48186,21 +48230,18 @@
     },
     "corpus.reference.dangling": {
       "sites": [
-        "spec/pins.toml",
         "tools/spec/tests/integration/readable.rs::a_guide_pointer_naming_no_clause_dangles"
       ],
       "verdict": "performed"
     },
     "corpus.reference.no-literature": {
       "sites": [
-        "spec/pins.toml",
         "tools/spec/tests/integration/readable.rs::an_autolink_to_an_external_document_is_an_external_link_finding"
       ],
       "verdict": "performed"
     },
     "corpus.reference.pointer": {
       "sites": [
-        "spec/pins.toml",
         "tools/spec/tests/integration/readable.rs::a_pointer_is_recorded_as_a_lock_edge"
       ],
       "verdict": "performed"
@@ -48273,13 +48314,13 @@
     },
     "corpus.state.acceptance": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/state.rs::status_reports_each_milestone_acceptance_verdict"
       ],
       "verdict": "performed"
     },
     "corpus.state.acceptance-first": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/state.rs::a_pin_in_a_milestone_with_no_acceptance_test_is_refused_until_one_exists"
       ],
       "verdict": "performed"
     },
@@ -48291,7 +48332,7 @@
     },
     "corpus.state.closed": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/state.rs::a_milestone_closes_only_when_every_operation_it_names_holds_a_performed_clause"
       ],
       "verdict": "performed"
     },
@@ -48303,13 +48344,19 @@
     },
     "corpus.state.deferred-depth": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/state.rs::a_behavior_clause_in_an_operation_depth_milestone_is_refused"
       ],
       "verdict": "performed"
     },
     "corpus.state.lean-tag": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/lean.rs::a_tagged_theorem_holding_sorry_is_broken_until_proved"
+      ],
+      "verdict": "performed"
+    },
+    "corpus.state.migrate": {
+      "sites": [
+        "tools/spec/tests/integration/upkeep.rs::migrate_turns_each_test_entry_into_a_tag_above_its_test"
       ],
       "verdict": "performed"
     },
@@ -48319,9 +48366,15 @@
       ],
       "verdict": "performed"
     },
+    "corpus.state.retag": {
+      "sites": [
+        "tools/spec/tests/integration/upkeep.rs::retag_rewrites_every_tag_of_a_reworded_clause_and_a_close_statement_copy"
+      ],
+      "verdict": "performed"
+    },
     "corpus.state.roadmap": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/state.rs::a_milestone_without_an_acceptance_line_is_a_roadmap_finding"
       ],
       "verdict": "performed"
     },
@@ -48333,7 +48386,19 @@
     },
     "corpus.state.scaffold-lean": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/lean.rs::scaffold_lean_writes_one_tagged_sorry_theorem_per_clause"
+      ],
+      "verdict": "performed"
+    },
+    "corpus.state.slice-diff": {
+      "sites": [
+        "tools/spec/tests/integration/upkeep.rs::slice_diff_lists_the_clauses_whose_tagged_tests_the_change_edits"
+      ],
+      "verdict": "performed"
+    },
+    "corpus.state.slice-file": {
+      "sites": [
+        "tools/spec/tests/integration/upkeep.rs::slice_file_lists_each_clause_the_file_tags_with_its_current_statement"
       ],
       "verdict": "performed"
     },
@@ -48357,19 +48422,19 @@
     },
     "corpus.state.theorem-beside-test": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/lean.rs::a_clause_carries_one_theorem_beside_one_test"
       ],
       "verdict": "performed"
     },
     "corpus.state.typescript-tag-pin": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/ts_pins.rs::a_running_surface_test_tag_performs_its_clause"
       ],
       "verdict": "performed"
     },
     "corpus.state.typescript-unfinished": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/ts_pins.rs::a_skipped_or_todo_surface_test_is_broken"
       ],
       "verdict": "performed"
     },
@@ -48381,13 +48446,13 @@
     },
     "corpus.state.verdict": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/state.rs::ignored_test_pin_is_broken"
       ],
       "verdict": "performed"
     },
     "corpus.targets.cap-unrecorded": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/targets.rs::a_capped_shape_not_recording_its_exclusions_is_refused"
       ],
       "verdict": "performed"
     },
@@ -48399,19 +48464,19 @@
     },
     "corpus.targets.function-profile": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/targets.rs::a_function_class_shape_hosting_the_full_profile_is_refused"
       ],
       "verdict": "performed"
     },
     "corpus.targets.incomplete": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/targets.rs::a_shape_leaving_a_role_unfilled_is_refused"
       ],
       "verdict": "performed"
     },
     "corpus.targets.page": {
       "sites": [
-        "spec/pins.toml"
+        "tools/spec/tests/integration/targets.rs::the_targets_page_is_rendered_from_the_files"
       ],
       "verdict": "performed"
     },
@@ -50811,7 +50876,7 @@
     },
     "read.revise.browser-request": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::served_claim_write_is_durable_actor_bound_and_outside_read_mcp"
       ],
       "verdict": "performed"
     },
@@ -50835,7 +50900,7 @@
     },
     "read.revise.malformed-request": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::served_claim_write_is_durable_actor_bound_and_outside_read_mcp"
       ],
       "verdict": "performed"
     },
@@ -50859,19 +50924,19 @@
     },
     "read.revise.served-dedup": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::served_claim_write_is_durable_actor_bound_and_outside_read_mcp"
       ],
       "verdict": "performed"
     },
     "read.revise.served-scope": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::served_claim_write_is_durable_actor_bound_and_outside_read_mcp"
       ],
       "verdict": "performed"
     },
     "read.revise.served-write": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::served_claim_write_is_durable_actor_bound_and_outside_read_mcp"
       ],
       "verdict": "performed"
     },
@@ -51165,7 +51230,7 @@
     },
     "run.advance.engine-owned": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/runner.rs::a_marker_the_catalog_missed_retires_its_owner_before_replay"
       ],
       "verdict": "performed"
     },
@@ -51477,7 +51542,7 @@
     },
     "run.cancel.two-grains": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/run/cancel.rs::only_an_in_flight_row_accepts_a_mark_and_scopes_read_by_grain"
       ],
       "verdict": "performed"
     },
@@ -51513,7 +51578,7 @@
     },
     "run.compile.lowering": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch"
       ],
       "verdict": "performed"
     },
@@ -51525,7 +51590,7 @@
     },
     "run.compile.plan-node": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch"
       ],
       "verdict": "performed"
     },
@@ -51711,7 +51776,7 @@
     },
     "run.emit.content-marker-retention-clock": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/derive.rs::an_empty_host_content_marker_carries_the_declared_parent_retention_clock"
       ],
       "verdict": "performed"
     },
@@ -51747,7 +51812,7 @@
     },
     "run.emit.local-content-key": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-connectors/tests/integration/derive.rs::changed_local_bytes_reselect_the_same_media_path"
       ],
       "verdict": "performed"
     },
@@ -51765,7 +51830,7 @@
     },
     "run.emit.output-modality": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-connectors/tests/integration/derive.rs::a_transcript_passage_carries_text_modality"
       ],
       "verdict": "performed"
     },
@@ -51963,7 +52028,7 @@
     },
     "run.export.d1-state": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/main.rs::a_lost_sink_acknowledgement_reoffers_the_same_d1_event_identity"
       ],
       "verdict": "performed"
     },
@@ -51987,85 +52052,85 @@
     },
     "run.export.group-activation": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-sqlite/tests/integration/export.rs::coordinated_receiver_activates_all_members_once_and_refuses_rollback"
       ],
       "verdict": "performed"
     },
     "run.export.group-block": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::coordinated_job_exports_and_rebuilds_include_a_quiet_empty_member"
       ],
       "verdict": "performed"
     },
     "run.export.group-checkpoint": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-sqlite/tests/integration/export.rs::restored_publication_checkpoint_cannot_reverse_a_durable_receiver_tombstone"
       ],
       "verdict": "performed"
     },
     "run.export.group-d1-acknowledge": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/publication.rs::an_oversized_sender_acknowledges_a_group_of_deletes_through_bounded_statements"
       ],
       "verdict": "performed"
     },
     "run.export.group-d1-lease": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/publication.rs::a_transferred_group_lease_fences_the_prior_writer"
       ],
       "verdict": "performed"
     },
     "run.export.group-d1-recovery": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/publication.rs::a_group_staged_before_a_crash_redelivers_identical_bytes_after_replacement"
       ],
       "verdict": "performed"
     },
     "run.export.group-d1-resume": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/publication.rs::a_replacement_resumes_an_acknowledged_sequence_its_own_batches_never_end_at"
       ],
       "verdict": "performed"
     },
     "run.export.group-d1-spill": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/publication.rs::a_large_sender_spills_to_r2_and_survives_the_blob_sweep"
       ],
       "verdict": "performed"
     },
     "run.export.group-d1-state": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/publication.rs::a_lost_group_acknowledgement_reoffers_the_committed_batch_after_replacement"
       ],
       "verdict": "performed"
     },
     "run.export.group-d1-takeover": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/storage.rs::a_take_over_retry_delivers_while_a_killed_writers_d1_lease_runs"
       ],
       "verdict": "performed"
     },
     "run.export.group-delivery": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/export.rs::coordinated_exports_require_a_completed_producer_and_rebuild_full_state"
       ],
       "verdict": "performed"
     },
     "run.export.group-identity": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/pipeline/export.rs::publication_groups_bind_the_base_members_and_empty_outputs"
       ],
       "verdict": "performed"
     },
     "run.export.group-incompatible": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-sqlite/tests/integration/export.rs::coordinated_outbox_retries_identical_bytes_and_checkpoint_rejects_incompatibility"
       ],
       "verdict": "performed"
     },
     "run.export.group-input-digest": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/export.rs::a_coordinated_export_sends_a_digest_of_a_large_producer_input"
       ],
       "verdict": "performed"
     },
@@ -52077,19 +52142,19 @@
     },
     "run.export.group-rebuild": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::coordinated_job_exports_and_rebuilds_include_a_quiet_empty_member"
       ],
       "verdict": "performed"
     },
     "run.export.group-request-bound": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/pipeline/export.rs::staging_refuses_a_group_whose_requests_exceed_the_ceiling"
       ],
       "verdict": "performed"
     },
     "run.export.group-source": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::a_successful_job_records_one_coordinated_output_frontier"
       ],
       "verdict": "performed"
     },
@@ -52101,13 +52166,13 @@
     },
     "run.export.group-storage": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/export.rs::coordinated_exports_require_a_completed_producer_and_rebuild_full_state"
       ],
       "verdict": "performed"
     },
     "run.export.group-stranded": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/pipeline/export.rs::a_never_offered_stranded_group_yields_to_the_next_stage"
       ],
       "verdict": "performed"
     },
@@ -52143,85 +52208,85 @@
     },
     "run.export.typed-ack": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-sqlite/tests/integration/machine.rs::typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker"
       ],
       "verdict": "performed"
     },
     "run.export.typed-block": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/pipeline/export.rs::a_typed_export_declares_a_key_and_schedule"
       ],
       "verdict": "performed"
     },
     "run.export.typed-byte-limit": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/export.rs::typed_export_splits_requests_by_bytes_and_refuses_an_oversized_event"
       ],
       "verdict": "performed"
     },
     "run.export.typed-complete": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/pipeline/export.rs::typed_changes_include_deletions_and_a_final_publication_marker"
       ],
       "verdict": "performed"
     },
     "run.export.typed-event-too-large": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/export.rs::typed_export_splits_requests_by_bytes_and_refuses_an_oversized_event"
       ],
       "verdict": "performed"
     },
     "run.export.typed-events": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/pipeline/export.rs::typed_changes_include_deletions_and_a_final_publication_marker"
       ],
       "verdict": "performed"
     },
     "run.export.typed-identity-changed": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/export.rs::typed_export_refuses_pending_replay_under_an_ungranted_credential"
       ],
       "verdict": "performed"
     },
     "run.export.typed-order": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/pipeline/export.rs::typed_changes_include_deletions_and_a_final_publication_marker"
       ],
       "verdict": "performed"
     },
     "run.export.typed-outbox": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-sqlite/tests/integration/machine.rs::typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker"
       ],
       "verdict": "performed"
     },
     "run.export.typed-publication-id": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/export.rs::typed_export_marks_a_schema_change_without_a_new_commit"
       ],
       "verdict": "performed"
     },
     "run.export.typed-state": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/export.rs::typed_export_sends_deletion_after_a_replace_publication"
       ],
       "verdict": "performed"
     },
     "run.export.typed-view-recheck": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/export.rs::typed_export_republishes_a_changed_read_policy_without_a_new_commit"
       ],
       "verdict": "performed"
     },
     "run.export.typed-watch": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/export.rs::typed_export_watch_retries_a_refused_publication"
       ],
       "verdict": "performed"
     },
     "run.export.writer-fenced": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-pg/tests/integration/export.rs::ownership_transfer_waits_for_an_admitted_outbound_effect"
       ],
       "verdict": "performed"
     },
@@ -52257,7 +52322,7 @@
     },
     "run.fetch.hop-timeout": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_times_out_one_slow_hop_but_allows_two_short_hops"
       ],
       "verdict": "performed"
     },
@@ -52341,7 +52406,7 @@
     },
     "run.items.completion": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::isolated_items_skip_completed_paid_calls_and_outputs_on_later_fires"
       ],
       "verdict": "performed"
     },
@@ -52353,19 +52418,19 @@
     },
     "run.items.entity-admission": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/items.rs::another_job_version_defers_the_same_entity_while_unrelated_entities_progress"
       ],
       "verdict": "performed"
     },
     "run.items.identity": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/items.rs::item_failures_commit_healthy_siblings_and_reordered_retry_skips_paid_work"
       ],
       "verdict": "performed"
     },
     "run.items.opt-in": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/job.rs::isolated_items_require_explicit_stable_keys_entity_scope_and_retry_bound"
       ],
       "verdict": "performed"
     },
@@ -52377,19 +52442,19 @@
     },
     "run.items.outcomes": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/items.rs::item_parked_and_entity_overlap_report_individual_outcomes"
       ],
       "verdict": "performed"
     },
     "run.items.replay": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/items.rs::independent_retries_keep_paid_results_and_stop_at_the_durable_attempt_bound"
       ],
       "verdict": "performed"
     },
     "run.items.retry-budget": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/items.rs::independent_retries_keep_paid_results_and_stop_at_the_durable_attempt_bound"
       ],
       "verdict": "performed"
     },
@@ -52401,7 +52466,7 @@
     },
     "run.items.terminal-input": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/items.rs::terminal_sibling_failure_does_not_pin_later_fires_to_old_input"
       ],
       "verdict": "performed"
     },
@@ -52449,61 +52514,61 @@
     },
     "run.journal.corpus-unavailable": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/storage.rs::d1_storage_initialization_and_history_survive_a_new_cli_process"
       ],
       "verdict": "performed"
     },
     "run.journal.current-owner": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/execution.rs::a_superseded_execution_refuses_provider_dispatch_and_cursor_publication"
       ],
       "verdict": "performed"
     },
     "run.journal.d1-atomicity": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/main.rs::a_recorded_r2_blob_survives_replacement_and_sweep"
       ],
       "verdict": "performed"
     },
     "run.journal.d1-backup": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/storage.rs::d1_storage_initialization_and_history_survive_a_new_cli_process"
       ],
       "verdict": "performed"
     },
     "run.journal.d1-blob": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/main.rs::a_recorded_r2_blob_survives_replacement_and_sweep"
       ],
       "verdict": "performed"
     },
     "run.journal.d1-guard": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/main.rs::a_crashed_d1_guard_requires_explicit_reconciliation_before_takeover"
       ],
       "verdict": "performed"
     },
     "run.journal.d1-initialize": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/transport.rs::an_initialize_batch_dropped_on_first_touch_resends"
       ],
       "verdict": "performed"
     },
     "run.journal.d1-profile": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/storage.rs::d1_storage_initialization_and_history_survive_a_new_cli_process"
       ],
       "verdict": "performed"
     },
     "run.journal.d1-recovery": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/main.rs::a_replacement_checks_the_same_d1_schema_and_recovery_identity"
       ],
       "verdict": "performed"
     },
     "run.journal.d1-transport": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-d1/tests/integration/transport.rs::a_write_never_resends_and_never_rides_a_pooled_connection"
       ],
       "verdict": "performed"
     },
@@ -52527,13 +52592,13 @@
     },
     "run.journal.execution-recovery": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-pg/tests/integration/stores.rs::a_corpus_only_restore_cannot_initialize_execution_state_at_startup"
       ],
       "verdict": "performed"
     },
     "run.journal.execution-schema": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-pg/tests/integration/stores.rs::incompatible_execution_schema_refuses_before_any_work"
       ],
       "verdict": "performed"
     },
@@ -52545,7 +52610,7 @@
     },
     "run.journal.guard-callback": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-pg/tests/integration/guard.rs::durable_guard_serializes_takeover_and_keeps_run_metadata_reentrant"
       ],
       "verdict": "performed"
     },
@@ -52623,19 +52688,19 @@
     },
     "run.journal.postgres-stores": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-pg/tests/integration/stores.rs::recorded_paid_calls_blobs_and_pending_callbacks_survive_an_empty_local_disk"
       ],
       "verdict": "performed"
     },
     "run.journal.prepared-owner": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/run.rs::removal_records_the_prepared_inline_and_blob_batch_and_resumes_without_repulling"
       ],
       "verdict": "performed"
     },
     "run.journal.prepared-replay": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/run.rs::removal_records_the_prepared_inline_and_blob_batch_and_resumes_without_repulling"
       ],
       "verdict": "performed"
     },
@@ -53055,7 +53120,7 @@
     },
     "run.model.build-boundary": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/build.rs::a_build_publication_boundary_refusal_preserves_rows_and_watermark"
       ],
       "verdict": "performed"
     },
@@ -53349,31 +53414,31 @@
     },
     "run.own.body-admission": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/body_identity.rs::isolated_items_pin_semantic_dependencies_before_replaying_the_input_set"
       ],
       "verdict": "performed"
     },
     "run.own.body-compatibility": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/body_identity.rs::owners_without_implementation_pins_refuse_before_input_or_body"
       ],
       "verdict": "performed"
     },
     "run.own.body-dependencies": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/body_identity.rs::dependency_only_changes_refuse_and_unchanged_resume_reuses_paid_calls"
       ],
       "verdict": "performed"
     },
     "run.own.body-fresh": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/body_identity.rs::dependency_only_changes_refuse_and_unchanged_resume_reuses_paid_calls"
       ],
       "verdict": "performed"
     },
     "run.own.body-implementation": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/body_identity.rs::same_name_replacement_refuses_before_input_replay_or_body_entry"
       ],
       "verdict": "performed"
     },
@@ -53385,7 +53450,7 @@
     },
     "run.own.body-public-configuration": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/job.rs::registered_dependencies_hash_public_semantics_and_refuse_endpoint_credentials"
       ],
       "verdict": "performed"
     },
@@ -53439,7 +53504,7 @@
     },
     "run.own.execution-owner": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/execution.rs::every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row"
       ],
       "verdict": "performed"
     },
@@ -53535,7 +53600,7 @@
     },
     "run.own.source-stage-schema": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/runner.rs::source_stage_schema_refusal_releases_recorded_pulls_without_advancing_the_committed_cursor"
       ],
       "verdict": "performed"
     },
@@ -53907,7 +53972,7 @@
     },
     "run.record.plan-identity": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/body_identity.rs::dependency_only_changes_refuse_and_unchanged_resume_reuses_paid_calls"
       ],
       "verdict": "performed"
     },
@@ -54291,7 +54356,7 @@
     },
     "run.select.incomplete-unit": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/derive.rs::a_host_task_counts_an_incomplete_parent_on_its_run_records"
       ],
       "verdict": "performed"
     },
@@ -54327,7 +54392,7 @@
     },
     "run.select.metered-client": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_refuses_a_missing_mediation_hook_before_a_socket"
       ],
       "verdict": "performed"
     },
@@ -54375,7 +54440,7 @@
     },
     "run.select.unmetered-grant": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/run/derive.rs::a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses"
       ],
       "verdict": "performed"
     },
@@ -54423,7 +54488,7 @@
     },
     "run.suspend.postgres-reconciliation": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-pg/tests/integration/stores.rs::a_resolution_interrupted_after_journaling_preserves_the_original_callback_bytes"
       ],
       "verdict": "performed"
     },
@@ -54795,7 +54860,7 @@
     },
     "store.bound-time.row-age-cutoff": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/retention.rs::a_superseded_snapshot_does_not_restore_a_now_expired_row"
       ],
       "verdict": "performed"
     },
@@ -54927,7 +54992,7 @@
     },
     "store.declare.retain-rows": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/retention.rs::retention_refuses_an_undeclared_or_non_timestamp_column"
       ],
       "verdict": "performed"
     },
@@ -55125,7 +55190,7 @@
     },
     "store.endpoint.transport": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-sync/tests/integration/s3.rs::a_stalled_get_gives_up_its_attempt_within_the_answer_bound_and_resends"
       ],
       "verdict": "performed"
     },
@@ -55227,13 +55292,13 @@
     },
     "store.fold.row-retention": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/retention.rs::an_idle_fold_removes_an_expired_snapshot_partition"
       ],
       "verdict": "performed"
     },
     "store.fold.row-retention-report": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/retention.rs::collection_names_each_removed_directory"
       ],
       "verdict": "performed"
     },
@@ -55515,7 +55580,7 @@
     },
     "store.init.identity-invalid": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/init.rs::malformed_store_uuid_and_absent_owner_root_refuse_identity"
       ],
       "verdict": "performed"
     },
@@ -55551,7 +55616,7 @@
     },
     "store.init.store-identity": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/init.rs::init_persists_a_distinct_store_uuid_across_repetition_and_recreation"
       ],
       "verdict": "performed"
     },
@@ -56021,7 +56086,7 @@
     },
     "store.pull.identity-conflict": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-sync/tests/integration/pull.rs::a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it"
       ],
       "verdict": "performed"
     },
@@ -56141,7 +56206,7 @@
     },
     "store.push.control-version": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/sync/run_state.rs::a_push_records_the_default_applied_control_version"
       ],
       "verdict": "performed"
     },
@@ -56405,7 +56470,7 @@
     },
     "store.reconcile.variant": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/reconcile.rs::one_variant_column_keeps_each_scalar_kind_through_land_fold_and_read"
       ],
       "verdict": "performed"
     },
@@ -56609,13 +56674,13 @@
     },
     "surface.apply.draft-absent": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version"
       ],
       "verdict": "performed"
     },
     "surface.apply.draft-claim": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version"
       ],
       "verdict": "performed"
     },
@@ -56639,7 +56704,7 @@
     },
     "surface.apply.operator-attestation": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::admin_changes_require_fresh_console_attestation_and_record_the_operator"
       ],
       "verdict": "performed"
     },
@@ -56861,13 +56926,13 @@
     },
     "surface.connection.consent-boundary": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::a_connection_body_outside_its_fields_or_carrying_an_oauth_code_is_malformed"
       ],
       "verdict": "performed"
     },
     "surface.connection.create": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-snapshot/tests/integration/connection.rs::a_connection_claim_rechecks_authority_under_the_lock_and_a_refusal_writes_nothing"
       ],
       "verdict": "performed"
     },
@@ -56885,7 +56950,7 @@
     },
     "surface.connection.routes": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::tenant_connection_routes_create_pause_and_delete_once"
       ],
       "verdict": "performed"
     },
@@ -57143,19 +57208,19 @@
     },
     "surface.edit.store-draft": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/serve.rs::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version"
       ],
       "verdict": "performed"
     },
     "surface.fire.build-dependency": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/pipeline.rs::dependent_build_requires_the_entire_pipeline_unit_to_succeed"
       ],
       "verdict": "performed"
     },
     "surface.fire.build-dependency-invalid": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/job.rs::build_dependency_is_explicit_and_cannot_have_a_second_schedule"
       ],
       "verdict": "performed"
     },
@@ -57203,7 +57268,7 @@
     },
     "surface.fire.job-identity": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::scheduled_jobs_validate_registration_schedule_and_dispatch_identity_before_import"
       ],
       "verdict": "performed"
     },
@@ -57215,37 +57280,37 @@
     },
     "surface.fire.job-snapshot": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::a_job_only_apply_changes_the_snapshot_and_stock_serve_refuses_its_body"
       ],
       "verdict": "performed"
     },
     "surface.fire.model-snapshot": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/pipeline.rs::native_model_schedule_pins_sql_refreshes_and_preserves_restart_cadence"
       ],
       "verdict": "performed"
     },
     "surface.fire.plan-job": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch"
       ],
       "verdict": "performed"
     },
     "surface.fire.scheduled-body": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart"
       ],
       "verdict": "performed"
     },
     "surface.fire.scheduled-build": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/pipeline.rs::standalone_model_schedule_uses_durable_job_starts"
       ],
       "verdict": "performed"
     },
     "surface.fire.scheduled-history": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-cli/tests/integration/job.rs::scheduled_jobs_resume_paid_calls_after_a_failed_child"
       ],
       "verdict": "performed"
     },
@@ -57641,13 +57706,13 @@
     },
     "topology.compose.cli-binary": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/topology.rs::one_workspace_compiles_every_package_and_ships_one_binary"
       ],
       "verdict": "performed"
     },
     "topology.compose.connector-pillar": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/runner.rs::a_component_connector_runs_on_an_engine_wiring_its_world"
       ],
       "verdict": "performed"
     },
@@ -57665,25 +57730,25 @@
     },
     "topology.compose.inference-egress": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-outbound/tests/integration/infer.rs::a_completion_posts_the_conversation_and_returns_the_content"
       ],
       "verdict": "performed"
     },
     "topology.compose.local-first": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/topology.rs::a_sync_crate_linking_an_http_stack_without_its_s3_feature_is_refused"
       ],
       "verdict": "performed"
     },
     "topology.compose.mediation": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/read/enforce.rs::every_row_path_takes_the_session"
       ],
       "verdict": "performed"
     },
     "topology.compose.memory-substrate": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/read/respond.rs::describe_marks_declared_memory_tables_regardless_of_name"
       ],
       "verdict": "performed"
     },
@@ -57695,7 +57760,7 @@
     },
     "topology.compose.open-store": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/read/register.rs::the_embedded_engine_reads_the_parquet_an_external_reader_opens"
       ],
       "verdict": "performed"
     },
@@ -57761,7 +57826,7 @@
     },
     "topology.compose.run-path-droppable": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/topology.rs::this_repository_edge_profile_serves_reads_and_links_no_component_host"
       ],
       "verdict": "performed"
     },
@@ -57779,13 +57844,13 @@
     },
     "topology.compose.three-crossings": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing"
       ],
       "verdict": "performed"
     },
     "topology.compose.two-spines": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-context/tests/integration/read/register.rs::a_tables_request_ledger_reads_as_its_child_relation"
       ],
       "verdict": "performed"
     },
@@ -57821,7 +57886,7 @@
     },
     "topology.coordinate.cadence-fallback": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-engine/tests/integration/scheduler.rs::a_held_cadence_lease_dispatches_nothing"
       ],
       "verdict": "performed"
     },
@@ -57929,7 +57994,7 @@
     },
     "topology.coordinate.weak-backend": {
       "sites": [
-        "spec/pins.toml"
+        "crates/contextful-core/tests/integration/surface/control.rs::a_conditional_write_owner_refuses_a_network_filesystem"
       ],
       "verdict": "performed"
     },
@@ -58031,7 +58096,7 @@
     },
     "topology.package.edge-eligibility": {
       "sites": [
-        "spec/pins.toml"
+        "tools/ci/tests/integration/topology.rs::this_repository_function_class_shapes_host_the_edge_profile_and_run_nothing"
       ],
       "verdict": "performed"
     },

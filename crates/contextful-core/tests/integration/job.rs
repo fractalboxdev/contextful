@@ -128,6 +128,7 @@ fn a_misspelled_target_names_the_produced_spelling() {
     }
 }
 
+// spec: surface.fire.build-dependency-invalid@7bed8d7d
 #[test]
 fn build_dependency_is_explicit_and_cannot_have_a_second_schedule() {
     let declaration = "[[job]]\nname='inventory'\nkind='build'\ntarget='inventory'\nafter='source'\n";
@@ -177,6 +178,7 @@ fn a_plan_block_names_its_plan_file_and_no_other_kind_carries_one() {
     let stray = parse_jobs("[[job]]\nname = \"f\"\nkind = \"fold\"\nplan = \"p.json\"\n", &registered).unwrap_err();
     assert!(stray.to_string().contains("unknown key `plan`"), "{stray}");
 }
+// spec: run.items.opt-in@15cbdd64
 #[test]
 fn isolated_items_require_explicit_stable_keys_entity_scope_and_retry_bound() {
     let text = "[[job]]\nname='score'\nkind='store-driven'\nbody='score'\nstatement='select * from docs'\nmax_in_flight=2\ntables=['scores']\n[job.isolated_items]\nlogical_key='id'\nentity_key='entity'\nentity_namespace='documents'\nmax_attempts=3\n";
@@ -187,6 +189,7 @@ fn isolated_items_require_explicit_stable_keys_entity_scope_and_retry_bound() {
     assert!(contextful_core::job::parse_jobs(&text.replace("entity_key='entity'","entity_key=''"), &|_| true).is_err());
 }
 
+// spec: run.own.body-public-configuration@45b41f9d
 #[test]
 fn registered_dependencies_hash_public_semantics_and_refuse_endpoint_credentials() {
     use contextful_core::run::drive::{BodyDependencies, ProviderModelIdentity};

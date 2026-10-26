@@ -144,6 +144,7 @@ fn log_checkpoints_survive_replacement_and_refuse_backwards_progress() {
     assert_eq!(replacement.checkpoint("logs").unwrap(), cursor);
 }
 
+// spec: run.export.writer-fenced@7ebbf9ff
 #[test]
 fn ownership_transfer_waits_for_an_admitted_outbound_effect() {
     let Some(server) = super::server::start() else {

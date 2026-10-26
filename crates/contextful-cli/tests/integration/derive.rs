@@ -225,6 +225,7 @@ fn host_project_with_rows(manifest: &str, documents: &str) -> tempfile::TempDir 
     dir
 }
 
+// spec: run.emit.content-marker-retention-clock@b325e698
 #[test]
 fn an_empty_host_content_marker_carries_the_declared_parent_retention_clock() {
     let host = host_binary();
@@ -257,6 +258,7 @@ fn fire(bin: &std::path::Path, dir: &std::path::Path, run: &str, now: &str, env:
 }
 
 /// A host task records an incomplete parent in each table run's skipped count.
+// spec: run.select.incomplete-unit@4c4c91a0
 #[test]
 fn a_host_task_counts_an_incomplete_parent_on_its_run_records() {
     let host = host_binary();
