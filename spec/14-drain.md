@@ -16,13 +16,13 @@ Commands, `pipeline serve` shutdown and release checks read that record.
 Tracking unpushed runs, retrying pushes before reads, pushing during shutdown and reporting status to release checks.
 
 - `mark` — Under `postgres` or `cloudflare-d1`, opening a run sets its row's `unpushed` mark with the node, before landing commits. Closing clears the mark when no run manifest exists in any table included in the push.
-  *A-store*
+  *A-store#unpushed-run-marked*
 - `record-unmarked` — The store's run record stores each run row without `unpushed`. Only the execution database stores that mark.
   *because a rebuilt execution database restores rows from the pushed run record, and a mark there returns every pushed run as unpushed*
 - `clear` — A committed push clears marks for manifests present in included tables at push start. For marked runs lacking a local manifest and live owner, the push sets `lost` and names the runs on stderr.
   *because a committed push carries every run manifest the store held as it walked, and no retry restores a commit the store has lost*
 - `before-read` — Under these profiles, {{store.pull.before-run}} pushes after pulling for unlost marks on its node with a local manifest or expired owner lease. A failed push names those runs and stops the command before its first read.
-  *A-store*
+  *A-store#unpushed-run-marked*
 - `deadline` — On a stop signal, `pipeline serve` with `push_after_run` ends its children. The server then pushes for marks on its node meeting {{store.drain.before-read}}, for at most 15 s.
   *because a container platform kills a stopping process after its grace period, and a replaced container discards every run its last push missed*
 - `unfinished` — If the shutdown push fails or exceeds {{store.drain.deadline}}, the push preserves the run marks and names the runs on stderr. `pipeline serve` exits non-zero.

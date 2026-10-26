@@ -98,16 +98,16 @@ unsettled: Does `on_table_error` take a per-table override, and a cap on failed 
 The compiler converts a pipeline specification into a versioned plan with a shared schema.
 
 - `authoring-surface` — Authoring code runs only at build time and emits a content-hashed plan. No authoring code executes in the serving environment. No build profile embeds a scripting runtime.
-  *A-run*
+  *A-run#plan-compiled-content*
 - `plan-node` — A plan is a flat node list with predecessor edges: `step` (connector, optional retry), `sleep` (duration string), `awaitEvent` (optional timeout), `branch` (predicate, label-to-node-id map), `parallel` (node ids) and `join` (parallel node id, `allow_partial`).
 - `plan-version` — A plan's version is the leading 16 chars of the sha256 over the RFC 8785 canonical JSON of its `{id, nodes}`.
 - `plan-schema` — One schema library defines the plan type. Every language binds to its JSON Schema. The execution engine deserializes plan JSON against that schema.
 - `inline-step-body` — A `step` body other than a connector reference raises `PipelineInlineStepBody`.
-  *A-run*
+  *A-run#plan-compiled-content*
 - `control-flow` — A data-dependent conditional or loop in a workflow body raises `PipelineUndeclaredControlFlow`; branching travels as `branch` and fan-out as `parallel`.
-  *A-run*
+  *A-run#plan-compiled-content*
 - `node-id-collision` — A node id repeated in one plan raises `PipelineNodeIdCollision`, naming the id and both positions.
-  *A-run*
+  *A-run#plan-compiled-content*
 - `lowering` — A plan lowers node by node onto {{run.journal.substrate-port}}.
 - `unjoined-parallel` — A `parallel` node no `join` node names, or a node other than its join reading it or one of its bodies, raises `PipelineParallelUnjoined` at compile.
   *because an output read around its join reaches a partial result no run record marks as partial*
@@ -120,7 +120,7 @@ The engine applies declared transforms in order to rewrite a batch in place.
 
 - `chain` — The chain is an ordered list of `select`, `rename`, `cast`, `extract` and a single-column `filter`, declared once per pipeline and bound to the root table.
 - `arity` — A chain operation emitting more rows than it consumed raises `PipelineTransformArity`.
-  *A-run*
+  *A-run#plan-compiled-content*
 - `filter` — A filter dropping a root row drops that row's nested children with it.
   *because a child landing under a parent id no surviving row carries is a dangling reference*
 - `column-missing` — A value filter or cast naming a column the batch does not carry raises `PipelineTransformColumnMissing`, printing the column and the table.
@@ -143,14 +143,14 @@ The engine normalizes nested data, assigns identity columns and converts nesting
 - `mode` — `native` keeps nesting the sink supports and expands unsupported nesting with {{run.record.schema-diff-home}}. `relational` flattens structs into parent-child column names and converts lists into child tables joined by a foreign key.
 - `mode-resolution` — Mode resolves per stream per sink: explicit declaration, then sink capability, then `native`.
 - `mode-unknown` — A mode outside the two raises `PipelineNormalizeModeUnknown`, printing both spellings.
-  *A-run*
+  *A-run#nested-arrow-canonical*
 - `identity-columns` — Normalize injects a content-hash row id on every table, a load id on the root, a parent id and list index on each child, and a root id on a child nested deeper than one level.
 - `field-collision` — A relational source field flattening onto an occupied column takes the first free `source_`-prefixed name, preserving injected identity columns and the source value.
 - `row-id` — The row id hashes the row's own content, so a re-run of one input emits byte-identical ids.
 - `list-index-missing` — A relational child table emitted without the list index that makes its projection reversible raises `PipelineListIndexMissing`, naming the parent and the list.
-  *A-run*
+  *A-run#nested-arrow-canonical*
 - `native-store` — On the store sink, `native` lands each undeclared column of objects and arrays as a struct or list column inferred over the batch; a column mixing kinds, or one `schema.json` holds as a scalar, lands as `Json`.
-  *A-store*
+  *A-store#struct-list-map*
 - `nesting-depth` — Recursion stops at the declared `depth`, default 5 levels, landing a deeper subtree as one `Json` value.
 
 #### Scenarios
@@ -164,16 +164,16 @@ The secret guard masks credential-shaped text in pulled batches, dead letters an
 
 - `placement` — The secret guard runs at the one pull path streaming and backfill share, ahead of the recorded pull and the land path, so a replay reintroduces no credential.
 - `matchers` — Matchers are linear-time, regex-free forward scans, each anchored on a literal prefix; the credential catalogue lives in code under a precision and recall fixture test.
-  *A-run*
+  *A-run#secret-guard-has*
 - `llm-candidate` — An LLM candidate starts with `sk-` at input start or after a byte outside ASCII alphanumerics, `-` and `_`; its tail spans that alphabet. Admission masks the whole candidate.
-  *A-run*
+  *A-run#secret-guard-has*
 - `llm-admission` — An LLM candidate needs 32 B of tail: a `proj-`, `svcacct-`, `service-`, `admin-` or `ant-` prefix permits the whole tail; otherwise its first 32 bytes are ASCII alphanumerics.
-  *A-run*
+  *A-run#secret-guard-has*
 - `assignment-key` — An assignment key qualifies when it is a keyword or ends in one after `_`, `-` or `.`, reading `-` as `_`, so `client_secret`, `x-api-key` and `db.password` qualify and `clientsecret` does not.
 - `mask-span` — The replacement covers only the matched byte ranges, widened to character boundaries; overlapping spans merge under the higher-priority pattern.
 - `mask-replacement` — The replacement is the fixed `[REDACTED:secret]` marker, never a shape-preserving transform; an assignment keeps its `key=` prefix.
 - `mask-only` — The guard is on by default and blocks no run; each pull logs the count of masked cells per column.
-  *A-run*
+  *A-run#secret-guard-has*
 - `coverage` — The guard reads pre-normalize string cells for plaintext shapes; encoded material and a credential split across two cells pass through.
 - `dead-letter-reason` — A dead letter's `key`, `reason` and `sha256` pass the guard as a pulled row's cells do, so a reason quoting a credential lands masked.
 - `recorded-body` — Registered body results pass through the same guard before shaping and canonical preparation; the engine reports per-column counts once per fresh paid preparation, excluding counts from the recorded wire and replay.
@@ -195,12 +195,13 @@ The engine processes batches from pull to commit, records ingest counts and isol
   *A-topology#one-egress*
 - `batch-write` — The store creates a landing table on first schema observation, {{store.reconcile.first-sight}}. The store writes each batch durably in a separate call. A batch may carry its ordinal for joining the run's request ledger.
 - `typed-pull` — A pull's `types` object maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it, and the run commit lands that column in it; an unreadable spelling fails the pull as {{store.reconcile.incompatible}}.
+  *A-run#observed-batch-fixes*
 - `late-type` — A pull declaring a type for a column an earlier staged batch of its run carried undeclared raises `PipelineTypeDeclaredLate`, deterministic, naming the column; the run commits nothing and retires its owner.
   *because that batch's part already holds the column in its inferred type, and a staged part is immutable*
 - `irreconcilable-schema` — An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}.
 - `commit-visibility` — A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.
 - `observed-schema` — Planning fetches no source schema. Staging assigns each observed batch's types under {{run.own.stage-schema}} and validates the batch against declared columns.
-  *A-run*
+  *A-run#observed-batch-fixes*
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
 - `object-arrival-wake` — An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.
@@ -228,7 +229,7 @@ A delivered `receive` batch enters the pull stage under a batch key and lands th
 - `receive-ack` — `contextful pipeline receive <id> --key <key>` reads one batch on stdin and answers after every touched table commits, in declaration order, naming the batch id and each table's run id; a failed table answers retryable only under {{run.retry.retryable-classes}}.
   *because no commit spans two tables, so a sender learns success only once the last table commits*
 - `receive-batch-key` — A batch key fixes each touched table's run id stem `receive-<digest>.<table>` and owner scope, a later attempt taking `.2`, `.3`; a table whose run under the key, or under the group its scope names, committed replays it and lands nothing.
-  *because a sender retrying after a lost answer must not duplicate committed tables*
+  *A-run#batch-key-answers*
 - `receive-resume` — A table under a batch key whose run did not commit resumes the key's pending owner, recorded pull included, and no other key's.
   *because a sender retrying after a lost answer must not lose uncommitted tables*
 - `receive-batch-too-large` — A body exceeding the source's `max_batch_bytes` raises non-retryable `ReceiveBatchTooLarge`. The reader stops one byte past the bound. No table lands.
@@ -236,9 +237,9 @@ A delivered `receive` batch enters the pull stage under a batch key and lands th
 - `receive-queue` — Up to `max_queue_depth` batches per pipeline hold queue slots while waiting or landing. Each batch holds its slot before body reading until the answer. One group lands at a time.
   *because concurrent senders share each table's single-writer cursor lease*
 - `receive-spool` — A batch decodes and validates alone, so a malformed body answers alone, then spools, synced, to its pipeline's queue before waiting for the land lock; a leader lands every spooled batch, a dead receiver's included.
-  *because a batch whose receiver died must land without its sender, and one malformed body must fail no other batch*
+  *A-run#received-batches-spooled*
 - `receive-group` — The land lock's holder lands the batches spooled under its credential, up to `max_queue_depth` members and 64 MiB, as one run per touched table, keyed by the group or a lone member, then pushes once and answers each.
-  *A-run*
+  *A-run#received-batches-spooled*
 - `receive-adopt` — A leader first lands the batches a dead leader claimed as that leader's group, resuming or replaying its run, before any new group forms, so each member key lands once.
   *because each member's scope names the dead group, so a new group leaves that group's owner pending and its members' scopes renamed*
 - `receive-torn` — An attempt of a batch key, of the group its scope names, or of a new group's key, whose commit the store holds while its run row never closed, closes committed with its stored rows, retires its owner and replays.
@@ -255,7 +256,7 @@ A delivered `receive` batch enters the pull stage under a batch key and lands th
 - `receive-write-not-granted` — If a credential lacks `write` over any declared table of a `receive` pipeline, the receiver raises `ReceiveWriteNotGranted` before reading the body. No table lands.
   *because a sender whose grant falls short learns it before spending the transfer*
 - `receive-key-expired` — A batch key replays or resumes only within the source's `key_retention_secs` of its first attempt. After that window, the receiver raises non-retryable `ReceiveBatchKeyExpired` before reading the body. No table lands.
-  *A-run*
+  *A-run#batch-key-answers*
 - `receive-endpoint` — `POST /receive/:pipeline` on the served face takes the batch key in the `Contextful-Batch-Key` header, admits the credential before reading the body, and answers `200` with the {{run.land.receive-ack}} answer.
   *because a sender refused for its credential or grant must not have spent the transfer*
 - `receive-key-missing` — If a delivery names no batch key, the receiver raises non-retryable `ReceiveBatchKeyMissing` before reading the body. No table lands.
@@ -294,27 +295,27 @@ A queued delivery answers `202` at once, and a consumer lands it later under the
 Input a decoder cannot read fails alone, lands as a dead letter, and decodes in a bounded child process.
 
 - `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull unless its source dead-letters it.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `input-fault` — A failure over one input carries its fault: `input` when the input's own bytes defeat the decoder, `configuration` when the declaration or the build does. A source dead-letters an `input` fault alone, never by message.
   *because a message names an error for people, and branching on its text dead-letters any refusal that repeats the name*
 - `dead-letter` — A pull's dead letters land in the table `<table>_dead_letter`, one row per input carrying its `key`, `reason` and `sha256`, committed in the same run as the table's rows.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `dead-letter-replace` — A replacing table whose read dead-letters any input fails the pull under {{run.land.unreadable-input}}, naming each input, and commits neither its rows nor its dead letters.
   *because dead letters committing alone record a success while the table stays stale, and repeat each dead letter every fire*
 - `dead-letter-occupied` — Dead letters whose `<table>_dead_letter` already holds a relational child table, or a store table lacking `key`, `reason` or `sha256`, refuse the pull under {{run.declare.table-name-collision}} and land nothing.
   *because two shapes committing into one table mix their schemas*
 - `partial-parse` — A reader stopping partway through a multi-part input raises `PipelinePartialParse` over the whole input and lands none of its parts.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `parse-boundary` — A decoder subject to process failure runs outside the serving process. The serving process bounds the decoder's wall clock and memory and supports terminating the decoder.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `parse-child` — Each input whose decoder is subject to process failure runs in a separate child process. That process decodes no second input.
-  *A-run*
+  *A-run#decoder-child-owns*
 - `parse-deadline` — A decode runs for at most 60 s from child spawn; expiry kills its process group and raises {{run.land.parse-crashed}}.
-  *A-run*
+  *A-run#decoder-child-owns*
 - `parse-memory` — A decoder child receives at most 512 MiB of memory; exceeding the bound fails that input under {{run.land.parse-crashed}}.
-  *A-run*
+  *A-run#decoder-child-owns*
 - `parse-crashed` — A non-zero exit or fatal signal from the decode process raises `PipelineParseCrashed` naming the input; no input ends the serving process.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `table-failed` — A table whose pull fails raises `PipelineTableFailed` carrying the table, the error kind and the run id; the fire then follows `on_table_error`.
   *because a failure is answerable by name only when it carries its table and run*
 
@@ -394,11 +395,11 @@ An export reads committed table rows and delivers them to an operator-declared t
   *because a message lost between commit and enqueue must not lose the rows it announced*
 - `local-state` — The local storage profile keeps log cursors in `.contextful/exports/<project>/<name>.json`, outside corpus sync, and typed delivery state in `machine.sqlite`.
 - `remote-state` — Under {{run.journal.container-profile}}, PostgreSQL holds typed outboxes, acknowledged keyed state and log checkpoints in the execution database; a replacement reoffers identical pending event ids before advancing its acknowledged frontier.
-  *A-run*
+  *A-run#disposable-execution-state*
 - `d1-state` — Under {{run.journal.d1-profile}}, D1 commits export outboxes, acknowledged keyed state and log checkpoints; a sink commit without its D1 acknowledgement reoffers the same delivery identity.
-  *A-run*
+  *A-run#d1-execution-state*
 - `writer-fenced` — A PostgreSQL exporter whose durable writer lease has transferred raises `ExecutionWriterFenced` before dispatch or state publication; its lease row stays locked throughout an admitted outbound call, and takeover waits for that call.
-  *A-run*
+  *A-run#disposable-execution-state*
 - `at-least-once` — A run ending between a target's acknowledgement and the cursor commit resends that batch on the next run; a target deduplicates on `contextful.commit_seq` and `contextful.row_seq`.
   *A-topology#queue-ingress*
 - `delivery-refused` — A target answering other than 2xx, or unreachable, raises `ExportDeliveryRefused` naming the export and the answer, and the cursor stays where it stood.
@@ -440,21 +441,21 @@ A typed export publishes keyed `changes-v1` events from a staged outbox and ackn
 A coordinated `[[publication]]` delivers every member of one producer completion and activates the members together.
 
 - `group-block` — A local `[[publication]]` declares `name`, producer `job` and typed export `members`; members cover every producer output exactly once and share one destination and header binding.
-  *A-run*
+  *A-run#coordinated-exports-activate*
 - `group-source` — A successful store-driven job or materialized model build records one immutable completion binding its run identifier, pinned input frontier and all output table frontiers, including empty outputs.
-  *A-run*
+  *A-run#coordinated-exports-activate*
 - `group-source-latest` — The sqlite and D1 publication ledgers keep 1 completion per publication, the latest: the latest run recorded again with different bytes refuses, and a completion naming another run replaces it.
   *because a run is re-recorded only by its own retry, and history kept past it grows with every build*
 - `group-delivery` — `contextful export group <name>` reads every completed producer member through {{run.export.post-commit-read}}, rechecks every frontier, and stages one ordered outbox with explicit member-complete events followed by one group-complete event.
-  *A-run*
+  *A-run#coordinated-exports-activate*
 - `group-identity` — A group's identity binds its store incarnation, destination, namespace, read identity, predecessor, publication order, input frontier, membership, delivered base and next state; each event identifier binds that group and its sequence.
-  *A-run*
+  *A-run#coordinated-exports-activate*
 - `group-activation` — A receiver stages member events transactionally and activates every member together only after validating the complete group; interrupted delivery preserves the active group, and acknowledged retries preserve its bytes and visibility.
-  *A-run*
+  *A-run#coordinated-exports-activate*
 - `group-checkpoint` — `contextful export checkpoint` saves delivery state; `contextful export restore` replays compatible immutable events while the receiver retains its accepted groups and active frontier, so an older checkpoint reverses no deletion or later publication.
-  *A-run*
+  *A-run#coordinated-exports-activate*
 - `group-rebuild` — `contextful export rebuild <name> --namespace <epoch>` exports the completed producer's full admitted state into a fresh namespace without executing its effects; the receiver keeps its active namespace until the replacement group completes.
-  *A-run*
+  *A-run#coordinated-exports-activate*
 - `group-input-digest` — A group plan's `input` carries the lowercase hex SHA-256 of its producer completion's JSON rather than the completion, so every request repeats a header of bounded size whatever the producer's input frontier holds.
   *because a producer's input frontier is caller-shaped JSON of any size, and each request repeats the group header*
 - `group-request-bound` — Staging refuses a group whose header beside its smallest event exceeds {{run.export.typed-byte-limit}} with `PublicationHeaderTooLarge`, and one holding an event unable to fit beside its header with {{run.export.typed-event-too-large}}; the outbox stays unchanged.
@@ -466,15 +467,15 @@ A coordinated `[[publication]]` delivers every member of one producer completion
 - `group-quiesce-wait` — An export still waiting for the publication's intent and inputs 300 s after it began waiting for either raises `PublicationInputsBusy` before its pull, read or staging; the outbox stays unchanged.
   *because a running producer ends on its own schedule, and the next attempt exports its completed frontier*
 - `group-incompatible` — Membership drift, incarnation mismatch, a changed pending read identity, an incompatible checkpoint, an incomplete producer frontier, or a predecessor/order mismatch raises `PublicationIncompatible` before delivery or activation.
-  *A-run*
+  *A-run#coordinated-exports-activate*
 - `group-storage` — A coordinated publication under `postgres` raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery; a `cloudflare-d1` sender state over 8 MiB raises it before staging.
-  *A-run*
+  *A-run#d1-coordinated-groups*
 - `group-sender-profile` — {{run.export.group-storage}} reads the sender's storage profile alone; under the local profile a group keeps its sender state in `machine.sqlite` and delivers to any `changes-v1` receiver, a D1-backed one included.
   *because the outbox is the sender's durable state, and a receiver's storage is behind its endpoint*
 - `group-d1-state` — Under {{run.journal.d1-profile}}, D1 holds each group's producer frontier, sender outbox and active namespace; one D1 batch commits a completing acknowledgement with its promoted state and active namespace.
-  *A-run*
+  *A-run#d1-coordinated-groups*
 - `group-d1-lease` — A `cloudflare-d1` group writer holds one durable D1 lease per publication, and every sender write predicates on that lease and the row's prior version.
-  *A-run*
+  *A-run#d1-coordinated-groups*
 - `group-d1-spill` — A `cloudflare-d1` sender row over 64 KiB holds the SHA-256 of an R2 object written before the row commits; the blob sweep keeps every object a publication row references.
   *because a D1 write crosses the binding once and never resends, an R2 put resends, and an object reached only through a committed row is never half visible*
 - `group-d1-acknowledge` — A `cloudflare-d1` acknowledgement short of group completion advances the sender row's version and records the group and acknowledged sequence in a row of its own, leaving the outbox body unwritten.
@@ -484,7 +485,7 @@ A coordinated `[[publication]]` delivers every member of one producer completion
 - `group-d1-takeover` — `contextful export group <name> --take-over` under `cloudflare-d1` takes the publication lease whatever its holder or expiry and advances its fence, so the prior holder's next write, a producer completion included, matches no lease and refuses.
   *because a delivery killed at its caller's time bound holds the lease until expiry, and a fenced producer's build retry records its completion again*
 - `group-d1-recovery` — After an empty-disk replacement, `contextful export group` resumes a staged or partially acknowledged `cloudflare-d1` group from D1, reoffering identical group and event identifiers before staging a later frontier.
-  *A-run*
+  *A-run#d1-coordinated-groups*
 
 #### Scenarios
 
@@ -541,29 +542,29 @@ A seed source bulk-loads history below a declared ordering ceiling before live i
 - `one-land-path` — Seeded rows travel {{run.land.stage-order}} unchanged; attribution survives only in the load id and a run recorded under the `seeding` phase.
 - `available-instant` — A seeded row lands its availability instant and `_ingested_at` as {{run.backfill.available-instant}} lands a backfilled row's.
 - `declaration-missing` — A seeded table without `primary_key`, or with `order_by` left at the ingest stamp, raises `PipelineSeedDeclarationMissing` at plan and validate.
-  *A-run*
+  *A-run#incremental-position-bound*
 - `ceiling-breached` — A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped.
-  *A-run*
+  *A-run#incremental-position-bound*
 - `ceiling-point` — The engine evaluates the ceiling on the root batch after normalization and the transform chain, before writing.
 - `ceiling-unevaluable` — A batch missing the ordering column, or a stamp unorderable against the ceiling, raises `PipelineSeedCeilingUnevaluable`; a text stamp orders only when `Z`-suffixed at the ceiling's fractional width.
-  *A-run*
+  *A-run#incremental-position-bound*
 - `scope` — Seed chunk and cursor state live under a `<table>#seed` scope apart from the live pipeline's.
 - `connector-pin` — A seeding run is exempt from {{run.own.pinned-plan-changed}} and records its connector identity as provenance.
 - `ceiling-binding` — On seed commit, an unset `monotonic` live position takes the ceiling when `below` parses as an integer; under the other cursor kinds the live position stays unset and starts from the source's beginning.
 - `fingerprint` — Each run probes the seed source for a cheap fingerprint, a stat or a HEAD and never a download, and compares it with the one stamped at commit.
 - `source-changed` — A differing fingerprint raises `PipelineSeedSourceChanged` naming both values; an equal one skips the load, and an unavailable one skips with a warning.
-  *A-run*
+  *A-run#incremental-position-bound*
 - `commands` — `seed status` prints each seeded table's ceiling, commit state and fingerprint match; `seed reset <pipeline> [--table T]` clears the seed's chunk plan and commit stamp, so the next run loads it again.
 - `parity` — Over keys the vendor still returns, seeding then running live across an overlapping window yields a pure live backfill's row count and per-key winners; a key the vendor stopped returning keeps its seeded value.
 - `compaction-cadence` — A seeded table that no job meeting {{store.declare.fold-job}} covers raises `PipelineSeedCompactionMissing` at validate and before a fire, naming the table.
-  *A-store*
+  *A-store#keyed-table-covered*
 
 ## model
 
 The engine builds model tables from SQL over store tables, validates contracts and tests, and records freshness and holds.
 
 - `model-block` — A `[[model]]` block carries `id`, {{run.model.statement-source}}, optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]`, `[[model.test]]`, {{disclosure.release.model-policy}} and {{disclosure.set-mode.opt-out-record}}; an unknown key refuses as {{run.declare.spec-invalid}}.
-  *A-run*
+  *A-run#model-declared-sql*
 - `statement-source` — A model declares exactly one of inline `sql` and `sql_file`; the latter reads UTF-8 text relative to the manifest containing the model.
   *because a manifest-relative statement file keeps a model portable across project roots*
 - `top-level-block` — A manifest's top-level key outside the set the engine enumerates raises `PipelineUnknownBlock`, naming the key, the file and the accepted set.
@@ -582,9 +583,9 @@ The engine builds model tables from SQL over store tables, validates contracts a
   *because a published table without a declared contract has no identity a reader can pin against*
 - `unpublished` — A model declaring `publish = false` commits its rows with no manifest section, so no build entry, hold or contract history names it.
 - `contract-major` — Under the published build's major, a contract that drops or retypes a published column, makes a non-null one nullable, adds a non-null column or changes the grain refuses as {{run.publish.contract-mismatch}}, naming the column and the major to bump.
-  *A-run*
+  *A-run#minor-contract-bump*
 - `contract-minor` — Under the published build's major, a contract that only adds nullable columns or makes nullable ones non-null publishes once its minor exceeds the published one, else refuses as {{run.publish.contract-mismatch}}, naming the added or tightened column and the bumped minor.
-  *A-run*
+  *A-run#minor-contract-bump*
 - `injected-columns` — A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.
 - `freshness-block` — `[model.freshness]` declares `max_lag` as an integer followed by `s`, `m`, `h` or `d`; a model declaring none publishes a null `max_lag` and never computes stale.
 - `test-block` — A `[[model.test]]` carries a `name` and one `SELECT` over the staged rows, registered under the model's id, and the store's tables; a test returning any row fails.
@@ -601,7 +602,7 @@ The engine builds model tables from SQL over store tables, validates contracts a
 - `model-cycle` — If a model's `sql` reaches its own id through one or more other models, `pipeline validate`, import, apply and `build` raise `ModelCycle`. The engine names every model on the cycle and reads no store.
   *because no member of a cycle has a first build, and once one exists each build folds in the other's previous output*
 - `build-id` — A build's id is the snapshot id it publishes.
-  *A-run*
+  *A-run#model-declared-sql*
 - `watermark` — A build's watermark is `{at, inputs}`: per input table the snapshot id, `through`, the greatest `commit_seq` read, and `omitted`, the count and digest of runs read outside the snapshot chain; `at` is the newest commit instant.
   *because a list of omitted runs grows by one key per run on an input no fold covers*
 - `watermark-digest` — `omitted.digest` is the lowercase hex SHA-256 over the sorted keys `<run-id>/<node-id>` of the omitted runs, each followed by a newline.
@@ -614,7 +615,7 @@ The engine builds model tables from SQL over store tables, validates contracts a
 - `hold-unknown-build` — A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.
   *because a hold on a build that does not exist protects nothing and reads as protection*
 - `hold-manifest` — A hold commits as the hold manifest `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build.
-  *A-run*
+  *A-run#model-declared-sql*
 - `log-regeneration` — The history logs sit in the model's table directory; each build and hold rewrites them, replacing an entry a manifest disagrees with and keeping entries of collected builds.
 
 unsettled: Does a model materialize incrementally, merging each build into its prior one on `unique_key`? owner: pipeline affects: run.model
@@ -647,17 +648,17 @@ Published tables: contract identity, snapshot publication, build history, freshn
   *because a process killed before publication cannot write its own failure, while its attempt record and released lock survive*
 - `freshness` — Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness follows {{run.publish.staleness}} and is never stored.
 - `staleness` — A published model is stale at `t` when an input holds a committed run outside its watermark snapshot chain, its `commit_seq` above `through`, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.
-  *A-run*
+  *A-run#build-stale-landings*
 - `staleness-omitted-check` — An input whose runs outside the watermark snapshot chain, at or below `through`, differ in count or digest from `omitted` holds a waiting run counted as committed before `t` minus `max_lag`.
-  *A-run*
+  *A-run#build-stale-landings*
 - `staleness-unsequenced` — A run carrying no `commit_seq` counts as at or below `through` when committed at or before the watermark's `at`.
   *because a run manifest may carry no sequence, and {{run.publish.staleness-omitted-check}} catches one the build never read*
 - `staleness-collected-covered` — A run whose manifest retention collected counts as at or below `through` when the current snapshot folding it records a `commit_seq` at or below `through`.
   *because a snapshot's `commit_seq` bounds every run it folds*
 - `staleness-model-input` — An input that is a model also waits on each of its published builds newer than the watermark snapshot, aged by that build's `created_at`.
-  *A-run*
+  *A-run#build-stale-landings*
 - `staleness-collected-run` — A waiting run whose manifest retention collected counts as committed before `t` minus `max_lag`.
-  *A-run*
+  *A-run#build-stale-landings*
 - `hold` — A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
 - `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` follows {{run.model.watermark}}.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.

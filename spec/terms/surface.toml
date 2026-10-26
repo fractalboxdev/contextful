@@ -97,20 +97,20 @@ VisibilityShareAffordance     = { clause = "surface.publish-answer.share-afforda
 VisibilityAskerlessAudience   = { clause = "surface.publish-answer.askerless-audience", gloss = "A scheduled post to an audience under a service identity." }
 
 [limit]
-surface-wake-answer        = { clause = "surface.arm.wake-answer", value = 25, unit = "s", basis = "chosen", gloss = "Longest a wake holds its request before answering." }
-surface-tick-interval      = { clause = "surface.arm.tick-interval", value = 500, unit = "ms", basis = "chosen", gloss = "In-process evaluation interval." }
+surface-wake-answer        = { clause = "surface.arm.wake-answer", value = 25, unit = "s", basis = "chosen", gloss = "Longest a wake holds its request before answering.", const = "crates/contextful-core/src/surface/arm.rs::WAKE_ANSWER_SECS" }
+surface-tick-interval      = { clause = "surface.arm.tick-interval", value = 500, unit = "ms", basis = "chosen", gloss = "In-process evaluation interval.", const = "crates/contextful-core/src/surface/arm.rs::TICK_INTERVAL_MS" }
 surface-poll-interval      = { clause = "surface.reconcile.poll-cadence", value = 30, unit = "s", basis = "chosen", gloss = "Default control poll cadence." }
-surface-delegate-call-timeout = { clause = "surface.delegate.call-timeout", value = 300, unit = "s", basis = "chosen", gloss = "Default time a call-mode request stays open before the attempt closes." }
-surface-delegate-call-ceiling = { clause = "surface.delegate.call-timeout-ceiling", value = 3600, unit = "s", basis = "chosen", gloss = "Longest call-mode timeout a delegate binding declares." }
-surface-step-result        = { clause = "surface.dispatch.step-result", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest checkpointed step result." }
-surface-callback-skew      = { clause = "surface.dispatch.callback-skew", value = 300, unit = "s", basis = "chosen", gloss = "Largest callback timestamp skew the relay accepts." }
-surface-heartbeat-beat     = { clause = "surface.dispatch.heartbeat-beat", value = 15, unit = "s", basis = "chosen", gloss = "Interval between worker heartbeats." }
-surface-heartbeat-lapse    = { clause = "surface.dispatch.heartbeat-lapse", value = 60, unit = "s", basis = "chosen", gloss = "Heartbeat lapse that reschedules in-flight work." }
+surface-delegate-call-timeout = { clause = "surface.delegate.call-timeout", value = 300, unit = "s", basis = "chosen", gloss = "Default time a call-mode request stays open before the attempt closes.", const = "crates/contextful-core/src/surface/delegate.rs::CALL_TIMEOUT_SECS" }
+surface-delegate-call-ceiling = { clause = "surface.delegate.call-timeout-ceiling", value = 3600, unit = "s", basis = "chosen", gloss = "Longest call-mode timeout a delegate binding declares.", const = "crates/contextful-core/src/surface/delegate.rs::CALL_TIMEOUT_CEILING_SECS" }
+surface-step-result        = { clause = "surface.dispatch.step-result", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest checkpointed step result.", const = "crates/contextful-core/src/surface/worker.rs::STEP_RESULT_CAP" }
+surface-callback-skew      = { clause = "surface.dispatch.callback-skew", value = 300, unit = "s", basis = "chosen", gloss = "Largest callback timestamp skew the relay accepts.", const = "crates/contextful-core/src/surface/worker.rs::CALLBACK_SKEW_SECS" }
+surface-heartbeat-beat     = { clause = "surface.dispatch.heartbeat-beat", value = 15, unit = "s", basis = "chosen", gloss = "Interval between worker heartbeats.", const = "crates/contextful-core/src/surface/worker.rs::HEARTBEAT_BEAT_SECS" }
+surface-heartbeat-lapse    = { clause = "surface.dispatch.heartbeat-lapse", value = 60, unit = "s", basis = "chosen", gloss = "Heartbeat lapse that reschedules in-flight work.", const = "crates/contextful-core/src/surface/worker.rs::HEARTBEAT_LAPSE_SECS" }
 surface-fire-pool          = { clause = "surface.dispatch.pool-bound", value = 4, unit = "units", basis = "chosen", gloss = "Default count of units one deployment runs at once." }
-surface-daemon-drain       = { clause = "surface.fire.daemon-drain", value = 5, unit = "s", basis = "chosen", gloss = "Wait between one daemon queue drain ending and the next starting." }
-surface-child-grace        = { clause = "surface.dispatch.children-reaped", value = 10, unit = "s", basis = "chosen", gloss = "Wait between a stopping serve's SIGTERM and SIGKILL to its children." }
-surface-fire-credential    = { clause = "surface.dispatch.fire-credential-lifetime", value = 600, unit = "s", basis = "chosen", gloss = "Lifetime of the credential serve mints for one store-driven fire." }
-surface-region-entries     = { clause = "surface.reside.region-entries", value = 16, unit = "entries", basis = "chosen", gloss = "Largest residency allow-set." }
+surface-daemon-drain       = { clause = "surface.fire.daemon-drain", value = 5, unit = "s", basis = "chosen", gloss = "Wait between one daemon queue drain ending and the next starting.", const = "crates/contextful-cli/src/cadence.rs::DAEMON_DRAIN_SECS" }
+surface-child-grace        = { clause = "surface.dispatch.children-reaped", value = 10, unit = "s", basis = "chosen", gloss = "Wait between a stopping serve's SIGTERM and SIGKILL to its children.", const = "crates/contextful-core/src/surface/dispatch.rs::CHILD_GRACE_SECS" }
+surface-fire-credential    = { clause = "surface.dispatch.fire-credential-lifetime", value = 600, unit = "s", basis = "chosen", gloss = "Lifetime of the credential serve mints for one store-driven fire.", const = "crates/contextful-cli/src/cadence.rs::FIRE_CREDENTIAL_SECS" }
+surface-region-entries     = { clause = "surface.reside.region-entries", value = 16, unit = "entries", basis = "chosen", gloss = "Largest residency allow-set.", const = "crates/contextful-core/src/surface/reside.rs::REGION_ENTRIES" }
 surface-redactor-lookahead = { clause = "surface.speak.redactor-lookahead", value = 128, unit = "chars", basis = "chosen", gloss = "Characters the streaming redactor holds across a chunk boundary." }
 surface-sources-per-turn   = { clause = "surface.ground.sources-per-turn", value = 8, unit = "entries", basis = "chosen", gloss = "Entries in a turn's source list." }
 surface-code-path-rows     = { clause = "surface.plan-turn.code-path-bounds", value = 5000, unit = "rows", basis = "chosen", gloss = "Rows the code path reads per data table." }

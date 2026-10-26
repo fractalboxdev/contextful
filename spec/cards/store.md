@@ -204,38 +204,38 @@ The struct at `crates/contextful-core/src/store/declare.rs:126`, named by `store
 
 | Section | Cited by |
 | --- | --- |
-| `A-store#adjustment-factors-apply` |  |
-| `A-store#availability-declared-column` |  |
-| `A-store#binary-fixed-size` |  |
-| `A-store#bucket-index-commits` |  |
-| `A-store#canonical-metadata-sits` |  |
-| `A-store#cold-store-boots` |  |
-| `A-store#column-records-commit` |  |
-| `A-store#coordination-probed-compare` |  |
-| `A-store#empty-complete-snapshot` |  |
-| `A-store#exhausted-pull-refuses` |  |
-| `A-store#keyed-table-covered` |  |
+| `A-store#adjustment-factors-apply` | `store.available-time.vintage-rows`, `store.available-time.vintage-dedup-key` |
+| `A-store#availability-declared-column` | `store.available-time.declaration`, `store.available-time.available-as-of` |
+| `A-store#binary-fixed-size` | `store.reconcile.incompatible`, `store.reconcile.binary-and-vector`, `store.reconcile.typed-landing`, `store.reconcile.stored-type`, `store.reconcile.half-width`, `read.respond.bytes-and-vectors`, `authority.mask.typed-strategy` |
+| `A-store#bucket-index-commits` | `store.merge.tombstone-owner`, `store.merge.tombstone-signed`, `store.merge.tombstone-unverified`, `store.merge.retries`, `store.merge.round-ceiling`, `store.merge.exhausted`, `store.merge.scoped-union`, `store.merge.held-record`, `store.merge.held-absent`, `store.merge.ownership` |
+| `A-store#canonical-metadata-sits` | `store.encrypt.metadata-envelope`, `store.encrypt.run-state-envelope` |
+| `A-store#cold-store-boots` | `store.fold.cached-inputs`, `store.pull.lazy-parts`, `store.pull.part-cache`, `read.cache.miss-wait` |
+| `A-store#column-records-commit` | `read.horizon.late-columns` |
+| `A-store#coordination-probed-compare` | `topology.coordinate.primitive`, `topology.coordinate.inventory`, `topology.coordinate.lease-row`, `topology.coordinate.catalog-clock`, `topology.coordinate.fence-advances`, `topology.coordinate.fenced-commit`, `topology.coordinate.cadence-lease-ttl`, `topology.coordinate.cadence-lease-renewal`, `topology.coordinate.cadence-fallback`, `topology.coordinate.weak-backend`, `store.fold.compaction-lease`, `store.fold.pointer-commit`, `store.push.pointer-fenced`, `store.probe.inconclusive`, `store.probe.unproven`, `store.lease.held`, `store.lease.stale-fence`, `store.lease.not-held`, `store.lease.acquire`, `store.lease.pointer-fence`, `store.lease.commit-log` |
+| `A-store#empty-complete-snapshot` | `run.advance.snapshot-completion`, `run.advance.zero-row-commit` |
+| `A-store#exhausted-pull-refuses` | `store.pull.unconverged-resume` |
+| `A-store#keyed-table-covered` | `run.seed.compaction-cadence` |
 | `A-store#lost-commit-round` |  |
-| `A-store#machine-catalog-seals` |  |
-| `A-store#manifest-carries-format` |  |
-| `A-store#pass-carries-untouched` |  |
-| `A-store#push-tombstones-owned` |  |
-| `A-store#replica-advertises-descriptor` |  |
-| `A-store#replica-read-whole` |  |
-| `A-store#restatement-vintage-row` |  |
-| `A-store#schema-lattice-has` |  |
-| `A-store#sidecar-copies-tenant` |  |
-| `A-store#sidecar-memory-mapped` |  |
-| `A-store#sidecar-names-id` |  |
-| `A-store#sidecar-s-builder` |  |
-| `A-store#snapshot-corpus-declared` |  |
-| `A-store#sqlite-link-rule` |  |
-| `A-store#store-s-catalogs` |  |
-| `A-store#struct-list-map` |  |
-| `A-store#synced-uuid-binds` |  |
-| `A-store#tenant-value-bytes` |  |
+| `A-store#machine-catalog-seals` | `store.lay-out.machine-catalog`, `store.encrypt.machine-catalog-sealing` |
+| `A-store#manifest-carries-format` | `store.lay-out.table-pointer`, `store.lay-out.format-version`, `store.lay-out.format-newer`, `store.lay-out.format-migrate` |
+| `A-store#pass-carries-untouched` | `store.fold.carry-by-reference`, `store.fold.tiered-merge`, `store.fold.reference-retention` |
+| `A-store#push-tombstones-owned` | `store.push.manifest-commit` |
+| `A-store#replica-advertises-descriptor` | `store.replicate.descriptor`, `store.replicate.missing-index` |
+| `A-store#replica-read-whole` | `store.pull.pointer-last`, `store.pull.pointer-advance`, `store.replicate.write-refused`, `store.replicate.partial-parquet`, `store.replicate.descriptor`, `store.replicate.missing-index`, `store.replicate.sensitive-refused` |
+| `A-store#restatement-vintage-row` | `store.available-time.vintage-rows`, `store.available-time.vintage-dedup-key` |
+| `A-store#schema-lattice-has` | `store.reconcile.lattice`, `store.reconcile.key-widening` |
+| `A-store#sidecar-copies-tenant` | `store.index.filter-copies` |
+| `A-store#sidecar-memory-mapped` | `store.encrypt.metadata-envelope`, `store.encrypt.run-state-envelope`, `store.encrypt.machine-catalog-sealing`, `store.encrypt.sidecar-reader`, `read.retrieve.sidecar-size-cap`, `read.retrieve.fulltext-sealed-cap` |
+| `A-store#sidecar-names-id` | `store.declare.empty-replacement`, `store.declare.fold-job`, `store.index.bloom-parts`, `store.index.id-column`, `store.index.id-column-unresolved`, `store.index.id-unique`, `store.index.vector-by-fold`, `store.index.fulltext-by-fold` |
+| `A-store#sidecar-s-builder` | `store.index.identity`, `store.index.rebuild`, `store.index.graph-format`, `store.index.graph-extensions`, `store.index.sidecar-segments` |
+| `A-store#snapshot-corpus-declared` | `store.snapshot.capture`, `store.snapshot.post-horizon-capture` |
+| `A-store#sqlite-link-rule` | `topology.package.sqlite-adapter`, `topology.package.store-sqlite-free` |
+| `A-store#store-s-catalogs` | `topology.coordinate.cursor-cas`, `topology.coordinate.catalog-port`, `topology.coordinate.backends`, `store.lay-out.derived-catalog`, `store.lay-out.catalog-ports` |
+| `A-store#struct-list-map` | `store.reconcile.nested-lattice`, `store.reconcile.nested-landing`, `read.respond.nested-values`, `run.normalize.native-store` |
+| `A-store#synced-uuid-binds` | `store.init.store-identity`, `store.init.identity-invalid` |
+| `A-store#tenant-value-bytes` | `store.index.tenant-verbatim` |
 | `A-store#tombstone-signed-node` |  |
-| `A-store#unpushed-run-marked` |  |
-| `A-store#validity-interval-row` |  |
-| `A-store#variant-column-keeps` |  |
-| `A-store#vintage-landing-reads` |  |
+| `A-store#unpushed-run-marked` | `store.drain.mark`, `store.drain.before-read` |
+| `A-store#validity-interval-row` | `store.bound-time.interval-rows`, `store.available-time.vintage-dedup-key` |
+| `A-store#variant-column-keeps` | `store.reconcile.variant` |
+| `A-store#vintage-landing-reads` | `store.available-time.vintage-scope` |

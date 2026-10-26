@@ -202,6 +202,7 @@ Decision: a `variant` column is a Struct of per-kind fields `str`, `int`, `doubl
 | The long table left to each consumer | One check | Every consumer re-implements the at-most-one-non-null check. |
 
 Consequences: a mixed-kind source lands without widening the lattice, and an `Int64` past the exact float range keeps its value. The accepted cost is a wider stored schema and a variant column that takes no promotion.
+Revisit: Parquet `VARIANT` support measured.
 
 ## sqlite-link-rule — The SQLite link rule reads normal dependencies alone
 

@@ -65,7 +65,7 @@ Execution, storage, queries, access controls and the contracts these components 
   *A-topology#one-egress*
 - `local-first` — Pipelines need no network beyond their sources, and bucket sync is opt-in per deployment. The engine makes no control-plane callback, no license check, and sends no telemetry to its authors.
 - `script-runtime` — A JavaScript runtime linked into any profile raises `ScriptRuntimeLinked`. The authoring surface is a build-time compiler emitting a serialized, content-hashed plan.
-  *A-run*
+  *A-run#plan-compiled-content*
 - `memory-substrate` — Synthesized memory uses ordinary store tables for episodes, facts, entities and preferences. The synthesis pipeline runs as an ordinary execution workflow using the same journal, cursor and retry machinery.
 - `two-spines` — The run record describes writes. The request ledger describes reads. No third interface combines these records.
 
@@ -113,17 +113,17 @@ Rust package dependencies and the capabilities each compiled binary includes.
 - `store-write-engine-free` — Without `read`, `contextful-context` excludes `duckdb`, `libduckdb-sys`, `libsqlite3-sys`, async runtimes, HTTP and TLS from normal dependencies on every target. A dependency reaching these raises `StoreWriteLinksEngine`, naming the package and path.
   *because a host that lands, folds or scans a store serves no read and opens no connection, so an engine, runtime or network stack is code it never calls*
 - `transport-optional` — Without `transport-ureq`, `contextful-outbound` excludes `ureq`, `hyper`, `reqwest`, `rustls` and `curl` from normal dependencies. A dependency reaching these raises `TransportStackLinked`, naming the dependency path.
-  *A-connector*
+  *A-connector#egress-passes-transport*
 - `decode-network-free` — `contextful-decode` reaching `contextful-outbound`, `ureq`, `hyper`, `reqwest`, `rustls`, `curl` or `tokio` through a normal dependency raises `DecodeLinksNetwork`, naming the path that pulled it.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `exchange-optional` — `contextful-policy` links the external-assertion stack, `jsonwebtoken` and `rsa`, only under its non-default `exchange` feature, which only the binary may enable, and only alongside wiring {{authority.exchange.surface}}. Another `crates/` package whose resolved graph reaches either raises `ExchangeDependencyLeak`, naming the path.
   *because an embedder admitting credentials with no identity provider then links no RSA code, and `rsa` carries a timing advisory with no patched release*
 - `sqlite-adapter` — `contextful-sqlite` alone declares the SQLite binding as a normal dependency and enables no link feature itself; only `contextful-cli` turns on its `bundled` feature. Any other normal-dependency declaration or enablement raises `SqliteLinkForced`, naming the manifest line.
-  *A-store*
+  *A-store#sqlite-link-rule*
 - `s3-sync-optional` — Without `s3-sync`, `contextful-sync` excludes `ureq`, `hyper`, `reqwest`, `rustls` and `curl` from normal dependencies. A dependency reaching these raises `SyncStackLinked`, naming the dependency path.
   *because a host syncing through a filesystem bucket, or embedding the sync package without a bucket, links no network stack*
 - `store-sqlite-free` — `contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, on any target, raises `StoreLinksSqlite`, naming the path that pulled it.
-  *A-store*
+  *A-store#sqlite-link-rule*
 - `interchange-whole` — The edge profile links the columnar interchange crates whole, as the full profile does; no slimmed interchange build exists.
   *because a slimmed build forks the format code an edge replica reads with from the code the full profile writes with*
 
@@ -340,29 +340,29 @@ sequenceDiagram
 Conditional metadata updates, writer leases and the databases that store coordination state.
 
 - `primitive` — Coordination rests on one property: a linearizable conditional write. No component depends on a stronger one, and the tree ships no consensus implementation or external coordination service.
-  *A-store*
+  *A-store#coordination-probed-compare*
 - `inventory` — Single-writer operations comprise lease-row updates, cursor compare-and-swap, {{store.fold.pointer-commit}}, lease acquisition, leased pipeline commit-log entries, bucket manifest commits and configuration version claims. No other operation needs a single writer.
-  *A-store*
+  *A-store#coordination-probed-compare*
 - `lease-row` — A lease key names a pipeline, source partition, table compaction or deployment cadence. One conditional update assigns the row's holder, expiry instant and fence.
-  *A-store*
+  *A-store#coordination-probed-compare*
 - `catalog-clock` — The catalog evaluates a lease row's expiry against its own clock, never a caller-supplied instant.
-  *A-store*
+  *A-store#coordination-probed-compare*
 - `fence-advances` — Each acquisition of a lease row increments its fence, and release keeps the fence, so the fence never repeats for a key.
-  *A-store*
+  *A-store#coordination-probed-compare*
 - `fenced-commit` — A commit under a lease is a conditional write predicated on the holder's fence; a predicate matching nothing is {{store.lease.stale-fence}}.
-  *A-store*
+  *A-store#coordination-probed-compare*
 - `cursor-cas` — A cursor compare-and-swap is one conditional update predicated on the stored version, read back by its affected-row count.
-  *A-store*
+  *A-store#store-s-catalogs*
 - `cadence-lease-ttl` — The catalog grants a cadence lease for 90 s.
-  *A-store*
+  *A-store#coordination-probed-compare*
 - `cadence-lease-renewal` — The reconciler renews a cadence lease every 30 s while its applied document schedules a dispatchable unit.
-  *A-store*
+  *A-store#coordination-probed-compare*
 - `cadence-fallback` — A deployment's fallback cron fires only after taking the cadence lease itself, so one fire holds the current fence.
-  *A-store*
+  *A-store#coordination-probed-compare*
 - `catalog-port` — Engine code accesses catalog backends through the `Catalog` trait without naming a backend. `contextful-cli` selects the backend through dependency injection.
-  *A-store*
+  *A-store#store-s-catalogs*
 - `backends` — Single-node self-hosting uses a local catalog file. Clusters use Postgres through `pg-catalog`. Cloudflare execution uses D1 through `d1-catalog`.
-  *A-store, A-topology#cloudflare-d1*
+  *A-store#store-s-catalogs, A-topology#cloudflare-d1*
 - `catalog-url` — With `pg-catalog`, `CONTEXTFUL_CATALOG_URL` selects the named Postgres catalog instead of the local file. Without `pg-catalog`, setting this variable raises {{topology.package.capability-absent}}.
   *because a daemon falling back to its own file while its peers share the database holds leases no peer sees*
 - `postgres-transport` — Beyond loopback or Unix sockets, PostgreSQL requires TLS with WebPKI roots and hostname verification. Disabling TLS there raises `DatabaseTransportUnprotected` before DNS resolution. Preferred TLS mode permits no plaintext fallback there.
@@ -374,7 +374,7 @@ Conditional metadata updates, writer leases and the databases that store coordin
 - `postgres-verify-modes` — `sslmode=verify-ca` and `sslmode=verify-full` parse and require TLS on every host, verifying the server's chain and hostname as {{topology.coordinate.postgres-transport}} does.
 - `postgres-system-roots` — `sslrootcert=system` selects the WebPKI roots of {{topology.coordinate.postgres-transport}}, as libpq's `system` value does, and reads no file.
 - `weak-backend` — A catalog backend whose conditional update is not linearizable refuses at open with {{surface.apply.weak-conditional-backend}}.
-  *A-store*
+  *A-store#coordination-probed-compare*
 - `cluster-availability` — Cluster availability is the shared database's availability. The engine adds no replication and no failover protocol between daemons.
 - `air-gap` — Single-node and edge deployments reach no process outside themselves for coordination, and run air-gapped with only their sources reachable.
 - `no-clustered-catalog` — Clustered availability behind the `Catalog` port comes from Postgres alone; the tree ships no self-contained clustered catalog.
