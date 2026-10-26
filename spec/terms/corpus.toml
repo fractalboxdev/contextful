@@ -93,28 +93,28 @@ corpus-guide-pointer-words = { clause = "corpus.guide.pointer-density", value = 
 registry-committed-sites = 3
 anatomy-long-lists = 15
 clause-unowned = 98
-why-unscoped = 749
+why-unscoped = 0
 
 [ceiling.contract-words]
-assurance = 10082
+assurance = 10169
 authority = 7792
-connector = 11054
-corpus = 4525
-disclosure = 5268
-read = 9478
-run = 19110
-store = 10181
-surface = 6422
+connector = 11055
+corpus = 4526
+disclosure = 5293
+read = 9504
+run = 19090
+store = 10142
+surface = 6428
 topology = 2646
 
 [ceiling.adr-words]
-A-assurance = 5912
+A-assurance = 5726
 A-authority = 4473
 A-connector = 3600
 A-corpus = 383
-A-disclosure = 4053
-A-read = 5491
+A-disclosure = 3893
+A-read = 5189
 A-run = 8375
-A-store = 6979
+A-store = 6984
 A-surface = 3373
 A-topology = 2460

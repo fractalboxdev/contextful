@@ -52,6 +52,7 @@ ReferenceModelDrift              = { clause = "assurance.differential-test.disag
 CounterexampleDiscarded          = { clause = "assurance.differential-test.discarded-counterexample", gloss = "A run reported a disagreement and wrote no corpus entry." }
 CapabilityDuplicated             = { clause = "assurance.structure-tree.duplicated-capability", gloss = "A second implementation of an engine capability, or a hand-written copy of an engine constant." }
 CapabilityHomeUnresolved         = { clause = "assurance.structure-tree.capability-registry", gloss = "A capability registry entry resolving to no home or symbol in the tree." }
+BoundConstantDrift               = { clause = "assurance.structure-tree.bound-constant", gloss = "A bound constant whose value differs from its registry entry, or that its named file does not define." }
 MirrorUnresolved                 = { clause = "assurance.structure-tree.mirror-unresolved", gloss = "A mirrors annotation naming no clause of the lock file." }
 ShellCheckFailed                 = { clause = "assurance.automate.unchecked-shell", gloss = "A shell file in the tree that the shell linter rejects." }
 VacuousAssertion                 = { clause = "assurance.test.vacuous-exclusion", gloss = "An exclusion assertion evaluated over an empty collection." }
@@ -100,7 +101,7 @@ TagGateFailed                    = { clause = "assurance.release.gate-failed", g
 ReleaseTagVersionMismatch        = { clause = "assurance.release.release-tag-version", gloss = "A release build over a version tag that differs from the workspace package version." }
 
 [limit]
-assurance-d1-admission-lease     = { clause = "assurance.consumer.d1-admission", value = 120, unit = "s", basis = "chosen", gloss = "Life of a suite's D1 admission lease past its last renewal." }
+assurance-d1-admission-lease     = { clause = "assurance.consumer.d1-admission", value = 120, unit = "s", basis = "chosen", gloss = "Life of a suite's D1 admission lease past its last renewal.", const = "crates/acceptance/src/conformance/remote.rs::ADMISSION_TTL_SECS" }
 assurance-formal-build-time      = { clause = "assurance.model.build-cost", value = 60, unit = "s", basis = "chosen", gloss = "Cold elaboration of the Lean package." }
 assurance-formal-build-artifacts = { clause = "assurance.model.build-cost", value = 2048, unit = "KiB", basis = "chosen", gloss = "Artifacts a full elaboration writes." }
 assurance-assumption-allowlist        = { clause = "assurance.audit-assumptions.allowlist", value = 2, unit = "entries", basis = "chosen", gloss = "Assumptions a required constant's footprint may reach." }
@@ -111,9 +112,9 @@ assurance-shell-lines            = { clause = "assurance.automate.typed-subcomma
 assurance-container-memory       = { clause = "assurance.gate.container", value = 12, unit = "GiB", basis = "chosen", gloss = "Memory available to the gate container." }
 assurance-container-wall-clock   = { clause = "assurance.gate.container", value = 45, unit = "min", basis = "chosen", gloss = "Wall clock available to one gate stage, the sandbox execution cap." }
 assurance-container-disk         = { clause = "assurance.gate.container", value = 18, unit = "GiB", basis = "chosen", gloss = "Usable disk available to the gate container." }
-assurance-cli-shard-wall-clock   = { clause = "assurance.gate.cli-shard-map", value = 9, unit = "min", basis = "chosen", gloss = "Estimated test wall clock of one CLI shard in the gate container, its cold compile excluded." }
+assurance-cli-shard-wall-clock   = { clause = "assurance.gate.cli-shard-map", value = 9, unit = "min", basis = "chosen", gloss = "Estimated test wall clock of one CLI shard in the gate container, its cold compile excluded.", const = "tools/ci/src/shards.rs::BUDGET_SECS" }
 assurance-job-memory             = { clause = "assurance.gate.parallel-jobs", value = 3, unit = "GiB", basis = "chosen", gloss = "Memory budgeted per parallel build job." }
-assurance-stage-free-disk        = { clause = "assurance.gate.free-disk", value = 2, unit = "GiB", basis = "chosen", gloss = "Free disk a stage needs before it begins work." }
+assurance-stage-free-disk        = { clause = "assurance.gate.free-disk", value = 2, unit = "GiB", basis = "chosen", gloss = "Free disk a stage needs before it begins work.", const = "tools/ci/src/main.rs::STAGE_FREE_DISK_KIB" }
 assurance-edge-compressed        = { clause = "assurance.gate.edge-budget", value = 50, unit = "MiB", basis = "chosen", gloss = "Compressed edge-profile artifact." }
 assurance-edge-resident          = { clause = "assurance.gate.edge-budget", value = 60, unit = "MiB", basis = "chosen", gloss = "Idle resident set of the edge profile." }
 assurance-full-compressed        = { clause = "assurance.gate.full-budget", value = 150, unit = "MiB", basis = "chosen", gloss = "Compressed full-profile artifact." }
@@ -130,7 +131,7 @@ assurance-gated-mean-cases       = { clause = "assurance.baseline.unresolvable-p
 assurance-interval-level         = { clause = "assurance.baseline.interval", value = 95, unit = "percent", basis = "chosen", gloss = "Confidence level of a judged figure's interval." }
 assurance-bootstrap-resamples    = { clause = "assurance.baseline.interval", value = 1000, unit = "resamples", basis = "chosen", gloss = "Bootstrap resamples behind a judged figure's interval." }
 assurance-forecast-coverage      = { clause = "assurance.forecast.coverage-floor", value = 95, unit = "percent", basis = "chosen", gloss = "Share of a round's cases a forecaster answers to be ranked." }
-assurance-test-first-base-run    = { clause = "assurance.test.base-run-bound", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock one test-first execution against the base runs for, its build excluded." }
+assurance-test-first-base-run    = { clause = "assurance.test.base-run-bound", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock one test-first execution against the base runs for, its build excluded.", const = "tools/ci/src/main.rs::BASE_RUN_BOUND_SECS" }
 assurance-timing-iterations      = { clause = "assurance.measure.timing-iterations", value = 200, unit = "repeats", basis = "chosen", gloss = "Warm repeats per timed batch." }
 assurance-timing-batches         = { clause = "assurance.measure.timing-batches", value = 5, unit = "repeats", basis = "chosen", gloss = "Batches behind a timed figure." }
 assurance-trend-band             = { clause = "assurance.measure.trend-band", value = 25, unit = "percent", basis = "chosen", gloss = "Worsening past which a trend figure is annotated." }

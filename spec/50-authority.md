@@ -171,9 +171,9 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
 - `row-ceiling` — A read's row ceiling is the least of the grant's, the request's, the template's, each touched table's published ceiling and {{read.respond.face-ceiling}}; an undeclared component imposes none, and the face ceiling is always declared.
   *A-authority#query-templates*
 - `duration-ceiling` — A statement's `max_duration_ms` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.
-  *A-read*
+  *A-read#statement-owns-deadline*
 - `byte-ceiling` — A response's `max_response_bytes` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.
-  *A-read*
+  *A-read#statement-owns-deadline*
 - `horizon` — A grant may carry `horizon`, an instant bounding the availability time and `since` of every read its holder makes, under {{read.horizon.inherited-bound}} and {{read.horizon.exceeds-horizon}}; an absent horizon leaves availability unbounded.
   *A-authority#horizon*
 - `aggregate` — An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.
