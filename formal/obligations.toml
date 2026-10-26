@@ -6,4 +6,6 @@ clauses = [
     "assurance.prove.restriction-preservation",
     "connector.widen.host-inclusion",
     "connector.widen.host-witness",
+    "store.lease.pointer-fence",
+    "store.lease.stale-fence",
 ]
