@@ -40,7 +40,7 @@ pub fn compare(c: &Corpus, live: &Live) -> Option<Finding> {
 
 /// Every ratchet's live count.
 pub fn all(c: &Corpus) -> Vec<Live> {
-    let mut out = vec![crate::drift::committed_sites(c), crate::checks::long_lists(c), crate::size::unowned_live(c)];
+    let mut out = vec![crate::drift::committed_sites(c), crate::checks::long_lists(c), crate::size::unowned_live(c), crate::records::unscoped_live(c)];
     out.extend(crate::size::contract_words(c));
     out.extend(crate::size::adr_words(c));
     out

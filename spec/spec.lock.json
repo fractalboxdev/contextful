@@ -138,7 +138,7 @@
       "operation": "anatomy",
       "subject": "word-ceilings",
       "kind": "refusal",
-      "statement": "The `contract-words` ceilings count each contract's statement, Why and lede words, and the `adr-words` ceilings each contract ADR's words outside fences and table rules; a count off its ceiling raises `SpecWordCeiling`.",
+      "statement": "The `contract-words` ceilings count each contract's statement, Why and lede words, and the `adr-words` ceilings each contract ADR's words outside fences, table rules and section slugs; a count off its ceiling raises `SpecWordCeiling`.",
       "why": "because the number of clauses, not their length, drives the corpus's size, and a recorded total makes each addition visible in review",
       "file": "spec/00-corpus.md",
       "line": 75
@@ -369,7 +369,7 @@
       "operation": "rationale",
       "subject": "why-cell",
       "kind": "limit",
-      "statement": "A clause's Why is absent, one or more record ids such as `P3` or `A-store`, or `because` followed by at most 30 words stating the deciding criterion. A refusal carries a Why.",
+      "statement": "A clause's Why is absent, one or more record ids such as `P3`, `A-store` or `A-topology#commit-lock`, or `because` followed by at most 30 words stating the deciding criterion. A refusal carries a Why.",
       "why": "P8",
       "file": "spec/00-corpus.md",
       "line": 145
@@ -402,7 +402,7 @@
       "operation": "rationale",
       "subject": "contract-adr",
       "kind": "limit",
-      "statement": "A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <decision>` section per decision, each holding its options table in at most 250 words.",
+      "statement": "A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <slug> — <decision>` section per decision, its slug unique in the file, each holding its options table in at most 250 words.",
       "why": "because one file per contract puts every decision beside the clauses it governs, and a fresh corpus has no history to keep apart",
       "file": "spec/00-corpus.md",
       "line": 151
@@ -435,10 +435,43 @@
       "operation": "rationale",
       "subject": "orphan-record",
       "kind": "refusal",
-      "statement": "A record no Why cites, a Why naming no record, and a record breaking its anatomy raise `SpecRecord`.",
+      "statement": "A record no Why cites, a Why naming no record or section, a record breaking its anatomy, and a section below {{corpus.rationale.record-threshold}} in an ADR every citation of which names a section raise `SpecRecord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
       "line": 157
+    },
+    {
+      "id": "corpus.rationale.why-scoped",
+      "contract": "corpus",
+      "operation": "rationale",
+      "subject": "why-scoped",
+      "kind": "refusal",
+      "statement": "A Why citing a contract ADR names its section as `A-<contract>#<slug>`. Bare `A-<contract>` citations count toward the `why-unscoped` ceiling; past it, each raises `SpecWhyUnscoped`.",
+      "why": "because a slug cites the one decision a clause rests on, and a whole-file citation hands the reader every decision of the contract",
+      "file": "spec/00-corpus.md",
+      "line": 159
+    },
+    {
+      "id": "corpus.rationale.why-migrate",
+      "contract": "corpus",
+      "operation": "rationale",
+      "subject": "why-migrate",
+      "kind": "behavior",
+      "statement": "`contextful-spec why-migrate <A-id>` rewrites each bare citation of that ADR to the one section naming the clause by id, else by operation, and prints each citation without a single candidate, per contract.",
+      "why": "because a rewrite the checker cannot justify from the text belongs to a reviewer",
+      "file": "spec/00-corpus.md",
+      "line": 161
+    },
+    {
+      "id": "corpus.rationale.cited-by",
+      "contract": "corpus",
+      "operation": "rationale",
+      "subject": "cited-by",
+      "kind": "behavior",
+      "statement": "`contextful-spec state` lists each contract ADR section with the clauses citing it in its contract's card, and `extract` records the same lists in the lock file.",
+      "why": "because the lists derive from Why lines, so no hand-written list repeats them",
+      "file": "spec/00-corpus.md",
+      "line": 163
     },
     {
       "id": "corpus.state.status-is-computed",
@@ -449,7 +482,7 @@
       "statement": "`spec/status.md` is the sole statement of which clauses the tree demonstrates. No authored file says whether something is built.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 164
+      "line": 170
     },
     {
       "id": "corpus.state.pin",
@@ -460,7 +493,7 @@
       "statement": "`spec/pins.toml` maps a clause id to one artifact: a `test` function path, a `theorem` constant under `formal/` or an `item` path. A refusal or a limit takes a test or a theorem.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 166
+      "line": 172
     },
     {
       "id": "corpus.state.verdict",
@@ -471,7 +504,7 @@
       "statement": "An unpinned clause computes `committed`; a pinned clause computes `performed` when its Rust, Lean or {{corpus.state.typescript-tag-pin}} artifact qualifies, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 168
+      "line": 174
     },
     {
       "id": "corpus.state.tag-pin",
@@ -482,7 +515,7 @@
       "statement": "A line `// spec: <id>@<rev>` among the comments and attributes above a test function under `crates/` or `tools/` pins clause `<id>` to that test; `<rev>` is the first 8 hex digits of the statement's SHA-256.",
       "why": "because a pin written beside its test travels with every move and rename, and the digest records which wording the test demonstrates",
       "file": "spec/00-corpus.md",
-      "line": 170
+      "line": 176
     },
     {
       "id": "corpus.state.typescript-tag-pin",
@@ -493,7 +526,7 @@
       "statement": "A `// spec: <id>@<rev>` line above a uniquely named `node:test` call under a direct TypeScript surface pins its clause when the callback contains a recognizable assertion call.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 172
+      "line": 178
     },
     {
       "id": "corpus.state.typescript-unfinished",
@@ -504,7 +537,7 @@
       "statement": "A pinned TypeScript test using `skip`, `todo` or `only`, lacking an assertion, placing its first assertion after a nested arrow, holding `if (false)` or a placeholder, or shadowing `node:test` computes `broken`.",
       "why": "because a test that cannot demonstrate an assertion demonstrates no clause",
       "file": "spec/00-corpus.md",
-      "line": 174
+      "line": 180
     },
     {
       "id": "corpus.state.lean-tag",
@@ -515,7 +548,7 @@
       "statement": "A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}.",
       "why": "because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale",
       "file": "spec/00-corpus.md",
-      "line": 176
+      "line": 182
     },
     {
       "id": "corpus.state.theorem-beside-test",
@@ -526,7 +559,7 @@
       "statement": "A clause carries at most one theorem pin and one test pin, and computes `performed` when both perform: the theorem proves the model, the test ties the model to the code.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 178
+      "line": 184
     },
     {
       "id": "corpus.state.stale-pin",
@@ -537,7 +570,7 @@
       "statement": "A tag whose `<rev>` differs from the digest of its clause's current statement raises `SpecStalePin`, and its clause computes `broken`.",
       "why": "because a reworded clause no longer says what its test was written to demonstrate",
       "file": "spec/00-corpus.md",
-      "line": 180
+      "line": 186
     },
     {
       "id": "corpus.state.unfinished-test",
@@ -548,7 +581,7 @@
       "statement": "A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.",
       "why": "because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption",
       "file": "spec/00-corpus.md",
-      "line": 182
+      "line": 188
     },
     {
       "id": "corpus.state.scaffold",
@@ -559,7 +592,7 @@
       "statement": "`contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 184
+      "line": 190
     },
     {
       "id": "corpus.state.scaffold-lean",
@@ -570,7 +603,7 @@
       "statement": "`contextful-spec scaffold <contract>.<operation> --lean <file>` appends one tagged theorem per clause of the operation, its statement the docstring and its proposition and proof `sorry`, and rewrites no existing theorem.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 185
+      "line": 191
     },
     {
       "id": "corpus.state.coverage-floor",
@@ -581,7 +614,7 @@
       "statement": "`spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.",
       "why": "because deleting a failing pin must not read as progress",
       "file": "spec/00-corpus.md",
-      "line": 186
+      "line": 192
     },
     {
       "id": "corpus.state.bad-pin",
@@ -592,7 +625,7 @@
       "statement": "A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken pin, and one clause pinned to two tests or two theorems raise `SpecBrokenPin`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 188
+      "line": 194
     },
     {
       "id": "corpus.state.roadmap",
@@ -603,7 +636,7 @@
       "statement": "`spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 190
+      "line": 196
     },
     {
       "id": "corpus.state.acceptance",
@@ -614,7 +647,7 @@
       "statement": "A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored or holding a body line that opens with `todo!`, and `passing` otherwise.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 192
+      "line": 198
     },
     {
       "id": "corpus.state.closed",
@@ -625,7 +658,7 @@
       "statement": "A milestone computes `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause, and `open` otherwise.",
       "why": "because one passing acceptance test drives one path through a milestone, and an operation without a performed clause demonstrates nothing",
       "file": "spec/00-corpus.md",
-      "line": 194
+      "line": 200
     },
     {
       "id": "corpus.state.acceptance-first",
@@ -636,7 +669,7 @@
       "statement": "A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 196
+      "line": 202
     },
     {
       "id": "corpus.state.unowned",
@@ -647,7 +680,7 @@
       "statement": "An unpinned clause outside every operation an open milestone names, and named in backticks by no `unsettled:` line of its operation, is unowned; unowned clauses past the `clause-unowned` ceiling raise `SpecClauseUnowned`.",
       "why": "because a clause no test pins, no milestone schedules and no open question names is a promise nobody keeps",
       "file": "spec/00-corpus.md",
-      "line": 198
+      "line": 204
     },
     {
       "id": "corpus.state.deferred-depth",
@@ -658,7 +691,7 @@
       "statement": "A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.",
       "why": "because an unopened milestone fixes what it refuses and bounds, and its behavior is written against the code that opens it",
       "file": "spec/00-corpus.md",
-      "line": 200
+      "line": 206
     },
     {
       "id": "corpus.render.generated",
@@ -669,7 +702,7 @@
       "statement": "`spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json` are regenerated by `contextful-spec state` and `contextful-spec extract`. A committed copy differing from regeneration raises `SpecStaleRender`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 207
+      "line": 213
     },
     {
       "id": "corpus.render.lock-file",
@@ -680,7 +713,7 @@
       "statement": "The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry and the pointer graph.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 209
+      "line": 215
     },
     {
       "id": "corpus.render.card",
@@ -691,7 +724,7 @@
       "statement": "`contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.",
       "why": "A-corpus",
       "file": "spec/00-corpus.md",
-      "line": 211
+      "line": 217
     },
     {
       "id": "corpus.render.dated-prose",
@@ -702,7 +735,7 @@
       "statement": "The words `planned`, `not yet`, `currently`, `today`, `shipped`, `implemented`, `previously`, `used to`, `legacy`, `TODO`, `FIXME` and `WIP`, and an ISO date, raise `SpecDatedProse` in any authored file.",
       "why": "because build state is computed, and a dated sentence is stale the day it lands",
       "file": "spec/00-corpus.md",
-      "line": 213
+      "line": 219
     },
     {
       "id": "corpus.render.counterfactual",
@@ -713,7 +746,7 @@
       "statement": "The words `will`, `would` and `shall` raise `SpecCounterfactual` in a contract file or a guide.",
       "why": "because a contract states present behavior, and a record's Options is where a path not taken is described",
       "file": "spec/00-corpus.md",
-      "line": 215
+      "line": 221
     },
     {
       "id": "corpus.render.banned-vocabulary",
@@ -724,7 +757,7 @@
       "statement": "The nouns `seam`, `load-bearing`, `wedge`, `rung`, `land-grab` and an unbackticked `axiom`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 217
+      "line": 223
     },
     {
       "id": "corpus.render.local-path",
@@ -735,7 +768,7 @@
       "statement": "A path beginning `/Users/`, `/home/`, `$HOME/` or `~/` raises `SpecLocalPath`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 219
+      "line": 225
     },
     {
       "id": "corpus.diagram.fence",
@@ -746,7 +779,7 @@
       "statement": "A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 225
+      "line": 231
     },
     {
       "id": "corpus.diagram.boundary",
@@ -757,7 +790,7 @@
       "statement": "A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 227
+      "line": 233
     },
     {
       "id": "corpus.diagram.node",
@@ -768,7 +801,7 @@
       "statement": "A flowchart node names one thing in at most 5 words: its label holds no `·`, `<br/>`, `,`, `;`, `: ` or error identifier, is no operation name, and sets no article second. A breach raises `SpecDiagramNode`.",
       "why": "because a box of bundled attributes or a verb hides the things and what flows between them; operations, limits and errors ride the edges",
       "file": "spec/00-corpus.md",
-      "line": 229
+      "line": 235
     },
     {
       "id": "corpus.diagram.shape",
@@ -779,7 +812,7 @@
       "statement": "A node labelled with a snake_case identifier or a phrase ending `table`, `store`, `log` or `queue` is a cylinder `[( )]`, and a label ending `?` is a decision `{ }`. A breach raises `SpecDiagramShape`.",
       "why": "because one shape meaning one kind lets a reader tell data from the parts acting on it at a glance",
       "file": "spec/00-corpus.md",
-      "line": 231
+      "line": 237
     },
     {
       "id": "corpus.diagram.edge",
@@ -790,7 +823,7 @@
       "statement": "A flowchart edge points one way; its label holds at most 5 words and no `·`, and an edge touching no decision node carries one. A breach raises `SpecDiagramEdge`.",
       "why": "because an unlabelled line says two things relate without saying how, and a two-way line hides which side acts",
       "file": "spec/00-corpus.md",
-      "line": 233
+      "line": 239
     },
     {
       "id": "corpus.diagram.decision",
@@ -801,7 +834,7 @@
       "statement": "A decision node asks a question or names a condition in at most 8 words and no error identifier, has an incoming edge, and has two or more outgoing edges each labelled with a distinct outcome. A breach raises `SpecDiagramDecision`.",
       "why": "because a branch without a guard on each exit leaves the reader to guess which path a case takes",
       "file": "spec/00-corpus.md",
-      "line": 235
+      "line": 241
     },
     {
       "id": "corpus.diagram.branch",
@@ -812,7 +845,7 @@
       "statement": "A non-decision node with an outgoing edge labelled `yes` or `no`, an outgoing error identifier beside another exit, or two exits opening `if`, `when`, `over`, `under` or `else` raises `SpecDiagramBranch`; a branch is a decision node.",
       "why": "because a condition hidden in edge labels off a box reads as parallel flow",
       "file": "spec/00-corpus.md",
-      "line": 237
+      "line": 243
     },
     {
       "id": "corpus.diagram.connected",
@@ -823,7 +856,7 @@
       "statement": "Every flowchart node, or a subgraph enclosing it, is an edge endpoint. A breach raises `SpecDiagramOrphan`.",
       "why": "because an unconnected element asserts nothing about the system",
       "file": "spec/00-corpus.md",
-      "line": 239
+      "line": 245
     },
     {
       "id": "corpus.diagram.unique-label",
@@ -834,7 +867,7 @@
       "statement": "No two nodes of one flowchart carry the same label; a second mention reuses the node id. A breach raises `SpecDiagramDuplicate`.",
       "why": "because one label naming two nodes leaves the reader to decide whether they are one thing",
       "file": "spec/00-corpus.md",
-      "line": 241
+      "line": 247
     },
     {
       "id": "corpus.diagram.layout",
@@ -845,7 +878,7 @@
       "statement": "A flowchart header declares `LR`, `TB` or `TD`, no subgraph declares `direction`, subgraphs nest at most 2 levels, and the chart holds at most 20 nodes and 25 edges. A breach raises `SpecDiagramLayout`.",
       "why": "because one reading direction keeps the flow followable, and a chart past that size or depth is two diagrams",
       "file": "spec/00-corpus.md",
-      "line": 243
+      "line": 249
     },
     {
       "id": "corpus.diagram.sequence",
@@ -856,7 +889,7 @@
       "statement": "A sequence diagram declares each participant it messages and messages each it declares, and holds at most 6 participants, 15 messages, 2 messages from a participant to itself and fragments nested 2 levels. A breach raises `SpecDiagramSequence`.",
       "why": "because a sequence diagram shows one scenario's interactions, and branching logic past that belongs in a flowchart",
       "file": "spec/00-corpus.md",
-      "line": 245
+      "line": 251
     },
     {
       "id": "corpus.diagram.message",
@@ -867,7 +900,7 @@
       "statement": "A sequence message label holds at most 8 words and a note at most 12 words. A breach raises `SpecDiagramMessage`.",
       "why": "because a message names one call; its parameters and bounds belong in clauses",
       "file": "spec/00-corpus.md",
-      "line": 247
+      "line": 253
     },
     {
       "id": "corpus.diagram.state",
@@ -878,7 +911,7 @@
       "statement": "A state diagram has one top-level `[*]` start reaching every state, every state has an outgoing transition, `[*]` counting as a target, and a transition label holds at most 6 words. A breach raises `SpecDiagramState`.",
       "why": "because an unreachable or dead-end state is a lifecycle the system cannot run",
       "file": "spec/00-corpus.md",
-      "line": 249
+      "line": 255
     },
     {
       "id": "corpus.targets.file",
@@ -887,9 +920,9 @@
       "subject": "file",
       "kind": "behavior",
       "statement": "Each deployment provider's target profile is `spec/targets/<provider>.toml`: named shapes, exactly one marked default, each with a kind, the profiles it hosts, an optional per-invocation wall-clock cap, its exclusions and the primitive filling each role.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/00-corpus.md",
-      "line": 256
+      "line": 262
     },
     {
       "id": "corpus.targets.roles",
@@ -900,7 +933,7 @@
       "statement": "A shape fills eight roles — cron tick, reconciler, durable orchestrator, single-writer catalog, object store, hot-path query face, heavy compute and secrets — and may fill a realtime run projection and a queue.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 258
+      "line": 264
     },
     {
       "id": "corpus.targets.primitives",
@@ -911,7 +944,7 @@
       "statement": "A target file lists the primitives its provider offers, and each shape lists the primitives it uses; {{topology.deploy.unsupported-shape}} refuses a shape using one outside that list.",
       "why": "because a shape's roles name products, and only a primitive list makes a missing one checkable",
       "file": "spec/00-corpus.md",
-      "line": 259
+      "line": 265
     },
     {
       "id": "corpus.targets.incomplete",
@@ -922,7 +955,7 @@
       "statement": "A shape leaving a role unfilled, or a target file marking other than one default shape, raises `SpecTargetIncomplete`, naming the provider, the shape and the role.",
       "why": "because an unfilled role surfaces only when a deploy reaches it, on someone else's account",
       "file": "spec/00-corpus.md",
-      "line": 261
+      "line": 267
     },
     {
       "id": "corpus.targets.cap-unrecorded",
@@ -933,7 +966,7 @@
       "statement": "A shape whose cap sits at or below the {{topology.deploy.wall-clock-cap}} bound and whose exclusions omit `first-time-backfill` or `component-connector` raises `SpecTargetCapUnrecorded`.",
       "why": "because the exclusion is the difference between a refused dispatch and a job killed mid-run",
       "file": "spec/00-corpus.md",
-      "line": 263
+      "line": 269
     },
     {
       "id": "corpus.targets.function-profile",
@@ -944,7 +977,7 @@
       "statement": "A function-class shape listing a profile other than `edge` raises `SpecTargetFunctionProfile`, naming the provider and the shape.",
       "why": "because {{topology.package.edge-eligibility}} admits the edge profile alone on a function-class target",
       "file": "spec/00-corpus.md",
-      "line": 265
+      "line": 271
     },
     {
       "id": "corpus.targets.page",
@@ -955,7 +988,7 @@
       "statement": "`contextful-spec state` renders `spec/targets.md` from the target files: per provider, a role table across its shapes and a diagram of its default shape.",
       "why": "because a diagram drawn by hand beside the data it shows drifts from it",
       "file": "spec/00-corpus.md",
-      "line": 267
+      "line": 273
     },
     {
       "id": "corpus.guide.file",
@@ -966,7 +999,7 @@
       "statement": "Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose of at most 700 words outside diagrams.",
       "why": "A-corpus",
       "file": "spec/00-corpus.md",
-      "line": 274
+      "line": 280
     },
     {
       "id": "corpus.guide.non-normative",
@@ -977,7 +1010,7 @@
       "statement": "A guide holds no clause item and names no registered error; it reaches a rule by `{{id}}`. No contract file links a guide.",
       "why": "because a rule restated in teaching prose is a second home that drifts from the first",
       "file": "spec/00-corpus.md",
-      "line": 276
+      "line": 282
     },
     {
       "id": "corpus.guide.bad-guide",
@@ -988,7 +1021,7 @@
       "statement": "A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 278
+      "line": 284
     },
     {
       "id": "topology.compose.workspace",
@@ -1030,7 +1063,7 @@
       "subject": "three-crossings",
       "kind": "behavior",
       "statement": "Execution, storage and query code share exactly three contracts: the connector interface world, columnar-part-plus-manifest layout and capability-token format. No general internal API connects these components.",
-      "why": "A-topology",
+      "why": "A-topology#public-surfaces",
       "file": "spec/01-topology.md",
       "line": 32
     },
@@ -1052,7 +1085,7 @@
       "subject": "undeclared-crossing",
       "kind": "behavior",
       "statement": "An execution crate depends on storage or query crates only through crates implementing the three shared contracts. {{assurance.gate.crate-graph}} checks each dependency.",
-      "why": "A-topology",
+      "why": "A-topology#public-surfaces",
       "file": "spec/01-topology.md",
       "line": 35
     },
@@ -1085,7 +1118,7 @@
       "subject": "mediation",
       "kind": "behavior",
       "statement": "Each function returning or releasing stored rows requires an access-control admission value ({{assurance.gate.row-token}}). A call omitting that value fails to compile. Access controls have no disable option.",
-      "why": "A-topology",
+      "why": "A-topology#enforcement-stack",
       "file": "spec/01-topology.md",
       "line": 39
     },
@@ -1129,7 +1162,7 @@
       "subject": "queue-extension",
       "kind": "behavior",
       "statement": "With a `queue` role, the target carries `receive` batches, object-arrival keys and post-commit wake-ups through the `Queue` port. Without that role, the target uses the local spool. Only the engine writes the store.",
-      "why": "A-topology",
+      "why": "A-topology#queue-ingress",
       "file": "spec/01-topology.md",
       "line": 44
     },
@@ -1239,7 +1272,7 @@
       "subject": "inference-egress",
       "kind": "behavior",
       "statement": "Model access leaves the process through one operator-configured endpoint speaking OpenAI-compatible HTTP. The one provider-shaped step serializes a tool's parameter schema into the provider's envelope.",
-      "why": "A-topology",
+      "why": "A-topology#one-egress",
       "file": "spec/01-topology.md",
       "line": 62
     },
@@ -1250,7 +1283,7 @@
       "subject": "vendor-sdk",
       "kind": "refusal",
       "statement": "A model-vendor SDK or second outbound model path raises `VendorSdkLinked` in the dependency audit. The error names the crate and dependency.",
-      "why": "A-topology",
+      "why": "A-topology#one-egress",
       "file": "spec/01-topology.md",
       "line": 64
     },
@@ -1327,7 +1360,7 @@
       "subject": "domain-crate",
       "kind": "behavior",
       "statement": "`contextful-core` holds the pure domain types and the port traits every adapter implements, performs no I/O, and links into every profile.",
-      "why": "A-topology",
+      "why": "A-topology#domain-crate",
       "file": "spec/01-topology.md",
       "line": 79
     },
@@ -1338,7 +1371,7 @@
       "subject": "domain-impurity",
       "kind": "refusal",
       "statement": "An async runtime, component host, HTTP client or columnar-format implementation in `contextful-core` raises `DomainCrateImpurity`. The error names the dependency and enabling feature.",
-      "why": "A-topology",
+      "why": "A-topology#domain-crate",
       "file": "spec/01-topology.md",
       "line": 81
     },
@@ -1349,7 +1382,7 @@
       "subject": "dependency-direction",
       "kind": "refusal",
       "statement": "A dependency edge from `contextful-core` toward an adapter crate raises `TopologyDependencyInversion`, naming both crates and the manifest line.",
-      "why": "A-topology",
+      "why": "A-topology#domain-crate",
       "file": "spec/01-topology.md",
       "line": 83
     },
@@ -1360,7 +1393,7 @@
       "subject": "profile",
       "kind": "behavior",
       "statement": "Three profiles compile from the workspace, each a Cargo feature bundle selected at build time: `contextful-edge`, `contextful-full`, `contextful-control`. Each links the dependencies its role names and nothing else.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/01-topology.md",
       "line": 85
     },
@@ -1371,7 +1404,7 @@
       "subject": "fixed-at-build",
       "kind": "behavior",
       "statement": "No run-time detection widens a running binary into another profile's feature set. Build, release and automation tooling links into no profile.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/01-topology.md",
       "line": 87
     },
@@ -1382,7 +1415,7 @@
       "subject": "profile-leak",
       "kind": "refusal",
       "statement": "A dependency outside a profile's role raises `ProfileRoleLeak`, naming the profile and dependency path. Disallowed dependencies include component hosts, execution or evaluation in edge/control; SQL in control; build tooling in any profile.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/01-topology.md",
       "line": 89
     },
@@ -1393,7 +1426,7 @@
       "subject": "capability-absent",
       "kind": "refusal",
       "statement": "A subcommand requiring an unlinked capability raises `ProfileCapabilityAbsent`, naming the subcommand and profile. The command performs no action. A subcommand absent from every profile is a usage error.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/01-topology.md",
       "line": 91
     },
@@ -1448,7 +1481,7 @@
       "subject": "control-profile",
       "kind": "behavior",
       "statement": "`contextful-control` provides self-hosted team configuration and operator identity. Apply produces canonical TOML. This profile alone links the CRDT library.",
-      "why": "A-topology",
+      "why": "A-topology#control-crdt",
       "file": "spec/01-topology.md",
       "line": 97
     },
@@ -1459,7 +1492,7 @@
       "subject": "control-team-state",
       "kind": "behavior",
       "statement": "The control profile stores ingest source, model and access-policy configuration in one `loro` document. Replicas merge concurrent edits. Apply uses this document as the editable configuration.",
-      "why": "A-topology",
+      "why": "A-topology#control-crdt",
       "file": "spec/01-topology.md",
       "line": 99
     },
@@ -1492,7 +1525,7 @@
       "subject": "apply-home",
       "kind": "behavior",
       "statement": "`contextful-snapshot` is the one home of the snapshot directory {{surface.apply.local-claim}} claims into; `contextful-engine` and `contextful-control` both call it, and it links no run-path package.",
-      "why": "A-topology",
+      "why": "A-topology#control-crdt",
       "file": "spec/01-topology.md",
       "line": 105
     },
@@ -1503,7 +1536,7 @@
       "subject": "component-host",
       "kind": "behavior",
       "statement": "Builds that link a component host run component connectors: the full profile and container or worker deployments built from that profile.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/01-topology.md",
       "line": 107
     },
@@ -1514,7 +1547,7 @@
       "subject": "host-missing",
       "kind": "refusal",
       "statement": "Dispatching a component connector without a component host raises `ComponentHostMissing`, naming the connector and profile. No similarly named native source substitutes.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/01-topology.md",
       "line": 109
     },
@@ -1525,7 +1558,7 @@
       "subject": "crdt-leak",
       "kind": "refusal",
       "statement": "The CRDT library in the resolved dependency graph of the edge or full profile raises `ProfileDependencyLeak`, naming the profile and the path that pulled it. A daemon or replica reads materialized text.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/01-topology.md",
       "line": 111
     },
@@ -1624,7 +1657,7 @@
       "subject": "unsupported-shape",
       "kind": "refusal",
       "statement": "A target profile claiming a shape its provider does not provide raises `TargetShapeUnsupported`, naming the shape and the missing primitive.",
-      "why": "A-topology",
+      "why": "A-topology#deploy-observation",
       "file": "spec/01-topology.md",
       "line": 139
     },
@@ -1646,7 +1679,7 @@
       "subject": "parity",
       "kind": "limit",
       "statement": "One declaration produces byte-identical table parts on every control-plane target. The parity check compares each target's object-store parts with the reference parts after a 24 h soak.",
-      "why": "A-topology",
+      "why": "A-topology#deploy-observation",
       "file": "spec/01-topology.md",
       "line": 142
     },
@@ -1657,7 +1690,7 @@
       "subject": "parity-divergence",
       "kind": "refusal",
       "statement": "A byte difference from the reference output raises `ParityDivergence`, naming the target, the table and the first differing part.",
-      "why": "A-topology",
+      "why": "A-topology#deploy-observation",
       "file": "spec/01-topology.md",
       "line": 144
     },
@@ -1668,7 +1701,7 @@
       "subject": "posture-mismatch",
       "kind": "refusal",
       "statement": "An unreachable hostname or response outside its declared access policy raises `HostnamePostureMismatch`, naming the hostname, policy and observed response. `contextful-ci deploy probe` exits nonzero.",
-      "why": "A-topology",
+      "why": "A-topology#posture-probe",
       "file": "spec/01-topology.md",
       "line": 288
     },
@@ -1679,7 +1712,7 @@
       "subject": "probe-table",
       "kind": "refusal",
       "statement": "Before probing hostnames, the deploy tool compares descriptor and probe-table entries. An entry missing from either set raises `ProbeTableDrift`, naming the hostname and missing side.",
-      "why": "A-topology",
+      "why": "A-topology#posture-probe",
       "file": "spec/01-topology.md",
       "line": 290
     },
@@ -1866,7 +1899,7 @@
       "subject": "backends",
       "kind": "behavior",
       "statement": "Single-node self-hosting uses a local catalog file. Clusters use Postgres through `pg-catalog`. Cloudflare execution uses D1 through `d1-catalog`.",
-      "why": "A-store, A-topology",
+      "why": "A-store, A-topology#cloudflare-d1",
       "file": "spec/01-topology.md",
       "line": 364
     },
@@ -1987,7 +2020,7 @@
       "subject": "domain-neutral",
       "kind": "behavior",
       "statement": "The engine processes declared data, schemas, policies, time bounds and capabilities. Consumer configuration, connectors, components or explicitly selected evaluation profiles supply domain meanings, business rules and sector-specific metrics.",
-      "why": "A-topology",
+      "why": "A-topology#public-surfaces",
       "file": "spec/01-topology.md",
       "line": 426
     },
@@ -2959,7 +2992,7 @@
       "subject": "commit-seq",
       "kind": "behavior",
       "statement": "The engine injects non-null int64 `_commit_seq`, assigned above every value held by the table. A run committing after a read carries a value above every returned row, regardless of `_ingested_at`.",
-      "why": "A-topology",
+      "why": "A-topology#commit-lock",
       "file": "spec/10-store.md",
       "line": 246,
       "group": "commit"
@@ -2971,7 +3004,7 @@
       "subject": "commit-order",
       "kind": "behavior",
       "statement": "A commit publishes its manifest after every lower `_commit_seq` in the table publishes or ends landing. Readable runs therefore form a prefix of the table's commit sequence.",
-      "why": "A-topology",
+      "why": "A-topology#commit-lock",
       "file": "spec/10-store.md",
       "line": 248,
       "group": "commit"
@@ -2983,7 +3016,7 @@
       "subject": "commit-lock-span",
       "kind": "behavior",
       "statement": "A commit holds its table's commit lock while assigning `_commit_seq` and writing its manifest. The commit writes parts outside the lock, except when the table keeps vintage history.",
-      "why": "A-topology",
+      "why": "A-topology#commit-lock",
       "file": "spec/10-store.md",
       "line": 250,
       "group": "commit"
@@ -2995,7 +3028,7 @@
       "subject": "commit-wait",
       "kind": "refusal",
       "statement": "A commit waits at most 30 s for its table's commit lock or for a lower value's publication, then raises `StoreCommitLockTimeout`, a transient failure.",
-      "why": "A-topology",
+      "why": "A-topology#commit-lock",
       "file": "spec/10-store.md",
       "line": 252,
       "group": "commit"
@@ -3007,7 +3040,7 @@
       "subject": "commit-marker",
       "kind": "behavior",
       "statement": "A commit rewrites `data/.commit_seq` as JSON with `format_version` and `commit_seq`. Builds reading a bare integer refuse the table before writing a part. A newer major refuses under {{store.lay-out.format-newer}}.",
-      "why": "A-topology",
+      "why": "A-topology#commit-lock",
       "file": "spec/10-store.md",
       "line": 254,
       "group": "commit"
@@ -3019,7 +3052,7 @@
       "subject": "commit-seq-seed",
       "kind": "behavior",
       "statement": "A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot. A pulled store or store without a counter therefore reuses no value.",
-      "why": "A-topology",
+      "why": "A-topology#commit-lock",
       "file": "spec/10-store.md",
       "line": 256,
       "group": "commit"
@@ -4015,7 +4048,7 @@
       "subject": "redacted-index",
       "kind": "refusal",
       "statement": "An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.",
-      "why": "A-authority",
+      "why": "A-authority#redaction-no-copy",
       "file": "spec/10-store.md",
       "line": 463
     },
@@ -5866,7 +5899,7 @@
       "subject": "engine",
       "kind": "behavior",
       "statement": "Every profile serving reads links an embedded columnar SQL engine that reads Parquet with standard SQL. External processes read the same files without that embedded engine.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/20-read.md",
       "line": 67
     },
@@ -7442,7 +7475,7 @@
       "subject": "degradation-not-error",
       "kind": "behavior",
       "statement": "Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the {{read.retrieve.scored-text}}, recency breaking ties. The result differs in order and still answers.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/20-read.md",
       "line": 393
     },
@@ -7464,7 +7497,7 @@
       "subject": "caller-embedding",
       "kind": "behavior",
       "statement": "A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/20-read.md",
       "line": 396
     },
@@ -7904,7 +7937,7 @@
       "subject": "required-face",
       "kind": "refusal",
       "statement": "Before the first read, the server rejects a client's `require: [...]` with `RequiredFaceAbsent` for any unreported name. An engine reporting no set satisfies no requirement.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/20-read.md",
       "line": 499
     },
@@ -7915,7 +7948,7 @@
       "subject": "absent-read-backend",
       "kind": "refusal",
       "statement": "Without the embedded SQL engine linked, every read tool raises `ReadBackendAbsent` rather than answering from a narrower path.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/20-read.md",
       "line": 501
     },
@@ -9620,7 +9653,7 @@
       "subject": "unwired-capability",
       "kind": "refusal",
       "statement": "Requesting a capability absent from the running profile raises `CapabilityUnwired` at the first request, before any partial work.",
-      "why": "A-topology",
+      "why": "A-topology#build-profiles",
       "file": "spec/30-run.md",
       "line": 85
     },
@@ -9678,7 +9711,7 @@
       "subject": "redacting-source",
       "kind": "refusal",
       "statement": "A journaled source declaring removal without canonical prepared-recording admission raises `JournalRedactionConflict` before its first pull; a boolean removal assertion supplies no admission.",
-      "why": "A-authority",
+      "why": "A-authority#prepared-record",
       "file": "spec/30-run.md",
       "line": 96,
       "group": "pulls"
@@ -9690,7 +9723,7 @@
       "subject": "prepared-owner",
       "kind": "behavior",
       "statement": "Protected recording binds the plan, shape, canonical declarations, normalization and pepper identities into owner pins before source execution; a changed identity follows {{run.own.pinned-plan-changed}}.",
-      "why": "A-authority",
+      "why": "A-authority#prepared-record",
       "file": "spec/30-run.md",
       "line": 98,
       "group": "pulls"
@@ -9702,7 +9735,7 @@
       "subject": "prepared-replay",
       "kind": "behavior",
       "statement": "A protected journal hit admits the recorded rewritten payload against its canonical writer without repeating shaping, normalization or removal and without fetching the source again.",
-      "why": "A-authority",
+      "why": "A-authority#prepared-record",
       "file": "spec/30-run.md",
       "line": 100,
       "group": "pulls"
@@ -9810,7 +9843,7 @@
       "subject": "d1-profile",
       "kind": "behavior",
       "statement": "`CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1` selects D1 for catalog, journal, awakeables and export state through a private Worker outbound binding; R2 holds blob content and corpus objects.",
-      "why": "A-run",
+      "why": "A-run, A-topology#cloudflare-d1",
       "file": "spec/30-run.md",
       "line": 121,
       "group": "storage"
@@ -10134,7 +10167,7 @@
       "subject": "body-projection",
       "kind": "behavior",
       "statement": "A registered body's closed effect labels, declared roots, types, transforms and normalization bind its owner before input or effect execution; a caller-supplied projection differing from that registration refuses.",
-      "why": "A-authority",
+      "why": "A-authority#body-projection",
       "file": "spec/30-run.md",
       "line": 176,
       "group": "store-driven input"
@@ -11467,7 +11500,7 @@
       "subject": "body-parent",
       "kind": "behavior",
       "statement": "Prepared body outputs require the unchanged parent execution and current in-flight, unstopped attempt at admission, staging and commit; a stopped parent reaches {{run.cancel.abandoned-work}} independently of the output table's stop policy.",
-      "why": "A-authority",
+      "why": "A-authority#body-projection",
       "file": "spec/30-run.md",
       "line": 459
     },
@@ -13151,7 +13184,7 @@
       "subject": "recorded-body",
       "kind": "behavior",
       "statement": "Registered body results pass through the same guard before shaping and canonical preparation; the engine reports per-column counts once per fresh paid preparation, excluding counts from the recorded wire and replay.",
-      "why": "A-authority",
+      "why": "A-authority#body-projection",
       "file": "spec/31-pipeline.md",
       "line": 179
     },
@@ -13173,7 +13206,7 @@
       "subject": "unknown-destination",
       "kind": "refusal",
       "statement": "The local context store is the only destination, and synthesized artifacts write back through it; any other `destination` raises `PipelineUnknownDestination` at assembly, before any row moves.",
-      "why": "A-topology",
+      "why": "A-topology#one-egress",
       "file": "spec/31-pipeline.md",
       "line": 192
     },
@@ -13184,7 +13217,7 @@
       "subject": "no-host-arm",
       "kind": "behavior",
       "statement": "The destination world declares no host arm, so a guest supplies no destination.",
-      "why": "A-topology",
+      "why": "A-topology#one-egress",
       "file": "spec/31-pipeline.md",
       "line": 194
     },
@@ -13928,7 +13961,7 @@
       "subject": "export-block",
       "kind": "behavior",
       "statement": "An OTLP `[[export]]` block declares `name`, one landed `table`, an HTTP `endpoint`, `signal = \"logs\"` and optional `headers`; `contextful export run <name>` delivers every row its cursor has not passed.",
-      "why": "A-topology",
+      "why": "A-topology#queue-ingress",
       "file": "spec/31-pipeline.md",
       "line": 373
     },
@@ -13950,7 +13983,7 @@
       "subject": "post-commit-read",
       "kind": "behavior",
       "statement": "Export reads committed runs only, through the read face under the admitted credential, so its grants, row policy and masks hold; no landing waits on an export.",
-      "why": "A-topology",
+      "why": "A-topology#export-committed",
       "file": "spec/31-pipeline.md",
       "line": 377
     },
@@ -13961,7 +13994,7 @@
       "subject": "commit-order",
       "kind": "behavior",
       "statement": "Export reads rows past its cursor ordered by `_commit_seq`, then `_row_seq`. Export does not order by `_ingested_at`; {{store.reserve.commit-seq}} keeps late-committing runs eligible.",
-      "why": "A-topology",
+      "why": "A-topology#queue-ingress",
       "file": "spec/31-pipeline.md",
       "line": 379
     },
@@ -14005,7 +14038,7 @@
       "subject": "delivery",
       "kind": "behavior",
       "statement": "The exporter sends each batch as one OTLP/HTTP JSON `POST` through the mediated client. The allowlist contains only the endpoint host. Each header follows {{connector.resolve.hydration-is-just-in-time}}.",
-      "why": "A-topology",
+      "why": "A-topology#queue-ingress",
       "file": "spec/31-pipeline.md",
       "line": 387
     },
@@ -14093,7 +14126,7 @@
       "subject": "at-least-once",
       "kind": "behavior",
       "statement": "A run ending between a target's acknowledgement and the cursor commit resends that batch on the next run; a target deduplicates on `contextful.commit_seq` and `contextful.row_seq`.",
-      "why": "A-topology",
+      "why": "A-topology#queue-ingress",
       "file": "spec/31-pipeline.md",
       "line": 402
     },
@@ -15564,7 +15597,7 @@
       "subject": "journaled-pull",
       "kind": "refusal",
       "statement": "A derive pipeline configured to journal its pulls raises `DeriveJournaledPull`.",
-      "why": "A-authority",
+      "why": "A-authority#prepared-record",
       "file": "spec/32-derive.md",
       "line": 63
     },
@@ -16308,7 +16341,7 @@
       "subject": "unredacted-error",
       "kind": "refusal",
       "statement": "A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.",
-      "why": "A-authority",
+      "why": "A-authority#redaction-no-copy",
       "file": "spec/32-derive.md",
       "line": 258
     },
@@ -17417,7 +17450,7 @@
       "subject": "model-endpoint",
       "kind": "behavior",
       "statement": "Every model call resolves to one operator-configured OpenAI-compatible HTTP endpoint declared as a capability. The host owns the credential, rate limit and span; the component owns the prompt template and response schema.",
-      "why": "A-topology",
+      "why": "A-topology#one-egress",
       "file": "spec/40-connector.md",
       "line": 276
     },
@@ -17439,7 +17472,7 @@
       "subject": "vendor-sdk",
       "kind": "behavior",
       "statement": "The workspace rejects a model-vendor SDK in any Rust crate under {{topology.compose.vendor-sdk}}. Changing providers requires only a URL edit.",
-      "why": "A-topology",
+      "why": "A-topology#one-egress",
       "file": "spec/40-connector.md",
       "line": 280
     },
@@ -20759,7 +20792,7 @@
       "subject": "url-scrubbing",
       "kind": "behavior",
       "statement": "Before a URL enters an error message, log line or stored column, the host removes query, fragment and userinfo. Scheme, host, port and path remain.",
-      "why": "A-authority",
+      "why": "A-authority#redaction-no-copy",
       "file": "spec/41-secrets.md",
       "line": 237
     },
@@ -20781,7 +20814,7 @@
       "subject": "credential-in-a-url",
       "kind": "refusal",
       "statement": "A configured endpoint carrying userinfo raises `SecretCredentialInUrl` at validation, naming the source.",
-      "why": "A-authority",
+      "why": "A-authority#redaction-no-copy",
       "file": "spec/41-secrets.md",
       "line": 240
     },
@@ -21601,7 +21634,7 @@
       "subject": "subject-tuple",
       "kind": "behavior",
       "statement": "A subject is a tuple of agent, host, `on_behalf_of` principal, task scope, inference zone and incognito flag. A credential binds the subset it names and admits under that combination alone.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 63
     },
@@ -21612,7 +21645,7 @@
       "subject": "attestation",
       "kind": "behavior",
       "statement": "Each member carries an attestation, `verified` or `asserted`. Agent, host, task and zone are asserted and render labeled as such; no surface presents an asserted member as identity.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 65
     },
@@ -21623,7 +21656,7 @@
       "subject": "on-behalf-of",
       "kind": "behavior",
       "statement": "`on_behalf_of` is verified at the mint against the issuing identity provider, and admission carries it forward as the reader's identity.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 67
     },
@@ -21634,7 +21667,7 @@
       "subject": "value-hygiene",
       "kind": "limit",
       "statement": "The mint checks every subject value: non-empty, at most 256 B, no control character, no leading or trailing whitespace.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 69
     },
@@ -21645,7 +21678,7 @@
       "subject": "malformed-value",
       "kind": "refusal",
       "statement": "A value failing {{authority.identify.value-hygiene}} raises `AuthoritySubjectMalformed`, except that the command-line mint trims a padded value where the automated exchange refuses it.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 71
     },
@@ -21656,7 +21689,7 @@
       "subject": "normalization",
       "kind": "behavior",
       "statement": "The verified tuple is normalized once, each value trimmed and each blank member dropped, before any consumer reads it. No point of use re-normalizes a value or interprets a scheme prefix.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 73
     },
@@ -21678,7 +21711,7 @@
       "subject": "identity-link",
       "kind": "behavior",
       "statement": "An identity link maps a source principal onto a subject over fields the identity provider verified, recording `method` and `confidence`. Confidence relaxes no check.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 77
     },
@@ -21689,7 +21722,7 @@
       "subject": "unverified-link",
       "kind": "refusal",
       "statement": "Only `scim_email` and `oidc_sub` links authorize. An authorization join consuming an `operator_asserted` link raises `AuthorityLinkUnverified`.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 79
     },
@@ -21700,7 +21733,7 @@
       "subject": "directory-link",
       "kind": "behavior",
       "statement": "Directory provisioning from the identity provider writes source-account links. A value a source's profile interface returns at request time is data, not a link.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 81
     },
@@ -21722,7 +21755,7 @@
       "subject": "agent-ceiling",
       "kind": "behavior",
       "statement": "A sub-agent's reachable set equals or narrows its parent's; no agent reads beyond the principal it acts for.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 85
     },
@@ -21733,7 +21766,7 @@
       "subject": "incognito",
       "kind": "behavior",
       "statement": "Admission carries the caller's incognito flag unchanged, and a derivation turns it on and never off.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 87
     },
@@ -21744,7 +21777,7 @@
       "subject": "subject-rebound",
       "kind": "refusal",
       "statement": "A derivation naming an `on_behalf_of` different from its parent's raises `AuthoritySubjectRebound`.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 89
     },
@@ -21755,7 +21788,7 @@
       "subject": "delegation-profile",
       "kind": "behavior",
       "statement": "Delegated authority travels in one attenuable, chain-signed library format. The library owns serialization, signatures, block chaining and evaluation; a versioned profile names every fact, check and restriction the engine admits.",
-      "why": "A-authority",
+      "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
       "line": 98
     },
@@ -21766,7 +21799,7 @@
       "subject": "owner-claim",
       "kind": "behavior",
       "statement": "Profile 2 permits a signed owner store identity only in the root authority block; profile 1 and attenuation blocks reject it, and activation requires an unrestricted read grant over the selected store.",
-      "why": "A-authority",
+      "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
       "line": 100
     },
@@ -21788,7 +21821,7 @@
       "subject": "reserved-fact",
       "kind": "refusal",
       "statement": "Current time, audience, resolved resources and authenticated request identity are reserved facts the engine supplies. A token block introducing one raises `ProfileReservedFact`.",
-      "why": "A-authority",
+      "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
       "line": 104
     },
@@ -21799,7 +21832,7 @@
       "subject": "evaluator-bound",
       "kind": "refusal",
       "statement": "The evaluator runs with no third-party block, external function, recursion or regular-expression predicate. Input past {{authority.profile.fact-ceiling}} or {{authority.profile.iteration-ceiling}} raises `ProfileEvaluationBudget`.",
-      "why": "A-authority",
+      "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
       "line": 106
     },
@@ -21810,7 +21843,7 @@
       "subject": "fact-ceiling",
       "kind": "limit",
       "statement": "One authorization holds at most 1000 entries in its fact set.",
-      "why": "A-authority",
+      "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
       "line": 108
     },
@@ -21821,7 +21854,7 @@
       "subject": "iteration-ceiling",
       "kind": "limit",
       "statement": "One authorization runs at most 100 iterations of the evaluator.",
-      "why": "A-authority",
+      "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
       "line": 110
     },
@@ -21832,7 +21865,7 @@
       "subject": "appended-block",
       "kind": "behavior",
       "statement": "A block after the first contributes no authority fact to an allow decision; appending narrows a credential or adds nothing.",
-      "why": "A-authority",
+      "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
       "line": 112
     },
@@ -21865,7 +21898,7 @@
       "subject": "declared-scope",
       "kind": "behavior",
       "statement": "Introspection reports the scope a credential declares without evaluating it. Table policy, source access lists, time bounds and revocation settle effective authority afterwards.",
-      "why": "A-authority",
+      "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
       "line": 118
     },
@@ -21876,7 +21909,7 @@
       "subject": "scoped-session",
       "kind": "behavior",
       "statement": "Authorization yields a scoped session carrying every restriction the credential expressed. A statement over two tables needs both accesses in one coherent grant; actions and tables never flatten into independent allowlists.",
-      "why": "A-authority",
+      "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
       "line": 120
     },
@@ -21909,7 +21942,7 @@
       "subject": "fields",
       "kind": "behavior",
       "statement": "A grant names actions, table patterns, and optionally a tenant scope, aggregate constraints, a template allowlist and a row ceiling. An absent constraint leaves its dimension unconstrained; an absent allowlist confers no template.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 131
     },
@@ -21920,7 +21953,7 @@
       "subject": "actions",
       "kind": "behavior",
       "statement": "The action vocabulary is `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, and `forget` to erase subject data.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 133
     },
@@ -21942,7 +21975,7 @@
       "subject": "pattern-forms",
       "kind": "behavior",
       "statement": "A table pattern is `*`, covering every table; a prefix ending in `*`, covering every name beginning with that prefix; or any other string, matched exactly. A concrete pattern never covers `*`.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 137
     },
@@ -21953,7 +21986,7 @@
       "subject": "malformed-pattern",
       "kind": "refusal",
       "statement": "A pattern with `*` anywhere but its final position raises `GrantPatternMalformed`.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 139
     },
@@ -21975,7 +22008,7 @@
       "subject": "star",
       "kind": "behavior",
       "statement": "`*` is an ordinary grant, bounded by the credential's actions, audience and expiry and visible in the audit record.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 143
     },
@@ -21986,7 +22019,7 @@
       "subject": "tenant-scope",
       "kind": "behavior",
       "statement": "A tenant scope pairs a table with an opaque byte string bound to that table's outermost partition column.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 145
     },
@@ -21997,7 +22030,7 @@
       "subject": "tenant-bytes",
       "kind": "behavior",
       "statement": "The grant's tenant value, the partition key on disk and the consumer's tenant identifier are identical bytes, compared by bound-parameter equality with no trimming, case folding, collation or Unicode normalization.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 147
     },
@@ -22008,7 +22041,7 @@
       "subject": "tenant-unbindable",
       "kind": "refusal",
       "statement": "A tenant-scoped grant on a table declaring no bare outermost partition column raises `GrantTenantUnbindable` at admission.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 149
     },
@@ -22030,7 +22063,7 @@
       "subject": "tenant-child-lifetime",
       "kind": "limit",
       "statement": "A tenant-scoped child credential is derived per query with a lifetime of 15 min.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 153
     },
@@ -22041,7 +22074,7 @@
       "subject": "held-parent",
       "kind": "behavior",
       "statement": "A consumer's service holds one broader parent and derives each per-query child locally. A durable run step derives its child afresh from a parent the run owner holds, never from a persisted child.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 155
     },
@@ -22052,7 +22085,7 @@
       "subject": "template-allowlist",
       "kind": "behavior",
       "statement": "A template allowlist denies by default: absent authorizes none, `*` authorizes every template the manifest declares, and a child names only identifiers its parent named or covered.",
-      "why": "A-authority",
+      "why": "A-authority#query-templates",
       "file": "spec/50-authority.md",
       "line": 157
     },
@@ -22063,7 +22096,7 @@
       "subject": "template-tables",
       "kind": "behavior",
       "statement": "A covered template reads the tables its statement names inside that template's session, under every other layer; its coverage adds no table to a raw read.",
-      "why": "A-authority",
+      "why": "A-authority#query-templates",
       "file": "spec/50-authority.md",
       "line": 159
     },
@@ -22074,7 +22107,7 @@
       "subject": "template-not-allowed",
       "kind": "refusal",
       "statement": "Invoking a template outside the allowlist raises `GrantTemplateNotAllowed`, and an uncovered template is absent from the projected tool listing.",
-      "why": "A-authority",
+      "why": "A-authority#query-templates",
       "file": "spec/50-authority.md",
       "line": 161
     },
@@ -22129,7 +22162,7 @@
       "subject": "row-ceiling",
       "kind": "behavior",
       "statement": "A read's row ceiling is the least of the grant's, the request's, the template's, each touched table's published ceiling and {{read.respond.face-ceiling}}; an undeclared component imposes none, and the face ceiling is always declared.",
-      "why": "A-authority",
+      "why": "A-authority#query-templates",
       "file": "spec/50-authority.md",
       "line": 171
     },
@@ -22162,7 +22195,7 @@
       "subject": "horizon",
       "kind": "behavior",
       "statement": "A grant may carry `horizon`, an instant bounding the availability time and `since` of every read its holder makes, under {{read.horizon.inherited-bound}} and {{read.horizon.exceeds-horizon}}; an absent horizon leaves availability unbounded.",
-      "why": "A-authority",
+      "why": "A-authority#horizon",
       "file": "spec/50-authority.md",
       "line": 177
     },
@@ -22173,7 +22206,7 @@
       "subject": "aggregate",
       "kind": "behavior",
       "statement": "An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 179
     },
@@ -22184,7 +22217,7 @@
       "subject": "group-ceiling",
       "kind": "limit",
       "statement": "An aggregate grant's groups-per-query ceiling is at least 1 entries; a query producing more groups than the ceiling is cut at it.",
-      "why": "A-authority",
+      "why": "A-authority#query-templates",
       "file": "spec/50-authority.md",
       "line": 181
     },
@@ -22195,7 +22228,7 @@
       "subject": "offline",
       "kind": "behavior",
       "statement": "A holder derives a narrower child with no issuer round trip by appending a signed block. The parent's bytes stay unchanged, independently verifiable and independently withdrawable.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 190
     },
@@ -22206,7 +22239,7 @@
       "subject": "narrowing",
       "kind": "behavior",
       "statement": "Every dimension of a child obeys the narrowing table in Shapes, checked by the deriving holder and again across the whole chain at admission.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 192
     },
@@ -22217,7 +22250,7 @@
       "subject": "widens",
       "kind": "refusal",
       "statement": "A child broader than its parent on actions, tables, templates or aggregate constraints raises `AttenuationWidens`, naming the dimension.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 194
     },
@@ -22228,7 +22261,7 @@
       "subject": "horizon-widens",
       "kind": "behavior",
       "statement": "A child whose horizon falls later than its parent's is broader on `horizon` and refuses as {{authority.attenuate.widens}}, naming that dimension; a child naming no horizon inherits its parent's.",
-      "why": "A-authority",
+      "why": "A-authority#horizon",
       "file": "spec/50-authority.md",
       "line": 196
     },
@@ -22239,7 +22272,7 @@
       "subject": "expiry-extended",
       "kind": "refusal",
       "statement": "A child whose expiry falls past its parent's raises `AttenuationExpiryExtended`.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 198
     },
@@ -22250,7 +22283,7 @@
       "subject": "tenant-dropped",
       "kind": "refusal",
       "statement": "A child dropping its parent's tenant scope or naming another tenant raises `AttenuationTenantDropped`. Adding a scope to an unscoped parent narrows.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 200
     },
@@ -22261,7 +22294,7 @@
       "subject": "truncation",
       "kind": "behavior",
       "statement": "The chain-final proof advances an ephemeral key per block; a chain truncated to a broader prefix verifies as nothing.",
-      "why": "A-authority",
+      "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
       "line": 202
     },
@@ -22272,7 +22305,7 @@
       "subject": "bearer",
       "kind": "behavior",
       "statement": "Derivation proves the chain and not the new holder's identity. A hop authenticating its new actor runs through the exchange.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 204
     },
@@ -22283,7 +22316,7 @@
       "subject": "per-sub-agent",
       "kind": "behavior",
       "statement": "An agent derives one child per sub-agent, each bound by its confirmation claim to that sub-agent's own key pair.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 206
     },
@@ -22294,7 +22327,7 @@
       "subject": "ceiling",
       "kind": "limit",
       "statement": "A project persists in version control an issuance policy naming the default audience and the longest lifetime any mint produces, at most 24 h.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 237
     },
@@ -22305,7 +22338,7 @@
       "subject": "above-ceiling",
       "kind": "refusal",
       "statement": "An explicitly requested lifetime above the persisted ceiling raises `IssuanceLifetimeAboveCeiling`; an exchange policy's lifetime clamps down to the ceiling instead.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 239
     },
@@ -22316,7 +22349,7 @@
       "subject": "ceiling-lowering",
       "kind": "behavior",
       "statement": "Lowering the ceiling records the previous value and its instant; rotation-grace validation uses the recorded value until the last credential minted under it lapses.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 241
     },
@@ -22349,7 +22382,7 @@
       "subject": "out-of-tree-mint",
       "kind": "behavior",
       "statement": "Ceiling enforcement binds a mint run inside the project tree; a mint run outside it is bounded at the checkpoint by rotation-grace validation.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 247
     },
@@ -22360,7 +22393,7 @@
       "subject": "principal-required",
       "kind": "refusal",
       "statement": "A mint granting `write`, `execute` or `forget` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 249
     },
@@ -22371,7 +22404,7 @@
       "subject": "default-read",
       "kind": "behavior",
       "statement": "A mint's default action set is `read` alone.",
-      "why": "A-authority",
+      "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 251
     },
@@ -22382,7 +22415,7 @@
       "subject": "absent-author",
       "kind": "behavior",
       "statement": "An absent authorship value on a landed row means no credential authorized the write: the uncredentialed owner or a timer-fired run.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 253
     },
@@ -22393,7 +22426,7 @@
       "subject": "authoring-posture",
       "kind": "behavior",
       "statement": "Every table write verb {{authority.verify.write-verbs}} runs under its manifest's authoring posture. `session` authors every write by one verified ambient credential's principal; `per_request` holds no ambient principal, leaving an unaccompanied write unauthored.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 255
     },
@@ -22404,7 +22437,7 @@
       "subject": "posture-key",
       "kind": "refusal",
       "statement": "A manifest declares its posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 257
     },
@@ -22415,7 +22448,7 @@
       "subject": "session-credential",
       "kind": "refusal",
       "statement": "Under `session`, a table write verb run with no credential raises `AuthoringCredentialMissing` before its first effect.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 259
     },
@@ -22426,7 +22459,7 @@
       "subject": "one-credential",
       "kind": "behavior",
       "statement": "A served face admits a verified capability credential, presented as a bearer or bound to a holder key, and nothing else: no static bearer, no gateway shared secret, no unauthenticated owner path.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 261
     },
@@ -22481,7 +22514,7 @@
       "subject": "signing-port",
       "kind": "behavior",
       "statement": "One signing port signs every credential's authority block and every audit root and tip; no mint path reads a private key. Seed files, secret references resolved at mint time and remote signing oracles are its adapters.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 271
     },
@@ -22492,7 +22525,7 @@
       "subject": "oracle-custody",
       "kind": "behavior",
       "statement": "Under the oracle adapter the seed stays inside the custodian, which records each mint as a signing call.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 273
     },
@@ -22547,7 +22580,7 @@
       "subject": "algorithm",
       "kind": "behavior",
       "statement": "A credential names Ed25519, the default, or ECDSA over P-256; the pinned key's scheme is authoritative.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 282
     },
@@ -22558,7 +22591,7 @@
       "subject": "algorithm-mismatch",
       "kind": "refusal",
       "statement": "A credential naming a scheme other than its pinned key's raises `SignatureAlgorithmMismatch`.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 284
     },
@@ -22591,7 +22624,7 @@
       "subject": "zone-wildcard",
       "kind": "refusal",
       "statement": "A mint whose subject declares a wildcard inference zone raises `IssuanceZoneWildcard`.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/50-authority.md",
       "line": 290
     },
@@ -22602,7 +22635,7 @@
       "subject": "key-rotation",
       "kind": "limit",
       "statement": "The issuer signing key rotates every 90 d, and at once on suspected compromise.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 292
     },
@@ -22635,7 +22668,7 @@
       "subject": "bearer-cap-fixed",
       "kind": "behavior",
       "statement": "No issuance policy, face or command setting raises the cap {{authority.verify.bearer-lifetime}} sets; a credential living longer admits over a network only bound to a holder key.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 298
     },
@@ -22646,7 +22679,7 @@
       "subject": "admitted-authority",
       "kind": "behavior",
       "statement": "Verification yields an admitted-authority value carrying the normalized subject tuple and its grants. Every read surface and row-landing effect takes that value as an argument; nothing downstream re-parses a credential or reads ambient state.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 307
     },
@@ -22657,7 +22690,7 @@
       "subject": "write-verbs",
       "kind": "behavior",
       "statement": "`context land`, `run start` and `pipeline run` are the table write verbs. Each admits its accompanying credential before its first effect and stamps that credential's `on_behalf_of` as every landed row's `_authored_by`.",
-      "why": "A-authority",
+      "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
       "line": 309
     },
@@ -22668,7 +22701,7 @@
       "subject": "write-commit",
       "kind": "behavior",
       "statement": "A credentialed table write reads its denylist afresh and checks expiry immediately before each commit; a credential revoked or lapsed since admission commits nothing, as {{authority.revoke.revoked}} and {{authority.verify.expired}}.",
-      "why": "A-authority",
+      "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
       "line": 311
     },
@@ -22679,7 +22712,7 @@
       "subject": "no-bypass-constructor",
       "kind": "behavior",
       "statement": "The admitted-authority type has no constructor that produces a value without a verification.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 313
     },
@@ -22690,7 +22723,7 @@
       "subject": "effect-boundary",
       "kind": "behavior",
       "statement": "A statement's start and each commit are effect boundaries. Each boundary re-reads expiry, revocation and policy version against the carried value; a lapse between boundaries stops the effect at the next one.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 315
     },
@@ -22701,7 +22734,7 @@
       "subject": "format-interface",
       "kind": "behavior",
       "statement": "The credential format sits behind one interface of issue, attenuate, verify and introspect; no enforcement call site names a credential type.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 317
     },
@@ -22734,7 +22767,7 @@
       "subject": "timestamps",
       "kind": "behavior",
       "statement": "Every checkpoint decodes timestamps into UTC instants under one grammar and compares instants.",
-      "why": "A-authority",
+      "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
       "line": 323
     },
@@ -22745,7 +22778,7 @@
       "subject": "malformed-timestamp",
       "kind": "refusal",
       "statement": "A timestamp that does not decode under that grammar raises `TimestampMalformed` at every checkpoint alike.",
-      "why": "A-authority",
+      "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
       "line": 325
     },
@@ -22756,7 +22789,7 @@
       "subject": "expired",
       "kind": "refusal",
       "statement": "A credential whose expiry precedes the evaluation instant raises `AuthorityExpired` at admission and at each later effect boundary.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 327
     },
@@ -22767,7 +22800,7 @@
       "subject": "possession-binding",
       "kind": "behavior",
       "statement": "A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce; a credential carrying none requires no proof.",
-      "why": "A-authority",
+      "why": "A-authority#sender-constrained",
       "file": "spec/50-authority.md",
       "line": 329
     },
@@ -22778,7 +22811,7 @@
       "subject": "possession-invalid",
       "kind": "refusal",
       "statement": "A request whose proof does not verify against the confirmation thumbprint raises `PossessionProofInvalid`.",
-      "why": "A-authority",
+      "why": "A-authority#sender-constrained",
       "file": "spec/50-authority.md",
       "line": 331
     },
@@ -22789,7 +22822,7 @@
       "subject": "replay-window",
       "kind": "limit",
       "statement": "A proof issued more than 300 s before the checkpoint clock is refused as {{authority.verify.possession-invalid}}; the nonce cache retains each nonce for that window.",
-      "why": "A-authority",
+      "why": "A-authority#sender-constrained",
       "file": "spec/50-authority.md",
       "line": 333
     },
@@ -22800,7 +22833,7 @@
       "subject": "clock-skew",
       "kind": "limit",
       "statement": "A proof issued more than 30 s after the checkpoint clock is refused as {{authority.verify.possession-invalid}}.",
-      "why": "A-authority",
+      "why": "A-authority#sender-constrained",
       "file": "spec/50-authority.md",
       "line": 335
     },
@@ -22811,7 +22844,7 @@
       "subject": "replayed-nonce",
       "kind": "refusal",
       "statement": "A proof whose nonce repeats inside the replay window raises `PossessionProofReplayed`.",
-      "why": "A-authority",
+      "why": "A-authority#sender-constrained",
       "file": "spec/50-authority.md",
       "line": 337
     },
@@ -22822,7 +22855,7 @@
       "subject": "local-transport",
       "kind": "behavior",
       "statement": "A local transport is a stdio pipe the checkpoint inherited from the process that spawned it, or a Unix socket; every other transport is a network transport.",
-      "why": "A-authority",
+      "why": "A-authority#local-transport",
       "file": "spec/50-authority.md",
       "line": 339
     },
@@ -22833,7 +22866,7 @@
       "subject": "local-holder-proof",
       "kind": "behavior",
       "statement": "On a local transport, a credential whose confirmation claim holds a thumbprint admits only with a proof as {{authority.verify.possession-binding}}; the peer fallback never applies to it, and a missing or failing proof is refused as {{authority.verify.possession-invalid}}.",
-      "why": "A-authority",
+      "why": "A-authority#local-transport",
       "file": "spec/50-authority.md",
       "line": 341
     },
@@ -22888,7 +22921,7 @@
       "subject": "local-peer-fallback",
       "kind": "behavior",
       "statement": "On a local transport, a credential with no confirmation claim admits only through the operating system's peer authentication: an inherited stdio pipe, or a socket peer whose kernel-reported uid equals the checkpoint process's uid.",
-      "why": "A-authority",
+      "why": "A-authority#local-transport",
       "file": "spec/50-authority.md",
       "line": 350
     },
@@ -22899,7 +22932,7 @@
       "subject": "peer-mismatch",
       "kind": "refusal",
       "statement": "A socket peer presenting a credential with no confirmation claim, whose kernel-reported uid differs from the checkpoint process's uid or which the platform cannot report, raises `TransportPeerMismatch` and admits nothing.",
-      "why": "A-authority",
+      "why": "A-authority#local-transport",
       "file": "spec/50-authority.md",
       "line": 352
     },
@@ -22910,7 +22943,7 @@
       "subject": "network-bearer",
       "kind": "behavior",
       "statement": "A network checkpoint admits a credential with no confirmation claim as a bearer when it names the checkpoint's declared audience and meets {{authority.verify.bearer-lifetime}}; the peer fallback never applies over a network.",
-      "why": "A-authority",
+      "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
       "line": 354
     },
@@ -22921,7 +22954,7 @@
       "subject": "bearer-lifetime",
       "kind": "refusal",
       "statement": "A bearer whose expiry falls more than 3600 s after its issue instant raises `BearerLifetimeExceeded` at a network checkpoint and admits nothing; its holder refreshes through {{authority.exchange.surface}}.",
-      "why": "A-authority",
+      "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
       "line": 356
     },
@@ -22932,7 +22965,7 @@
       "subject": "connection-scoped",
       "kind": "behavior",
       "statement": "A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.",
-      "why": "A-authority",
+      "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
       "line": 358
     },
@@ -22954,7 +22987,7 @@
       "subject": "public-key-only",
       "kind": "behavior",
       "statement": "A checkpoint holds public key material and no signing secret, and admits with no call to an issuer, identity provider or policy service.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 362
     },
@@ -22965,7 +22998,7 @@
       "subject": "key-set",
       "kind": "behavior",
       "statement": "A checkpoint accepts a set of issuer keys: comma-separated static pins, or a project-published unauthenticated key route returning the current and non-retired versions, opted into per key.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 364
     },
@@ -22987,7 +23020,7 @@
       "subject": "key-set-refresh",
       "kind": "limit",
       "statement": "A published key set refreshes every 300 s, single-flight, plus one refresh on a signature failure, with failure-forced refreshes throttled.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 368
     },
@@ -22998,7 +23031,7 @@
       "subject": "key-set-unavailable",
       "kind": "refusal",
       "statement": "A checkpoint opted into a published key set that obtains none, or holding a malformed pin, raises `KeySetUnavailable`: the engine declines to start and a gateway answers `503`.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 370
     },
@@ -23009,7 +23042,7 @@
       "subject": "key-set-stale",
       "kind": "refusal",
       "statement": "After a failed fetch the last-known-good set serves while its age since the last successful fetch stays under 1 h; past that the checkpoint raises `KeySetStale`.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 372
     },
@@ -23020,7 +23053,7 @@
       "subject": "short-lifetime",
       "kind": "behavior",
       "statement": "A short lifetime is the primary withdrawal: a credential's remaining lifetime bounds its exposure after a provider sign-out or before a denylist entry propagates.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 381
     },
@@ -23031,7 +23064,7 @@
       "subject": "denylist",
       "kind": "behavior",
       "statement": "A checkpoint reads a denylist keyed on credential identifier. An entry ages out once its identifier verifies under no live key version.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 383
     },
@@ -23042,7 +23075,7 @@
       "subject": "revocation-id",
       "kind": "behavior",
       "statement": "Every derivation carries its own revocation identifier, withdrawing one subtree without ending the root it descends from.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 385
     },
@@ -23053,7 +23086,7 @@
       "subject": "epoch",
       "kind": "behavior",
       "statement": "A revocation epoch scoped on project, tenant and principal class invalidates that slice of outstanding authority.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 387
     },
@@ -23097,7 +23130,7 @@
       "subject": "revoked",
       "kind": "refusal",
       "statement": "A credential on the denylist, or carrying an epoch below the current scoped epoch, raises `AuthorityRevoked` at the next effect boundary.",
-      "why": "A-authority",
+      "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 395
     },
@@ -23108,7 +23141,7 @@
       "subject": "compromise",
       "kind": "behavior",
       "statement": "Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 397
     },
@@ -23119,7 +23152,7 @@
       "subject": "rotation-grace",
       "kind": "behavior",
       "statement": "A rotation policy declares a cadence and a grace window, validated against the persisted issuance policy, during which the retiring key version still verifies.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 399
     },
@@ -23130,7 +23163,7 @@
       "subject": "short-grace",
       "kind": "refusal",
       "statement": "A declared or overridden grace window shorter than the effective issuance ceiling raises `RotationGraceTooShort`.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 401
     },
@@ -23141,7 +23174,7 @@
       "subject": "immediate-retire",
       "kind": "behavior",
       "statement": "Immediate retirement removes a key version from the published set and every static pin; a checkpoint drops it at its next refresh.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 403
     },
@@ -23152,7 +23185,7 @@
       "subject": "format-withdrawn",
       "kind": "refusal",
       "statement": "From a declared cutover instant, every admission path raises `CredentialFormatWithdrawn` for a credential in a withdrawn format. Only an explicit declaration restores acceptance.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 405
     },
@@ -23163,7 +23196,7 @@
       "subject": "surface",
       "kind": "behavior",
       "statement": "`contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`. The command reads the assertion from `--jwt` or standard input, and a holder proof from `--dpop`.",
-      "why": "A-authority",
+      "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
       "line": 426
     },
@@ -23229,7 +23262,7 @@
       "subject": "policy",
       "kind": "behavior",
       "statement": "An exchange policy declares `expected_iss`, optional `expected_aud`, `subject_map`, `tenant_claim`, `role_claim`, `role_grants`, `default_grants`, `ttl_secs`, `minted_iss` and `minted_aud`.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 438
     },
@@ -23240,7 +23273,7 @@
       "subject": "injected-material",
       "kind": "behavior",
       "statement": "Verifying material is operator-injected: a shared secret, an RS256 public key in PEM form, or a key-set document selected by the assertion's `kid`. The exchange makes no network call.",
-      "why": "A-authority",
+      "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
       "line": 440
     },
@@ -23251,7 +23284,7 @@
       "subject": "minted-grants",
       "kind": "behavior",
       "statement": "Minted grants come from `role_grants` and `default_grants` alone. A verified role matching no entry earns `default_grants`, which is empty unless declared.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 442
     },
@@ -23262,7 +23295,7 @@
       "subject": "tenant",
       "kind": "behavior",
       "statement": "The assertion claim `tenant_claim` names becomes the tenant scope of every minted grant; no subject member carries tenancy.",
-      "why": "A-authority",
+      "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
       "line": 444
     },
@@ -23273,7 +23306,7 @@
       "subject": "lifetime-default",
       "kind": "limit",
       "statement": "A minted credential lives 900 s where the policy declares no `ttl_secs`.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 446
     },
@@ -23284,7 +23317,7 @@
       "subject": "lifetime-ceiling",
       "kind": "limit",
       "statement": "A configured `ttl_secs` clamps down to 3600 s and never extends.",
-      "why": "A-authority",
+      "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
       "line": 448
     },
@@ -23295,7 +23328,7 @@
       "subject": "audience",
       "kind": "behavior",
       "statement": "A minted credential carries `minted_aud`, falling back to the project's persisted default audience.",
-      "why": "A-authority",
+      "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
       "line": 450
     },
@@ -23317,7 +23350,7 @@
       "subject": "material-missing",
       "kind": "refusal",
       "statement": "An exchange configured with no verifying material raises `ExchangeMaterialMissing` and mints nothing.",
-      "why": "A-authority",
+      "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
       "line": 454
     },
@@ -23328,7 +23361,7 @@
       "subject": "per-reader",
       "kind": "behavior",
       "statement": "An embedding application holds no project-wide credential; per request it exchanges its signed-in reader's assertion for that reader's short-lived credential and reads as them.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 456
     },
@@ -23339,7 +23372,7 @@
       "subject": "no-cross-reader",
       "kind": "behavior",
       "statement": "An exchanged credential serves only the reader it was minted for.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
       "line": 458
     },
@@ -23350,7 +23383,7 @@
       "subject": "holder-binding",
       "kind": "behavior",
       "statement": "An exchange request carrying a `DPoP` proof over `POST /auth/exchange` and its body mints a credential whose `cnf.jkt` is the proof key's thumbprint, the proof checked as {{authority.verify.possession-binding}}.",
-      "why": "A-authority",
+      "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
       "line": 460
     },
@@ -23361,7 +23394,7 @@
       "subject": "bearer-mint",
       "kind": "behavior",
       "statement": "An exchange request carrying no proof mints a credential with no confirmation claim, its lifetime clamped by {{authority.exchange.lifetime-ceiling}}, so a network face admits it under {{authority.verify.bearer-lifetime}}.",
-      "why": "A-authority",
+      "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
       "line": 462
     },
@@ -23383,7 +23416,7 @@
       "subject": "refresh",
       "kind": "behavior",
       "statement": "A holder renews a served-face credential by exchanging a fresh assertion for a new credential with its own identifier and a full lifetime from the exchange instant.",
-      "why": "A-authority",
+      "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
       "line": 466
     },
@@ -23394,7 +23427,7 @@
       "subject": "no-extension",
       "kind": "behavior",
       "statement": "No surface extends a minted credential's expiry: a minted credential presented as the exchange assertion raises {{authority.exchange.assertion-invalid}}, and {{authority.attenuate.expiry-extended}} bounds every derived child.",
-      "why": "A-authority",
+      "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
       "line": 468
     },
@@ -23405,7 +23438,7 @@
       "subject": "write-time",
       "kind": "behavior",
       "statement": "Redaction runs inside the writer before columnar encoding. Each rule drops its value or transforms it into a policy-defined substitute: keyed digest, token, prefix or generalized band.",
-      "why": "A-authority",
+      "why": "A-authority#prepared-record",
       "file": "spec/51-enforcement.md",
       "line": 70
     },
@@ -23416,7 +23449,7 @@
       "subject": "rule",
       "kind": "behavior",
       "statement": "A rule names a table, a column, one operation and that operation's argument.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 72
     },
@@ -23427,7 +23460,7 @@
       "subject": "pipeline-wide",
       "kind": "behavior",
       "statement": "A rule set declared on a pipeline binds every table the pipeline lands, child tables included.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 74
     },
@@ -23438,7 +23471,7 @@
       "subject": "after-normalization",
       "kind": "behavior",
       "statement": "Redaction runs after relational normalization; a rule naming a parent column reaches values shredded into child tables.",
-      "why": "A-authority",
+      "why": "A-authority#query-templates",
       "file": "spec/51-enforcement.md",
       "line": 76
     },
@@ -23449,7 +23482,7 @@
       "subject": "before-the-record",
       "kind": "behavior",
       "statement": "A canonical source writer shapes, normalizes and removes values before recording an opaque admitted payload; neither its inline record nor its blob contains the removed source value.",
-      "why": "A-authority",
+      "why": "A-authority#prepared-record",
       "file": "spec/51-enforcement.md",
       "line": 78
     },
@@ -23460,7 +23493,7 @@
       "subject": "refetch",
       "kind": "behavior",
       "statement": "A fresh pipeline execution over a table under removal rules reads the source again.",
-      "why": "A-authority",
+      "why": "A-authority#redaction-no-copy",
       "file": "spec/51-enforcement.md",
       "line": 80
     },
@@ -23471,7 +23504,7 @@
       "subject": "at-rest-scope",
       "kind": "behavior",
       "statement": "Stored bytes lack only write-time-removed values. A column protected at query time alone is cleartext in storage and readable with the object-store credential.",
-      "why": "A-authority",
+      "why": "A-authority#redaction-no-copy",
       "file": "spec/51-enforcement.md",
       "line": 82
     },
@@ -23482,7 +23515,7 @@
       "subject": "summarize-only",
       "kind": "behavior",
       "statement": "A `summarize_only` column stores its text whole; the flag lands at write time and travels with the column, binding every surface through {{authority.mask.verbatim-quote}}.",
-      "why": "A-authority",
+      "why": "A-authority#redaction-no-copy",
       "file": "spec/51-enforcement.md",
       "line": 84
     },
@@ -23537,7 +23570,7 @@
       "subject": "in-value",
       "kind": "behavior",
       "statement": "Pattern removal rewrites the union of all matches in one linear pass, merging overlapping matches into one span; whole-value removal rewrites one cell. JSON paths select object keys, array indices or every array item; unselected values remain unchanged.",
-      "why": "A-authority",
+      "why": "A-authority#span-union",
       "file": "spec/51-enforcement.md",
       "line": 94
     },
@@ -23548,7 +23581,7 @@
       "subject": "every-land-entry",
       "kind": "behavior",
       "statement": "A canonical project declaration binds direct and staged writers even when their callers omit its rules.",
-      "why": "A-authority",
+      "why": "A-authority#prepared-record",
       "file": "spec/51-enforcement.md",
       "line": 96
     },
@@ -23581,7 +23614,7 @@
       "subject": "rewritten-identities",
       "kind": "behavior",
       "statement": "Relational parent and child identities derive from rewritten source values; removed values contribute no retained identity digest.",
-      "why": "A-authority",
+      "why": "A-authority#span-union",
       "file": "spec/51-enforcement.md",
       "line": 102
     },
@@ -23625,7 +23658,7 @@
       "subject": "relational-journal",
       "kind": "behavior",
       "statement": "A protected relational source records its concrete rewritten root and child group, preserving declared root types, child lineage and {{authority.redact.rewritten-identities}} through {{run.journal.prepared-replay}}.",
-      "why": "A-authority",
+      "why": "A-authority#prepared-record",
       "file": "spec/51-enforcement.md",
       "line": 110
     },
@@ -23680,7 +23713,7 @@
       "subject": "prepared-effects",
       "kind": "behavior",
       "statement": "Canonical effect preparation produces opaque rewritten root and child groups; the paid record and staged group carry the same rewritten values and {{authority.redact.rewritten-identities}}.",
-      "why": "A-authority",
+      "why": "A-authority#body-projection",
       "file": "spec/51-enforcement.md",
       "line": 120
     },
@@ -23691,7 +23724,7 @@
       "subject": "effect-scope",
       "kind": "behavior",
       "statement": "A prepared effect binds canonical authority to its execution, row and effect entry key and composite projection identity; replay and staging require the independently issued scope, never authority inferred from decoded bytes.",
-      "why": "A-authority",
+      "why": "A-authority#body-projection",
       "file": "spec/51-enforcement.md",
       "line": 122
     },
@@ -23922,7 +23955,7 @@
       "subject": "column-policy",
       "kind": "behavior",
       "statement": "A column declares `class` and `strategy`, optionally `combine`, `crowd` and `summarize_only`, under `[pipeline.tables.policy.columns]`. An undeclared column carries no class.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 179
     },
@@ -23933,7 +23966,7 @@
       "subject": "class-registry",
       "kind": "behavior",
       "statement": "`class` takes a value from the class registry in Shapes. `phi` marks protected health data; `ssn`, `phone`, `email` and `mrn` are exhaustible, each carrying a registered domain size.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 181
     },
@@ -23944,7 +23977,7 @@
       "subject": "row-class",
       "kind": "behavior",
       "statement": "A column declares `class = { from = ... }`, a `strategies` map naming registered classes, and `fallback = \"drop\"`; each row's sibling text selects its strategy, independently of other rows.",
-      "why": "A-authority",
+      "why": "A-authority#row-classes",
       "file": "spec/51-enforcement.md",
       "line": 183
     },
@@ -23966,7 +23999,7 @@
       "subject": "row-class-dependency",
       "kind": "behavior",
       "statement": "A row-class selector names another Utf8 column in the same table; {{authority.mask.absent-column}} checks its presence, and every mapped strategy retains {{authority.mask.typed-strategy}} and {{authority.mask.digest-alone}}.",
-      "why": "A-authority",
+      "why": "A-authority#row-classes",
       "file": "spec/51-enforcement.md",
       "line": 187
     },
@@ -23988,7 +24021,7 @@
       "subject": "unknown-class",
       "kind": "refusal",
       "statement": "A `class` outside the registry raises `EnforceUnknownClass` at manifest check.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 191
     },
@@ -23999,7 +24032,7 @@
       "subject": "class-reach",
       "kind": "behavior",
       "statement": "A column's class reaches write-time removal, query-time masking, zone floors and the protections a release applies to a key it joins on.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 193
     },
@@ -24010,7 +24043,7 @@
       "subject": "strategies",
       "kind": "behavior",
       "statement": "The strategies are `drop`, `hash` (keyed), `tokenize` (format-preserving), `truncate`, `bucket` and `range`.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 195
     },
@@ -24021,7 +24054,7 @@
       "subject": "drop",
       "kind": "behavior",
       "statement": "`drop` nulls the cell, or yields an empty string for a string column.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 197
     },
@@ -24032,7 +24065,7 @@
       "subject": "one-value",
       "kind": "behavior",
       "statement": "A column mask is one value whose primary and combine halves are private; it drives both the write-time and query-time layers, and no consumer applies the primary alone.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 199
     },
@@ -24043,7 +24076,7 @@
       "subject": "digest-alone",
       "kind": "refusal",
       "statement": "`hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 201
     },
@@ -24054,7 +24087,7 @@
       "subject": "high-entropy",
       "kind": "behavior",
       "statement": "A column of random identifiers or opaque tokens carries `hash` with no combine.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 203
     },
@@ -24065,7 +24098,7 @@
       "subject": "combine-generalizes",
       "kind": "refusal",
       "statement": "A `bucket` or `range` combine behind `hash` or `tokenize` raises `EnforceCombineWithoutGeneralization`; `truncate` is the one combine that generalizes a digest.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 205
     },
@@ -24076,7 +24109,7 @@
       "subject": "hash-width",
       "kind": "limit",
       "statement": "`hash` emits 32 chars of hexadecimal.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 207
     },
@@ -24087,7 +24120,7 @@
       "subject": "token-width",
       "kind": "limit",
       "statement": "`tokenize` emits 20 chars.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 209
     },
@@ -24098,7 +24131,7 @@
       "subject": "cuts-nothing",
       "kind": "refusal",
       "statement": "A `truncate` combine at or past its primary's output width raises `EnforceTruncationCutsNothing`.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 211
     },
@@ -24109,7 +24142,7 @@
       "subject": "crowd",
       "kind": "limit",
       "statement": "A column's `crowd`, the fewest inputs one masked output covers, is at least 1000 values and defaults to that floor.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 213
     },
@@ -24120,7 +24153,7 @@
       "subject": "truncation-ceiling",
       "kind": "refusal",
       "statement": "Behind a keyed digest over an exhaustible class, a `truncate` width above floor(log_b(domain ÷ `crowd`)), b being 16 for `hash` and 36 for `tokenize`, with domain from the class registry, raises `EnforceTruncationTooWide`.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 215
     },
@@ -24131,7 +24164,7 @@
       "subject": "pepper",
       "kind": "behavior",
       "statement": "One environment variable supplies the key for `hash` and `tokenize`, read by both layers as one resolved value.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 217
     },
@@ -24142,7 +24175,7 @@
       "subject": "development-pepper",
       "kind": "behavior",
       "statement": "Left unset, the pepper resolves to a constant in the source tree and the process emits one signal per run.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 219
     },
@@ -24153,7 +24186,7 @@
       "subject": "pseudonymous",
       "kind": "behavior",
       "statement": "`hash` output is an HMAC-SHA-256 under the pepper and is pseudonymous; no surface labels a masked value anonymous.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 221
     },
@@ -24164,7 +24197,7 @@
       "subject": "native-digest",
       "kind": "behavior",
       "statement": "Both layers compute the keyed digest natively; the query layer calls a scalar function holding the pepper in process memory, and a value masked at either layer joins the other.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 223
     },
@@ -24175,7 +24208,7 @@
       "subject": "key-material",
       "kind": "refusal",
       "statement": "A compiled relation, query plan or session catalog entry carrying pepper-derived key state raises `EnforceKeyMaterialInRelation`.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 225
     },
@@ -24197,7 +24230,7 @@
       "subject": "in-place",
       "kind": "behavior",
       "statement": "The masked projection substitutes named columns where they stand; the caller receives the column set and order the unmasked statement produces, and `*` expands to it.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 229
     },
@@ -24208,7 +24241,7 @@
       "subject": "equality",
       "kind": "behavior",
       "statement": "An equality filter on a `drop` column matches nothing; on a `hash` column it matches equal digests.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 231
     },
@@ -24219,7 +24252,7 @@
       "subject": "aggregates",
       "kind": "behavior",
       "statement": "Aggregation reads the masked column.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 233
     },
@@ -24230,7 +24263,7 @@
       "subject": "summarize-only",
       "kind": "behavior",
       "statement": "`summarize_only` is a flag, not a strategy: the value stays legible to grounding and citation.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 235
     },
@@ -24241,7 +24274,7 @@
       "subject": "verbatim-quote",
       "kind": "limit",
       "statement": "One citation releases at most 280 chars of a `summarize_only` value verbatim, on every surface.",
-      "why": "A-authority",
+      "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
       "line": 237
     },
@@ -24384,7 +24417,7 @@
       "subject": "drifted-scope",
       "kind": "behavior",
       "statement": "A tenant value matching no partition reads empty, like a tenant that wrote nothing; the read path repairs no transformed scope value.",
-      "why": "A-authority",
+      "why": "A-authority#one-credential",
       "file": "spec/51-enforcement.md",
       "line": 268
     },
@@ -24395,7 +24428,7 @@
       "subject": "withhold",
       "kind": "behavior",
       "statement": "A cleared redistribution flag withholds every object of the table at push and omits the table's name from the bucket manifest.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 275
     },
@@ -24406,7 +24439,7 @@
       "subject": "before-diff",
       "kind": "behavior",
       "statement": "The exclusion applies before the object diff is computed.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 277
     },
@@ -24417,7 +24450,7 @@
       "subject": "outranks-grants",
       "kind": "behavior",
       "statement": "The bound holds against a credential granted everything.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 279
     },
@@ -24428,7 +24461,7 @@
       "subject": "envelopes",
       "kind": "behavior",
       "statement": "The bound covers the table's columnar files and each pull's verbatim record.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 281
     },
@@ -24439,7 +24472,7 @@
       "subject": "root-allowlist",
       "kind": "behavior",
       "statement": "While any table is withheld, a root-level object ships only when the allowlist in Shapes names it.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 283
     },
@@ -24450,7 +24483,7 @@
       "subject": "root-not-allowlisted",
       "kind": "refusal",
       "statement": "A root-level object absent from the allowlist raises `EnforceRootObjectNotAllowlisted` at push.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 285
     },
@@ -24461,7 +24494,7 @@
       "subject": "left-behind",
       "kind": "refusal",
       "statement": "Clearing the flag over a table an earlier push uploaded raises `EnforceStaleRedistributedObjects`, naming each object and the remedy, deleting none.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 287
     },
@@ -24472,7 +24505,7 @@
       "subject": "manifest-is-an-index",
       "kind": "behavior",
       "statement": "An object stays fetchable by its key after the manifest stops naming it; a manifest authorizes nothing.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 289
     },
@@ -24483,7 +24516,7 @@
       "subject": "report",
       "kind": "limit",
       "statement": "A left-behind report names at most 100 files and states the total found.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 291
     },
@@ -24494,7 +24527,7 @@
       "subject": "two-checks",
       "kind": "behavior",
       "statement": "The left-behind check runs before and after the upload loop; the guarantee holds for one bucket under one pushing configuration.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 293
     },
@@ -24505,7 +24538,7 @@
       "subject": "edge-filter",
       "kind": "behavior",
       "statement": "A serving edge in front of the bucket filters a materialized replica by the pulling credential's grants.",
-      "why": "A-authority",
+      "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
       "line": 295
     },
@@ -24527,7 +24560,7 @@
       "subject": "zone-string",
       "kind": "behavior",
       "statement": "A zone string parses, after trimming, as `local:device`, `on-prem:<id>`, `private-cloud:<id>` or `public-cloud:<id>`; any other text is undeclared. The identifier is part of the value.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 319
     },
@@ -24538,7 +24571,7 @@
       "subject": "allow-set-entry",
       "kind": "behavior",
       "statement": "An allow-set entry is `*`, `local:device`, `on-prem:*`, `private-cloud:*`, `public-cloud:*`, or a category carrying a concrete identifier.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 321
     },
@@ -24560,7 +24593,7 @@
       "subject": "disjunctive",
       "kind": "behavior",
       "statement": "A zone is admitted when any entry matches. A bare category matches every identifier in it; an entry carrying an identifier matches that identifier alone.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 325
     },
@@ -24571,7 +24604,7 @@
       "subject": "undeclared",
       "kind": "behavior",
       "statement": "Only `*` admits an undeclared zone.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 327
     },
@@ -24582,7 +24615,7 @@
       "subject": "caller-zone",
       "kind": "behavior",
       "statement": "The calling process declares its zone per request; the store carries none.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 329
     },
@@ -24604,7 +24637,7 @@
       "subject": "picks-no-model",
       "kind": "behavior",
       "statement": "Placement selects no model and dispatches no inference; the engine's one invocation point is an operator-configured endpoint capability for synthesis.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 333
     },
@@ -24615,7 +24648,7 @@
       "subject": "fail-closed",
       "kind": "behavior",
       "statement": "A table declaring no zone policy resolves to the fail-closed pair `local:device` and `on-prem:*`, declared and discovered tables alike.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 335
     },
@@ -24626,7 +24659,7 @@
       "subject": "permissive-default",
       "kind": "refusal",
       "statement": "A default resolving an unlabeled table to `*` raises `EnforcePermissiveZoneDefault` where more than one principal owns the store.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 337
     },
@@ -24637,7 +24670,7 @@
       "subject": "protected-floor",
       "kind": "behavior",
       "statement": "A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 339
     },
@@ -24648,7 +24681,7 @@
       "subject": "floor-widened",
       "kind": "refusal",
       "statement": "A manifest widening a protected-class surface past its floor without an override naming that class raises `EnforceProtectedFloorWidened`.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 341
     },
@@ -24670,7 +24703,7 @@
       "subject": "narrowest-grain",
       "kind": "behavior",
       "statement": "A column's set narrows its table's; a principal's set narrows both.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 345
     },
@@ -24692,7 +24725,7 @@
       "subject": "excluded-row",
       "kind": "behavior",
       "statement": "Where the table's effective set omits the session's zone, the row leaves the result.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 349
     },
@@ -24703,7 +24736,7 @@
       "subject": "excluded-cell",
       "kind": "behavior",
       "statement": "A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 351
     },
@@ -24714,7 +24747,7 @@
       "subject": "per-principal",
       "kind": "behavior",
       "statement": "A `[[principal]]` allow-set narrows every row whose `_authored_agent` or `_authored_by` equals its `id`, wherever the row lands; a row whose authors no principal lists keeps its table's set.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 353
     },
@@ -24736,7 +24769,7 @@
       "subject": "evidence-floor",
       "kind": "refusal",
       "statement": "A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 357
     },
@@ -24758,7 +24791,7 @@
       "subject": "incognito",
       "kind": "behavior",
       "statement": "Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included. `contextful mcp --incognito` serves a credential signing no zone at `local:device` and refuses one signing a zone outside `[local:device, on-prem:*]`.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 361
     },
@@ -24769,7 +24802,7 @@
       "subject": "incognito-widening",
       "kind": "refusal",
       "statement": "A session asserting a zone wider than the incognito pin, or an incognito `contextful token mint` signing one, raises `EnforceIncognitoWidening`.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 363
     },
@@ -24780,7 +24813,7 @@
       "subject": "team-default",
       "kind": "behavior",
       "statement": "`[project.zone]` declares `default`, `users_may_widen` and `incognito_default`; `contextful token mint` naming no `--zone` signs `default`, and under `incognito_default = true` mints incognito.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 365
     },
@@ -24802,7 +24835,7 @@
       "subject": "serve-outcome",
       "kind": "behavior",
       "statement": "Serving one row yields a drop flag and the list of zone-masked columns.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 369
     },
@@ -24813,7 +24846,7 @@
       "subject": "envelope",
       "kind": "behavior",
       "statement": "A response envelope carries the zone's removals, the asserted zone and the incognito flag in {{read.respond.restriction-block}}, and no removed value.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 371
     },
@@ -24835,7 +24868,7 @@
       "subject": "symbolic-inclusion",
       "kind": "behavior",
       "statement": "Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 375
     },
@@ -24846,7 +24879,7 @@
       "subject": "proxy-boundary",
       "kind": "behavior",
       "statement": "A proxy replica resolves zones at the proxy boundary.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 377
     },
@@ -24857,7 +24890,7 @@
       "subject": "allow-set-entries",
       "kind": "limit",
       "statement": "An allow-set holds at most 32 entries.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 379
     },
@@ -24868,7 +24901,7 @@
       "subject": "identifier-length",
       "kind": "limit",
       "statement": "A zone identifier holds at most 128 chars.",
-      "why": "A-authority",
+      "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
       "line": 381
     },
@@ -25908,7 +25941,7 @@
       "subject": "single-statement",
       "kind": "refusal",
       "statement": "A declaration holding more than one statement raises `DisclosureTemplateMultiStatement`.",
-      "why": "A-authority",
+      "why": "A-authority#query-templates",
       "file": "spec/61-disclosure.md",
       "line": 127
     },
@@ -28876,7 +28909,7 @@
       "subject": "store-selector",
       "kind": "refusal",
       "statement": "The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.",
-      "why": "A-topology",
+      "why": "A-topology#public-surfaces",
       "file": "spec/71-console.md",
       "line": 177
     },
@@ -33688,6 +33721,509 @@
     "store.reserve.commit": "A commit holds its table's commit lock, assigns `_commit_seq` above every held value and publishes in sequence order.",
     "store.reserve.request ledgers": "Each run appends its outbound requests to its own ledger file, which fold passes merge and collection retires."
   },
+  "sections": {
+    "A-assurance#assurance-claims-carry": [],
+    "A-assurance#backtests-estimate-leakage": [],
+    "A-assurance#case-s-judge": [],
+    "A-assurance#columnar-read-statement": [],
+    "A-assurance#consumer-compatibility-binds": [],
+    "A-assurance#decision-module-compiles": [],
+    "A-assurance#differentially-tested-reference": [],
+    "A-assurance#duplicated-capabilities-match": [],
+    "A-assurance#edge-profile-ships": [],
+    "A-assurance#evaluation-data-follows": [],
+    "A-assurance#feature-runs-formal": [],
+    "A-assurance#gate-parts-run": [],
+    "A-assurance#gate-repair-evidence": [],
+    "A-assurance#generated-artifacts-prove": [],
+    "A-assurance#mediation-ranges-over": [],
+    "A-assurance#model-specifies-profile": [],
+    "A-assurance#profile-graphs-answer": [],
+    "A-assurance#pull-request-runs": [],
+    "A-assurance#source-change-carries": [],
+    "A-assurance#stage-subset-runs": [],
+    "A-assurance#store-adapter-s": [],
+    "A-assurance#store-format-major": [],
+    "A-assurance#store-protocol-modelled": [],
+    "A-assurance#tracked-targets-gate": [],
+    "A-assurance#version-tag-names": [],
+    "A-assurance#windows-release-support": [],
+    "A-assurance#workspace-fits-stage": [],
+    "A-authority#acting-principal": [
+      "authority.identify.subject-tuple",
+      "authority.identify.attestation",
+      "authority.identify.on-behalf-of",
+      "authority.identify.value-hygiene",
+      "authority.identify.malformed-value",
+      "authority.identify.normalization",
+      "authority.identify.identity-link",
+      "authority.identify.unverified-link",
+      "authority.identify.directory-link",
+      "authority.identify.agent-ceiling",
+      "authority.identify.incognito",
+      "authority.identify.subject-rebound",
+      "authority.issue.principal-required",
+      "authority.issue.default-read"
+    ],
+    "A-authority#body-projection": [
+      "run.journal.body-projection",
+      "run.own.body-parent",
+      "run.guard-secrets.recorded-body",
+      "authority.redact.prepared-effects",
+      "authority.redact.effect-scope"
+    ],
+    "A-authority#delegation-profile": [
+      "authority.profile.delegation-profile",
+      "authority.profile.owner-claim",
+      "authority.profile.reserved-fact",
+      "authority.profile.evaluator-bound",
+      "authority.profile.fact-ceiling",
+      "authority.profile.iteration-ceiling",
+      "authority.profile.appended-block",
+      "authority.profile.declared-scope",
+      "authority.profile.scoped-session",
+      "authority.attenuate.truncation"
+    ],
+    "A-authority#exchange-renewal": [
+      "authority.exchange.surface",
+      "authority.exchange.tenant",
+      "authority.exchange.audience",
+      "authority.exchange.material-missing",
+      "authority.exchange.holder-binding",
+      "authority.exchange.bearer-mint",
+      "authority.exchange.refresh",
+      "authority.exchange.no-extension"
+    ],
+    "A-authority#exhaustible-digest": [
+      "authority.mask.column-policy",
+      "authority.mask.class-registry",
+      "authority.mask.unknown-class",
+      "authority.mask.class-reach",
+      "authority.mask.strategies",
+      "authority.mask.drop",
+      "authority.mask.one-value",
+      "authority.mask.digest-alone",
+      "authority.mask.high-entropy",
+      "authority.mask.combine-generalizes",
+      "authority.mask.hash-width",
+      "authority.mask.token-width",
+      "authority.mask.cuts-nothing",
+      "authority.mask.crowd",
+      "authority.mask.truncation-ceiling",
+      "authority.mask.pepper",
+      "authority.mask.development-pepper",
+      "authority.mask.pseudonymous",
+      "authority.mask.native-digest",
+      "authority.mask.key-material",
+      "authority.mask.in-place",
+      "authority.mask.equality",
+      "authority.mask.aggregates",
+      "authority.mask.summarize-only",
+      "authority.mask.verbatim-quote"
+    ],
+    "A-authority#horizon": [
+      "authority.grant.horizon",
+      "authority.attenuate.horizon-widens"
+    ],
+    "A-authority#issuance-ceiling": [
+      "authority.issue.ceiling",
+      "authority.issue.above-ceiling",
+      "authority.issue.ceiling-lowering",
+      "authority.issue.out-of-tree-mint",
+      "authority.issue.bearer-cap-fixed",
+      "authority.revoke.short-lifetime",
+      "authority.revoke.epoch",
+      "authority.revoke.compromise",
+      "authority.revoke.rotation-grace",
+      "authority.revoke.short-grace",
+      "authority.revoke.immediate-retire",
+      "authority.revoke.format-withdrawn",
+      "authority.exchange.policy",
+      "authority.exchange.minted-grants",
+      "authority.exchange.lifetime-default",
+      "authority.exchange.lifetime-ceiling"
+    ],
+    "A-authority#local-transport": [
+      "authority.verify.local-transport",
+      "authority.verify.local-holder-proof",
+      "authority.verify.local-peer-fallback",
+      "authority.verify.peer-mismatch"
+    ],
+    "A-authority#network-bearer": [
+      "authority.verify.write-verbs",
+      "authority.verify.write-commit",
+      "authority.verify.timestamps",
+      "authority.verify.malformed-timestamp",
+      "authority.verify.network-bearer",
+      "authority.verify.bearer-lifetime",
+      "authority.verify.connection-scoped"
+    ],
+    "A-authority#offline-narrowing": [
+      "authority.grant.fields",
+      "authority.grant.actions",
+      "authority.grant.pattern-forms",
+      "authority.grant.malformed-pattern",
+      "authority.grant.star",
+      "authority.grant.tenant-scope",
+      "authority.grant.tenant-bytes",
+      "authority.grant.tenant-unbindable",
+      "authority.grant.tenant-child-lifetime",
+      "authority.grant.held-parent",
+      "authority.grant.aggregate",
+      "authority.attenuate.offline",
+      "authority.attenuate.narrowing",
+      "authority.attenuate.widens",
+      "authority.attenuate.expiry-extended",
+      "authority.attenuate.tenant-dropped",
+      "authority.attenuate.bearer",
+      "authority.attenuate.per-sub-agent",
+      "authority.revoke.denylist",
+      "authority.revoke.revocation-id",
+      "authority.revoke.revoked"
+    ],
+    "A-authority#one-credential": [
+      "authority.issue.absent-author",
+      "authority.issue.authoring-posture",
+      "authority.issue.posture-key",
+      "authority.issue.session-credential",
+      "authority.issue.one-credential",
+      "authority.verify.admitted-authority",
+      "authority.verify.no-bypass-constructor",
+      "authority.verify.effect-boundary",
+      "authority.verify.format-interface",
+      "authority.verify.expired",
+      "authority.exchange.per-reader",
+      "authority.exchange.no-cross-reader",
+      "authority.refuse.drifted-scope"
+    ],
+    "A-authority#pinned-keys": [
+      "authority.issue.signing-port",
+      "authority.issue.oracle-custody",
+      "authority.issue.algorithm",
+      "authority.issue.algorithm-mismatch",
+      "authority.issue.key-rotation",
+      "authority.verify.public-key-only",
+      "authority.verify.key-set",
+      "authority.verify.key-set-refresh",
+      "authority.verify.key-set-unavailable",
+      "authority.verify.key-set-stale",
+      "authority.exchange.injected-material"
+    ],
+    "A-authority#placement-breadth": [
+      "authority.issue.zone-wildcard",
+      "authority.redact.pipeline-wide",
+      "authority.place.zone-string",
+      "authority.place.allow-set-entry",
+      "authority.place.disjunctive",
+      "authority.place.undeclared",
+      "authority.place.caller-zone",
+      "authority.place.picks-no-model",
+      "authority.place.fail-closed",
+      "authority.place.permissive-default",
+      "authority.place.protected-floor",
+      "authority.place.floor-widened",
+      "authority.place.narrowest-grain",
+      "authority.place.excluded-row",
+      "authority.place.excluded-cell",
+      "authority.place.per-principal",
+      "authority.place.evidence-floor",
+      "authority.place.incognito",
+      "authority.place.incognito-widening",
+      "authority.place.team-default",
+      "authority.place.serve-outcome",
+      "authority.place.envelope",
+      "authority.place.symbolic-inclusion",
+      "authority.place.proxy-boundary",
+      "authority.place.allow-set-entries",
+      "authority.place.identifier-length"
+    ],
+    "A-authority#prepared-record": [
+      "run.journal.redacting-source",
+      "run.journal.prepared-owner",
+      "run.journal.prepared-replay",
+      "run.select.journaled-pull",
+      "authority.redact.write-time",
+      "authority.redact.before-the-record",
+      "authority.redact.every-land-entry",
+      "authority.redact.relational-journal"
+    ],
+    "A-authority#query-templates": [
+      "authority.grant.template-allowlist",
+      "authority.grant.template-tables",
+      "authority.grant.template-not-allowed",
+      "authority.grant.row-ceiling",
+      "authority.grant.group-ceiling",
+      "authority.redact.after-normalization",
+      "disclosure.template.single-statement"
+    ],
+    "A-authority#redaction-no-copy": [
+      "store.encrypt.redacted-index",
+      "run.emit.unredacted-error",
+      "connector.attach.url-scrubbing",
+      "connector.attach.credential-in-a-url",
+      "authority.redact.refetch",
+      "authority.redact.at-rest-scope",
+      "authority.redact.summarize-only"
+    ],
+    "A-authority#redistribution": [
+      "authority.redact.rule",
+      "authority.bound-redistribution.withhold",
+      "authority.bound-redistribution.before-diff",
+      "authority.bound-redistribution.outranks-grants",
+      "authority.bound-redistribution.envelopes",
+      "authority.bound-redistribution.root-allowlist",
+      "authority.bound-redistribution.root-not-allowlisted",
+      "authority.bound-redistribution.left-behind",
+      "authority.bound-redistribution.manifest-is-an-index",
+      "authority.bound-redistribution.report",
+      "authority.bound-redistribution.two-checks",
+      "authority.bound-redistribution.edge-filter"
+    ],
+    "A-authority#row-classes": [
+      "authority.mask.row-class",
+      "authority.mask.row-class-dependency"
+    ],
+    "A-authority#sender-constrained": [
+      "authority.verify.possession-binding",
+      "authority.verify.possession-invalid",
+      "authority.verify.replay-window",
+      "authority.verify.clock-skew",
+      "authority.verify.replayed-nonce"
+    ],
+    "A-authority#span-union": [
+      "authority.redact.in-value",
+      "authority.redact.rewritten-identities"
+    ],
+    "A-connector#content-pin-trust": [],
+    "A-connector#credential-custody-stays": [],
+    "A-connector#credentials-references-workload": [],
+    "A-connector#drive-capture-binds": [],
+    "A-connector#egress-passes-transport": [],
+    "A-connector#executables-content-pinned": [],
+    "A-connector#guest-world-targets": [],
+    "A-connector#host-access-quota": [],
+    "A-connector#manifest-widening-binds": [],
+    "A-connector#outbound-transport-origin": [],
+    "A-connector#picker-files-bind": [],
+    "A-connector#pin-builder-runs": [],
+    "A-connector#precompiled-components-reuse": [],
+    "A-connector#remote-artifacts-use": [],
+    "A-connector#rotation-writes-forward": [],
+    "A-connector#unreadable-objects-files": [],
+    "A-connector#untrusted-input-decodes": [],
+    "A-corpus#clause-addressed-sentence": [],
+    "A-corpus#teaching-reference-live": [],
+    "A-disclosure#aggregate-disclosure-enforced": [],
+    "A-disclosure#append-group-holds": [],
+    "A-disclosure#append-group-pays": [],
+    "A-disclosure#audit-format-v1": [],
+    "A-disclosure#audit-log-opens": [],
+    "A-disclosure#audit-reads-view": [],
+    "A-disclosure#cross-owner-release": [],
+    "A-disclosure#drive-permission-coverage": [],
+    "A-disclosure#erasure-forced-rewrite": [],
+    "A-disclosure#exact-integer-noise": [],
+    "A-disclosure#explanation-reads-exchange": [],
+    "A-disclosure#fidelity-bounded-what": [],
+    "A-disclosure#forced-rewrite-measured": [],
+    "A-disclosure#grants-rows-under": [],
+    "A-disclosure#hash-chain-attestable": [],
+    "A-disclosure#lineage-attestation-elides": [],
+    "A-disclosure#mirrored-authorization-carries": [],
+    "A-disclosure#model-declares-spend": [],
+    "A-disclosure#re-synthesis-after": [],
+    "A-read#agent-third-party": [],
+    "A-read#citation-keyed-table": [],
+    "A-read#claim-standing-derived": [],
+    "A-read#edges-supersede-under": [],
+    "A-read#extraction-cache-keys": [],
+    "A-read#gleaning-declared-single": [],
+    "A-read#horizon-withholds-load": [],
+    "A-read#join-matches-availability": [],
+    "A-read#memory-access-follows": [],
+    "A-read#memory-confidence-retention": [],
+    "A-read#memory-reads-expose": [],
+    "A-read#memory-vocabulary-schedules": [],
+    "A-read#memory-writes-validate": [],
+    "A-read#nearness-parent-closure": [],
+    "A-read#networked-read-transport": [],
+    "A-read#pooled-engine-reuses": [],
+    "A-read#read-surface-admits": [],
+    "A-read#reciprocal-rank-calibrates": [],
+    "A-read#reranker-reorders-masked": [],
+    "A-read#restricted-sidecar-probe": [],
+    "A-read#result-reused-under": [],
+    "A-read#served-claim-write": [],
+    "A-read#sidecar-serves-past": [],
+    "A-read#statement-owns-deadline": [],
+    "A-read#store-holds-nothing": [],
+    "A-read#traversal-walks-enforced": [],
+    "A-read#zone-withheld-relation": [],
+    "A-run#awakeable-resumes-credentialed": [],
+    "A-run#backfill-commits-checkpoints": [],
+    "A-run#batch-key-answers": [],
+    "A-run#blob-put-may": [],
+    "A-run#bound-hit-rides": [],
+    "A-run#build-stale-landings": [],
+    "A-run#chained-derive-pipelines": [],
+    "A-run#coordinated-exports-activate": [],
+    "A-run#d1-coordinated-groups": [],
+    "A-run#d1-execution-state": [],
+    "A-run#decoder-child-owns": [],
+    "A-run#derivation-key-decides": [],
+    "A-run#derive-engine-machine": [],
+    "A-run#derive-work-set": [],
+    "A-run#derived-unit-follows": [],
+    "A-run#disposable-execution-state": [],
+    "A-run#external-signals-single": [],
+    "A-run#host-opens-execution": [],
+    "A-run#host-registered-derive": [],
+    "A-run#incremental-position-bound": [],
+    "A-run#meter-reservation-holds": [],
+    "A-run#minor-contract-bump": [],
+    "A-run#model-declared-sql": [],
+    "A-run#nested-arrow-canonical": [],
+    "A-run#observed-batch-fixes": [],
+    "A-run#orchestrator-role-port": [],
+    "A-run#passage-s-modality": [],
+    "A-run#plan-compiled-content": [],
+    "A-run#received-batches-spooled": [],
+    "A-run#registered-bodies-pin": [],
+    "A-run#run-record-folds": [],
+    "A-run#run-substrate-storage": [],
+    "A-run#secret-guard-has": [],
+    "A-run#selection-stays-bounded": [],
+    "A-run#superseded-owner-retires": [],
+    "A-run#sweep-freezes-transaction": [],
+    "A-run#table-commit-owns": [],
+    "A-run#terminal-item-s": [],
+    "A-run#unclosed-execution-recovers": [],
+    "A-store#adjustment-factors-apply": [],
+    "A-store#availability-declared-column": [],
+    "A-store#binary-fixed-size": [],
+    "A-store#bucket-index-commits": [],
+    "A-store#canonical-metadata-sits": [],
+    "A-store#cold-store-boots": [],
+    "A-store#column-records-commit": [],
+    "A-store#coordination-probed-compare": [],
+    "A-store#empty-complete-snapshot": [],
+    "A-store#exhausted-pull-refuses": [],
+    "A-store#keyed-table-covered": [],
+    "A-store#lost-commit-round": [],
+    "A-store#machine-catalog-seals": [],
+    "A-store#manifest-carries-format": [],
+    "A-store#pass-carries-untouched": [],
+    "A-store#push-tombstones-owned": [],
+    "A-store#replica-advertises-descriptor": [],
+    "A-store#replica-read-whole": [],
+    "A-store#restatement-vintage-row": [],
+    "A-store#schema-lattice-has": [],
+    "A-store#sidecar-copies-tenant": [],
+    "A-store#sidecar-memory-mapped": [],
+    "A-store#sidecar-names-id": [],
+    "A-store#sidecar-s-builder": [],
+    "A-store#snapshot-corpus-declared": [],
+    "A-store#sqlite-link-rule": [],
+    "A-store#store-s-catalogs": [],
+    "A-store#struct-list-map": [],
+    "A-store#synced-uuid-binds": [],
+    "A-store#tenant-value-bytes": [],
+    "A-store#tombstone-signed-node": [],
+    "A-store#unpushed-run-marked": [],
+    "A-store#validity-interval-row": [],
+    "A-store#variant-column-keeps": [],
+    "A-store#vintage-landing-reads": [],
+    "A-surface#answer-surfaces-read": [],
+    "A-surface#applied-jobs-retain": [],
+    "A-surface#configuration-reaches-engine": [],
+    "A-surface#connections-claim-version": [],
+    "A-surface#console-lives-beside": [],
+    "A-surface#console-page-ships": [],
+    "A-surface#control-document-cas": [],
+    "A-surface#delegated-body-deploy": [],
+    "A-surface#due-units-admit": [],
+    "A-surface#native-model-builds": [],
+    "A-surface#query-admin-use": [],
+    "A-surface#residency-divergence-detected": [],
+    "A-surface#store-driven-job": [],
+    "A-surface#synced-control-head": [],
+    "A-surface#turn-compatibility-preserves": [],
+    "A-surface#workers-reach-orchestrator": [],
+    "A-topology#build-profiles": [
+      "corpus.targets.file",
+      "topology.package.profile",
+      "topology.package.fixed-at-build",
+      "topology.package.profile-leak",
+      "topology.package.capability-absent",
+      "topology.package.component-host",
+      "topology.package.host-missing",
+      "topology.package.crdt-leak",
+      "read.register.engine",
+      "read.rank.degradation-not-error",
+      "read.rank.caller-embedding",
+      "read.embed.required-face",
+      "read.embed.absent-read-backend",
+      "run.journal.unwired-capability"
+    ],
+    "A-topology#cloudflare-d1": [
+      "topology.coordinate.backends",
+      "run.journal.d1-profile"
+    ],
+    "A-topology#commit-lock": [
+      "store.reserve.commit-seq",
+      "store.reserve.commit-order",
+      "store.reserve.commit-lock-span",
+      "store.reserve.commit-wait",
+      "store.reserve.commit-marker",
+      "store.reserve.commit-seq-seed"
+    ],
+    "A-topology#control-crdt": [
+      "topology.package.control-profile",
+      "topology.package.control-team-state",
+      "topology.package.apply-home"
+    ],
+    "A-topology#deploy-observation": [
+      "topology.deploy.unsupported-shape",
+      "topology.deploy.parity",
+      "topology.deploy.parity-divergence"
+    ],
+    "A-topology#domain-crate": [
+      "topology.package.domain-crate",
+      "topology.package.domain-impurity",
+      "topology.package.dependency-direction"
+    ],
+    "A-topology#enforcement-stack": [
+      "topology.compose.mediation"
+    ],
+    "A-topology#export-committed": [
+      "run.export.post-commit-read"
+    ],
+    "A-topology#one-egress": [
+      "topology.compose.inference-egress",
+      "topology.compose.vendor-sdk",
+      "run.land.unknown-destination",
+      "run.land.no-host-arm",
+      "connector.infer.model-endpoint",
+      "connector.infer.vendor-sdk"
+    ],
+    "A-topology#posture-probe": [
+      "topology.publish-hostname.posture-mismatch",
+      "topology.publish-hostname.probe-table"
+    ],
+    "A-topology#public-surfaces": [
+      "topology.compose.three-crossings",
+      "topology.compose.undeclared-crossing",
+      "topology.bound-application.domain-neutral",
+      "surface.package.store-selector"
+    ],
+    "A-topology#queue-ingress": [
+      "topology.compose.queue-extension",
+      "run.export.export-block",
+      "run.export.commit-order",
+      "run.export.delivery",
+      "run.export.at-least-once"
+    ]
+  },
   "pointers": [
     [
       "corpus.anatomy.statement-words",
@@ -33712,6 +34248,10 @@
     [
       "corpus.reference.dangling",
       "id"
+    ],
+    [
+      "corpus.rationale.orphan-record",
+      "corpus.rationale.record-threshold"
     ],
     [
       "corpus.state.verdict",
@@ -39240,6 +39780,10 @@
           "SpecUnsettled": {
             "clause": "corpus.rationale.unsettled-line",
             "gloss": "A malformed unknown, or an appendix heading."
+          },
+          "SpecWhyUnscoped": {
+            "clause": "corpus.rationale.why-scoped",
+            "gloss": "More Why citations naming a contract ADR without a section than the ceiling records."
           },
           "SpecWordCeiling": {
             "clause": "corpus.anatomy.word-ceilings",

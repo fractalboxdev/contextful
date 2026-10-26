@@ -26,7 +26,7 @@ pub fn run(c: &Corpus, name: &str) -> Vec<Finding> {
 }
 
 static SEGMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z0-9-]+$").unwrap());
-static RECORD_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(P[0-9]+|A-[a-z0-9-]+)$").unwrap());
+static RECORD_ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(P[0-9]+|A-[a-z0-9-]+(#[a-z0-9-]+)?)$").unwrap());
 static RECORD_FILE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^spec/adr/(?:(P[0-9]+)-[a-z0-9-]+|(A-[a-z0-9-]+))\.md$").unwrap());
 static RAISES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"raises? `([A-Za-z0-9_]+)`").unwrap());
@@ -514,7 +514,8 @@ fn rationale(c: &Corpus) -> Vec<Finding> {
         match why_ok(&cl.why) {
             Ok(ids) => {
                 for i in ids {
-                    cited.entry(i).or_insert((cl.file.clone(), cl.line));
+                    let file = i.split('#').next().unwrap_or_default().to_string();
+                    cited.entry(file).or_insert((cl.file.clone(), cl.line));
                 }
             }
             Err(e) => out.push(f("rationale", &cl.file, cl.line, "SpecRecord", format!("`{}`: {e}", cl.id))),
@@ -544,6 +545,7 @@ fn rationale(c: &Corpus) -> Vec<Finding> {
         }
     }
     out.extend(crate::size::word_findings(c, "rationale"));
+    out.extend(crate::records::check(c));
     for (id, (file, line)) in &cited {
         if !records.contains(id) {
             out.push(f("rationale", file, *line, "SpecRecord", format!("Why cites missing record {id}")));
@@ -644,7 +646,18 @@ fn contract_adr_anatomy(d: &Doc, id: &str, out: &mut Vec<Finding>) {
         .filter_map(|(n, l, _)| l.strip_prefix("## ").map(|t| (n, t.trim().to_string())))
         .collect();
     if heads.is_empty() {
-        out.push(r(1, "holds no `## <decision>` section".into()));
+        out.push(r(1, "holds no `## <slug> — <decision>` section".into()));
+    }
+    let mut slugs: BTreeMap<String, usize> = BTreeMap::new();
+    for (n, title) in &heads {
+        match crate::records::HEADING.captures(&format!("## {title}")) {
+            None => out.push(r(*n, format!("section heading `{title}` is not `<slug> — <decision>`, the slug `[a-z0-9-]` of at most 40 chars"))),
+            Some(cap) => {
+                if let Some(first) = slugs.insert(cap[1].to_string(), *n) {
+                    out.push(r(*n, format!("slug `{}` also heads the section at line {first}", &cap[1])));
+                }
+            }
+        }
     }
     for (i, (n, title)) in heads.iter().enumerate() {
         let end = heads.get(i + 1).map(|h| h.0).unwrap_or(usize::MAX);

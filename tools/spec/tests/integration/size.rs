@@ -36,7 +36,7 @@ fn ceiling_of(s: &Scratch, key: &str) -> usize {
     panic!("no ceiling `{key}`")
 }
 
-// spec: corpus.anatomy.word-ceilings@f1fb0e20
+// spec: corpus.anatomy.word-ceilings@f5346dca
 #[test]
 fn a_contract_or_an_adr_one_word_over_its_ceiling_fails_lint() {
     let s = Scratch::copy();

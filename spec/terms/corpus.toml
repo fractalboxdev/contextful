@@ -53,6 +53,7 @@ SpecDiagramState       = { clause = "corpus.diagram.state", gloss = "A state dia
 SpecGuide              = { clause = "corpus.guide.bad-guide", gloss = "A missing or malformed guide, or one restating a rule." }
 SpecWordCeiling        = { clause = "corpus.anatomy.word-ceilings", gloss = "A contract or contract ADR whose word count differs from its ceiling." }
 SpecClauseUnowned      = { clause = "corpus.state.unowned", gloss = "More unpinned, unscheduled and unquestioned clauses than the ceiling records." }
+SpecWhyUnscoped        = { clause = "corpus.rationale.why-scoped", gloss = "More Why citations naming a contract ADR without a section than the ceiling records." }
 
 [limit]
 corpus-subject-length   = { clause = "corpus.address.subject-segment", value = 40, unit = "chars", basis = "chosen", gloss = "Longest subject slug." }
@@ -83,27 +84,28 @@ corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "w
 registry-committed-sites = 3
 anatomy-long-lists = 15
 clause-unowned = 249
+why-unscoped = 806
 
 [ceiling.contract-words]
 assurance = 10092
 authority = 7843
 connector = 11653
-corpus = 3361
+corpus = 3520
 disclosure = 5476
 read = 10127
-run = 19200
+run = 19201
 store = 10704
 surface = 6502
 topology = 2646
 
 [ceiling.adr-words]
-A-assurance = 5615
-A-authority = 4493
-A-connector = 3619
-A-corpus = 385
-A-disclosure = 4072
-A-read = 5518
-A-run = 8414
-A-store = 7014
-A-surface = 3389
-A-topology = 2472
+A-assurance = 5588
+A-authority = 4473
+A-connector = 3602
+A-corpus = 383
+A-disclosure = 4053
+A-read = 5491
+A-run = 8375
+A-store = 6979
+A-surface = 3373
+A-topology = 2460

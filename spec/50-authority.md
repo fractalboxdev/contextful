@@ -61,33 +61,33 @@ flowchart LR
 The subject tuple, its per-member attestation, hygiene at the mint, and the identity links connecting a subject to a source's principals.
 
 - `subject-tuple` — A subject is a tuple of agent, host, `on_behalf_of` principal, task scope, inference zone and incognito flag. A credential binds the subset it names and admits under that combination alone.
-  *A-authority*
+  *A-authority#acting-principal*
 - `attestation` — Each member carries an attestation, `verified` or `asserted`. Agent, host, task and zone are asserted and render labeled as such; no surface presents an asserted member as identity.
-  *A-authority*
+  *A-authority#acting-principal*
 - `on-behalf-of` — `on_behalf_of` is verified at the mint against the issuing identity provider, and admission carries it forward as the reader's identity.
-  *A-authority*
+  *A-authority#acting-principal*
 - `value-hygiene` — The mint checks every subject value: non-empty, at most 256 B, no control character, no leading or trailing whitespace.
-  *A-authority*
+  *A-authority#acting-principal*
 - `malformed-value` — A value failing {{authority.identify.value-hygiene}} raises `AuthoritySubjectMalformed`, except that the command-line mint trims a padded value where the automated exchange refuses it.
-  *A-authority*
+  *A-authority#acting-principal*
 - `normalization` — The verified tuple is normalized once, each value trimmed and each blank member dropped, before any consumer reads it. No point of use re-normalizes a value or interprets a scheme prefix.
-  *A-authority*
+  *A-authority#acting-principal*
 - `subject-missing` — A credential carrying no subject member raises `AuthoritySubjectMissing` at admission, naming the refusing surface and echoing no credential value.
   *because an unauthenticated face mints a credential naming a public subject; admitting none reads as the owner's ambient authority*
 - `identity-link` — An identity link maps a source principal onto a subject over fields the identity provider verified, recording `method` and `confidence`. Confidence relaxes no check.
-  *A-authority*
+  *A-authority#acting-principal*
 - `unverified-link` — Only `scim_email` and `oidc_sub` links authorize. An authorization join consuming an `operator_asserted` link raises `AuthorityLinkUnverified`.
-  *A-authority*
+  *A-authority#acting-principal*
 - `directory-link` — Directory provisioning from the identity provider writes source-account links. A value a source's profile interface returns at request time is data, not a link.
-  *A-authority*
+  *A-authority#acting-principal*
 - `unlinked-principal` — A subject whose source principal resolves to no link reads from that source only the resources {{disclosure.reach.public-grant}} opens.
   *because a source principal is the source's spelling; the `user` principal {{disclosure.reach.subject-principals}} spells is the subject's own and needs no link*
 - `agent-ceiling` — A sub-agent's reachable set equals or narrows its parent's; no agent reads beyond the principal it acts for.
-  *A-authority*
+  *A-authority#acting-principal*
 - `incognito` — Admission carries the caller's incognito flag unchanged, and a derivation turns it on and never off.
-  *A-authority*
+  *A-authority#acting-principal*
 - `subject-rebound` — A derivation naming an `on_behalf_of` different from its parent's raises `AuthoritySubjectRebound`.
-  *A-authority*
+  *A-authority#acting-principal*
 
 unsettled: Does a subject with no verified principal need a case distinct from the project owner presenting nothing? owner: authority affects: authority.identify
 
@@ -96,29 +96,29 @@ unsettled: Does a subject with no verified principal need a case distinct from t
 The versioned delegation profile over the attenuable-credential library: admitted elements, reserved facts, the bounded evaluator, the scoped session.
 
 - `delegation-profile` — Delegated authority travels in one attenuable, chain-signed library format. The library owns serialization, signatures, block chaining and evaluation; a versioned profile names every fact, check and restriction the engine admits.
-  *A-authority*
+  *A-authority#delegation-profile*
 - `owner-claim` — Profile 2 permits a signed owner store identity only in the root authority block; profile 1 and attenuation blocks reject it, and activation requires an unrestricted read grant over the selected store.
-  *A-authority*
+  *A-authority#delegation-profile*
 - `unrecognized-element` — A credential carrying a block version, predicate, rule or restriction the profile does not name raises `ProfileElementUnrecognized`.
   *P1*
 - `reserved-fact` — Current time, audience, resolved resources and authenticated request identity are reserved facts the engine supplies. A token block introducing one raises `ProfileReservedFact`.
-  *A-authority*
+  *A-authority#delegation-profile*
 - `evaluator-bound` — The evaluator runs with no third-party block, external function, recursion or regular-expression predicate. Input past {{authority.profile.fact-ceiling}} or {{authority.profile.iteration-ceiling}} raises `ProfileEvaluationBudget`.
-  *A-authority*
+  *A-authority#delegation-profile*
 - `fact-ceiling` — One authorization holds at most 1000 entries in its fact set.
-  *A-authority*
+  *A-authority#delegation-profile*
 - `iteration-ceiling` — One authorization runs at most 100 iterations of the evaluator.
-  *A-authority*
+  *A-authority#delegation-profile*
 - `appended-block` — A block after the first contributes no authority fact to an allow decision; appending narrows a credential or adds nothing.
-  *A-authority*
+  *A-authority#delegation-profile*
 - `unevaluated-restriction` — A grant carrying a row restriction or aggregate bound with no read evaluator raises `ProfileRestrictionUnevaluated` at the mint, at derivation on parent and child, and at admission.
   *P1*
 - `declared-field` — A restriction field the engine refuses stays declared in the profile and is parsed at every admission.
   *P1*
 - `declared-scope` — Introspection reports the scope a credential declares without evaluating it. Table policy, source access lists, time bounds and revocation settle effective authority afterwards.
-  *A-authority*
+  *A-authority#delegation-profile*
 - `scoped-session` — Authorization yields a scoped session carrying every restriction the credential expressed. A statement over two tables needs both accesses in one coherent grant; actions and tables never flatten into independent allowlists.
-  *A-authority*
+  *A-authority#delegation-profile*
 - `version-unsupported` — A checkpoint reading a profile version outside its supported set raises `ProfileVersionUnsupported`. Widening the profile mints a new version.
   *P1*
 - `introspection-surface` — Introspection runs on the command line alone, as `contextful token introspect`; no serving face answers an introspection request.
@@ -129,37 +129,37 @@ The versioned delegation profile over the attenuable-credential library: admitte
 What a credential says a holder does: actions, table patterns, tenant scope, the template allowlist, ceilings, and resources answering by name.
 
 - `fields` — A grant names actions, table patterns, and optionally a tenant scope, aggregate constraints, a template allowlist and a row ceiling. An absent constraint leaves its dimension unconstrained; an absent allowlist confers no template.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `actions` — The action vocabulary is `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, and `forget` to erase subject data.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `unknown-action` — An action outside the vocabulary raises `GrantActionUnknown` at the mint and at admission.
   *P1*
 - `pattern-forms` — A table pattern is `*`, covering every table; a prefix ending in `*`, covering every name beginning with that prefix; or any other string, matched exactly. A concrete pattern never covers `*`.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `malformed-pattern` — A pattern with `*` anywhere but its final position raises `GrantPatternMalformed`.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `one-matcher` — One pattern matcher serves derivation legality, view registration, tool visibility and replica object selection.
   *P5*
 - `star` — `*` is an ordinary grant, bounded by the credential's actions, audience and expiry and visible in the audit record.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `tenant-scope` — A tenant scope pairs a table with an opaque byte string bound to that table's outermost partition column.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `tenant-bytes` — The grant's tenant value, the partition key on disk and the consumer's tenant identifier are identical bytes, compared by bound-parameter equality with no trimming, case folding, collation or Unicode normalization.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `tenant-unbindable` — A tenant-scoped grant on a table declaring no bare outermost partition column raises `GrantTenantUnbindable` at admission.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `unpartitioned` — A consumer needing a per-tenant scope over a table declaring no partition key declares a bare outermost partition column; no other grant dimension scopes rows by tenant.
   *because a tenant value matched against an arbitrary column is a row restriction, and a scoped-looking grant over an unbound table reads every tenant*
 - `tenant-child-lifetime` — A tenant-scoped child credential is derived per query with a lifetime of 15 min.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `held-parent` — A consumer's service holds one broader parent and derives each per-query child locally. A durable run step derives its child afresh from a parent the run owner holds, never from a persisted child.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `template-allowlist` — A template allowlist denies by default: absent authorizes none, `*` authorizes every template the manifest declares, and a child names only identifiers its parent named or covered.
-  *A-authority*
+  *A-authority#query-templates*
 - `template-tables` — A covered template reads the tables its statement names inside that template's session, under every other layer; its coverage adds no table to a raw read.
-  *A-authority*
+  *A-authority#query-templates*
 - `template-not-allowed` — Invoking a template outside the allowlist raises `GrantTemplateNotAllowed`, and an uncovered template is absent from the projected tool listing.
-  *A-authority*
+  *A-authority#query-templates*
 - `pipeline-resource` — A pipeline identifier is a read resource: listing it, describing it and tracing its runs each need a read grant covering it. A grant over its landed tables confers none.
   *P2*
 - `pipeline-not-covered` — Describing an uncovered pipeline raises `GrantPipelineNotCovered`, naming it. Listing filters to covered identifiers and raises it when none is covered; a project declaring no pipelines lists empty.
@@ -169,17 +169,17 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
 - `write-not-covered` — A credentialed table write whose grants carry no `write` over a destination table raises `GrantWriteNotCovered`, naming the table, before its first effect.
   *because a write grant names the tables a principal authors, and a row landed outside them carries a principal who never authorized it*
 - `row-ceiling` — A read's row ceiling is the least of the grant's, the request's, the template's, each touched table's published ceiling and {{read.respond.face-ceiling}}; an undeclared component imposes none, and the face ceiling is always declared.
-  *A-authority*
+  *A-authority#query-templates*
 - `duration-ceiling` — A statement's `max_duration_ms` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.
   *A-read*
 - `byte-ceiling` — A response's `max_response_bytes` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.
   *A-read*
 - `horizon` — A grant may carry `horizon`, an instant bounding the availability time and `since` of every read its holder makes, under {{read.horizon.inherited-bound}} and {{read.horizon.exceeds-horizon}}; an absent horizon leaves availability unbounded.
-  *A-authority*
+  *A-authority#horizon*
 - `aggregate` — An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `group-ceiling` — An aggregate grant's groups-per-query ceiling is at least 1 entries; a query producing more groups than the ceiling is cut at it.
-  *A-authority*
+  *A-authority#query-templates*
 
 unsettled: Does a credentialed `run start` or `pipeline run` also need `execute` over its pipeline beside `write` over its tables? owner: authority affects: authority.grant
 
@@ -188,23 +188,23 @@ unsettled: Does a credentialed `run start` or `pipeline run` also need `execute`
 Deriving a narrower child offline, and the narrowing legality of each grant dimension.
 
 - `offline` — A holder derives a narrower child with no issuer round trip by appending a signed block. The parent's bytes stay unchanged, independently verifiable and independently withdrawable.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `narrowing` — Every dimension of a child obeys the narrowing table in Shapes, checked by the deriving holder and again across the whole chain at admission.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `widens` — A child broader than its parent on actions, tables, templates or aggregate constraints raises `AttenuationWidens`, naming the dimension.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `horizon-widens` — A child whose horizon falls later than its parent's is broader on `horizon` and refuses as {{authority.attenuate.widens}}, naming that dimension; a child naming no horizon inherits its parent's.
-  *A-authority*
+  *A-authority#horizon*
 - `expiry-extended` — A child whose expiry falls past its parent's raises `AttenuationExpiryExtended`.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `tenant-dropped` — A child dropping its parent's tenant scope or naming another tenant raises `AttenuationTenantDropped`. Adding a scope to an unscoped parent narrows.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `truncation` — The chain-final proof advances an ephemeral key per block; a chain truncated to a broader prefix verifies as nothing.
-  *A-authority*
+  *A-authority#delegation-profile*
 - `bearer` — Derivation proves the chain and not the new holder's identity. A hop authenticating its new actor runs through the exchange.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `per-sub-agent` — An agent derives one child per sub-agent, each bound by its confirmation claim to that sub-agent's own key pair.
-  *A-authority*
+  *A-authority#offline-narrowing*
 
 A derivation, from the holder's append to the checkpoint's recheck:
 
@@ -235,31 +235,31 @@ unsettled: What delegation depth does the library format support, and what verif
 Minting: the persisted lifetime ceiling, the principal a row-landing grant needs, signing custody, and the authoring posture.
 
 - `ceiling` — A project persists in version control an issuance policy naming the default audience and the longest lifetime any mint produces, at most 24 h.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `above-ceiling` — An explicitly requested lifetime above the persisted ceiling raises `IssuanceLifetimeAboveCeiling`; an exchange policy's lifetime clamps down to the ceiling instead.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `ceiling-lowering` — Lowering the ceiling records the previous value and its instant; rotation-grace validation uses the recorded value until the last credential minted under it lapses.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `policy-init` — `contextful token policy init` writes the issuance policy naming its audience with a ceiling of the {{authority.verify.bearer-lifetime}} bound; over an existing policy it raises `IssuancePolicyExists` and writes nothing.
   *because a fresh project mints under a policy it commits, and the served faces admit nothing longer-lived by default*
 - `lower-only` — `contextful token policy lower-ceiling` naming a value at or above the current ceiling raises `IssuanceCeilingNotLowered` and leaves the policy unchanged.
   *because a raised ceiling mints credentials outliving the grace windows validated against the lower one*
 - `out-of-tree-mint` — Ceiling enforcement binds a mint run inside the project tree; a mint run outside it is bounded at the checkpoint by rotation-grace validation.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `principal-required` — A mint granting `write`, `execute` or `forget` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.
-  *A-authority*
+  *A-authority#acting-principal*
 - `default-read` — A mint's default action set is `read` alone.
-  *A-authority*
+  *A-authority#acting-principal*
 - `absent-author` — An absent authorship value on a landed row means no credential authorized the write: the uncredentialed owner or a timer-fired run.
-  *A-authority*
+  *A-authority#one-credential*
 - `authoring-posture` — Every table write verb {{authority.verify.write-verbs}} runs under its manifest's authoring posture. `session` authors every write by one verified ambient credential's principal; `per_request` holds no ambient principal, leaving an unaccompanied write unauthored.
-  *A-authority*
+  *A-authority#one-credential*
 - `posture-key` — A manifest declares its posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.
-  *A-authority*
+  *A-authority#one-credential*
 - `session-credential` — Under `session`, a table write verb run with no credential raises `AuthoringCredentialMissing` before its first effect.
-  *A-authority*
+  *A-authority#one-credential*
 - `one-credential` — A served face admits a verified capability credential, presented as a bearer or bound to a holder key, and nothing else: no static bearer, no gateway shared secret, no unauthenticated owner path.
-  *A-authority*
+  *A-authority#one-credential*
 - `missing-key` — A face configured with no issuer key raises `IssuerKeyMissing`, prints the command that fixes it, and binds no port.
   *P3*
 - `default-key` — A mint naming no issuer key reads `.contextful/issuer.seed`; no file there raises {{authority.issue.missing-key}}.
@@ -269,9 +269,9 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
 - `unresolvable-key` — A set issuer key reference that resolves to no material raises `IssuerKeyUnresolvable`; no local key is fabricated.
   *P3*
 - `signing-port` — One signing port signs every credential's authority block and every audit root and tip; no mint path reads a private key. Seed files, secret references resolved at mint time and remote signing oracles are its adapters.
-  *A-authority*
+  *A-authority#pinned-keys*
 - `oracle-custody` — Under the oracle adapter the seed stays inside the custodian, which records each mint as a signing call.
-  *A-authority*
+  *A-authority#pinned-keys*
 - `signature-encoding` — A signing port names its encoding: `ed25519`, a 32-byte key and 64-byte signature; `es256-der` or `es256-raw`, a SEC1 P-256 point signing ECDSA over SHA-256 of the message as ASN.1 DER or 64-byte `r ‖ s`.
   *because an enclave, a cloud KMS and a browser key each answer ES256 in one encoding, and the tag lets every adapter answer in its own*
 - `der-at-the-edge` — An `es256-raw` signature converts to DER where it leaves the port; a credential and an audit root or tip carry ES256 only as DER.
@@ -280,23 +280,23 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *because a mislabelled signature yields a credential every checkpoint rejects, and refusing at the port names the adapter at fault*
 - `public-key-text` — A port's public key prints as `ed25519:<hex>` or `es256:<hex>` of its SEC1 point; either form, with a compressed or uncompressed point, parses back to the key it names.
 - `algorithm` — A credential names Ed25519, the default, or ECDSA over P-256; the pinned key's scheme is authoritative.
-  *A-authority*
+  *A-authority#pinned-keys*
 - `algorithm-mismatch` — A credential naming a scheme other than its pinned key's raises `SignatureAlgorithmMismatch`.
-  *A-authority*
+  *A-authority#pinned-keys*
 - `unauthorized-mint` — A mint request presenting no grant carrying `admin` raises `IssuanceUnauthorized`.
   *because issuance authorizes itself with the same primitive as every other action, and a separate mint secret is a second perimeter to guard*
 - `replica-mint` — A replica holds the issuer's public key and no signing material; a mint there raises `ReplicaCannotIssue`.
   *because a replica verifies every credential the primary mints and needs no power to produce one*
 - `zone-wildcard` — A mint whose subject declares a wildcard inference zone raises `IssuanceZoneWildcard`.
-  *A-authority*
+  *A-authority#placement-breadth*
 - `key-rotation` — The issuer signing key rotates every 90 d, and at once on suspected compromise.
-  *A-authority*
+  *A-authority#pinned-keys*
 - `rotation-not-due` — A rotation without `--compromise` before {{authority.issue.key-rotation}} falls due raises `IssuerKeyRotationNotDue`, naming the instant it falls due.
   *because a scheduled rotation ahead of its cadence churns every verifier's pins with nothing withdrawn*
 - `unrecorded-key` — A rotation without `--compromise` of an issuer key the key-set ledger does not date raises `IssuerKeyUnrecorded`; `contextful token record --since` dates it.
   *because an undated key otherwise rotates at once, skipping the cadence the ledger enforces*
 - `bearer-cap-fixed` — No issuance policy, face or command setting raises the cap {{authority.verify.bearer-lifetime}} sets; a credential living longer admits over a network only bound to a holder key.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 
 unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manifest declaring no `authoring_posture`, or does the posture bind table write verbs alone? owner: authority affects: authority.issue
 
@@ -305,41 +305,41 @@ unsettled: Does a read face — `query`, `mcp`, a served face — refuse a manif
 Admission at a checkpoint: signatures, audience, timestamps, possession proof, key sets, and the admitted-authority value.
 
 - `admitted-authority` — Verification yields an admitted-authority value carrying the normalized subject tuple and its grants. Every read surface and row-landing effect takes that value as an argument; nothing downstream re-parses a credential or reads ambient state.
-  *A-authority*
+  *A-authority#one-credential*
 - `write-verbs` — `context land`, `run start` and `pipeline run` are the table write verbs. Each admits its accompanying credential before its first effect and stamps that credential's `on_behalf_of` as every landed row's `_authored_by`.
-  *A-authority*
+  *A-authority#network-bearer*
 - `write-commit` — A credentialed table write reads its denylist afresh and checks expiry immediately before each commit; a credential revoked or lapsed since admission commits nothing, as {{authority.revoke.revoked}} and {{authority.verify.expired}}.
-  *A-authority*
+  *A-authority#network-bearer*
 - `no-bypass-constructor` — The admitted-authority type has no constructor that produces a value without a verification.
-  *A-authority*
+  *A-authority#one-credential*
 - `effect-boundary` — A statement's start and each commit are effect boundaries. Each boundary re-reads expiry, revocation and policy version against the carried value; a lapse between boundaries stops the effect at the next one.
-  *A-authority*
+  *A-authority#one-credential*
 - `format-interface` — The credential format sits behind one interface of issue, attenuate, verify and introspect; no enforcement call site names a credential type.
-  *A-authority*
+  *A-authority#one-credential*
 - `bad-signature` — A credential with any block signature failing against a pinned key raises `SignatureInvalid` and admits nothing, no verified prefix included.
   *because a partially verified chain is an unauthenticated credential, and admitting its prefix hands out authority nobody signed as presented*
 - `audience-mismatch` — A checkpoint declaring an expected audience raises `AudienceMismatch` for a credential with a different audience or none; a checkpoint declaring none performs no audience check.
   *because a credential minted for one store is otherwise replayable against another; the undeclared case is local development*
 - `timestamps` — Every checkpoint decodes timestamps into UTC instants under one grammar and compares instants.
-  *A-authority*
+  *A-authority#network-bearer*
 - `malformed-timestamp` — A timestamp that does not decode under that grammar raises `TimestampMalformed` at every checkpoint alike.
-  *A-authority*
+  *A-authority#network-bearer*
 - `expired` — A credential whose expiry precedes the evaluation instant raises `AuthorityExpired` at admission and at each later effect boundary.
-  *A-authority*
+  *A-authority#one-credential*
 - `possession-binding` — A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce; a credential carrying none requires no proof.
-  *A-authority*
+  *A-authority#sender-constrained*
 - `possession-invalid` — A request whose proof does not verify against the confirmation thumbprint raises `PossessionProofInvalid`.
-  *A-authority*
+  *A-authority#sender-constrained*
 - `replay-window` — A proof issued more than 300 s before the checkpoint clock is refused as {{authority.verify.possession-invalid}}; the nonce cache retains each nonce for that window.
-  *A-authority*
+  *A-authority#sender-constrained*
 - `clock-skew` — A proof issued more than 30 s after the checkpoint clock is refused as {{authority.verify.possession-invalid}}.
-  *A-authority*
+  *A-authority#sender-constrained*
 - `replayed-nonce` — A proof whose nonce repeats inside the replay window raises `PossessionProofReplayed`.
-  *A-authority*
+  *A-authority#sender-constrained*
 - `local-transport` — A local transport is a stdio pipe the checkpoint inherited from the process that spawned it, or a Unix socket; every other transport is a network transport.
-  *A-authority*
+  *A-authority#local-transport*
 - `local-holder-proof` — On a local transport, a credential whose confirmation claim holds a thumbprint admits only with a proof as {{authority.verify.possession-binding}}; the peer fallback never applies to it, and a missing or failing proof is refused as {{authority.verify.possession-invalid}}.
-  *A-authority*
+  *A-authority#local-transport*
 - `local-proof-channel` — A credentialed command-line verb and the stdio tool server sign one holder proof at admission with the Ed25519 seed in `--holder-key`, else take the proof in `CONTEXTFUL_DPOP`, else sign with the seed in `CONTEXTFUL_HOLDER_KEY`; a blank variable is unset.
   *because a bound credential is otherwise unusable off the network face, and a proof on the argument list is readable through the process table*
 - `local-proof-request` — A local proof covers method `CLI`, the verb's command path as target, such as `context land`, `memory write` or `mcp`, and an empty body.
@@ -348,29 +348,29 @@ Admission at a checkpoint: signatures, audience, timestamps, possession proof, k
   *because each invocation is a fresh process, and a per-process cache lets a proof copied from the environment replay for the whole window*
 - `holder-keygen` — `token keygen --holder` writes an Ed25519 holder seed and prints its thumbprint, the value `token mint --holder` binds as the confirmation claim.
 - `local-peer-fallback` — On a local transport, a credential with no confirmation claim admits only through the operating system's peer authentication: an inherited stdio pipe, or a socket peer whose kernel-reported uid equals the checkpoint process's uid.
-  *A-authority*
+  *A-authority#local-transport*
 - `peer-mismatch` — A socket peer presenting a credential with no confirmation claim, whose kernel-reported uid differs from the checkpoint process's uid or which the platform cannot report, raises `TransportPeerMismatch` and admits nothing.
-  *A-authority*
+  *A-authority#local-transport*
 - `network-bearer` — A network checkpoint admits a credential with no confirmation claim as a bearer when it names the checkpoint's declared audience and meets {{authority.verify.bearer-lifetime}}; the peer fallback never applies over a network.
-  *A-authority*
+  *A-authority#network-bearer*
 - `bearer-lifetime` — A bearer whose expiry falls more than 3600 s after its issue instant raises `BearerLifetimeExceeded` at a network checkpoint and admits nothing; its holder refreshes through {{authority.exchange.surface}}.
-  *A-authority*
+  *A-authority#network-bearer*
 - `connection-scoped` — A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.
-  *A-authority*
+  *A-authority#network-bearer*
 - `nonce-cache` — A checkpoint's nonce cache holds at most 100000 entries; a proof arriving while it is full answers `503` and admits nothing.
   *because a proof the cache cannot record is a replay it cannot detect*
 - `public-key-only` — A checkpoint holds public key material and no signing secret, and admits with no call to an issuer, identity provider or policy service.
-  *A-authority*
+  *A-authority#pinned-keys*
 - `key-set` — A checkpoint accepts a set of issuer keys: comma-separated static pins, or a project-published unauthenticated key route returning the current and non-retired versions, opted into per key.
-  *A-authority*
+  *A-authority#pinned-keys*
 - `pin-source` — A command-line checkpoint reads its pins from `--public-key`, else `CONTEXTFUL_ISSUER_PUBKEY`, and its audience from `--audience`, else `CONTEXTFUL_AUDIENCE`. A bare 64-hex pin reads as `ed25519/<hex>`; an unknown scheme prefix is refused as {{authority.verify.key-set-unavailable}}, naming the accepted forms.
   *because an operator exports the issuer key once per shell, and key tools commonly print a bare Ed25519 key with no scheme prefix*
 - `key-set-refresh` — A published key set refreshes every 300 s, single-flight, plus one refresh on a signature failure, with failure-forced refreshes throttled.
-  *A-authority*
+  *A-authority#pinned-keys*
 - `key-set-unavailable` — A checkpoint opted into a published key set that obtains none, or holding a malformed pin, raises `KeySetUnavailable`: the engine declines to start and a gateway answers `503`.
-  *A-authority*
+  *A-authority#pinned-keys*
 - `key-set-stale` — After a failed fetch the last-known-good set serves while its age since the last successful fetch stays under 1 h; past that the checkpoint raises `KeySetStale`.
-  *A-authority*
+  *A-authority#pinned-keys*
 
 unsettled: Does a proof replayed against a sibling checkpoint need a shared nonce store or a checkpoint-issued nonce? owner: authority affects: authority.verify
 
@@ -379,13 +379,13 @@ unsettled: Does a proof replayed against a sibling checkpoint need a shared nonc
 Ending a credential's usefulness ahead of expiry: short lifetimes, the denylist, the scoped epoch, key rotation, format withdrawal.
 
 - `short-lifetime` — A short lifetime is the primary withdrawal: a credential's remaining lifetime bounds its exposure after a provider sign-out or before a denylist entry propagates.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `denylist` — A checkpoint reads a denylist keyed on credential identifier. An entry ages out once its identifier verifies under no live key version.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `revocation-id` — Every derivation carries its own revocation identifier, withdrawing one subtree without ending the root it descends from.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `epoch` — A revocation epoch scoped on project, tenant and principal class invalidates that slice of outstanding authority.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `epoch-store` — A project persists each scope's current epoch and each issuer key version's retirement in `.contextful/keyset.toml` beside the issuer seed; a mint stamps its scope's current epoch, and a checkpoint re-reads the file at each admission.
   *because a file the checkpoint reads locally keeps a policy service off the admission path, and the seed's directory already holds the issuer's custody*
 - `ledger-unavailable` — A checkpoint pointed at a key-set ledger, or that has read one, raises `KeySetLedgerUnavailable` and admits nothing once the file is absent or malformed.
@@ -393,17 +393,17 @@ Ending a credential's usefulness ahead of expiry: short lifetimes, the denylist,
 - `unknown-principal-class` — `contextful token revoke --principal-class` naming neither `delegated` nor `unattributed` raises `RevocationPrincipalClassUnknown` and bumps nothing.
   *because an epoch under a class no credential carries withdraws nothing while reporting success*
 - `revoked` — A credential on the denylist, or carrying an epoch below the current scoped epoch, raises `AuthorityRevoked` at the next effect boundary.
-  *A-authority*
+  *A-authority#offline-narrowing*
 - `compromise` — Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `rotation-grace` — A rotation policy declares a cadence and a grace window, validated against the persisted issuance policy, during which the retiring key version still verifies.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `short-grace` — A declared or overridden grace window shorter than the effective issuance ceiling raises `RotationGraceTooShort`.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `immediate-retire` — Immediate retirement removes a key version from the published set and every static pin; a checkpoint drops it at its next refresh.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `format-withdrawn` — From a declared cutover instant, every admission path raises `CredentialFormatWithdrawn` for a credential in a withdrawn format. Only an explicit declaration restores acceptance.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 
 The life of one issuer key version:
 
@@ -424,7 +424,7 @@ unsettled: How does a bumped epoch reach a checkpoint on another node before the
 Exchanging a verified external assertion for a scoped credential under injected verifying material and a declared policy.
 
 - `surface` — `contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`. The command reads the assertion from `--jwt` or standard input, and a holder proof from `--dpop`.
-  *A-authority*
+  *A-authority#exchange-renewal*
 - `wire` — An exchange request body is the JSON object `{"jwt": "<assertion>"}`, which the command line builds from its assertion; a body of any other shape raises `ExchangeRequestMalformed` and mints nothing. A served face answers a mint `{"token": "<credential>"}`.
   *because the command line and every served face parse one body through one function, so a refusal reads the same on both*
 - `body-ceiling` — An exchange request body holds at most 64 KiB; a longer body raises `ExchangeBodyTooLarge`, mints nothing and is not parsed.
@@ -436,37 +436,37 @@ Exchanging a verified external assertion for a scoped credential under injected 
 - `signing-fault` — Over HTTP, {{authority.issue.missing-key}}, {{authority.issue.unresolvable-key}}, {{authority.issue.algorithm-mismatch}} or {{authority.issue.replica-mint}} during an exchange answers 500, the body naming the identifier and withholding the refusal's detail.
   *because the face's operator repairs its configuration, and the detail describes the face's keys to an unauthenticated caller*
 - `policy` — An exchange policy declares `expected_iss`, optional `expected_aud`, `subject_map`, `tenant_claim`, `role_claim`, `role_grants`, `default_grants`, `ttl_secs`, `minted_iss` and `minted_aud`.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `injected-material` — Verifying material is operator-injected: a shared secret, an RS256 public key in PEM form, or a key-set document selected by the assertion's `kid`. The exchange makes no network call.
-  *A-authority*
+  *A-authority#pinned-keys*
 - `minted-grants` — Minted grants come from `role_grants` and `default_grants` alone. A verified role matching no entry earns `default_grants`, which is empty unless declared.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `tenant` — The assertion claim `tenant_claim` names becomes the tenant scope of every minted grant; no subject member carries tenancy.
-  *A-authority*
+  *A-authority#exchange-renewal*
 - `lifetime-default` — A minted credential lives 900 s where the policy declares no `ttl_secs`.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `lifetime-ceiling` — A configured `ttl_secs` clamps down to 3600 s and never extends.
-  *A-authority*
+  *A-authority#issuance-ceiling*
 - `audience` — A minted credential carries `minted_aud`, falling back to the project's persisted default audience.
-  *A-authority*
+  *A-authority#exchange-renewal*
 - `assertion-invalid` — A bad signature, a lapsed assertion, an untrusted issuer or audience, or a mapped claim absent from the assertion raises `ExchangeAssertionInvalid` and mints nothing.
   *because no credential exists whose subject the assertion did not verify*
 - `material-missing` — An exchange configured with no verifying material raises `ExchangeMaterialMissing` and mints nothing.
-  *A-authority*
+  *A-authority#exchange-renewal*
 - `per-reader` — An embedding application holds no project-wide credential; per request it exchanges its signed-in reader's assertion for that reader's short-lived credential and reads as them.
-  *A-authority*
+  *A-authority#one-credential*
 - `no-cross-reader` — An exchanged credential serves only the reader it was minted for.
-  *A-authority*
+  *A-authority#one-credential*
 - `holder-binding` — An exchange request carrying a `DPoP` proof over `POST /auth/exchange` and its body mints a credential whose `cnf.jkt` is the proof key's thumbprint, the proof checked as {{authority.verify.possession-binding}}.
-  *A-authority*
+  *A-authority#exchange-renewal*
 - `bearer-mint` — An exchange request carrying no proof mints a credential with no confirmation claim, its lifetime clamped by {{authority.exchange.lifetime-ceiling}}, so a network face admits it under {{authority.verify.bearer-lifetime}}.
-  *A-authority*
+  *A-authority#exchange-renewal*
 - `holder-proof-invalid` — An exchange request whose proof fails any check of {{authority.exchange.holder-binding}}, a replayed nonce included, raises `ExchangeHolderProofInvalid` and mints nothing.
   *because a proof the face cannot verify proves no key, and a bearer minted in its place hands replayable bytes to a caller asking for a bound credential*
 - `refresh` — A holder renews a served-face credential by exchanging a fresh assertion for a new credential with its own identifier and a full lifetime from the exchange instant.
-  *A-authority*
+  *A-authority#exchange-renewal*
 - `no-extension` — No surface extends a minted credential's expiry: a minted credential presented as the exchange assertion raises {{authority.exchange.assertion-invalid}}, and {{authority.attenuate.expiry-extended}} bounds every derived child.
-  *A-authority*
+  *A-authority#exchange-renewal*
 
 An embedding application reading as its signed-in reader:
 

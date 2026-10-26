@@ -244,17 +244,17 @@ Reserved column and table names, injected provenance columns, the commit protoco
 A commit holds its table's commit lock, assigns `_commit_seq` above every held value and publishes in sequence order.
 
 - `commit-seq` — The engine injects non-null int64 `_commit_seq`, assigned above every value held by the table. A run committing after a read carries a value above every returned row, regardless of `_ingested_at`.
-  *A-topology*
+  *A-topology#commit-lock*
 - `commit-order` — A commit publishes its manifest after every lower `_commit_seq` in the table publishes or ends landing. Readable runs therefore form a prefix of the table's commit sequence.
-  *A-topology*
+  *A-topology#commit-lock*
 - `commit-lock-span` — A commit holds its table's commit lock while assigning `_commit_seq` and writing its manifest. The commit writes parts outside the lock, except when the table keeps vintage history.
-  *A-topology*
+  *A-topology#commit-lock*
 - `commit-wait` — A commit waits at most 30 s for its table's commit lock or for a lower value's publication, then raises `StoreCommitLockTimeout`, a transient failure.
-  *A-topology*
+  *A-topology#commit-lock*
 - `commit-marker` — A commit rewrites `data/.commit_seq` as JSON with `format_version` and `commit_seq`. Builds reading a bare integer refuse the table before writing a part. A newer major refuses under {{store.lay-out.format-newer}}.
-  *A-topology*
+  *A-topology#commit-lock*
 - `commit-seq-seed` — A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot. A pulled store or store without a counter therefore reuses no value.
-  *A-topology*
+  *A-topology#commit-lock*
 
 ### request ledgers
 
@@ -461,7 +461,7 @@ At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and
 - `password-kdf` — A password-derived project key uses Argon2id with 64 MiB memory, 3 iterations and 4 lanes.
 - `transport-separate` — At-rest encryption covers files and TLS covers bucket transport; a cleartext endpoint carries no encrypted-at-rest claim.
 - `redacted-index` — An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.
-  *A-authority*
+  *A-authority#redaction-no-copy*
 - `at-rest-scope` — A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material.
 - `sidecar-reader` — For unencrypted projects, readers memory-map sidecars read-only. For encrypted projects, readers decrypt each sealed sidecar file into anonymous process memory without writing cleartext to disk.
   *A-store*

@@ -175,7 +175,7 @@ The client library, its four deployment shapes and transports, and the credentia
 - `stdio-credential` — The process transport requires a verified capability token; `--owner` selects its signed owner claim. An absent token raises `StdioCredentialMissing` before protocol framing and never resolves to owner context.
   *A-read*
 - `store-selector` — The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
-  *A-topology*
+  *A-topology#public-surfaces*
 - `owner-flag` — A process `--owner` admits the local owner context only with a verified signed claim bound to the selected store and an unrestricted read grant; any other credential raises `OwnerCredentialInvalid` before protocol framing.
   *A-surface*
 

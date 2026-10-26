@@ -154,12 +154,9 @@ pub fn build(c: &Corpus, target: &str) -> Result<Slice> {
     }
 
     let cited: BTreeSet<String> = own.iter().flat_map(|cl| checks::why_ok(&cl.why).unwrap_or_default()).collect();
-    let records: Vec<Record> = c
-        .records()
-        .filter_map(|d| {
-            let id = checks::record_id(&d.rel)?;
-            cited.contains(&id).then(|| Record { id, file: d.rel.clone(), text: d.lines.join("\n") })
-        })
+    let records: Vec<Record> = cited
+        .into_iter()
+        .filter_map(|id| crate::records::record_text(c, &id).map(|(file, text)| Record { id, file, text }))
         .collect();
 
     let all_ledes = c.ledes();

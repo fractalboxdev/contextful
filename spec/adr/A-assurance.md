@@ -2,7 +2,7 @@
 
 **Status:** accepted
 
-## Consumer compatibility binds execution evidence to artifact bytes
+## consumer-compatibility-binds — Consumer compatibility binds execution evidence to artifact bytes
 
 Context: a manifest parse establishes neither replay behavior nor receiver durability. A release version does not establish source correspondence. Criteria: consumers reproduce the verdict outside the checkout with no inherited provider account; every required case retains its outcome.
 
@@ -16,7 +16,7 @@ Decision: a distributable matching-target suite drives public surfaces with synt
 
 Consequences: compatibility remains scoped to executed scenarios and named storage profiles. A foreign-target archive carries no native execution pass until a matching host runs its suite. Unknown source correspondence remains unknown.
 
-## Assurance claims carry their qualifiers, and the proof gate audits assumptions
+## assurance-claims-carry — Assurance claims carry their qualifiers, and the proof gate audits assumptions
 
 `assurance.scope-claim` states named authorization decisions, named specifications and stated translation and runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-assumptions` matches a hand-maintained inventory against each constant's transitive assumption footprint over a two-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.
 
@@ -31,7 +31,7 @@ Consequences: compatibility remains scoped to executed scenarios and named stora
 Consequences: a proof of `False`, a hole, a deleted theorem and a weakened statement each fail loudly; two machines reach one verdict offline.
 Revisit: a mathematics library elaborates inside the per-change budget.
 
-## Evaluation data follows store policy
+## evaluation-data-follows — Evaluation data follows store policy
 
 `assurance.evaluate` runs through the real access path. An unlabeled corpus raises `EvalCorpusUnlabeled`; a golden set ingested into the store it measures raises `GoldenSetIngested`, held by a manifest lint and a connector-side path refusal. A mined golden passes the store's write-time redaction and zone policy; only an adjudicated label promotes. Traces go to a self-hosted collector inside the operator's perimeter, retained under the store's zone policy.
 
@@ -45,7 +45,7 @@ Revisit: a mathematics library elaborates inside the per-change budget.
 
 Consequences: a zero in a report is a retrieval fact; spans never outlive the rows they describe.
 
-## The model specifies the profile-to-effective-authority mapping, each target bound to one query path
+## model-specifies-profile — The model specifies the profile-to-effective-authority mapping, each target bound to one query path
 
 `assurance.model` specifies the mapping from the delegation profile to effective authority. `assurance.prove` carries four targets: inclusion, narrowing, profile meaning and restriction preservation; read-path releases answer to the mediation relation; the rest of scoped-session execution stays outside every theorem. `assurance.prove` decides placement inclusion symbolically; deciding over sample values raises `ZoneInclusionSampled`. An unmodelled manifest category raises `UnmodelledConstructor`; a target bound to no authenticated query path raises `ProofTargetUnbound`.
 
@@ -60,7 +60,7 @@ Consequences: a zero in a report is a retrieval fact; spans never outlive the ro
 Consequences: a defect in credential parsing or signature checks lies outside every theorem.
 Revisit: the profile's maintainer changes the mapping's domain; a defect surfaces in the trusted remainder.
 
-## Mediation ranges over statement execution, and restriction preservation is a proof target
+## mediation-ranges-over — Mediation ranges over statement execution, and restriction preservation is a proof target
 
 `assurance.prove.mediation-relation` fixes the execution relation: the read path's statement execution, one step per pending row, releasing it when the session's fold admits it and dropping it otherwise. The induction shows every released row in a reachable state passed every session layer. Run steps reach stored rows through a read-path statement; their effects answer to the protocol model's fences and allowlist inclusion. `assurance.prove.restriction-preservation` makes restriction preservation the fourth target: every parent block admits what any attenuation chain permits.
 
@@ -74,7 +74,7 @@ Revisit: the profile's maintainer changes the mapping's domain; a defect surface
 Consequences: `MediationClaimedFromComposition` still refuses a list theorem offered as mediation; the mediation constant ranges over reachable states.
 Revisit: the read path releases a row outside a statement; the model gains SQL semantics.
 
-## A differentially tested reference model is the standing link between proofs and binary
+## differentially-tested-reference — A differentially tested reference model is the standing link between proofs and binary
 
 `assurance.differential-test` drives a reference model and the engine's decision functions over the same generated case; a disagreement shrinks and raises `ReferenceModelDrift`, and one reported without a corpus entry raises `CounterexampleDiscarded`. Minimized cases replay first; the seed is recorded. `assurance.scope-claim` limits refinement to pure decision functions — inclusion and grant narrowing — else `RefinementScopeExceeded`.
 
@@ -89,7 +89,7 @@ Revisit: the read path releases a row outside a statement; the model gains SQL s
 Consequences: the report names its case classes — malformed, boundary, well-formed.
 Revisit: a pinned, reproducible translation toolchain exists; a production divergence falls outside all three classes; keeping the artifacts in step costs more than the divergences caught.
 
-## The store protocol is modelled in Lean 4
+## store-protocol-modelled — The store protocol is modelled in Lean 4
 
 `assurance.model` holds the lease, compare-and-swap and fence protocol as an executable Lean 4 state machine in a second package; its four invariants are audited theorems, and a bounded check over three nodes and four lease generations raises `ProtocolInvariantViolated`. `assurance.differential-test` drives the model's compiled executable and the Rust store through generated operation sequences and interleavings; a disagreement raises `ProtocolConformanceDrift`.
 
@@ -103,7 +103,7 @@ Revisit: a pinned, reproducible translation toolchain exists; a production diver
 Consequences: one toolchain, one assumption audit and one differential harness cover both models; a theorem proves the invariant for every generation, where a model checker bounds it.
 Revisit: the bounded check exceeds the formal stage's wall clock; a maintained Rust bridge to a model checker reaches the protocol's step vocabulary.
 
-## The columnar-read and statement-serialization functions link into every engine-linked build
+## columnar-read-statement — The columnar-read and statement-serialization functions link into every engine-linked build
 
 `assurance.build` links both SQL-engine function sets into each engine-linked build, because an autoloaded extension brings a second copy of the engine's type information: a cast between copies aborts, and on Apple platforms corrupts reads. Reaching for an extension while serving raises `ExtensionAutoloadRefused`.
 
@@ -118,7 +118,7 @@ Revisit: the bounded check exceeds the formal stage's wall clock; a maintained R
 Consequences: reversal requires the static-link posture to change first.
 Revisit: the engine resolves extensions against the host binary's type tables; a profile's footprint budget cannot absorb 55 MiB.
 
-## A source change carries a test that fails first, and a milestone carries its acceptance test before it progresses
+## source-change-carries — A source change carries a test that fails first, and a milestone carries its acceptance test before it progresses
 
 `assurance.test.test-first` requires every change to Rust source under `crates/` or `tools/` to carry a test under `tests/` that fails against the base commit's source, then passes in the workspace stage. `corpus.state.acceptance-first` requires a milestone's acceptance test, driving a built binary through a public surface, before its first pin; `corpus.state.verdict` counts an ignored test as broken. Each gate stage runs remotely as its own required check, invoking the local subcommand.
 
@@ -133,7 +133,7 @@ Revisit: the engine resolves extensions against the host binary's type tables; a
 Consequences: inline unit tests satisfy the workspace stage but not the red check.
 Revisit: the base-commit build exceeds the stage wall clock; the refactor trailer appears on changes that alter a public surface.
 
-## Tracked targets gate on counts and record per commit in notes
+## tracked-targets-gate — Tracked targets gate on counts and record per commit in notes
 
 **Status:** proposed
 
@@ -150,7 +150,7 @@ Revisit: the base-commit build exceeds the stage wall clock; the refactor traile
 Consequences: a red evaluate stage reports correctness; timing movement remains visible per commit.
 Revisit: a dedicated runner class holds p95 within 5 percent across runs.
 
-## A version tag names a gated revision and counts closed milestones
+## version-tag-names — A version tag names a gated revision and counts closed milestones
 
 **Status:** accepted.
 
@@ -166,7 +166,7 @@ Context: a consumer pinning a git dependency reads a bare commit that promises n
 Consequences: a consumer reads a tag's closed milestones from `spec/status.md` at that commit; publishing to a package registry stays a separate decision.
 Revisit: an external consumer needs a compatibility promise on a public surface, which opens `v1`.
 
-## A store format major moves the release minor
+## store-format-major — A store format major moves the release minor
 
 **Status:** accepted; amends the closed-milestone count above.
 
@@ -181,7 +181,7 @@ Context: a consumer pinning `~0.16` takes every `v0.16.*` tag as a patch, yet a 
 Consequences: 16 closed milestones under format `2.0` compute `v0.17.0`; the tag message names the reader-first upgrade order.
 Revisit: the store format promises compatibility across majors, or `v1` opens.
 
-## The workspace fits the stage wall clock through parts
+## workspace-fits-stage — The workspace fits the stage wall clock through parts
 
 **Status:** accepted; answers the test-first decision's revisit trigger, a base-commit build exceeding the stage wall clock.
 
@@ -198,7 +198,7 @@ Decision: `assurance.gate.workspace-parts` compiles the union untested, runs `di
 
 Consequences: fourteen workspace checks cover the local stage's packages, each ordinary CLI test once. A nested example build inherits no package environment from the test process, so it reuses the shard's compiled graph. A shard over budget raises the shard count; a unit over it alone must shorten.
 
-## Gate parts run under a 45 min exec deadline
+## gate-parts-run — Gate parts run under a 45 min exec deadline
 
 **Status:** accepted
 
@@ -214,7 +214,7 @@ Decision: `assurance.gate.container` gives each part 45 min. The slowest passing
 
 Consequences: a part nearing 45 min splits under `assurance.gate.part-budget`.
 
-## Feature runs, formal checks and profile budgets run in a nightly tier
+## feature-runs-formal — Feature runs, formal checks and profile budgets run in a nightly tier
 
 **Status:** accepted
 
@@ -233,7 +233,7 @@ Consequences: a nightly part runs only when an operator invokes it; no scheduler
 
 Revisit: pull-request parts share builds, so the nightly parts fit the 30 min verdict.
 
-## One decision module compiles native and to WebAssembly
+## decision-module-compiles — One decision module compiles native and to WebAssembly
 
 **Status:** accepted
 
@@ -251,7 +251,7 @@ Decision: `assurance.structure-tree.decision-module` is `contextful_policy::deci
 
 Consequences: a divergence between builds surfaces as a disagreement. The accepted cost: the host links imports by the binding generator's names, which a credential-library release may rename, and no reference model checks a credential case.
 
-## Profile graphs answer to cargo-deny bans, one run per profile feature
+## profile-graphs-answer — Profile graphs answer to cargo-deny bans, one run per profile feature
 
 **Status:** accepted
 
@@ -268,7 +268,7 @@ Decision: the crate-graph stage provisions cargo-deny at a pinned release, verif
 
 Consequences: `licenses` stays out because `assurance.build.licence-field` holds every workspace manifest. The accepted cost: an advisory against a locked crate reds no pull request, and the gate never reports it.
 
-## The edge profile ships no WASI release, and a scheduled probe measures it
+## edge-profile-ships — The edge profile ships no WASI release, and a scheduled probe measures it
 
 **Status:** accepted.
 
@@ -284,7 +284,7 @@ Decision: releases ship Linux on musl for every profile and macOS for edge and f
 
 Consequences: the accepted cost is that a WASI host stays unserved until the probe records a figure inside the budget and the matrix gains the target.
 
-## Gate repair evidence binds one checkout and one comparison
+## gate-repair-evidence — Gate repair evidence binds one checkout and one comparison
 
 **Status:** accepted.
 
@@ -302,7 +302,7 @@ Decision: `assurance.build.checkout-artifacts` and `assurance.build.runtime-chec
 Consequences: integration and doctest contrasts, history fixtures, cold/warm part runs and forced descendant hangs provide independent acceptance controls.
 Revisit: representative timings demonstrate checkout isolation or partitioning exceeds the declared resource budget.
 
-## Windows release support is deferred independently of Linux and macOS delivery
+## windows-release-support — Windows release support is deferred independently of Linux and macOS delivery
 
 **Status:** accepted.
 
@@ -319,7 +319,7 @@ Decision: `assurance.build.windows-target` and `assurance.gate.windows-checks` d
 Consequences: Windows source and regression fixtures remain available for porting; support claims cover the declared release matrix alone.
 Revisit: an explicit Windows support decision carries passing real MSVC lifetime, filesystem and bundled read-engine evidence for each admitted architecture within the gate budget.
 
-## The store adapter's write suites assert without the SQL engine
+## store-adapter-s — The store adapter's write suites assert without the SQL engine
 
 **Status:** accepted.
 
@@ -335,7 +335,7 @@ Decision: a suite asserting through SQL runs on the adapter's own read engine an
 
 Consequences: the accepted cost is that a defect in the relation a scan resolves surfaces only in the read-enabled runs.
 
-## A stage subset runs in sequence order and refuses a missing predecessor
+## stage-subset-runs — A stage subset runs in sequence order and refuses a missing predecessor
 
 **Status:** accepted
 
@@ -352,7 +352,7 @@ Decision: `assurance.gate.stage-subset` runs a selection in the sequence's order
 
 Consequences: a predecessor's output on disk satisfies its reader, so a stale record from an earlier run reaches the stage. The accepted cost: a fresh-checkout formal run pays the pins and toolchain stages every time.
 
-## Generated artifacts prove currency by regeneration and diff
+## generated-artifacts-prove — Generated artifacts prove currency by regeneration and diff
 
 **Status:** accepted
 
@@ -368,7 +368,7 @@ Decision: `assurance.structure-tree.derivation-check` exports the committed tree
 
 Consequences: a generator must produce stable bytes; nondeterministic output reds the schema stage.
 
-## Duplicated capabilities match registered symbols and home constants by folded name
+## duplicated-capabilities-match — Duplicated capabilities match registered symbols and home constants by folded name
 
 **Status:** accepted
 
@@ -386,7 +386,7 @@ Decision: `assurance.structure-tree.capability-registry` holds one home per capa
 Consequences: a registry symbol renamed away from its home raises `CapabilityHomeUnresolved` rather than leaving the check vacuous.
 Revisit: a copy under another name escapes to production.
 
-## Backtests estimate leakage against a reference, and their tracks never pool
+## backtests-estimate-leakage — Backtests estimate leakage against a reference, and their tracks never pool
 
 **Status:** accepted
 
@@ -404,7 +404,7 @@ Decision: `assurance.backtest.cutoff-slice` states leakage against a declared re
 
 Consequences: a report without a reference or an execution component refuses; a consumer correcting decoding reads the landed log-probabilities. Financial helper functions retain their public names and apply only to their selected profile.
 
-## The case's judge scores leakage against a pre-horizon reference
+## case-s-judge — The case's judge scores leakage against a pre-horizon reference
 
 `assurance.backtest.leak-score` runs in the platform: the case's own judge model scores each retrieved document 0 to 4 against a reference answer drawn from rows available before the horizon, and the run lands one row per document and horizon. The score feeds the Brier-per-tier report and the zero threshold a late snapshot capture answers under.
 
@@ -414,7 +414,7 @@ Consequences: a report without a reference or an execution component refuses; a 
 | Consumer-landed scores | Comparability | Two runs of one case score leakage by different rules. |
 | A fixed classifier | Domain | A generic classifier misses domain-specific outcomes. |
 
-## A pull request runs the parts its diff reaches
+## pull-request-runs — A pull request runs the parts its diff reaches
 
 **Status:** accepted
 

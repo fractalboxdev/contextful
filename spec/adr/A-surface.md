@@ -2,7 +2,7 @@
 
 **Status:** accepted
 
-## The control document is CAS-versioned, validated per entry, and fails static
+## control-document-cas — The control document is CAS-versioned, validated per entry, and fails static
 
 One hand-edited control document arms every scheduled entry unattended. Admin edit validates and saves one store draft at the version it read; Admin apply rechecks ownership and validates before claiming that draft by compare-and-swap. A loser raises `ManifestVersionConflict`, reloads and reapplies. The engine owns the control-state model and raises `ConfigOwnerUnconfigured`, `StoreNotInitialized` or `ConditionalWriteUnsupported` rather than substitute a local writer. `surface.arm` holds back an invalid entry alone, by name. `surface.reconcile` keeps the armed set unchanged on a failed poll. `surface.dispatch` starts one instance per due unit; a dependent run's step refuses as a unit.
 
@@ -16,7 +16,7 @@ One hand-edited control document arms every scheduled entry unattended. Admin ed
 
 Consequences: entries authored as a chain run as one unit under the head entry's cadence; control-plane staleness is visible only in diagnostics.
 
-## Configuration reaches only engine-named code and secrets
+## configuration-reaches-engine — Configuration reaches only engine-named code and secrets
 
 Configuration selects among things the engine names, never code, a host command, a secret or a remote control source. `surface.fire` runs a closed union — `sweep`, `build`, `fold`, `rebuild-catalog`, `sync-push`, `validate`, `synthesize`, `plan` — beside the pipeline-run kind; anything else raises `JobKindUnknown`. `surface.register-store` derives the secret name `<ID>_QUERY_TOKEN` and binding name from the kebab-case id; authoring either raises `StoreNameAuthored`. `surface.reconcile` polls a control URL only on loopback, following no redirect and no proxy; any other host raises `ControlSourceNotLoopback`.
 
@@ -30,7 +30,7 @@ Configuration selects among things the engine names, never code, a host command,
 Consequences: adding a job kind is an exhaustive-match obligation at every dispatch site.
 Revisit: a remote control source carrying a bearer-authenticated read, TLS, and producer-side signing over `(version, content-hash)` verified before arming.
 
-## Answer surfaces read through server-chosen, grounded calls
+## answer-surfaces-read — Answer surfaces read through server-chosen, grounded calls
 
 The server decides every capability a turn exercises. `surface.ground` dispatches only tools the turn's packs admit, else `ConsoleToolNotAdmitted`; an organization-wide face registers no write tool, and a turn's one write is server-authored. `surface.ground` reaches conclusions only through recall. `surface.render` infers views server-side over a closed component union. `surface.speak` offers only answerable suggestions. `surface.brief` renders a greeting only within budget. `surface.publish-answer` delivers to the asker alone; posting is the asker's separate act.
 
@@ -44,7 +44,7 @@ The server decides every capability a turn exercises. `surface.ground` dispatche
 
 Consequences: an injected instruction finds no write tool to reach for.
 
-## Query and Admin use separate verified page grants
+## query-admin-use — Query and Admin use separate verified page grants
 
 The hosted operator console gives Query and Admin separate page grants and API namespaces. Cloudflare Access is the default gate, with a distinct application audience per page. Without it, Amazon Cognito manages named operator accounts and password login; the console holds a first-party session and maps Cognito groups to page grants. The console verifies each page and API request. Query admits the read subset; Admin sends edit or apply through a server-held control capability. The deployment probe requests each path anonymously; a hostname-level probe misses an exposed path.
 
@@ -57,7 +57,7 @@ The hosted operator console gives Query and Admin separate page grants and API n
 
 Consequences: page admission and engine capability checks both remain necessary; local shells use their own perimeter.
 
-## The console lives beside the engine and uses its public read face
+## console-lives-beside — The console lives beside the engine and uses its public read face
 
 `apps/console` contains the TypeScript server and Query and Admin pages; `packages/client` contains the four client shapes. The console calls stores through the public HTTP face and the operator's model endpoint. It owns presentation and turn orchestration; engine enforcement stays in the engine. The TypeScript surfaces gate builds both packages, and milestone acceptance drives the built engine beside the console server.
 
@@ -69,7 +69,7 @@ Consequences: page admission and engine capability checks both remain necessary;
 
 Consequences: Query and Admin use the same store registry while retaining separate page grants; no console path implements a second read policy.
 
-## Each console page ships as one prerendered, self-contained document
+## console-page-ships — Each console page ships as one prerendered, self-contained document
 
 The Query and Admin pages are React components styled with Tailwind and shadcn/ui primitives. A build step renders each page to markup, bundles its hydrating script and compiled stylesheet, embeds the Geist face as a data URI, and writes one HTML document per page under `apps/console/client/dist/`. The server reads that document and serves it under `default-src 'none'`, adding only `font-src data:`; the console exposes no asset route.
 
@@ -82,7 +82,7 @@ The Query and Admin pages are React components styled with Tailwind and shadcn/u
 
 Consequences: the package's `test` and `build` scripts build the client first; a server started without `client/dist/` fails its first page request.
 
-## Turn compatibility preserves the stored transcript and reader scope
+## turn-compatibility-preserves — Turn compatibility preserves the stored transcript and reader scope
 
 An explicit process owner flag needs a signed owner claim bound to the selected local store; it does not turn an ordinary or empty credential into ownership. A store overlay reaches synthesis text alone, so planner tool selection does not inherit a store-authored persona. Distillation records the observed subject and recall resolves it through entity matching. A client with an older component union renders an unknown view as a table. One operator's credential defines an answer; a room-intersection principal is absent.
 
@@ -94,7 +94,7 @@ An explicit process owner flag needs a signed owner claim bound to the selected 
 
 Consequences: a transcript remains readable across client releases; shared posting remains an operator act.
 
-## A store-driven job runs host-registered code per row over a pinned input
+## store-driven-job — A store-driven job runs host-registered code per row over a pinned input
 
 **Status:** accepted; amends the configuration decision above: the fire union gains one fixed store-driven kind, and a job block still names no command.
 
@@ -111,7 +111,7 @@ Decision: one store-driven kind joins the fire union. Its per-row body resolves 
 
 Consequences: a job over store rows resumes without paying twice. The accepted cost: the operator states concurrency for every such job, and the closed union grows to seven kinds.
 
-## Residency divergence is detected at push, from the bucket manifest
+## residency-divergence-detected — Residency divergence is detected at push, from the bucket manifest
 
 **Status:** accepted
 
@@ -128,7 +128,7 @@ Decision: every push writes its site's sorted allow-set into the bucket manifest
 
 Consequences: a divergence surfaces on the first push after it arises, with both sites and both sets named. The accepted cost: a read-only site holding a different set goes undetected, and a policy change starts at the recording site, and every other site is refused until it adopts the new set.
 
-## Workers reach the orchestrator only through the awakeable route
+## workers-reach-orchestrator — Workers reach the orchestrator only through the awakeable route
 
 **Status:** accepted
 
@@ -145,7 +145,7 @@ Decision: `surface.dispatch` submits each step to a worker's `POST /submit`, key
 
 Consequences: a silent worker costs one lapse before its step moves. The accepted cost: a worker that cannot reach the relay runs steps it cannot report.
 
-## A synced control head carries an issuer-signed apply receipt
+## synced-control-head — A synced control head carries an issuer-signed apply receipt
 
 **Status:** accepted
 
@@ -163,7 +163,7 @@ Decision: a synced import or apply admits an admin capability and signs a receip
 Consequences: a cold node authenticates the bucket head. A bucket writer can replay an earlier signed head to a never-synced node; freshness needs an independent monotonic witness.
 
 
-## Native model builds share applied cadence and execution history
+## native-model-builds — Native model builds share applied cadence and execution history
 
 The closed `build` job targets a declared SQL model. Applied control carries resolved SQL, contracts, tests and freshness declarations. A pipeline-only apply preserves these model definitions. A full apply versions them with the jobs and pipelines.
 
@@ -178,7 +178,7 @@ Native builds open the existing host execution scope and record starts and outco
 | Separate model scheduler | One execution home | Cadence, exclusion and restart history have two implementations. |
 
 
-## Applied jobs retain structure and check current authority
+## applied-jobs-retain — Applied jobs retain structure and check current authority
 
 An applied job carries its input and output table contracts alongside resolved models.
 Standalone declarations occupy internal snapshot metadata; memory tables resolve from the
@@ -201,7 +201,7 @@ identity pin body, statement and `as_of` alone.
 | Replay entirely under historical authority | Revocation | An applied snapshot can retain access the current declaration removed. |
 | Rewind pending owners automatically | Recorded effects | A structural edit can repeat paid calls. |
 
-## A delegated body is deploy-bound code reached in two modes
+## delegated-body-deploy — A delegated body is deploy-bound code reached in two modes
 
 **Status:** accepted; amends the store-driven decision above: a body resolves to registered code or a bound delegate.
 
@@ -219,7 +219,7 @@ Decision: `surface.delegate` binds a name to a loopback or virtual-host URL in t
 
 Consequences: a consumer's stage is an item of a run with its receipt, budget and fence; a hanging `call` delegate holds its slot until the timeout, and work it finishes after the timeout is paid again unless it dedups on the idempotency key.
 
-## Due units admit by staleness, and a wake refills its freed slots
+## due-units-admit — Due units admit by staleness, and a wake refills its freed slots
 
 Decision: `surface.dispatch.admission-order` breaks a tie on next fire by declared priority, then by the least recent of last run start and last dispatch, so overload misses rotate across a tied cohort. Priority orders only units due at one instant: a unit left pending keeps its earlier instant and outranks any priority at the next admission. The scheduler records each dispatch as a zero-second lease row in the catalog before the unit starts, and `surface.arm.next-fire-from-history` reads it, so a fresh process sees a unit that failed before its run row. `surface.dispatch.refill` admits a wake's pending units into slots freed before the answer, through the cadence lease.
 
@@ -232,7 +232,7 @@ Decision: `surface.dispatch.admission-order` breaks a tie on next fire by declar
 | Refill from a fire's end path between wakes | Lease safety | A start after the lease lapsed runs beside another holder's chain. |
 
 Consequences: a unit falling due after a wake's evaluation waits for the next wake; pool 1 with 20 s fires starts two units per wake; `pipeline serve --cycle` evaluates once and admits at most the pool.
-## Connections claim one version and share dispatch
+## connections-claim-version — Connections claim one version and share dispatch
 
 **Status:** accepted
 

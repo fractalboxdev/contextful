@@ -1,5 +1,6 @@
 //! `spec/cards/<contract>.md`: one generated page per contract — its operations with
-//! their ledes, its refusals and its bounds, each naming the clause that owns it.
+//! their ledes, its refusals and its bounds, each naming the clause that owns it, and
+//! the clauses citing each section of its ADR.
 
 use crate::corpus::*;
 use std::collections::BTreeMap;
@@ -54,6 +55,17 @@ fn page(c: &Corpus, contract: &str) -> String {
         s.push_str("## Bounds\n\n| Bound | Value | Basis | Clause |\n| --- | --- | --- | --- |\n");
         for (id, l) in limits {
             let _ = writeln!(s, "| `{id}` | {} {} | {} | `{}` |", l.value_text(), l.unit, l.basis, l.clause);
+        }
+        s.push('\n');
+    }
+
+    let prefix = format!("A-{contract}#");
+    let sections: Vec<(String, Vec<String>)> = crate::records::cited_by(c).into_iter().filter(|(k, _)| k.starts_with(&prefix)).collect();
+    if !sections.is_empty() {
+        s.push_str("## Decisions\n\n| Section | Cited by |\n| --- | --- |\n");
+        for (key, ids) in sections {
+            let cited: Vec<String> = ids.iter().map(|id| format!("`{id}`")).collect();
+            let _ = writeln!(s, "| `{key}` | {} |", cited.join(", "));
         }
         s.push('\n');
     }

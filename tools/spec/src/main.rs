@@ -8,6 +8,7 @@ mod diagram;
 mod drift;
 mod native_ts;
 mod ratchet;
+mod records;
 mod size;
 mod slice;
 mod targets;
@@ -55,6 +56,12 @@ enum Cmd {
     Pins,
     /// Lower each ratchet in `spec/terms/corpus.toml` to its live count.
     Ceilings,
+    /// Rewrite bare citations of each named contract ADR to the one section naming the clause.
+    WhyMigrate {
+        /// `A-<contract>` record ids.
+        #[arg(required = true)]
+        records: Vec<String>,
+    },
     /// Write one failing, tagged test per refusal and limit clause of an operation.
     Scaffold {
         /// `<contract>.<operation>`.
@@ -88,6 +95,7 @@ fn main() -> Result<()> {
         }
         Cmd::Pins => raise_floor(&c),
         Cmd::Ceilings => ratchet::lower(&c),
+        Cmd::WhyMigrate { records } => records::migrate(&c, &records),
         Cmd::Slice { target, json } => {
             let sl = slice::build(&c, &target)?;
             if json {
@@ -153,6 +161,9 @@ pub fn lock_text(c: &Corpus) -> String {
         ledes: BTreeMap<String, &'a str>,
         #[serde(skip_serializing_if = "BTreeMap::is_empty")]
         groups: BTreeMap<String, &'a str>,
+        /// The clauses citing each contract ADR section, keyed `A-<contract>#<slug>`.
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        sections: BTreeMap<String, Vec<String>>,
         pointers: Vec<(&'a str, String)>,
         registry: &'a Registry,
     }
@@ -162,7 +173,7 @@ pub fn lock_text(c: &Corpus) -> String {
         .flat_map(|cl| pointers(&cl.statement).into_iter().map(move |p| (cl.id.as_str(), p)))
         .collect();
     let owns = c.contracts().map(|d| (d.rel.as_str(), &d.owns)).collect();
-    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, ledes: c.ledes(), groups: c.group_ledes(), pointers, registry: &c.reg }).unwrap();
+    let mut s = serde_json::to_string_pretty(&Lock { clauses, owns, ledes: c.ledes(), groups: c.group_ledes(), sections: records::cited_by(c), pointers, registry: &c.reg }).unwrap();
     s.push('\n');
     s
 }

@@ -2,7 +2,7 @@
 
 **Status:** accepted
 
-## Cloudflare execution metadata uses D1
+## cloudflare-d1 — Cloudflare execution metadata uses D1
 
 Cloudflare declares one deployment configuration, `worker-container-d1`. D1 stores execution metadata; R2 stores execution blobs and corpus objects. Durable Objects manage Container lifecycle and WebSocket connections.
 
@@ -15,7 +15,7 @@ The deciding criterion is one metadata backend across deployment configuration, 
 
 The Container still requires Durable Objects for lifecycle management; D1 replaces only the alternate catalog role.
 
-## One inference egress and one destination; no vendor SDK, no sink plugin
+## one-egress — One inference egress and one destination; no vendor SDK, no sink plugin
 
 `connector.infer` sends model access through one operator-configured endpoint speaking OpenAI-compatible HTTP; no model-vendor SDK links into any crate, a provider swap is a URL edit, and the host owns credential, rate limit and per-call span. `run.land` resolves the local store and refuses any other destination name at assembly; a synthesized artifact writes back through the same destination and becomes queryable corpus. The destination interface has no host arm, so a guest cannot supply one.
 
@@ -30,7 +30,7 @@ The Container still requires Durable Objects for lifecycle management; D1 replac
 Consequences: the dependency audit refuses a model-vendor SDK and a second outbound path to a model; synthesized output falls under the same grants, masks and retention as landed data.
 Revisit: a capability a deployment needs that no OpenAI-compatible endpoint exposes.
 
-## Profile capabilities are fixed at build; an absent one is a typed refusal
+## build-profiles — Profile capabilities are fixed at build; an absent one is a typed refusal
 
 Three profiles, `contextful-edge`, `contextful-full` and `contextful-control`, compile from one workspace by feature bundle, each linking only its role's dependencies; the CRDT library links into `contextful-control` alone. A capability the running profile does not wire is a typed refusal when reached, never a panic, no-op or look-alike fallback; a profile without the embedded SQL engine refuses every read tool. `topology.package` publishes each profile's wiring, a client's required faces match at the handshake, and a spawned engine finding no project manifest exits before writing protocol framing.
 
@@ -44,7 +44,7 @@ Three profiles, `contextful-edge`, `contextful-full` and `contextful-control`, c
 
 Consequences: the dependency audit refuses a control-only library in another profile's resolved graph.
 
-## The control plane edits the configuration as one CRDT document and claims through the shared snapshot package
+## control-crdt — The control plane edits the configuration as one CRDT document and claims through the shared snapshot package
 
 Team state is the configuration itself — ingest sources, models and access policy — so `topology.package` holds it as one `loro` document whose replicas merge offline edits, and an apply canonicalizes that document and claims it as the next version. The claim runs through `contextful-snapshot`, the package the engine already calls, so local and control-plane applies share one version claim, one pointer and one replay store, and the control profile links no run path.
 
@@ -57,7 +57,7 @@ Team state is the configuration itself — ingest sources, models and access pol
 
 Consequences: a change to the version claim lands once and both callers take it.
 
-## The engine and its consumers meet only at public surfaces
+## public-surfaces — The engine and its consumers meet only at public surfaces
 
 `topology.compose` connects execution, storage and queries through three shared contracts: the connector interface world, columnar-part-plus-manifest layout and capability-token format. Each contract has a version and conformance tests. `topology.bound-application.domain-neutral` places industry meanings, business rules and scoring in consumer-declared configuration, connectors, components or selected evaluation profiles. Consumers name vocabulary in per-store lexicons; a behavior becomes shared once a second application needs it. Additional distribution features use public surfaces, with no license check on a data-plane capability.
 
@@ -71,7 +71,7 @@ Consequences: a change to the version claim lands once and both callers take it.
 
 Consequences: `assurance.gate` checks package and source boundaries. Domain meanings and example vocabulary also require editorial review; selecting a financial evaluation helper requires a financial profile rather than changing general evaluation defaults.
 
-## A deploy verifies by observation
+## deploy-observation — A deploy verifies by observation
 
 `surface.apply` runs one declaration on every control-plane target and diffs each target's table parts byte for byte against the single-process reference run after a 24 h soak; a profile claiming a shape its target cannot express refuses. `topology.publish-hostname` gives every hostname a descriptor naming its worker, contract version and gate (`access`, `adminToken` or `public`) with an explicit acknowledgement; the deploy probes each with an anonymous `GET /`, judges the answer against the gate, and fails an unreachable hostname. A descriptor with an unknown field refuses to decode.
 
@@ -85,7 +85,7 @@ Consequences: `assurance.gate` checks package and source boundaries. Domain mean
 
 Consequences: a divergence names the target, the table and the first differing part.
 
-## The posture probe runs in build tooling; the routing hop caches nothing
+## posture-probe — The posture probe runs in build tooling; the routing hop caches nothing
 
 Context: `topology.publish-hostname` probes every published hostname a deploy declares, and the routing hop sits in front of a retrieval container that enforces grants per request.
 
@@ -102,7 +102,7 @@ Decision: `contextful-ci deploy probe` reads `hostnames/*.toml` and `probe.toml`
 
 Consequences: descriptors change by pull request and the gate reviews them. Accepted cost: one extra hop to the container on a repeated read.
 
-## The domain crate holds types and ports with no I/O, and every edge points toward it
+## domain-crate — The domain crate holds types and ports with no I/O, and every edge points toward it
 
 `topology.package` keeps `contextful-core`, the shared types, typed error enum and port traits linked into all three profiles, pure: it performs no I/O and declares no async runtime, component host, HTTP client or columnar-format implementation, and one raises `DomainCrateImpurity`, naming the dependency and the feature that pulled it. Every adapter crate depends on the centre and the centre on none; an outward edge raises `TopologyDependencyInversion` with its manifest line.
 
@@ -116,7 +116,7 @@ Consequences: descriptors change by pull request and the gate reviews them. Acce
 Consequences: a new target is an adapter crate behind existing ports.
 Revisit: two adapters convert the same shape differently; a port change deferred more than once; the edge profile's budget no longer the binding constraint.
 
-## Every access to data traverses the enforcement stack, and no configuration disables it
+## enforcement-stack — Every access to data traverses the enforcement stack, and no configuration disables it
 
 Each function returning or releasing stored rows requires an access-control admission value. Omitting the value fails compilation. Without this check, a function could return rows without masking or an audit entry. `assurance.gate` raises `CrateGraphViolation` when an execution crate reaches storage or query crates outside the shared contracts. No flag, environment variable or build feature disables access controls.
 
@@ -130,7 +130,7 @@ Each function returning or releasing stored rows requires an access-control admi
 Consequences: a bulk export or offline diagnostic is slower than a direct read.
 Revisit: an adapter through the stack misses a stated throughput requirement; audit bypasses cluster in one tooling category; a layer proves a no-op on some path.
 
-## Export reads committed runs and is no second destination
+## export-committed — Export reads committed runs and is no second destination
 
 **Status:** accepted; amends the one-destination decision above, whose destination set stays one.
 
@@ -149,7 +149,7 @@ Decision: export is a post-commit reader with one OTLP arm; target secrets resol
 
 Consequences: landing never waits on a target; a mirror is at-least-once. Accepted cost: a target sees duplicates on recovery, and rows with a null `_commit_seq` refuse the export.
 
-## A commit holds the commit lock to reserve its value and to publish, not to write
+## commit-lock — A commit holds the commit lock to reserve its value and to publish, not to write
 
 **Status:** accepted; amends the export decision above.
 
@@ -167,7 +167,7 @@ Decision: a commit takes the lock to assign its `_commit_seq` value and lock a t
 
 Consequences: a table's landings write parts in parallel and publish serially. Accepted cost: a vintage table's landings stay serial; a build locking across its part write refuses, after merging its schema, every table a reserving build committed to.
 
-## A managed queue extends ingress behind a port; the writer stays in the engine
+## queue-ingress — A managed queue extends ingress behind a port; the writer stays in the engine
 
 **Status:** accepted; extends `topology.compose.one-tree`, whose single-node and edge shapes keep no external queue.
 

@@ -2,7 +2,7 @@
 
 **Status:** accepted
 
-## Mirrored authorization carries a freshness budget and refuses past it
+## mirrored-authorization-carries — Mirrored authorization carries a freshness budget and refuses past it
 
 `disclosure.sweep` advances `watermark_at` only on a run that read every governed resource, or from an event stream declared gap-detectable. `disclosure.bound-staleness` refuses a read past `max_acl_staleness` with `VisibilityAccessStale` (HTTP 503); `on_stale = public_only` serves only swept public rows, marked degraded. `disclosure.reach` raises `VisibilityClosureDepth` (HTTP 422) at `max_group_depth` or 10000 nodes rather than truncating; the reachable-set cache keys on subject, source epoch and directory epoch.
 
@@ -17,7 +17,7 @@
 Consequences: a revocation rotates the cache key; a sweep of one source rotates keys for tables sharing its epoch; a budget tighter than the sweep cadence fails at diagnose.
 Revisit: a source offers sequenced delivery with gap reconciliation.
 
-## Fidelity is bounded by what the source enforces
+## fidelity-bounded-what — Fidelity is bounded by what the source enforces
 
 `disclosure.declare-fidelity` sets one level per table — `mirrored`, `coarse`, `federated`, `excluded` — bounded by the declared `family` at load (`VisibilityFamilyBound`). A source that computes access is queried live under the reader's delegated credential; mirroring its inputs raises `VisibilityComputedInputsMirrored`. `disclosure.pack` refuses an access-shaped key the mapping schema lacks with `VisibilityPackAssertsAccess`. A source with no permission data lands with no fidelity claim.
 
@@ -31,7 +31,7 @@ Revisit: a source offers sequenced delivery with gap reconciliation.
 
 Consequences: one judgment — the family — per source; authorization has one source, the join over observed rows.
 
-## Grants are rows under `_visibility`, and the closure is a rebuilt projection
+## grants-rows-under — Grants are rows under `_visibility`, and the closure is a rebuilt projection
 
 **Status:** accepted
 
@@ -49,7 +49,7 @@ Decision: a sweep lands grants as ordinary rows of `_visibility/<source>/grants`
 Criteria: authorization has one source, the join over observed rows, decided it; a replica answers offline; revocation invalidates by construction.
 Consequences: an opening ages out with no revocation step and leaves a run record; a replica pays one closure rebuild per pull; a pipeline declares no table under `_visibility`.
 
-## Aggregate disclosure is enforced at build with noisy thresholding and an up-front budget reservation
+## aggregate-disclosure-enforced — Aggregate disclosure is enforced at build with noisy thresholding and an up-front budget reservation
 
 `disclosure.release` stages no breaching cell: `disclosure.suppress` selects partitions by a noisy threshold over distinct-contributor counts, and a published figure carries noise whose strength follows the declared per-run spend. `disclosure.bound-cohort` admits exact figures from a `cohort` table only; a reader entitled to every contributing row reads them as an ordinary read. A release reserves per-unit spend for every contributing unit in one catalog transaction before reading, refusing with `DisclosureUnitBudgetExhausted`. `max_contributor_share` withholds a concentrated group. A table is `per-person` or `cohort`; `DisclosureCohortWidening` and `DisclosureSingletonCohort` guard cohorts.
 
@@ -64,7 +64,7 @@ Consequences: an opening ages out with no revocation step and leaves a run recor
 Consequences: every read path inherits the guarantee from the staged bytes; raising a unit's lifetime cap is an explicit grant edit.
 Revisit: lookalike segment release settles its audience floor, readback rule and cross-party consent.
 
-## Exact integer noise spends the declared budget across released statistics
+## exact-integer-noise — Exact integer noise spends the declared budget across released statistics
 
 **Status:** accepted
 
@@ -80,7 +80,7 @@ Decision: `disclosure.release.noise-mechanism` draws two-sided geometric noise w
 
 Consequences: a release with no metric bounds refuses before publication; a budget accounts for every published statistic. Revisit: a consent and readback contract admits activation handles.
 
-## The model declares the spend, the project the cap, and the ledger stays on the machine
+## model-declares-spend — The model declares the spend, the project the cap, and the ledger stays on the machine
 
 **Status:** accepted
 
@@ -99,7 +99,7 @@ Criteria: one cap per unit decided it; no undeclared spend; no contributor key a
 Consequences: raising `unit_lifetime_cap` is the explicit grant edit; lowering it below a unit's spend exhausts that unit.
 Revisit: a project releases from more than one machine.
 
-## A cross-owner release runs only when the boundary is enforced below the engine
+## cross-owner-release — A cross-owner release runs only when the boundary is enforced below the engine
 
 `disclosure.set-mode` requires of a cross-owner store per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys, else `DisclosureCleanRoomPreconditionUnmet`. A hashed join keys on a per-pair escrowed pepper rotated per join; a static pepper raises `DisclosureStaticPepper`. `disclosure.set-mode.pepper-version` admits matching current-version rows after both owners re-land their keys.
 
@@ -113,7 +113,7 @@ Revisit: a project releases from more than one machine.
 Consequences: a cross-owner join never reuses a pepper; rotation requires both owners to re-land join keys.
 Revisit: private set intersection replaces the pepper; an attested enclave join serves very-high-risk pairings.
 
-## The hash chain is the attestable record
+## hash-chain-attestable — The hash chain is the attestable record
 
 `disclosure.record` appends each read to a linked hash chain under group commit; rows return only after the covering fsync, else `AuditEntryUnpersisted`. The query digest is HMAC-SHA256 under the project audit key. A disagreeing digest, sequence gap, or absent chain beside a tip or root raises `AuditChainBroken`. `disclosure.attest` signs one root per 4096-entry segment and replicates roots off-node every 10 min. Telemetry is a projection with no durability obligation.
 
@@ -128,7 +128,7 @@ Revisit: private set intersection replaces the pepper; an attested enclave join 
 Consequences: a chain gap has one cause; a compromised node cannot truncate history replicated roots cover.
 Revisit: audit writes replicate to a second store; group commit sustains less throughput than the reference read rate.
 
-## An append group pays one sync, and the tip signs at segment close
+## append-group-pays — An append group pays one sync, and the tip signs at segment close
 
 **Status:** accepted
 
@@ -145,7 +145,7 @@ Decision: `disclosure.record.group-commit` holds the budget. Concurrent appends 
 Criteria: rows never leave before their entry is durable, fixed; syncs per read decided it; truncation detectability.
 Consequences: throughput scales with concurrency, not sync latency; the unsigned tail is bounded by segment close and idle. An implementation meets this decision once a test counts one sync per group and a p99 append benchmark on the reference target states its method and number.
 
-## Audit format v1 is versioned, whole-entry canonical and Merkle-rooted
+## audit-format-v1 — Audit format v1 is versioned, whole-entry canonical and Merkle-rooted
 
 **Status:** accepted
 
@@ -162,7 +162,7 @@ Decision: each v1 entry carries its format version, and its digest covers the wh
 Criteria: offline per-entry evidence decided it; every released version verifies; append cost; hardware-held keys.
 Consequences: `disclosure.record.segment` and `disclosure.attest.broken-chain` restate over v1.
 
-## An audit log opens under the key custody its caller holds
+## audit-log-opens — An audit log opens under the key custody its caller holds
 
 **Status:** accepted
 
@@ -179,7 +179,7 @@ Decision: a log opens held, unanchored or read-only. Held signs roots and tip th
 Criteria: tamper evidence decided it; availability of reads without custody; no fabricated keys.
 Consequences: an unanchored interval is evident until anchored; a verifier runs beside the writer; deleting every root and `chain.held` along with the tip leaves a chain only a replicated root tells from an unanchored one.
 
-## One append group holds the log at a time
+## append-group-holds — One append group holds the log at a time
 
 **Status:** accepted
 
@@ -196,7 +196,7 @@ Decision: `disclosure.record.single-writer` holds `audit.lock` per append group.
 Criteria: one linear chain per project, fixed; several read processes per project decided it; one sync per group, kept.
 Consequences: the lock serializes groups across processes, so throughput across processes is bounded by one sync at a time; a read-only handle still verifies without the lock.
 
-## `audit_reads` is a view over the chain, and a refused read appends
+## audit-reads-view — `audit_reads` is a view over the chain, and a refused read appends
 
 **Status:** accepted
 
@@ -213,7 +213,7 @@ Decision: `audit query` computes `audit_reads` from the chain's segments on each
 Criteria: one record decided it; a refusal is typed and recorded (P2); a lookup over 24 h answers within 1 s.
 Consequences: the chain carries refusals, so it grows with probes as well as serves; query cost scales with the chain's length rather than an index, which the projection-latency ledger entry tracks.
 
-## A lineage attestation elides a withheld table to a count
+## lineage-attestation-elides — A lineage attestation elides a withheld table to a count
 
 **Status:** accepted
 
@@ -229,7 +229,7 @@ Decision: the `contextful.recall` block counts the evidence references into tabl
 Criteria: the caller learns nothing about a table outside its authority beyond that evidence was withheld (P5); a suppression stays explicable (P2).
 Consequences: a table the store lacks and a table the caller lacks count alike, so the count never confirms a table exists.
 
-## An explanation reads the exchange policy and the chain, and keeps no store
+## explanation-reads-exchange — An explanation reads the exchange policy and the chain, and keeps no store
 
 **Status:** accepted
 
@@ -245,7 +245,7 @@ Decision: `audit explain` decides from the project's exchange policy, the grants
 Criteria: rows only through the caller's authority (P5); one record; a negative answer names what it covered.
 Consequences: role membership stays outside the store, so a decision names the roles the operator presents rather than resolving a principal's roles, the table's recorded readers stand in for a group's members (`disclosure.explain.groups-not-members`), and a visibility binding's watermark reads empty until a sweep records one.
 
-## Erasure is a forced rewrite, a bounded cascade and a measured receipt
+## erasure-forced-rewrite — Erasure is a forced rewrite, a bounded cascade and a measured receipt
 
 Subject and key-set erasure select one authenticated frontier. File and cache readers share response-release validation; writers fence staged commits against that frontier, preventing erased rows returning through older batches.
 
@@ -263,7 +263,7 @@ The recovery CLI admits signed-only collection over its verified frontier, and u
 
 Consequences: audit publication failure leaves the original frontier selected. A disagreeing transaction refuses content instead of guessing a completion state. Existing grant admission, cascade depth and collection deadline retain their owners.
 
-## Forced rewrite and measured receipt
+## forced-rewrite-measured — Forced rewrite and measured receipt
 
 `disclosure.erase` rewrites columnar files under the complement of the tenant grant filter; an undeclared subject column raises `ErasureSubjectUndeclared`. The cascade walks provenance to 16 hops, else `ErasureCascadeUnbounded` commits nothing; fact reads refuse with `ErasureRestagingRequired` until re-synthesis. Files holding erased rows are rewritten or collected within 24 h. A token-presented purge raises `PurgeRequiresOwner`. `disclosure.receipt` attests rewrite-and-exclude over the canonical store, names exclusions in `coverage`, and widens only with `receipt_version`.
 
@@ -278,7 +278,7 @@ Consequences: audit publication failure leaves the original frontier selected. A
 Consequences: replicas and the replication bucket sit outside the claim; the receipt's `tenant_hash` is salted SHA-256.
 Revisit: the substrate gains a delete; 72 h request-to-last-replica erasure becomes an engine bound.
 
-## Re-synthesis after erasure replays the extraction cache
+## re-synthesis-after — Re-synthesis after erasure replays the extraction cache
 
 An erased row reaches derived state through three copies: the claims synthesized from it, the extraction-cache entry for the batch that held it, and a dead-letter row holding a failed response. `disclosure.erase.physical-removal` collects the cache entry and the dead-letter row inside the file deadline, so neither returns the row's content to a later pass.
 
@@ -290,7 +290,7 @@ The restaging gate stands until re-synthesis restores the facts the cascade inva
 | Flush the whole cache on any erasure | Cost | Every restaging re-extracts the full table through the model. |
 | Leave cache and dead-letter rows to their own retention | Physical removal | A model response quoting the erased row outlives the deadline. |
 | Restage under the erasing credential | Attribution | Restored claims carry the forget grant instead of the writer's. |
-## Drive permission coverage includes every selected file
+## drive-permission-coverage — Drive permission coverage includes every selected file
 
 **Status:** accepted
 

@@ -33,11 +33,19 @@ pub fn adr_words(c: &Corpus) -> Vec<Live> {
             let count = d
                 .each()
                 .filter(|(_, l, k)| !matches!(k, LineKind::Code | LineKind::Fence) && !is_separator(l))
-                .map(|(_, l, _)| l.replace('|', " ").split_whitespace().count())
+                .map(|(_, l, _)| decision_text(l).replace('|', " ").split_whitespace().count())
                 .sum();
             Some(Live { key: format!("adr-words.{id}"), count, check: "rationale", code: "SpecWordCeiling" })
         })
         .collect()
+}
+
+/// A line's counted text: a section heading counts its decision, not its slug.
+fn decision_text(line: &str) -> &str {
+    match crate::records::HEADING.captures(line) {
+        Some(cap) => cap.get(2).map(|m| m.as_str()).unwrap_or(line),
+        None => line,
+    }
 }
 
 /// The words a contract and its ADR hold, against their ceilings.

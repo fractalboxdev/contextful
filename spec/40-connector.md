@@ -274,11 +274,11 @@ unsettled: Where does an operator declare the pre-send hook a command-line run c
 Model requests: endpoint selection, prompt data markers and output provenance labels.
 
 - `model-endpoint` — Every model call resolves to one operator-configured OpenAI-compatible HTTP endpoint declared as a capability. The host owns the credential, rate limit and span; the component owns the prompt template and response schema.
-  *A-topology*
+  *A-topology#one-egress*
 - `mediated-call` — A model call sends through the mediated client under {{connector.attach.mediation-covers-every-egress}}, its allowlist the configured endpoint host alone, and passes {{connector.meter.pre-send-hook}} like a vendor hop.
   *A-connector*
 - `vendor-sdk` — The workspace rejects a model-vendor SDK in any Rust crate under {{topology.compose.vendor-sdk}}. Changing providers requires only a URL edit.
-  *A-topology*
+  *A-topology#one-egress*
 - `data-fence` — No ingested value reaches a model outside a data boundary: marker pairs whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.
 - `fence-is-not-a-boundary` — The fence lowers the success rate of injected instructions and bounds nothing. No clause treats the output of a fenced call as trusted.
   *because spotlighting reduces injection and guarantees nothing*

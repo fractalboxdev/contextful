@@ -177,7 +177,7 @@ The secret guard masks credential-shaped text in pulled batches, dead letters an
 - `coverage` — The guard reads pre-normalize string cells for plaintext shapes; encoded material and a credential split across two cells pass through.
 - `dead-letter-reason` — A dead letter's `key`, `reason` and `sha256` pass the guard as a pulled row's cells do, so a reason quoting a credential lands masked.
 - `recorded-body` — Registered body results pass through the same guard before shaping and canonical preparation; the engine reports per-column counts once per fresh paid preparation, excluding counts from the recorded wire and replay.
-  *A-authority*
+  *A-authority#body-projection*
 
 #### Scenarios
 
@@ -190,9 +190,9 @@ The engine processes batches from pull to commit, records ingest counts and isol
 
 - `stage-order` — A batch passes pull, the secret guard, the recorded pull, normalize, the transform chain, write-path redaction, shredding and batch write; the run then commits rows and position together through {{run.advance.commit-with-rows}}.
 - `unknown-destination` — The local context store is the only destination, and synthesized artifacts write back through it; any other `destination` raises `PipelineUnknownDestination` at assembly, before any row moves.
-  *A-topology*
+  *A-topology#one-egress*
 - `no-host-arm` — The destination world declares no host arm, so a guest supplies no destination.
-  *A-topology*
+  *A-topology#one-egress*
 - `batch-write` — The store creates a landing table on first schema observation, {{store.reconcile.first-sight}}. The store writes each batch durably in a separate call. A batch may carry its ordinal for joining the run's request ledger.
 - `typed-pull` — A pull's `types` object maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it, and the run commit lands that column in it; an unreadable spelling fails the pull as {{store.reconcile.incompatible}}.
 - `late-type` — A pull declaring a type for a column an earlier staged batch of its run carried undeclared raises `PipelineTypeDeclaredLate`, deterministic, naming the column; the run commits nothing and retires its owner.
@@ -371,13 +371,13 @@ unsettled: Does a dead group's first attempt that never committed close, once a 
 An export reads committed table rows and delivers them to an operator-declared target with at-least-once delivery.
 
 - `export-block` — An OTLP `[[export]]` block declares `name`, one landed `table`, an HTTP `endpoint`, `signal = "logs"` and optional `headers`; `contextful export run <name>` delivers every row its cursor has not passed.
-  *A-topology*
+  *A-topology#queue-ingress*
 - `signal-unknown` — If `signal` is not `logs`, the exporter raises `ExportSignalUnknown` before reading any row.
   *because the one built-in arm maps a row onto a log record, and a span or metric needs a column mapping no block declares*
 - `post-commit-read` — Export reads committed runs only, through the read face under the admitted credential, so its grants, row policy and masks hold; no landing waits on an export.
-  *A-topology*
+  *A-topology#export-committed*
 - `commit-order` — Export reads rows past its cursor ordered by `_commit_seq`, then `_row_seq`. Export does not order by `_ingested_at`; {{store.reserve.commit-seq}} keeps late-committing runs eligible.
-  *A-topology*
+  *A-topology#queue-ingress*
 - `commit-seq-missing` — A table holding rows whose `_commit_seq` is null, from parts landed without the column, raises `ExportCommitSeqMissing` naming the export and the row count, before any batch leaves.
   *because a null never passes a cursor, and a row an export skips in silence is a row its mirror loses*
 - `batch-rows` — One delivery batch holds at most 500 rows.
@@ -385,7 +385,7 @@ An export reads committed table rows and delivers them to an operator-declared t
 - `log-record` — Each row becomes one OTLP log record: `timeUnixNano` from `_ingested_at`, each non-null column outside the `_` namespace an attribute, beside `contextful.table`, `contextful.run_id`, `contextful.commit_seq` and `contextful.row_seq`.
   *because the attributes a target deduplicates on travel with the record, and the engine's own columns stay its own*
 - `delivery` — The exporter sends each batch as one OTLP/HTTP JSON `POST` through the mediated client. The allowlist contains only the endpoint host. Each header follows {{connector.resolve.hydration-is-just-in-time}}.
-  *A-topology*
+  *A-topology#queue-ingress*
 - `secret-preflight` — If no adapter resolves a header reference, the exporter refuses at preflight as {{connector.resolve.unresolved-name}} before reading any row.
   *because a target the export cannot authenticate to is known before a batch is built*
 - `cursor-after-ack` — The cursor, the last delivered `_commit_seq` and `_row_seq`, commits only after the target answers 2xx for the batch.
@@ -400,7 +400,7 @@ An export reads committed table rows and delivers them to an operator-declared t
 - `writer-fenced` — A PostgreSQL exporter whose durable writer lease has transferred raises `ExecutionWriterFenced` before dispatch or state publication; its lease row stays locked throughout an admitted outbound call, and takeover waits for that call.
   *A-run*
 - `at-least-once` — A run ending between a target's acknowledgement and the cursor commit resends that batch on the next run; a target deduplicates on `contextful.commit_seq` and `contextful.row_seq`.
-  *A-topology*
+  *A-topology#queue-ingress*
 - `delivery-refused` — A target answering other than 2xx, or unreachable, raises `ExportDeliveryRefused` naming the export and the answer, and the cursor stays where it stood.
   *because an unacknowledged batch is resent from the cursor, never skipped*
 

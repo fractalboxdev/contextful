@@ -2,7 +2,7 @@
 
 **Status:** accepted
 
-## Disposable execution state shares one remote recovery database
+## disposable-execution-state — Disposable execution state shares one remote recovery database
 
 Execution replacement preserves the original recorded value, callback and export event identity. The deciding criteria are complete-state recovery and compatibility with the existing storage ports. The `postgres` profile uses PostgreSQL for owners, cadence history, journals, blobs, awakeables and delivery state, with S3-compatible corpus objects. Remote database connections authenticate the server with WebPKI roots and hostname verification.
 
@@ -15,7 +15,7 @@ Execution replacement preserves the original recorded value, callback and export
 
 Consequences: startup validates recovery identity, tables and schema without repairing restores. Backup quiesces writers and captures one PostgreSQL snapshot with its corpus frontier. PostgreSQL guards retain canonical shared owner and lease locks through bounded dispatch and publication callbacks on dedicated connections. Takeover waits even when an admitted callback spans lease expiry. Run metadata remains unlocked; active guards route other catalog transactions through separate connections to keep blocked takeover and renewal from occupying the callback's client. Guarded owner mutation and nested lock expansion refuse. Encrypted rows and remote coordinated-group outboxes require separate conforming adapters; the profile refuses both combinations.
 
-## D1 execution state uses a private binding and durable callback guards
+## d1-execution-state — D1 execution state uses a private binding and durable callback guards
 
 Cloudflare Containers reach D1 and R2 through a Worker outbound handler. D1 holds small transactional state; R2 holds content-addressed blobs and corpus objects. D1's batch transaction ends with the request, so it cannot hold a database lock across a provider call. A durable guard row admits a bounded callback and blocks owner or lease transfer until release. A crash during that callback leaves the guard for reconciliation; automatic expiry could admit a second writer while the first effect remains ambiguous. A recorded call releases its guard before journaling its value. R2 objects upload before their D1 references become visible; unreferenced objects can be collected after a separate sweep. Recovery captures D1 and an R2 frontier while writers are quiesced.
 
@@ -28,7 +28,7 @@ Cloudflare Containers reach D1 and R2 through a Worker outbound handler. D1 hold
 
 Consequences: D1 writes that move an owner or lease predicate on the absence of a guard. Guard acquisition checks the exact owner, active attempt and fence in the same D1 statement. A missing bridge, schema, recovery identity or R2 binding refuses admission. Coordinated publication follows the next decision.
 
-## D1 coordinated groups commit through versioned sender rows
+## d1-coordinated-groups — D1 coordinated groups commit through versioned sender rows
 
 A coordinated group under `cloudflare-d1` keeps the sender's state machine and changes only where it persists. Each group's producer frontier, per-namespace sender and active namespace are D1 rows carrying a version and the writer's lease. A write is one D1 batch: its first statement updates the sender under the prior version, lease and a fresh write token, and each later statement predicates on that token, so a lost race changes no row. Sender bodies past the inline row bound live in R2 under their SHA-256 before the row names them. The receiver contract is unchanged.
 
@@ -41,7 +41,7 @@ A coordinated group under `cloudflare-d1` keeps the sender's state machine and c
 
 Consequences: a replacement reads the pending outbox from D1 and reoffers identical bytes; the receiver's accepted-group record absorbs a lost acknowledgement. Recovery captures publication rows and their R2 bodies with the rest of the execution state.
 
-## Registered bodies pin the executing host and public semantic dependencies
+## registered-bodies-pin — Registered bodies pin the executing host and public semantic dependencies
 
 An embedding binary owns compiled body code. Configuration names registered code and cannot authenticate a digest supplied beside that name. The engine fingerprints its executing host file and concrete body type before owner admission. Registration contributes immutable digests of prompt/template content, typed public provider/model configuration and policy content. Credential values have no field in provider semantics and enter neither pins nor diagnostics.
 
@@ -54,7 +54,7 @@ An embedding binary owns compiled body code. Configuration names registered code
 
 Consequences: existing registrations declare no external semantic dependencies unless the host supplies them; each receives an implementation pin. Pending owners without implementation pins refuse because they establish no executable identity. Original builds resume recorded work; fresh executions retain earlier records and use their admitted identities.
 
-## A plan is compiled, content-hashed data with no embedded runtime
+## plan-compiled-content — A plan is compiled, content-hashed data with no embedded runtime
 
 A journaled step replays correctly only against the definition that produced it. The authoring surface is a build-time compiler emitting a serialized, content-hashed plan, a run pins against the plan hash, and no profile links a script runtime. `run.compile` accepts a step body only as a connector reference, and control flow is declared as `branch` and `parallel` nodes, so data selects an arm and never which arms exist. `run.transform` never emits more rows than it consumed.
 
@@ -68,7 +68,7 @@ A journaled step replays correctly only against the definition that produced it.
 
 Consequences: row-expanding work such as transcription lives in `run.select` and its siblings, reading from the store rather than from a vendor mid-pull.
 
-## An incremental position is bound to a named field and a seed is bounded
+## incremental-position-bound — An incremental position is bound to a named field and a seed is bounded
 
 A cursor value means nothing without the field it was measured on. `run.advance` stores the field name with each position and refuses, naming both, when the declared field differs; a rename resets explicitly. A row with no orderable clock value, or a stream switching between text and numeric positions, fails the pull terminally and spends no attempt. `store.merge` resolves a cursor by its declared kind, never by recency. `run.seed` requires `primary_key` and an event-time `order_by`, fails a whole chunk on a stamp at or past `below`, and refuses a committed seed whose source fingerprint moved.
 
@@ -82,7 +82,7 @@ A cursor value means nothing without the field it was measured on. `run.advance`
 
 Consequences: a source supplying no fingerprint skips the load and warns each run that a top-up goes unnoticed.
 
-## External signals are single-valued catalog writes
+## external-signals-single — External signals are single-valued catalog writes
 
 Every external signal lands as one catalog write whose value is fixed once observed, and every mismatch is a named outcome. `run.suspend` returns the written value for an identical re-resolution, raises `AwakeableAlreadyResolved` (409) for a different payload, evaluates deadlines lazily against the injected instant and raises `AwakeableTimedOut` (410) late. `run.cancel` writes a requested-at instant raced against every await on a 500 ms poll; a stop matching no pending, running or waiting row raises `CancelTargetNotInFlight`. `canceled` is a terminal status excluded from upstream health.
 
@@ -97,7 +97,7 @@ Every external signal lands as one catalog write whose value is fixed once obser
 Consequences: an unpolled suspension stays nominally pending until something reads it.
 Revisit: a deploy target where the requesting process and the run share no catalog; the poll's catalog read becomes measurable under high fire concurrency.
 
-## The derive work set is an anti-join against marker rows
+## derive-work-set — The derive work set is an anti-join against marker rows
 
 The tier's own output table is the single record of what is done, failed or settled, and the work set is recomputed from it every tick. `run.select` reads the parent table and drops every parent already holding a content row or a settled marker before the row cap. `run.emit` records a unit that produced nothing as one marker row with status, attempts, last error and `retryable`. Status separates `ok`, `empty`, `unavailable` (the default) and `failed`; `retryable = false` settles a unit whatever the attempt ceiling.
 
@@ -112,7 +112,7 @@ The tier's own output table is the single record of what is done, failed or sett
 Consequences: a marker written with no permanence value re-attempts its unit once.
 Revisit: the parent scan dominates tick cost on a real archive; a re-derive signal for changed parent rows becomes necessary.
 
-## A derivation key decides whether a settled unit is current
+## derivation-key-decides — A derivation key decides whether a settled unit is current
 
 **Status:** accepted; narrows the anti-join decision above, which settles a unit on `unit_ref` alone.
 
@@ -129,7 +129,7 @@ Context: `run.exec.engine-id` is written on every row and read by nothing, so a 
 Consequences: a re-derived unit re-indexes its vector and full-text sidecars; ordering between chained derive pipelines is a separate decision.
 Revisit: hashing parent rows dominates tick cost on a real archive.
 
-## A derived unit follows its parent's bytes and lifetime
+## derived-unit-follows — A derived unit follows its parent's bytes and lifetime
 
 Context: a parent media path can stay constant while its file bytes change, and a parent can disappear while its derived rows remain in a separate table. Decision: a local media unit includes the canonical file's byte digest in its derivation key. A fold compares derived unit keys with the parent table and drops orphaned rows before rebuilding sidecars. Freshness and absence of orphaned citations decide the choice.
 
@@ -142,7 +142,7 @@ Context: a parent media path can stay constant while its file bytes change, and 
 
 Consequences: an unreadable local file yields no digest and follows {{run.bind.media-unreadable}}; a parent removed before fold can leave old passages visible until that fold.
 
-## A passage's modality names its output
+## passage-s-modality — A passage's modality names its output
 
 Context: {{store.reserve.modality}} defines the accepted values; a video source can yield text passages and image candidates. Decision: a text passage carries `text`, and an image candidate carries `image`, regardless of its parent's media kind. Output kind decides retrieval and sidecar selection.
 
@@ -153,7 +153,7 @@ Context: {{store.reserve.modality}} defines the accepted values; a video source 
 | Add a video value to the output domain | Type fidelity | A text-only passage would be routed as video. |
 
 Consequences: a derived passage keeps its source medium through its parent link, not its modality column.
-## Chained derive pipelines follow their source tables
+## chained-derive-pipelines — Chained derive pipelines follow their source tables
 
 **Status:** accepted
 
@@ -170,7 +170,7 @@ Decision: the build maps output tables to derive pipelines, resolves each derive
 
 Consequences: the source-table name is a scheduling dependency when it names another derive output; an external source table adds no edge.
 
-## Selection stays bounded and countable before a tick pays
+## selection-stays-bounded — Selection stays bounded and countable before a tick pays
 
 Context: the anti-join holds every parent row in memory, and an operator sees what a tick costs only after its engine calls. Criteria: selection memory independent of archive size; the outstanding count known before any engine spend. Decision: a parent table up to 1000000 rows scans in memory, and a larger one streams through the read engine in batches. A dry run computes the same selection and prints eligible, already-derived and outstanding counts without calling an engine.
 
@@ -184,7 +184,7 @@ Context: the anti-join holds every parent row in memory, and an operator sees wh
 
 Consequences: the ceiling is a chosen figure; a measured archive revises it.
 
-## A derive engine is a machine-bound argv child with a cleared environment
+## derive-engine-machine — A derive engine is a machine-bound argv child with a cleared environment
 
 A manifest requests an engine by name; the machine's configuration defines what that name executes, and row data never becomes syntax. `run.bind` refuses an unbound name or a command key in a manifest; a `[derive.<name>]` block states argv chain or host list, environment allowlist, pins and bounds, and the adapter, not the operator's zone key, declares locality. `run.exec` spawns an argument array with no shell, a cleared environment plus allowlist, and wall-clock and output bounds, killing the process group on deadline.
 
@@ -199,7 +199,7 @@ A manifest requests an engine by name; the machine's configuration defines what 
 Consequences: a manifest half is inert on an unprepared machine; a long legitimate chain dies at its deadline.
 Revisit: operators routinely wrap steps in pinned scripts to recover shell features.
 
-## Nested Arrow is canonical and the relational shape is a reversible projection
+## nested-arrow-canonical — Nested Arrow is canonical and the relational shape is a reversible projection
 
 `run.normalize` holds the canonical form as nested Arrow structs and lists, normalized once in host code whatever the number of sinks. Relational shredding is a late projection at the sink: a struct flattens into parent-child column names, a list shreds into a child table joined by foreign key, and every child row carries its list index. A child table emitted without that index raises `PipelineListIndexMissing`, naming parent and list.
 
@@ -213,7 +213,7 @@ Revisit: operators routinely wrap steps in pinned scripts to recover shell featu
 Consequences: `native` keeps nesting up to the sink's declared capability and emits a downgrade schema-diff event past it.
 Revisit: orphaned children from root-level filtering become a reported data-quality problem; a deployment is relational at every sink.
 
-## A table commit owns its schema-diff evidence
+## table-commit-owns — A table commit owns its schema-diff evidence
 
 The reconciled schema describes only the latest shape, and a live run projection can drop events. A table's run manifest records each downgrade beside its parts and cursor; run history projects those entries by run id. The commit marker publishes rows, cursor and schema evidence together. An uncommitted stage leaves no event. This keeps the run record's plan and terminal rows fixed while preserving the reason an older column landed in a narrower type.
 
@@ -225,7 +225,7 @@ The reconciled schema describes only the latest shape, and a live run projection
 
 Consequences: a table's manifest grows with its downgraded columns, and run-history readers correlate entries across tables.
 
-## The secret guard has one host-owned catalogue
+## secret-guard-has — The secret guard has one host-owned catalogue
 
 The credential catalogue lives in host code and answers to its precision and recall fixture. Pipelines and deployments add no matcher, and the guard has one mask-only posture. An unrecognized shape can pass through, but a manifest edit cannot silently change what the host considers a secret; a catalogue change carries code and a fixture review.
 
@@ -241,7 +241,7 @@ LLM admission separates tagged provider families from bare untagged candidates u
 
 The narrower bare grammar does not detect an unknown anonymous hyphenated key whose opening is too short. Assignment and Bearer contexts still mask such values. Tagged families retain their broad payload alphabet; vendor grammar changes require catalogue and fixture review. No fixed vendor key length or complete future format catalogue is assumed.
 
-## A decoder child owns one input and two bounds
+## decoder-child-owns — A decoder child owns one input and two bounds
 
 An input whose decoder can die runs in a fresh child. Its process group ends at a 60 s wall-clock deadline measured from spawn, and its memory cap is 512 MiB. These bounds protect the serving process while letting one input fail by name; a child never carries parser state into another input.
 
@@ -253,7 +253,7 @@ An input whose decoder can die runs in a fresh child. Its process group ends at 
 
 Consequences: target adapters enforce the memory cap and reap the whole process group after a deadline.
 
-## An observed batch fixes its landing types
+## observed-batch-fixes — An observed batch fixes its landing types
 
 Pipeline planning reads the declared table schema but makes no source schema request. A staged batch contributes its observed values and pull-declared types to reconciliation; a mismatch fails at staging before a commit. A source that reports no rows offers no guessed columns.
 
@@ -265,7 +265,7 @@ Pipeline planning reads the declared table schema but makes no source schema req
 
 Consequences: validation cannot promise every source column's eventual type before the first pull.
 
-## The run substrate is three storage ports, and the file tree is one adapter
+## run-substrate-storage — The run substrate is three storage ports, and the file tree is one adapter
 
 Status: accepted. The journal, its blobs and the awakeable registry write the file tree directly, so a host keeping its own transactional store holds replay state twice, the second copy outside its retention and export. Three ports in the domain package carry the substrate: a journal store (create pending, read, replace if pending, record, release, rows and retire per execution), a blob store (put by sha256, get, sweep over a reference set and a grace) and an awakeable store. The file tree is the default adapter. Every `run.journal` and `run.suspend` clause holds per adapter, so `blob-write` states converging writers, and a staged rename is the file adapter's means.
 
@@ -280,7 +280,7 @@ Criteria: one home for replay state per host, which decided it; an I/O-free doma
 
 Consequences: a journal store apart from the catalog shares no transaction with owner retirement, which `run.journal` leaves unsettled.
 
-## A blob put may wait on its adapter's write lock
+## blob-put-may — A blob put may wait on its adapter's write lock
 
 Status: accepted. `blob-write` asks concurrent writers of one hash to converge without waiting, which the file adapter meets with a staged rename. SQLite holds one write lock per file, so the SQLite adapter's put waits behind any other connection's write transaction, and a lock held past the busy wait fails it. `blob-write` therefore requires convergence and no error between writers of one hash, and leaves waiting to the adapter.
 
@@ -295,7 +295,7 @@ Criteria: one transactional home for journal rows and blobs, which decided it; n
 Consequences: a foreign connection holding the file's write lock past the busy wait fails every put behind it with a storage failure.
 Revisit: a host runs a long write transaction on the machine file beside the run stores.
 
-## A host opens an execution through one handle keyed on a declared scope
+## host-opens-execution — A host opens an execution through one handle keyed on a declared scope
 
 Status: accepted. `run_with` is the only way to open an execution and binds it to a native plan, a source pulled to exhaustion, one destination commit and an owner keyed on pipeline and table, so a derive step or a host job restates owner claim, pin check and retirement. The engine opens an `Execution` for a scope, a content-hashed plan reference and pins; the handle records steps, commits a cursor, suspends and closes, and `run_with` is its client with unchanged behavior. The catalog keys owners on a scope: live table, backfill chunk or host-declared id. Each catalog adapter migrates its owner rows, a table owner keeping its key byte for byte.
 
@@ -310,7 +310,7 @@ Criteria: one implementation of owner claim, pin mismatch and retirement, which 
 
 Consequences: `ExecutionPinMismatch` under a host scope names the plan reference in place of the pipeline hash.
 
-## A superseded owner retires by operator verb or applied declaration, never at open
+## superseded-owner-retires — A superseded owner retires by operator verb or applied declaration, never at open
 
 Status: accepted. A pending owner pinned to a plan reference no later declaration produces refuses every fire, and the only other recovery re-releases the superseded declaration. `contextful run rewind` retires one owner with a recorded reason; without `--force` it needs evidence that a fire asked another plan reference. `pipeline apply` retires each job owner whose declared reference the claimed snapshot no longer produces. Both refuse an owner a live attempt, a waiting attempt or a pending awakeable holds, since a callback guard or external party may still act on it.
 
@@ -325,7 +325,7 @@ Criteria: no recorded work is discarded without an operator decision or a declar
 
 Consequences: the retirement is one `canceled` run row started at the owner's open, so cadence and history read it beside the attempts.
 
-## An unclosed execution recovers by lease takeover, and one keeper per engine renews leases
+## unclosed-execution-recovers — An unclosed execution recovers by lease takeover, and one keeper per engine renews leases
 
 Status: accepted. A crashed process runs no destructor, so a status written when a handle drops covers only the clean exit, and one event reads two ways. Dropping an `Execution` unclosed records nothing: its keeper registration ends, the owner lease lapses and the next open under the scope resumes the pending owner, taking over pending claims. One keeper thread per engine holds a deadline heap of registered executions, renews each lease, feeds each token its poll and sleeps until the earliest deadline; open registers, close or drop deregisters.
 
@@ -341,7 +341,7 @@ Criteria: one outcome per event, which decided it; wakeups scale with deadlines,
 Consequences: the stop channel and its cadence stay as `run.cancel` states them.
 Revisit: a renewal lags measurably under a large deadline heap.
 
-## A host-registered derive task is compiled code, versioned into the derivation key
+## host-registered-derive — A host-registered derive task is compiled code, versioned into the derivation key
 
 **Status:** accepted; narrows the derivation-key decision above: an output table declaring `retain_versions` keeps earlier task versions current under their own version instead of superseded.
 
@@ -359,7 +359,7 @@ Decision: an embedding binary registers compiled derive tasks by name before bui
 
 Consequences: a unit spanning several tables is whole once its marker lands. The accepted cost: retained versions occupy the table, and every reader filters by version.
 
-## A model is a declared SQL table whose build publishes through its snapshot manifest
+## model-declared-sql — A model is a declared SQL table whose build publishes through its snapshot manifest
 
 Status: accepted. A reader comparing two figures needs to know which build each came from and which landings that build saw. A `[[model]]` block declares a table by one read-only `SELECT`, a semver contract and tests. `build` materializes into a staging snapshot, refuses on contract, grain or test failure, and publishes by the table pointer, the build id being the snapshot id and the contract identity, watermark and freshness riding the snapshot manifest. Holds are hold manifests collection reads; the three history logs derive from committed manifests and regenerate on every build and hold.
 
@@ -374,7 +374,7 @@ Criteria: no representable torn publication, which decided it; one write path fo
 
 Consequences: a model's rows carry the injected columns, so every relation a store table compiles to reads a model unchanged.
 
-## Coordinated exports activate a complete immutable group in a receiver namespace
+## coordinated-exports-activate — Coordinated exports activate a complete immutable group in a receiver namespace
 
 Context: output tables commit independently. A downstream projection needs one completed producer frontier across every member, including empty results. An exporter checkpoint can lag the receiver after an acknowledgement is lost.
 
@@ -391,7 +391,7 @@ Criteria: atomic downstream visibility and stale replay refusal decide the proto
 
 Consequences: the local SQLite profile persists producer, outbox and receiver state transactionally. The `postgres` profile refuses coordinated groups until its shared outbox adapter supports this protocol.
 
-## A sweep freezes one transaction-time bound and carries state through its own outputs
+## sweep-freezes-transaction — A sweep freezes one transaction-time bound and carries state through its own outputs
 
 Context: a sweep asks one question at many origins over history a backfill loaded after all of them. Availability time separates origins; transaction time fixes the corpus and which sweep writes an origin sees.
 
@@ -408,7 +408,7 @@ Criteria: origins differing only in their availability bound, which decided it.
 
 Consequences: an origin later than the frozen bound refuses.
 
-## A build is stale by the landings it has not read
+## build-stale-landings — A build is stale by the landings it has not read
 
 Context: a published model's reader asks whether its figures trail the corpus by more than `max_lag`. The newest input commit against the clock reads a quiet input stale forever.
 
@@ -426,7 +426,7 @@ Criteria: a rebuild over the current frontier always clears staleness.
 
 Consequences: a watermark holds a fixed size per input, a manifest listing runs still reads, and an unpublished group holds no build back.
 
-## A minor contract bump admits only what an old reader still reads
+## minor-contract-bump — A minor contract bump admits only what an old reader still reads
 
 Context: a published model's reader pins `contract_version`. Refusing every fingerprint change under one major forces a major bump for a new nullable column; admitting any change under a minor bump breaks readers silently.
 
@@ -442,7 +442,7 @@ Criteria: a reader written against an earlier minor of the same major reads ever
 
 Consequences: the manifest section shape is unchanged; the prior schema file is the comparison's source.
 
-## The orchestrator role is a port, and a provider's workflow engine fills it at the unit grain
+## orchestrator-role-port — The orchestrator role is a port, and a provider's workflow engine fills it at the unit grain
 
 **Status:** accepted; narrows the three-storage-ports decision above: a provider adapter may fill the substrate itself.
 
@@ -460,7 +460,7 @@ Decision: `run.orchestrate` names the role as the substrate port's verbs. A prov
 Consequences: a Workflows filler meets the provider's ceilings at the pull or chunk grain; the run record lives in the store, so retention binds nothing; storage-port adapters keep their suites.
 Revisit: a provider offering a sub-chunk grain.
 
-## An awakeable resumes on the credentialed face, beside the worker relay
+## awakeable-resumes-credentialed — An awakeable resumes on the credentialed face, beside the worker relay
 
 Context: `/awake/:token` on `[control] relay` carries dispatched steps and a delegate's currency probe under one deployment key. That key names no caller, so the relay cannot hand the registry the verified subject `run.suspend.caller-binding` compares. Criteria: a verified caller subject; one callback shape for every party; authentication before any registry read.
 
@@ -475,7 +475,7 @@ Decision: the served face answers `GET` and `POST /awake/:token` for awakeables 
 
 Consequences: the face opens the run stores per request, as the stop route does; the local owner resolves through `run awake` without a credential.
 
-## A bound hit rides its failure and is listed on the run record
+## bound-hit-rides — A bound hit rides its failure and is listed on the run record
 
 Context: a guest striking its memory cap or a call deadline fails `Transient`, and an attempt that then succeeds leaves no trace of the hit. Criteria: an operator sees every hit; no second retry layer; no new catalog column.
 
@@ -488,7 +488,7 @@ Decision: the host names the struck bound on the failure. The step's retry loop 
 | One projection event per hit | Durability | The projection is no record; a restart forgets it. |
 | A bound-decision table | Footprint | A table in every catalog adapter for one list. |
 
-## A meter reservation holds no wait of its own
+## meter-reservation-holds — A meter reservation holds no wait of its own
 
 Context: a meter acquire is a blocking HTTP call, so it cannot select on a run's cancellation token. Criteria: a stop lands within a bounded time; one wait per retry; the blocking transport stays.
 
@@ -500,7 +500,7 @@ Decision: each limiter call is bounded, and a reservation never sleeps. A denial
 | An interruptible transport selecting on the token | Blocking transport | An async client inside a blocking adapter, saving at most one call. |
 | A sleep on denial inside the reservation | One wait per retry | A second sleep for the token to reach, stacked on the schedule. |
 
-## A batch key answers within a declared retention window
+## batch-key-answers — A batch key answers within a declared retention window
 
 Context: a `receive` batch key fixes each table's run id, so a resend replays committed tables and resumes the rest. A key answering forever promises deduplication the store cannot bound, and a pending owner under an abandoned key holds its recorded pull indefinitely. Criteria: no committed row lands twice; the sender learns the bound; no default chooses a window for the sender.
 
@@ -513,7 +513,7 @@ Decision: a `receive` source declares `key_retention_secs`, required and undefau
 | A late key lands as a fresh batch | No row lands twice | A resend after the window duplicates committed tables. |
 | A default window | Sender choice | The engine picks a retry horizon it cannot know. |
 
-## Received batches spooled behind a landing commit as one group
+## received-batches-spooled — Received batches spooled behind a landing commit as one group
 
 **Status:** accepted; amends the batch-key decision above: a key's committed run may be its group's.
 
@@ -530,7 +530,7 @@ Decision: a batch decodes alone and spools, synced, before contending for the la
 
 Consequences: commits, parts and pushes per batch fall by the group size. Accepted cost: batches under different credentials land in separate groups; a lone writer's synced spool write costs about a quarter of its throughput; a refused group lands twice.
 
-## A terminal item's outcome is a row of a reserved relation
+## terminal-item-s — A terminal item's outcome is a row of a reserved relation
 
 Context: an isolated item's attempt runs under a host scope, so its `_runs` row names no job, and its run and execution ids are digests no reader inverts to an entity. Its terminal receipt sits in a coordination-catalog cursor no read face exposes. Criteria: a model answers per-job, per-entity questions through an ordinary read; `_runs` stays one row per run phase; a masked key stays masked.
 
@@ -543,7 +543,7 @@ Decision: a terminal receipt names its job, keys, attempts and outcome, and the 
 | Append before the receipt commits | No false terminal | A refused commit leaves a row claiming an outcome the item never reached. |
 | A relation over the catalog's cursor positions | Complete mediation | A read reaches catalog state outside the store's registered relations. |
 
-## A backfill commits at checkpoints and walks one page per pull
+## backfill-commits-checkpoints — A backfill commits at checkpoints and walks one page per pull
 
 A backfill window outgrows one commit's staging bound, and a watermark walk outgrows one pull.
 
@@ -558,7 +558,7 @@ Decision: a run of a position-addressed source commits its staged parts and the 
 
 Consequences: a next-URL walk, a replacing table, a body's landing and a seeding or receiving scope commit once.
 
-## The run record folds inside its own append
+## run-record-folds — The run record folds inside its own append
 
 Context: every run appends two store runs to `_runs`, and the session that fires `store.fold.triggers` for a producer landing skips the engine's own appends. Nothing else folds the record, so its listing, every watermark reading it and every push grow by run. Criteria: the record's object count stays bounded without an operator command; a run's row never fails on the record's upkeep.
 

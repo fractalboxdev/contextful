@@ -72,7 +72,7 @@ The section order of a contract file, the lede, clause list and groups of each o
   *because a long operation reads as named parts, and a group renames no clause*
 - `group-clauses` — A clause list, an operation's or a group's, holds at most 30 clauses; each list past it counts toward the `anatomy-long-lists` ceiling.
   *because a reader scanning one list for its rule loses the thread past about thirty items*
-- `word-ceilings` — The `contract-words` ceilings count each contract's statement, Why and lede words, and the `adr-words` ceilings each contract ADR's words outside fences and table rules; a count off its ceiling raises `SpecWordCeiling`.
+- `word-ceilings` — The `contract-words` ceilings count each contract's statement, Why and lede words, and the `adr-words` ceilings each contract ADR's words outside fences, table rules and section slugs; a count off its ceiling raises `SpecWordCeiling`.
   *because the number of clauses, not their length, drives the corpus's size, and a recorded total makes each addition visible in review*
 - `long-operation` — `contextful-spec state` prints an advisory naming each operation holding more than 30 clauses; the advisory refuses nothing.
   *because a long operation is a grouping candidate, and the grouping is a reader's judgment no checker makes*
@@ -142,20 +142,26 @@ The one legal way a statement reaches a fact another clause owns, and the ban on
 
 Where an argument lives: the Why line, the record and its anatomy, and the words a contract file cannot carry.
 
-- `why-cell` — A clause's Why is absent, one or more record ids such as `P3` or `A-store`, or `because` followed by at most 30 words stating the deciding criterion. A refusal carries a Why.
+- `why-cell` — A clause's Why is absent, one or more record ids such as `P3`, `A-store` or `A-topology#commit-lock`, or `because` followed by at most 30 words stating the deciding criterion. A refusal carries a Why.
   *P8*
 - `record-threshold` — A decision earns a section in its contract's ADR when two or more clauses depend on it, it spans contracts, or it names a revisit trigger; otherwise it lives in a `because` cell.
   *P8*
 - `record-anatomy` — A principle `P<n>-<slug>.md` carries `# <id> — <title>`, a `**Status:**` line, then Context (optional), Decision, Options, Consequences, Revisit (optional), in at most 400 words.
   *because a principle argues one rule every contract obeys, and the length of the argument is part of its quality*
-- `contract-adr` — A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <decision>` section per decision, each holding its options table in at most 250 words.
+- `contract-adr` — A contract's decisions live in one `A-<contract>.md`: `# A-<contract> — <title>`, a `**Status:**` line, then one `## <slug> — <decision>` section per decision, its slug unique in the file, each holding its options table in at most 250 words.
   *because one file per contract puts every decision beside the clauses it governs, and a fresh corpus has no history to keep apart*
 - `options-table` — A principle's Options and each ADR section hold one table headed `Option`, `Lost on`, `Cost` with two to five rows. One row is marked *(chosen)* with `—` as Lost on; every other row names the criterion it lost on.
   *P8*
 - `unsettled-line` — An unknown is one line where it applies: `unsettled:`, a question ending `?`, `owner:` and a handle, `affects:` and a `<contract>.<operation>`. Another form, or a heading `Open questions`, `Out of scope` or `See also`, raises `SpecUnsettled`.
   *P8*
-- `orphan-record` — A record no Why cites, a Why naming no record, and a record breaking its anatomy raise `SpecRecord`.
+- `orphan-record` — A record no Why cites, a Why naming no record or section, a record breaking its anatomy, and a section below {{corpus.rationale.record-threshold}} in an ADR every citation of which names a section raise `SpecRecord`.
   *P8*
+- `why-scoped` — A Why citing a contract ADR names its section as `A-<contract>#<slug>`. Bare `A-<contract>` citations count toward the `why-unscoped` ceiling; past it, each raises `SpecWhyUnscoped`.
+  *because a slug cites the one decision a clause rests on, and a whole-file citation hands the reader every decision of the contract*
+- `why-migrate` — `contextful-spec why-migrate <A-id>` rewrites each bare citation of that ADR to the one section naming the clause by id, else by operation, and prints each citation without a single candidate, per contract.
+  *because a rewrite the checker cannot justify from the text belongs to a reviewer*
+- `cited-by` — `contextful-spec state` lists each contract ADR section with the clauses citing it in its contract's card, and `extract` records the same lists in the lock file.
+  *because the lists derive from Why lines, so no hand-written list repeats them*
 
 ## state
 
@@ -254,7 +260,7 @@ The fenced diagram, and the shape every flowchart, sequence and state diagram ke
 Per-provider deployment target files, the roles each shape fills, and the page rendered from them.
 
 - `file` — Each deployment provider's target profile is `spec/targets/<provider>.toml`: named shapes, exactly one marked default, each with a kind, the profiles it hosts, an optional per-invocation wall-clock cap, its exclusions and the primitive filling each role.
-  *A-topology*
+  *A-topology#build-profiles*
 - `roles` — A shape fills eight roles — cron tick, reconciler, durable orchestrator, single-writer catalog, object store, hot-path query face, heavy compute and secrets — and may fill a realtime run projection and a queue.
 - `primitives` — A target file lists the primitives its provider offers, and each shape lists the primitives it uses; {{topology.deploy.unsupported-shape}} refuses a shape using one outside that list.
   *because a shape's roles name products, and only a primitive list makes a missing one checkable*

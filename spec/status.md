@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `assurance` | 3 | 18 | 347 | 73 | 25 | 3 | 308 | 0 | 308 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 278 | 0 | 278 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 318 | 0 | 318 |
-| `corpus` | 1 | 10 | 90 | 40 | 9 | 0 | 90 | 0 | 90 |
+| `corpus` | 1 | 10 | 93 | 41 | 9 | 0 | 93 | 0 | 93 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 327 | 58 | 30 | 16 | 285 | 0 | 285 |
 | `run` | 3 | 29 | 613 | 129 | 49 | 19 | 581 | 0 | 581 |
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 333 | 0 | 333 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 176 | 0 | 176 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 89 | 0 | 89 |
-| **total** | 26 | 177 | 2933 | 714 | 237 | 82 | 2623 | 0 | |
+| **total** | 26 | 177 | 2936 | 715 | 237 | 82 | 2626 | 0 | |
 
 Decision records: 18.
 
@@ -997,6 +997,7 @@ Unscheduled operations: 13.
 | `corpus.guide.bad-guide` | `tools/spec/tests/integration/readable.rs::a_contract_without_a_guide_is_a_guide_finding` | performed |
 | `corpus.guide.file` | `tools/spec/tests/integration/readable.rs::a_guide_over_its_length_or_off_its_title_is_a_guide_finding` | performed |
 | `corpus.guide.non-normative` | `tools/spec/tests/integration/readable.rs::a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding` | performed |
+| `corpus.rationale.cited-by` | `tools/spec/tests/integration/rationale.rs::each_adr_section_lists_the_clauses_citing_it_in_the_card_and_the_lock` | performed |
 | `corpus.rationale.contract-adr` | `spec/pins.toml` | performed |
 | `corpus.rationale.options-table` | `tools/spec/tests/integration/rationale.rs::an_options_table_off_its_header_rows_or_chosen_mark_is_a_record_finding` | performed |
 | `corpus.rationale.orphan-record` | `tools/spec/tests/integration/rationale.rs::a_record_no_why_cites_or_a_why_naming_no_record_is_a_record_finding` | performed |
@@ -1004,6 +1005,8 @@ Unscheduled operations: 13.
 | `corpus.rationale.record-threshold` | `tools/spec/tests/integration/rationale.rs::a_decision_one_clause_rests_on_lives_in_its_because_cell` | performed |
 | `corpus.rationale.unsettled-line` | `tools/spec/tests/integration/rationale.rs::an_unsettled_line_off_its_form_or_an_appendix_heading_is_an_unsettled_finding` | performed |
 | `corpus.rationale.why-cell` | `tools/spec/tests/integration/rationale.rs::a_because_over_thirty_words_or_a_refusal_without_a_why_is_a_record_finding` | performed |
+| `corpus.rationale.why-migrate` | `tools/spec/tests/integration/rationale.rs::why_migrate_rewrites_a_citation_one_section_names_and_prints_the_rest` | performed |
+| `corpus.rationale.why-scoped` | `tools/spec/tests/integration/rationale.rs::a_bare_adr_citation_past_the_ceiling_is_unscoped` | performed |
 | `corpus.reference.dangling` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::a_guide_pointer_naming_no_clause_dangles` | performed |
 | `corpus.reference.no-literature` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::an_autolink_to_an_external_document_is_an_external_link_finding` | performed |
 | `corpus.reference.pointer` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::a_pointer_is_recorded_as_a_lock_edge` | performed |
