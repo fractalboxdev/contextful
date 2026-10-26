@@ -57,15 +57,18 @@ flowchart LR
 
 At read time, a bounded group closure walks `planning`, then `eng-leads`, then the
 reader ({{disclosure.reach.closure-walk}}). The registered view admits a row only when
-its resource holds a grant in that reachable set ({{disclosure.reach.semi-join}}).
+its resource holds a grant in that reachable set ({{disclosure.reach.semi-join}}). The
+reachable set holds every principal the subject reaches through identity links and
+groups ({{disclosure.reach.subject-principals}}).
 
 **Fidelity** states how closely a table follows its source, and the source family caps
 the claim ({{disclosure.declare-fidelity.family-bound}}).
 
 ## When permission state goes stale
 
-An editor removes `planning` from the page. The table's staleness budget bounds how long
-the old grant keeps answering. If the sweep stalls past the budget, the reader's next
+An editor removes `planning` from the page. The table's staleness budget, a declared
+duration ({{disclosure.bound-staleness.budget-grammar}}), bounds how long the old grant
+keeps answering. If the sweep stalls past the budget, the reader's next
 read fails instead of serving a revoked grant ({{disclosure.bound-staleness.access-stale}}).
 
 A table declared `public_only` instead narrows to public rows past its budget

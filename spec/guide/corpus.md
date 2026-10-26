@@ -52,7 +52,7 @@ built ({{corpus.render.dated-prose}}).
 
 `contextful-spec state` lists the new clause as `committed` and adds the error to the
 generated store card ({{corpus.render.card}}). A test tagged with the clause id and a
-digest of the statement supplies a pin ({{corpus.state.tag-pin}}).
+digest of the statement supplies a pin ({{corpus.state.tag-pin}}, {{corpus.state.pin}}).
 
 An ignored test, an unfinished body or a stale tag computes `broken`
 ({{corpus.state.verdict}}). A reworded statement leaves the tag stale until someone
@@ -67,8 +67,8 @@ provider primitive filling each role, and the checker refuses a shape that leave
 unfilled ({{corpus.targets.incomplete}}).
 
 Each contract has three views. The contract file is reference, and the card is
-generated from the fragment. The guide teaches the flow and reaches each rule only by
-pointer, so the guide never becomes a second home for a rule
+generated from the fragment. The guide teaches the flow ({{corpus.guide.file}}) and
+reaches each rule only by pointer, so the guide never becomes a second home for a rule
 ({{corpus.guide.non-normative}}).
 
 A guide reaches every operation of its contract ({{corpus.guide.reach}}). Each paragraph

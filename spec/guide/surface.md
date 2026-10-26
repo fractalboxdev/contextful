@@ -66,7 +66,7 @@ surface reloads the winning version and reapplies the pending edit onto it
 ({{surface.apply.version-race}}). Admin edits and applies also need the server's admin
 capability ({{surface.open-console.admin-grant}}).
 
-The reconciler polls the snapshot pointer and diffs the schedule set
+The reconciler polls the applied document's pointer and diffs the schedule set
 ({{surface.reconcile.poll-cadence}}). If a poll fails, the armed set keeps running
 unchanged ({{surface.reconcile.fail-static}}).
 
@@ -116,7 +116,7 @@ a line chart ({{surface.render.component-choice}}). A view arriving from the cli
 fails, because the server builds every view ({{surface.render.client-authored-view}}).
 
 After the answer, a second pass distils the exchange into learnings for later turns
-({{surface.learn.distillation}}). A greeting card appears only when a new row matches
+({{surface.learn.distillation}}). A greeting at session start appears only when a new row matches
 an earlier conclusion within budget ({{surface.brief.absence-is-earned}}).
 
 Posting an answer to a team channel under a service identity, on a schedule, fails

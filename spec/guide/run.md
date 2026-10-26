@@ -75,7 +75,7 @@ together ({{run.advance.commit-with-rows}}), and `success` releases the owner
 ({{run.own.pin-release}}).
 
 Two changes stop the replay instead. A declaration whose hash changed while the owner
-was pending fails the open, naming both pin sets ({{run.own.pinned-plan-changed}}). A
+was pending fails the open, naming both identity sets ({{run.own.pinned-plan-changed}}). A
 renamed `updated_time` fails the open before any request leaves the host
 ({{run.advance.field-rename}}).
 

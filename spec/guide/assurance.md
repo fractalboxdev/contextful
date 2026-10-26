@@ -79,7 +79,7 @@ form and records it ({{assurance.differential-test.minimized}}). Every later run
 replays that case before any fresh one ({{assurance.differential-test.corpus-replay}}).
 
 The full formal stage runs nightly, not on every change ({{assurance.gate.formal-stage}}).
-A change merged between two nightly runs therefore holds no formal verdict until the
+A change merged between two nightly runs therefore holds no formal result until the
 next run.
 
 The claim stays within its evidence. A composition proof offered as a mediation proof
@@ -88,7 +88,7 @@ fails, because composition says nothing about whether every read passes the filt
 
 ## Engineering checks
 
-Enforcement, credential resolution and statement guarding each resolve to one
+Enforcement and credential resolution each resolve to one
 implementation ({{assurance.structure-tree.one-home}}). Contributors and the gate run
 the same typed subcommands ({{assurance.automate.one-path}}).
 
@@ -123,7 +123,7 @@ flowchart LR
 
 Forecast tracks keep separate scores and never pool into one figure
 ({{assurance.forecast.tracks-separate}}). The target ledger ties each measured target to
-its owning clause ({{assurance.measure.ledger}}).
+the specification rule it serves ({{assurance.measure.ledger}}).
 
 ## Releases and consumers
 

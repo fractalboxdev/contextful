@@ -10,7 +10,7 @@ Many writers append rows while readers query and a background pass compacts. A r
 needs a consistent answer, and a crashed writer must leave nothing half visible. The
 store holds Parquet files, JSON manifests and one pointer object per table
 ({{store.lay-out.components}}). Every commit is a conditional write, so a batch is
-either whole or absent.
+either whole or absent ({{topology.coordinate.primitive}}).
 
 ## Setting up a project
 
@@ -38,7 +38,9 @@ Schemas grow additively: an unseen column joins, and older files read it as null
 ({{store.reconcile.additive}}). One batch sends `page` as a float. That batch fails
 before any Parquet, because a key column never widens ({{store.reconcile.key-widening}}).
 
-A query with no time bound reads the current snapshot plus the committed runs it omits
+A **snapshot** is a compacted, immutable set of a table's parts, named by a sortable id
+({{store.lay-out.snapshot-id}}). A query with no time bound reads the current snapshot
+plus the committed runs it omits
 ({{store.bound-time.unbounded-latest}}). Every read passes an explicit sorted file
 list, never a glob ({{store.reconcile.explicit-file-list}}).
 
@@ -52,15 +54,18 @@ run stays unreadable ({{store.lease.stale-fence}}).
 ## Compaction
 
 Runs accumulate until a fold compacts them. A pass stages Parquet and every declared
-sidecar, then commits by replacing the table pointer on the ETag it read
-({{store.fold.pass}}). A reader sees a snapshot and its sidecars together or neither
-({{store.fold.partial-snapshot}}).
+**sidecar**, an index file beside the snapshot, then commits ({{store.fold.pass}}). Each
+table declares its sidecars under `indexes` ({{store.index.declaration}}).
+
+The commit replaces the table pointer, which names the current snapshot, on the ETag the
+pass read ({{store.lay-out.table-pointer}}). A reader sees a snapshot and its sidecars
+together or neither ({{store.fold.partial-snapshot}}).
 
 A statement already running keeps the snapshot it started on, so a fold blocks no
 reader ({{store.fold.non-blocking}}).
 
-A **sidecar** is an index file beside a snapshot: a vector graph, a full-text index or a
-key lookup ({{store.index.kinds}}). A sidecar returns candidate ids only, and
+A sidecar is a vector graph, a full-text index or a key lookup
+({{store.index.kinds}}). A sidecar returns candidate ids only, and
 retrieval joins them through the access-controlled relation
 ({{store.index.candidate-ids}}).
 
@@ -108,7 +113,7 @@ flowchart TD
   B -->|"unbounded"| N["latest vintage"]
 ```
 
-A document capture commits as one store snapshot that an evaluation case pins by id
+A document capture commits as one store snapshot that an evaluation case names by id
 ({{store.snapshot.capture}}).
 
 When a project binds an encryption key, Parquet files use modular encryption and
@@ -132,7 +137,8 @@ A pull checks each downloaded object against its manifest digest
 ({{store.pull.digest-mismatch}}). Before downloading anything, a pull refuses a store
 holding a different identity ({{store.pull.identity-conflict}}).
 
-A laptop replica refreshes from the bucket and refuses writes
+A laptop replica is a read-only copy that records each snapshot it holds
+({{store.replicate.descriptor}}). It refreshes from the bucket and refuses writes
 ({{store.replicate.write-refused}}). A query needing a sidecar the replica lacks fails
 and names the refresh that supplies it ({{store.replicate.missing-index}}).
 

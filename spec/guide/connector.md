@@ -57,12 +57,14 @@ A redirect keeps the credential only at the configured host and port
 
 ## Where the credential comes from
 
-A `secret://` name is a reference; a provider chain of adapters answers it. The first
+A `secret://` name is a reference, and a provider chain of adapters answers it,
+starting with the lease provider ({{connector.resolve.provider-chain}}). The first
 adapter answering a name serves it for the run ({{connector.resolve.first-hit-wins}}). A
-second adapter that also holds the name fails hydration, so no adapter shadows another
+second adapter that also holds the name fails the lookup, so no adapter shadows another
 silently ({{connector.resolve.shadowed-name}}).
 
-The host hydrates the value per request, and no record or log line holds it
+Hydration places the resolved value into an outbound request. The host hydrates per
+request, and no record or log line holds the value
 ({{connector.resolve.hydration-is-just-in-time}}). A cached value lives at most 300 s
 ({{connector.resolve.cache-ttl}}).
 

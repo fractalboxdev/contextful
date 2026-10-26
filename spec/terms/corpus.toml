@@ -116,7 +116,7 @@ registry-committed-sites = 3
 anatomy-long-lists = 15
 clause-unowned = 98
 why-unscoped = 0
-term-first-use = 24
+term-first-use = 0
 
 [ceiling.contract-words]
 assurance = 10169

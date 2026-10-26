@@ -112,9 +112,10 @@ Each statement start and each commit re-reads expiry, revocation and policy vers
 ({{authority.verify.effect-boundary}}). Short lifetimes are the primary withdrawal
 ({{authority.revoke.short-lifetime}}).
 
-An operator denylists the sub-agent's derivation. At its next effect boundary the
-sub-agent's credential fails ({{authority.revoke.revoked}}). The parent credential
-carries a different revocation identifier and keeps working.
+An operator adds the sub-agent's derivation to the denylist every checkpoint reads
+({{authority.revoke.denylist}}). At its next effect boundary the sub-agent's credential
+fails ({{authority.revoke.revoked}}). The parent credential carries its own revocation
+identifier and keeps working ({{authority.revoke.revocation-id}}).
 
 ## Enforcement in three layers
 

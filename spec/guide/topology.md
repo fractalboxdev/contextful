@@ -78,14 +78,15 @@ flowchart LR
   SQL -- "scan snapshot" --> COPY
 ```
 
-The reconciler renews the deployment's cadence lease while the applied document
+One reconciler at a time holds the deployment's cadence lease
+({{topology.coordinate.cadence-lease-ttl}}) and renews it while the applied document
 schedules work ({{topology.coordinate.cadence-lease-renewal}}). A run child invokes the
 connector, and the writer advances its cursor by one conditional update
 ({{topology.coordinate.cursor-cas}}).
 
-Bucket sync copies the corpus to R2, and the edge replica pulls it and serves queries.
+Bucket sync copies the corpus to R2, and the edge binary pulls it and serves queries.
 The routing Worker forwards a caller's request to the query container, which reaches
-readiness before its snapshot hydration completes ({{topology.publish-hostname.container-readiness}}).
+readiness before it finishes loading stored data ({{topology.publish-hostname.container-readiness}}).
 
 The deployment probe checks each hostname against its declared access policy. A public
 response on a private hostname fails the probe ({{topology.publish-hostname.posture-mismatch}}).
