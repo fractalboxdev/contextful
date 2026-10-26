@@ -365,12 +365,12 @@ Unscheduled operations: 13.
 | `authority.attenuate.bearer` | `crates/contextful-policy/tests/integration/attenuate.rs::a_derived_hop_proves_its_chain_and_attests_no_new_holder` | performed |
 | `authority.attenuate.expiry-extended` | `crates/contextful-core/tests/integration/attenuate.rs::expiry_extended` | performed |
 | `authority.attenuate.horizon-widens` | `crates/contextful-core/tests/integration/attenuate.rs::a_later_horizon_widens_and_an_absent_one_inherits` | performed |
-| `authority.attenuate.narrowing` | `crates/contextful-core/tests/integration/attenuate.rs::narrowing` | performed |
+| `authority.attenuate.narrowing` | `crates/contextful-core/tests/integration/attenuate.rs::narrowing`, `formal/reference/Reference/Narrowing.lean::narrowing_every_dimension_every_hop` | performed |
 | `authority.attenuate.offline` | `crates/contextful-policy/tests/integration/attenuate.rs::a_holder_derives_a_child_offline_and_the_parent_stays_intact` | performed |
 | `authority.attenuate.per-sub-agent` | `crates/contextful-policy/tests/integration/attenuate.rs::each_sub_agent_child_binds_that_sub_agents_own_key` | performed |
 | `authority.attenuate.tenant-dropped` | `crates/contextful-core/tests/integration/attenuate.rs::tenant_dropped` | performed |
 | `authority.attenuate.truncation` | `crates/contextful-policy/tests/integration/attenuate.rs::a_chain_truncated_to_a_broader_prefix_verifies_as_nothing` | performed |
-| `authority.attenuate.widens` | `crates/contextful-core/tests/integration/attenuate.rs::widens` | performed |
+| `authority.attenuate.widens` | `crates/contextful-core/tests/integration/attenuate.rs::widens`, `formal/reference/Reference/Narrowing.lean::narrow_widens_nearest` | performed |
 | `authority.bound-redistribution.before-diff` | `crates/contextful-sync/tests/integration/redistribute.rs::a_withheld_table_ships_no_object_and_no_manifest_name` | performed |
 | `authority.bound-redistribution.edge-filter` | `crates/contextful-sync/tests/integration/edge.rs::a_pull_through_the_edge_lands_only_granted_tables` | performed |
 | `authority.bound-redistribution.edge-whole-table` | `crates/contextful-sync/tests/integration/edge.rs::only_a_whole_table_read_grant_opens_a_table_at_the_edge` | performed |
@@ -430,13 +430,13 @@ Unscheduled operations: 13.
 | `authority.grant.horizon` | `crates/contextful-core/tests/integration/read/horizon.rs::a_grant_carries_a_horizon_and_an_absent_one_bounds_nothing` | performed |
 | `authority.grant.malformed-pattern` | `crates/contextful-core/tests/integration/grant.rs::malformed_pattern` | performed |
 | `authority.grant.one-matcher` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_refresh_selects_tables_through_the_grant_pattern_matcher` | performed |
-| `authority.grant.pattern-forms` | `crates/contextful-core/tests/integration/grant.rs::pattern_forms` | performed |
+| `authority.grant.pattern-forms` | `crates/contextful-core/tests/integration/grant.rs::pattern_forms`, `formal/Contextful/Authority.lean::pattern_covers_forms` | performed |
 | `authority.grant.pipeline-not-covered` | `crates/contextful-cli/tests/integration/run.rs::run_history_lists_covered_pipelines_and_refuses_an_uncovered_one` | performed |
 | `authority.grant.pipeline-resource` | `crates/contextful-core/tests/integration/grant.rs::pipeline_resource` | performed |
 | `authority.grant.row-ceiling` | `crates/contextful-core/tests/integration/grant.rs::row_ceiling` | performed |
 | `authority.grant.run-trace-denied` | `crates/contextful-cli/tests/integration/run.rs::run_show_gates_on_the_pipeline_its_run_record_names` | performed |
 | `authority.grant.star` | `crates/contextful-policy/tests/integration/grant.rs::a_star_grant_is_bounded_by_actions_audience_and_expiry_and_names_itself` | performed |
-| `authority.grant.template-allowlist` | `crates/contextful-core/tests/integration/grant.rs::template_allowlist` | performed |
+| `authority.grant.template-allowlist` | `crates/contextful-core/tests/integration/grant.rs::template_allowlist`, `formal/Contextful/Authority.lean::template_allowlist` | performed |
 | `authority.grant.template-not-allowed` | `crates/contextful-core/tests/integration/grant.rs::template_not_allowed` | performed |
 | `authority.grant.template-tables` | `crates/contextful-context/tests/integration/read/enforce.rs::a_covered_template_reads_its_tables_in_its_own_session_alone` | performed |
 | `authority.grant.tenant-bytes` | `crates/contextful-core/tests/integration/grant.rs::tenant_bytes` | performed |

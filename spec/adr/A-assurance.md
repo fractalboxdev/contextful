@@ -89,6 +89,19 @@ Revisit: the read path releases a row outside a statement; the model gains SQL s
 Consequences: the report names its case classes — malformed, boundary, well-formed.
 Revisit: a pinned, reproducible translation toolchain exists; a production divergence falls outside all three classes; keeping the artifacts in step costs more than the divergences caught.
 
+## The executed reference model is the proved definitions
+
+`assurance.differential-test.reference-model` builds the reference binary from the policy package's definitions: the binary adds JSON case decoding and decision rendering, and declares no grant, pattern or zone type of its own. A disagreement therefore implicates the proved definitions directly, and every theorem over `Authority.Grant` speaks about the function the harness executes.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One set of definitions, proved and executed *(chosen)* | — | No second reading of the specification checks the first; a definition that misreads a clause passes its proofs and its differential alike. |
+| A second Lean rendering written from the specification text | Proof reach | No theorem links the executed types to the proved ones, so a green differential says nothing about the proved model. |
+| A refinement proof between the two renderings | Maintenance cost | Every dimension added to a grant needs a simulation lemma across two type families. |
+
+Consequences: the policy package's artifact budget bounds the definitions the differential exercises; the narrowing decision's refusal order and named dimension are proved in the reference package, which carries no artifact budget.
+Revisit: a misreading of a clause reaches a release through a definition both proofs and differential accepted.
+
 ## The store protocol is modelled in Lean 4
 
 `assurance.model` holds the lease, compare-and-swap and fence protocol as an executable Lean 4 state machine in a second package; its four invariants are audited theorems, and a bounded check over three nodes and four lease generations raises `ProtocolInvariantViolated`. `assurance.differential-test` drives the model's compiled executable and the Rust store through generated operation sequences and interleavings; a disagreement raises `ProtocolConformanceDrift`.

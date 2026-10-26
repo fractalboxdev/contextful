@@ -82,11 +82,65 @@ Leaves open: that the effective policy is the one the engine enforces; that each
 
 [constant."Authority.grant_includedIn_permits"]
 module    = "Contextful.Authority"
-statement = "∀ (child parent : Authority.Grant), child.includedIn parent = true → ∀ (r : Authority.Request), child.permits r = true → parent.permits r = true"
+statement = "∀ (child parent : Authority.Grant), child.includedIn parent = true → ∀ (r : Authority.Request), (child.under parent).permits r = true → parent.permits r = true"
 assumptions    = ["propext", "Quot.sound"]
-binding   = "crates/contextful-core/src/attenuate.rs::widened via crates/contextful-core/src/grant.rs::TablePattern::covers; test crates/contextful-core/tests/integration/attenuate.rs::widens"
+binding   = "crates/contextful-core/src/attenuate.rs::widened via crates/contextful-core/src/attenuate.rs::effective; test crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases"
 negative  = """
-Leaves open: templates, aggregate constraints, tenant scope and row ceilings, which the model's grant omits; that the parsed patterns are the patterns the credential carries; that the engine consults the check before admitting a request.
+Leaves open: the duration and byte ceilings, which the model's grant omits; that the parsed patterns, tenant scopes, allowlists and aggregate constraints are the ones the credential carries; that the engine enforces a request's tenant partition, template, aggregate release, row count and availability instant as the request states them; that the engine consults the check before admitting a request.
+"""
+
+[constant."Authority.tenant_never_widens"]
+module    = "Contextful.Authority"
+statement = "∀ (child parent : Authority.Grant) (t : Authority.Tenant), child.includedIn parent = true → parent.tenant = some t → (child.under parent).tenant = some t ∧ ∀ (r : Authority.Request), (child.under parent).permits r = true → r.tenant = some t"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/attenuate.rs::tenant_kept; test crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases"
+negative  = """
+Leaves open: that the tenant value binds the table's outermost partition column; byte equality between the grant's value, the partition key on disk and the consumer's tenant identifier; that the read path filters to the request's tenant partition.
+"""
+
+[constant."Authority.pattern_covers_forms"]
+module    = "Contextful.Authority"
+statement = "(∀ (n : Authority.Name), Authority.Pattern.star.covers n = true) ∧ (∀ (p n : Authority.Name), (Authority.Pattern.prefixed p).covers n = true ↔ p <+: n) ∧ (∀ (s n : Authority.Name), (Authority.Pattern.literal s).covers n = true ↔ s = n) ∧ ∀ (p : Authority.Pattern), p.subsumes Authority.Pattern.star = true → p = Authority.Pattern.star"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/grant.rs::TablePattern::covers_name; test crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases"
+negative  = """
+Leaves open: pattern parsing, including the refusal of a `*` before the final position; that every consumer reaches the one matcher.
+"""
+
+[constant."Authority.template_allowlist"]
+module    = "Contextful.Authority"
+statement = "(∀ (g : Authority.Grant) (id : Authority.Name), g.templates = none → g.allowsTemplate id = false) ∧ (∀ (g : Authority.Grant) (l : List Authority.Name) (id : Authority.Name), g.templates = some l → Authority.allTemplates ∈ l → g.allowsTemplate id = true) ∧ ∀ (c p : Authority.Grant) (id : Authority.Name), c.templatesWithin p = true → c.allowsTemplate id = true → p.allowsTemplate id = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/grant.rs::Grant::templates_within; test crates/contextful-cli/tests/integration/differential.rs::the_engine_and_the_lean_reference_agree_over_generated_cases"
+negative  = """
+Leaves open: the manifest's declared template list, which `*` ranges over; that a template's session reads only the tables its statement names; the projected tool listing.
+"""
+
+[constant."Authority.absent_grant_field_admits"]
+module    = "Contextful.Authority"
+statement = "∀ (g : Authority.Grant) (r : Authority.Request), (g.tenant = none → g.tenantAdmits r = true) ∧ (g.aggregate = none → g.aggregateAdmits r = true) ∧ (g.maxRows = none → g.rowsAdmit r = true) ∧ (g.horizon = none → g.horizonAdmits r = true) ∧ (g.templates = none → ∀ (id : Authority.Name), g.allowsTemplate id = false)"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/grant.rs::Grant::allows_template; test crates/contextful-core/tests/integration/grant.rs::fields"
+negative  = """
+Leaves open: the duration and byte ceilings; that the engine reads an absent field as absent rather than as a default value.
+"""
+
+[constant."Authority.aggregate_grant_no_raw_read"]
+module    = "Contextful.Authority"
+statement = "∀ (g : Authority.Grant) (r : Authority.Request), r.action = Authority.Action.read → r.aggregate = none → g.aggregate.isSome = true ∨ g.actions.contains Authority.Action.read = false → g.permits r = false"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/grant.rs::raw_read_covers; test crates/contextful-core/tests/integration/grant.rs::aggregate_only_grants_contribute_no_raw_table"
+negative  = """
+Leaves open: that the read path classifies a statement as raw or aggregate as the request states it; group formation, contributor shares and function evaluation, which the request reports rather than computes.
+"""
+
+[constant."Authority.checkChain_permits_root"]
+module    = "Contextful.Authority"
+statement = "∀ (hops : List (List Authority.Grant)) (root gs : List Authority.Grant), Authority.checkChain root hops = some gs → ∀ (r : Authority.Request), (gs.any fun g => g.permits r) = true → (root.any fun g => g.permits r) = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-core/src/attenuate.rs::check_chain; test crates/contextful-core/tests/integration/attenuate.rs::narrowing"
+negative  = """
+Leaves open: expiry, subject derivation and incognito along the chain; a hop proposing no grant list, which inherits its parent's unchanged; credential bytes and block chaining, which the delegation library owns.
 """
 
 [constant."Authority.attenuate_permits_parent"]

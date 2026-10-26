@@ -203,7 +203,8 @@ The sentence the assurance claim is allowed to be: named decisions, trusted depe
 
 The executable reference models, the case generators, the minimized counterexample corpus and the command running them.
 
-- `reference-model` — The reference model is an executable Lean rendering of the decision functions, built to a binary that reads one case on standard input and prints one decision.
+- `reference-model` — The reference model is the policy package's proved decision definitions, compiled with JSON case decoding and decision rendering into a binary that reads one case on standard input and prints one decision.
+  *A-assurance*
 - `harness` — The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
   *A-assurance*
 - `builds` — The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.
