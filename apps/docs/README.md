@@ -1,6 +1,6 @@
 # Contextful website
 
-`pnpm typecheck` generates Worker types and checks Astro. `pnpm build` renders the site and runs its regression tests. `pnpm deploy` publishes the site to `contextful.fractalbox.dev`.
+`pnpm typecheck` generates Worker types and checks Astro. `pnpm build` renders the site, writes the Pagefind search index to `dist/pagefind/`, and runs its regression tests. `pnpm deploy` publishes the site to `contextful.fractalbox.dev`.
 
 The production account contains the `fractalbox.dev` zone. Set `CLOUDFLARE_ACCOUNT_ID` to that account's ID when a cached Wrangler account differs from the current login.
 

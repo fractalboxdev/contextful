@@ -86,7 +86,9 @@ export const navigation = async (): Promise<NavGroup[]> => {
       items: cards.map((e) => ({ href: collectionRoute("cards", e.id), label: titleOf(e).replace(/\s+—\s+card$/, "") })),
       collapsed: true,
     },
-    { label: "Plan", items: spec.filter((e) => !isContract(e) && e.id !== "targets").map(item("spec")) },
+    // The generated glossary, once spec/glossary.md exists, defines the corpus's terms.
+    { label: "Terms", items: spec.filter((e) => e.id === "glossary").map(item("spec")) },
+    { label: "Plan", items: spec.filter((e) => !isContract(e) && !["targets", "glossary"].includes(e.id)).map(item("spec")) },
     { label: "Principles", items: adr.filter((e) => /^P\d/.test(e.id)).map(adrItem) },
     { label: "Contract ADRs", items: adr.filter((e) => e.id.startsWith("A-")).map(adrItem) },
     { label: "Decision records", items: adr.filter((e) => /^D\d/.test(e.id)).map(adrItem), collapsed: true },

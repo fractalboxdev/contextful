@@ -1,0 +1,30 @@
+---
+import Base from "../../layouts/Base.astro";
+---
+
+<Base
+  title="Search"
+  description="Search the Contextful specification by clause id, statement, error identifier or guide text."
+  searchable={false}
+>
+  <h1>Search</h1>
+  <p>
+    Search by clause id such as <code>store.fold.partial-snapshot</code>, by error identifier such as
+    <code>StorePartialSnapshot</code>, or by any words in a statement, guide or decision record.
+  </p>
+  <link rel="stylesheet" href="/pagefind/pagefind-ui.css" />
+  <div id="search" class="search" data-pagefind-ignore>
+    <noscript>Search runs in the browser and needs JavaScript.</noscript>
+  </div>
+  <script is:inline src="/pagefind/pagefind-ui.js"></script>
+  <script is:inline>
+    // The production build writes /pagefind/; `astro dev` serves no index, so the page says so.
+    const term = new URLSearchParams(location.search).get("q");
+    if (typeof PagefindUI === "function") {
+      const ui = new PagefindUI({ element: "#search", showSubResults: true, showImages: false, autofocus: !term });
+      if (term) ui.triggerSearch(term);
+    } else {
+      document.getElementById("search").textContent = "The search index is written by the production build.";
+    }
+  </script>
+</Base>
