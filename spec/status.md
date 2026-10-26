@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Proved | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 4 | 18 | 344 | 76 | 24 | 4 | 334 | 1 | 0 | 334 |
-| `authority` | 2 | 16 | 298 | 80 | 28 | 8 | 286 | 4 | 0 | 286 |
+| `authority` | 2 | 16 | 290 | 79 | 28 | 8 | 290 | 4 | 0 | 286 |
 | `connector` | 3 | 19 | 400 | 87 | 23 | 15 | 335 | 2 | 0 | 335 |
 | `corpus` | 1 | 11 | 125 | 50 | 13 | 0 | 125 | 0 | 0 | 125 |
 | `disclosure` | 3 | 17 | 185 | 64 | 14 | 5 | 167 | 0 | 0 | 167 |
@@ -15,11 +15,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 315 | 67 | 23 | 13 | 311 | 13 | 0 | 311 |
 | `surface` | 2 | 22 | 199 | 70 | 24 | 2 | 186 | 0 | 0 | 186 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 90 | 0 | 0 | 90 |
-| **total** | 27 | 178 | 2870 | 701 | 236 | 85 | 2710 | 24 | 0 | |
+| **total** | 27 | 178 | 2862 | 700 | 236 | 85 | 2714 | 24 | 0 | |
 
 Decision records: 18.
 
-Clauses restating a code type: 64.
+Clauses restating a code type: 59.
 
 ## Milestones
 
@@ -28,11 +28,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 21 | 20 | passing | closed |
-| 1 — The authority core | 14 | 261 | 260 | passing | closed |
+| 1 — The authority core | 14 | 260 | 260 | passing | closed |
 | 2 — The store | 9 | 183 | 180 | passing | closed |
 | 3 — The run path | 12 | 317 | 312 | passing | closed |
 | 4 — Ingest | 25 | 624 | 580 | passing | closed |
-| 5 — The read face under enforcement | 17 | 308 | 296 | passing | closed |
+| 5 — The read face under enforcement | 17 | 301 | 300 | passing | closed |
 | 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
 | 7 — Memory | 6 | 87 | 85 | passing | closed |
 | 8 — Accountability | 5 | 93 | 91 | passing | closed |

@@ -120,11 +120,11 @@ identifier and keeps working ({{authority.revoke.revocation-id}}).
 ## Enforcement in three layers
 
 Enforcement is three layers: removal at write time, a redistribution bound at push, and
-row and column restriction at query time ({{authority.compose.three-layers}}).
+row and column restriction at query time ({{authority.compose}}).
 
 Write-time redaction drops or transforms a value before columnar bytes exist
 ({{authority.redact.write-time}}). It is the only layer protecting data at rest; a
-column protected at query time alone is cleartext in storage ({{authority.redact.at-rest-scope}}).
+column protected at query time alone is cleartext in storage.
 A cleared redistribution flag withholds the whole table from the bucket at push
 ({{authority.bound-redistribution.withhold}}).
 

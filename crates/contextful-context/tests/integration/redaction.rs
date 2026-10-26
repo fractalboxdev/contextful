@@ -26,6 +26,7 @@ redaction = [{ table = "messages", column = "body", match = "whole", operation =
     (dir, store)
 }
 
+// spec: authority.redact.prepared-effects@d0897e0c
 #[test]
 // spec: authority.redact.effect-scope@a6bc8d71
 fn effect_recordings_require_the_signed_owner_key_and_cannot_upgrade_source_payloads() {

@@ -77,10 +77,6 @@ Removal and transformation inside the writer, ahead of columnar bytes and the ru
   *A-authority#query-templates*
 - `before-the-record` — A canonical source writer shapes, normalizes and removes values before recording an opaque admitted payload; neither its inline record nor its blob contains the removed source value.
   *A-authority#prepared-record*
-- `refetch` — A fresh pipeline execution over a table under removal rules reads the source again.
-  *A-authority#redaction-no-copy*
-- `at-rest-scope` — Stored bytes lack only write-time-removed values. A column protected at query time alone is cleartext in storage and readable with the object-store credential.
-  *A-authority#redaction-no-copy*
 - `rules-per-pipeline` — A pipeline carries at most 256 entries in its removal rule set.
   *because a longer rule set is a policy the operator cannot review*
 - `pattern-bytes` — One removal pattern carries at most 4 KiB of source text.
@@ -124,8 +120,6 @@ Removal and transformation inside the writer, ahead of columnar bytes and the ru
 
 The three layers as one reference monitor, and the order a registered relation applies.
 
-- `three-layers` — The reference monitor is three layers: write-time removal, the redistribution bound at push, and row-and-column restriction at query time. A request is authorized at each.
-  *P5*
 - `complete-mediation` — Every read of stored rows traverses the layers. A path reaching stored rows outside a registered relation is a defect, never a documented limitation.
   *P5*
 - `protection-is-a-rewrite` — Protection is a rewrite in the data plane: predicates compiled into the statement, rewritten projections, a per-credential filter at the sync edge, zone floors. Admission decides entry alone.
@@ -139,8 +133,6 @@ The three layers as one reference monitor, and the order a registered relation a
 - `before-the-cut` — Every step, zone exclusion included, completes before a ranked result is cut to its requested size; visible positions carry no trace of a withheld row.
   *P5*
 - `vector-arm` — A sidecar vector index returns candidate identifiers, which re-join through the registered relation before contributing to a result.
-  *P5*
-- `replica-again` — A caller holding a filtered replica is constrained again per query, the replica's bytes unchanged.
   *P5*
 - `session-build` — A session builds its relations at admission and rebuilds them when a revocation or a manifest change invalidates a grant it holds.
   *P5*
@@ -174,11 +166,11 @@ The typed row-predicate grammar, subject binding, the tenant equality and the pr
 
 Column classes, strategies and combines, guardrails over an exhaustible value space, the pepper, and masked behavior under caller SQL.
 
-- `column-policy` — A column declares `class` and `strategy`, optionally `combine`, `crowd` and `summarize_only`, under `[pipeline.tables.policy.columns]`. An undeclared column carries no class.
+- `column-policy` — A column under `[pipeline.tables.policy.columns]` declares {{type:contextful_policy::enforce::mask::RawColumnPolicy}}; an undeclared column carries no class.
   *A-authority#exhaustible-digest*
 - `class-registry` — `class` takes a value from the class registry in Shapes. `phi` marks protected health data; `ssn`, `phone`, `email` and `mrn` are exhaustible, each carrying a registered domain size.
   *A-authority#exhaustible-digest*
-- `row-class` — A column declares `class = { from = ... }`, a `strategies` map naming registered classes, and `fallback = "drop"`; each row's sibling text selects its strategy, independently of other rows.
+- `row-class` — A row-class {{type:contextful_policy::enforce::mask::RawColumnPolicy}} declares `class = { from = ... }`, a `strategies` map naming registered classes, and `fallback = "drop"`; each row's sibling text selects its strategy, independently of other rows.
   *A-authority#row-classes*
 - `row-class-selector` — `from_column` aliases `from` in {{authority.mask.row-class}}; declaring both names or any unknown selector field refuses before reading rows.
   *because ambiguous selector declarations cannot choose which class controls a row*
@@ -187,8 +179,6 @@ Column classes, strategies and combines, guardrails over an exhaustible value sp
 - `row-class-fallback` — Unknown and null row-class values receive strict drop; no unspecified branch yields the original column value.
   *because an unrecognized class cannot grant weaker protection than any declared branch*
 - `unknown-class` — A `class` outside the registry raises `EnforceUnknownClass` at manifest check.
-  *A-authority#exhaustible-digest*
-- `class-reach` — A column's class reaches write-time removal, query-time masking, zone floors and the protections a release applies to a key it joins on.
   *A-authority#exhaustible-digest*
 - `strategies` — The strategies are `drop`, `hash` (keyed), `tokenize` (format-preserving), `truncate`, `bucket` and `range`.
   *A-authority#exhaustible-digest*
@@ -293,21 +283,6 @@ The per-table licence bound applied at push, the root-object allowlist, and the 
 - `edge-whole-table` — The edge serves a table's objects only under a read grant covering it with no tenant scope, aggregate bound or horizon, and a root object outside `access/`, `control/` and `stale_memory.idx` only under such a grant on `*`.
   *because a table's files hold every row a narrowing grant removes, run states and cursor logs name tables, and a query re-applies only what the replica holds*
 
-One push under the bound:
-
-```mermaid
-flowchart LR
-  PARTS[("local parts")] -- "push" --> C1{"withheld objects uploaded?"}
-  C1 -- "yes, nothing deleted" --> E1["refused push"]
-  C1 -- "no, exclude withheld" --> DIFF["object diff"]
-  DIFF -- "planned uploads" --> RA{"root object allowlisted?"}
-  RA -- "no, table withheld" --> E2["refused upload"]
-  RA -- "yes" --> U["upload loop"]
-  U -- "uploaded objects" --> C2{"stale objects left behind?"}
-  C2 -- "yes" --> E1
-  C2 -- "no" --> M[("bucket manifest")]
-```
-
 ## place
 
 Inference zones: grammar, composition across grains, floors, incognito, and the serve-time outcome.
@@ -326,11 +301,7 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
   *A-authority#placement-breadth*
 - `asserted-zone` — A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.
   *because an unsigned argument able to widen placement makes the signed zone decorative*
-- `picks-no-model` — Placement selects no model and dispatches no inference; the engine's one invocation point is an operator-configured endpoint capability for synthesis.
-  *A-authority#placement-breadth*
 - `fail-closed` — A table declaring no zone policy resolves to the fail-closed pair `local:device` and `on-prem:*`, declared and discovered tables alike.
-  *A-authority#placement-breadth*
-- `permissive-default` — A default resolving an unlabeled table to `*` raises `EnforcePermissiveZoneDefault` where more than one principal owns the store.
   *A-authority#placement-breadth*
 - `protected-floor` — A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.
   *A-authority#placement-breadth*
@@ -411,19 +382,6 @@ The paths that stay closed to an injected instruction.
 unsettled: Does a source writer refuse a credential-shaped value per value, landing the surrounding rows, and which operator-declared exemption admits a source carrying such text? owner: authority affects: authority.resist
 
 ## Shapes
-
-The order a registered relation applies, one table, one session:
-
-```mermaid
-flowchart LR
-  T[("table")] -- "mirrored permission semi-join" --> M["permitted rows"]
-  M -- "tenant byte equality" --> TEN["tenant rows"]
-  TEN -- "credential predicate" --> RP["subject rows"]
-  RP -- "table policy override" --> TP["policy rows"]
-  TP -- "project default" --> DEF["default-filtered rows"]
-  DEF -- "drop rows by zone" --> ZR["zone-admitted rows"]
-  ZR -- "project columns, null, mask" --> V[["registered relation"]]
-```
 
 The class registry. The width ceiling assumes the default `crowd`:
 

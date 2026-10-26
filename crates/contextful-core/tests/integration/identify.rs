@@ -158,8 +158,9 @@ fn attestation() {
     assert_eq!(agent_only.identity(), None);
 }
 
-/// Only `scim_email` and `oidc_sub` links authorize. An authorization join consuming an `operator_asserted` link raises `AuthorityLinkUnverified`.
-// spec: authority.identify.unverified-link@b5f4c041
+/// Only `scim_email` and `oidc_sub` links authorize. An authorization join consuming an `operator_asserted`
+/// {{type:contextful_core::identify::LinkMethod}} raises `AuthorityLinkUnverified`.
+// spec: authority.identify.unverified-link@905e9a0f
 #[test]
 fn unverified_link() {
     assert_eq!(authorize_link(&link(LinkMethod::ScimEmail, 0.4)).unwrap(), "user://dana@acme.example");

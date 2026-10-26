@@ -141,6 +141,7 @@ fn session_records_whether_each_registered_table_had_landed() {
     assert_eq!(session.landed("hr/salaries"), None);
 }
 
+// spec: authority.compose.relation-order@fb165986
 /// The mirrored-permission semi-join opens a bound table's relation ahead of every other
 /// step, reads its ids from the reach relation by parameter, and binds no ungranted table.
 #[test]

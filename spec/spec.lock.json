@@ -21181,7 +21181,7 @@
       "operation": "identify",
       "subject": "unverified-link",
       "kind": "refusal",
-      "statement": "Only `scim_email` and `oidc_sub` links authorize. An authorization join consuming an `operator_asserted` link raises `AuthorityLinkUnverified`.",
+      "statement": "Only `scim_email` and `oidc_sub` links authorize. An authorization join consuming an `operator_asserted` {{type:contextful_core::identify::LinkMethod}} raises `AuthorityLinkUnverified`.",
       "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
       "line": 79
@@ -21412,7 +21412,7 @@
       "operation": "grant",
       "subject": "actions",
       "kind": "behavior",
-      "statement": "The action vocabulary is `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, and `forget` to erase subject data.",
+      "statement": "A grant's actions are {{type:contextful_core::grant::Action}}: `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, and `forget` to erase subject data.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
       "line": 133
@@ -21528,17 +21528,6 @@
       "line": 153
     },
     {
-      "id": "authority.grant.held-parent",
-      "contract": "authority",
-      "operation": "grant",
-      "subject": "held-parent",
-      "kind": "behavior",
-      "statement": "A consumer's service holds one broader parent and derives each per-query child locally. A durable run step derives its child afresh from a parent the run owner holds, never from a persisted child.",
-      "why": "A-authority#offline-narrowing",
-      "file": "spec/50-authority.md",
-      "line": 155
-    },
-    {
       "id": "authority.grant.template-allowlist",
       "contract": "authority",
       "operation": "grant",
@@ -21547,7 +21536,7 @@
       "statement": "A template allowlist denies by default: absent authorizes none, `*` authorizes every template the manifest declares, and a child names only identifiers its parent named or covered.",
       "why": "A-authority#query-templates",
       "file": "spec/50-authority.md",
-      "line": 157
+      "line": 155
     },
     {
       "id": "authority.grant.template-tables",
@@ -21558,7 +21547,7 @@
       "statement": "A covered template reads the tables its statement names inside that template's session, under every other layer; its coverage adds no table to a raw read.",
       "why": "A-authority#query-templates",
       "file": "spec/50-authority.md",
-      "line": 159
+      "line": 157
     },
     {
       "id": "authority.grant.template-not-allowed",
@@ -21569,7 +21558,7 @@
       "statement": "Invoking a template outside the allowlist raises `GrantTemplateNotAllowed`, and an uncovered template is absent from the projected tool listing.",
       "why": "A-authority#query-templates",
       "file": "spec/50-authority.md",
-      "line": 161
+      "line": 159
     },
     {
       "id": "authority.grant.pipeline-resource",
@@ -21580,7 +21569,7 @@
       "statement": "A pipeline identifier is a read resource: listing it, describing it and tracing its runs each need a read grant covering it. A grant over its landed tables confers none.",
       "why": "P2",
       "file": "spec/50-authority.md",
-      "line": 163
+      "line": 161
     },
     {
       "id": "authority.grant.pipeline-not-covered",
@@ -21591,7 +21580,7 @@
       "statement": "Describing an uncovered pipeline raises `GrantPipelineNotCovered`, naming it. Listing filters to covered identifiers and raises it when none is covered; a project declaring no pipelines lists empty.",
       "why": "P2",
       "file": "spec/50-authority.md",
-      "line": 165
+      "line": 163
     },
     {
       "id": "authority.grant.run-trace-denied",
@@ -21602,7 +21591,7 @@
       "statement": "Tracing a run gates on the pipeline resolved from the run record and raises `GrantRunTraceDenied` without naming that pipeline.",
       "why": "P2",
       "file": "spec/50-authority.md",
-      "line": 167
+      "line": 165
     },
     {
       "id": "authority.grant.write-not-covered",
@@ -21613,7 +21602,7 @@
       "statement": "A credentialed table write whose grants carry no `write` over a destination table raises `GrantWriteNotCovered`, naming the table, before its first effect.",
       "why": "because a write grant names the tables a principal authors, and a row landed outside them carries a principal who never authorized it",
       "file": "spec/50-authority.md",
-      "line": 169
+      "line": 167
     },
     {
       "id": "authority.grant.row-ceiling",
@@ -21624,7 +21613,7 @@
       "statement": "A read's row ceiling is the least of the grant's, the request's, the template's, each touched table's published ceiling and {{read.respond.face-ceiling}}; an undeclared component imposes none, and the face ceiling is always declared.",
       "why": "A-authority#query-templates",
       "file": "spec/50-authority.md",
-      "line": 171
+      "line": 169
     },
     {
       "id": "authority.grant.duration-ceiling",
@@ -21635,7 +21624,7 @@
       "statement": "A statement's `max_duration_ms` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.",
       "why": "A-read#statement-owns-deadline",
       "file": "spec/50-authority.md",
-      "line": 173
+      "line": 171
     },
     {
       "id": "authority.grant.byte-ceiling",
@@ -21646,7 +21635,7 @@
       "statement": "A response's `max_response_bytes` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.",
       "why": "A-read#statement-owns-deadline",
       "file": "spec/50-authority.md",
-      "line": 175
+      "line": 173
     },
     {
       "id": "authority.grant.horizon",
@@ -21657,7 +21646,7 @@
       "statement": "A grant may carry `horizon`, an instant bounding the availability time and `since` of every read its holder makes, under {{read.horizon.inherited-bound}} and {{read.horizon.exceeds-horizon}}; an absent horizon leaves availability unbounded.",
       "why": "A-authority#horizon",
       "file": "spec/50-authority.md",
-      "line": 177
+      "line": 175
     },
     {
       "id": "authority.grant.aggregate",
@@ -21668,7 +21657,7 @@
       "statement": "An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 179
+      "line": 177
     },
     {
       "id": "authority.grant.group-ceiling",
@@ -21679,7 +21668,7 @@
       "statement": "An aggregate grant's groups-per-query ceiling is at least 1 entries; a query producing more groups than the ceiling is cut at it.",
       "why": "A-authority#query-templates",
       "file": "spec/50-authority.md",
-      "line": 181
+      "line": 179
     },
     {
       "id": "authority.attenuate.offline",
@@ -21690,7 +21679,7 @@
       "statement": "A holder derives a narrower child with no issuer round trip by appending a signed block. The parent's bytes stay unchanged, independently verifiable and independently withdrawable.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 190
+      "line": 188
     },
     {
       "id": "authority.attenuate.narrowing",
@@ -21701,7 +21690,7 @@
       "statement": "Every dimension of a child obeys the narrowing table in Shapes, checked by the deriving holder and again across the whole chain at admission.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 192
+      "line": 190
     },
     {
       "id": "authority.attenuate.widens",
@@ -21712,7 +21701,7 @@
       "statement": "A child broader than its parent on actions, tables, templates or aggregate constraints raises `AttenuationWidens`, naming the dimension.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 194
+      "line": 192
     },
     {
       "id": "authority.attenuate.horizon-widens",
@@ -21723,7 +21712,7 @@
       "statement": "A child whose horizon falls later than its parent's is broader on `horizon` and refuses as {{authority.attenuate.widens}}, naming that dimension; a child naming no horizon inherits its parent's.",
       "why": "A-authority#horizon",
       "file": "spec/50-authority.md",
-      "line": 196
+      "line": 194
     },
     {
       "id": "authority.attenuate.expiry-extended",
@@ -21734,7 +21723,7 @@
       "statement": "A child whose expiry falls past its parent's raises `AttenuationExpiryExtended`.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 198
+      "line": 196
     },
     {
       "id": "authority.attenuate.tenant-dropped",
@@ -21745,7 +21734,7 @@
       "statement": "A child dropping its parent's tenant scope or naming another tenant raises `AttenuationTenantDropped`. Adding a scope to an unscoped parent narrows.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 200
+      "line": 198
     },
     {
       "id": "authority.attenuate.truncation",
@@ -21756,7 +21745,7 @@
       "statement": "The chain-final proof advances an ephemeral key per block; a chain truncated to a broader prefix verifies as nothing.",
       "why": "A-authority#delegation-profile",
       "file": "spec/50-authority.md",
-      "line": 202
+      "line": 200
     },
     {
       "id": "authority.attenuate.bearer",
@@ -21767,7 +21756,7 @@
       "statement": "Derivation proves the chain and not the new holder's identity. A hop authenticating its new actor runs through the exchange.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 204
+      "line": 202
     },
     {
       "id": "authority.attenuate.per-sub-agent",
@@ -21778,7 +21767,7 @@
       "statement": "An agent derives one child per sub-agent, each bound by its confirmation claim to that sub-agent's own key pair.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 206
+      "line": 204
     },
     {
       "id": "authority.issue.ceiling",
@@ -21789,7 +21778,7 @@
       "statement": "A project persists in version control an issuance policy naming the default audience and the longest lifetime any mint produces, at most 24 h.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 237
+      "line": 213
     },
     {
       "id": "authority.issue.above-ceiling",
@@ -21800,7 +21789,7 @@
       "statement": "An explicitly requested lifetime above the persisted ceiling raises `IssuanceLifetimeAboveCeiling`; an exchange policy's lifetime clamps down to the ceiling instead.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 239
+      "line": 215
     },
     {
       "id": "authority.issue.ceiling-lowering",
@@ -21811,7 +21800,7 @@
       "statement": "Lowering the ceiling records the previous value and its instant; rotation-grace validation uses the recorded value until the last credential minted under it lapses.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 241
+      "line": 217
     },
     {
       "id": "authority.issue.policy-init",
@@ -21822,7 +21811,7 @@
       "statement": "`contextful token policy init` writes the issuance policy naming its audience with a ceiling of the {{authority.verify.bearer-lifetime}} bound; over an existing policy it raises `IssuancePolicyExists` and writes nothing.",
       "why": "because a fresh project mints under a policy it commits, and the served faces admit nothing longer-lived by default",
       "file": "spec/50-authority.md",
-      "line": 243
+      "line": 219
     },
     {
       "id": "authority.issue.lower-only",
@@ -21833,7 +21822,7 @@
       "statement": "`contextful token policy lower-ceiling` naming a value at or above the current ceiling raises `IssuanceCeilingNotLowered` and leaves the policy unchanged.",
       "why": "because a raised ceiling mints credentials outliving the grace windows validated against the lower one",
       "file": "spec/50-authority.md",
-      "line": 245
+      "line": 221
     },
     {
       "id": "authority.issue.out-of-tree-mint",
@@ -21844,7 +21833,7 @@
       "statement": "Ceiling enforcement binds a mint run inside the project tree; a mint run outside it is bounded at the checkpoint by rotation-grace validation.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 247
+      "line": 223
     },
     {
       "id": "authority.issue.principal-required",
@@ -21855,7 +21844,7 @@
       "statement": "A mint granting `write`, `execute` or `forget` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.",
       "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
-      "line": 249
+      "line": 225
     },
     {
       "id": "authority.issue.default-read",
@@ -21866,7 +21855,7 @@
       "statement": "A mint's default action set is `read` alone.",
       "why": "A-authority#acting-principal",
       "file": "spec/50-authority.md",
-      "line": 251
+      "line": 227
     },
     {
       "id": "authority.issue.absent-author",
@@ -21877,7 +21866,7 @@
       "statement": "An absent authorship value on a landed row means no credential authorized the write: the uncredentialed owner or a timer-fired run.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 253
+      "line": 229
     },
     {
       "id": "authority.issue.authoring-posture",
@@ -21888,7 +21877,7 @@
       "statement": "Every table write verb {{authority.verify.write-verbs}} runs under its manifest's authoring posture. `session` authors every write by one verified ambient credential's principal; `per_request` holds no ambient principal, leaving an unaccompanied write unauthored.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 255
+      "line": 231
     },
     {
       "id": "authority.issue.posture-key",
@@ -21899,7 +21888,7 @@
       "statement": "A manifest declares its authoring posture as a top-level `authoring_posture` of `session` or `per_request`. A table write verb reading a manifest whose key is absent or names another value raises `AuthoringPostureUndeclared` before its first effect.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 257
+      "line": 233
     },
     {
       "id": "authority.issue.session-credential",
@@ -21910,7 +21899,7 @@
       "statement": "Under `session`, a table write verb run with no credential raises `AuthoringCredentialMissing` before its first effect.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 259
+      "line": 235
     },
     {
       "id": "authority.issue.one-credential",
@@ -21921,7 +21910,7 @@
       "statement": "A served face admits a verified capability credential, presented as a bearer or bound to a holder key, and nothing else: no static bearer, no gateway shared secret, no unauthenticated owner path.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 261
+      "line": 237
     },
     {
       "id": "authority.issue.missing-key",
@@ -21932,7 +21921,7 @@
       "statement": "A face configured with no issuer key raises `IssuerKeyMissing`, prints the command that fixes it, and binds no port.",
       "why": "P3",
       "file": "spec/50-authority.md",
-      "line": 263
+      "line": 239
     },
     {
       "id": "authority.issue.default-key",
@@ -21943,7 +21932,7 @@
       "statement": "A mint naming no issuer key reads `.contextful/issuer.seed`; no file there raises {{authority.issue.missing-key}}.",
       "why": "because the seed `contextful token keygen` writes by default is the one a mint in the same tree reads",
       "file": "spec/50-authority.md",
-      "line": 265
+      "line": 241
     },
     {
       "id": "authority.issue.project-root",
@@ -21954,7 +21943,7 @@
       "statement": "The issuance policy, the default issuer seed and the key-set ledger sit under the directory {{store.init.discovery}} bases project paths on; with no `contextful.toml` upward, under the working directory.",
       "why": "because a ledger read from a subdirectory hides every retirement and epoch bump the root records",
       "file": "spec/50-authority.md",
-      "line": 267
+      "line": 243
     },
     {
       "id": "authority.issue.unresolvable-key",
@@ -21965,7 +21954,7 @@
       "statement": "A set issuer key reference that resolves to no material raises `IssuerKeyUnresolvable`; no local key is fabricated.",
       "why": "P3",
       "file": "spec/50-authority.md",
-      "line": 269
+      "line": 245
     },
     {
       "id": "authority.issue.signing-port",
@@ -21976,7 +21965,7 @@
       "statement": "One signing port signs every credential's authority block and every audit root and tip; no mint path reads a private key. Seed files, secret references resolved at mint time and remote signing oracles are its adapters.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 271
+      "line": 247
     },
     {
       "id": "authority.issue.oracle-custody",
@@ -21987,7 +21976,7 @@
       "statement": "Under the oracle adapter the seed stays inside the custodian, which records each mint as a signing call.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 273
+      "line": 249
     },
     {
       "id": "authority.issue.signature-encoding",
@@ -21998,7 +21987,7 @@
       "statement": "A signing port names its encoding: `ed25519`, a 32-byte key and 64-byte signature; `es256-der` or `es256-raw`, a SEC1 P-256 point signing ECDSA over SHA-256 of the message as ASN.1 DER or 64-byte `r ‖ s`.",
       "why": "because an enclave, a cloud KMS and a browser key each answer ES256 in one encoding, and the tag lets every adapter answer in its own",
       "file": "spec/50-authority.md",
-      "line": 275
+      "line": 251
     },
     {
       "id": "authority.issue.der-at-the-edge",
@@ -22009,7 +21998,7 @@
       "statement": "An `es256-raw` signature converts to DER where it leaves the port; a credential and an audit root or tip carry ES256 only as DER.",
       "why": "because the credential format verifies ES256 only in DER, and one stored encoding holds a verifier to one decoder",
       "file": "spec/50-authority.md",
-      "line": 277
+      "line": 253
     },
     {
       "id": "authority.issue.encoding-invalid",
@@ -22020,7 +22009,7 @@
       "statement": "A port signature that does not decode under its encoding tag, or does not verify under the port's public key, raises `SignatureEncodingInvalid`; nothing is minted and no root or tip is written.",
       "why": "because a mislabelled signature yields a credential every checkpoint rejects, and refusing at the port names the adapter at fault",
       "file": "spec/50-authority.md",
-      "line": 279
+      "line": 255
     },
     {
       "id": "authority.issue.public-key-text",
@@ -22031,7 +22020,7 @@
       "statement": "A port's public key prints as `ed25519:<hex>` or `es256:<hex>` of its SEC1 point; either form, with a compressed or uncompressed point, parses back to the key it names.",
       "why": "",
       "file": "spec/50-authority.md",
-      "line": 281
+      "line": 257
     },
     {
       "id": "authority.issue.algorithm",
@@ -22042,7 +22031,7 @@
       "statement": "A credential names Ed25519, the default, or ECDSA over P-256; the pinned key's scheme is authoritative.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 282
+      "line": 258
     },
     {
       "id": "authority.issue.algorithm-mismatch",
@@ -22053,7 +22042,7 @@
       "statement": "A credential naming a scheme other than its pinned key's raises `SignatureAlgorithmMismatch`.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 284
+      "line": 260
     },
     {
       "id": "authority.issue.unauthorized-mint",
@@ -22064,7 +22053,7 @@
       "statement": "A mint request presenting no grant carrying `admin` raises `IssuanceUnauthorized`.",
       "why": "because issuance authorizes itself with the same primitive as every other action, and a separate mint secret is a second perimeter to guard",
       "file": "spec/50-authority.md",
-      "line": 286
+      "line": 262
     },
     {
       "id": "authority.issue.replica-mint",
@@ -22075,7 +22064,7 @@
       "statement": "A replica holds the issuer's public key and no signing material; a mint there raises `ReplicaCannotIssue`.",
       "why": "because a replica verifies every credential the primary mints and needs no power to produce one",
       "file": "spec/50-authority.md",
-      "line": 288
+      "line": 264
     },
     {
       "id": "authority.issue.zone-wildcard",
@@ -22086,7 +22075,7 @@
       "statement": "A mint whose subject declares a wildcard inference zone raises `IssuanceZoneWildcard`.",
       "why": "A-authority#placement-breadth",
       "file": "spec/50-authority.md",
-      "line": 290
+      "line": 266
     },
     {
       "id": "authority.issue.key-rotation",
@@ -22097,7 +22086,7 @@
       "statement": "The issuer signing key rotates every 90 d, and at once on suspected compromise.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 292
+      "line": 268
     },
     {
       "id": "authority.issue.rotation-not-due",
@@ -22108,7 +22097,7 @@
       "statement": "A rotation without `--compromise` before {{authority.issue.key-rotation}} falls due raises `IssuerKeyRotationNotDue`, naming the instant it falls due.",
       "why": "because a scheduled rotation ahead of its cadence churns every verifier's pins with nothing withdrawn",
       "file": "spec/50-authority.md",
-      "line": 294
+      "line": 270
     },
     {
       "id": "authority.issue.unrecorded-key",
@@ -22119,7 +22108,7 @@
       "statement": "A rotation without `--compromise` of an issuer key the key-set ledger does not date raises `IssuerKeyUnrecorded`; `contextful token record --since` dates it.",
       "why": "because an undated key otherwise rotates at once, skipping the cadence the ledger enforces",
       "file": "spec/50-authority.md",
-      "line": 296
+      "line": 272
     },
     {
       "id": "authority.issue.bearer-cap-fixed",
@@ -22130,7 +22119,7 @@
       "statement": "No issuance policy, face or command setting raises the cap {{authority.verify.bearer-lifetime}} sets; a credential living longer admits over a network only bound to a holder key.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 298
+      "line": 274
     },
     {
       "id": "authority.verify.admitted-authority",
@@ -22141,7 +22130,7 @@
       "statement": "Verification yields an admitted-authority value carrying the normalized subject tuple and its grants. Every read surface and row-landing effect takes that value as an argument; nothing downstream re-parses a credential or reads ambient state.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 307
+      "line": 283
     },
     {
       "id": "authority.verify.write-verbs",
@@ -22152,7 +22141,7 @@
       "statement": "`context land`, `run start` and `pipeline run` are the table write verbs. Each admits its accompanying credential before its first effect and stamps that credential's `on_behalf_of` as every landed row's `_authored_by`.",
       "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
-      "line": 309
+      "line": 285
     },
     {
       "id": "authority.verify.write-commit",
@@ -22163,7 +22152,7 @@
       "statement": "A credentialed table write reads its denylist afresh and checks expiry immediately before each commit; a credential revoked or lapsed since admission commits nothing, as {{authority.revoke.revoked}} and {{authority.verify.expired}}.",
       "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
-      "line": 311
+      "line": 287
     },
     {
       "id": "authority.verify.no-bypass-constructor",
@@ -22174,7 +22163,7 @@
       "statement": "The admitted-authority type has no constructor that produces a value without a verification.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 313
+      "line": 289
     },
     {
       "id": "authority.verify.effect-boundary",
@@ -22185,7 +22174,7 @@
       "statement": "A statement's start and each commit are effect boundaries. Each boundary re-reads expiry, revocation and policy version against the carried value; a lapse between boundaries stops the effect at the next one.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 315
+      "line": 291
     },
     {
       "id": "authority.verify.format-interface",
@@ -22196,7 +22185,7 @@
       "statement": "The credential format sits behind one interface of issue, attenuate, verify and introspect; no enforcement call site names a credential type.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 317
+      "line": 293
     },
     {
       "id": "authority.verify.bad-signature",
@@ -22207,7 +22196,7 @@
       "statement": "A credential with any block signature failing against a pinned key raises `SignatureInvalid` and admits nothing, no verified prefix included.",
       "why": "because a partially verified chain is an unauthenticated credential, and admitting its prefix hands out authority nobody signed as presented",
       "file": "spec/50-authority.md",
-      "line": 319
+      "line": 295
     },
     {
       "id": "authority.verify.audience-mismatch",
@@ -22218,7 +22207,7 @@
       "statement": "A checkpoint declaring an expected audience raises `AudienceMismatch` for a credential with a different audience or none; a checkpoint declaring none performs no audience check.",
       "why": "because a credential minted for one store is otherwise replayable against another; the undeclared case is local development",
       "file": "spec/50-authority.md",
-      "line": 321
+      "line": 297
     },
     {
       "id": "authority.verify.timestamps",
@@ -22229,7 +22218,7 @@
       "statement": "Every checkpoint decodes timestamps into UTC instants under one grammar and compares instants.",
       "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
-      "line": 323
+      "line": 299
     },
     {
       "id": "authority.verify.malformed-timestamp",
@@ -22240,7 +22229,7 @@
       "statement": "A timestamp that does not decode under that grammar raises `TimestampMalformed` at every checkpoint alike.",
       "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
-      "line": 325
+      "line": 301
     },
     {
       "id": "authority.verify.expired",
@@ -22251,7 +22240,7 @@
       "statement": "A credential whose expiry precedes the evaluation instant raises `AuthorityExpired` at admission and at each later effect boundary.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 327
+      "line": 303
     },
     {
       "id": "authority.verify.possession-binding",
@@ -22262,7 +22251,7 @@
       "statement": "A confirmation claim holds a client public-key thumbprint. Each request under a credential carrying one bears a proof signed by the matching private key over method, target, body digest, issue instant and nonce; a credential carrying none requires no proof.",
       "why": "A-authority#sender-constrained",
       "file": "spec/50-authority.md",
-      "line": 329
+      "line": 305
     },
     {
       "id": "authority.verify.possession-invalid",
@@ -22273,7 +22262,7 @@
       "statement": "A request whose proof does not verify against the confirmation thumbprint raises `PossessionProofInvalid`.",
       "why": "A-authority#sender-constrained",
       "file": "spec/50-authority.md",
-      "line": 331
+      "line": 307
     },
     {
       "id": "authority.verify.replay-window",
@@ -22284,7 +22273,7 @@
       "statement": "A proof issued more than 300 s before the checkpoint clock is refused as {{authority.verify.possession-invalid}}; the nonce cache retains each nonce for that window.",
       "why": "A-authority#sender-constrained",
       "file": "spec/50-authority.md",
-      "line": 333
+      "line": 309
     },
     {
       "id": "authority.verify.clock-skew",
@@ -22295,7 +22284,7 @@
       "statement": "A proof issued more than 30 s after the checkpoint clock is refused as {{authority.verify.possession-invalid}}.",
       "why": "A-authority#sender-constrained",
       "file": "spec/50-authority.md",
-      "line": 335
+      "line": 311
     },
     {
       "id": "authority.verify.replayed-nonce",
@@ -22306,7 +22295,7 @@
       "statement": "A proof whose nonce repeats inside the replay window raises `PossessionProofReplayed`.",
       "why": "A-authority#sender-constrained",
       "file": "spec/50-authority.md",
-      "line": 337
+      "line": 313
     },
     {
       "id": "authority.verify.local-transport",
@@ -22317,7 +22306,7 @@
       "statement": "A local transport is a stdio pipe the checkpoint inherited from the process that spawned it, or a Unix socket; every other transport is a network transport.",
       "why": "A-authority#local-transport",
       "file": "spec/50-authority.md",
-      "line": 339
+      "line": 315
     },
     {
       "id": "authority.verify.local-holder-proof",
@@ -22328,7 +22317,7 @@
       "statement": "On a local transport, a credential whose confirmation claim holds a thumbprint admits only with a proof as {{authority.verify.possession-binding}}; the peer fallback never applies to it, and a missing or failing proof is refused as {{authority.verify.possession-invalid}}.",
       "why": "A-authority#local-transport",
       "file": "spec/50-authority.md",
-      "line": 341
+      "line": 317
     },
     {
       "id": "authority.verify.local-proof-channel",
@@ -22339,7 +22328,7 @@
       "statement": "A credentialed command-line verb and the stdio tool server sign one holder proof at admission with the Ed25519 seed in `--holder-key`, else take the proof in `CONTEXTFUL_DPOP`, else sign with the seed in `CONTEXTFUL_HOLDER_KEY`; a blank variable is unset.",
       "why": "because a bound credential is otherwise unusable off the network face, and a proof on the argument list is readable through the process table",
       "file": "spec/50-authority.md",
-      "line": 343
+      "line": 319
     },
     {
       "id": "authority.verify.local-proof-request",
@@ -22350,7 +22339,7 @@
       "statement": "A local proof covers method `CLI`, the verb's command path as target, such as `context land`, `memory write` or `mcp`, and an empty body.",
       "why": "because binding the verb keeps a proof minted for a read from admitting a write",
       "file": "spec/50-authority.md",
-      "line": 345
+      "line": 321
     },
     {
       "id": "authority.verify.local-nonce-store",
@@ -22361,7 +22350,7 @@
       "statement": "A command-line verb checks its holder proof against the nonce store `.contextful/proof-nonces` under the project root, shared by every invocation on that project under an exclusive lock, so a repeated nonce raises {{authority.verify.replayed-nonce}}.",
       "why": "because each invocation is a fresh process, and a per-process cache lets a proof copied from the environment replay for the whole window",
       "file": "spec/50-authority.md",
-      "line": 347
+      "line": 323
     },
     {
       "id": "authority.verify.holder-keygen",
@@ -22372,7 +22361,7 @@
       "statement": "`token keygen --holder` writes an Ed25519 holder seed and prints its thumbprint, the value `token mint --holder` binds as the confirmation claim.",
       "why": "",
       "file": "spec/50-authority.md",
-      "line": 349
+      "line": 325
     },
     {
       "id": "authority.verify.local-peer-fallback",
@@ -22383,7 +22372,7 @@
       "statement": "On a local transport, a credential with no confirmation claim admits only through the operating system's peer authentication: an inherited stdio pipe, or a socket peer whose kernel-reported uid equals the checkpoint process's uid.",
       "why": "A-authority#local-transport",
       "file": "spec/50-authority.md",
-      "line": 350
+      "line": 326
     },
     {
       "id": "authority.verify.peer-mismatch",
@@ -22394,7 +22383,7 @@
       "statement": "A socket peer presenting a credential with no confirmation claim, whose kernel-reported uid differs from the checkpoint process's uid or which the platform cannot report, raises `TransportPeerMismatch` and admits nothing.",
       "why": "A-authority#local-transport",
       "file": "spec/50-authority.md",
-      "line": 352
+      "line": 328
     },
     {
       "id": "authority.verify.network-bearer",
@@ -22405,7 +22394,7 @@
       "statement": "A network checkpoint admits a credential with no confirmation claim as a bearer when it names the checkpoint's declared audience and meets {{authority.verify.bearer-lifetime}}; the peer fallback never applies over a network.",
       "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
-      "line": 354
+      "line": 330
     },
     {
       "id": "authority.verify.bearer-lifetime",
@@ -22416,7 +22405,7 @@
       "statement": "A bearer whose expiry falls more than 3600 s after its issue instant raises `BearerLifetimeExceeded` at a network checkpoint and admits nothing; its holder refreshes through {{authority.exchange.surface}}.",
       "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
-      "line": 356
+      "line": 332
     },
     {
       "id": "authority.verify.connection-scoped",
@@ -22427,7 +22416,7 @@
       "statement": "A local admission binds to the pipe or socket connection that presented the credential; a request on any other connection is refused as {{authority.verify.peer-mismatch}} until that connection presents the credential and admits itself.",
       "why": "A-authority#network-bearer",
       "file": "spec/50-authority.md",
-      "line": 358
+      "line": 334
     },
     {
       "id": "authority.verify.nonce-cache",
@@ -22438,7 +22427,7 @@
       "statement": "A checkpoint's nonce cache holds at most 100000 entries; a proof arriving while it is full answers `503` and admits nothing.",
       "why": "because a proof the cache cannot record is a replay it cannot detect",
       "file": "spec/50-authority.md",
-      "line": 360
+      "line": 336
     },
     {
       "id": "authority.verify.public-key-only",
@@ -22449,7 +22438,7 @@
       "statement": "A checkpoint holds public key material and no signing secret, and admits with no call to an issuer, identity provider or policy service.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 362
+      "line": 338
     },
     {
       "id": "authority.verify.key-set",
@@ -22460,7 +22449,7 @@
       "statement": "A checkpoint accepts a set of issuer keys: comma-separated static pins, or a project-published unauthenticated key route returning the current and non-retired versions, opted into per key.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 364
+      "line": 340
     },
     {
       "id": "authority.verify.pin-source",
@@ -22471,7 +22460,7 @@
       "statement": "A command-line checkpoint reads its pins from `--public-key`, else `CONTEXTFUL_ISSUER_PUBKEY`, and its audience from `--audience`, else `CONTEXTFUL_AUDIENCE`. A bare 64-hex pin reads as `ed25519/<hex>`; an unknown scheme prefix is refused as {{authority.verify.key-set-unavailable}}, naming the accepted forms.",
       "why": "because an operator exports the issuer key once per shell, and key tools commonly print a bare Ed25519 key with no scheme prefix",
       "file": "spec/50-authority.md",
-      "line": 366
+      "line": 342
     },
     {
       "id": "authority.verify.key-set-refresh",
@@ -22482,7 +22471,7 @@
       "statement": "A published key set refreshes every 300 s, single-flight, plus one refresh on a signature failure, with failure-forced refreshes throttled.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 368
+      "line": 344
     },
     {
       "id": "authority.verify.key-set-unavailable",
@@ -22493,7 +22482,7 @@
       "statement": "A checkpoint opted into a published key set that obtains none, or holding a malformed pin, raises `KeySetUnavailable`: the engine declines to start and a gateway answers `503`.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 370
+      "line": 346
     },
     {
       "id": "authority.verify.key-set-stale",
@@ -22504,7 +22493,7 @@
       "statement": "After a failed fetch the last-known-good set serves while its age since the last successful fetch stays under 1 h; past that the checkpoint raises `KeySetStale`.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 372
+      "line": 348
     },
     {
       "id": "authority.revoke.short-lifetime",
@@ -22515,7 +22504,7 @@
       "statement": "A short lifetime is the primary withdrawal: a credential's remaining lifetime bounds its exposure after a provider sign-out or before a denylist entry propagates.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 381
+      "line": 357
     },
     {
       "id": "authority.revoke.denylist",
@@ -22526,7 +22515,7 @@
       "statement": "A checkpoint reads a denylist keyed on credential identifier. An entry ages out once its identifier verifies under no live key version.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 383
+      "line": 359
     },
     {
       "id": "authority.revoke.revocation-id",
@@ -22537,7 +22526,7 @@
       "statement": "Every derivation carries its own revocation identifier, withdrawing one subtree without ending the root it descends from.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 385
+      "line": 361
     },
     {
       "id": "authority.revoke.epoch",
@@ -22548,7 +22537,7 @@
       "statement": "A revocation epoch scoped on project, tenant and principal class invalidates that slice of outstanding authority.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 387
+      "line": 363
     },
     {
       "id": "authority.revoke.epoch-store",
@@ -22559,7 +22548,7 @@
       "statement": "A project persists each scope's current epoch and each issuer key version's retirement in `.contextful/keyset.toml` beside the issuer seed; a mint stamps its scope's current epoch, and a checkpoint re-reads the file at each admission.",
       "why": "because a file the checkpoint reads locally keeps a policy service off the admission path, and the seed's directory already holds the issuer's custody",
       "file": "spec/50-authority.md",
-      "line": 389
+      "line": 365
     },
     {
       "id": "authority.revoke.ledger-unavailable",
@@ -22570,7 +22559,7 @@
       "statement": "A checkpoint pointed at a key-set ledger, or that has read one, raises `KeySetLedgerUnavailable` and admits nothing once the file is absent or malformed.",
       "why": "because a vanished ledger read as empty lifts every key retirement and epoch bump",
       "file": "spec/50-authority.md",
-      "line": 391
+      "line": 367
     },
     {
       "id": "authority.revoke.unknown-principal-class",
@@ -22581,7 +22570,7 @@
       "statement": "`contextful token revoke --principal-class` naming neither `delegated` nor `unattributed` raises `RevocationPrincipalClassUnknown` and bumps nothing.",
       "why": "because an epoch under a class no credential carries withdraws nothing while reporting success",
       "file": "spec/50-authority.md",
-      "line": 393
+      "line": 369
     },
     {
       "id": "authority.revoke.revoked",
@@ -22592,7 +22581,7 @@
       "statement": "A credential on the denylist, or carrying an epoch below the current scoped epoch, raises `AuthorityRevoked` at the next effect boundary.",
       "why": "A-authority#offline-narrowing",
       "file": "spec/50-authority.md",
-      "line": 395
+      "line": 371
     },
     {
       "id": "authority.revoke.compromise",
@@ -22603,7 +22592,7 @@
       "statement": "Suspected compromise of signing material runs a project-wide epoch bump together with immediate retirement of the key version. Waiting out a grace window withdraws nothing.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 397
+      "line": 373
     },
     {
       "id": "authority.revoke.rotation-grace",
@@ -22614,7 +22603,7 @@
       "statement": "A rotation policy declares a cadence and a grace window, validated against the persisted issuance policy, during which the retiring key version still verifies.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 399
+      "line": 375
     },
     {
       "id": "authority.revoke.short-grace",
@@ -22625,7 +22614,7 @@
       "statement": "A declared or overridden grace window shorter than the effective issuance ceiling raises `RotationGraceTooShort`.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 401
+      "line": 377
     },
     {
       "id": "authority.revoke.immediate-retire",
@@ -22636,7 +22625,7 @@
       "statement": "Immediate retirement removes a key version from the published set and every static pin; a checkpoint drops it at its next refresh.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 403
+      "line": 379
     },
     {
       "id": "authority.revoke.format-withdrawn",
@@ -22647,7 +22636,7 @@
       "statement": "From a declared cutover instant, every admission path raises `CredentialFormatWithdrawn` for a credential in a withdrawn format. Only an explicit declaration restores acceptance.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 405
+      "line": 381
     },
     {
       "id": "authority.exchange.surface",
@@ -22658,7 +22647,7 @@
       "statement": "`contextful token exchange` and `POST /auth/exchange` trade a verified external assertion for a capability credential, configured per project by `.contextful/exchange/policy.toml` and `.contextful/exchange/verify.key`. The command reads the assertion from `--jwt` or standard input, and a holder proof from `--dpop`.",
       "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
-      "line": 426
+      "line": 402
     },
     {
       "id": "authority.exchange.wire",
@@ -22669,7 +22658,7 @@
       "statement": "An exchange request body is the JSON object `{\"jwt\": \"<assertion>\"}`, which the command line builds from its assertion; a body of any other shape raises `ExchangeRequestMalformed` and mints nothing. A served face answers a mint `{\"token\": \"<credential>\"}`.",
       "why": "because the command line and every served face parse one body through one function, so a refusal reads the same on both",
       "file": "spec/50-authority.md",
-      "line": 428
+      "line": 404
     },
     {
       "id": "authority.exchange.body-ceiling",
@@ -22680,7 +22669,7 @@
       "statement": "An exchange request body holds at most 64 KiB; a longer body raises `ExchangeBodyTooLarge`, mints nothing and is not parsed.",
       "why": "because an assertion is a few KiB, and parsing an unbounded body is work an unauthenticated caller spends",
       "file": "spec/50-authority.md",
-      "line": 430
+      "line": 406
     },
     {
       "id": "authority.exchange.unconfigured",
@@ -22691,7 +22680,7 @@
       "statement": "An exchange in a project declaring no exchange policy raises `ExchangeUnconfigured`, naming `.contextful/exchange/policy.toml`, before the body is read.",
       "why": "because an unconfigured project exposes no exchange, whatever a caller sends",
       "file": "spec/50-authority.md",
-      "line": 432
+      "line": 408
     },
     {
       "id": "authority.exchange.status-map",
@@ -22702,7 +22691,7 @@
       "statement": "Over HTTP, {{authority.exchange.unconfigured}} answers 404, {{authority.exchange.wire}} and {{authority.exchange.holder-proof-invalid}} 400, {{authority.exchange.body-ceiling}} 413, {{authority.exchange.material-missing}} 503, {{authority.exchange.assertion-invalid}} 401, and any other refusal 403; every refusal body is `{\"error\": {\"http\", \"identifier\", \"message\"}}`.",
       "why": "because a caller repairs a 400 or 413, retries a 503, re-authenticates on a 401, and repairs nothing on a 403",
       "file": "spec/50-authority.md",
-      "line": 434
+      "line": 410
     },
     {
       "id": "authority.exchange.signing-fault",
@@ -22713,7 +22702,7 @@
       "statement": "Over HTTP, {{authority.issue.missing-key}}, {{authority.issue.unresolvable-key}}, {{authority.issue.algorithm-mismatch}} or {{authority.issue.replica-mint}} during an exchange answers 500, the body naming the identifier and withholding the refusal's detail.",
       "why": "because the face's operator repairs its configuration, and the detail describes the face's keys to an unauthenticated caller",
       "file": "spec/50-authority.md",
-      "line": 436
+      "line": 412
     },
     {
       "id": "authority.exchange.policy",
@@ -22721,10 +22710,10 @@
       "operation": "exchange",
       "subject": "policy",
       "kind": "behavior",
-      "statement": "An exchange policy declares `expected_iss`, optional `expected_aud`, `subject_map`, `tenant_claim`, `role_claim`, `role_grants`, `default_grants`, `ttl_secs`, `minted_iss` and `minted_aud`.",
+      "statement": "An exchange policy declares {{type:contextful_core::exchange::RawPolicy}}; only `expected_iss` is required.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 438
+      "line": 414
     },
     {
       "id": "authority.exchange.injected-material",
@@ -22735,7 +22724,7 @@
       "statement": "Verifying material is operator-injected: a shared secret, an RS256 public key in PEM form, or a key-set document selected by the assertion's `kid`. The exchange makes no network call.",
       "why": "A-authority#pinned-keys",
       "file": "spec/50-authority.md",
-      "line": 440
+      "line": 416
     },
     {
       "id": "authority.exchange.minted-grants",
@@ -22746,7 +22735,7 @@
       "statement": "Minted grants come from `role_grants` and `default_grants` alone. A verified role matching no entry earns `default_grants`, which is empty unless declared.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 442
+      "line": 418
     },
     {
       "id": "authority.exchange.tenant",
@@ -22757,7 +22746,7 @@
       "statement": "The assertion claim `tenant_claim` names becomes the tenant scope of every minted grant; no subject member carries tenancy.",
       "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
-      "line": 444
+      "line": 420
     },
     {
       "id": "authority.exchange.lifetime-default",
@@ -22768,7 +22757,7 @@
       "statement": "A minted credential lives 900 s where the policy declares no `ttl_secs`.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 446
+      "line": 422
     },
     {
       "id": "authority.exchange.lifetime-ceiling",
@@ -22779,7 +22768,7 @@
       "statement": "A configured `ttl_secs` clamps down to 3600 s and never extends.",
       "why": "A-authority#issuance-ceiling",
       "file": "spec/50-authority.md",
-      "line": 448
+      "line": 424
     },
     {
       "id": "authority.exchange.audience",
@@ -22790,7 +22779,7 @@
       "statement": "A minted credential carries `minted_aud`, falling back to the project's persisted default audience.",
       "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
-      "line": 450
+      "line": 426
     },
     {
       "id": "authority.exchange.assertion-invalid",
@@ -22801,7 +22790,7 @@
       "statement": "A bad signature, a lapsed assertion, an untrusted issuer or audience, or a mapped claim absent from the assertion raises `ExchangeAssertionInvalid` and mints nothing.",
       "why": "because no credential exists whose subject the assertion did not verify",
       "file": "spec/50-authority.md",
-      "line": 452
+      "line": 428
     },
     {
       "id": "authority.exchange.material-missing",
@@ -22812,7 +22801,7 @@
       "statement": "An exchange configured with no verifying material raises `ExchangeMaterialMissing` and mints nothing.",
       "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
-      "line": 454
+      "line": 430
     },
     {
       "id": "authority.exchange.per-reader",
@@ -22823,7 +22812,7 @@
       "statement": "An embedding application holds no project-wide credential; per request it exchanges its signed-in reader's assertion for that reader's short-lived credential and reads as them.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 456
+      "line": 432
     },
     {
       "id": "authority.exchange.no-cross-reader",
@@ -22834,7 +22823,7 @@
       "statement": "An exchanged credential serves only the reader it was minted for.",
       "why": "A-authority#one-credential",
       "file": "spec/50-authority.md",
-      "line": 458
+      "line": 434
     },
     {
       "id": "authority.exchange.holder-binding",
@@ -22845,7 +22834,7 @@
       "statement": "An exchange request carrying a `DPoP` proof over `POST /auth/exchange` and its body mints a credential whose `cnf.jkt` is the proof key's thumbprint, the proof checked as {{authority.verify.possession-binding}}.",
       "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
-      "line": 460
+      "line": 436
     },
     {
       "id": "authority.exchange.bearer-mint",
@@ -22856,7 +22845,7 @@
       "statement": "An exchange request carrying no proof mints a credential with no confirmation claim, its lifetime clamped by {{authority.exchange.lifetime-ceiling}}, so a network face admits it under {{authority.verify.bearer-lifetime}}.",
       "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
-      "line": 462
+      "line": 438
     },
     {
       "id": "authority.exchange.holder-proof-invalid",
@@ -22867,7 +22856,7 @@
       "statement": "An exchange request whose proof fails any check of {{authority.exchange.holder-binding}}, a replayed nonce included, raises `ExchangeHolderProofInvalid` and mints nothing.",
       "why": "because a proof the face cannot verify proves no key, and a bearer minted in its place hands replayable bytes to a caller asking for a bound credential",
       "file": "spec/50-authority.md",
-      "line": 464
+      "line": 440
     },
     {
       "id": "authority.exchange.refresh",
@@ -22878,7 +22867,7 @@
       "statement": "A holder renews a served-face credential by exchanging a fresh assertion for a new credential with its own identifier and a full lifetime from the exchange instant.",
       "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
-      "line": 466
+      "line": 442
     },
     {
       "id": "authority.exchange.no-extension",
@@ -22889,7 +22878,7 @@
       "statement": "No surface extends a minted credential's expiry: a minted credential presented as the exchange assertion raises {{authority.exchange.assertion-invalid}}, and {{authority.attenuate.expiry-extended}} bounds every derived child.",
       "why": "A-authority#exchange-renewal",
       "file": "spec/50-authority.md",
-      "line": 468
+      "line": 444
     },
     {
       "id": "authority.redact.write-time",
@@ -22947,28 +22936,6 @@
       "line": 78
     },
     {
-      "id": "authority.redact.refetch",
-      "contract": "authority",
-      "operation": "redact",
-      "subject": "refetch",
-      "kind": "behavior",
-      "statement": "A fresh pipeline execution over a table under removal rules reads the source again.",
-      "why": "A-authority#redaction-no-copy",
-      "file": "spec/51-enforcement.md",
-      "line": 80
-    },
-    {
-      "id": "authority.redact.at-rest-scope",
-      "contract": "authority",
-      "operation": "redact",
-      "subject": "at-rest-scope",
-      "kind": "behavior",
-      "statement": "Stored bytes lack only write-time-removed values. A column protected at query time alone is cleartext in storage and readable with the object-store credential.",
-      "why": "A-authority#redaction-no-copy",
-      "file": "spec/51-enforcement.md",
-      "line": 82
-    },
-    {
       "id": "authority.redact.rules-per-pipeline",
       "contract": "authority",
       "operation": "redact",
@@ -22977,7 +22944,7 @@
       "statement": "A pipeline carries at most 256 entries in its removal rule set.",
       "why": "because a longer rule set is a policy the operator cannot review",
       "file": "spec/51-enforcement.md",
-      "line": 84
+      "line": 80
     },
     {
       "id": "authority.redact.pattern-bytes",
@@ -22988,7 +22955,7 @@
       "statement": "One removal pattern carries at most 4 KiB of source text.",
       "why": "because pattern compilation cost must remain bounded before a writer starts",
       "file": "spec/51-enforcement.md",
-      "line": 86
+      "line": 82
     },
     {
       "id": "authority.redact.compiled-pattern-size",
@@ -22999,7 +22966,7 @@
       "statement": "Each Thompson NFA compiled for one removal pattern occupies at most 1 MiB.",
       "why": "because expanded repetitions must not allocate unbounded matcher state",
       "file": "spec/51-enforcement.md",
-      "line": 88
+      "line": 84
     },
     {
       "id": "authority.redact.pattern-refusal",
@@ -23010,7 +22977,7 @@
       "statement": "Unsupported syntax, Unicode word boundaries, empty matches or a pattern past {{authority.redact.pattern-bytes}} or {{authority.redact.compiled-pattern-size}} raises `EnforceRedactionInvalid` at declaration.",
       "why": "because a failed matcher cannot silently leave a declared sensitive value intact",
       "file": "spec/51-enforcement.md",
-      "line": 90
+      "line": 86
     },
     {
       "id": "authority.redact.in-value",
@@ -23021,7 +22988,7 @@
       "statement": "Pattern removal rewrites the union of all matches in one linear pass, merging overlapping matches into one span; whole-value removal rewrites one cell. JSON paths select object keys, array indices or every array item; unselected values remain unchanged.",
       "why": "A-authority#span-union",
       "file": "spec/51-enforcement.md",
-      "line": 92
+      "line": 88
     },
     {
       "id": "authority.redact.every-land-entry",
@@ -23032,7 +22999,7 @@
       "statement": "A canonical project declaration binds direct and staged writers even when their callers omit its rules.",
       "why": "A-authority#prepared-record",
       "file": "spec/51-enforcement.md",
-      "line": 94
+      "line": 90
     },
     {
       "id": "authority.redact.combined-authority",
@@ -23043,7 +23010,7 @@
       "statement": "A destination's ordered canonical rule union obeys {{authority.redact.rules-per-pipeline}}; conflicting declared types, classes or policies and duplicate rules refuse before writing parts.",
       "why": "because an additional declaration cannot replace an earlier rule or its type and class authority",
       "file": "spec/51-enforcement.md",
-      "line": 96
+      "line": 92
     },
     {
       "id": "authority.redact.normalized-authority",
@@ -23054,7 +23021,7 @@
       "statement": "Projects declaring protected relational normalization require canonical table bindings for ordinary writes; an undeclared destination enters through a declared root's complete normalization lineage or refuses before durable bytes.",
       "why": "because a child name cannot prove which source column its values descend from",
       "file": "spec/51-enforcement.md",
-      "line": 98
+      "line": 94
     },
     {
       "id": "authority.redact.rewritten-identities",
@@ -23065,7 +23032,7 @@
       "statement": "Relational parent and child identities derive from rewritten source values; removed values contribute no retained identity digest.",
       "why": "A-authority#span-union",
       "file": "spec/51-enforcement.md",
-      "line": 100
+      "line": 96
     },
     {
       "id": "authority.redact.child-selector-lineage",
@@ -23076,7 +23043,7 @@
       "statement": "A normalized child mask selecting a sibling class requires typed sibling-row lineage; a group lacking that lineage refuses before writing any part.",
       "why": "because a source-row index cannot distinguish sibling values from different child rows",
       "file": "spec/51-enforcement.md",
-      "line": 102
+      "line": 98
     },
     {
       "id": "authority.redact.pinned-plan",
@@ -23087,7 +23054,7 @@
       "statement": "A source plan's explicit removal list equals its complete canonical destination rules; an unbound or mismatched list refuses before source execution. Canonical removal still binds an omitted list.",
       "why": "because a content-hashed plan cannot promise rules that its writer ignores",
       "file": "spec/51-enforcement.md",
-      "line": 104
+      "line": 100
     },
     {
       "id": "authority.redact.canonical-journal",
@@ -23098,7 +23065,7 @@
       "statement": "Canonical writer rules require {{authority.redact.before-the-record}} even when a caller's source plan omits its removal list; {{run.journal.redacting-source}} governs absent admission.",
       "why": "because caller omission cannot weaken a durable declaration's recording boundary",
       "file": "spec/51-enforcement.md",
-      "line": 106
+      "line": 102
     },
     {
       "id": "authority.redact.relational-journal",
@@ -23109,7 +23076,7 @@
       "statement": "A protected relational source records its concrete rewritten root and child group, preserving declared root types, child lineage and {{authority.redact.rewritten-identities}} through {{run.journal.prepared-replay}}.",
       "why": "A-authority#prepared-record",
       "file": "spec/51-enforcement.md",
-      "line": 108
+      "line": 104
     },
     {
       "id": "authority.redact.prepared-payload",
@@ -23120,7 +23087,7 @@
       "statement": "A protected source cannot supply an admitted recording envelope; modified rows, types, destination or normalization fail canonical payload admission before staged parts.",
       "why": "because connector-controlled bytes cannot claim a writer's recording authority",
       "file": "spec/51-enforcement.md",
-      "line": 110
+      "line": 106
     },
     {
       "id": "authority.redact.prepared-continuation",
@@ -23131,7 +23098,7 @@
       "statement": "Protected source continuations refuse before recording unless absent, exact terminal `{ next: null }` without more pages, or text unchanged by every canonical pattern; any canonical whole-value or JSON-path rule refuses text continuations.",
       "why": "because a source-controlled continuation can otherwise retain a removed value beside its rewritten rows",
       "file": "spec/51-enforcement.md",
-      "line": 112
+      "line": 108
     },
     {
       "id": "authority.redact.prepared-clock",
@@ -23142,7 +23109,7 @@
       "statement": "A protected monotonic source proves complete clock-output lineage before execution opens; lineage reaching removed columns, including JSON-path targets, refuses. Protected relational clocks refuse without complete descendant lineage; independent clocks retain {{run.advance.watermark-shape}}.",
       "why": "because progress bytes cannot retain a value that its row removes",
       "file": "spec/51-enforcement.md",
-      "line": 114
+      "line": 110
     },
     {
       "id": "authority.redact.recorded-body",
@@ -23153,7 +23120,7 @@
       "statement": "A store-driven job targeting canonical removal rules refuses before body execution without typed effect-result removal lineage; body calls record results before output landing.",
       "why": "because later row rewriting cannot remove earlier recorded effect results",
       "file": "spec/51-enforcement.md",
-      "line": 116
+      "line": 112
     },
     {
       "id": "authority.redact.prepared-effects",
@@ -23164,7 +23131,7 @@
       "statement": "Canonical effect preparation produces opaque rewritten root and child groups; the paid record and staged group carry the same rewritten values and {{authority.redact.rewritten-identities}}.",
       "why": "A-authority#body-projection",
       "file": "spec/51-enforcement.md",
-      "line": 118
+      "line": 114
     },
     {
       "id": "authority.redact.effect-scope",
@@ -23175,18 +23142,7 @@
       "statement": "A prepared effect binds canonical authority to its execution, row and effect entry key and composite projection identity; replay and staging require the independently issued scope, never authority inferred from decoded bytes.",
       "why": "A-authority#body-projection",
       "file": "spec/51-enforcement.md",
-      "line": 120
-    },
-    {
-      "id": "authority.compose.three-layers",
-      "contract": "authority",
-      "operation": "compose",
-      "subject": "three-layers",
-      "kind": "behavior",
-      "statement": "The reference monitor is three layers: write-time removal, the redistribution bound at push, and row-and-column restriction at query time. A request is authorized at each.",
-      "why": "P5",
-      "file": "spec/51-enforcement.md",
-      "line": 127
+      "line": 116
     },
     {
       "id": "authority.compose.complete-mediation",
@@ -23197,7 +23153,7 @@
       "statement": "Every read of stored rows traverses the layers. A path reaching stored rows outside a registered relation is a defect, never a documented limitation.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 129
+      "line": 123
     },
     {
       "id": "authority.compose.protection-is-a-rewrite",
@@ -23208,7 +23164,7 @@
       "statement": "Protection is a rewrite in the data plane: predicates compiled into the statement, rewritten projections, a per-credential filter at the sync edge, zone floors. Admission decides entry alone.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 131
+      "line": 125
     },
     {
       "id": "authority.compose.registered-relation",
@@ -23219,7 +23175,7 @@
       "statement": "The compiler emits one relation per granted table, bound to the table's bare name for the session's lifetime. Every retrieval arm reads through it.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 133
+      "line": 127
     },
     {
       "id": "authority.compose.relation-order",
@@ -23230,7 +23186,7 @@
       "statement": "A registered relation applies, in order: mirrored permission semi-join, tenant equality, credential predicate, table policy, project default, table zone, then the column projection carrying masks and zone nulls.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 135
+      "line": 129
     },
     {
       "id": "authority.compose.conjunctive-narrowing",
@@ -23241,7 +23197,7 @@
       "statement": "Steps conjoin: a surviving row survives each step alone, and appending a step removes rows and adds none.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 137
+      "line": 131
     },
     {
       "id": "authority.compose.before-the-cut",
@@ -23252,7 +23208,7 @@
       "statement": "Every step, zone exclusion included, completes before a ranked result is cut to its requested size; visible positions carry no trace of a withheld row.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 139
+      "line": 133
     },
     {
       "id": "authority.compose.vector-arm",
@@ -23263,18 +23219,7 @@
       "statement": "A sidecar vector index returns candidate identifiers, which re-join through the registered relation before contributing to a result.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 141
-    },
-    {
-      "id": "authority.compose.replica-again",
-      "contract": "authority",
-      "operation": "compose",
-      "subject": "replica-again",
-      "kind": "behavior",
-      "statement": "A caller holding a filtered replica is constrained again per query, the replica's bytes unchanged.",
-      "why": "P5",
-      "file": "spec/51-enforcement.md",
-      "line": 143
+      "line": 135
     },
     {
       "id": "authority.compose.session-build",
@@ -23285,7 +23230,7 @@
       "statement": "A session builds its relations at admission and rebuilds them when a revocation or a manifest change invalidates a grant it holds.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 145
+      "line": 137
     },
     {
       "id": "authority.compose.relations-per-session",
@@ -23296,7 +23241,7 @@
       "statement": "A session carries at most 1024 entries in its relation set.",
       "why": "because a larger grant set is a mis-scoped credential",
       "file": "spec/51-enforcement.md",
-      "line": 147
+      "line": 139
     },
     {
       "id": "authority.filter-rows.grammar",
@@ -23307,7 +23252,7 @@
       "statement": "A row predicate is the typed boolean subset of SQL in Shapes: column references, comparisons, conjunction, disjunction, negation, membership lists, pattern matching, null tests and declared-safe scalar functions.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 154
+      "line": 146
     },
     {
       "id": "authority.filter-rows.outside-grammar",
@@ -23318,7 +23263,7 @@
       "statement": "Predicates parse at manifest load; a node outside the grammar raises `EnforcePredicateOutsideGrammar`, naming the node.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 156
+      "line": 148
     },
     {
       "id": "authority.filter-rows.subject-relation",
@@ -23329,7 +23274,7 @@
       "statement": "Subject claims reach a predicate as prepared-statement parameters through a session-scoped subject relation. A claim value carrying SQL syntax occupies a parameter slot and reaches no parser.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 158
+      "line": 150
     },
     {
       "id": "authority.filter-rows.exception",
@@ -23340,7 +23285,7 @@
       "statement": "An exception condition is a boolean expression over subject fields in the same grammar, bound the same way.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 160
+      "line": 152
     },
     {
       "id": "authority.filter-rows.override",
@@ -23351,7 +23296,7 @@
       "statement": "A table-policy predicate overriding for a matching subject condition replaces that one predicate; it reaches neither the tenant equality, the mirrored join nor the credential predicate.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 162
+      "line": 154
     },
     {
       "id": "authority.filter-rows.default-deny",
@@ -23362,7 +23307,7 @@
       "statement": "A table reached with no matching grant yields no rows.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 164
+      "line": 156
     },
     {
       "id": "authority.filter-rows.tenant-equality",
@@ -23373,7 +23318,7 @@
       "statement": "A tenant-scoped grant compiles a bound-parameter byte equality on the tenant column, conjoined by the engine; no consumer statement carries it.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 166
+      "line": 158
     },
     {
       "id": "authority.filter-rows.predicate-size",
@@ -23384,7 +23329,7 @@
       "statement": "A declared predicate holds at most 4 KiB of source text.",
       "why": "because a longer predicate is unreviewable policy",
       "file": "spec/51-enforcement.md",
-      "line": 168
+      "line": 160
     },
     {
       "id": "authority.filter-rows.membership-list",
@@ -23395,7 +23340,7 @@
       "statement": "A membership list inside a predicate holds at most 512 entries.",
       "why": "because a longer list belongs in a mirrored table",
       "file": "spec/51-enforcement.md",
-      "line": 170
+      "line": 162
     },
     {
       "id": "authority.mask.column-policy",
@@ -23403,10 +23348,10 @@
       "operation": "mask",
       "subject": "column-policy",
       "kind": "behavior",
-      "statement": "A column declares `class` and `strategy`, optionally `combine`, `crowd` and `summarize_only`, under `[pipeline.tables.policy.columns]`. An undeclared column carries no class.",
+      "statement": "A column under `[pipeline.tables.policy.columns]` declares {{type:contextful_policy::enforce::mask::RawColumnPolicy}}; an undeclared column carries no class.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 177
+      "line": 169
     },
     {
       "id": "authority.mask.class-registry",
@@ -23417,7 +23362,7 @@
       "statement": "`class` takes a value from the class registry in Shapes. `phi` marks protected health data; `ssn`, `phone`, `email` and `mrn` are exhaustible, each carrying a registered domain size.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 179
+      "line": 171
     },
     {
       "id": "authority.mask.row-class",
@@ -23425,10 +23370,10 @@
       "operation": "mask",
       "subject": "row-class",
       "kind": "behavior",
-      "statement": "A column declares `class = { from = ... }`, a `strategies` map naming registered classes, and `fallback = \"drop\"`; each row's sibling text selects its strategy, independently of other rows.",
+      "statement": "A row-class {{type:contextful_policy::enforce::mask::RawColumnPolicy}} declares `class = { from = ... }`, a `strategies` map naming registered classes, and `fallback = \"drop\"`; each row's sibling text selects its strategy, independently of other rows.",
       "why": "A-authority#row-classes",
       "file": "spec/51-enforcement.md",
-      "line": 181
+      "line": 173
     },
     {
       "id": "authority.mask.row-class-selector",
@@ -23439,7 +23384,7 @@
       "statement": "`from_column` aliases `from` in {{authority.mask.row-class}}; declaring both names or any unknown selector field refuses before reading rows.",
       "why": "because ambiguous selector declarations cannot choose which class controls a row",
       "file": "spec/51-enforcement.md",
-      "line": 183
+      "line": 175
     },
     {
       "id": "authority.mask.row-class-dependency",
@@ -23450,7 +23395,7 @@
       "statement": "A row-class selector names another Utf8 column in the same table; {{authority.mask.absent-column}} checks its presence, and every mapped strategy retains {{authority.mask.typed-strategy}} and {{authority.mask.digest-alone}}.",
       "why": "A-authority#row-classes",
       "file": "spec/51-enforcement.md",
-      "line": 185
+      "line": 177
     },
     {
       "id": "authority.mask.row-class-fallback",
@@ -23461,7 +23406,7 @@
       "statement": "Unknown and null row-class values receive strict drop; no unspecified branch yields the original column value.",
       "why": "because an unrecognized class cannot grant weaker protection than any declared branch",
       "file": "spec/51-enforcement.md",
-      "line": 187
+      "line": 179
     },
     {
       "id": "authority.mask.unknown-class",
@@ -23472,18 +23417,7 @@
       "statement": "A `class` outside the registry raises `EnforceUnknownClass` at manifest check.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 189
-    },
-    {
-      "id": "authority.mask.class-reach",
-      "contract": "authority",
-      "operation": "mask",
-      "subject": "class-reach",
-      "kind": "behavior",
-      "statement": "A column's class reaches write-time removal, query-time masking, zone floors and the protections a release applies to a key it joins on.",
-      "why": "A-authority#exhaustible-digest",
-      "file": "spec/51-enforcement.md",
-      "line": 191
+      "line": 181
     },
     {
       "id": "authority.mask.strategies",
@@ -23494,7 +23428,7 @@
       "statement": "The strategies are `drop`, `hash` (keyed), `tokenize` (format-preserving), `truncate`, `bucket` and `range`.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 193
+      "line": 183
     },
     {
       "id": "authority.mask.drop",
@@ -23505,7 +23439,7 @@
       "statement": "`drop` nulls the cell, or yields an empty string for a string column.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 195
+      "line": 185
     },
     {
       "id": "authority.mask.one-value",
@@ -23516,7 +23450,7 @@
       "statement": "A column mask is one value whose primary and combine halves are private; it drives both the write-time and query-time layers, and no consumer applies the primary alone.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 197
+      "line": 187
     },
     {
       "id": "authority.mask.digest-alone",
@@ -23527,7 +23461,7 @@
       "statement": "`hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 199
+      "line": 189
     },
     {
       "id": "authority.mask.high-entropy",
@@ -23538,7 +23472,7 @@
       "statement": "A column of random identifiers or opaque tokens carries `hash` with no combine.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 201
+      "line": 191
     },
     {
       "id": "authority.mask.combine-generalizes",
@@ -23549,7 +23483,7 @@
       "statement": "A `bucket` or `range` combine behind `hash` or `tokenize` raises `EnforceCombineWithoutGeneralization`; `truncate` is the one combine that generalizes a digest.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 203
+      "line": 193
     },
     {
       "id": "authority.mask.hash-width",
@@ -23560,7 +23494,7 @@
       "statement": "`hash` emits 32 chars of hexadecimal.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 205
+      "line": 195
     },
     {
       "id": "authority.mask.token-width",
@@ -23571,7 +23505,7 @@
       "statement": "`tokenize` emits 20 chars.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 207
+      "line": 197
     },
     {
       "id": "authority.mask.cuts-nothing",
@@ -23582,7 +23516,7 @@
       "statement": "A `truncate` combine at or past its primary's output width raises `EnforceTruncationCutsNothing`.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 209
+      "line": 199
     },
     {
       "id": "authority.mask.crowd",
@@ -23593,7 +23527,7 @@
       "statement": "A column's `crowd`, the fewest inputs one masked output covers, is at least 1000 values and defaults to that floor.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 211
+      "line": 201
     },
     {
       "id": "authority.mask.truncation-ceiling",
@@ -23604,7 +23538,7 @@
       "statement": "Behind a keyed digest over an exhaustible class, a `truncate` width above floor(log_b(domain ÷ `crowd`)), b being 16 for `hash` and 36 for `tokenize`, with domain from the class registry, raises `EnforceTruncationTooWide`.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 213
+      "line": 203
     },
     {
       "id": "authority.mask.pepper",
@@ -23615,7 +23549,7 @@
       "statement": "One environment variable supplies the key for `hash` and `tokenize`, read by both layers as one resolved value.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 215
+      "line": 205
     },
     {
       "id": "authority.mask.development-pepper",
@@ -23626,7 +23560,7 @@
       "statement": "Left unset, the pepper resolves to a constant in the source tree and the process emits one signal per run.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 217
+      "line": 207
     },
     {
       "id": "authority.mask.pseudonymous",
@@ -23637,7 +23571,7 @@
       "statement": "`hash` output is an HMAC-SHA-256 under the pepper and is pseudonymous; no surface labels a masked value anonymous.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 219
+      "line": 209
     },
     {
       "id": "authority.mask.native-digest",
@@ -23648,7 +23582,7 @@
       "statement": "Both layers compute the keyed digest natively; the query layer calls a scalar function holding the pepper in process memory, and a value masked at either layer joins the other.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 221
+      "line": 211
     },
     {
       "id": "authority.mask.key-material",
@@ -23659,7 +23593,7 @@
       "statement": "A compiled relation, query plan or session catalog entry carrying pepper-derived key state raises `EnforceKeyMaterialInRelation`.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 223
+      "line": 213
     },
     {
       "id": "authority.mask.subject-exception",
@@ -23670,7 +23604,7 @@
       "statement": "A mask carries exceptions, each a subject condition in the row-predicate grammar bound through the subject relation.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 225
+      "line": 215
     },
     {
       "id": "authority.mask.in-place",
@@ -23681,7 +23615,7 @@
       "statement": "The masked projection substitutes named columns where they stand; the caller receives the column set and order the unmasked statement produces, and `*` expands to it.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 227
+      "line": 217
     },
     {
       "id": "authority.mask.equality",
@@ -23692,7 +23626,7 @@
       "statement": "An equality filter on a `drop` column matches nothing; on a `hash` column it matches equal digests.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 229
+      "line": 219
     },
     {
       "id": "authority.mask.aggregates",
@@ -23703,7 +23637,7 @@
       "statement": "Aggregation reads the masked column.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 231
+      "line": 221
     },
     {
       "id": "authority.mask.summarize-only",
@@ -23714,7 +23648,7 @@
       "statement": "`summarize_only` is a flag, not a strategy: the value stays legible to grounding and citation.",
       "why": "A-authority#exhaustible-digest",
       "file": "spec/51-enforcement.md",
-      "line": 233
+      "line": 223
     },
     {
       "id": "authority.mask.typed-strategy",
@@ -23725,7 +23659,7 @@
       "statement": "A binary column masks by `drop` or by `hash` over its bytes, a vector or nested column by `drop` alone over the whole column; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.",
       "why": "A-store#binary-fixed-size",
       "file": "spec/51-enforcement.md",
-      "line": 235
+      "line": 225
     },
     {
       "id": "authority.mask.absent-column",
@@ -23736,7 +23670,7 @@
       "statement": "A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.",
       "why": "because a skipped declaration serves reads under a policy its author believed covered a column",
       "file": "spec/51-enforcement.md",
-      "line": 237
+      "line": 227
     },
     {
       "id": "authority.mask.masks-per-table",
@@ -23747,7 +23681,7 @@
       "statement": "A table carries at most 128 entries in its column mask set.",
       "why": "because a table beyond it needs a drop, not a mask per column",
       "file": "spec/51-enforcement.md",
-      "line": 239
+      "line": 229
     },
     {
       "id": "authority.refuse.scope-denied",
@@ -23758,7 +23692,7 @@
       "statement": "A tenant-scoped credential reading another tenant's rows on a granted table raises `EnforceScopeDenied`, as wire code `scope_denied`, HTTP `403` or an in-band tool error, naming the table and both scopes.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 246
+      "line": 236
     },
     {
       "id": "authority.refuse.not-empty",
@@ -23769,7 +23703,7 @@
       "statement": "A scope refusal is a typed error, never an empty result.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 248
+      "line": 238
     },
     {
       "id": "authority.refuse.echo",
@@ -23780,7 +23714,7 @@
       "statement": "The requested scope in a refusal echoes the statement's value, never a stored value.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 250
+      "line": 240
     },
     {
       "id": "authority.refuse.ungranted-table",
@@ -23791,7 +23725,7 @@
       "statement": "A relation the caller holds no grant on, whether or not a table of that name exists, raises `EnforceUnknownRelation` and is absent from listings and descriptions.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 252
+      "line": 242
     },
     {
       "id": "authority.refuse.payload",
@@ -23802,7 +23736,7 @@
       "statement": "A refusal payload carries at most 512 B.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 254
+      "line": 244
     },
     {
       "id": "authority.refuse.scope-guard",
@@ -23813,7 +23747,7 @@
       "statement": "The scope guard walks the engine's parse once, deciding literal equalities and membership lists over the tenant column and bound template parameters destined for it.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 256
+      "line": 246
     },
     {
       "id": "authority.refuse.top-level",
@@ -23824,7 +23758,7 @@
       "statement": "The guard reads top-level conjuncts of a statement whose own FROM names a scoped table.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 258
+      "line": 248
     },
     {
       "id": "authority.refuse.guard-walk",
@@ -23835,7 +23769,7 @@
       "statement": "The guard visits at most 4096 entries of one parse tree.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 260
+      "line": 250
     },
     {
       "id": "authority.refuse.undecidable",
@@ -23846,7 +23780,7 @@
       "statement": "A constraint the guard cannot settle composes as an ordinary conjunct; the engine-applied equality isolates.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 262
+      "line": 252
     },
     {
       "id": "authority.refuse.drifted-scope",
@@ -23857,7 +23791,7 @@
       "statement": "A tenant value matching no partition reads empty, like a tenant that wrote nothing; the read path repairs no transformed scope value.",
       "why": "A-authority#one-credential",
       "file": "spec/51-enforcement.md",
-      "line": 264
+      "line": 254
     },
     {
       "id": "authority.bound-redistribution.withhold",
@@ -23868,7 +23802,7 @@
       "statement": "A cleared redistribution flag withholds every object of the table at push and omits the table's name from the bucket manifest.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 271
+      "line": 261
     },
     {
       "id": "authority.bound-redistribution.before-diff",
@@ -23879,7 +23813,7 @@
       "statement": "The exclusion applies before the object diff is computed.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 273
+      "line": 263
     },
     {
       "id": "authority.bound-redistribution.outranks-grants",
@@ -23890,7 +23824,7 @@
       "statement": "The bound holds against a credential granted everything.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 275
+      "line": 265
     },
     {
       "id": "authority.bound-redistribution.envelopes",
@@ -23901,7 +23835,7 @@
       "statement": "The bound covers the table's columnar files and each pull's verbatim record.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 277
+      "line": 267
     },
     {
       "id": "authority.bound-redistribution.root-allowlist",
@@ -23912,7 +23846,7 @@
       "statement": "While any table is withheld, a root-level object ships only when the allowlist in Shapes names it.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 279
+      "line": 269
     },
     {
       "id": "authority.bound-redistribution.root-not-allowlisted",
@@ -23923,7 +23857,7 @@
       "statement": "A root-level object absent from the allowlist raises `EnforceRootObjectNotAllowlisted` at push.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 281
+      "line": 271
     },
     {
       "id": "authority.bound-redistribution.left-behind",
@@ -23934,7 +23868,7 @@
       "statement": "Clearing the flag over a table an earlier push uploaded raises `EnforceStaleRedistributedObjects`, naming each object and the remedy, deleting none.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 283
+      "line": 273
     },
     {
       "id": "authority.bound-redistribution.manifest-is-an-index",
@@ -23945,7 +23879,7 @@
       "statement": "An object stays fetchable by its key after the manifest stops naming it; a manifest authorizes nothing.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 285
+      "line": 275
     },
     {
       "id": "authority.bound-redistribution.report",
@@ -23956,7 +23890,7 @@
       "statement": "A left-behind report names at most 100 files and states the total found.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 287
+      "line": 277
     },
     {
       "id": "authority.bound-redistribution.two-checks",
@@ -23967,7 +23901,7 @@
       "statement": "The left-behind check runs before and after the upload loop; the guarantee holds for one bucket under one pushing configuration.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 289
+      "line": 279
     },
     {
       "id": "authority.bound-redistribution.edge-filter",
@@ -23978,7 +23912,7 @@
       "statement": "A serving edge in front of the bucket filters a materialized replica by the pulling credential's grants.",
       "why": "A-authority#redistribution",
       "file": "spec/51-enforcement.md",
-      "line": 291
+      "line": 281
     },
     {
       "id": "authority.bound-redistribution.edge-whole-table",
@@ -23989,7 +23923,7 @@
       "statement": "The edge serves a table's objects only under a read grant covering it with no tenant scope, aggregate bound or horizon, and a root object outside `access/`, `control/` and `stale_memory.idx` only under such a grant on `*`.",
       "why": "because a table's files hold every row a narrowing grant removes, run states and cursor logs name tables, and a query re-applies only what the replica holds",
       "file": "spec/51-enforcement.md",
-      "line": 293
+      "line": 283
     },
     {
       "id": "authority.place.zone-string",
@@ -24000,7 +23934,7 @@
       "statement": "A zone string parses, after trimming, as `local:device`, `on-prem:<id>`, `private-cloud:<id>` or `public-cloud:<id>`; any other text is undeclared. The identifier is part of the value.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 315
+      "line": 290
     },
     {
       "id": "authority.place.allow-set-entry",
@@ -24011,7 +23945,7 @@
       "statement": "An allow-set entry is `*`, `local:device`, `on-prem:*`, `private-cloud:*`, `public-cloud:*`, or a category carrying a concrete identifier.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 317
+      "line": 292
     },
     {
       "id": "authority.place.unparsed-pattern",
@@ -24022,7 +23956,7 @@
       "statement": "An allow-set entry matching no entry form raises `EnforceZonePatternUnparsed`, naming the entry.",
       "why": "because an unparsed entry matching nothing hides a policy error; a new zone category updates the grammar first",
       "file": "spec/51-enforcement.md",
-      "line": 319
+      "line": 294
     },
     {
       "id": "authority.place.disjunctive",
@@ -24033,7 +23967,7 @@
       "statement": "A zone is admitted when any entry matches. A bare category matches every identifier in it; an entry carrying an identifier matches that identifier alone.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 321
+      "line": 296
     },
     {
       "id": "authority.place.undeclared",
@@ -24044,7 +23978,7 @@
       "statement": "Only `*` admits an undeclared zone.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 323
+      "line": 298
     },
     {
       "id": "authority.place.caller-zone",
@@ -24055,7 +23989,7 @@
       "statement": "The calling process declares its zone per request; the store carries none.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 325
+      "line": 300
     },
     {
       "id": "authority.place.asserted-zone",
@@ -24066,18 +24000,7 @@
       "statement": "A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.",
       "why": "because an unsigned argument able to widen placement makes the signed zone decorative",
       "file": "spec/51-enforcement.md",
-      "line": 327
-    },
-    {
-      "id": "authority.place.picks-no-model",
-      "contract": "authority",
-      "operation": "place",
-      "subject": "picks-no-model",
-      "kind": "behavior",
-      "statement": "Placement selects no model and dispatches no inference; the engine's one invocation point is an operator-configured endpoint capability for synthesis.",
-      "why": "A-authority#placement-breadth",
-      "file": "spec/51-enforcement.md",
-      "line": 329
+      "line": 302
     },
     {
       "id": "authority.place.fail-closed",
@@ -24088,18 +24011,7 @@
       "statement": "A table declaring no zone policy resolves to the fail-closed pair `local:device` and `on-prem:*`, declared and discovered tables alike.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 331
-    },
-    {
-      "id": "authority.place.permissive-default",
-      "contract": "authority",
-      "operation": "place",
-      "subject": "permissive-default",
-      "kind": "refusal",
-      "statement": "A default resolving an unlabeled table to `*` raises `EnforcePermissiveZoneDefault` where more than one principal owns the store.",
-      "why": "A-authority#placement-breadth",
-      "file": "spec/51-enforcement.md",
-      "line": 333
+      "line": 304
     },
     {
       "id": "authority.place.protected-floor",
@@ -24110,7 +24022,7 @@
       "statement": "A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 335
+      "line": 306
     },
     {
       "id": "authority.place.floor-widened",
@@ -24121,7 +24033,7 @@
       "statement": "A manifest widening a protected-class surface past its floor without an override naming that class raises `EnforceProtectedFloorWidened`.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 337
+      "line": 308
     },
     {
       "id": "authority.place.removal-with-public-cloud",
@@ -24132,7 +24044,7 @@
       "statement": "A surface declaring write-time removal on a column and an allow-set admitting a public cloud raises `EnforceRemovalWithPublicCloud`.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 339
+      "line": 310
     },
     {
       "id": "authority.place.narrowest-grain",
@@ -24143,7 +24055,7 @@
       "statement": "A column's set narrows its table's; a principal's set narrows both.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 341
+      "line": 312
     },
     {
       "id": "authority.place.row-zone-column",
@@ -24154,7 +24066,7 @@
       "statement": "A table's `policy.zone.column` names a column whose value, one allow-set entry, narrows its row's set as a column's set narrows its table's; a null keeps the table's set, and an unparsed value admits no zone.",
       "why": "because the store owner declares the column in the table's policy and its value only narrows, unlike the binding's advisory key {{run.bind.advisory-zone}} refuses",
       "file": "spec/51-enforcement.md",
-      "line": 343
+      "line": 314
     },
     {
       "id": "authority.place.excluded-row",
@@ -24165,7 +24077,7 @@
       "statement": "Where the table's effective set omits the session's zone, the row leaves the result.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 345
+      "line": 316
     },
     {
       "id": "authority.place.excluded-cell",
@@ -24176,7 +24088,7 @@
       "statement": "A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 347
+      "line": 318
     },
     {
       "id": "authority.place.per-principal",
@@ -24187,7 +24099,7 @@
       "statement": "A `[[principal]]` allow-set narrows every row whose `_authored_agent` or `_authored_by` equals its `id`, wherever the row lands; a row whose authors no principal lists keeps its table's set.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 349
+      "line": 320
     },
     {
       "id": "authority.place.unauthored-row",
@@ -24198,7 +24110,7 @@
       "statement": "A row the engine landed with no authenticated subject takes its table's set; only a row whose author the engine cannot verify resolves as an undeclared zone.",
       "why": "because a pipeline-landed row carries no author to narrow by, and treating it as undeclared withholds every such row from any table not admitting `*`",
       "file": "spec/51-enforcement.md",
-      "line": 351
+      "line": 322
     },
     {
       "id": "authority.place.evidence-floor",
@@ -24209,7 +24121,7 @@
       "statement": "A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 353
+      "line": 324
     },
     {
       "id": "authority.place.empty-evidence",
@@ -24220,7 +24132,7 @@
       "statement": "A synthesized row naming no evidence table raises `EnforceEvidenceListEmpty` and resolves to the fail-closed pair of {{authority.place.fail-closed}}.",
       "why": "because an empty list intersects to every zone, and a row citing nothing then resolves to the widest set",
       "file": "spec/51-enforcement.md",
-      "line": 355
+      "line": 326
     },
     {
       "id": "authority.place.incognito",
@@ -24231,7 +24143,7 @@
       "statement": "Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included. `contextful mcp --incognito` serves a credential signing no zone at `local:device` and refuses one signing a zone outside `[local:device, on-prem:*]`.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 357
+      "line": 328
     },
     {
       "id": "authority.place.incognito-widening",
@@ -24242,7 +24154,7 @@
       "statement": "A session asserting a zone wider than the incognito pin, or an incognito `contextful token mint` signing one, raises `EnforceIncognitoWidening`.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 359
+      "line": 330
     },
     {
       "id": "authority.place.team-default",
@@ -24253,7 +24165,7 @@
       "statement": "`[project.zone]` declares `default`, `users_may_widen` and `incognito_default`; `contextful token mint` naming no `--zone` signs `default`, and under `incognito_default = true` mints incognito.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 361
+      "line": 332
     },
     {
       "id": "authority.place.default-widened",
@@ -24264,7 +24176,7 @@
       "statement": "Under `users_may_widen = false`, a `contextful token mint` signing a zone other than the project's `default` or `local:device` raises `EnforceZoneDefaultWidened`, naming both.",
       "why": "because a default any minter replaces bounds nothing the project owner chose",
       "file": "spec/51-enforcement.md",
-      "line": 363
+      "line": 334
     },
     {
       "id": "authority.place.serve-outcome",
@@ -24275,7 +24187,7 @@
       "statement": "Serving one row yields a drop flag and the list of zone-masked columns.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 365
+      "line": 336
     },
     {
       "id": "authority.place.envelope",
@@ -24286,7 +24198,7 @@
       "statement": "A response envelope carries the zone's removals, the asserted zone and the incognito flag in {{read.respond.restriction-block}}, and no removed value.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 367
+      "line": 338
     },
     {
       "id": "authority.place.excluded-disclosed",
@@ -24297,7 +24209,7 @@
       "statement": "`rows_dropped` counts the rows the zone step removes from the whole relation, every earlier step applied; the caller's statement, filter and requested size never enter it, and no removed value crosses.",
       "why": "A-read#zone-withheld-relation",
       "file": "spec/51-enforcement.md",
-      "line": 369
+      "line": 340
     },
     {
       "id": "authority.place.symbolic-inclusion",
@@ -24308,7 +24220,7 @@
       "statement": "Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 371
+      "line": 342
     },
     {
       "id": "authority.place.allow-set-entries",
@@ -24319,7 +24231,7 @@
       "statement": "An allow-set holds at most 32 entries.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 373
+      "line": 344
     },
     {
       "id": "authority.place.identifier-length",
@@ -24330,7 +24242,7 @@
       "statement": "A zone identifier holds at most 128 chars.",
       "why": "A-authority#placement-breadth",
       "file": "spec/51-enforcement.md",
-      "line": 375
+      "line": 346
     },
     {
       "id": "authority.resist.credential-shaped-value",
@@ -24341,7 +24253,7 @@
       "statement": "A claim write, direct or synthesized, raises `EnforceCredentialShapedValue` on a field matching a credential shape, before it reaches storage.",
       "why": "A-read#store-holds-nothing",
       "file": "spec/51-enforcement.md",
-      "line": 404
+      "line": 375
     },
     {
       "id": "authority.resist.read-only-face",
@@ -24352,7 +24264,7 @@
       "statement": "An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/51-enforcement.md",
-      "line": 406
+      "line": 377
     },
     {
       "id": "authority.resist.write-tool",
@@ -24363,7 +24275,7 @@
       "statement": "Registering a write tool on an organization-wide face raises `EnforceWriteOnReadOnlyFace`.",
       "why": "A-surface#answer-surfaces-read",
       "file": "spec/51-enforcement.md",
-      "line": 408
+      "line": 379
     },
     {
       "id": "disclosure.mirror.unbound-table",
@@ -33183,7 +33095,6 @@
       "authority.mask.column-policy",
       "authority.mask.class-registry",
       "authority.mask.unknown-class",
-      "authority.mask.class-reach",
       "authority.mask.strategies",
       "authority.mask.drop",
       "authority.mask.one-value",
@@ -33252,7 +33163,6 @@
       "authority.grant.tenant-bytes",
       "authority.grant.tenant-unbindable",
       "authority.grant.tenant-child-lifetime",
-      "authority.grant.held-parent",
       "authority.grant.aggregate",
       "authority.attenuate.offline",
       "authority.attenuate.narrowing",
@@ -33301,9 +33211,7 @@
       "authority.place.disjunctive",
       "authority.place.undeclared",
       "authority.place.caller-zone",
-      "authority.place.picks-no-model",
       "authority.place.fail-closed",
-      "authority.place.permissive-default",
       "authority.place.protected-floor",
       "authority.place.floor-widened",
       "authority.place.narrowest-grain",
@@ -33343,9 +33251,7 @@
       "store.encrypt.redacted-index",
       "run.emit.unredacted-error",
       "connector.attach.url-scrubbing",
-      "connector.attach.credential-in-a-url",
-      "authority.redact.refetch",
-      "authority.redact.at-rest-scope"
+      "connector.attach.credential-in-a-url"
     ],
     "A-authority#redistribution": [
       "authority.redact.rule",
@@ -37343,6 +37249,90 @@
     ]
   ],
   "types": {
+    "contextful_core::exchange::RawPolicy": {
+      "file": "crates/contextful-core/src/exchange.rs",
+      "line": 210,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "expected_iss"
+        },
+        {
+          "name": "expected_aud"
+        },
+        {
+          "name": "subject_map"
+        },
+        {
+          "name": "tenant_claim"
+        },
+        {
+          "name": "role_claim"
+        },
+        {
+          "name": "role_grants"
+        },
+        {
+          "name": "default_grants"
+        },
+        {
+          "name": "ttl_secs"
+        },
+        {
+          "name": "minted_iss"
+        },
+        {
+          "name": "minted_aud"
+        }
+      ],
+      "clauses": [
+        "authority.exchange.policy"
+      ]
+    },
+    "contextful_core::grant::Action": {
+      "file": "crates/contextful-core/src/grant.rs",
+      "line": 16,
+      "kind": "enum",
+      "members": [
+        {
+          "name": "read"
+        },
+        {
+          "name": "write"
+        },
+        {
+          "name": "execute"
+        },
+        {
+          "name": "admin"
+        },
+        {
+          "name": "forget"
+        }
+      ],
+      "clauses": [
+        "authority.grant.actions"
+      ]
+    },
+    "contextful_core::identify::LinkMethod": {
+      "file": "crates/contextful-core/src/identify.rs",
+      "line": 256,
+      "kind": "enum",
+      "members": [
+        {
+          "name": "scim_email"
+        },
+        {
+          "name": "oidc_sub"
+        },
+        {
+          "name": "operator_asserted"
+        }
+      ],
+      "clauses": [
+        "authority.identify.unverified-link"
+      ]
+    },
     "contextful_core::store::declare::AvailableTime": {
       "file": "crates/contextful-core/src/store/declare.rs",
       "line": 49,
@@ -37495,6 +37485,41 @@
       ],
       "clauses": [
         "store.declare.table-block"
+      ]
+    },
+    "contextful_policy::enforce::mask::RawColumnPolicy": {
+      "file": "crates/contextful-policy/src/enforce/mask.rs",
+      "line": 158,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "class"
+        },
+        {
+          "name": "strategy"
+        },
+        {
+          "name": "combine"
+        },
+        {
+          "name": "crowd"
+        },
+        {
+          "name": "summarize_only"
+        },
+        {
+          "name": "strategies"
+        },
+        {
+          "name": "fallback"
+        },
+        {
+          "name": "exceptions"
+        }
+      ],
+      "clauses": [
+        "authority.mask.column-policy",
+        "authority.mask.row-class"
       ]
     }
   },
@@ -38677,10 +38702,6 @@
           "EnforceMaskOnAbsentColumn": {
             "clause": "authority.mask.absent-column",
             "gloss": "A mask naming a column the schema omits."
-          },
-          "EnforcePermissiveZoneDefault": {
-            "clause": "authority.place.permissive-default",
-            "gloss": "A wildcard zone default in a store with several principals."
           },
           "EnforcePredicateOutsideGrammar": {
             "clause": "authority.filter-rows.outside-grammar",
@@ -47881,7 +47902,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "every_row_path_takes_the_session",
-        "line": 77,
+        "line": 78,
         "verdict": "performed",
         "proved": false
       }
@@ -47891,7 +47912,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "each_added_step_only_removes_rows",
-        "line": 40,
+        "line": 41,
         "verdict": "performed",
         "proved": false
       }
@@ -47901,7 +47922,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "protection_is_compiled_into_the_relation",
-        "line": 62,
+        "line": 63,
         "verdict": "performed",
         "proved": false
       }
@@ -47916,12 +47937,40 @@
         "proved": false
       }
     ],
+    "authority.compose.relation-order": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/read/enforce.rs",
+        "name": "the_relation_applies_tenant_policy_zone_then_projection",
+        "line": 20,
+        "verdict": "performed",
+        "proved": false
+      },
+      {
+        "kind": "test",
+        "path": "crates/contextful-policy/tests/integration/enforce/compose.rs",
+        "name": "the_semi_join_opens_a_bound_relation_and_carries_its_ids_as_rows",
+        "line": 144,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "authority.compose.relations-per-session": [
       {
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/compose.rs",
         "name": "a_session_holds_at_most_1024_relations",
         "line": 30,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "authority.compose.session-build": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-agent/tests/integration/http.rs",
+        "name": "a_credential_revoked_between_requests_is_refused_on_the_next",
+        "line": 539,
         "verdict": "performed",
         "proved": false
       }
@@ -48211,7 +48260,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "an_exception_replaces_the_table_predicate_alone",
-        "line": 124,
+        "line": 125,
         "verdict": "performed",
         "proved": false
       }
@@ -48231,7 +48280,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "subject_claims_are_parameters_not_text",
-        "line": 97,
+        "line": 98,
         "verdict": "performed",
         "proved": false
       }
@@ -48241,7 +48290,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_tenant_scope_is_a_byte_equality_the_engine_conjoins",
-        "line": 109,
+        "line": 110,
         "verdict": "performed",
         "proved": false
       }
@@ -48251,7 +48300,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "actions",
-        "line": 75,
+        "line": 76,
         "verdict": "performed",
         "proved": false
       }
@@ -48261,7 +48310,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "aggregate_only_grants_contribute_no_raw_table",
-        "line": 304,
+        "line": 305,
         "verdict": "performed",
         "proved": false
       }
@@ -48291,7 +48340,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "fields",
-        "line": 140,
+        "line": 141,
         "verdict": "performed",
         "proved": false
       }
@@ -48301,7 +48350,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "group_ceiling",
-        "line": 320,
+        "line": 321,
         "verdict": "performed",
         "proved": false
       }
@@ -48321,7 +48370,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "malformed_pattern",
-        "line": 129,
+        "line": 130,
         "verdict": "performed",
         "proved": false
       }
@@ -48349,7 +48398,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "pattern_forms",
-        "line": 95,
+        "line": 96,
         "verdict": "performed",
         "proved": true
       },
@@ -48377,7 +48426,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "pipeline_resource",
-        "line": 249,
+        "line": 250,
         "verdict": "performed",
         "proved": false
       }
@@ -48387,7 +48436,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "row_ceiling",
-        "line": 292,
+        "line": 293,
         "verdict": "performed",
         "proved": false
       }
@@ -48425,7 +48474,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "template_allowlist",
-        "line": 210,
+        "line": 211,
         "verdict": "performed",
         "proved": true
       },
@@ -48443,7 +48492,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "template_not_allowed",
-        "line": 236,
+        "line": 237,
         "verdict": "performed",
         "proved": false
       }
@@ -48453,7 +48502,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_covered_template_reads_its_tables_in_its_own_session_alone",
-        "line": 344,
+        "line": 345,
         "verdict": "performed",
         "proved": false
       }
@@ -48463,7 +48512,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "tenant_bytes",
-        "line": 176,
+        "line": 177,
         "verdict": "performed",
         "proved": false
       }
@@ -48473,7 +48522,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "tenant_child_lifetime",
-        "line": 199,
+        "line": 200,
         "verdict": "performed",
         "proved": false
       }
@@ -48483,7 +48532,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "tenant_scope",
-        "line": 158,
+        "line": 159,
         "verdict": "performed",
         "proved": false
       }
@@ -48493,7 +48542,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/grant.rs",
         "name": "tenant_unbindable",
-        "line": 187,
+        "line": 188,
         "verdict": "performed",
         "proved": false
       }
@@ -48513,7 +48562,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_tenant_scope_over_an_unpartitioned_table_reads_nothing_until_the_table_declares_one",
-        "line": 691,
+        "line": 692,
         "verdict": "performed",
         "proved": false
       }
@@ -48573,7 +48622,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/identify.rs",
         "name": "incognito",
-        "line": 206,
+        "line": 207,
         "verdict": "performed",
         "proved": false
       }
@@ -48623,7 +48672,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/identify.rs",
         "name": "subject_rebound",
-        "line": 185,
+        "line": 186,
         "verdict": "performed",
         "proved": false
       }
@@ -48653,7 +48702,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/identify.rs",
         "name": "unverified_link",
-        "line": 162,
+        "line": 163,
         "verdict": "performed",
         "proved": false
       }
@@ -48993,7 +49042,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "a_mask_on_an_absent_column_is_refused",
-        "line": 232,
+        "line": 233,
         "verdict": "performed",
         "proved": false
       }
@@ -49003,7 +49052,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "aggregates_read_the_masked_column",
-        "line": 189,
+        "line": 190,
         "verdict": "performed",
         "proved": false
       }
@@ -49033,7 +49082,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "only_truncate_combines_behind_a_digest",
-        "line": 118,
+        "line": 119,
         "verdict": "performed",
         "proved": false
       }
@@ -49043,7 +49092,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "the_crowd_is_at_least_1000_and_defaults_to_it",
-        "line": 159,
+        "line": 160,
         "verdict": "performed",
         "proved": false
       }
@@ -49053,7 +49102,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "a_truncation_at_the_output_width_is_refused",
-        "line": 148,
+        "line": 149,
         "verdict": "performed",
         "proved": false
       }
@@ -49063,7 +49112,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "an_unset_pepper_resolves_to_the_development_constant",
-        "line": 209,
+        "line": 210,
         "verdict": "performed",
         "proved": false
       }
@@ -49073,7 +49122,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "a_bare_digest_over_an_exhaustible_class_is_refused",
-        "line": 97,
+        "line": 98,
         "verdict": "performed",
         "proved": false
       }
@@ -49083,7 +49132,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "drop_nulls_a_cell_or_empties_a_string",
-        "line": 203,
+        "line": 204,
         "verdict": "performed",
         "proved": false
       }
@@ -49093,7 +49142,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "equality_filters_read_the_masked_value",
-        "line": 175,
+        "line": 176,
         "verdict": "performed",
         "proved": false
       }
@@ -49103,7 +49152,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "a_digest_is_32_hex_chars",
-        "line": 129,
+        "line": 130,
         "verdict": "performed",
         "proved": false
       }
@@ -49113,7 +49162,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "a_classless_identifier_takes_a_bare_hash",
-        "line": 111,
+        "line": 112,
         "verdict": "performed",
         "proved": false
       }
@@ -49123,7 +49172,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "masks_substitute_columns_where_they_stand",
-        "line": 134,
+        "line": 135,
         "verdict": "performed",
         "proved": false
       }
@@ -49133,7 +49182,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/compose.rs",
         "name": "a_relation_carrying_key_state_is_refused",
-        "line": 164,
+        "line": 165,
         "verdict": "performed",
         "proved": false
       }
@@ -49143,7 +49192,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "a_table_carries_at_most_128_masks",
-        "line": 222,
+        "line": 223,
         "verdict": "performed",
         "proved": false
       }
@@ -49153,7 +49202,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_digest_from_either_layer_joins_the_other",
-        "line": 216,
+        "line": 217,
         "verdict": "performed",
         "proved": false
       }
@@ -49163,7 +49212,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_mask_applies_primary_and_combine_together_in_both_layers",
-        "line": 243,
+        "line": 244,
         "verdict": "performed",
         "proved": false
       }
@@ -49173,7 +49222,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "one_resolved_pepper_keys_both_layers",
-        "line": 231,
+        "line": 232,
         "verdict": "performed",
         "proved": false
       }
@@ -49183,7 +49232,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "the_digest_is_an_hmac_under_the_pepper",
-        "line": 189,
+        "line": 190,
         "verdict": "performed",
         "proved": false
       }
@@ -49193,7 +49242,17 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "one_admitted_read_applies_row_selected_masks_and_strict_unknown_fallback",
-        "line": 149,
+        "line": 150,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "authority.mask.row-class-dependency": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
+        "name": "row_selected_classes_admit_registered_masks_and_require_the_selector_column",
+        "line": 86,
         "verdict": "performed",
         "proved": false
       }
@@ -49203,7 +49262,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "one_admitted_read_applies_row_selected_masks_and_strict_unknown_fallback",
-        "line": 148,
+        "line": 149,
         "verdict": "performed",
         "proved": false
       }
@@ -49223,7 +49282,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "each_strategy_yields_one_value_in_both_layers",
-        "line": 635,
+        "line": 636,
         "verdict": "performed",
         "proved": false
       }
@@ -49233,7 +49292,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "a_mask_exception_is_a_subject_condition_bound_through_the_subject_relation",
-        "line": 309,
+        "line": 310,
         "verdict": "performed",
         "proved": false
       }
@@ -49243,7 +49302,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "summarize_only_leaves_the_value_legible",
-        "line": 345,
+        "line": 346,
         "verdict": "performed",
         "proved": false
       }
@@ -49253,7 +49312,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "a_token_is_20_chars",
-        "line": 139,
+        "line": 140,
         "verdict": "performed",
         "proved": false
       }
@@ -49263,7 +49322,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "a_truncation_past_the_class_ceiling_is_refused",
-        "line": 169,
+        "line": 170,
         "verdict": "performed",
         "proved": false
       }
@@ -49273,7 +49332,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/enforce/mask.rs",
         "name": "binary_vector_and_nested_columns_admit_their_strategies_alone",
-        "line": 246,
+        "line": 247,
         "verdict": "performed",
         "proved": false
       }
@@ -49323,7 +49382,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "the_zone_is_declared_per_request",
-        "line": 417,
+        "line": 418,
         "verdict": "performed",
         "proved": false
       }
@@ -49383,7 +49442,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_cell_outside_its_column_set_arrives_null",
-        "line": 446,
+        "line": 447,
         "verdict": "performed",
         "proved": false
       }
@@ -49403,7 +49462,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_zone_outside_the_table_set_drops_its_rows",
-        "line": 434,
+        "line": 435,
         "verdict": "performed",
         "proved": false
       }
@@ -49473,7 +49532,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_listed_principal_withholds_the_rows_it_authors_outside_its_set",
-        "line": 495,
+        "line": 496,
         "verdict": "performed",
         "proved": false
       }
@@ -49503,7 +49562,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_row_zone_entry_narrows_its_row_and_never_widens_the_table",
-        "line": 532,
+        "line": 533,
         "verdict": "performed",
         "proved": false
       }
@@ -49543,7 +49602,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_pipeline_landed_row_keeps_its_table_set",
-        "line": 517,
+        "line": 518,
         "verdict": "performed",
         "proved": false
       }
@@ -49753,7 +49812,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/redaction.rs",
         "name": "a_child_row_selector_without_typed_sibling_lineage_refuses_before_files",
-        "line": 637,
+        "line": 638,
         "verdict": "performed",
         "proved": false
       }
@@ -49763,7 +49822,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/redaction.rs",
         "name": "composed_destinations_refuse_conflicting_types_combined_overflow_and_duplicate_rules",
-        "line": 107,
+        "line": 108,
         "verdict": "performed",
         "proved": false
       }
@@ -49783,7 +49842,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/redaction.rs",
         "name": "effect_recordings_require_the_signed_owner_key_and_cannot_upgrade_source_payloads",
-        "line": 30,
+        "line": 31,
         "verdict": "performed",
         "proved": false
       }
@@ -49793,7 +49852,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/redaction.rs",
         "name": "a_staged_part_contains_the_same_removed_form_before_commit",
-        "line": 325,
+        "line": 326,
         "verdict": "performed",
         "proved": false
       }
@@ -49813,7 +49872,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/redaction.rs",
         "name": "protected_relational_authority_refuses_unbound_stages_but_admits_declared_independent_tables",
-        "line": 383,
+        "line": 384,
         "verdict": "performed",
         "proved": false
       }
@@ -49863,7 +49922,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/redaction.rs",
         "name": "prepared_clock_admission_checks_derived_json_path_and_relational_removal_authority",
-        "line": 783,
+        "line": 784,
         "verdict": "performed",
         "proved": false
       }
@@ -49873,7 +49932,17 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/redaction.rs",
         "name": "protected_continuation_accepts_no_bytes_or_exact_terminal_form_and_refuses_hidden_values",
-        "line": 243,
+        "line": 244,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "authority.redact.prepared-effects": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-context/tests/integration/redaction.rs",
+        "name": "effect_recordings_require_the_signed_owner_key_and_cannot_upgrade_source_payloads",
+        "line": 29,
         "verdict": "performed",
         "proved": false
       }
@@ -49883,7 +49952,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/redaction.rs",
         "name": "canonical_prepared_recording_admits_only_its_rewritten_payload_and_current_authority",
-        "line": 179,
+        "line": 180,
         "verdict": "performed",
         "proved": false
       }
@@ -49913,7 +49982,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/redaction.rs",
         "name": "independently_declared_child_rules_precede_all_persisted_group_identities",
-        "line": 593,
+        "line": 594,
         "verdict": "performed",
         "proved": false
       }
@@ -49943,7 +50012,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/redaction.rs",
         "name": "each_operation_lands_its_policy_substitute_and_no_raw_value_reaches_the_encoded_part",
-        "line": 800,
+        "line": 801,
         "verdict": "performed",
         "proved": false
       }
@@ -49953,7 +50022,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_drifted_scope_reads_empty",
-        "line": 406,
+        "line": 407,
         "verdict": "performed",
         "proved": false
       }
@@ -49963,7 +50032,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_refusal_echoes_the_statements_value",
-        "line": 284,
+        "line": 285,
         "verdict": "performed",
         "proved": false
       }
@@ -49973,7 +50042,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_tree_past_the_walk_bound_composes_as_ordinary_conjuncts",
-        "line": 394,
+        "line": 395,
         "verdict": "performed",
         "proved": false
       }
@@ -49983,7 +50052,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "a_scope_refusal_is_not_an_empty_result",
-        "line": 273,
+        "line": 274,
         "verdict": "performed",
         "proved": false
       }
@@ -50003,7 +50072,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "reading_another_tenant_is_refused_naming_both_scopes",
-        "line": 260,
+        "line": 261,
         "verdict": "performed",
         "proved": false
       }
@@ -50013,7 +50082,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "the_scope_guard_decides_literals_lists_and_template_parameters",
-        "line": 327,
+        "line": 328,
         "verdict": "performed",
         "proved": false
       }
@@ -50023,7 +50092,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "the_guard_reads_top_level_conjuncts_alone",
-        "line": 369,
+        "line": 370,
         "verdict": "performed",
         "proved": false
       }
@@ -50033,7 +50102,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "an_unsettled_constraint_composes_and_the_equality_isolates",
-        "line": 382,
+        "line": 383,
         "verdict": "performed",
         "proved": false
       }
@@ -50043,7 +50112,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "an_ungranted_relation_is_unknown_everywhere",
-        "line": 295,
+        "line": 296,
         "verdict": "performed",
         "proved": false
       }
@@ -57031,7 +57100,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "a_read_while_the_snapshot_set_hydrates_answers_503_with_retry_after_and_admits_nothing",
-        "line": 1001,
+        "line": 1002,
         "verdict": "performed",
         "proved": false
       }
@@ -58031,7 +58100,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "a_fast_statement_answers_while_a_slow_one_runs",
-        "line": 562,
+        "line": 563,
         "verdict": "performed",
         "proved": false
       }
@@ -58041,7 +58110,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "a_stalled_request_head_holds_a_slot_and_a_connection_past_the_ceiling_is_shed",
-        "line": 615,
+        "line": 616,
         "verdict": "performed",
         "proved": false
       }
@@ -58161,7 +58230,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "health_answers_the_build_identity_without_a_credential",
-        "line": 706,
+        "line": 707,
         "verdict": "performed",
         "proved": false
       }
@@ -58171,7 +58240,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "a_hydrated_readiness_probe_answers_503_while_warming_and_200_once_hydrated",
-        "line": 1027,
+        "line": 1028,
         "verdict": "performed",
         "proved": false
       }
@@ -58231,7 +58300,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "past_the_ceiling_a_request_answers_503_with_retry_after",
-        "line": 594,
+        "line": 595,
         "verdict": "performed",
         "proved": false
       }
@@ -58251,7 +58320,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "a_credential_revoked_between_requests_is_refused_on_the_next",
-        "line": 541,
+        "line": 542,
         "verdict": "performed",
         "proved": false
       }
@@ -58271,7 +58340,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "a_body_over_one_mebibyte_answers_413",
-        "line": 695,
+        "line": 696,
         "verdict": "performed",
         "proved": false
       }
@@ -58301,7 +58370,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "a_missing_audience_or_ceiling_refuses_the_face",
-        "line": 676,
+        "line": 677,
         "verdict": "performed",
         "proved": false
       }
@@ -64211,7 +64280,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "the_run_stream_authenticates_before_the_upgrade",
-        "line": 854,
+        "line": 855,
         "verdict": "performed",
         "proved": false
       }
@@ -65431,7 +65500,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "the_awake_route_admits_its_credential_before_the_registry",
-        "line": 926,
+        "line": 927,
         "verdict": "performed",
         "proved": false
       }
@@ -71167,7 +71236,7 @@
         "kind": "test",
         "path": "crates/contextful-context/tests/integration/read/enforce.rs",
         "name": "every_row_path_takes_the_session",
-        "line": 76,
+        "line": 77,
         "verdict": "performed",
         "proved": false
       }
@@ -71927,7 +71996,7 @@
         "kind": "test",
         "path": "crates/contextful-agent/tests/integration/http.rs",
         "name": "a_cold_container_reports_ready_within_8_s_while_its_snapshot_set_hydrates",
-        "line": 980,
+        "line": 981,
         "verdict": "performed",
         "proved": false
       }
