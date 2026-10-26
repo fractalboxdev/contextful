@@ -94,8 +94,10 @@ fn a_complete_empty_file_walk_replaces_seeded_rows() {
     assert_eq!(marker["replace_frontier"], json!(true));
 }
 
-/// `incremental` beside the `file` source refuses as {{connector.package.component-position}} at validation.
-// spec: connector.source.file-position-owned@0e097207
+/// `incremental` beside a component source, the `file` or drive source, or the `s3` source under
+/// `skip_unchanged = true` raises `ConnectorPositionOwned` at validation; the source's own position is the
+/// run's position.
+// spec: connector.package.component-position@a87bf129
 #[test]
 fn an_incremental_field_beside_the_file_source_refuses_at_validation() {
     ok(&cf(handbook("").path(), &["pipeline", "validate"]));

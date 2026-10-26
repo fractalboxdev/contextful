@@ -65,8 +65,10 @@ fn the_probe_calls_the_identity_endpoint_with_the_bound_credential_before_the_fi
     assert_eq!(paths(&bare), ["/read"]);
 }
 
-/// The scope probe's host sits on the allowlist and its scheme is TLS or loopback.
-// spec: connector.declare-capability.probe-transport@f4786ed7
+/// A manifest may declare an identity endpoint, the response header carrying granted scopes, and
+/// the grant it expects. Ahead of the first read, the host calls it with the bound credential over
+/// TLS or loopback on an allowlisted host.
+// spec: connector.declare-capability.scope-probe@2af5833f
 #[test]
 fn the_probe_reaches_only_an_allowlisted_host_over_tls_or_loopback() {
     let _env = proxy_env();

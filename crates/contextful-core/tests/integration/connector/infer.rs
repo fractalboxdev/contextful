@@ -96,8 +96,10 @@ fn the_token_is_content_bound_not_a_constant() {
     assert_ne!(fence_token(&items, CAP), fence_token(&shifted, CAP));
 }
 
-/// Marking removes control characters other than newline and tab from a value.
-// spec: connector.infer.fenced-value-hygiene@3a158911
+/// Marking removes control characters other than newline and tab from a value, and a value past its
+/// declared character cap keeps its first cap characters and a truncation mark, its closing line
+/// still following.
+// spec: connector.infer.value-cap@68ca2138
 #[test]
 fn control_characters_are_stripped_and_newlines_survive() {
     let payload = "before\u{0}\u{7}\u{1b}[2Kafter\r\nsecond\tcol\u{7f}";
@@ -108,9 +110,10 @@ fn control_characters_are_stripped_and_newlines_survive() {
     assert_eq!(hygiene(payload, CAP), "before[2Kafter\nsecond\tcol");
 }
 
-/// A value past its declared character cap keeps its first cap characters followed by a
-/// truncation mark, and the closing line still follows its block.
-// spec: connector.infer.value-cap@c6827ec8
+/// Marking removes control characters other than newline and tab from a value, and a value past its
+/// declared character cap keeps its first cap characters and a truncation mark, its closing line
+/// still following.
+// spec: connector.infer.value-cap@68ca2138
 #[test]
 fn an_over_long_value_is_capped_and_marked() {
     let fenced = fence(&[DataItem::new("id=r1", "A".repeat(CAP * 3))], CAP, RULES);

@@ -90,7 +90,7 @@ fn a_completion_passes_the_hook_and_the_address_check() {
 
 /// A model call with no configured key declares no header and keeps the system proxy; a configured key is a declared
 /// header and takes the hardened client under {{connector.attach.header-selects-client}}.
-// spec: connector.attach.header-selects-client@51d021e5
+// spec: connector.attach.header-selects-client@08348cb1
 #[test]
 fn a_completion_keeps_the_proxy_unless_a_key_is_configured() {
     let answer = json!({ "choices": [{ "message": { "content": "ok" } }] }).to_string();
@@ -102,8 +102,10 @@ fn a_completion_keeps_the_proxy_unless_a_key_is_configured() {
     }
 }
 
-/// A call to an endpoint exposing token log-probabilities lands them with the call record.
-// spec: connector.infer.logprobs@9eefec74
+/// A call record carries the input and output token counts of the endpoint's `usage` beside the
+/// content, and token log-probabilities where the endpoint exposes them; an answer without counts
+/// records none.
+// spec: connector.infer.logprobs@99eb86a8
 #[test]
 fn an_endpoint_exposing_logprobs_lands_them_with_the_call_record() {
     let _env = proxy_env();
@@ -134,9 +136,9 @@ impl SpanSink for Spans {
     }
 }
 
-/// A call record carries the input and output token counts of the endpoint's `usage` beside the content; an answer
-/// without them records none.
-// spec: connector.infer.usage@ba6e2459
+/// A call record carries the input and output token counts of the endpoint's `usage` beside the content, and token
+/// log-probabilities where the endpoint exposes them; an answer without counts records none.
+// spec: connector.infer.logprobs@99eb86a8
 #[test]
 fn a_call_record_carries_the_endpoint_usage() {
     let _env = proxy_env();

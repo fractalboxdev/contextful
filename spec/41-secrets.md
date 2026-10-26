@@ -120,9 +120,8 @@ The first credential adapter: credential lease declarations, mint requests, expi
 - `cache-window` — A leased name's cache entry expires at the earlier of {{connector.resolve.cache-ttl}} and the credential lease's own expiry.
 - `retirement-margin` — An entry retires 10 percent of its window ahead of expiry, the margin capped at 30 s.
   *because a request sent near the boundary still lands inside the grant*
-- `endpoint` — The provider answers `POST <provider-url>/leases` carrying a bearer mint credential and body `{ "scope": "<lease scope>" }`.
+- `endpoint` — The provider answers `POST <provider-url>/leases`, carrying a bearer mint credential and body `{ "scope": "<lease scope>" }`, with `value` and one expiry, `expires_in` seconds, `expires_at` epoch seconds or an RFC 3339 instant, at top level or under `lease`.
   *because a batched answer ties one scope's refusal to every name in it and mints material no request has asked for*
-- `response` — A success carries `value` plus one expiry — `expires_in` seconds, `expires_at` epoch seconds, or an RFC 3339 instant — at the top level or under `lease`.
 - `unknown-scope` — A `404` raises `SecretLeaseScopeUnknown` as a configuration fault. The resolver does not fall back to a stored credential for a declared name.
   *A-connector#credentials-references-workload*
 - `mint-rejected` — A `401` or `403` raises `SecretMintRejected`, classed `auth_expired`.
@@ -185,9 +184,7 @@ Host handling of outbound requests: network transport, permitted hosts and addre
   *A-connector#outbound-transport-origin*
 - `transport-port` — The mediated client reaches the network only through a transport interface. The send method connects to a vetted address, follows no redirect, and applies the client's proxy choice, timeout and body ceiling.
   *A-connector#outbound-transport-origin*
-- `resolve-half` — After {{connector.meter.pre-send-hook}} admits the hop, the transport interface resolves the name. The client checks each returned address under {{connector.attach.private-address}}.
-  *A-connector#outbound-transport-origin*
-- `resolve-once` — The host resolves a permitted host name once per request and connects to the address it vetted, with no second lookup between check and connect.
+- `resolve-once` — After {{connector.meter.pre-send-hook}} admits the hop, the transport interface resolves the name once per request, the client checks each address under {{connector.attach.private-address}}, and the host connects to the address it vetted.
   *A-connector#outbound-transport-origin*
 - `private-address` — A host name resolving to a private, link-local, unique-local, loopback or cloud-metadata address raises `ConnectorPrivateAddress`, unless the configured host is itself a loopback name or literal.
   *because an allowlisted name pointed at an internal range is SSRF*
@@ -201,14 +198,11 @@ Host handling of outbound requests: network transport, permitted hosts and addre
   *because session-held credential material outlives the request and delays rotation*
 - `literal-attach-value` — An attach value embedding no reference raises `SecretLiteralAttachValue`.
   *because a constant header belongs in the guest's request construction*
-- `redirect-pinning` — With or without credentials, a source follows a hop only with the configured host and port on the same or stronger transport. Sources follow cleartext-to-TLS hops at that host and port.
+- `redirect-pinning` — With or without credentials, a source follows a hop only at the configured host and port on the same or stronger transport, cleartext-to-TLS included, and stores response bodies from that origin alone.
   *A-connector#outbound-transport-origin*
 - `weakened-hop` — A redirect or vendor-supplied next link moving from TLS to cleartext, or to another host or port, raises `SecretRedirectOffOrigin`, and the read fails.
   *A-connector#outbound-transport-origin*
-- `landed-origin` — The source stores response bodies only from the configured host and port.
-  *A-connector#outbound-transport-origin*
-- `referer-off` — `Referer` is off on every outbound client.
-- `header-selects-client` — A source declaring any header, literal or hydrated, uses the hardened client and bypasses the system proxy. A source declaring no header keeps the proxy.
+- `header-selects-client` — A source declaring any header, literal or hydrated, uses the hardened client and bypasses the system proxy; a source declaring no header keeps the proxy. No outbound client sends `Referer`.
 - `cleartext-endpoint` — The host marks a reference-hydrated header sensitive. Sending the header to a cleartext endpoint raises `SecretCleartextEndpoint`, except on IPv4 or IPv6 loopback.
   *A-connector#outbound-transport-origin*
 - `sensitive-header-record` — A run records which header names carried a credential, by name only.
@@ -227,9 +221,8 @@ unsettled: Does an exec step's vendor traffic pass a host-run loopback proxy tha
 
 Credential rotation responsibilities and mechanisms.
 
-- `division-of-labor` — A credential store contributes versioned storage and a trigger. The host drives the OAuth loop from the connector's auth policy and writes the token back as a blind versioned put.
+- `division-of-labor` — A credential store contributes versioned storage, a trigger and room for an opaque `expires_at` hint beside the ciphertext. The host drives the OAuth loop from the connector's auth policy and writes the token back as a blind versioned put.
   *A-connector#rotation-writes-forward*
-- `expiry-hint` — The host may store an opaque `expires_at` hint beside the ciphertext for cache invalidation.
 - `static-key` — A static key in an operator-managed secret store turns over with no engine step: a run hydrates the current version at its next cache miss.
   *because the 300 s cache bound already caps staleness, and a per-manager change feed adds a listener and failure domain to every adapter*
 - `oauth-credential` — The host refreshes an OAuth credential at {{connector.lease.retirement-margin}} from its declared expiry. The host puts the refreshed version to the answering adapter, conditioned on the hydrated version, then clears the name's cache entry.
@@ -252,13 +245,10 @@ Credential rotation responsibilities and mechanisms.
 
 Optional operator metadata, provider observations, the inventory of configured bindings, and the provider attribution a run emits.
 
-- `operator-record` — An optional operator record describes one logical name's intended grants, account or tenancy, consuming surfaces and rotation location; supplied creation and expiry assertions remain operator metadata.
-  *A-connector#credential-custody-stays*
-- `metadata-storage` — A committed operator record contains descriptive metadata only. Recording a binding requires neither a credential value nor a decryption key.
+- `operator-record` — An optional operator record describes one logical name's intended grants, account or tenancy, consuming surfaces with their binding names, and rotation location, as descriptive metadata; recording it requires no credential value or decryption key.
   *A-connector#credential-custody-stays*
 - `provider-custody` — The selected provider owns credential values, versions and rotation state; an external-manager binding requires no ciphertext copy in the repository.
   *A-connector#credential-custody-stays*
-- `surface-of-consumption` — An operator record identifies each documented consuming surface and its credential binding name.
 - `optional-record` — A binding without an operator record remains resolvable and appears in inventory with unknown descriptive fields.
 - `unverified-scope-is-marked` — An operator record marks grants as unknown when the operator has not established them.
 - `inventory` — `contextful secrets list` displays configured logical bindings with their configured adapters, operator metadata and available provider observations. The command reads no credential values and claims no complete provider inventory.
@@ -268,7 +258,7 @@ Optional operator metadata, provider observations, the inventory of configured b
 - `expiry-warning` — The inventory marks each dated expiry falling within 30 d and each elapsed expiry, retaining the expiry's provenance.
 - `configured-is-not-observed` — A configured adapter identifies a binding's configuration; only {{connector.record.provider-attribution}} identifies the adapter that answered a run's reference.
 - `provider-attribution` — A run's commit-phase and failure rows carry `credential_providers`. The field maps each hydrated logical name to the answering adapter, using names only.
-- `record-table` — An operator record is a `[secret.<name>]` table in the discovered `contextful.toml`, keyed `description`, `account`, `grants`, `surfaces`, `rotate`, `created` and `expires`, each optional; `expires = "never"` is the one explicit no-expiry assertion.
+- `record-table` — An operator record is a `[secret.<name>]` table in the discovered `contextful.toml` taking {{type:contextful_core::connector::record::OperatorRecord}}, each key optional; `expires = "never"` is the one explicit no-expiry assertion.
   *A-connector#credential-custody-stays*
 - `record-rejected` — A `[secret.<name>]` table outside discovered `contextful.toml`, without a manifest-bound `secret://` name, or containing an unknown key, mistyped value or credential-shaped string raises `SecretRecordRejected` during declaration read. The error names file, name and key path, excluding values.
   *because a misspelled name otherwise describes nothing while the real binding reads undescribed, and an echoed value carries a pasted token into CI logs*
@@ -320,16 +310,4 @@ format   = "json"
 
 [pipeline.source.config.headers]
 Authorization = "Bearer ${secret://vendor-token}"
-```
-
-An operator record in `contextful.toml`, holding no value and no ciphertext:
-
-```toml
-[secret.vendor-token]
-description = "Vendor API key"
-account     = "acct-4471 (records namespace)"
-grants      = ["records.read", "records.export"]
-surfaces    = [{ surface = "records pipeline", binding = "Authorization header" }]
-rotate      = "console.vendor.example/settings/api-keys"
-expires     = "never"
 ```

@@ -141,9 +141,10 @@ fn a_leased_entry_retires_by_the_tighter_bound() {
     }
 }
 
-/// The provider answers `POST <provider-url>/leases` carrying a bearer mint credential and body `{ "scope":
-/// "<lease scope>" }`.
-// spec: connector.lease.endpoint@421208bc
+/// The provider answers `POST <provider-url>/leases`, carrying a bearer mint credential and body `{
+/// "scope": "<lease scope>" }`, with `value` and one expiry, `expires_in` seconds, `expires_at` epoch
+/// seconds or an RFC 3339 instant, at top level or under `lease`.
+// spec: connector.lease.endpoint@7e6dca49
 #[test]
 fn a_mint_is_a_bearer_post_naming_the_scope() {
     let _env = proxy_env();

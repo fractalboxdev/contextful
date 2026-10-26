@@ -276,7 +276,7 @@ fn a_held_push_guard_refuses_a_pulling_batch_retryable_within_thirty_seconds() {
 }
 
 /// A `receive` pipeline declaring a `schedule` fails validation: a sender, not the cadence, starts its runs.
-// spec: connector.source.receive-unscheduled@0e261316
+// spec: connector.source.receive-form@f82146e2
 #[test]
 fn a_scheduled_receive_pipeline_fails_validation() {
     let dir = project("[[pipeline]]\nid = \"otel\"\nschedule = \"every 1h\"\ntables = [\"spans\"]\n[pipeline.source]\nname = \"receive\"\nconfig = { format = \"jsonl\", max_batch_bytes = 4096, max_queue_depth = 2, key_retention_secs = 3600 }\n");

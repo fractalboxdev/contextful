@@ -97,7 +97,7 @@ fn a_refresh_puts_forward_to_the_answering_adapter_conditioned_on_the_hydrated_v
 
 /// The store contributes versioned storage; the host drives the refresh and writes back
 /// as a blind versioned put.
-// spec: connector.rotate.division-of-labor@fcc51049
+// spec: connector.rotate.division-of-labor@73f1cbf2
 #[test]
 fn the_host_drives_the_refresh_and_the_store_only_stores() {
     let manager = Manager::new("old-token");
@@ -114,7 +114,7 @@ fn the_host_drives_the_refresh_and_the_store_only_stores() {
 }
 
 /// The put carries an opaque expiry hint beside the value.
-// spec: connector.rotate.expiry-hint@950e7512
+// spec: connector.rotate.division-of-labor@73f1cbf2
 #[test]
 fn the_put_carries_the_refreshed_expiry_as_a_hint() {
     let manager = Manager::new("old-token");

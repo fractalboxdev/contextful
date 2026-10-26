@@ -24,9 +24,10 @@ fn a_lease_retires_a_tenth_of_its_window_early_at_most_30_s() {
     assert_eq!(retires_at(now, None), now.plus_secs(300));
 }
 
-/// A success carries `value` plus one expiry — `expires_in` seconds, `expires_at` epoch seconds, or an RFC 3339
-/// instant — at the top level or under `lease`.
-// spec: connector.lease.response@98329469
+/// The provider answers `POST <provider-url>/leases`, carrying a bearer mint credential and body `{ "scope":
+/// "<lease scope>" }`, with `value` and one expiry, `expires_in` seconds, `expires_at` epoch seconds or an RFC
+/// 3339 instant, at top level or under `lease`.
+// spec: connector.lease.endpoint@7e6dca49
 #[test]
 fn a_lease_reads_three_expiry_spellings_at_two_levels() {
     let now = at(NOW);

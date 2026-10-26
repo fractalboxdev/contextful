@@ -105,7 +105,7 @@ fn an_unreadable_acquire_answer_grants_nothing() {
 }
 
 /// The acquire and report bodies carry counts and verbatim headers, and no price, cost or currency field.
-// spec: connector.meter.counting-not-pricing@1fca5afa
+// spec: connector.meter.reservation-point@2c3f1188
 #[test]
 fn the_wire_counts_requests_and_prices_none() {
     let acquire = acquire_body("graph-app", "reads", 8);
