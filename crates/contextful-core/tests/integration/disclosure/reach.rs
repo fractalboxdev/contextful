@@ -213,6 +213,7 @@ fn admitted(set: &ReachSet, levels: Option<&BTreeMap<String, String>>, now: &str
     set.admitted(levels, at(now)).into_iter().collect()
 }
 
+// spec: disclosure.mirror.unmirrorable-opening@9e9da0b0
 /// The semi-join opening {{authority.compose.relation-order}} admits a row of a bound table when its `resource_key` value names a resource with a read-conferring, unexpired, untombstoned grant in the reader's reachable set.
 // spec: disclosure.reach.semi-join@6f8b5b64
 #[test]

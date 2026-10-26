@@ -24305,7 +24305,7 @@
       "operation": "mirror",
       "subject": "binding-keys",
       "kind": "behavior",
-      "statement": "A table's `visibility` block names its `source`, the `resource_key` column holding each row's `resource_id`, its `resource_kind`, `fidelity`, `family`, `max_acl_staleness`, and `on_stale` of `refuse`, the default, or `public_only`.",
+      "statement": "A table's `visibility` block declares {{type:contextful_core::disclosure::declare::RawBinding}}; `on_stale` takes `refuse`, the default, or `public_only`.",
       "why": "",
       "file": "spec/60-visibility.md",
       "line": 66
@@ -24382,7 +24382,7 @@
       "operation": "sweep",
       "subject": "sweep-block",
       "kind": "behavior",
-      "statement": "An `[[acl_sweep]]` block declares one source's sweep: `source`, the `enumerate` table whose rows are its governed resources, `full` and `incremental` cadences as `{ every = <budget> }`, and optional `credential` and `events`.",
+      "statement": "An `[[acl_sweep]]` block declares one source's sweep as {{type:contextful_core::disclosure::sweep::RawBlock}}: `enumerate` names the table whose rows are its governed resources, and each cadence is `{ every = <budget> }`.",
       "why": "",
       "file": "spec/60-visibility.md",
       "line": 83
@@ -24404,7 +24404,7 @@
       "operation": "sweep",
       "subject": "sweep-verb",
       "kind": "behavior",
-      "statement": "`visibility sweep --source <s> --kind full|incremental|webhook [--grants <file>] [--directory <file>]` runs one sweep of a declared source, reading its permission endpoint under `credential`, or the file when `--grants` is given, and commits as one run.",
+      "statement": "`visibility sweep --source <s> --kind full|incremental|webhook --grants <file> [--directory <file>]` runs one sweep of a declared source from its files and commits as one run.",
       "why": "",
       "file": "spec/60-visibility.md",
       "line": 85
@@ -24415,7 +24415,7 @@
       "operation": "sweep",
       "subject": "grants-file",
       "kind": "behavior",
-      "statement": "A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line, a grant carrying `resource_id`, `principal`, `principal_kind` and `level`, or `resource_id` with `\"unread\": true`; an unmarked resource with no grant line holds none.",
+      "statement": "A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line, a {{type:contextful_core::disclosure::sweep::GrantLine}} or `resource_id` with `\"unread\": true`; an unmarked resource with no grant line holds none.",
       "why": "",
       "file": "spec/60-visibility.md",
       "line": 86
@@ -24437,7 +24437,7 @@
       "operation": "sweep",
       "subject": "directory-file",
       "kind": "behavior",
-      "statement": "A `--directory` file is the identity provider's directory read, one JSON object per line: a link carrying `source_principal`, `subject`, `method` and `confidence`, or a membership carrying `group`, `member` and `member_kind`; a run without one keeps the current rows.",
+      "statement": "A `--directory` file is the identity provider's directory read, one JSON object per line: a {{type:contextful_core::disclosure::sweep::LinkLine}}, or a membership carrying `group`, `member` and `member_kind`; a run without one keeps the current rows.",
       "why": "",
       "file": "spec/60-visibility.md",
       "line": 88
@@ -24528,7 +24528,7 @@
       "statement": "A subject `user://<p>` reaches the `user` principal spelled `<p>` and each principal an `identity_links` row maps to it, then the groups those principals belong to.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 103
+      "line": 105
     },
     {
       "id": "disclosure.reach.closure-walk",
@@ -24539,7 +24539,7 @@
       "statement": "The closure walks the group graph with a visited set, ending any cycle, to a depth of `max_group_depth`, default 8 hops, and a breadth of 10000 nodes.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 104
+      "line": 106
     },
     {
       "id": "disclosure.reach.closure-overflow",
@@ -24550,7 +24550,7 @@
       "statement": "A closure reaching its depth or node bound raises `VisibilityClosureDepth` with the non-retryable HTTP status 422 and returns no set.",
       "why": "A-disclosure#grants-rows-under",
       "file": "spec/60-visibility.md",
-      "line": 105
+      "line": 107
     },
     {
       "id": "disclosure.reach.cache-capacity",
@@ -24561,7 +24561,7 @@
       "statement": "The reachable-set cache holds at most 100000 entries and evicts the least recently used.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 107
+      "line": 109
     },
     {
       "id": "disclosure.reach.degraded-uncached",
@@ -24572,7 +24572,7 @@
       "statement": "Retaining a reachable set or result produced past a budget, or under the narrowing posture, raises `VisibilityDegradedCached`.",
       "why": "A-disclosure#mirrored-authorization-carries",
       "file": "spec/60-visibility.md",
-      "line": 108
+      "line": 110
     },
     {
       "id": "disclosure.reach.semi-join",
@@ -24583,7 +24583,7 @@
       "statement": "The semi-join opening {{authority.compose.relation-order}} admits a row of a bound table when its `resource_key` value names a resource with a read-conferring, unexpired, untombstoned grant in the reader's reachable set.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 110
+      "line": 112
     },
     {
       "id": "disclosure.reach.read-level",
@@ -24594,7 +24594,7 @@
       "statement": "A grant confers read when its `level`, mapped through the `level` table of the pack mapping its table, or taken verbatim where no pack maps that table, is `read`, `write` or `admin`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 111
+      "line": 113
     },
     {
       "id": "disclosure.reach.public-grant",
@@ -24605,18 +24605,7 @@
       "statement": "A grant whose `principal_kind`, mapped through the `principal_kind` table of the pack mapping its table, or taken verbatim where that table names no such kind, is `public` joins every subject's reachable set.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 112
-    },
-    {
-      "id": "disclosure.reach.closure-projection",
-      "contract": "disclosure",
-      "operation": "reach",
-      "subject": "closure-projection",
-      "kind": "behavior",
-      "statement": "The group closure is a projection in `derived.sqlite`, rebuilt from the `_visibility` rows after each sweep and on a replica after each pull; no replica opens closure files.",
-      "why": "A-disclosure#grants-rows-under",
-      "file": "spec/60-visibility.md",
-      "line": 113
+      "line": 114
     },
     {
       "id": "disclosure.reach.cache-epochs",
@@ -24638,7 +24627,7 @@
       "statement": "`max_acl_staleness` is a positive integer with one suffix from `s`, `m`, `h`, `d`. A compound form, a bare number or another suffix raises `VisibilityBudgetMalformed`, naming the table and the text read.",
       "why": "A-disclosure#mirrored-authorization-carries",
       "file": "spec/60-visibility.md",
-      "line": 137
+      "line": 122
     },
     {
       "id": "disclosure.bound-staleness.access-stale",
@@ -24649,7 +24638,7 @@
       "statement": "A read raises `VisibilityAccessStale` (HTTP 503, carrying source, lag, budget and last observation) when a touched table's source lag exceeds its budget, the source has no completed full run, or the public-status watermark is past budget.",
       "why": "A-disclosure#mirrored-authorization-carries",
       "file": "spec/60-visibility.md",
-      "line": 139
+      "line": 124
     },
     {
       "id": "disclosure.bound-staleness.budget-below-cadence",
@@ -24660,7 +24649,7 @@
       "statement": "A budget tighter than the sweep cadence its source sustains raises `VisibilityBudgetUnreachable` at diagnose, naming both figures.",
       "why": "A-disclosure#mirrored-authorization-carries",
       "file": "spec/60-visibility.md",
-      "line": 141
+      "line": 126
     },
     {
       "id": "disclosure.bound-staleness.clock-offset",
@@ -24671,7 +24660,7 @@
       "statement": "`CONTEXTFUL_NOW_OFFSET_SECS`, a non-negative integer, moves the instant a staleness check reads as now that many seconds later, so it can refuse a read and never extends a budget.",
       "why": "because a test observes a budget elapse without waiting, and an offset that only ages state cannot admit a read",
       "file": "spec/60-visibility.md",
-      "line": 143
+      "line": 128
     },
     {
       "id": "disclosure.bound-staleness.offset-malformed",
@@ -24682,7 +24671,7 @@
       "statement": "A `CONTEXTFUL_NOW_OFFSET_SECS` value other than a non-negative integer stops the process before it serves, naming the variable.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 145
+      "line": 130
     },
     {
       "id": "disclosure.bound-staleness.public-watermark",
@@ -24693,7 +24682,7 @@
       "statement": "A table's public-status watermark is the oldest `acl_observed_at` among its source's resources holding a read-conferring, unexpired `public` grant; with no such resource it lags zero.",
       "why": "because an incremental run over the public resources refreshes each one's observation, so public status stays current while the full watermark lags",
       "file": "spec/60-visibility.md",
-      "line": 146
+      "line": 131
     },
     {
       "id": "disclosure.bound-staleness.public-only",
@@ -24704,7 +24693,7 @@
       "statement": "Past its budget, a `public_only` table whose source has a completed full run and a public-status watermark within budget serves only rows whose resource holds a read-conferring, unexpired `public` grant.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 148
+      "line": 133
     },
     {
       "id": "disclosure.bound-staleness.degraded-block",
@@ -24715,7 +24704,7 @@
       "statement": "A read touching a table served under {{disclosure.bound-staleness.public-only}} answers with a `contextful.visibility` block holding `degraded` true and the narrowed tables under `narrowed`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 149
+      "line": 134
     },
     {
       "id": "disclosure.declare-fidelity.family-bound",
@@ -24726,7 +24715,7 @@
       "statement": "A `person-container` table at a servable level, or a `directory` table above `excluded`, raises `VisibilityFamilyBound`, and the manifest declaring it does not load.",
       "why": "A-disclosure#fidelity-bounded-what",
       "file": "spec/60-visibility.md",
-      "line": 155
+      "line": 140
     },
     {
       "id": "disclosure.declare-fidelity.family-undeclared",
@@ -24737,7 +24726,7 @@
       "statement": "A mapping landing a table without naming its `family` raises `VisibilityFamilyUndeclared`.",
       "why": "A-disclosure#fidelity-bounded-what",
       "file": "spec/60-visibility.md",
-      "line": 157
+      "line": 142
     },
     {
       "id": "disclosure.declare-fidelity.federated-registered",
@@ -24748,7 +24737,7 @@
       "statement": "Registering a `federated` table on a read face raises `VisibilityFederatedRegistered`.",
       "why": "A-disclosure#fidelity-bounded-what",
       "file": "spec/60-visibility.md",
-      "line": 159
+      "line": 144
     },
     {
       "id": "disclosure.pack.mapping-absent",
@@ -24759,7 +24748,7 @@
       "statement": "A pack landing a table with neither an access mapping nor `excluded` raises `VisibilityMappingAbsent` at diagnose, naming the pack and the table.",
       "why": "A-disclosure#fidelity-bounded-what",
       "file": "spec/60-visibility.md",
-      "line": 168
+      "line": 153
     },
     {
       "id": "disclosure.pack.asserts-access",
@@ -24770,7 +24759,7 @@
       "statement": "An access-shaped key the mapping schema does not define raises `VisibilityPackAssertsAccess` by name. Fields outside the mapping are fetch inputs and reach no authorization decision.",
       "why": "A-disclosure#fidelity-bounded-what",
       "file": "spec/60-visibility.md",
-      "line": 170
+      "line": 155
     },
     {
       "id": "disclosure.pack.any-of-allowlist",
@@ -24781,7 +24770,7 @@
       "statement": "An allowlist evaluated as any-of raises `VisibilityAllowlistAnyOf` at load.",
       "why": "P1",
       "file": "spec/60-visibility.md",
-      "line": 172
+      "line": 157
     },
     {
       "id": "disclosure.pack.unsupported-coarse",
@@ -24792,7 +24781,7 @@
       "statement": "Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`.",
       "why": "A-disclosure#fidelity-bounded-what",
       "file": "spec/60-visibility.md",
-      "line": 174
+      "line": 159
     },
     {
       "id": "disclosure.pack.pack-block",
@@ -24803,7 +24792,7 @@
       "statement": "A `[pack.<name>]` block names the `tables` it lands, its `excluded` tables, one `access.<table>` mapping per mapped table, and an optional container `allowlist` of `containers` with `evaluate = \"all-of\"`.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 176
+      "line": 161
     },
     {
       "id": "disclosure.pack.mapping-keys",
@@ -24811,10 +24800,10 @@
       "operation": "pack",
       "subject": "mapping-keys",
       "kind": "behavior",
-      "statement": "An access mapping holds `resource_key`, `resource_kind`, `family`, `fidelity`, `container_key`, `principal_kind` and `level`, and no other key.",
+      "statement": "An access mapping holds {{type:contextful_core::disclosure::pack::RawMapping}} and no other key.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 177
+      "line": 162
     },
     {
       "id": "disclosure.drive-sweep.resource-set",
@@ -24825,7 +24814,7 @@
       "statement": "A Drive sweep enumerates each file row of its bound connection as one governed resource under {{disclosure.sweep.sweep-block}}.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 183
+      "line": 168
     },
     {
       "id": "disclosure.drive-sweep.permission-pages",
@@ -24836,7 +24825,7 @@
       "statement": "For each governed file, the sweep follows every `permissions.list` page under the connection credential before its grants replace prior grants.",
       "why": "A-disclosure#drive-permission-coverage",
       "file": "spec/60-visibility.md",
-      "line": 184,
+      "line": 169,
       "scenarios": [
         "WHEN a file's permission response has a next-page token, THEN the sweep reads that page before replacing its grants."
       ]
@@ -24850,7 +24839,7 @@
       "statement": "User, group, domain and anyone permissions map to distinct principal kinds; the mapping retains Drive permission id and role beside the source resource id.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 186
+      "line": 171
     },
     {
       "id": "disclosure.drive-sweep.inherited-access",
@@ -24861,7 +24850,7 @@
       "statement": "A shared-drive permission records its inheritance source when Drive supplies one; a direct permission and an inherited permission remain distinct grants.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 187
+      "line": 172
     },
     {
       "id": "disclosure.drive-sweep.unreadable-resource",
@@ -24872,7 +24861,7 @@
       "statement": "A refused or incomplete permission read marks its resource unread and advances no coverage watermark under {{disclosure.sweep.coverage-watermark}}.",
       "why": "A-disclosure#drive-permission-coverage",
       "file": "spec/60-visibility.md",
-      "line": 188,
+      "line": 173,
       "scenarios": [
         "WHEN one file's permissions refuse, THEN no complete sweep watermark advances."
       ]
@@ -24886,7 +24875,7 @@
       "statement": "An email or domain from Drive becomes a reachable subject only through a verified identity link under {{disclosure.reach.subject-principals}}.",
       "why": "",
       "file": "spec/60-visibility.md",
-      "line": 190
+      "line": 175
     },
     {
       "id": "disclosure.set-mode.check-verb",
@@ -25216,7 +25205,7 @@
       "statement": "A declaration holding more than one statement raises `DisclosureTemplateMultiStatement`.",
       "why": "A-authority#query-templates",
       "file": "spec/61-disclosure.md",
-      "line": 127
+      "line": 112
     },
     {
       "id": "disclosure.template.overfetch",
@@ -25227,7 +25216,7 @@
       "statement": "A capped result sets the envelope's truncation flag by reading exactly 1 rows past the effective ceiling.",
       "why": "",
       "file": "spec/61-disclosure.md",
-      "line": 129
+      "line": 114
     },
     {
       "id": "disclosure.template.read-envelope",
@@ -25238,7 +25227,7 @@
       "statement": "A template read returns rows, truncation, row ceiling, suppression presence and the disclosure policy hash; set-valued policy fields follow {{run.publish.disclosure-digest}} at every nesting depth.",
       "why": "A-disclosure#grants-rows-under",
       "file": "spec/61-disclosure.md",
-      "line": 130
+      "line": 115
     },
     {
       "id": "disclosure.bound-cohort.cohort-widening",
@@ -25249,7 +25238,7 @@
       "statement": "A read recovering an under-floor group by merging it into a coarser key raises `DisclosureCohortWidening`.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 137
+      "line": 122
     },
     {
       "id": "disclosure.bound-cohort.per-individual-row",
@@ -25260,7 +25249,7 @@
       "statement": "Reading a per-individual row from a cohort table without an explicit grant on the reader's token raises `DisclosurePerIndividualUngranted`.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 139
+      "line": 124
     },
     {
       "id": "disclosure.bound-cohort.singleton-cohort",
@@ -25271,7 +25260,7 @@
       "statement": "A cohort key whose grain resolves to one person raises `DisclosureSingletonCohort` at declaration, before any row lands under it.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 141
+      "line": 126
     },
     {
       "id": "disclosure.bound-cohort.exact-figures",
@@ -25282,7 +25271,7 @@
       "statement": "A policy declaring `figures = \"exact\"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `\"noised\"`, and exact figures publish only from a `cohort` table.",
       "why": "A-disclosure#aggregate-disclosure-enforced",
       "file": "spec/61-disclosure.md",
-      "line": 143
+      "line": 128
     },
     {
       "id": "disclosure.record.segment",
@@ -25312,7 +25301,7 @@
       "operation": "record",
       "subject": "header-unsupported",
       "kind": "refusal",
-      "statement": "Opening or verifying a chain whose header names another format or digest, a segment size outside {{disclosure.record.chain-header}}, or any field beyond `format`, `digest` and `segment_entries` raises `AuditHeaderUnsupported`.",
+      "statement": "Opening or verifying a chain whose header names another format or digest, a segment size outside {{disclosure.record.chain-header}}, or any field beyond {{type:contextful_policy::audit::ChainHeader}} raises `AuditHeaderUnsupported`.",
       "why": "because a verifier guessing at a digest it does not implement checks nothing",
       "file": "spec/62-accountability.md",
       "line": 62
@@ -25323,7 +25312,7 @@
       "operation": "record",
       "subject": "entry-format",
       "kind": "behavior",
-      "statement": "A v1 entry carries `format: 1`, and its `entry_hash` is the chain header's digest over the RFC 8785 canonical JSON of the entry's `format`, `seq`, `prev_hash` and `attributes`.",
+      "statement": "A v1 {{type:contextful_policy::audit::AuditEntry}} carries `format: 1`, and its `entry_hash` is the chain header's digest over the RFC 8785 canonical JSON of the entry's `format`, `seq`, `prev_hash` and `attributes`.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
       "line": 64
@@ -25334,7 +25323,7 @@
       "operation": "record",
       "subject": "entry-fields",
       "kind": "behavior",
-      "statement": "Verifying a chain holding an entry with any field beyond `format`, `seq`, `prev_hash`, `attributes` and `entry_hash` raises {{disclosure.attest.broken-chain}} at that entry.",
+      "statement": "Verifying a chain holding an entry with any field beyond {{type:contextful_policy::audit::AuditEntry}} raises {{disclosure.attest.broken-chain}} at that entry.",
       "why": "because the entry digest covers only `format`, `seq`, `prev_hash` and `attributes`, so without this an injected field verifies clean",
       "file": "spec/62-accountability.md",
       "line": 66
@@ -25689,7 +25678,7 @@
       "statement": "`audit explain --table <t> --subject <principal>` answers `admit` when a grant the exchange policy issues for the `--role` names, else its `default_grants`, carries `read` over a pattern covering the table, and `deny` otherwise.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 152
+      "line": 133
     },
     {
       "id": "disclosure.explain.path",
@@ -25700,7 +25689,7 @@
       "statement": "A decision's path names the role or default set, the covering grant, then each step the table declares in {{authority.compose.relation-order}}; a deny's path ends at {{authority.filter-rows.default-deny}}.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 154
+      "line": 135
     },
     {
       "id": "disclosure.explain.replay",
@@ -25711,7 +25700,7 @@
       "statement": "`--window <from>..<to>` replays each chain entry naming the subject and the table whose read instant falls in the window: its seq, instant, outcome, agent and recorded `contextful.*` attributes.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 156
+      "line": 137
     },
     {
       "id": "disclosure.explain.coverage",
@@ -25722,7 +25711,7 @@
       "statement": "An explanation carries a coverage block: segments and entries verified, entries carrying no read instant, window spans the chain does not reach, and each visibility binding's source with its sweep watermark.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 158
+      "line": 139
     },
     {
       "id": "disclosure.explain.audience",
@@ -25733,7 +25722,7 @@
       "statement": "`audit explain --audience <t>` lists by name the roles whose grants read the table, whether `default_grants` do, and per `on_behalf_of` scheme the count of principals and served reads.",
       "why": "A-disclosure#explanation-reads-exchange",
       "file": "spec/62-accountability.md",
-      "line": 160
+      "line": 141
     },
     {
       "id": "disclosure.explain.no-row",
@@ -25744,7 +25733,7 @@
       "statement": "An explanation returning a row, field value or excerpt from the resource it decides about, a replayed `contextful.result.*` attribute beyond `contextful.result.rows` included, raises `VisibilityDiagnosticRow`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 162
+      "line": 143
     },
     {
       "id": "disclosure.explain.empty-window",
@@ -25755,7 +25744,7 @@
       "statement": "A window holding no observations raises `VisibilityNoObservations` and states that no claim is available.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 164
+      "line": 145
     },
     {
       "id": "disclosure.explain.unqualified-assurance",
@@ -25766,7 +25755,7 @@
       "statement": "A negative assurance answer emitted without its coverage block raises `VisibilityUnqualifiedAssurance`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 166
+      "line": 147
     },
     {
       "id": "disclosure.explain.groups-not-members",
@@ -25777,7 +25766,7 @@
       "statement": "A reader-facing explanation rendering the member identities of a group on the path raises `VisibilityIndividualNamed`.",
       "why": "P2",
       "file": "spec/62-accountability.md",
-      "line": 168
+      "line": 149
     },
     {
       "id": "disclosure.attest.broken-chain",
@@ -25788,7 +25777,7 @@
       "statement": "A disagreeing digest, entry format or Merkle root, a sequence gap, a failing signature, or, beside `chain.tip`, `chain.held` or a signed root, an absent chain or a missing or unsigned tip raises `AuditChainBroken` at the earliest failing index.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 175
+      "line": 156
     },
     {
       "id": "disclosure.attest.merkle-root",
@@ -25799,7 +25788,7 @@
       "statement": "A v1 segment root is the RFC 6962 Merkle tree hash, under the header's digest, over the segment's raw entry digests in `seq` order.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 177
+      "line": 158
     },
     {
       "id": "disclosure.attest.root-tag",
@@ -25810,7 +25799,7 @@
       "statement": "A v1 signed root carries its signing algorithm, `Ed25519` or `ES256`, and signs it with the header digest, segment number, entry count and root.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 179
+      "line": 160
     },
     {
       "id": "disclosure.attest.inclusion-proof",
@@ -25821,7 +25810,7 @@
       "statement": "`prove` returns one entry, its chain header, its RFC 6962 audit path and its segment's signed root; the proof verifies offline under the signer's public key alone.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 181
+      "line": 162
     },
     {
       "id": "disclosure.attest.proof-invalid",
@@ -25832,7 +25821,7 @@
       "statement": "A proof whose entry, audit path, header, root or root signature disagrees raises `AuditProofInvalid`.",
       "why": "A-disclosure#audit-format-v1",
       "file": "spec/62-accountability.md",
-      "line": 183
+      "line": 164
     },
     {
       "id": "disclosure.attest.proof-unavailable",
@@ -25843,7 +25832,7 @@
       "statement": "Proving an entry of a v0 chain, of a segment carrying no signed root, or outside the chain raises `AuditProofUnavailable`.",
       "why": "because an open segment has no signed root yet, and a v0 root commits to no tree",
       "file": "spec/62-accountability.md",
-      "line": 185
+      "line": 166
     },
     {
       "id": "disclosure.attest.root-replication",
@@ -25854,7 +25843,7 @@
       "statement": "`audit anchor` once it signs, and a held chain's replicator at start and every 10 min, copy each signed root the `[sync]` bucket lacks to `<prefix>/<project>/audit/roots/<segment>.json`; a failed copy waits for the next and fails no anchor, append or read.",
       "why": "A-disclosure#hash-chain-attestable",
       "file": "spec/62-accountability.md",
-      "line": 187
+      "line": 168
     },
     {
       "id": "disclosure.attest.replica-verify",
@@ -25865,7 +25854,7 @@
       "statement": "`audit verify --bucket` also holds the chain to each replicated root: a root failing its signature, closing a segment the chain does not reach, or absent or different locally breaks the chain as {{disclosure.attest.broken-chain}} does.",
       "why": "because deleting the roots, `chain.held` and the tip's signature leaves a chain no local check tells from an unanchored one",
       "file": "spec/62-accountability.md",
-      "line": 189
+      "line": 170
     },
     {
       "id": "disclosure.attest.replicate-verb",
@@ -25876,7 +25865,7 @@
       "statement": "`audit replicate` copies the roots {{disclosure.attest.root-replication}} copies, once, and prints the segments it sent.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 191
+      "line": 172
     },
     {
       "id": "disclosure.attest.lineage-elision",
@@ -25887,7 +25876,7 @@
       "statement": "A lineage attestation counts a claim's evidence references into tables the caller's session does not register as `withheld` in the `contextful.recall` block, and names no such table.",
       "why": "because naming a withheld table leaks its existence outside the caller's authority, while a count keeps the suppression explicable and never confirms a table exists",
       "file": "spec/62-accountability.md",
-      "line": 192
+      "line": 173
     },
     {
       "id": "disclosure.attest.verify-verb",
@@ -25898,7 +25887,7 @@
       "statement": "`audit verify` opens the chain read-only and prints its end when every check of {{disclosure.attest.broken-chain}} passes, each signature included under `--public-key`.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 194
+      "line": 175
     },
     {
       "id": "disclosure.attest.anchor-verb",
@@ -25909,7 +25898,7 @@
       "statement": "`audit anchor --issuer-key <seed>` signs the chain's missing roots and its tip as {{disclosure.record.unsigned-tip}} anchors them, and prints the chain end.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 195
+      "line": 176
     },
     {
       "id": "disclosure.attest.prove-verb",
@@ -25920,7 +25909,7 @@
       "statement": "`audit prove --seq <n>` prints the proof {{disclosure.attest.inclusion-proof}} returns, and `audit check-proof` verifies one under a public key, reading no store.",
       "why": "",
       "file": "spec/62-accountability.md",
-      "line": 196
+      "line": 177
     },
     {
       "id": "disclosure.attest.owner-only",
@@ -25931,7 +25920,7 @@
       "statement": "An audit verb reading a chain, presented with a capability credential, raises `AuditRequiresOwner` before it reads an audit file.",
       "why": "because the chain names every person's reads, and a credential scoped to some tables reaches no record of others",
       "file": "spec/62-accountability.md",
-      "line": 197
+      "line": 178
     },
     {
       "id": "disclosure.erase.privilege",
@@ -25942,7 +25931,7 @@
       "statement": "Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.",
       "why": "A-read#memory-access-follows",
       "file": "spec/62-accountability.md",
-      "line": 204
+      "line": 185
     },
     {
       "id": "disclosure.erase.unsupported-scope",
@@ -25953,7 +25942,7 @@
       "statement": "An empty target set or erasure admitted only by narrowed grants raises `ErasureScopeUnsupported` before store access; supported erasure admits every requested table explicitly.",
       "why": "because ignoring a grant constraint widens destructive authority",
       "file": "spec/62-accountability.md",
-      "line": 206
+      "line": 187
     },
     {
       "id": "disclosure.erase.subject-column",
@@ -25964,7 +25953,7 @@
       "statement": "A table names its subject column as `subject_id = \"<column>\"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 208
+      "line": 189
     },
     {
       "id": "disclosure.erase.key-set",
@@ -25975,7 +25964,7 @@
       "statement": "A key-set request binds its selectors to the declared keys of {{store.declare.erasure-metadata}} and carries an opaque subject hash instead of a raw subject identity.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 210
+      "line": 191
     },
     {
       "id": "disclosure.erase.column-key-set",
@@ -25986,7 +25975,7 @@
       "statement": "A column-scoped {{disclosure.erase.key-set}} carries a declared column and non-null scalar keys; canonical declarations select every table naming that column, including tables without subject metadata. Caller table subsets and malformed selectors follow {{disclosure.erase.unsupported-scope}}.",
       "why": "because a caller table subset leaves declared copies of the erased key readable",
       "file": "spec/62-accountability.md",
-      "line": 212
+      "line": 193
     },
     {
       "id": "disclosure.erase.atomic-publication",
@@ -25997,7 +25986,7 @@
       "statement": "Subject and key-set erasure select one committed frontier across every affected table; a failed transaction exposes none of its staged replacements.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 214
+      "line": 195
     },
     {
       "id": "disclosure.erase.reader-frontier",
@@ -26008,7 +25997,7 @@
       "statement": "Query, file, retrieval and cache responses resolve one erasure frontier and revalidate it before releasing bytes; an obsolete frontier releases no rows or files.",
       "why": "A-disclosure#re-synthesis-after, A-read#extraction-cache-keys",
       "file": "spec/62-accountability.md",
-      "line": 216
+      "line": 197
     },
     {
       "id": "disclosure.erase.shared-references",
@@ -26019,7 +26008,7 @@
       "statement": "A shared digest survives while any surviving declared reference names it; erasure collects a digest only after its last surviving reference disappears.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 218
+      "line": 199
     },
     {
       "id": "disclosure.erase.surviving-citations",
@@ -26030,7 +26019,7 @@
       "statement": "A citing table carrying the survival declaration of {{store.declare.erasure-metadata}} retains its rows; its references resolve through {{read.reference.erased-verdict}}.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 220
+      "line": 201
     },
     {
       "id": "disclosure.erase.subject-pseudonym",
@@ -26041,7 +26030,7 @@
       "statement": "Subject erasure computes its subject hash as a domain-separated HMAC-SHA-256 under the configured project audit key; no transaction or audit artifact carries raw subject identities or erased key values.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 222
+      "line": 203
     },
     {
       "id": "disclosure.erase.signer-binding",
@@ -26052,7 +26041,7 @@
       "statement": "Erasure signs through the configured issuer or node's {{authority.issue.signing-port}}; readers verify the canonical audit chain under configured public-key pins, independently of transaction artifacts. Missing signing or verifier configuration follows {{disclosure.erase.recovery}}.",
       "why": "A-disclosure#audit-log-opens",
       "file": "spec/62-accountability.md",
-      "line": 224
+      "line": 205
     },
     {
       "id": "disclosure.erase.row-free-audit",
@@ -26063,7 +26052,7 @@
       "statement": "The signed audit chain binds the committed transaction, {{disclosure.erase.subject-pseudonym}} and affected counts to the exact replacement-file inventory.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 226
+      "line": 207
     },
     {
       "id": "disclosure.erase.store-binding",
@@ -26074,7 +26063,7 @@
       "statement": "The signed erasure entry binds {{store.init.store-identity}}; readers reject a frontier whose signed store identity differs from the receiving store, following {{disclosure.erase.recovery}}.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 228
+      "line": 209
     },
     {
       "id": "disclosure.erase.working-publication",
@@ -26085,7 +26074,7 @@
       "statement": "Erasure preserves an immutable signed survivor baseline and selects independent working copies under the ordinary table layout; normal append and fold advance working publication without changing the baseline or requiring another erasure signature.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 230
+      "line": 211
     },
     {
       "id": "disclosure.erase.recovery",
@@ -26096,7 +26085,7 @@
       "statement": "Recovery completes collection for a committed frontier and discards uncommitted replacements; an incomplete or disagreeing transaction record raises `ErasureTransactionIncomplete` before releasing store content.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 232
+      "line": 213
     },
     {
       "id": "disclosure.erase.recovery-verb",
@@ -26107,7 +26096,7 @@
       "statement": "`context erase --recover --project <project>` resumes {{disclosure.erase.recovery}} under {{disclosure.erase.privilege}} and {{authority.verify.effect-boundary}} before collection; selectors and signing ports are absent.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 234
+      "line": 215
     },
     {
       "id": "disclosure.erase.unsigned-recovery",
@@ -26118,7 +26107,7 @@
       "statement": "Uncommitted staging origins resolve against canonical stored tables and require Forget over the complete store scope; signed-only recovery admits the complete authenticated frontier. Uncommitted recovery returns no transaction identity.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 236
+      "line": 217
     },
     {
       "id": "disclosure.erase.retirement-inventory",
@@ -26129,7 +26118,7 @@
       "statement": "Signed retirement inventories bind regular paths through domain-separated HMAC under {{disclosure.record.audit-key}} and their file digests; recovery admits missing files as completed collection, validates all remaining files before deletion, and rejects changes through {{disclosure.erase.recovery}}.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 238
+      "line": 219
     },
     {
       "id": "disclosure.erase.canonical-audit-key",
@@ -26140,7 +26129,7 @@
       "statement": "Erasure and keyed retirement recovery require the persisted canonical {{disclosure.record.audit-key}}; caller-supplied keys equal it, and absent or mismatched keys follow {{disclosure.erase.recovery}} before content access, signed intent, staging or collection.",
       "why": "A-disclosure#erasure-forced-rewrite",
       "file": "spec/62-accountability.md",
-      "line": 240
+      "line": 221
     },
     {
       "id": "disclosure.erase.survivor-names",
@@ -26151,7 +26140,7 @@
       "statement": "Erasure survivor snapshots use row-independent part names, preserve admitted surviving rows, record rewritten part key versions, and rebuild declared indexes through {{store.index.vector-by-fold}} and {{store.index.fulltext-by-fold}}.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 242
+      "line": 223
     },
     {
       "id": "disclosure.erase.cascade",
@@ -26162,7 +26151,7 @@
       "statement": "In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 244
+      "line": 225
     },
     {
       "id": "disclosure.erase.cascade-unbounded",
@@ -26173,7 +26162,7 @@
       "statement": "A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 246
+      "line": 227
     },
     {
       "id": "disclosure.erase.physical-removal",
@@ -26184,7 +26173,7 @@
       "statement": "Within 24 h of the erasure's commit, every file holding an erased row, superseded snapshots inside {{store.fold.retention}} included, is rewritten or collected.",
       "why": "A-disclosure#re-synthesis-after",
       "file": "spec/62-accountability.md",
-      "line": 248
+      "line": 229
     },
     {
       "id": "disclosure.erase.tenant-column-type",
@@ -26195,7 +26184,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 250
+      "line": 231
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -26206,7 +26195,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 252
+      "line": 233
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -26217,7 +26206,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 254
+      "line": 235
     },
     {
       "id": "disclosure.erase.tenant-rewrite",
@@ -26228,7 +26217,7 @@
       "statement": "`context erase --tenant <id>` rewrites every row whose bare outermost partition column holds the identifier's exact bytes out of every table through {{disclosure.erase.atomic-publication}}, and prints a freshly signed receipt.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 256
+      "line": 237
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -26239,7 +26228,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 288
+      "line": 250
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -26250,7 +26239,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 290
+      "line": 252
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -26261,7 +26250,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 292
+      "line": 254
     },
     {
       "id": "disclosure.receipt.coverage",
@@ -26272,7 +26261,7 @@
       "statement": "A `receipt_version` 1 coverage block covers the canonical store and names replicas and the replication bucket as excluded.",
       "why": "because the object interface has no delete, so a claim over the replication bucket names a removal that never ran",
       "file": "spec/62-accountability.md",
-      "line": 294
+      "line": 256
     },
     {
       "id": "disclosure.receipt.chain-record",
@@ -26283,7 +26272,7 @@
       "statement": "A purge appends its receipt's `request_id` and SHA-256 digest to the audit chain after signing; a digest the chain already holds follows {{disclosure.receipt.replayed}}.",
       "why": "A-disclosure#forced-rewrite-measured",
       "file": "spec/62-accountability.md",
-      "line": 296
+      "line": 258
     },
     {
       "id": "disclosure.receipt.prior-request",
@@ -26294,7 +26283,7 @@
       "statement": "A purge's receipt entry records the tenant's HMAC-SHA-256 under the project audit key beside its `request_id`; a later purge of that tenant signs the latest such `request_id` as `prior_request_id`.",
       "why": "because the audit chain already orders every receipt, and a keyed digest links repeat purges without a cleartext identifier or a second record",
       "file": "spec/62-accountability.md",
-      "line": 298
+      "line": 260
     },
     {
       "id": "disclosure.receipt.zero-rows",
@@ -26305,7 +26294,7 @@
       "statement": "A purge whose tenant holds no retained row rewrites nothing and signs a receipt with a zero count for every declared table and an empty `transaction_id`.",
       "why": "because an owner proves a tenant's absence with one artifact whether or not rows existed",
       "file": "spec/62-accountability.md",
-      "line": 300
+      "line": 262
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -33548,7 +33537,6 @@
       "disclosure.mirror.grants-table",
       "disclosure.mirror.unmirrorable-opening",
       "disclosure.reach.closure-overflow",
-      "disclosure.reach.closure-projection",
       "disclosure.template.read-envelope"
     ],
     "A-disclosure#hash-chain-attestable": [
@@ -37225,6 +37213,140 @@
     ]
   ],
   "types": {
+    "contextful_core::disclosure::declare::RawBinding": {
+      "file": "crates/contextful-core/src/disclosure/declare.rs",
+      "line": 112,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "source"
+        },
+        {
+          "name": "resource_key"
+        },
+        {
+          "name": "resource_kind"
+        },
+        {
+          "name": "fidelity"
+        },
+        {
+          "name": "family"
+        },
+        {
+          "name": "max_acl_staleness"
+        },
+        {
+          "name": "on_stale"
+        }
+      ],
+      "clauses": [
+        "disclosure.mirror.binding-keys"
+      ]
+    },
+    "contextful_core::disclosure::pack::RawMapping": {
+      "file": "crates/contextful-core/src/disclosure/pack.rs",
+      "line": 105,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "resource_key"
+        },
+        {
+          "name": "resource_kind"
+        },
+        {
+          "name": "family"
+        },
+        {
+          "name": "fidelity"
+        },
+        {
+          "name": "container_key"
+        },
+        {
+          "name": "principal_kind"
+        },
+        {
+          "name": "level"
+        }
+      ],
+      "clauses": [
+        "disclosure.pack.mapping-keys"
+      ]
+    },
+    "contextful_core::disclosure::sweep::GrantLine": {
+      "file": "crates/contextful-core/src/disclosure/sweep.rs",
+      "line": 196,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "resource_id"
+        },
+        {
+          "name": "principal"
+        },
+        {
+          "name": "principal_kind"
+        },
+        {
+          "name": "level"
+        }
+      ],
+      "clauses": [
+        "disclosure.sweep.grants-file"
+      ]
+    },
+    "contextful_core::disclosure::sweep::LinkLine": {
+      "file": "crates/contextful-core/src/disclosure/sweep.rs",
+      "line": 337,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "source_principal"
+        },
+        {
+          "name": "subject"
+        },
+        {
+          "name": "method"
+        },
+        {
+          "name": "confidence"
+        }
+      ],
+      "clauses": [
+        "disclosure.sweep.directory-file"
+      ]
+    },
+    "contextful_core::disclosure::sweep::RawBlock": {
+      "file": "crates/contextful-core/src/disclosure/sweep.rs",
+      "line": 102,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "source"
+        },
+        {
+          "name": "enumerate"
+        },
+        {
+          "name": "full"
+        },
+        {
+          "name": "incremental"
+        },
+        {
+          "name": "credential"
+        },
+        {
+          "name": "events"
+        }
+      ],
+      "clauses": [
+        "disclosure.sweep.sweep-block"
+      ]
+    },
     "contextful_core::exchange::RawPolicy": {
       "file": "crates/contextful-core/src/exchange.rs",
       "line": 210,
@@ -37505,6 +37627,52 @@
       ],
       "clauses": [
         "store.declare.table-block"
+      ]
+    },
+    "contextful_policy::audit::AuditEntry": {
+      "file": "crates/contextful-policy/src/audit.rs",
+      "line": 486,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "format",
+          "doc": "`1` on a v1 entry; absent, read as `0`, on a v0 entry."
+        },
+        {
+          "name": "seq"
+        },
+        {
+          "name": "prev_hash"
+        },
+        {
+          "name": "attributes"
+        },
+        {
+          "name": "entry_hash"
+        }
+      ],
+      "clauses": [
+        "disclosure.record.entry-format",
+        "disclosure.record.entry-fields"
+      ]
+    },
+    "contextful_policy::audit::ChainHeader": {
+      "file": "crates/contextful-policy/src/audit.rs",
+      "line": 227,
+      "kind": "struct",
+      "members": [
+        {
+          "name": "format"
+        },
+        {
+          "name": "digest"
+        },
+        {
+          "name": "segment_entries"
+        }
+      ],
+      "clauses": [
+        "disclosure.record.header-unsupported"
       ]
     },
     "contextful_policy::enforce::mask::RawColumnPolicy": {
@@ -55310,7 +55478,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment",
-        "line": 1379,
+        "line": 1380,
         "verdict": "performed",
         "proved": false
       }
@@ -55330,7 +55498,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "a_v1_segment_root_is_the_rfc_6962_tree_hash_of_its_entry_digests",
-        "line": 1325,
+        "line": 1326,
         "verdict": "performed",
         "proved": false
       }
@@ -55350,7 +55518,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "a_proof_disagreeing_anywhere_raises_audit_proof_invalid",
-        "line": 1415,
+        "line": 1416,
         "verdict": "performed",
         "proved": false
       }
@@ -55360,7 +55528,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "proving_an_unrooted_or_absent_entry_raises_audit_proof_unavailable",
-        "line": 1467,
+        "line": 1468,
         "verdict": "performed",
         "proved": false
       }
@@ -55410,7 +55578,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "a_v1_root_names_and_signs_its_algorithm_header_and_segment",
-        "line": 1341,
+        "line": 1342,
         "verdict": "performed",
         "proved": false
       }
@@ -55450,7 +55618,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/declare.rs",
         "name": "a_budget_outside_the_grammar_is_refused_naming_table_and_text",
-        "line": 46,
+        "line": 47,
         "verdict": "performed",
         "proved": false
       }
@@ -55480,7 +55648,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/visibility.rs",
         "name": "a_malformed_now_offset_stops_the_server_before_it_serves",
-        "line": 338,
+        "line": 339,
         "verdict": "performed",
         "proved": false
       }
@@ -55510,7 +55678,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/declare.rs",
         "name": "a_level_the_family_does_not_permit_is_refused",
-        "line": 74,
+        "line": 75,
         "verdict": "performed",
         "proved": false
       }
@@ -55520,7 +55688,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/declare.rs",
         "name": "a_block_naming_no_family_is_refused",
-        "line": 121,
+        "line": 122,
         "verdict": "performed",
         "proved": false
       }
@@ -55895,6 +56063,16 @@
         "proved": false
       }
     ],
+    "disclosure.mirror.binding-keys": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/disclosure/declare.rs",
+        "name": "a_budget_outside_the_grammar_is_refused_naming_table_and_text",
+        "line": 45,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
     "disclosure.mirror.face-scope": [
       {
         "kind": "test",
@@ -55920,7 +56098,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/visibility.rs",
         "name": "pipeline_validate_refuses_a_servable_binding_without_a_sweep_or_a_budget",
-        "line": 167,
+        "line": 168,
         "verdict": "performed",
         "proved": false
       }
@@ -55940,7 +56118,17 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/visibility.rs",
         "name": "an_unbound_table_on_an_organization_wide_face_refuses_diagnose_and_start",
-        "line": 290,
+        "line": 291,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.mirror.unmirrorable-opening": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-core/tests/integration/disclosure/reach.rs",
+        "name": "the_semi_join_admits_resources_holding_a_read_conferring_unexpired_current_grant",
+        "line": 216,
         "verdict": "performed",
         "proved": false
       }
@@ -56060,7 +56248,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/reach.rs",
         "name": "a_public_grant_joins_every_subject_reachable_set",
-        "line": 276,
+        "line": 277,
         "verdict": "performed",
         "proved": false
       }
@@ -56070,7 +56258,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/reach.rs",
         "name": "a_level_confers_read_through_the_pack_mapping_or_verbatim",
-        "line": 254,
+        "line": 255,
         "verdict": "performed",
         "proved": false
       }
@@ -56080,7 +56268,7 @@
         "kind": "test",
         "path": "crates/contextful-core/tests/integration/disclosure/reach.rs",
         "name": "the_semi_join_admits_resources_holding_a_read_conferring_unexpired_current_grant",
-        "line": 217,
+        "line": 218,
         "verdict": "performed",
         "proved": false
       }
@@ -56200,7 +56388,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link",
-        "line": 1155,
+        "line": 1156,
         "verdict": "performed",
         "proved": false
       }
@@ -56210,7 +56398,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "an_entry_carrying_a_field_outside_its_digest_breaks_the_chain_at_that_entry",
-        "line": 1236,
+        "line": 1237,
         "verdict": "performed",
         "proved": false
       }
@@ -56220,7 +56408,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "a_v1_entry_digests_the_rfc_8785_form_of_its_whole_entry",
-        "line": 1066,
+        "line": 1067,
         "verdict": "performed",
         "proved": false
       }
@@ -56260,7 +56448,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "a_header_naming_another_format_digest_or_segment_size_raises_audit_header_unsupported",
-        "line": 1200,
+        "line": 1201,
         "verdict": "performed",
         "proved": false
       }
@@ -56280,7 +56468,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "a_v1_attribute_integer_beyond_2_53_raises_audit_attribute_inexact",
-        "line": 1098,
+        "line": 1099,
         "verdict": "performed",
         "proved": false
       }
@@ -56341,6 +56529,16 @@
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "a_read_only_handle_verifies_beside_the_writer_and_refuses_appends",
         "line": 291,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.record.read-signer": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/memory.rs",
+        "name": "a_signed_read_whose_signing_key_the_pins_omit_is_refused_and_appends_nothing",
+        "line": 296,
         "verdict": "performed",
         "proved": false
       }
@@ -56510,7 +56708,7 @@
         "kind": "test",
         "path": "crates/contextful-policy/tests/integration/audit.rs",
         "name": "a_v0_chain_verifies_and_appends_under_v0_rules",
-        "line": 1269,
+        "line": 1270,
         "verdict": "performed",
         "proved": false
       }
@@ -56911,6 +57109,16 @@
         "path": "crates/contextful-core/tests/integration/disclosure/sweep.rs",
         "name": "each_committed_run_advances_the_source_epoch_by_one",
         "line": 220,
+        "verdict": "performed",
+        "proved": false
+      }
+    ],
+    "disclosure.sweep.sweep-verb": [
+      {
+        "kind": "test",
+        "path": "crates/contextful-cli/tests/integration/visibility.rs",
+        "name": "a_sweep_of_a_declared_source_commits_the_grants_file_as_one_run",
+        "line": 45,
         "verdict": "performed",
         "proved": false
       }
@@ -58490,7 +58698,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "an_entity_upsert_lands_merges_aliases_and_refuses_a_taken_mention",
-        "line": 664,
+        "line": 687,
         "verdict": "performed",
         "proved": false
       }
@@ -58540,7 +58748,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "explain_cli_answers_one_card_candidates_or_the_identity_alone",
-        "line": 585,
+        "line": 608,
         "verdict": "performed",
         "proved": false
       }
@@ -58570,7 +58778,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "an_entity_upsert_lands_merges_aliases_and_refuses_a_taken_mention",
-        "line": 662,
+        "line": 685,
         "verdict": "performed",
         "proved": false
       }
@@ -58630,7 +58838,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "an_entity_upsert_lands_merges_aliases_and_refuses_a_taken_mention",
-        "line": 663,
+        "line": 686,
         "verdict": "performed",
         "proved": false
       }
@@ -59490,7 +59698,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "calibration_reports_the_settled_claims_of_a_table",
-        "line": 560,
+        "line": 583,
         "verdict": "performed",
         "proved": false
       }
@@ -59540,7 +59748,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "observe_checks_against_the_stored_registration_and_prints_the_label_row",
-        "line": 516,
+        "line": 539,
         "verdict": "performed",
         "proved": false
       }
@@ -59560,7 +59768,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "predict_lands_a_registration_and_prints_its_id",
-        "line": 462,
+        "line": 485,
         "verdict": "performed",
         "proved": false
       }
@@ -59640,7 +59848,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "settlement_rows_carry_the_token_subject",
-        "line": 547,
+        "line": 570,
         "verdict": "performed",
         "proved": false
       }
@@ -59790,7 +59998,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "a_scheduled_synthesize_job_replaces_the_operator_triggered_pass",
-        "line": 298,
+        "line": 321,
         "verdict": "performed",
         "proved": false
       }
@@ -70156,7 +70364,7 @@
         "kind": "test",
         "path": "crates/contextful-cli/tests/integration/memory.rs",
         "name": "an_issuer_key_serve_in_a_project_declaring_no_default_zone_refuses_at_start",
-        "line": 385,
+        "line": 408,
         "verdict": "performed",
         "proved": false
       }

@@ -59,11 +59,11 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
 - `segment` — Entries append to a numbered segment file in ascending `seq`, and a segment closes under one signed root once it holds its chain header's segment size, 4096 entries by default.
 - `chain-header` — `header.json`, written before a new chain's first entry, fixes the chain's format, its digest, `sha256` or `blake3`, and a segment size of at most 65536 entries; the first v1 entry's `prev_hash` is the canonical header's digest.
   *A-disclosure#audit-format-v1*
-- `header-unsupported` — Opening or verifying a chain whose header names another format or digest, a segment size outside {{disclosure.record.chain-header}}, or any field beyond `format`, `digest` and `segment_entries` raises `AuditHeaderUnsupported`.
+- `header-unsupported` — Opening or verifying a chain whose header names another format or digest, a segment size outside {{disclosure.record.chain-header}}, or any field beyond {{type:contextful_policy::audit::ChainHeader}} raises `AuditHeaderUnsupported`.
   *because a verifier guessing at a digest it does not implement checks nothing*
-- `entry-format` — A v1 entry carries `format: 1`, and its `entry_hash` is the chain header's digest over the RFC 8785 canonical JSON of the entry's `format`, `seq`, `prev_hash` and `attributes`.
+- `entry-format` — A v1 {{type:contextful_policy::audit::AuditEntry}} carries `format: 1`, and its `entry_hash` is the chain header's digest over the RFC 8785 canonical JSON of the entry's `format`, `seq`, `prev_hash` and `attributes`.
   *A-disclosure#audit-format-v1*
-- `entry-fields` — Verifying a chain holding an entry with any field beyond `format`, `seq`, `prev_hash`, `attributes` and `entry_hash` raises {{disclosure.attest.broken-chain}} at that entry.
+- `entry-fields` — Verifying a chain holding an entry with any field beyond {{type:contextful_policy::audit::AuditEntry}} raises {{disclosure.attest.broken-chain}} at that entry.
   *because the entry digest covers only `format`, `seq`, `prev_hash` and `attributes`, so without this an injected field verifies clean*
 - `inexact-integer` — Appending a v1 entry whose attributes hold an integer beyond ±(2^53 − 1) raises `AuditAttributeInexact` and appends nothing; verifying a chain holding such an entry raises {{disclosure.attest.broken-chain}}.
   *because RFC 8785 writes every number as an IEEE 754 double, so integers past 2^53 share a digest and an edit between two of them verifies*
@@ -125,25 +125,6 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *because egress reachable under a default configuration is telemetry the operator never chose*
 - `span-queue` — Spans leave off the operation's path through a queue of 2048 spans; a span past the cap, or lost to a failed export, is dropped and counted.
   *because an unreachable collector must add no latency to the read or run that made the span*
-
-One read's entry under group commit:
-
-```mermaid
-sequenceDiagram
-    participant R as read
-    participant C as audit chain
-    participant D as local durable storage
-    R->>C: span attributes
-    C->>C: link prev_hash to the tip, compute entry_hash
-    C->>D: one fsync shared by concurrent appends
-    alt persisted
-        D-->>C: durable
-        C-->>R: rows released
-    else persist fails
-        C->>C: pop the in-memory tip
-        C-->>R: AuditEntryUnpersisted, no rows
-    end
-```
 
 ## explain
 
@@ -256,25 +237,6 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, and th
 - `tenant-rewrite` — `context erase --tenant <id>` rewrites every row whose bare outermost partition column holds the identifier's exact bytes out of every table through {{disclosure.erase.atomic-publication}}, and prints a freshly signed receipt.
   *A-disclosure#forced-rewrite-measured*
 
-A subject erasure:
-
-```mermaid
-flowchart LR
-  REQ(["requester"]) -->|"context erase --subject"| G{"forget grant over every table?"}
-  G -->|"no: ErasureUngranted"| REQ
-  G -->|"yes, HMAC the subject"| CASC["erasure cascade"]
-  CASC -->|"selected row versions"| C{"provenance within 16 hops?"}
-  C -->|"no: ErasureCascadeUnbounded"| REQ
-  C -->|"yes, survivor rows"| STAGE[("staged replacement")]
-  STAGE -->|"signed erasure entry"| CHAINLOG[("audit chain")]
-  CHAINLOG -->|"entry hash"| CERT[("transaction certificate")]
-  CERT -->|"commit"| FRONT[("erasure frontier")]
-  FRONT -->|"working copies"| TABLES[("table directories")]
-  FRONT -->|"collected within 24 h"| FILES[("retired run files")]
-  FRONT -.->|"best-effort push"| BKT[("replication bucket")]
-  BKT -->|"refreshed copies"| REP[("replicas")]
-```
-
 unsettled: Is request-to-last-replica erasure within 72 h an engine bound or an operator objective, given the engine schedules no replica refresh? owner: disclosure affects: disclosure.erase
 
 unsettled: Does an erasure refuse fact reads, the free-form statement face included, until re-synthesis restores the facts the cascade invalidated? owner: disclosure affects: disclosure.erase
@@ -299,26 +261,6 @@ The signed artifact a tenant purge returns: its claim, its coverage block, its p
   *because the audit chain already orders every receipt, and a keyed digest links repeat purges without a cleartext identifier or a second record*
 - `zero-rows` — A purge whose tenant holds no retained row rewrites nothing and signs a receipt with a zero count for every declared table and an empty `transaction_id`.
   *because an owner proves a tenant's absence with one artifact whether or not rows existed*
-
-A tenant purge, its receipt, and an offline check of it:
-
-```mermaid
-sequenceDiagram
-    participant O as store owner
-    box Contextful
-        participant P as purge
-        participant S as store files
-        participant L as audit chain
-    end
-    participant V as verifier
-    O->>P: context erase --tenant, no capability token
-    P->>S: rewrite run files, snapshots, builds, memory mirror
-    P->>P: hash tenant with fresh salt, sign payload
-    P->>L: append the receipt entry under request_id
-    P-->>O: receipt with prior_request_id
-    O->>V: receipt and the tenant identifier
-    V->>V: recompute hashes, check the signature
-```
 
 ## Shapes
 

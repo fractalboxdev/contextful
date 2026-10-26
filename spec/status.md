@@ -9,17 +9,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 290 | 79 | 28 | 8 | 290 | 4 | 0 | 286 |
 | `connector` | 3 | 19 | 400 | 87 | 23 | 15 | 335 | 2 | 0 | 335 |
 | `corpus` | 1 | 11 | 125 | 50 | 13 | 0 | 125 | 0 | 0 | 125 |
-| `disclosure` | 3 | 17 | 185 | 64 | 14 | 5 | 168 | 0 | 0 | 167 |
+| `disclosure` | 3 | 17 | 184 | 64 | 14 | 5 | 172 | 0 | 0 | 167 |
 | `read` | 2 | 20 | 302 | 53 | 29 | 16 | 290 | 0 | 0 | 286 |
 | `run` | 3 | 29 | 609 | 128 | 49 | 19 | 590 | 4 | 0 | 590 |
 | `store` | 6 | 20 | 315 | 67 | 23 | 13 | 311 | 13 | 0 | 311 |
 | `surface` | 2 | 22 | 199 | 70 | 24 | 2 | 186 | 0 | 0 | 186 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 90 | 0 | 0 | 90 |
-| **total** | 27 | 178 | 2861 | 700 | 236 | 85 | 2719 | 24 | 0 | |
+| **total** | 27 | 178 | 2860 | 700 | 236 | 85 | 2723 | 24 | 0 | |
 
 Decision records: 18.
 
-Clauses restating a code type: 57.
+Clauses restating a code type: 50.
 
 ## Milestones
 
@@ -35,8 +35,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 5 — The read face under enforcement | 17 | 301 | 301 | passing | closed |
 | 6 — Sync and replicas | 9 | 118 | 117 | passing | closed |
 | 7 — Memory | 6 | 86 | 85 | passing | closed |
-| 8 — Accountability | 5 | 93 | 92 | passing | closed |
-| 9 — Visibility | 6 | 50 | 46 | passing | closed |
+| 8 — Accountability | 5 | 93 | 93 | passing | closed |
+| 9 — Visibility | 6 | 49 | 49 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 121 | 115 | passing | closed |
 | 11 — The derive tier | 7 | 97 | 97 | passing | closed |
 | 12 — The operator console | 12 | 65 | 62 | passing | closed |
