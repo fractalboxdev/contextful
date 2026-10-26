@@ -199,12 +199,28 @@ The engine processes batches from pull to commit, records ingest counts and isol
   *because that batch's part already holds the column in its inferred type, and a staged part is immutable*
 - `irreconcilable-schema` — An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}.
 - `commit-visibility` — A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.
+- `observed-schema` — Planning fetches no source schema. Staging assigns each observed batch's types under {{run.own.stage-schema}} and validates the batch against declared columns.
+  *A-run*
+- `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
+  *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
+- `object-arrival-wake` — An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.
+  *because a notification is a hint a provider may repeat, reorder or drop, and the held position already decides what lands*
+
+### sessions
+
+A landing session commits each micro-batch read from stdin under one held table declaration.
+
 - `session` — A landing session holds one store, node and table declaration across runs and commits each micro-batch as its own run; a later run rewrites no earlier run's parts or manifest.
   *because a writer flushing every second otherwise pays a process start, a store open and a node resolution per batch*
 - `session-input` — `contextful context land --session` reads one JSON object per stdin line — `run_id`, `rows`, optional `now` — lands each as its own run through one landing session, and prints that run's outcome before reading the next line.
   *because a host running no serving process still needs one session across its batches*
 - `session-schema` — A landing session parses `schema.json` again only when its version — length, modification instant, file identity — moves; a land adding no column or type replaces no `schema.json` and takes no schema lock.
   *because a land per second otherwise rereads and rewrites the schema under the lock every writer of the table waits on*
+
+### receive
+
+A delivered `receive` batch enters the pull stage under a batch key and lands through a bounded queue and group.
+
 - `receive-entry` — A delivered batch enters at the pull position of {{run.land.stage-order}}: each declared table it touches lands as one run whose single pull yields that table's rows.
   *because a pushed row needs the guard, the recorded pull and redaction a pulled row passes*
 - `receive-applied` — A served delivery loads its source from one immutable applied version, falling back to declarations only when no version exists; its source outcome follows {{surface.open-console.source-run-evidence}}.
@@ -247,6 +263,11 @@ The engine processes batches from pull to commit, records ingest counts and isol
 - `receive-pipeline-unknown` — If a delivery names an undeclared pipeline or a pipeline whose source is not `receive`, the receiver raises `ReceivePipelineUnknown` before reading the body. No table lands.
   *because a sender's misaddressed batch must not land in another pipeline's tables*
 - `receive-endpoint-status` — The receive route answers `400` for {{run.land.receive-key-missing}}, `404` for {{run.land.receive-pipeline-unknown}}, `403` for {{run.land.receive-write-not-granted}}, `413` for {{run.land.receive-batch-too-large}}, `410` for {{run.land.receive-key-expired}}, `503` with `Retry-After` for {{run.land.receive-backpressure}}, {{run.land.receive-push-wait}} or a retryable failed table, and `422` otherwise.
+
+### queued receive
+
+A queued delivery answers `202` at once, and a consumer lands it later under the same batch key.
+
 - `receive-queued` — Under {{topology.compose.queue-extension}}, a request asking for a queued answer receives `202` with its batch key after admission and queuing. `202` acknowledges queue custody, without claiming {{run.land.receive-ack}}'s success.
   *because a sender must not read a queued batch as committed when a later landing can still refuse it*
 - `receive-queued-admission` — A queued delivery passes every check {{run.land.receive-endpoint}} runs before reading a body, and a refused delivery queues nothing.
@@ -267,10 +288,11 @@ The engine processes batches from pull to commit, records ingest counts and isol
   *because a managed queue delivers at least once*
 - `receive-queued-outcome-grant` — The outcome route answers a credential holding `write` over every table of the pipeline and refuses any other as {{run.land.receive-write-not-granted}}.
   *because the outcome names the runs a sender's rows landed in, which only a sender of those tables reads*
-- `object-arrival-wake` — An object-arrival key only wakes its prefix read, which lists from its held position as a scheduled fire does; a duplicate or reordered key lands nothing twice, and the source's cadence still fires to catch a missed one.
-  *because a notification is a hint a provider may repeat, reorder or drop, and the held position already decides what lands*
-- `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
-  *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
+
+### unreadable input
+
+Input a decoder cannot read fails alone, lands as a dead letter, and decodes in a bounded child process.
+
 - `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull unless its source dead-letters it.
   *A-connector*
 - `input-fault` — A failure over one input carries its fault: `input` when the input's own bytes defeat the decoder, `configuration` when the declaration or the build does. A source dead-letters an `input` fault alone, never by message.
@@ -295,8 +317,6 @@ The engine processes batches from pull to commit, records ingest counts and isol
   *A-connector*
 - `table-failed` — A table whose pull fails raises `PipelineTableFailed` carrying the table, the error kind and the run id; the fire then follows `on_table_error`.
   *because a failure is answerable by name only when it carries its table and run*
-- `observed-schema` — Planning fetches no source schema. Staging assigns each observed batch's types under {{run.own.stage-schema}} and validates the batch against declared columns.
-  *A-run*
 
 ```mermaid
 flowchart LR
@@ -383,6 +403,11 @@ An export reads committed table rows and delivers them to an operator-declared t
   *A-topology*
 - `delivery-refused` — A target answering other than 2xx, or unreachable, raises `ExportDeliveryRefused` naming the export and the answer, and the cursor stays where it stood.
   *because an unacknowledged batch is resent from the cursor, never skipped*
+
+### typed changes
+
+A typed export publishes keyed `changes-v1` events from a staged outbox and acknowledges them in sequence.
+
 - `typed-block` — A typed `[[export]]` block declares `format = "changes-v1"`, nonempty `key` columns and `schedule`, beside `name`, `table`, `endpoint` and optional `headers`.
   *because a consumer needs stable row identity and a delivery cadence*
 - `typed-state` — A typed export compares the latest stable committed table read through {{run.export.post-commit-read}} with its last acknowledged state; commits between reads coalesce into one publication.
@@ -409,6 +434,11 @@ An export reads committed table rows and delivers them to an operator-declared t
   *because a row-count bound alone admits an unbounded request body*
 - `typed-event-too-large` — If a typed event exceeds one request's capacity, the exporter raises `ExportEventTooLarge`. Watch stops without retrying that event.
   *because an unchanged oversized event cannot make progress on retry*
+
+### coordinated publications
+
+A coordinated `[[publication]]` delivers every member of one producer completion and activates the members together.
+
 - `group-block` — A local `[[publication]]` declares `name`, producer `job` and typed export `members`; members cover every producer output exactly once and share one destination and header binding.
   *A-run*
 - `group-source` — A successful store-driven job or materialized model build records one immutable completion binding its run identifier, pinned input frontier and all output table frontiers, including empty outputs.

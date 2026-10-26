@@ -78,4 +78,4 @@ corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "w
 # Ratchets (`corpus.registry.ceiling`): each value is the live count it bounds.
 [ceiling]
 registry-committed-sites = 3
-anatomy-long-lists = 19
+anatomy-long-lists = 15

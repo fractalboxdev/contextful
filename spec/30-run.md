@@ -82,6 +82,14 @@ The journal records step values, returns those values on replay and deletes reco
 - `blob-sweep` — A mark-and-sweep pass every 24 h deletes each blob that no journal row or pending awakeable references and that is older than 1 h.
   *because the grace window covers a blob written ahead of the row that names it*
 - `effect-boundary` — A body replays faithfully when every observable side effect passes through a recorded step, a cursor commit or an awakeable; the work between them is pure.
+- `unwired-capability` — Requesting a capability absent from the running profile raises `CapabilityUnwired` at the first request, before any partial work.
+  *A-topology*
+- `machine-state` — The host's own stores hold journal rows, execution owners and awakeables. The derived catalog holds none. A catalog rebuild changes none and reconstructs none from the file tree.
+
+### pulls
+
+A journaled pull records its guarded batch, and a journal hit hands that batch to the land path.
+
 - `recorded-batch` — A journaled pull records its guarded source batch, or its canonically prepared replacement under {{authority.redact.before-the-record}}, ahead of landing.
 - `replay-lands` — A journal hit hands the recorded batch to the land path, so a resumed run lands bytes identical to an uninterrupted one, batch ordinal included.
 - `ledger-settles-first` — The outbound request ledger settles durably before the entry recording its batch commits.
@@ -93,6 +101,11 @@ The journal records step values, returns those values on replay and deletes reco
   *A-authority*
 - `opt-out` — Pull journaling defaults on. A source whose pre-pull cursor cannot name the content it reads opts out through one constant, pinned against each source's declaration by a test. An empty pull is never journaled.
 - `escape-hatch` — Journaling permits only two exceptions: `journal.unsafe(label, effect)` for an idempotent read, and a source declaring no pull journaling. Each exception states its idempotency argument at a searchable call site.
+
+### storage
+
+Journal rows, blobs and awakeables persist through storage ports that SQLite, PostgreSQL and D1 serve.
+
 - `substrate-port` — One execution interface provides: open or resume under a scope and content-hashed plan reference; record step output; commit a cursor; suspend on an awakeable with timeout; attach a retry schedule; describe capabilities.
   *A-run*
 - `storage-ports` — Journal rows, blobs and awakeables persist through a journal store, a blob store and an awakeable store; every `run.journal` and `run.suspend` clause holds for each adapter, the file tree included.
@@ -139,6 +152,11 @@ The journal records step values, returns those values on replay and deletes reco
   *A-run*
 - `guard-callback` — A guarded callback may update run metadata; mutating its admitted owner or lease refuses. Nested callbacks retain only scopes and leases their caller already admits. Local adapters expose cooperative checks without strict execution-guard capability.
   *because nested lock expansion and owner mutation can deadlock the admission that invokes them*
+
+### store-driven input
+
+A store-driven run records its input once and runs its registered body once per input row.
+
 - `plan-pin` — A run resolves the plan reference it started against for its whole life.
 - `store-input` — A store-driven run reads its statement once, through the read face under the job's grant at its `as_of`, and records the resolved snapshot id per table and the ordered input rows as its first step.
   *A-surface*
@@ -157,9 +175,6 @@ The journal records step values, returns those values on replay and deletes reco
   *because a landing that fails then holds the owner, and its resume replays every paid call instead of paying again*
 - `body-projection` — A registered body's closed effect labels, declared roots, types, transforms and normalization bind its owner before input or effect execution; a caller-supplied projection differing from that registration refuses.
   *A-authority*
-- `unwired-capability` — Requesting a capability absent from the running profile raises `CapabilityUnwired` at the first request, before any partial work.
-  *A-topology*
-- `machine-state` — The host's own stores hold journal rows, execution owners and awakeables. The derived catalog holds none. A catalog rebuild changes none and reconstructs none from the file tree.
 
 ```mermaid
 sequenceDiagram

@@ -428,6 +428,17 @@ flowchart LR
 
 The declared behavior of each source compiled into the engine.
 
+- `poll-only-increments` — Incremental loading is a scheduled poll. A replication socket held open is not a source read.
+  *because its output is unbounded and has no recorded exchange to replay*
+- `twin-api` — A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. The engine admits a sanctioned, disclosed organization-wide export path.
+  *A-read*
+- `parse-containment` — A compiled-in source decodes behind {{run.land.parse-boundary}}.
+  *A-connector*
+
+### http
+
+The generic HTTP source binds credentials, walks its pages under one pagination shape, and expands rows by follow-up requests.
+
 - `http-headers` — The generic HTTP source binds credentials through a `headers` table whose values are templates in the {{connector.reference.value-template}} grammar, hydrated per read.
   *A-connector*
 - `http-page-pull` — Under page-number, next-cursor or no pagination and without an incremental field, one generic HTTP source pull reads one page and carries the next page's token as its position. The walk's last page carries a position naming the first page.
@@ -440,31 +451,6 @@ The declared behavior of each source compiled into the engine.
 - `http-scope-probe` — The generic HTTP source reads its {{connector.declare-capability.scope-probe}} from a `scope_probe` config table and carries its first reference-bound header as the bound credential.
 - `http-compression` — The generic HTTP source decompresses a body only when `compression` declares `gzip` or `zip`, bounded by {{connector.source.object-expansion}}. The URL extension does not select compression.
   *because a URL path names a route, not how the vendor stored the bytes*
-- `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `json-object`, `jsonl`, `csv`, `feed` or a workbook — for HTTP, file and object sources. HTTP declares formats; file and object sources infer them from extensions compared without case.
-- `json-record-shape` — `json` requires an array of objects; `json-object` requires one object. Both select `records` when declared, otherwise the root; a missing selection or wrong shape is unreadable input under {{run.land.unreadable-input}}.
-- `json-object-record` — `json-object` emits one row even when the selected object or its nested arrays are empty; decoding retains the full parsed body for pagination pointers.
-- `json-body-paths` — `records`, `next_cursor_path` and `next_url_path` read JSON pointers in either JSON mode.
-- `json-object-pagination` — `json-object` admits cursor, next-URL and Link-header pagination; page-number pagination refuses under {{connector.source.format-key-mismatch}} before I/O.
-  *because one object never supplies the empty record array that terminates page-number pagination*
-- `format-key-mismatch` — A JSON record path, a pagination shape, or a decode key declared against a format that does not read it raises `ConnectorFormatKeyRejected` at build.
-  *P1*
-- `delimited-cell` — A delimited source lands every cell as a string and an empty unquoted field as null.
-  *because a dimension file's schema then depends on no data*
-- `declared-encoding` — A non-UTF-8 delimited body decodes through a declared encoding label, and bytes invalid under it raise `ConnectorEncodingInvalid`.
-  *P1*
-- `delimiter` — On `format = "csv"`, `delimiter` names one field delimiter character, defaulting to `,`. Validation accepts a tab and refuses a quote, line break or longer value at build.
-  *because a field delimiter that also opens a quote or ends a record leaves every line two readings*
-- `declared-columns` — `columns` on `format = "csv"` names a headerless body's columns in order. A first record whose field count differs refuses under {{connector.source.configuration-fault}}; a later one is unreadable input under {{run.land.unreadable-input}}, naming its line.
-  *because a headerless body under a short list otherwise lands a shifted cell under the wrong name*
-- `clock-column-spelling` — A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises `ConnectorClockColumnRejected`.
-  *because the watermark compares text*
-- `feed-format` — `format = "feed"` decodes an RSS or Atom document into one row per item or entry carrying `entry_id`, `title`, `link`, `published_at`, `summary`, `author` and `categories`, each null where the entry holds none.
-- `feed-entry-id` — A feed row's `entry_id` is the Atom `id` or the RSS `guid`, else the entry's link; an entry carrying neither is unreadable input under {{run.land.unreadable-input}}.
-  *because a primary key over `entry_id` then collapses every re-fetched entry onto one row*
-- `feed-published-at` — `published_at` is the Atom `published`, else `updated`, or the RSS `pubDate`, folded to an RFC 3339 instant in UTC; a date that is neither RFC 3339 nor RFC 2822 is unreadable input.
-  *because a watermark over `published_at` then orders instants, whatever offset the feed spells*
-- `feed-categories` — `categories` is JSON array text of `domain` and `term` objects in document order: each RSS `category` text and its `domain`, or Atom `term` and `scheme`; an absent domain is null, an empty term skipped.
-  *because a model then selects items by a facet through `json_extract` over one declared column*
 - `conditional-get` — `conditional = true` sends the position's `etag` as `If-None-Match` and `last_modified` as `If-Modified-Since`. A `304` lands no rows and holds the position; a `2xx` commits the validators it serves.
 - `conditional-position` — A conditional pull issues one request, and the validators are its whole position: no page token or watermark rides beside them, and the pull reports no further page.
 - `conditional-rejected` — `conditional` beside a pagination shape or a declared `incremental` raises `ConnectorConditionalRejected` at build.
@@ -503,6 +489,55 @@ The declared behavior of each source compiled into the engine.
   *P1*
 - `target-column-occupied` — A target column any landed index row already carries raises `ConnectorTargetColumnOccupied` ahead of the walk.
   *P1*
+
+### formats
+
+A body's declared `format` selects its decoder: JSON, delimited text, a feed, an office container or a workbook.
+
+- `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `json-object`, `jsonl`, `csv`, `feed` or a workbook — for HTTP, file and object sources. HTTP declares formats; file and object sources infer them from extensions compared without case.
+- `json-record-shape` — `json` requires an array of objects; `json-object` requires one object. Both select `records` when declared, otherwise the root; a missing selection or wrong shape is unreadable input under {{run.land.unreadable-input}}.
+- `json-object-record` — `json-object` emits one row even when the selected object or its nested arrays are empty; decoding retains the full parsed body for pagination pointers.
+- `json-body-paths` — `records`, `next_cursor_path` and `next_url_path` read JSON pointers in either JSON mode.
+- `json-object-pagination` — `json-object` admits cursor, next-URL and Link-header pagination; page-number pagination refuses under {{connector.source.format-key-mismatch}} before I/O.
+  *because one object never supplies the empty record array that terminates page-number pagination*
+- `format-key-mismatch` — A JSON record path, a pagination shape, or a decode key declared against a format that does not read it raises `ConnectorFormatKeyRejected` at build.
+  *P1*
+- `delimited-cell` — A delimited source lands every cell as a string and an empty unquoted field as null.
+  *because a dimension file's schema then depends on no data*
+- `declared-encoding` — A non-UTF-8 delimited body decodes through a declared encoding label, and bytes invalid under it raise `ConnectorEncodingInvalid`.
+  *P1*
+- `delimiter` — On `format = "csv"`, `delimiter` names one field delimiter character, defaulting to `,`. Validation accepts a tab and refuses a quote, line break or longer value at build.
+  *because a field delimiter that also opens a quote or ends a record leaves every line two readings*
+- `declared-columns` — `columns` on `format = "csv"` names a headerless body's columns in order. A first record whose field count differs refuses under {{connector.source.configuration-fault}}; a later one is unreadable input under {{run.land.unreadable-input}}, naming its line.
+  *because a headerless body under a short list otherwise lands a shifted cell under the wrong name*
+- `clock-column-spelling` — A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises `ConnectorClockColumnRejected`.
+  *because the watermark compares text*
+- `feed-format` — `format = "feed"` decodes an RSS or Atom document into one row per item or entry carrying `entry_id`, `title`, `link`, `published_at`, `summary`, `author` and `categories`, each null where the entry holds none.
+- `feed-entry-id` — A feed row's `entry_id` is the Atom `id` or the RSS `guid`, else the entry's link; an entry carrying neither is unreadable input under {{run.land.unreadable-input}}.
+  *because a primary key over `entry_id` then collapses every re-fetched entry onto one row*
+- `feed-published-at` — `published_at` is the Atom `published`, else `updated`, or the RSS `pubDate`, folded to an RFC 3339 instant in UTC; a date that is neither RFC 3339 nor RFC 2822 is unreadable input.
+  *because a watermark over `published_at` then orders instants, whatever offset the feed spells*
+- `feed-categories` — `categories` is JSON array text of `domain` and `term` objects in document order: each RSS `category` text and its `domain`, or Atom `term` and `scheme`; an absent domain is null, an empty term skipped.
+  *because a model then selects items by a facet through `json_extract` over one declared column*
+- `office-part-selection` — The decoder reads an office container by exact part name. The decoder opens no other part and resolves no external entity.
+  *A-connector*
+- `decompression-budget` — A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory's claim and against the bytes that arrive.
+  *A-connector*
+- `worksheet-landing` — One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each shared string and each stored cell, counted as they land — and lands at most 1048576 rows.
+  *because shared-string fan-out turns a small input into an unbounded output*
+- `cell-out-of-range` — A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell holding none widens nothing.
+  *A-connector*
+- `external-reference` — An external-reference declaration, an external-links part, or a relationship marked external raises `ConnectorExternalReference`.
+  *A-connector*
+- `workbook-cell-typing` — The decoder stores a workbook cell as a string and a date cell as its serial number. The decoder stores cached formula values without evaluating formulas.
+  *A-connector*
+- `workbook-incremental` — An incremental position against a workbook raises `ConnectorIncrementalUnsupported`.
+  *because a variable-width serial number advances a lexicographic watermark past unlanded rows*
+
+### objects
+
+The `s3` source and directory walks address, decompress and dead-letter each object they read.
+
 - `walk-boundary` — A directory walk reaches the configured root and nothing outside it, skips dot-entries, and traverses in sorted order. A decode-selecting key narrows nothing.
   *because a sorted walk over an unchanged tree reproduces across hosts*
 - `declined-tally` — A directory walk records on the run record what it declined, tallied by extension, and reports the total as its {{run.record.skipped-count}}.
@@ -536,6 +571,11 @@ The declared behavior of each source compiled into the engine.
 - `object-cleartext` — At build, the host refuses an `s3` source binding a key pair to a cleartext endpoint outside loopback under {{connector.attach.cleartext-endpoint}}.
   *because a presigned URL is a bearer capability for its lifetime*
 - `object-position-owned` — `incremental` beside `skip_unchanged = true` on the `s3` source refuses as {{connector.package.component-position}} at validation.
+
+### documents
+
+The `file` source and the document decoder land one row per page or heading, keyed by slug and ordinal.
+
 - `document-grain` — A document source lands one row per page, or one row per heading past a length threshold. With a base URL, each row links to its own page anchor.
 - `document-identity` — A document row's identity is a slug plus an ordinal, chunked or not.
   *because an identity then survives a document crossing the threshold*
@@ -565,22 +605,11 @@ The declared behavior of each source compiled into the engine.
   *because a row-per-page document past that size is an export, not a note, and one file must not exhaust the read's memory*
 - `file-pdf-absent` — A PDF the walk reaches in a build without the PDF decoder fails the read as a configuration fault naming the feature to rebuild with.
 - `file-position-owned` — `incremental` beside the `file` source refuses as {{connector.package.component-position}} at validation.
-- `parse-containment` — A compiled-in source decodes behind {{run.land.parse-boundary}}.
-  *A-connector*
-- `office-part-selection` — The decoder reads an office container by exact part name. The decoder opens no other part and resolves no external entity.
-  *A-connector*
-- `decompression-budget` — A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory's claim and against the bytes that arrive.
-  *A-connector*
-- `worksheet-landing` — One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each shared string and each stored cell, counted as they land — and lands at most 1048576 rows.
-  *because shared-string fan-out turns a small input into an unbounded output*
-- `cell-out-of-range` — A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell holding none widens nothing.
-  *A-connector*
-- `external-reference` — An external-reference declaration, an external-links part, or a relationship marked external raises `ConnectorExternalReference`.
-  *A-connector*
-- `workbook-cell-typing` — The decoder stores a workbook cell as a string and a date cell as its serial number. The decoder stores cached formula values without evaluating formulas.
-  *A-connector*
-- `workbook-incremental` — An incremental position against a workbook raises `ConnectorIncrementalUnsupported`.
-  *because a variable-width serial number advances a lexicographic watermark past unlanded rows*
+
+### reports, images, search and receive
+
+Async vendor reports, images, web search results and pushed `receive` batches each land through their own source.
+
 - `report-id-commit` — An async-report source commits the vendor run id when creation returns. Exhausting the polling budget ends the read successfully. The source recreates an expired vendor run for the same window.
   *P4*
 - `page-drain` — Report paging drains a fixed number of pages per read, one batch per page, each carrying the position after it.
@@ -608,16 +637,17 @@ The declared behavior of each source compiled into the engine.
 - `provider-origin` — Each search call site pins its provider's host. A non-TLS transport or another host raises `ConnectorProviderOriginRejected`, except on loopback.
   *A-connector*
 - `search-degradation` — An absent provider key and a provider `5xx` are transient failures yielding a zero-row outcome, and a replay returns the journaled result set.
-- `poll-only-increments` — Incremental loading is a scheduled poll. A replication socket held open is not a source read.
-  *because its output is unbounded and has no recorded exchange to replay*
 - `receive-form` — A `receive` source declares `format = "jsonl"`, a positive `max_batch_bytes`, a positive `max_queue_depth` and a positive `key_retention_secs`, none defaulted; it serves every declared table and requests nothing from outside.
   *because a ceiling the sender fills must be the operator's choice, not a guess the binary carries*
 - `receive-recorded` — The engine bounds and records a delivered batch before storing its rows. {{connector.source.poll-only-increments}} does not apply to `receive` sources.
 - `receive-unscheduled` — A `receive` pipeline declaring a `schedule` fails validation.
   *because a sender, not the cadence, starts its runs, so a scheduled fire fails on every beat*
 - `receive-body` — A `receive` body holds one JSON object per line, `table` naming a declared table and `row` its row object; another shape fails the whole batch as {{run.land.unreadable-input}}, naming the line.
-- `twin-api` — A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. The engine admits a sanctioned, disclosed organization-wide export path.
-  *A-read*
+
+### drive
+
+The drive source walks selected Drive folders and lands one row per file and one per PDF page.
+
 - `drive-walk` — The drive source walks `folder_id` breadth-first through `files.list`, paging each folder within `drive_id` when declared. The source lists each folder once, sorts children by name and id, and follows no shortcut.
   *because the source keeps a per-file position and mints its token host-side, which a guest holding no credential bytes cannot*
 - `drive-root-set` — Exactly one of `folder_id` or `folder_ids` selects roots; `folder_ids` holds 1 to 16 entries, all distinct, under one required `drive_id`. An empty, oversized, repeated or ambiguous selection raises `ConnectorDriveRootsInvalid` before listing.
