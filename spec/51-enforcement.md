@@ -237,7 +237,7 @@ Column classes, strategies and combines, guardrails over an exhaustible value sp
 - `verbatim-quote` — One citation releases at most 280 chars of a `summarize_only` value verbatim, on every surface.
   *A-authority#exhaustible-digest*
 - `typed-strategy` — A binary column masks by `drop` or by `hash` over its bytes, a vector or nested column by `drop` alone over the whole column; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.
-  *A-store*
+  *A-store#binary-fixed-size*
 - `absent-column` — A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.
   *because a skipped declaration serves reads under a policy its author believed covered a column*
 - `masks-per-table` — A table carries at most 128 entries in its column mask set.
@@ -371,7 +371,7 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
 - `envelope` — A response envelope carries the zone's removals, the asserted zone and the incognito flag in {{read.respond.restriction-block}}, and no removed value.
   *A-authority#placement-breadth*
 - `excluded-disclosed` — `rows_dropped` counts the rows the zone step removes from the whole relation, every earlier step applied; the caller's statement, filter and requested size never enter it, and no removed value crosses.
-  *A-read*
+  *A-read#zone-withheld-relation*
 - `symbolic-inclusion` — Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.
   *A-authority#placement-breadth*
 - `proxy-boundary` — A proxy replica resolves zones at the proxy boundary.
@@ -408,11 +408,11 @@ unsettled: Does the restriction block also carry the rows a row predicate remove
 The paths that stay closed to an injected instruction.
 
 - `credential-shaped-value` — A claim write, direct or synthesized, raises `EnforceCredentialShapedValue` on a field matching a credential shape, before it reaches storage.
-  *A-read*
+  *A-read#store-holds-nothing*
 - `read-only-face` — An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.
-  *A-surface*
+  *A-surface#answer-surfaces-read*
 - `write-tool` — Registering a write tool on an organization-wide face raises `EnforceWriteOnReadOnlyFace`.
-  *A-surface*
+  *A-surface#answer-surfaces-read*
 
 unsettled: Does a source writer refuse a credential-shaped value per value, landing the surrounding rows, and which operator-declared exemption admits a source carrying such text? owner: authority affects: authority.resist
 

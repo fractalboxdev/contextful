@@ -54,8 +54,8 @@ fn a_contract_adr_naming_no_contract_is_a_record_finding() {
 fn a_why_naming_a_numbered_decision_record_is_a_record_finding() {
     let s = Scratch::copy();
     let store = s.read("spec/10-store.md");
-    assert!(store.contains("\n  *A-store*\n"), "a clause citing A-store");
-    s.write("spec/10-store.md", &store.replacen("\n  *A-store*\n", "\n  *D07*\n", 1));
+    let why = store.lines().find(|l| l.starts_with("  *A-store#")).expect("a clause citing an A-store section").to_string();
+    s.write("spec/10-store.md", &store.replacen(&format!("\n{why}\n"), "\n  *D07*\n", 1));
     let found = codes(&s.lint("rationale"), "SpecRecord");
     assert!(found.iter().any(|m| m.contains("D07")), "{found:?}");
 }
@@ -233,22 +233,33 @@ fn why_of(text: &str, subject: &str) -> String {
     text[why..why + text[why..].find('\n').unwrap()].to_string()
 }
 
+/// Make the store item with subject `subject` cite `A-store` without a section.
+fn cite_bare(s: &Scratch, subject: &str) {
+    let store = s.read(STORE);
+    let item = store.lines().find(|l| l.starts_with(&format!("- `{subject}` — "))).unwrap_or_else(|| panic!("no `{subject}` item")).to_string();
+    let next = store[store.find(&item).unwrap() + item.len() + 1..].lines().next().unwrap().to_string();
+    let cited = if next.starts_with("  *") {
+        store.replacen(&format!("{item}\n{next}\n"), &format!("{item}\n  *A-store*\n"), 1)
+    } else {
+        store.replacen(&format!("{item}\n"), &format!("{item}\n  *A-store*\n"), 1)
+    };
+    s.write(STORE, &cited);
+}
+
 // spec: corpus.rationale.why-migrate@f83ec897
 #[test]
 fn why_migrate_rewrites_a_citation_one_section_names_and_prints_the_rest() {
     let s = Scratch::copy();
-    let store = s.read(STORE);
-    let item = store.lines().find(|l| l.starts_with("- `non-blocking` — ")).expect("the non-blocking item").to_string();
-    let next = store[store.find(&item).unwrap() + item.len() + 1..].lines().next().unwrap().to_string();
-    let cited = if next.starts_with("  *") { store.replacen(&format!("{item}\n{next}\n"), &format!("{item}\n  *A-store*\n"), 1) } else { store.replacen(&format!("{item}\n"), &format!("{item}\n  *A-store*\n"), 1) };
-    s.write(STORE, &cited);
+    cite_bare(&s, "non-blocking");
+    cite_bare(&s, "supersedes");
     append(&s, "spec/adr/A-store.md", &format!("## non-blocking-pass — `store.fold.non-blocking` keeps reads off the pass\n\nText.\n\n{OPTIONS}"));
     let out = s.cmd(&["why-migrate", "A-store"]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(why_of(&s.read(STORE), "non-blocking"), "  *A-store#non-blocking-pass*");
     let printed = String::from_utf8_lossy(&out.stdout);
     assert!(printed.starts_with("rewrote "), "{printed}");
-    assert!(printed.lines().any(|l| l.contains(" unresolved")), "{printed}");
+    assert!(printed.lines().any(|l| l == "store: 1 unresolved"), "{printed}");
+    assert_eq!(why_of(&s.read(STORE), "supersedes"), "  *A-store*");
     assert!(!s.cmd(&["why-migrate", "A-nowhere"]).status.success());
 }
 

@@ -332,22 +332,6 @@ Decision: `assurance.build.windows-target` and `assurance.gate.windows-checks` d
 Consequences: Windows source and regression fixtures remain available for porting; support claims cover the declared release matrix alone.
 Revisit: an explicit Windows support decision carries passing real MSVC lifetime, filesystem and bundled read-engine evidence for each admitted architecture within the gate budget.
 
-## store-adapter-s — The store adapter's write suites assert without the SQL engine
-
-**Status:** accepted.
-
-Context: a store-adapter suite asserting through SQL links the bundled engine as a dev-dependency, so the no-`read` run in the features stage compiles a second copy, about 282 MB of rlib, beside the read-enabled one. Criteria: the no-`read` graph, tests included, holds to `topology.package.store-write-engine-free`; the features stage compiles the engine once.
-
-Decision: a suite asserting through SQL runs on the adapter's own read engine and compiles only under `read`; the write suites assert on files, manifests and returned values, and the package declares no engine dev-dependency.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Write suites without the engine *(chosen)* | — | The no-`read` run covers fewer tests; a fold's SQL relation is asserted only with `read` on. |
-| Keep the engine dev-dependency | One engine copy | A second engine build per features stage, in disk and wall clock. |
-| A second Parquet reader for every assertion | One home | A parallel evaluator of the scan relation drifts from the one reads execute. |
-
-Consequences: the accepted cost is that a defect in the relation a scan resolves surfaces only in the read-enabled runs.
-
 ## stage-subset-runs — A stage subset runs in sequence order and refuses a missing predecessor
 
 **Status:** accepted

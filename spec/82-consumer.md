@@ -11,11 +11,11 @@ owns:
 Artifact compatibility: source-independent execution, required capabilities, scenario evidence, storage profiles and release distribution.
 
 - `suite` — `contextful-conformance --binary <path> --output <report>` executes its versioned scenarios through the supplied artifact's public CLI and HTTP surfaces outside a source checkout.
-  *A-assurance*
+  *A-assurance#consumer-compatibility-binds*
 - `credential-isolation` — Every artifact invocation receives an empty inherited environment, an isolated home and scratch directory, a fixed executable search path and explicitly supplied synthetic fixture credentials.
   *because compatibility evidence requires no provider account or inherited credential*
 - `requirements` — Every required scenario executes its declared capabilities; a missing capability or unsupported storage profile records `unsupported`, names its requirement and refuses consumer activation.
-  *A-assurance*
+  *A-assurance#consumer-compatibility-binds*
 - `verdict` — A compatibility verdict passes only when every required scenario reports executed success; a parse, an unsupported requirement or a skipped required scenario supplies no execution pass.
   *P7*
 - `verdict-exit` — `contextful-conformance` exits 1 after writing a failing verdict and 2 without a report; release packaging records a failed `suite-exit` scenario for any other exit, or for exit 1 over a passing report.
@@ -37,15 +37,15 @@ Artifact compatibility: source-independent execution, required capabilities, sce
   *because a cross compilation cannot demonstrate the produced artifact's behavior*
 - `storage-profile` — The local profile uses isolated filesystem state; `postgres` uses synthetic PostgreSQL and signed S3 services. An unavailable fixture records its named requirement through {{assurance.consumer.requirements}}.
 - `d1-profile` — A `cloudflare-d1` verdict runs the supplied `contextful-full` artifact against D1 and R2 bindings, replaces its local disk, and records every required outcome independently of the local and PostgreSQL profiles.
-  *A-assurance*
+  *A-assurance#consumer-compatibility-binds*
 - `d1-admission` — A `cloudflare-d1` suite holds a lease row in the bound D1 from before its first reset until it ends, lapsing 120 s after its last renewal; a suite meeting a live lease refuses each required scenario with `ConformanceAlreadyRunning`.
   *because a process check inside one container misses a suite another container runs against the same database*
 - `d1-release` — Release evidence binds a `cloudflare-d1` report to the artifact digest, source revision, suite revision and storage profile; a required failure, unsupported case, skip or unverified binding supplies no compatibility verdict.
-  *A-assurance*
+  *A-assurance#consumer-compatibility-binds*
 - `d1-absent` — A native `contextful-full` release cell without `CONTEXTFUL_CONFORMANCE_D1_ENDPOINT` runs no `cloudflare-d1` pass; its report records binding origin `absent` and every required scenario skipped with `ConformanceBindingAbsent`.
   *because a release container holds no D1 binding, and the deployment run against D1 and R2 supplies that verdict*
 - `d1-deployment` — Deployment readiness requires a replacement run against Cloudflare D1 and R2, with the same artifact digest and source revision as its release report.
-  *A-assurance*
+  *A-assurance#consumer-compatibility-binds*
 
 #### Scenarios
 

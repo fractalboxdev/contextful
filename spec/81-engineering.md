@@ -51,15 +51,15 @@ One home per capability, the one enforcement decision module, adapters, mirror a
 - `duplicated-capability` — A surface or crate carrying a second implementation of an engine capability, in any language, or a hand-written copy of an engine constant, raises `CapabilityDuplicated`, naming both sites.
   *P5*
 - `capability-registry` — `spec/capabilities.toml` names each capability of {{assurance.structure-tree.one-home}} with one home path and one or more defining symbols; an absent registry, a missing or doubled capability, an absent home or an undefined symbol raises `CapabilityHomeUnresolved`.
-  *A-assurance*
+  *A-assurance#duplicated-capabilities-match*
 - `cross-language` — The crate-graph stage matches Rust, TypeScript, JavaScript and Python functions, types and constants outside a home by name folded to lowercase without separators, against its symbols and its literal constants' names and values.
-  *A-assurance*
+  *A-assurance#duplicated-capabilities-match*
 - `decision-module` — One module owns the enforcement decision; a gateway and the engine reaching the same verdict execute it, compiled native and to WebAssembly from one pinned source.
-  *P5, A-assurance*
+  *P5, A-assurance#decision-module-compiles*
 - `adapter` — A surface with no engine process on its request path implements an adapter against the engine's ports.
   *P5*
 - `derivation-check` — A generated artifact declares the check that fails once its source moves, and the gate's schema stage runs that check.
-  *P5, A-assurance*
+  *P5, A-assurance#generated-artifacts-prove*
 - `mirror-exemption` — A review-time restatement of a build-time rule is admitted where its site carries a `mirrors: <clause id>` comment naming the clause it restates; an unannotated restatement stays {{assurance.structure-tree.duplicated-capability}}.
   *because a reviewer-facing check sometimes restates a rule, and the annotation keeps the engine its one home and the copy traceable to it*
 - `mirror-unresolved` — A `mirrors:` comment in a tracked file under `crates/`, `tools/` or `apps/` naming no clause of `spec/spec.lock.json` raises `MirrorUnresolved` in the schema stage, naming the file and line.
@@ -97,21 +97,21 @@ Assertion construction, guard validation, suite placement, test-first and accept
 - `own-process` — A test needing its own process sits in a top-level file stating why at its site; a thread-scoped log capture is such a test.
 - `connector-kit` — The connector authoring toolkit ships a conformance suite — discovery returns valid schemas, an opened table yields a finite stream, a position round-trips — plus recorded-HTTP fixture replay and property tests over position monotonicity.
 - `test-first` — A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`.
-  *A-assurance*
+  *A-assurance#source-change-carries*
 - `test-first-scope` — The test-first stage builds each changed test file's target against the base source with every feature enabled, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.
 - `comparison-base` — Test-first resolves the supplied comparison revision to one commit and uses that commit for source selection, changed-test selection and base replay; each report records that commit and the tested head.
-  *A-assurance*
+  *A-assurance#gate-repair-evidence*
 - `merge-source` — Test-first includes source introduced by merge resolutions; refactor exemptions apply only to source attributable to exempt commits and preserve obligations from behavior changes elsewhere in the comparison.
-  *A-assurance*
+  *A-assurance#gate-repair-evidence*
 - `base-evidence` — Test-first reports assertion failures, compilation failures and bounded test executions separately; infrastructure faults follow {{assurance.test.base-unrunnable}} and supply no failing-test evidence.
-  *A-assurance*
+  *A-assurance#gate-repair-evidence*
 - `base-run-bound` — One test-first execution against the base, its build excluded, runs for at most 300 s; a run past the bound is killed with its process group and counts as failing.
 - `base-unrunnable` — A base invocation whose output reports a full disk, an unloadable manifest or an unfetchable dependency raises `TestFirstBaseUnrunnable` instead of a verdict.
   *because such a fault fails at base whatever the tests assert, and reading it as red admits an untested change*
 - `refactor-trailer` — A commit carrying the trailer `Test-First: refactor` exempts the source it alters from {{assurance.test.test-first}}; the rest of the range stays held, and the workspace stage alone holds that commit.
   *because a behavior-preserving change has no failing test to write, and the existing suite is its specification*
 - `acceptance-surface` — An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`.
-  *A-assurance*
+  *A-assurance#source-change-carries*
 
 #### Scenarios
 
@@ -142,16 +142,16 @@ Target directories, the engine-linked invocation, linked query functions, build 
 - `target-dir-per-stage` — Each cargo stage builds into a target directory of its own, reclaimed once the stage passes.
   *because stages under different feature unification share no artifacts, and peak disk is then one stage*
 - `checkout-artifacts` — `.cargo/config.toml` names the checkout root, and every workspace package's build script folds its canonical path into the package fingerprint, so a shared target directory recompiles workspace packages per checkout while unchanged dependencies stay fresh.
-  *A-assurance*
+  *A-assurance#gate-repair-evidence*
 - `runtime-checkout` — Reusable test helpers resolve the workspace root and tested binary from explicit runtime inputs bound to the invocation; cached helpers carry no compile-time checkout path deciding which source or binary runs.
-  *A-assurance*
+  *A-assurance#gate-repair-evidence*
 - `one-engine-build` — The workspace stage builds every engine-linked package in one cargo invocation over the union of their features, and the store adapter's suites resolved without `read` link no SQL engine, so the features stage compiles one copy.
-  *A-assurance*
+  *because one cargo invocation compiles the engine once, and a store-adapter suite asserting through SQL links a second copy into the no-`read` features run*
 - `staged-feature-runs` — A defect appearing under one feature combination alone is reached by a staged nightly run, one command per container.
 - `linked-query-functions` — Columnar file reading and statement serialization link into every build linking the SQL engine, and the read path loads no extension while serving.
-  *A-assurance*
+  *A-assurance#columnar-read-statement*
 - `runtime-extension-load` — A read path loading an extension into a binary that statically links the SQL engine raises `ExtensionAutoloadRefused`.
-  *A-assurance*
+  *A-assurance#columnar-read-statement*
 - `debug-info` — Development and test profiles carry line-tables-only debug information for workspace code and none for dependencies.
   *because every engine-linked test binary embeds the bundled engine, and full debug information multiplies each past a sandbox's disk*
 - `release-profile` — Release builds compile with thin link-time optimization, one codegen unit per crate and symbols stripped, and unwind on panic.
@@ -164,12 +164,13 @@ Target directories, the engine-linked invocation, linked query functions, build 
 - `image-binary-mismatch` — A binary whose ELF machine differs from its target's, or whose program headers name a dynamic interpreter, raises `ImageBinaryMismatch`, naming the target.
   *because a mislabelled layer runs only under emulation, and a dynamic binary finds no C library in the static runtime*
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
-  *A-assurance*
+  *A-assurance#windows-release-support*
 - `windows-target` — Windows targets are excluded from the release matrix; no profile publishes Windows artifacts.
-  *A-assurance*
+  *A-assurance#windows-release-support*
 - `wasi-probe` — No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.
-  *A-assurance*
+  *A-assurance#edge-profile-ships*
 - `release-artifact` — Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.
+  *A-assurance#edge-profile-ships*
 - `release-builder` — The release command uses `cargo build` by default and `cargo zigbuild` under `--builder zigbuild`, forwarding the selected target and profile features.
   *because Cloudflare Linux builds Darwin targets through Zig while the local release command keeps its native build path*
 - `release-metadata` — Each release cell writes a JSON record naming its profile, target, archive, SHA-256 digest and SBOM.
@@ -194,16 +195,17 @@ Target directories, the engine-linked invocation, linked query functions, build 
 Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.
 
 - `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — all of both tiers when none is named, else the named subset, which `--plan` prints unrun.
+  *A-assurance#stage-subset-runs*
 - `nightly-tier` — `contextful-ci stages --parts --tier nightly` prints the features, formal and budget parts in run order; `stages --parts` prints the remaining parts, those a change runs before merge, and `gate --stage` runs a part of either tier.
-  *A-assurance*
+  *A-assurance#feature-runs-formal*
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
-  *A-assurance*
+  *A-assurance#stage-subset-runs*
 - `affected-parts` — `contextful-ci stages --parts --base <rev> --affected` lists, in run order, the parts of the selected tier the diff from the merge base of `<rev>` and HEAD reaches, the required tier always including `preflight`.
-  *A-assurance*
+  *A-assurance#pull-request-runs*
 - `affected-every` — A change to `Cargo.toml`, `Cargo.lock`, a toolchain file, anything under `crates/`, `tools/` or `.github/`, or any path no other affected clause maps reaches every part of either tier.
-  *A-assurance*
+  *A-assurance#pull-request-runs*
 - `affected-spec` — A change under `spec/` or `references/` reaches test-first validation, one under `spec/` the foundation workspace part, and each clause whose statement or `spec/pins.toml` entry changed the parts running its pinned test or theorem.
-  *A-assurance*
+  *A-assurance#pull-request-runs*
 - `affected-spec-inputs` — A change to `spec/01-topology.md` or `spec/capabilities.toml` reaches crate-graph, to `spec/adr/A-assurance.md` the formal stage, and to `spec/terms/assurance.toml` every budget part.
   *because those stages read the file directly, apart from any clause pin*
 - `affected-removed` — A clause the merge base's lock holds and HEAD's lacks reaches the evaluate stage.
@@ -211,17 +213,17 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `affected-unplaced` — An unreadable spec lock or pins file, or a changed clause pinned outside every workspace package, reaches every required part.
   *because a pin the listing cannot place runs on a part the listing cannot name*
 - `affected-surfaces` — A change under `apps/` or `packages/` reaches the TypeScript surfaces, acceptance and crate-graph parts.
-  *A-assurance*
+  *A-assurance#pull-request-runs*
 - `affected-formal` — A change under `formal/` other than a `lean-toolchain` file reaches the formal and evaluate stages, the foundation, CLI and CLI differential workspace parts, and every feature part.
-  *A-assurance*
+  *A-assurance#pull-request-runs*
 - `windows-checks` — Windows native checks run only as optional diagnostics and contribute no required merge or release verdict.
-  *A-assurance*
+  *A-assurance#windows-release-support*
 - `test-first-parts` — The test-first parts require a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package's part checks only its own changed tests against the base.
   *because one base build per package fits the sandbox's wall clock more reliably*
 - `workspace-parts` — The workspace parts compile the feature-unified workspace untested, run differential CLI tests apart and remaining CLI tests in eight shards under {{assurance.gate.cli-shard-map}}, and each other non-acceptance package suite in one of four groups.
-  *A-assurance*
+  *A-assurance#workspace-fits-stage*
 - `cli-shard-map` — `tools/ci/cli-shards.toml` assigns each remaining CLI test, a nested-build group whole, one shard by recorded duration within 9 min per shard; an unmapped test, reported as drift, joins its group or the least-loaded shard, which adds unit tests and doctests.
-  *A-assurance*
+  *A-assurance#workspace-fits-stage*
 - `folded-parts` — `stages --parts` folds pins, toolchain, schema and test-first validation into `preflight`; each package group's workspace and evaluate parts into `suite.<group>`, probes into `suite.ci`; crate graph, connectors and surfaces into `perimeter`; members stay runnable alone.
   *because every part pays its own sandbox setup and compile, and a fold pays it once for every member*
 - `compile-only` — `gate --stage <part> --compile-only` runs each `cargo test` invocation the part runs, in its own target directory with `--no-run` and without its `--` arguments, and nothing else; a CLI shard compiles every shard's invocations.
@@ -233,13 +235,13 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*
 - `stage-timings` — Each part records queue, setup, compilation and test durations separately, alongside its commit, feature set, runner identity and cold or warm cache state.
-  *A-assurance*
+  *A-assurance#gate-repair-evidence*
 - `part-budget` — Every part completes within {{assurance.gate.container}} on cold and warm builds; oversized work splits into locally runnable parts retaining every required suite and predecessor obligation.
-  *A-assurance*
+  *A-assurance#gate-parts-run*
 - `build-admission` — The runner admits concurrent builds only within available build slots and {{assurance.gate.parallel-jobs}}; excess builds queue before setup and compilation.
-  *A-assurance*
+  *A-assurance#gate-repair-evidence*
 - `timeout-cleanup` — A timed-out part retains phase timings and stdout/stderr diagnostics, terminates its owned process tree, verifies descendant exit and reports a failed verdict before releasing its build slot.
-  *A-assurance*
+  *A-assurance#gate-repair-evidence*
 - `pins-stage` — The pins stage resolves every pinned artifact identity a run depends on before any compilation.
 - `evaluate-stage` — The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, one part per package group plus a probe part, each reporting the floor and baseline verdicts over its entries.
 - `schema-stage` — The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`.
@@ -254,9 +256,9 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `row-token` — Every row-returning function of the store crate takes the enforcement token type, whose constructor is private to the enforcement module; a row path outside a registered relation raises `EnforceUnmediatedPath`, naming the function.
   *P5*
 - `dependency-deny` — The crate-graph stage runs pinned cargo-deny `check bans` over each profile's resolved graph, denying every crate a profile-wide dependency refusal names; a hit raises that refusal's error, naming the profile and the path.
-  *A-assurance*
+  *A-assurance#profile-graphs-answer*
 - `deny-profile-graph` — A profile's graph is the binary resolved with default features off and the profile's feature on, across every target, excluding development dependencies; the stage prints each profile the binary declares no feature for.
-  *A-assurance*
+  *A-assurance#profile-graphs-answer*
 - `deny-list` — `deny.toml` holds one `[bans]` entry per crate or feature a profile-wide dependency refusal names, its reason that refusal's clause id; an entry missing or extra raises `DenyListDrift`, naming it.
   *because a refusal whose crate the list omits passes every profile graph linking it*
 - `unconfigured-egress` — An outbound call reachable under the default configuration — usage ping, license check, update probe — raises `UnconfiguredEgress` in the crate-graph stage, naming the call site.
@@ -266,7 +268,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `formal-stage` — The nightly formal stage runs {{assurance.audit-assumptions.check-command}}, {{assurance.differential-test.command}}, {{assurance.model.protocol-check}} and the protocol differential over 10000 generated cases on both lease paths; a non-zero exit from any reds the run.
   *P7*
 - `container` — The gate container carries four ceilings — processor count, 12 GiB of memory, 18 GiB of usable disk, and a 45 min per-stage wall clock — and a run dies on any one.
-  *A-assurance*
+  *A-assurance#gate-parts-run*
 - `parallel-jobs` — Parallel build jobs number the memory ceiling divided by 3 GiB.
 - `free-disk` — A stage starting with less than 2 GiB of free disk raises `BuildDiskPrecondition` and exits 28 before doing work.
   *P7*
@@ -336,9 +338,9 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 - `through-the-store` — The corpus loads through the real store, and the retriever under test calls {{read.retrieve.ranked-call}} with the options a caller passes.
   *because an unordered full-scan retriever cannot go red when ranking breaks*
 - `policy-labels` — An evaluation corpus carries zone and row-policy labels in its table declarations, and a run reads it through the access-control path under one admitted credential.
-  *A-assurance*
+  *A-assurance#evaluation-data-follows*
 - `unlabeled-corpus` — A run over a corpus whose tables declare no zone or row policy, with no `local:` zone passed as `--zone`, raises `EvalCorpusUnlabeled` before any row lands.
-  *A-assurance*
+  *A-assurance#evaluation-data-follows*
 - `case-format` — A case carries an id, a corpus path relative to its case file, a question, tags, and an expected block of answer, artifacts, edges, entities, must-cite, must-abstain, must-not-retrieve, time anchor and recency bound.
 - `row-reference` — A case names a row as `<table>#<key>`, the key joining the row's declared primary-key values with commas, and the runner keys each returned row the same way.
 - `regression-case` — A case tagged `regression` is a regression case, and its must-not-retrieve set scores {{assurance.evaluate.forbidden-row-rate}}.
@@ -424,11 +426,11 @@ Holding a run against committed baselines and absolute floors, intervals, golden
 - `offline` — The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable.
 - `trace-store` — A trace store records run history and curation staging, and decides no verdict.
 - `golden-custody` — Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree.
-  *A-assurance*
+  *A-assurance#evaluation-data-follows*
 - `answer-key-in-the-store` — An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`.
-  *A-assurance*
+  *A-assurance#evaluation-data-follows*
 - `generated-redaction` — A golden mined from a live query or promoted from a labeled outcome passes {{authority.redact.write-time}} before commit; a case it cannot redact raises `GoldenRedactionFailed`.
-  *A-assurance*
+  *A-assurance#evaluation-data-follows*
 - `promotion-source` — Only an adjudicated outcome label promotes into a golden set; a self-rated row does not.
 - `generators` — Three generators draft candidate cases from the deployment's store — entity-to-fact-to-edge walks, composed edge chains, and questions about absent entities — and a human approves each before commit.
 - `draft-command` — `contextful eval draft` reads the declared entity, fact and edge tables through one admitted session, runs the three generators, and writes their candidates as case lines; it commits nothing.
@@ -439,7 +441,7 @@ Holding a run against committed baselines and absolute floors, intervals, golden
 - `public-corpora` — A public benchmark corpus enters through a fetch-manifest entry naming its URL, its dataset's terms and a SHA-256 digest, and is never committed; fetched bytes under another digest raise `PublicCorpusDigestMismatch`.
   *because a corpus whose bytes drift scores another benchmark under the same name*
 - `trace-export` — A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.
-  *A-assurance*
+  *A-assurance#evaluation-data-follows*
 
 
 ## backtest
@@ -450,7 +452,7 @@ Historical evaluations, called backtests: bounded cases, model-knowledge control
 - `checkpoint-route` — A reader, derive engine or embedder naming a checkpoint family resolves each bounded case to the newest family checkpoint whose post-training {{connector.infer.cutoffs}} precedes the case's horizon.
   *because date-bounded checkpoints remove memorized outcomes at the source*
 - `cutoff-slice` — A backtest report places each case by its resolution instant minus the reader's post-training cutoff and states leakage against a declared reference, a cutoff discontinuity or a clean control model, never a bare pre/post gap.
-  *A-assurance*
+  *A-assurance#backtests-estimate-leakage, A-assurance#case-s-judge*
 - `cutoff-sensitivity` — The report repeats {{assurance.backtest.cutoff-slice}} with each `estimated` cutoff moved across its declared uncertainty interval, and states the minimum detectable effect.
   *because finding no leakage bounds it and does not certify its absence*
 - `latest-arm` — A case set run under a checkpoint family also runs the family's latest checkpoint as a paired arm, and the report states the latest-minus-routed difference.
@@ -469,15 +471,15 @@ Historical evaluations, called backtests: bounded cases, model-knowledge control
 - `universe-table` — A case evaluating changing membership names a membership table declaring valid time and `available_time`; a case naming literal identifiers reports under a separate `fixed-universe` slice.
   *because a fixed identifier list names only the members known when the case was written*
 - `fill-instant` — A financial execution profile fills each decision at the first price available strictly after the decision's recorded instant.
-  *A-assurance*
+  *A-assurance#backtests-estimate-leakage*
 - `execution-component` — A backtest report stamps its declared execution component's digest and parameters under {{topology.bound-application.domain-neutral}}; a report without one raises `EvalExecutionUndeclared`.
-  *A-assurance*
+  *A-assurance#backtests-estimate-leakage*
 - `planted-future` — Each bounded case plants a row available after its horizon in every table it reads; a planted row in the case's trajectory fails the case.
   *because a planted row proves the bound held on the path the case took, not only in its configuration*
 - `planted-delisting` — A financial universe profile plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.
   *because survivorship shows as a missing delisting return, which no aggregate figure reveals*
 - `leak-score` — The case's judge model scores each retrieved document 0 to 4 against a reference answer from rows available before the horizon, landing one row per document and case horizon; the report gives Brier per leak tier.
-  *A-assurance*
+  *A-assurance#case-s-judge*
 - `trajectory-check` — A bounded case fails when a call in its trajectory lacks the {{disclosure.record.bound-entry}} attributes, or a retrieved document scores at or above the case's declared leak threshold.
   *because a bound proves the configuration, and leaked page content passes the bound*
 - `query-finding` — A recorded query naming an entity first available after the case's horizon lands a finding naming the call.
@@ -511,7 +513,7 @@ Probability forecasts over consumer-declared outcomes: freeze instant, settlemen
 - `no-evidence-baseline` — Each round also scores a forecaster given the question text alone, and the report subtracts its Brier score from each forecaster's.
   *because which questions exist can reveal their answers without any retrieval*
 - `tracks-separate` — Backtest, prospective, tool-free and tool-using scores never pool into one figure.
-  *A-assurance*
+  *A-assurance#backtests-estimate-leakage*
 
 #### Scenarios
 
@@ -541,16 +543,16 @@ The target ledger: each tracked target, the clause it serves, how it is measured
 - `timing-iterations` — A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.
 - `timing-batches` — A timed figure is the median of 5 repeats of its timed batch.
 - `trend-direction` — Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.
-  *A-assurance*
+  *A-assurance#tracked-targets-gate*
 - `trend-baseline` — A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.
-  *A-assurance*
+  *A-assurance#tracked-targets-gate*
 - `trend-band` — A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.
 - `runner-stamp` — The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.
 - `absolute-threshold` — A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.
 - `threshold-cost` — A gate-tier target that rises under `<=`, falls under `>=` or moves under `==` carries a `# cost:` comment above its entry that its entry at `<rev>` lacks, or `contextful-ci measure --since <rev>` raises `MeasureThresholdLoosened`.
   *because a loosened gate otherwise reads as a changed number, and the cost it accepts goes unrecorded*
 - `history` — A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.
-  *A-assurance*
+  *A-assurance#tracked-targets-gate*
 - `run-report` — `contextful-ci measure-report` writes the note line — commit, run id, attempt, exit code, records and trend annotations — with an integer run id, and reads back every earlier note whatever its run id's JSON type.
   *because earlier notes on `refs/notes/measures` carry text run ids, and an unreadable note hides every older baseline*
 - `measured-basis` — A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.
@@ -582,25 +584,25 @@ flowchart LR
 The release tag's version, the refusals guarding it, the signed annotated tag `contextful-ci tag` creates, and the local packaging the operator runs from it.
 
 - `version` — A release tag is `v0.<minor>.<patch>`: `<minor>` counts the milestones computing `closed` in the tagged commit's `spec/status.md` plus each store format major past `1`, and `<patch>` counts the existing tags `v0.<minor>.*`.
-  *A-assurance*
+  *A-assurance#store-format-major*
 - `store-format` — A commit's store format is the `FormatVersion::CURRENT` constant in its `crates/contextful-core/src/store/lay_out.rs`, and `1.0` where that constant is absent; a constant that does not parse raises `TagStoreFormatUnread`.
-  *A-assurance*
+  *A-assurance#store-format-major*
 - `annotated` — `contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.
-  *A-assurance*
+  *A-assurance#version-tag-names*
 - `dirty-tree` — A working tree or index differing from `HEAD` raises `TagTreeDirty`.
   *because the gate then judges files the tagged commit does not hold*
 - `off-branch` — A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.
-  *A-assurance*
+  *A-assurance#version-tag-names*
 - `version-regressed` — A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.
-  *A-assurance*
+  *A-assurance#store-format-major*
 - `format-break-patch` — A computed `<minor>` equal to the highest existing tag's, while `HEAD`'s store format major differs from that tag's, raises `TagFormatBreakPatch`, naming both formats.
-  *A-assurance*
+  *A-assurance#store-format-major*
 - `format-notes` — A tag whose store format major exceeds the highest existing tag's carries the message line `Store format <old> → <new>: upgrade every reader, then every writer together.`
   *because an older reader refuses a manifest of the newer major, and an older writer refuses the table once a newer writer commits*
 - `workspace-version` — A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.
-  *A-assurance*
+  *A-assurance#version-tag-names*
 - `gate-failed` — Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.
-  *A-assurance*
+  *A-assurance#version-tag-names*
 - `release-tag-version` — `contextful-ci release` over a `HEAD` carrying a `v*` tag, none of which equals `v` plus the `[workspace.package]` version, raises `ReleaseTagVersionMismatch`, naming both, before any build.
   *because a tag cut without `contextful-ci tag` otherwise ships binaries reporting another version*
 - `release-run` — The operator pushes the tag, runs `contextful-ci release` per {{assurance.build.targets}} matrix cell, `contextful-ci formula` over their metadata and `contextful-ci image` per profile, then publishes the GitHub release from that tag.

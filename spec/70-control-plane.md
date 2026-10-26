@@ -62,7 +62,7 @@ flowchart LR
 The schedule grammar and cron dialect, the trigger adapter and its durability, the wake route, and how an entry computes its next fire.
 
 - `unreadable-schedule` — A schedule string the grammar cannot read, including `L`, `W`, `?`, `#` and `@` macros, raises `ScheduleUnreadable` for that entry alone, naming the diagnostic; every other entry of the document arms.
-  *A-surface*
+  *A-surface#control-document-cas*
 - `unknown-trigger` — An unrecognized trigger value raises `TriggerAdapterUnknown` at startup and downgrades onto no adapter.
   *P3*
 - `trigger-face-missing` — `external` selected on a deployment serving no HTTP face raises `TriggerFaceMissing` at startup.
@@ -121,19 +121,19 @@ The control source, snapshot pointer, signed pulled-head validation against loca
 - `pointer-malformed` — A pointer body that is not wholly a version raises `ControlPointerMalformed`.
   *because an integer read out of leading bytes arms a version nobody applied*
 - `fail-static` — An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.
-  *A-surface*
+  *A-surface#control-document-cas*
 - `loopback-only` — A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `pulled-control` — A reconciler adopts the project-scoped head {{store.pull.control-head}} carries, descending from its local head, only after verifying the receipt under a locally pinned issuer key and validating the snapshot against this node's declarations.
-  *A-surface*
+  *A-surface#synced-control-head*
 - `issuer-pin` — A reconciler reads pulled-control issuer pins through {{authority.verify.pin-source}} and refuses a receipt whose signer is absent from those pins.
   *because a bucket writer can sign its own unauthorized snapshot*
 - `pulled-control-untrusted` — A pulled control head with an invalid signature, project, digest, predecessor chain or local validation raises `ControlSnapshotUntrusted`, names the reason and arms none of that version.
-  *A-surface*
+  *A-surface#control-document-cas*
 - `url-layout` — A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.
   *because one layout serves a snapshot directory unchanged over loopback HTTP*
 - `learns-by-reading` — A daemon learns of a new snapshot only by reading its control source, on each poll and on each wake; nothing pushes a snapshot to it.
-  *A-surface*
+  *A-surface#control-document-cas*
 
 One reconciler beat, polled every 30 s by default:
 
@@ -170,43 +170,43 @@ sequenceDiagram
 Job declaration, the closed kind union, same-tick order, the fire watermark, and one-shot evaluation.
 
 - `job-kind-unknown` — A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `target-unbound` — A `fold` target naming no produced table, or a `build` target naming no declared `[[model]]`, raises `JobTargetUnbound` at validation.
   *P1*
 - `cycle-control-source` — A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.
   *P3*
 - `store-driven-concurrency` — A `store-driven` block declaring no positive integer `max_in_flight` raises `JobConcurrencyUnset` at validation; no default applies.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `store-driven-body` — A `store-driven` block whose `body` names no body the embedding binary registers and no delegate under {{surface.delegate.binding}} raises `JobBodyUnregistered` at validation.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `scheduled-body` — A scheduled `store-driven` job runs through the cadence lease and dispatch pool under `job:<name>`, using the embedding executable's registered body or its bound delegate, and the applied snapshot's job declaration.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `scheduled-history` — A scheduled `store-driven` job computes its next fire from its host execution's recorded start, including failed attempts; a restarted daemon resumes pending execution through {{run.journal.input-pin}}.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `job-snapshot` — Import and full apply retain validated job declarations in the immutable snapshot; a pipeline-only apply preserves the snapshot's jobs, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `model-snapshot` — Import and full apply retain validated model declarations with file SQL resolved inline; pipeline-only apply preserves applied models, and applied build dispatch reads that version's model, contract and tests without consulting draft definitions.
-  *A-surface*
+  *A-surface#configuration-reaches-engine, A-surface#native-model-builds*
 - `standalone-snapshot` — Import and full apply retain standalone table contracts in immutable snapshot metadata; pipeline-only apply preserves that metadata, including absent metadata.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `applied-data-contract` — Applied store-driven and build jobs resolve standalone and pipeline table declarations and models from their snapshot; unapplied edits to them change neither input selection nor output landing contracts.
-  *A-surface*
+  *A-surface#configuration-reaches-engine, A-surface#applied-jobs-retain*
 - `applied-current-authority` — Before opening an applied job execution, differing current table authority or model disclosure refuses under {{surface.apply.validation}}; current writer admission remains authoritative.
   *because a pinned read structure must not preserve authority the live declaration has changed*
 - `applied-contract-missing` — Applied jobs lacking standalone contract metadata refuse under {{surface.apply.validation}} until full apply captures those contracts; no live declaration substitutes for missing snapshot metadata.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `executable-pin` — Store-driven and build executions pin table declarations, model definitions, output membership, and memory shapes and relations; changed structure meets {{run.own.pinned-plan-changed}} before replay or publication.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `scheduled-build` — A scheduled `build` job dispatches the native model publisher through the cadence lease and pool under `job:<name>`; its execution records starts and outcomes for restart cadence, including failed attempts.
-  *A-surface*
+  *A-surface#configuration-reaches-engine, A-surface#native-model-builds*
 - `build-dependency` — A build job's `after` names a pipeline and inherits its dependent-run head schedule; builds follow all pipeline steps and run only after a successful unit. Jobs without `after` read already committed inputs.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `build-dependency-invalid` — Import and apply refuse a job dependency naming no pipeline, combining `after` with `schedule`, or naming a kind other than `build`, under {{surface.apply.validation}}.
   *because a dependency has one native cadence and never dispatches an unsupported job graph*
 - `job-identity` — A pipeline sharing a job's `job:<name>` dispatch identity fails {{surface.apply.validation}} before a version is claimed.
   *because one exclusion key cannot dispatch two distinct operations*
 - `plan-job` — A `plan` block names a compiled plan file beside its manifest; `job fire` lowers that plan onto one execution under host scope `job:<name>`, pinned to the plan's version.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `cycle` — `serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.
 - `cycle-exit` — `serve --cycle` exits non-zero when any unit it dispatched failed, after printing its answer; a cycle with no failed unit, or one finding the cadence lease held, exits zero.
   *because a scheduler running the cycle reads the exit status, and a zero over a failed fire reports success*
@@ -224,7 +224,7 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
 The bounded fire pool and its exclusion keys, the reconciler's hold on the cadence lease, step results, and the worker adapter with its attempt-fenced callback.
 
 - `not-a-head` — A `[[pipeline]]` block naming `after = "<id>"` is a landing step of that entry's dependent run; the run is the unit and cadence rides its head entry. A due id that is a step raises `DispatchUnitNotAHead` and starts nothing.
-  *A-surface*
+  *A-surface#due-units-admit*
 - `step-result` — A completion callback carries a pointer, an object-store key or a catalog row id, or the failed step's last error line, as JSON of at most 1 MiB; any other callback body raises `StepResultRefused` and records nothing.
   *because a step result rides one journal row, and bulk output belongs in the object store it points into*
 - `in-band-tool-error` — A step driving the engine over the tool protocol judges the tool result, not transport status: a `200` carrying a protocol error or a result flagged `isError` raises `StepToolError`.
@@ -233,9 +233,9 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
 - `callback-rejected` — A heartbeat or callback whose signature fails, whose attempt is not the step's current attempt, whose timestamp falls outside {{surface.dispatch.callback-skew}}, or whose step has closed, raises `DispatchCallbackRejected` and changes no step.
   *because a partitioned worker's late result otherwise overwrites its successor's, and a captured callback replays indefinitely*
 - `heartbeat-beat` — A worker heartbeats every 15 s with a signed `GET` on its step's awakeable route, and posts its outcome to that route with a signed `POST`.
-  *A-surface*
+  *A-surface#workers-reach-orchestrator*
 - `worker-target` — `[control] workers` lists worker URLs and `[control] relay` the URL whose `/awake/:token` route `serve` binds; with workers listed, each landing step posts to a worker's `POST /submit`, keyed by run, step and attempt.
-  *A-surface*
+  *A-surface#workers-reach-orchestrator*
 - `worker-key` — Heartbeats and callbacks sign under the key `CONTEXTFUL_WORKER_KEY` holds; `serve` listing workers without a relay or without that key refuses at startup and binds nothing.
 - `submit-signed` — A worker admits a `POST /submit` only when it carries an HMAC under the worker key over its timestamp and body, within {{surface.dispatch.callback-skew}}, naming a callback under its own `[control] relay`; any other submission raises `DispatchSubmitRejected` and starts nothing.
   *because an unsigned submission lets any caller start a step and have the worker sign heartbeats and callbacks for a route of its choosing*
@@ -245,9 +245,9 @@ The bounded fire pool and its exclusion keys, the reconciler's hold on the caden
 - `pool-bound` — A deployment's fire pool runs at most 4 units at once, `[control] pool` replacing the bound; a due unit past the bound stays armed and reports pending.
   *because one bound per deployment caps the process's concurrent pulls, where a bound per exclusion key caps nothing as pipelines are added*
 - `admission-order` — Due units start by earliest next fire, then highest `[[pipeline]]` `priority`, an integer defaulting to 0, then the least recent of each unit's last run start and last dispatch, a unit with neither first, then id.
-  *A-surface*
+  *A-surface#due-units-admit*
 - `refill` — A wake whose fire ends before its answer admits each unit its evaluation left pending into the freed slot, through the cadence lease; a unit falling due after the evaluation waits for the next wake.
-  *A-surface*
+  *A-surface#due-units-admit*
 - `exclusion-key` — A unit's exclusion key is its pipeline id: a unit due while another under its key is in flight starts no second instance, and its next fire recomputes once the first ends.
   *because two fires of one pipeline race for one cursor*
 - `export-quiesced` — A due unit whose head or a landing step writes a member of a publication, or a relation its producer reads, starts nothing while `contextful export group` holds that publication, and stays due, reporting pending.
@@ -312,7 +312,7 @@ unsettled: Does an export on one node quiesce a serve on another, given the publ
 A delegate is deploy-bound code outside the binary that runs a store-driven item's body over one signed HTTP request, in a synchronous `call` mode or the asynchronous `submit` mode, and answers with a closed outcome vocabulary.
 
 - `binding` — `[control.delegates.<name>]` binds a delegate by `url`, a `mode` of `call` or `submit`, and under `call` a `timeout`; a `store-driven` `body = { delegate = "<name>" }` naming no bound delegate raises `JobDelegateUnbound` at arm or fire.
-  *A-surface*
+  *A-surface#delegated-body-deploy*
 - `host` — A delegate `url` is `http` to a loopback host or the `contextful.delegate` virtual host, carrying no credential; any other spelling raises `DelegateHostRefused` at startup and arms nothing.
   *because the stock container reaches a delegate only through a loopback relay or the deploy's outbound interception, and a public URL turns daemon configuration into egress*
 - `envelope` — A delegate request carries `job`, `execution_id`, `step`, `input_hash`, `idempotency_key` under {{run.journal.idempotency-key}}, `attempt`, `entity` with namespace, key and fence, `as_of`, `version` when fired from an applied snapshot, `pins`, `tables`, the input `row` and `deadline`.
@@ -322,16 +322,16 @@ A delegate is deploy-bound code outside the binary that runs a store-driven item
 - `rejected` — An answer unsigned or skewed past {{surface.dispatch.callback-skew}} raises `DelegateAnswerRejected` and closes the attempt `Transient`; one outside {{surface.delegate.outcome}} or over {{surface.dispatch.step-result}} raises it and closes the attempt `Permanent`.
   *because an unsigned answer lets any process on the loopback land rows, and a malformed one cannot change on retry*
 - `call-mode` — Under `call`, one request per attempt holds its connection open and the response body is the attempt's answer; a response arriving after the delegate's `timeout` closes the attempt `Transient`, and its late body records nothing.
-  *A-surface*
+  *A-surface#delegated-body-deploy*
 - `status` — A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; a terminal receipt follows a signed `permanent` answer, a `Permanent` rejection or an exhausted budget under {{run.items.retry-budget}}.
   *because a refusal before work is deployment drift an operator fixes, and a terminal receipt outlives the fix*
 - `call-timeout` — A `call` delegate's `timeout` defaults to 300 s.
 - `call-timeout-ceiling` — A `call` `timeout` above 3600 s raises `DelegateTimeoutRefused` at validation.
   *because an item holding a `max_in_flight` slot for over an hour is a stalled delegate, not a slow one*
 - `submit-mode` — Under `submit`, the request is a {{surface.dispatch.worker-target}} submission answered at once; the delegate heartbeats under {{surface.dispatch.heartbeat-beat}}, posts its answer to the callback, and a lapse follows {{surface.dispatch.heartbeat-lapse}}.
-  *A-surface*
+  *A-surface#delegated-body-deploy*
 - `outcome` — An answer is `ok` with rows per declared output table, `defer` with a `retry_at` instant, `transient`, or `permanent` with a reason; `ok` lands as {{run.items.completion}}, `defer` parks, and `transient` and `permanent` follow {{run.items.retry-budget}}.
-  *A-surface*
+  *A-surface#delegated-body-deploy*
 - `defer-parks` — A `defer` parks the item until its `retry_at` under {{run.items.retry-budget}}; the first fire after that instant re-admits it under {{run.items.replay}}, no run sleeps on it, and a row of a job without `isolated_items` closes `Transient` instead.
   *because a provider budget clears on the provider's clock, and a slot held through the wait starves every other entity*
 - `currency` — The fence in {{surface.delegate.envelope}} is checked immediately before the request under {{run.items.fence}}; under `submit`, the heartbeat `GET` answers the current attempt and fence, so a delegate learns before a paid call whether it is superseded.
@@ -380,34 +380,34 @@ The configuration document, the records it presents read-only, the structured sc
 - `connector-upload` — An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.
   *because publishing into the registry runs a separate signed path*
 - `store-draft` — An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.
-  *A-surface*
+  *A-surface#control-document-cas*
 
 ## apply
 
 Validation, the immutable version claim, the pointer advance, the owner's storage, and the authority an apply carries.
 
 - `version-race` — An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.
-  *A-surface*
+  *A-surface#control-document-cas*
 - `validation` — A document failing engine validation raises `ApplyValidationRefused` and claims no version.
   *because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it*
 - `owner-unconfigured` — An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.
   *P3*
 - `weak-conditional-backend` — A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `uninitialized-store` — An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.
   *P3*
 - `local-claim` — A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.
   *because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself*
 - `synced-attestation` — In a project with `[sync]`, import and apply admit an admin capability, then sign a receipt over the project, version, predecessor receipt digest and snapshot digest through {{authority.issue.signing-port}}.
-  *A-surface*
+  *A-surface#synced-control-head*
 - `receipt-message` — A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\n<project>\n<version>\n<parent-or-minus>\n<snapshot-sha256>\n<signer>\n`; its parent is `-` only for the first version.
-  *A-surface*
+  *A-surface#synced-control-head*
 - `receipt-digest` — A predecessor and the bucket head name the lowercase SHA-256 hex digest of a receipt's RFC 8785 canonical JSON bytes.
-  *A-surface*
+  *A-surface#synced-control-head*
 - `receipt-file` — A synced claim writes immutable `receipt@v<N>.json` beside its snapshot before advancing the applied pointer.
-  *A-surface*
+  *A-surface#synced-control-head*
 - `attestation-unavailable` — A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.
-  *A-surface*
+  *A-surface#synced-control-head*
 - `guarded-import` — `contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; an import over a directory holding a version claims nothing, names that version and exits zero.
   *because a restart on a warm disk runs import before apply, and a refusal there stops the restart*
 - `adopt-before-claim` — Import or apply over a snapshot directory holding no version first adopts a pulled head verified under {{surface.reconcile.issuer-pin}} against the verb's `--public-key` and meeting {{surface.apply.self-valid}}, though the declarations drop its pipelines or jobs; an import that adopts claims nothing.
@@ -417,11 +417,11 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
 - `self-valid` — Import, apply and adoption validate a snapshot's document, build plans and each job's `after` against that snapshot's own pipelines, so apply signs no head its adoption refuses.
   *because a signed head failing its own adoption refuses every cold start until a reset*
 - `draft-claim` — An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.
-  *A-surface*
+  *A-surface#connections-claim-version*
 - `operator-attestation` — An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.
   *because a shared store capability cannot identify the person who used the console*
 - `draft-table-contracts` — Pipeline editing preserves standalone table metadata from the draft's expected immutable version; apply regenerates that metadata and refuses an altered saved draft under {{surface.apply.validation}} before advancing the pointer.
-  *A-surface*
+  *A-surface#applied-jobs-retain*
 - `draft-absent` — An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.
   *because an absent draft supplies no document for the version claim*
 - `served-admin-grant` — A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.
@@ -476,10 +476,11 @@ sequenceDiagram
 Where the data plane runs, the region allow-set gating placement, and operation with no external reach.
 
 - `region-entries` — A residency allow-set holds at most 16 entries.
+  *A-surface#residency-divergence-detected*
 - `region-mismatch` — A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.
   *P3*
 - `site-regions` — A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.
-  *A-surface*
+  *A-surface#residency-divergence-detected*
 
 ## connection
 
@@ -487,7 +488,7 @@ Runtime lifecycle of one tenant's external source connection and its scheduled p
 
 - `routes` — `POST /connections` creates, `POST /connections/{id}/pause` pauses, and `DELETE /connections/{id}` deletes a connection outside the operator-only `/control/*` routes.
 - `create` — A served connection create binds an admitted tenant, principal, source selection, secret name and pipeline id in one versioned control claim under {{surface.apply.version-race}}.
-  *A-surface*
+  *A-surface#connections-claim-version*
 - `authority` — A connection mutation requires an admitted write credential for its tenant and principal, checked on the request before reading and on the standing record before changing it; a mismatch raises `ConnectionScopeDenied`.
   *because a caller-controlled tenant or principal could otherwise point a pipeline at another user's credential*
 - `idempotent-create` — Repeating create with the same connection id and declaration returns the standing version; a differing declaration raises `ConnectionIdConflict` without replacing it.
@@ -500,7 +501,7 @@ Runtime lifecycle of one tenant's external source connection and its scheduled p
 - `pause` — Pause disarms the connection's schedule and prevents new fires; an in-flight fire reaches its run cancellation boundary under {{run.cancel.two-grains}}.
 - `delete` — Delete first pauses the connection, revokes its credential under {{connector.principal-secrets.disconnect}}, then retires its pipeline and schedule through a versioned claim.
 - `schedule-scale` — Connection schedules share {{surface.dispatch.pool-bound}} and {{surface.arm.next-fire-from-history}}; each connection holds one armed entry rather than one timer or thread.
-  *A-surface*
+  *A-surface#connections-claim-version*
 - `consent-boundary` — The calling application owns Google authorization, callback and code exchange; connection create receives only a secret name, never an OAuth code or token.
 
 unsettled: Which manifest block supplies a connection pipeline's OAuth client references and Drive origin? owner: surface affects: surface.connection

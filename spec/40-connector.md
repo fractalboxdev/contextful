@@ -54,7 +54,7 @@ flowchart LR
 Connector interfaces: shared types, source and destination worlds, optional interfaces and compiled-in sources.
 
 - `authoring-path` — Every connector implements the same trait as either a sandboxed component or a native source compiled into the binary. Dispatch does not branch on these implementation forms.
-  *A-connector*
+  *A-connector#guest-world-targets*
 - `type-taxonomy` — The shared types interface carries a schema (name, fields, primary key) and a field (name, data type, nullability) over `boolean`, `int32`, `int64`, `float64`, `string`, `bytes`, `timestamp-millis` and `json`.
 - `batch-encoding` — A batch crosses the boundary as Arrow IPC bytes, and a position as opaque bytes beside a declared cursor kind.
 - `arrow-types` — The host reads Arrow `Binary` or `FixedSizeBinary` columns as bytes of that width and `FixedSizeList` of `Float32` or `Float16` as vectors. Each lands in its {{store.reconcile.binary-and-vector}} type without text conversion.
@@ -90,13 +90,13 @@ attribution narrows a failure the guest saw for one partition, such as a per-res
 Host imports and the configuration table the host forwards to a guest.
 
 - `three-imports` — Both worlds import the WASI 0.2 outgoing HTTP and wall-clock interfaces and the logging interface, and nothing else; every export is a synchronous call. There is no filesystem import and no socket import.
-  *A-connector*
+  *A-connector#guest-world-targets*
 - `empty-context` — A guest standard library pulling broader interfaces links against an empty context: no preopens, no environment, no arguments.
 - `wait-primitive` — Neither world carries a monotonic clock or a sleep primitive, so a guest holds no call open across a wait.
 - `forwarded-config` — The pipeline's guest configuration table is the one part of the source configuration crossing inward, as one JSON object delivered once per session ahead of discovery.
-  *A-surface*
+  *A-surface#configuration-reaches-engine*
 - `config-shape` — Ahead of any I/O, a guest configuration value that is not a table, a serialization over 64 KiB, or a credential or environment reference inside it raises `ConnectorConfigRejected`.
-  *A-connector*
+  *A-connector#guest-world-targets*
 - `config-unclaimed` — Where the artifact is local and probed, a guest table declared against a guest exporting no configuration interface raises `ConnectorConfigUnclaimed`.
   *P1*
 - `unusable-key` — A guest raises a permanent failure for an unsupported configuration key or value.
@@ -110,23 +110,23 @@ The outer source configuration follows {{run.declare.config-key}}.
 Manifest-declared host access and the probe that checks a bound credential's granted scopes.
 
 - `declared-grant` — A manifest lists required outbound hosts and wall-clock access. The host decides the access grant at load. The connector requests no additional permission at run time and has no escalation path.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `undeclared-access` — A connector reaching for access its manifest does not list fails to load, raising `ConnectorUndeclaredAccess` naming that access.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `host-allowlist` — The outbound allowlist holds exact hosts and subdomain wildcards matched as suffixes; a wildcard entry covers subdomains and not the apex.
 - `allowlist-shape` — An empty allowlist, a bare wildcard, an empty entry, and an entry carrying a scheme, port or path raise `ConnectorAllowlistRejected`.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `environment-name` — A declared environment name is a name, not ambient access: the operator binds it to a reference and the host resolves and injects the value at call time. No connector reads the process environment.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `ambient-authority` — No credential is a property of the process: no shared client carries a default header and no import returns secret bytes. Every grant binds to one declared host and attaches at request time.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `scope-probe` — A manifest may declare an identity endpoint, the response header carrying granted scopes, and the grant it expects. The host calls it with the bound credential ahead of the first read.
 - `probe-transport` — The scope probe's host sits on the allowlist and its scheme is TLS or loopback.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `probe-shape` — A scope probe declaring an empty scopes header or a header outside HTTP field-name token syntax raises `ConnectorScopeProbeRejected`.
   *because a header no response can carry refuses every session as though the vendor withheld the grant*
 - `scope-exceeded` — A granted scope outside the declared expectation, compared byte for byte, raises `ConnectorScopeExceeded`, and the session does not open.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `scope-unverified` — A probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII, raises `ConnectorScopeUnverified`.
   *because cannot-verify is not verified*
 - `environment-binding` — A source key binds from the environment as `<key>_from = "env:<NAME>"`. The engine enumerates the bindable keys in one place, each with its value shape: a scalar or a comma-separated list.
@@ -164,21 +164,21 @@ unsettled: Which manifest keys declare environment names and a shared quota, and
 Comparison of a candidate connector manifest with its admitted predecessor, and operator approval of additional host access.
 
 - `comparison` — Reload compares the candidate's complete declared grant with the admitted manifest for the same connector identity before publishing the candidate; validation under {{connector.declare-capability.allowlist-shape}} precedes comparison.
-  *A-connector*
+  *A-connector#manifest-widening-binds*
 - `dimensions` — The comparison covers outbound hosts, environment names, expected credential scopes and wall-clock access; names and scopes compare byte for byte, and enabling the clock widens its Boolean grant.
-  *A-connector*
+  *A-connector#manifest-widening-binds*
 - `host-inclusion` — Host inclusion succeeds when every candidate entry has a covering predecessor entry under {{connector.declare-capability.host-allowlist}}. Success admits no host the predecessor refuses.
-  *A-connector*
+  *A-connector#manifest-widening-binds*
 - `host-witness` — Every reported host witness passes the candidate's outbound matcher and fails the predecessor's outbound matcher.
-  *A-connector*
+  *A-connector#manifest-widening-binds*
 - `unresolved` — A comparison establishing neither inclusion nor a replayed witness raises `ConnectorWidenUnresolved`, naming the dimension and reason; reload retains the admitted manifest.
-  *A-connector*
+  *A-connector#manifest-widening-binds*
 - `approval-required` — Additional access without a matching operator approval raises `ConnectorWidenApprovalRequired`, carrying a witness for each widened dimension; reload retains the admitted manifest.
-  *A-connector*
+  *A-connector#manifest-widening-binds*
 - `approval-binding` — An approval records the authenticated operator, connector identity and both complete manifest digests; publication atomically checks the admitted digest and applies only that candidate, preserving {{run.own.admission-pin}}.
-  *A-connector*
+  *A-connector#manifest-widening-binds*
 - `narrowing` — A candidate included in the admitted grant needs no widening approval; comparison grants no exemption from other load checks.
-  *A-connector*
+  *A-connector#manifest-widening-binds*
 
 unsettled: Which operator authorization action and durable approval store serve local reload and control-plane apply? owner: connector affects: connector.widen
 
@@ -198,9 +198,9 @@ Vendor quota declarations, limiter bindings, pre-send checks, permit reservation
   *because the report carries forwarded headers verbatim to a party outside the vendor credential's scope*
 - `limiter-binding` — The operator binds that quota name to an endpoint, a bearer token held by reference, and a permit batch size.
 - `quota-unbound` — A declared quota with no binding raises `ConnectorQuotaUnbound` at load.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `binding-transport` — A limiter endpoint that is neither HTTPS nor loopback or carries a query, fragment or userinfo, and a limiter token that is not a `secret://` reference, raise `ConnectorLimiterBindingRejected` at load.
-  *A-connector*
+  *A-connector#egress-passes-transport*
 - `limiter-address` — A limiter endpoint may resolve to a private or loopback address; the engine's check of vendor-host addresses does not apply to it.
   *because the operator authors the limiter endpoint and no vendor answer supplies it*
 - `reservation-point` — The host reserves at the mediation point, the guest's outgoing-HTTP import or the engine's shared client. One permit covers one outbound request.
@@ -208,33 +208,33 @@ Vendor quota declarations, limiter bindings, pre-send checks, permit reservation
 - `permit-batch` — An acquire may grant a batch of permits under a short TTL. Each request spends one, and the next report surrenders the unspent.
 - `acquire` — Acquire is an authenticated POST of quota, class and permit count, answered granted with permits and a TTL, or denied with a retry-after. A bare `429` with `Retry-After`, and a zero-permit grant, read as denials.
 - `acquire-call` — Each limiter call takes at most 5 s. A reservation does not sleep: denial returns `RateLimited` without waiting. The run's retry schedule performs the specified wait.
-  *A-run*
+  *A-run#meter-reservation-holds*
 - `unreadable-answer` — An unreadable limiter response raises `ConnectorLimiterUnreadable` and grants no permits.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `denial-ceiling` — A limiter wait, whether a retry-after or a zero-permit grant's TTL, reads as at most the ceiling of {{run.retry.retry-after}}.
   *because an unbounded wait named by the limiter parks the run past any retry its schedule allows*
 - `report` — Report is an authenticated POST of quota, class, granted, spent, one entry per vendor response (status, retry-after, verbatim headers), an observation instant and the run id.
 - `report-delivery` — The run delivers reports at least once with bounded backoff and makes one delivery attempt before each refill. An undelivered report accompanies the next. The run audits a report that remains undelivered without failing anything.
 - `unmetered-request` — Under a declared limiter, a vendor request without a granted reservation raises `ConnectorUnmetered`, including for an unreachable, unbound or failing limiter. These failures do not indicate expired vendor credentials.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `allowlist-precedence` — A request the allowlist refuses reaches no limiter and spends no permit.
 - `pre-send-hook` — Each outbound hop passes one pre-send hook after the allowlist and before name resolution, carrying the hop's intent: method, scrubbed URL, host, port, traffic class, run id and request body bytes.
-  *A-connector*
+  *A-connector#egress-passes-transport*
 - `hook-composition` — The limiter reservation is the hook's innermost implementation. An operator hook composes in front of it, so a request the operator hook refuses makes no limiter call and spends no permit.
-  *A-connector*
+  *A-connector#egress-passes-transport*
 - `hook-refusal` — A hook refusing an intent raises `ConnectorEgressRefused`, naming the host and reason. The host resolves no name, and the retry schedule does not retry the request.
   *P6*
 - `hook-settle` — The hook receives each admitted hop's outcome after the body read or the failure: the status or transport failure, the request body bytes sent, and the response body bytes the host read. A followed redirect is two intents.
-  *A-connector*
+  *A-connector#egress-passes-transport*
 - `held-back-request` — A guest swallowing a held-back request still fails its call, and a fault inside the reservation machinery fails the request rather than passing it unmetered.
   *P2*
 - `synthesized-throttle` — A denied reservation returns to the guest as a synthesized `429` carrying the retry-after. An unreachable limiter fails the request as a transport failure.
   *because a connector mapping vendor throttles needs no second interface*
 - `replay-reservation` — Replay issues no outbound request and makes no limiter call.
 - `built-in-grant-absent` — A compiled-in source reaching an outside vendor declares its grant in the pipeline's source configuration; the build raises `ConnectorGrantMissing` without it.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `grant-unhonorable` — A declared grant on a compiled-in source that bypasses the mediated client raises `ConnectorGrantUnhonorable` at load.
-  *A-connector*
+  *A-connector#host-access-quota*
 - `metered-disclosure` — Where the project binds any quota, every compiled-in read records whether it ran metered, the run record states an unmetered read once, and validation warns per pipeline naming the connector.
 - `counting-not-pricing` — The limiter counts requests and prices none.
 
@@ -276,7 +276,7 @@ Model requests: endpoint selection, prompt data markers and output provenance la
 - `model-endpoint` — Every model call resolves to one operator-configured OpenAI-compatible HTTP endpoint declared as a capability. The host owns the credential, rate limit and span; the component owns the prompt template and response schema.
   *A-topology#one-egress*
 - `mediated-call` — A model call sends through the mediated client under {{connector.attach.mediation-covers-every-egress}}, its allowlist the configured endpoint host alone, and passes {{connector.meter.pre-send-hook}} like a vendor hop.
-  *A-connector*
+  *A-connector#egress-passes-transport*
 - `vendor-sdk` — The workspace rejects a model-vendor SDK in any Rust crate under {{topology.compose.vendor-sdk}}. Changing providers requires only a URL edit.
   *A-topology#one-egress*
 - `data-fence` — No ingested value reaches a model outside a data boundary: marker pairs whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.
@@ -323,41 +323,41 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 
 - `distribution-form` — A connector resolves in one of four forms: in-tree by name, a project-local artifact path, an HTTPS URL, or an OCI reference.
 - `remote-transport` — HTTPS artifact, OCI manifest and OCI layer requests pass through the mediated client with only the reference's authority admitted, under {{connector.attach.transport-port}}, before {{connector.package.digest-mismatch}}.
-  *A-connector*
+  *A-connector#remote-artifacts-use*
 - `oci-reference` — An OCI artifact reference is `oci://<registry>/<repository>[:<tag>|@sha256:<digest>]`, with `latest` for an absent selector; an empty registry, repository or selector raises `ConnectorOciReferenceInvalid` before network access.
   *because a malformed reference must not turn a registry name into an unintended request destination*
 - `oci-component-layer` — An OCI reference resolves a schema-2 image manifest with exactly one layer, whose media type is `application/vnd.wasm.content.layer.v1+wasm`; another shape raises `ConnectorOciArtifactUnsupported` before any component compiles.
-  *A-connector*
+  *A-connector#content-pin-trust*
 - `oci-layer-integrity` — The fetched OCI layer matches its manifest descriptor's SHA-256 digest and the source pin under {{connector.package.digest-mismatch}}; a descriptor mismatch raises `ConnectorOciLayerMismatch` before cache publication.
-  *A-connector*
+  *A-connector#pin-builder-runs*
 - `oci-registry-bearer` — An optional `config.toml` `[connector.registry."<authority>"] authorization = "Bearer ${secret://<name>}"` binds one OCI registry authority; hydration reaches manifest and layer requests alone under {{connector.resolve.hydration-is-just-in-time}}.
-  *A-connector*
+  *A-connector#content-pin-trust*
 - `remote-cache` — A remote artifact admitted under {{connector.package.digest-mismatch}} enters the project cache at `.contextful/artifacts/sha256/<digest>` atomically; a later fire reads matching cached bytes before any network request.
-  *A-connector*
+  *A-connector#executables-content-pinned, A-connector#remote-artifacts-use*
 - `remote-cache-corrupt` — Cached artifact bytes whose SHA-256 differs from their cache key raise `ConnectorArtifactCacheCorrupt`; the host neither fetches a replacement nor compiles those bytes.
   *because a replay must refuse when its recorded artifact bytes are damaged*
 - `remote-fetch-failure` — If fetching a remote artifact's manifest or bytes fails, the host raises `ConnectorArtifactFetchFailed`, naming the scrubbed reference. The host writes no run row and compiles no component.
   *because a failed installation cannot be mistaken for a source returning no rows*
 - `remote-unpinned` — A remote artifact carrying no 64-hex content pin raises `ConnectorRemoteUnpinned` at parse.
-  *A-connector*
+  *A-connector#content-pin-trust*
 - `insecure-artifact` — A plain-HTTP artifact reference raises `ConnectorInsecureArtifact`.
-  *A-connector*
+  *A-connector#executables-content-pinned*
 - `digest-mismatch` — The host re-hashes the resolved bytes and raises `ConnectorDigestMismatch` on a difference, before the bytes reach the engine.
-  *A-connector*
+  *A-connector#executables-content-pinned*
 - `artifact-cache` — On Unix, after {{connector.package.digest-mismatch}} admission, the host caches precompiled components by artifact digest and engine compatibility hash; an intact host-written entry deserializes, while a missing, stale or altered entry recompiles.
-  *A-connector*
+  *A-connector#precompiled-components-reuse*
 - `pin-requirement` — Either of two switches requires a local artifact pin: store-wide `[connector] require_pin` in the store's `config.toml`, or `require_wasm_pin` in the connector manifest.
 - `local-unpinned` — With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of the bytes found.
-  *A-connector*
+  *A-connector#executables-content-pinned*
 - `manifest-posture` — An adopted manifest carries a digest from the fixed builder platform. A template manifest carries a pin requirement and placeholder. The parser accepts a template; the loader refuses it.
 - `posture-undeclared` — A manifest carrying neither a digest nor both template markers raises `ConnectorPostureUndeclared` at merge.
-  *A-connector*
+  *A-connector#pin-builder-runs*
 - `build-source` — A manifest's `build.source` is its only build input; the fixed builder platform holds image, target, compiler, package manager and command, and a `build.source` leaving the manifest directory refuses under {{connector.package.manifest-keys}}.
-  *A-connector*
+  *A-connector#pin-builder-runs*
 - `pin-verb` — `contextful connector pin <manifest>` builds the guest in a digest-pinned container on one fixed platform and writes the artifact and its digest. `--verify` rebuilds and compares without writing.
-  *A-connector*
+  *A-connector#pin-builder-runs*
 - `host-built-pin` — `--local` builds with the host toolchain and prints a host-local digest; writing a pin from a host build raises `ConnectorHostPinRefused`.
-  *A-connector*
+  *A-connector#pin-builder-runs*
 - `path-remap` — Every build remaps the source root and the package cache, so checkout location is not a digest input.
 - `native-verification` — `--verify --native` checks host triple, compiler and package manager against pinned constants and clears byte-moving configuration before building. A mismatch exits with a status distinct from digest drift.
 - `interpreted-target` — A host built with the `pulley` feature runs components on the interpreted target as portable bytecode, mapping no executable memory, under the same deadlines and mediated client; the compiled native target stays the default.
@@ -371,9 +371,9 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `manifest-host-grant` — A component source's `manifest` names a project-relative TOML file; at load, each `allow` host must fit its `[capabilities] allow_hosts` declaration or refuses under {{connector.declare-capability.undeclared-access}}, naming the excess host.
   *because an operator grant cannot extend past the connector's declared host access*
 - `component-load` — `pipeline run` resolves a component source, admits it against its pin and loads it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
-  *A-connector*
+  *A-connector#content-pin-trust*
 - `component-grant` — A component session's grant is its declared `allow` hosts and `attach` headers alone, with credential attachment governed by {{connector.attach.per-request-hydration}}; a source declaring no `allow` reaches no host.
-  *A-connector*
+  *A-connector#pin-builder-runs*
 - `component-validate` — `pipeline validate` resolves a local component artifact against the same directory as `pipeline run`, then loads it and runs discovery. Missing exports or world mismatches fail before runs. Validation checks remote artifacts without I/O.
   *P1*
 - `component-position` — `incremental` beside a component source raises `ConnectorPositionOwned` at validation; the guest's opaque cursor is the run's position.
@@ -386,9 +386,9 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *because the body buffers in host memory, outside the guest's linear-memory cap*
 - `world-compatibility` — Compatibility is semver over the world: a guest built against one minor loads on any host advertising a compatible minor.
 - `world-drain` — On a major world bump no new run admits against the old world, in-flight runs complete or suspend on the world they pinned, and the old world then retires.
-  *A-connector*
+  *A-connector#guest-world-targets*
 - `live-reresolution` — Re-resolving or reloading a connector while a journaled run holds it raises `ConnectorHotReload`; a new version applies to runs admitted after it.
-  *A-connector*
+  *A-connector#executables-content-pinned*
 - `built-in-registry` — The names resolving to compiled-in sources form one enumerated list. A listed name carries no manifest or artifact, and a feature-gated entry stays listed and answers with a rebuild hint.
 
 A connector striking a declared bound follows {{run.retry.bound-hit-is-transient}}.
@@ -431,22 +431,22 @@ The declared behavior of each source compiled into the engine.
 - `poll-only-increments` — Incremental loading is a scheduled poll. A replication socket held open is not a source read.
   *because its output is unbounded and has no recorded exchange to replay*
 - `twin-api` — A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. The engine admits a sanctioned, disclosed organization-wide export path.
-  *A-read*
+  *A-read#store-holds-nothing*
 - `parse-containment` — A compiled-in source decodes behind {{run.land.parse-boundary}}.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 
 ### http
 
 The generic HTTP source binds credentials, walks its pages under one pagination shape, and expands rows by follow-up requests.
 
 - `http-headers` — The generic HTTP source binds credentials through a `headers` table whose values are templates in the {{connector.reference.value-template}} grammar, hydrated per read.
-  *A-connector*
+  *A-connector#credentials-references-workload*
 - `http-page-pull` — Under page-number, next-cursor or no pagination and without an incremental field, one generic HTTP source pull reads one page and carries the next page's token as its position. The walk's last page carries a position naming the first page.
   *because a failed walk resumes at the page it stopped on, and the next run walks the whole table again*
 - `http-url-walk` — Under next-URL or Link-header pagination, one generic HTTP source pull walks every page, and no position carries a page URL.
   *because a next URL's query may carry a credential, and a position lands unscrubbed in the journal*
 - `http-watermark-walk` — Under an incremental field without next-URL or Link-header pagination, one generic HTTP source pull reads one page from the stored watermark; its position carries that watermark and the next page's token, and the walk's last page carries none.
-  *A-run*
+  *A-run#backfill-commits-checkpoints*
 - `http-limiter` — The generic HTTP source reads its {{connector.meter.limiter-declaration}} from a `limiter` config table, and the project manifest holds each {{connector.meter.limiter-binding}} under `[limiters.<quota>]`.
 - `http-scope-probe` — The generic HTTP source reads its {{connector.declare-capability.scope-probe}} from a `scope_probe` config table and carries its first reference-bound header as the bound credential.
 - `http-compression` — The generic HTTP source decompresses a body only when `compression` declares `gzip` or `zip`, bounded by {{connector.source.object-expansion}}. The URL extension does not select compression.
@@ -459,11 +459,11 @@ The generic HTTP source binds credentials, walks its pages under one pagination 
 - `pagination-ambiguity` — Declaring two pagination shapes raises `ConnectorPaginationAmbiguous`.
   *P1*
 - `page-cap` — One walk issues at most 1000 requests; a watermark walk counts them from its last page whose every clock passes every clock the walk served before.
-  *A-run*
+  *A-run#backfill-commits-checkpoints*
 - `page-loop` — A vendor returning a token or link it already served raises `ConnectorPageLoop`.
   *P4*
 - `next-link-origin` — The host checks a vendor-supplied next link as a hop under {{connector.attach.weakened-hop}}.
-  *A-connector*
+  *A-connector#outbound-transport-origin*
 - `table-pattern` — A table pattern binds table-name segments into the request URL, percent-encoded, and each table holds its own position.
 - `table-unmatched` — A table not matching the declared pattern, or binding `.` or `..` into a placeholder, raises `ConnectorTableUnmatched` ahead of any request.
   *P1*
@@ -520,17 +520,17 @@ A body's declared `format` selects its decoder: JSON, delimited text, a feed, an
 - `feed-categories` — `categories` is JSON array text of `domain` and `term` objects in document order: each RSS `category` text and its `domain`, or Atom `term` and `scheme`; an absent domain is null, an empty term skipped.
   *because a model then selects items by a facet through `json_extract` over one declared column*
 - `office-part-selection` — The decoder reads an office container by exact part name. The decoder opens no other part and resolves no external entity.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `decompression-budget` — A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory's claim and against the bytes that arrive.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `worksheet-landing` — One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each shared string and each stored cell, counted as they land — and lands at most 1048576 rows.
   *because shared-string fan-out turns a small input into an unbounded output*
 - `cell-out-of-range` — A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell holding none widens nothing.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `external-reference` — An external-reference declaration, an external-links part, or a relationship marked external raises `ConnectorExternalReference`.
-  *A-connector*
+  *A-connector#outbound-transport-origin*
 - `workbook-cell-typing` — The decoder stores a workbook cell as a string and a date cell as its serial number. The decoder stores cached formula values without evaluating formulas.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `workbook-incremental` — An incremental position against a workbook raises `ConnectorIncrementalUnsupported`.
   *because a variable-width serial number advances a lexicographic watermark past unlanded rows*
 
@@ -551,7 +551,7 @@ The `s3` source and directory walks address, decompress and dead-letter each obj
   *because landing one member of several by archive order picks rows the declaration never named*
 - `object-expansion` — One object or HTTP body decompresses to at most 256 MiB, counted as the bytes arrive. Past it the body lands nothing, named as the object or the scrubbed URL, and an HTTP read refuses whole.
 - `object-unreadable` — An unreadable object, or one exceeding {{connector.source.object-expansion}}, lands no data rows and one {{run.land.dead-letter}} row naming `s3://<bucket>/<key>`. The rest of the read lands.
-  *A-connector*
+  *A-connector#unreadable-objects-files*
 - `unreadable-all` — An object or file read in which every input it reaches is unreadable, none landing or held unchanged, refuses whole under {{run.land.unreadable-input}}, naming each input.
   *because every input failing names a declaration fault, such as a wrong `format`, rather than damaged inputs*
 - `configuration-fault` — A compiled-out decoder, unknown `encoding`, missing selected archive member, unselected multi-member archive, or first record mismatching `columns` fails the whole object or file read as a configuration fault. The source names the error and dead-letters nothing.
@@ -582,9 +582,9 @@ The `file` source and the document decoder land one row per page or heading, key
 - `document-unreadable` — An encrypted document or a document with no extractable text on any page counts as unreadable input under {{run.land.unreadable-input}}. The source stores no empty pages for these documents.
   *P2*
 - `frontmatter-shape` — A nested map, a block scalar, a key carrying the reserved producer prefix, or, compared without case, a repeated key or a key other than `title` naming a column the source lands, in a note's frontmatter raises `ConnectorFrontmatterRejected`.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `conversion-required` — A compound-binary office container, detected by an office extension or by magic bytes under an extension the source reads, raises `ConnectorConversionRequired` naming the conversion command.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `file-source` — The `file` source resolves `root` against the project directory and walks into one `documents` table: `.md` and `.markdown` notes, `.txt` plain text, `.pdf` pages. The source declines other extensions without opening them.
 - `file-globs` — The source reads a root-relative path if no `exclude` glob matches and either an `include` glob matches or none is declared. `*` and `?` match within one segment; a `**` segment matches any number.
 - `file-no-follow` — The `file` walk follows no symbolic link, to a file or a directory.
@@ -598,7 +598,7 @@ The `file` source and the document decoder land one row per page or heading, key
 - `document-url` — With `base_url`, a row's url is the base joined with its slug, then `#page=<n>` on a PDF page or the heading's anchor on a heading section; without `base_url` the url is null.
 - `file-position` — The `file` position maps each landed path to its digest and row count. A matching digest lands nothing, a changed file re-lands whole and tombstones ordinals past its new count, and a vanished file tombstones every row.
 - `file-unreadable` — An unreadable file lands no data rows and one {{run.land.dead-letter}} row. The source retains earlier rows and continues the read.
-  *A-connector*
+  *A-connector#unreadable-objects-files*
 - `file-rename` — A file renamed onto its old slug re-lands under its new path, and the old path tombstones only ordinals past the renamed file's row count.
   *because a tombstone on an identity the read lands live removes the renamed document*
 - `file-cap` — The source declines a file over 64 MiB without reading past the leading bytes identifying its format.
@@ -629,13 +629,13 @@ Async vendor reports, images, web search results and pushed `receive` batches ea
   *P6*
 - `image-row` — An image source lands path, content hash, header width and height, embedded capture instant, file modification time, a modality marker and a null body. No pixel decode runs on ingest.
 - `image-header` — An image header that does not parse raises `ConnectorImageHeaderUnreadable` naming the path.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `quotability-marker` — Whatever fills an image body records in a companion column whether the text is verbatim extraction or a model's reading.
 - `marker-body-pairing` — An image body and its quotability marker that are not null together raise `ConnectorQuotabilityMismatch`.
-  *A-connector*
+  *A-connector#untrusted-input-decodes*
 - `search-config` — The search source takes a driver, a query, a freshness window and a result ceiling, landing one row per result. Its cursor kind is snapshot-id, keyed on the result URL.
 - `provider-origin` — Each search call site pins its provider's host. A non-TLS transport or another host raises `ConnectorProviderOriginRejected`, except on loopback.
-  *A-connector*
+  *A-connector#outbound-transport-origin*
 - `search-degradation` — An absent provider key and a provider `5xx` are transient failures yielding a zero-row outcome, and a replay returns the journaled result set.
 - `receive-form` — A `receive` source declares `format = "jsonl"`, a positive `max_batch_bytes`, a positive `max_queue_depth` and a positive `key_retention_secs`, none defaulted; it serves every declared table and requests nothing from outside.
   *because a ceiling the sender fills must be the operator's choice, not a guess the binary carries*
@@ -651,21 +651,21 @@ The drive source walks selected Drive folders and lands one row per file and one
 - `drive-walk` — The drive source walks `folder_id` breadth-first through `files.list`, paging each folder within `drive_id` when declared. The source lists each folder once, sorts children by name and id, and follows no shortcut.
   *because the source keeps a per-file position and mints its token host-side, which a guest holding no credential bytes cannot*
 - `drive-root-set` — Exactly one of `folder_id` or `folder_ids` selects roots; `folder_ids` holds 1 to 16 entries, all distinct, under one required `drive_id`. An empty, oversized, repeated or ambiguous selection raises `ConnectorDriveRootsInvalid` before listing.
-  *A-connector*
+  *A-connector#drive-capture-binds*
 - `drive-root-validation` — With `folder_ids`, every selected root names a folder in the declared `drive_id`. A missing or outside-drive root raises `ConnectorDriveRootRejected` before the source lists any selected folder.
-  *A-connector*
+  *A-connector#drive-capture-binds*
 - `drive-root-walk` — With `folder_ids`, the drive source applies {{connector.source.drive-walk}} to each root while confining descendants to the declared drive, listing each folder once across overlaps.
-  *A-connector*
+  *A-connector#drive-capture-binds*
 - `drive-root` — A `folder_id` naming no folder, or one outside a declared `drive_id`, fails the read as a configuration fault before any listing.
 - `drive-overlap` — A file reachable through multiple selected roots lands once by `file_id`. Its `resolved_root` is the lexicographically least selected root id reaching the file.
-  *A-connector*
+  *A-connector#drive-capture-binds*
 - `drive-tables` — The drive source serves `files`, one row per file keyed by `file_id` with its version, name, path from the root, MIME type, `modifiedTime`, Drive's `md5Checksum` and the SHA-256 of the bytes read, and `pages`.
 - `drive-table-unmatched` — A drive table other than `files` or `pages` refuses as {{connector.source.table-unmatched}}, ahead of any request.
 - `drive-mode` — `mode` selects `bytes-and-pages` by default or `metadata-only`; another spelling raises `ConnectorDriveModeUnknown` before any request.
-  *A-connector*
+  *A-connector#drive-capture-binds*
 - `drive-capture-record` — Every file row carries `resolved_root`, `export_mime_type`, captured `bytes` and `capture_status`: `captured`, `skipped` or `removed`. A removed row or skipped row without captured bytes has null `sha256`.
 - `drive-metadata-only` — In `metadata-only` mode, the source hashes exact downloaded or exported bytes, then discards the bytes after recording the digest.
-  *A-connector*
+  *A-connector#drive-capture-binds*
 - `drive-version-consistency` — After a metadata-only download or export, the source re-reads the file version; a change from the listed version raises `ConnectorDriveVersionMoved` before any row or cursor commits.
   *because a digest of newer bytes cannot witness the version named by the file row*
 - `drive-named-skip` — A skipped file row names the file and reason; the per-file bound of {{connector.source.drive-file-cap}} applies in both modes.
@@ -682,9 +682,9 @@ The drive source walks selected Drive folders and lands one row per file and one
   *because Drive refuses that export on every fire, so failing the read stalls the whole tree behind one file*
 - `drive-skip-count` — Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.
 - `drive-selection-position` — The position binds the declared drive, sorted root set and mode; changing any of them revalidates every root and rewalks the selected trees, rereading files without reusing an earlier frontier.
-  *A-connector*
+  *A-connector#drive-capture-binds*
 - `drive-selection-removals` — A complete selected-root walk lands tombstones for files removed, moved outside the roots or deselected, and for excess prior pages; an incomplete walk commits no removals.
-  *A-connector*
+  *A-connector#drive-capture-binds*
 - `drive-root-reassignment` — For selected roots, the position also holds each file's `version` and `resolved_root`. A complete walk re-reads the file when either changes, even with matching `modifiedTime` and path.
   *because a changed version needs a fresh byte witness even when the file id stays stable*
 - `drive-incremental` — The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.

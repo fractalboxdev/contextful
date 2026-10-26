@@ -360,16 +360,6 @@ Consequences: edges share the claims' validity-line discipline, and history answ
 | Match on the transaction stamp | Backfill | A history landed in one commit joins nothing before that commit. |
 | A dedicated join tool | Composition | The tool restates each relation's restriction outside the statement guard. |
 
-## horizon-withholds-load — A horizon withholds load stamps and keeps citation stamps
-
-Under a horizon `read.horizon.engine-stamps` drops `_ingested_at` and `_commit_seq` from the projection: each dates a row's load, and a 2026 backfill read under a 2014 horizon would reveal the present. `_run_id` and `_row_seq` stay, because `context.reference` cites a row by them and neither orders rows in time across runs.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Drop load stamps, keep citation stamps *(chosen)* | — | A run identifier can still name its date when an operator spells it so. |
-| Drop every engine stamp | Citation | A horizon read returns rows no reference can name. |
-| Drop every stamp and add an opaque citation token | Simplicity | A second identity scheme beside the one the store already records. |
-
 ## sidecar-serves-past — A sidecar serves a past horizon by filtered traversal
 
 `read.horizon.rank-statistics` lets one sidecar answer every horizon at or before its snapshot. Each full-text document and vector node carries its row's availability instant under `store.index.filter-copies`. A probe under a horizon keeps only entries available by it and walks the graph through later nodes; the postings' availability timeline gives the document count and summed length by the horizon in one binary search, so BM25 scores as a sidecar built over those rows alone. A sweep over many past decision dates reads one sidecar rather than refusing or scanning the table once per date. Both layouts change, so both builder versions rise and the next pass rebuilds each sidecar under `store.index.rebuild`.

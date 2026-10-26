@@ -34,9 +34,9 @@ fn an_operation_slice_carries_the_records_its_rows_cite_and_the_errors_they_own(
     let s = Scratch::copy();
     let v = slice(&s, "store.reconcile");
     let records: BTreeSet<&str> = v["records"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap()).collect();
-    assert!(records.contains("A-store"), "{records:?}");
-    let a_store = v["records"].as_array().unwrap().iter().find(|r| r["id"] == "A-store").unwrap();
-    assert!(a_store["text"].as_str().unwrap().starts_with("# A-store"));
+    assert!(records.iter().any(|id| id.starts_with("A-store#")), "{records:?}");
+    let a_store = v["records"].as_array().unwrap().iter().find(|r| r["id"].as_str().unwrap().starts_with("A-store#")).unwrap();
+    assert!(a_store["text"].as_str().unwrap().starts_with("## "));
     let errors: BTreeSet<&str> = v["errors"].as_array().unwrap().iter().map(|e| e["id"].as_str().unwrap()).collect();
     assert!(errors.contains("StoreSchemaIncompatible"), "{errors:?}");
     assert!(!errors.contains("StoreUnknownTable"), "{errors:?}");

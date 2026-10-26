@@ -35,7 +35,7 @@ Transaction-time and valid-time columns, their read parameters and the snapshots
   *P5*
 - `covering-versions` — For an unkeyed table, a valid-time bound returns every version whose interval contains the requested instant.
 - `interval-rows` — A keyed table declaring `valid_time` stores one row per key and valid-time interval. The table deduplicates on its primary key and `from`, so a fold keeps every interval.
-  *A-store*
+  *A-store#validity-interval-row*
 - `echo` — A bounded read returns `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`. Each instant uses RFC 3339 UTC with nine fractional digits and a `Z` suffix. An unbounded read omits `contextful.bounds`.
 
 ## available-time
@@ -43,7 +43,7 @@ Transaction-time and valid-time columns, their read parameters and the snapshots
 The source availability timestamp, its value at landing and row selection under `available_as_of`.
 
 - `declaration` — `[pipeline.tables.available_time]` declares `column`, the source availability instant as `timestamptz`, and optional `zone`, default UTC. Landing preserves the source instant without substituting an engine timestamp. Availability bounds compare only that column.
-  *A-store*
+  *A-store#availability-declared-column*
 - `lag-fill` — At landing, `available_time.lag` fills a null availability column with valid-time `to`, else `from`, plus the duration from {{store.available-time.lag-class}}. The engine injects `_available_imputed` true on that row.
   *because a source can publish different record classes after different declared delays*
 - `lag-class` — `available_time.lag = { class_column = "<column>", classes = { <class> = "<n>d" } }` maps each row's class to a duration. A class without an entry resolves no instant; landing refuses the row under {{store.available-time.null}}.
@@ -52,7 +52,7 @@ The source availability timestamp, its value at landing and row selection under 
 - `live-since` — `available_time.live_since` names the instant a source began publishing live. The engine injects `_available_reconstructed` true on each row available before that instant.
   *because a vendor's point-in-time history before its live date was rebuilt after the fact*
 - `available-as-of` — `available_as_of` filters the inner source with `<column> <= available_as_of` over the declared column. The filter combines with {{store.bound-time.as-of}} and {{store.bound-time.valid-as-of}} when the read supplies those bounds.
-  *A-store*
+  *A-store#availability-declared-column*
 - `table-key` — Beyond {{store.declare.table-block}}, a table block may declare `available_time`, absent from the canonical serialization when unset.
 - `beneath-enforcement` — `available_as_of` applies before access controls under {{store.bound-time.beneath-enforcement}}, like the other two bounds. The bound only narrows the rows access controls admit.
   *P5*
@@ -62,9 +62,9 @@ The source availability timestamp, its value at landing and row selection under 
 - `null` — Landing a row whose resolved availability instant is null raises `StoreAvailableTimeNull`, naming the table and the run.
   *because a row without an availability instant is visible to every bound or to none, and either misstates what was available from the source*
 - `vintage-rows` — A keyed table declaring `available_time` is a vintage table. The table keeps one row per primary key, declared valid-time `from` and availability instant. A revised value lands beside the earlier value.
-  *A-store*
+  *A-store#restatement-vintage-row, A-read#join-matches-availability*
 - `vintage-resolution` — For each primary key and valid-time `from`, a vintage-table read returns the vintage with the latest availability instant at or before `available_as_of`. Without an availability bound, the read returns the latest vintage.
-  *A-store*
+  *A-store#adjustment-factors-apply*
 - `vintage-first` — For each primary key and valid-time `from`, `vintage = "first"` returns the vintage with the earliest availability instant. The read respects `available_as_of` when supplied.
   *because a forecast scored against the initial release judges what was knowable then, not a revision published later*
 - `vintage-hash` — A landing row whose `content_hash_column` value equals that of its key's latest vintage lands no new vintage.
@@ -74,19 +74,19 @@ The source availability timestamp, its value at landing and row selection under 
 - `vintage-retain-rows` — A vintage table declaring {{store.declare.retain-rows}} raises `StoreVintageRetainRows` at validation, naming the table.
   *because a wall-clock row-age cutoff shrinks a past answer as real time passes*
 - `vintage-dedup-key` — A vintage table reads through {{store.declare.dedup-view}} with the availability column appended to its partition key, then resolves one row per {{store.available-time.vintage-resolution}}.
-  *A-store*
+  *A-store#restatement-vintage-row*
 - `vintage-interval-key` — A vintage table declaring `valid_time` dedupes as {{store.bound-time.interval-rows}} with the availability column added to the key, so every interval keeps every vintage.
-  *A-store*
+  *A-store#validity-interval-row*
 - `vintage-fold-key` — A fold over a vintage table partitions under {{store.fold.valid-time-line}} or {{store.declare.dedup-view}}, adding the availability column. The fold preserves every vintage.
-  *A-store*
+  *A-store#adjustment-factors-apply*
 - `vintage-scope` — A vintage landing compares only its own keys' stored vintages. Landing skips row groups excluded by text or signed-integer key bloom filters or footer bounds on text, integer or temporal keys or temporal valid time.
-  *A-store*
+  *A-store#vintage-landing-reads*
 - `vintage-fold-order` — If a vintage table declares `valid_time` and no `cluster_by`, a fold sorts the snapshot by valid-time `from`, then primary key. Footer bounds then support {{store.available-time.vintage-scope}} after the fold.
-  *A-store*
+  *A-store#vintage-landing-reads*
 - `adjustment-factors` — `available_time.adjustment = { table = "<name>", factor_column = "<column>", adjust_columns = [...] }` keeps stored values raw. An `available_as_of` read multiplies each listed numeric column by the product of factor vintages available by the bound.
   *because applying a correction published later exposes information unavailable at an earlier read bound*
 - `adjustment-join` — A factor row applies to each row agreeing on every factor-table `primary_key` column whose valid-time `from` precedes the factor row's valid-time `from`.
-  *A-store*
+  *A-store#adjustment-factors-apply*
 
 #### Scenarios
 

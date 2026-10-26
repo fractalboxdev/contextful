@@ -57,15 +57,15 @@ Memory table schemas, required columns, trust tiers, scopes and relation types.
 - `canonical-column` — A table naming a shape and omitting one of its canonical columns raises `MemoryShapeColumnMissing` when the declaration loads.
   *P1*
 - `undeclared-relation` — For a `rel_type` outside the allowed union, synthesis writes the candidate edge to the dead-letter table and raises `MemoryUndeclaredRelation`. No row uses the unknown type.
-  *A-read*
+  *A-read#memory-vocabulary-schedules*
 - `reserved-relations` — Reserved relation types are `supports`, `contradicts`, `supersedes`, `about` and `derived_from`. Deployments add types through `[relation].declared`. `contextful memory relations rename` rewrites stored edges before removing an old name.
-  *A-read*
+  *A-read#memory-vocabulary-schedules*
 - `gleanings` — A claims table's `gleanings` declares at most 1 passes over each batch, 0 by default; any other value raises `MemoryGleaningsInvalid` when the declaration loads.
-  *A-read*
+  *A-read#gleaning-declared-single*
 - `serving-taint` — A claims table's `serving_taint` sets the minimum label under {{connector.infer.provenance-order}}. Missing `_taint` ranks as `operator`. Recall suppresses claims below that minimum and raises `MemoryClaimTaintBelowFloor`.
-  *A-read*
+  *A-read#agent-third-party*
 - `relation-traits` — Each `[relation].declared` entry specifies `direction` (`directed` or `undirected`), `cardinality` (`one` or `many` edges per source) and `walkable`. Reserved relations use the reserved-traits table under Shapes.
-  *A-read*
+  *A-read#edges-supersede-under*
 - `relation-string` — A bare string entry in `[relation].declared` declares a `directed`, `many`, non-walkable relation.
   *because declarations naming relations as strings keep loading, and a walk crosses only a relation its author opted in*
 - `settlement-shapes` — The `predictions` shape carries one column per registration field, `deadline_at` resolved for a horizon; the `outcomes` shape carries one column per observation field. Both key on `prediction_id`.
@@ -80,7 +80,7 @@ Claim extraction, entity resolution, consolidation, evidence, deduplication, aud
 
 - `extract-attempts` — For a schema-invalid response, the synthesis pass retries extraction with validation feedback. Each batch receives at most 3 attempts in total.
 - `dead-letter` — A batch exhausting {{read.synthesize.extract-attempts}} writes the response, template hash and drop reason to the dead-letter table, raises `MemoryExtractExhausted`, and leaves the cursor unadvanced.
-  *A-read*
+  *A-read#memory-writes-validate*
 - `pass-cursor` — Through the writing credential's session, synthesis reads committed source rows absent from its cursor, in batches under {{read.synthesize.prompt-bound}}. The cursor records each batch after its claims commit.
 - `prompt-bound` — A batch packs fenced rows up to 32 KiB; a fenced row over that bound travels in a batch of its own.
   *because one oversized row neither stalls the pass nor drags its neighbours past the bound*
@@ -91,21 +91,21 @@ Claim extraction, entity resolution, consolidation, evidence, deduplication, aud
 - `claim-taint` — A source row carries its own `_taint`, else `ingested:third-party`. Every row a batch commits lands under {{store.reserve.taint}} with the least-trusted label among the batch's rows.
   *because a row no label vouches for is trusted least, and a claim re-synthesized from claims stays as low as its origin*
 - `cadence` — By default, `contextful memory synthesize` starts synthesis. A scheduled `[[job]]` of kind `synthesize` targeting the claims table replaces that default. Each execution advances only through {{read.synthesize.pass-cursor}}.
-  *A-read*
+  *A-read#gleaning-declared-single*
 - `confidence-calibration` — Model-emitted confidence carries `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score. A validated map supplies the reported calibrated confidence.
-  *A-read*
+  *A-read#memory-confidence-retention*
 - `gleaning` — Under {{read.declare.gleanings}}, synthesis re-prompts schema-valid batches for omitted claims up to the declared pass count. Gleaned claims carry `_pass = 'glean'` and commit with first-pass claims in one batch commit.
-  *A-read*
+  *A-read#gleaning-declared-single*
 - `gleaning-attempt` — A gleaning response gets one attempt and no re-prompt; {{read.synthesize.extract-attempts}} does not apply to it.
-  *A-read*
+  *A-read#gleaning-declared-single*
 - `gleaning-invalid` — A schema-invalid gleaning response discards the gleaned claims, commits the first-pass claims alone, advances the cursor, and the pass report counts the batch in `glean_failed`.
-  *A-read*
+  *A-read#gleaning-declared-single*
 - `extract-cache` — Synthesis caches schema-valid responses in an access-controlled, tenant-scoped table. Keys comprise fenced-batch byte digest, template hash, model identifier and {{connector.infer.cutoffs}}. Identical keys reuse responses without calling the model.
-  *A-read*
+  *A-read#extraction-cache-keys*
 - `cache-provenance` — A cache entry carries `_provenance` naming its batch's fenced rows, so {{disclosure.erase.cascade}} invalidates the entry when an erasure reaches any of them.
-  *A-read*
+  *A-read#extraction-cache-keys*
 - `cache-attribution` — A cache hit copies claims only; {{read.synthesize.attribution}} stamps `grant_id`, `agent` and `_authored_by` fresh, and the pass report counts the batch in `cached`.
-  *A-read*
+  *A-read#extraction-cache-keys*
 
 One synthesis batch, from landed rows to a committed claim or the dead-letter table:
 
@@ -133,13 +133,13 @@ unsettled: Which consolidation merges two claims of one dedup key, and what reco
 Claim replacement within a validity interval, confidence decay, direct writes, timestamps, expiry, retention and promotion.
 
 - `tier` — The writer assigns `tier` from write method and grounding, excluding payload values: synthesis uses `derived`, direct writes use `curated`, fetched results use `researched`. Mixed grounding takes the lowest tier.
-  *A-read*
+  *A-read#claim-standing-derived*
 - `direct-tier` — A direct write substitutes `derived` for {{read.revise.tier}}'s `curated` if the credential has an agent member or a cited row has label `ingested:third-party`. Cited-row labels follow {{read.synthesize.claim-taint}}.
-  *A-read*
+  *A-read#agent-third-party*
 - `supersede` — An equal-or-higher-tier claim replaces a live prior matching subject, predicate and scope when both are open-ended or share valid-from, except {{read.revise.unscoped-collision}}. The prior ends at the successor's start and names the successor.
-  *A-read*
+  *A-read#claim-standing-derived*
 - `direct-write` — The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through {{read.resolve-entity.entity-upsert}}.
-  *A-read*
+  *A-read#agent-third-party*
 - `observed-at` — `contextful memory write --observed-at <instant>` lands the claim with `valid_from` at that instant; without it, `valid_from` is the write's own instant.
 - `dedup-key` — `--dedup-key <key>` derives `claim_id` from the key beside the subject, predicate, object and scope, and a write whose `claim_id` the table already holds lands nothing.
   *because a retried write restates one observation, while one fact observed twice under two keys keeps two validity intervals*
@@ -148,23 +148,23 @@ Claim replacement within a validity interval, confidence decay, direct writes, t
 - `citation-live` — If a cited keyed-table row reads through the writer's session as a replaced key version, a direct write raises `MemoryCitationNotLive`. The write stores nothing.
   *because such a claim rests on a replaced version from its first read, while a citation no readable row carries lands undigested and recall withholds it*
 - `edge-supersede` — With `cardinality = one`, a new edge ends the source's live edge of that relation at the new edge's `valid_from`. The ended edge records the new edge in `superseded_by`.
-  *A-read*
+  *A-read#edges-supersede-under*
 - `unscoped-collision` — Unscoped direct writes sharing subject, predicate and valid-from but different objects record both claim ids in the dead-letter table. Neither claim replaces the other until an explicit revision resolves the conflict.
-  *A-read*
+  *A-read#claim-standing-derived*
 - `retention-default` — Claims retain recorded validity until explicit expiry or erasure. With `decay_half_life`, ranked scores decrease by half per half-life since `valid_from`. Score decay neither deletes claims nor changes validity.
-  *A-read*
+  *A-read#memory-confidence-retention*
 - `served-write` — A writable HTTP server accepts `POST /memory/claims` under per-request network credentials and stores declared claims through the direct-write operation. The read MCP tool set remains closed.
-  *A-read*
+  *A-read#served-claim-write*
 - `served-scope` — A claim write raises `MemoryClaimScopeRefused` if `actor` differs from admitted `on_behalf_of`, `session` differs from admitted `task`, or `session` contains a colon. Accepted claims take scope from credential members rather than payload values.
-  *A-read*
+  *A-read#served-claim-write*
 - `browser-request` — An `Origin` header on the served claim-write route raises `MemoryClaimBrowserRefused` before credential admission and commits nothing.
-  *A-read*
+  *A-read#served-claim-write*
 - `malformed-request` — Malformed JSON, unknown fields, a client-selected claim scope, or an empty dedup key on the served claim-write route raises `MemoryClaimMalformed` and commits nothing.
-  *A-read*
+  *A-read#served-claim-write*
 - `served-dedup` — A served claim write passes its `dedup_key` to {{read.revise.dedup-key}}, returns `landed: false` on restatement, and returns the bound scope on both outcomes.
-  *A-read*
+  *A-read#served-claim-write*
 - `served-fault` — A served claim write whose store effect refuses raises `MemoryClaimWriteRefused` and lands nothing.
-  *A-read*
+  *A-read#served-claim-write*
 
 unsettled: What binds the asserted agent member to the writer? owner: authority affects: read.revise
 
@@ -175,20 +175,20 @@ unsettled: What declared bound expires a researched claim, and which served writ
 Ranked and keyed claim retrieval, read timestamps, tier ordering, scope and tombstone filters, and evidence checks.
 
 - `evidence-unresolved` — An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`.
-  *A-read*
+  *A-read#memory-access-follows*
 - `evidence-references` — For claims citing more than 256 entries of evidence, recall returns the first 256 in cited table, run and sequence order. `evidence_omitted` reports the remaining count.
-  *A-read*
+  *A-read#memory-access-follows*
 - `evidence-omitted-column` — `evidence_omitted` is a reserved projected column of {{read.recall.ranked-arm}}, null for a row outside a `memory_facts` table under {{read.retrieve.reserved-columns-project-null}}.
 - `evidence-gate-bound` — Recall suppresses a claim with more than 4096 entries of evidence as unresolved and raises `MemoryEvidenceOverflow`.
-  *A-read*
+  *A-read#memory-access-follows*
 - `evidence-key` — Claim writes stamp each citation to a keyed table with a pepper-keyed digest of the cited row's key. If that row is unreadable, recall resolves the digest's live version.
-  *A-read*
+  *A-read#citation-keyed-table*
 - `evidence-key-masked` — If the writer's session masks or zone-nulls a cited key column, the citation carries no digest. Masked or nulled non-key columns leave the digest intact.
   *because a masked key cell digests a value no other session reads, while a cell outside the key plays no part in matching it*
 - `evidence-no-value` — A citation stored in a memory row carries the cited table, run, sequence and key digest, and no cell value of the cited row.
-  *A-read*
+  *A-read#citation-keyed-table*
 - `evidence-stale` — Recall counts a served claim under `stale` in `contextful.recall` if the key digest resolves while the cited run and sequence are unreadable. The block names no claim.
-  *A-read*
+  *A-read#citation-keyed-table*
 - `ranked-arm` — For `memory_facts`, `corpus.retrieve` returns only claims without `superseded_by` and with `valid_to` null or after the read's anchor. Each claim's evidence passes the evidence check.
 - `recall-block-presence` — A `corpus.retrieve` response carries the `contextful.recall` block exactly when one of its arms reads a `memory_facts` table, whichever of `prefix` and `tables` chose the arms.
   *because the block counts what claim arms withheld, and a read with no claim arm withheld no claim*
@@ -208,13 +208,13 @@ Ranked and keyed claim retrieval, read timestamps, tier ordering, scope and tomb
 - `keyed-not-claims` — A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.
   *because a keyed read answers with a claim's subject, validity and evidence, which no other table carries*
 - `confidence-label` — Each keyed claim's `confidence_label` is `calibrated` or `uncalibrated` under {{read.synthesize.confidence-calibration}}. Fitting uses the declared `labels` table, joining `prediction_id` to `claim_id` through the caller's session.
-  *A-read*
+  *A-read#claim-standing-derived*
 - `stale-revision` — A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.
-  *A-read*
+  *A-read#claim-standing-derived*
 - `usage-ledger` — `memory.recall`, `memory.explain` responses carrying claims, and `corpus.retrieve` responses containing `memory_facts` record returned claim ids as `contextful.memory.claims`. The read entry includes caller credential, subject and read instant.
-  *A-read*
+  *A-read#memory-reads-expose*
 - `ranked-order` — Within one in-window flag value of {{read.rank.question-window-is-a-tier}}, claims order by tier, `curated`, then `derived`, then `researched`; claims of one tier keep {{read.rank.fusion}} order.
-  *A-read*
+  *A-read#claim-standing-derived*
 
 Evidence checks before returning a claim to the application:
 
@@ -239,13 +239,13 @@ flowchart LR
 Entity matching, aliases, identity cards, location relationships, edges and ownership queries.
 
 - `ambiguous-mention` — If a mention matches two canonical identities with no deterministic distinguishing key, resolution records an ambiguous skip, raises `MemoryEntityAmbiguous` and dead-letters the candidate claim.
-  *A-read*
+  *A-read#memory-writes-validate*
 - `edge-endpoint` — If a candidate edge's source or target resolves to no identity, resolution dead-letters the edge and raises `MemoryEdgeEndpointUnresolved`.
-  *A-read*
+  *A-read#memory-writes-validate*
 - `graph-index` — External graph engines index admitted memory edges as derived data. Entity and ownership answers resolve through access-controlled store rows at the read frontier.
-  *A-read*
+  *A-read#memory-reads-expose*
 - `ownership-answer` — Ownership queries return targets of every caller-visible `owned_by` edge from the artifact. Results sort by newest `_ingested_at`, then principal id for equal timestamps.
-  *A-read*
+  *A-read#memory-reads-expose*
 - `ownership-live` — The ownership answer omits an `owned_by` edge whose `valid_to` falls at or before the anchor.
   *because an ended edge records a past owner, and returning it names that owner as current*
 - `knowledge-card` — `memory.explain` accepts `table`, `reference` and an optional `claims` table. The tool resolves `reference` against `table`'s names and aliases and returns the identity's `entity_id`, `kind`, `name` and `aliases`.
@@ -289,14 +289,14 @@ unsettled: Which edges carry aliases and nearness's parent closure? owner: read-
 Prediction registration, observations, required verdict citations and outcome label views.
 
 - `registration` — A registration requires one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`). Only `metric` requires and permits a comparator. Invalid registrations raise `OutcomeRegistrationInvalid`.
-  *A-read*
+  *A-read#memory-writes-validate*
 - `source-mismatch` — An observation raises `OutcomeSourceMismatch` if its `metric` series differs from registration, or its verdict's resolution source or registered series is missing or differs. The error names each source by wire name.
-  *A-read*
+  *A-read#memory-writes-validate*
 - `settling-citation` — An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`. The label view includes the citation.
-  *A-read*
+  *A-read#memory-writes-validate*
 - `grace-window` — The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.
 - `calibration-report` — Calibration reports group settled predictions by shape and predicate. Each group reports sample count, Brier score, expected calibration error over 10 equal-width bins, and {{read.synthesize.confidence-calibration}}'s held-out score over every fifth prediction.
-  *A-read*
+  *A-read#memory-writes-validate*
 - `statement-bound` — A registration's optional `statement` holds the falsifiable claim and participates in {{read.settle.registration-conflict}}. Text exceeding 4096 B raises `OutcomeStatementTooLong`.
   *because a registration reads on its own only with its claim text, and an unbounded text field lets one row outweigh the table*
 - `metric-reference` — Optional `metric` uses `<table>:<series_id>` with non-empty parts and names the series without a store lookup. Malformed references or references under a source other than `metric` raise `OutcomeMetricReferenceInvalid`.
@@ -348,13 +348,13 @@ Graph traversal from a seed entity, bounded by time, hop count and readable edge
   *because walking through a hidden edge reveals the node beyond it*
 - `engine` — An engine-backed walk answers through {{read.resolve-entity.graph-index}}.
 - `walkable` — A `rel_types` entry whose declared relation is not walkable raises `MemoryTraverseRelationUnwalkable`.
-  *A-read*
+  *A-read#traversal-walks-enforced*
 - `hop-bound` — A walk follows at most 3 hops; a larger `hops` raises `MemoryTraverseHopsExceeded`.
-  *A-read*
+  *A-read#traversal-walks-enforced*
 - `fan-out` — A node expands at most 64 memory-edges, ordered by `valid_from` newest first then edge id; the rest count in `edges_omitted`.
-  *A-read*
+  *A-read#traversal-walks-enforced*
 - `frontier-cap` — A walk stops at 512 memory-edges and counts unexpanded edges in `edges_omitted`; a non-zero `edges_omitted` marks the walk incomplete, and `truncated` stays with {{read.respond.truncation-cause}}.
-  *A-read*
+  *A-read#traversal-walks-enforced*
 - `omitted-readable` — `edges_omitted` counts only edges the caller's session reads.
   *because a count of hidden edges discloses their existence, as {{read.recall.suppression-count}} avoids naming claims*
 - `cycle` — Traversal proceeds breadth-first by hop and expands each node at most once.

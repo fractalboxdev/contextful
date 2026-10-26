@@ -86,28 +86,28 @@ corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "w
 registry-committed-sites = 3
 anatomy-long-lists = 15
 clause-unowned = 249
-why-unscoped = 806
+why-unscoped = 0
 
 [ceiling.contract-words]
-assurance = 10245
+assurance = 10271
 authority = 7843
-connector = 11653
-corpus = 4093
-disclosure = 5476
-read = 10127
-run = 19201
-store = 10704
-surface = 6502
+connector = 11654
+corpus = 4094
+disclosure = 5500
+read = 10153
+run = 19180
+store = 10662
+surface = 6508
 topology = 2646
 
 [ceiling.adr-words]
-A-assurance = 5819
+A-assurance = 5633
 A-authority = 4473
 A-connector = 3602
 A-corpus = 383
-A-disclosure = 4053
-A-read = 5491
+A-disclosure = 3893
+A-read = 5373
 A-run = 8375
-A-store = 6979
+A-store = 6984
 A-surface = 3373
 A-topology = 2460
