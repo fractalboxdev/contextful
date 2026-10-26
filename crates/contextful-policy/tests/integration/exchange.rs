@@ -212,7 +212,7 @@ fn a_signed_assertion_failing_any_check_is_invalid_and_mints_nothing() {
         ("alg none", alg_none),
         ("not a JWT", "not-a-jwt".to_string()),
     ] {
-        assert_invalid(plan(&x, &bad), why);
+        assert!(matches!(plan(&x, &bad), Err(AuthorityError::ExchangeAssertionInvalid(_))), "{why}");
     }
 
     // Lapsed, untrusted issuer or audience, mapped claim absent: all under a good signature.

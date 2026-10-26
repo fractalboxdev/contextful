@@ -2,7 +2,8 @@
 
 use crate::support::{Never, Response, Server};
 use contextful_connectors::derive::{resolve_step, run_chain, Chain, ChainError, DeriveSource};
-use contextful_core::run::derive::config::{bindings, Binding, DeriveConfig};
+use contextful_core::run::derive::config::{bindings, Binding, DeriveConfig, ATTEMPTS_PER_UNIT};
+use contextful_core::run::derive::emit::{revived, Unit};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag, RunError};
@@ -292,6 +293,7 @@ fn a_link_preview_fetches_a_head_document_through_the_mediated_client() {
     assert_eq!(site.received("/article").len(), 1);
 }
 
+// spec: run.select.metered-client@44c0b9ef
 #[test]
 fn a_link_preview_refuses_a_missing_mediation_hook_before_a_socket() {
     let site = Server::start(|_| Response::json(200, "{}"));
@@ -369,6 +371,7 @@ fn a_link_preview_uses_sixty_seconds_for_a_429_without_retry_after() {
 }
 
 /// Each fetch hop has its own `request_timeout_secs` wall clock.
+// spec: run.fetch.hop-timeout@87308a46
 #[test]
 fn a_link_preview_times_out_one_slow_hop_but_allows_two_short_hops() {
     let site = Server::start(|request| match request.path() {
@@ -449,6 +452,7 @@ fn unit<'a>(rows: &'a [Value], key: &str) -> &'a Value {
 const SRT_ENGINE: &str = "[derive.reader.engine]\ncommand = [\"awk\", \"NF { n++; printf \\\"%d\\\\n00:00:0%d,000 --> 00:00:0%d,500\\\\n%s\\\\n\\\\n\\\", n, n, n, $0 }\", \"{input}\"]\noutput_format = \"srt\"\n";
 
 /// A video transcript passage names its text output modality.
+// spec: run.emit.output-modality@80a65daa
 #[test]
 fn a_transcript_passage_carries_text_modality() {
     let dir = tempfile::tempdir().unwrap();
@@ -459,6 +463,7 @@ fn a_transcript_passage_carries_text_modality() {
 }
 
 /// Changing canonical file bytes under one media path selects a new derivation key.
+// spec: run.emit.local-content-key@8b27ca20
 #[test]
 fn changed_local_bytes_reselect_the_same_media_path() {
     let dir = tempfile::tempdir().unwrap();
@@ -675,10 +680,14 @@ fn a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows() {
             .clone()
     };
     let parent_rows: Vec<Row> = parents.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
-    s.reader = Box::new(Racing { parents: parent_rows.clone(), landed: vec![settled("memo", memo_key)], output_reads: Default::default() });
+    let landed = settled("memo", memo_key.clone());
+    s.reader = Box::new(Racing { parents: parent_rows.clone(), landed: vec![landed.clone()], output_reads: Default::default() });
     let rows = pulled(&mut s);
     assert!(!rows.is_empty(), "the exclusion below ranges over no element");
     assert!(rows.iter().all(|r| r["unit_ref"] != "memo"), "the revived unit lands nothing: {rows:?}");
+    // The same landed row refuses the unit with `DeriveSettledUnitRevived`, the error the source reports.
+    let memo = Unit { key: "memo".into(), media: "memo.txt".into(), prior_attempts: 0, derivation_key: memo_key };
+    assert!(matches!(revived(&memo, &[landed], ATTEMPTS_PER_UNIT), Some(RunError::DeriveSettledUnitRevived(m)) if m.contains("`memo`")));
     assert_eq!(unit(&rows, "brief")["text"], "Filing is due.");
     assert_eq!(unit(&rows, "brief")["derivation_key"], brief_key);
     // A concurrent landing under another key settles nothing under this one.

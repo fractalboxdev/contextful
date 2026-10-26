@@ -25,7 +25,7 @@ fn appended(rel: &str, line: &str, code: &str) -> Vec<String> {
     codes(&s.lint("render"), code)
 }
 
-// spec: corpus.render.generated@7d80b387
+// spec: corpus.render.generated@2d01b374
 #[test]
 fn a_committed_render_differing_from_regeneration_is_stale() {
     let s = Scratch::copy();
@@ -42,7 +42,7 @@ fn a_committed_render_differing_from_regeneration_is_stale() {
     }
 }
 
-// spec: corpus.render.lock-file@b3f3193a
+// spec: corpus.render.lock-file@97a36957
 #[test]
 fn the_lock_carries_clauses_ledes_owns_registry_and_pointers() {
     let s = Scratch::copy();
@@ -59,6 +59,7 @@ fn the_lock_carries_clauses_ledes_owns_registry_and_pointers() {
     assert!(lock["owns"][STORE].as_array().is_some_and(|o| o.iter().any(|op| op == "fold")), "{}", lock["owns"]);
     assert!(lock["registry"]["fragments"]["store"].to_string().contains("StorePartialSnapshot"));
     assert!(!lock["pointers"].as_array().unwrap().is_empty());
+    assert!(lock["pins"].is_object(), "the lock carries each pinned clause's sites and verdict");
 }
 
 // spec: corpus.render.dated-prose@fe451fb3

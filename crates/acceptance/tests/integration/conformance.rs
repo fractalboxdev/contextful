@@ -36,6 +36,8 @@ fn stopping_a_finished_artifact_leaves_the_callers_process_group_running() {
     );
 }
 
+// spec: assurance.consumer.provenance@fcd5cf35
+// spec: assurance.consumer.requirements@cb956d22
 #[test]
 #[cfg(unix)]
 fn missing_capability_reports_unsupported_without_admitting_work() {
@@ -70,6 +72,7 @@ fn missing_capability_reports_unsupported_without_admitting_work() {
     assert!(!dir.path().join(".contextful").exists());
 }
 
+// spec: assurance.consumer.command-diagnostic@59982de0
 #[test]
 #[cfg(unix)]
 fn a_failed_command_names_its_error_identifier_and_withholds_its_message() {
@@ -92,6 +95,7 @@ fn a_failed_command_names_its_error_identifier_and_withholds_its_message() {
     assert!(!serde_json::to_string(&report).unwrap().contains("secret-material"));
 }
 
+// spec: assurance.consumer.credential-isolation@457c4d9c
 #[test]
 #[cfg(unix)]
 fn artifact_runs_with_an_empty_provider_environment() {
@@ -117,6 +121,7 @@ fn artifact_runs_with_an_empty_provider_environment() {
         .contains("credential-material"));
 }
 
+// spec: assurance.consumer.verdict@58ba38bf
 #[test]
 #[cfg(unix)]
 fn unknown_storage_or_scenario_never_counts_as_a_pass() {
@@ -161,6 +166,7 @@ fn a_d1_consumer_run_requires_its_real_bindings_before_a_verdict() {
     assert_eq!(result.diagnostic.as_deref(), Some("ConformanceCapabilityMissing:cloudflare-d1"));
 }
 
+// spec: assurance.consumer.d1-admission@057dd497
 #[test]
 #[cfg(unix)]
 fn a_live_d1_admission_lease_refuses_a_second_suite_before_any_reset() {
@@ -234,6 +240,7 @@ fn a_live_d1_admission_lease_refuses_a_second_suite_before_any_reset() {
     let _ = bridge.wait();
 }
 
+// spec: assurance.consumer.d1-profile@0ce59bc7
 #[test]
 #[cfg(unix)]
 fn a_d1_consumer_replays_after_empty_disk_replacement() {
@@ -410,6 +417,9 @@ fn artifact(dir: &Path) -> std::path::PathBuf {
     snapshot
 }
 
+// spec: assurance.consumer.report@c364398f
+// spec: assurance.consumer.scenarios@098c4544
+// spec: assurance.consumer.suite@0773ff45
 #[test]
 #[cfg(unix)]
 fn the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution() {
@@ -447,6 +457,7 @@ fn the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution(
     assert!(report.source_commit.is_none());
 }
 
+// spec: assurance.consumer.mutation-controls@79c78a12
 #[test]
 #[cfg(unix)]
 fn consumer_scenarios_reject_cursor_skips_duplicate_identity_and_premature_acknowledgement() {

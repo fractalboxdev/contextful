@@ -127,6 +127,7 @@ fn old_rows_are_hidden_before_fold_and_inside_an_older_snapshot() {
     );
 }
 
+// spec: store.bound-time.row-age-cutoff@ca768cee
 #[cfg(feature = "read")]
 #[test]
 fn a_superseded_snapshot_does_not_restore_a_now_expired_row() {
@@ -218,6 +219,7 @@ fn fold_excludes_expired_rows_and_reports_cutoff_and_drops() {
     assert_eq!(raw, [[s("fresh")]]);
 }
 
+// spec: store.fold.row-retention@b4a4d6f7
 #[cfg(feature = "read")]
 #[test]
 fn an_idle_fold_removes_an_expired_snapshot_partition() {
@@ -279,6 +281,7 @@ fn footer_pruning_uses_the_top_level_timestamp_column() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT sender_day FROM t"), [[s("day")]]);
 }
 
+// spec: store.fold.row-retention-report@6e2f20bd
 #[test]
 fn collection_names_each_removed_directory() {
     let f = Fixture::new();
@@ -329,6 +332,7 @@ fn collection_names_each_removed_directory() {
     assert!(printed.contains("data/snapshots/"), "{outcome:?}");
 }
 
+// spec: store.declare.retain-rows@e4995f44
 #[test]
 fn retention_refuses_an_undeclared_or_non_timestamp_column() {
     let f = Fixture::new();

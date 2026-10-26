@@ -952,7 +952,7 @@ fn record_run_state(n: &crate::support::Node) {
 
 const RUN_1: &str = "research/tables/filings/data/runs/run-1/ingest-a/part-00000.parquet";
 
-fn unreadable_held_record_preserves_sibling_runs(bytes: &[u8]) {
+fn unreadable_held_record_preserves_sibling_runs(bytes: &[u8], refusal: &str) {
     let dir = tempfile::tempdir().unwrap();
     let b = bucket(dir.path());
     let a = node("conformance", b.clone(), "");
@@ -975,7 +975,7 @@ fn unreadable_held_record_preserves_sibling_runs(bytes: &[u8]) {
     assert_eq!(after.generation, before.generation);
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
     let error = result.unwrap_err();
-    assert!(error.to_string().starts_with("SyncHeldRecordUnreadable:"), "{error}");
+    assert!(error.to_string().starts_with(&format!("{refusal}:")), "{error}");
     assert!(matches!(error, SyncError::HeldRecordUnreadable(_)));
 }
 
@@ -983,12 +983,12 @@ fn unreadable_held_record_preserves_sibling_runs(bytes: &[u8]) {
 // spec: store.merge.held-unreadable@cf6878f5
 #[test]
 fn an_unreadable_held_record_preserves_a_sibling_disks_runs() {
-    unreadable_held_record_preserves_sibling_runs(b"invalid-json");
+    unreadable_held_record_preserves_sibling_runs(b"invalid-json", "SyncHeldRecordUnreadable");
 }
 
 #[test]
 fn a_truncated_held_record_preserves_a_sibling_disks_runs() {
-    unreadable_held_record_preserves_sibling_runs(br#"{"nodes":{"conformance":[],"other":["key"]"#);
+    unreadable_held_record_preserves_sibling_runs(br#"{"nodes":{"conformance":[],"other":["key"]"#, "SyncHeldRecordUnreadable");
 }
 
 #[test]

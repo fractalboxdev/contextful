@@ -34,6 +34,7 @@ fn a_connection_claim_takes_the_next_version_and_a_declined_change_claims_none()
     assert_eq!(snaps.connection("conn-a").unwrap(), Some(paused));
 }
 
+// spec: surface.connection.create@38cd13da
 #[test]
 fn a_connection_claim_rechecks_authority_under_the_lock_and_a_refusal_writes_nothing() {
     let dir = tempfile::tempdir().unwrap();

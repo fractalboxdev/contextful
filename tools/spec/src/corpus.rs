@@ -46,6 +46,9 @@ pub struct LimitEntry {
     pub basis: String,
     #[serde(default)]
     pub gloss: String,
+    /// The Rust const holding the bound, by crate path (`corpus.state.limit-const`).
+    #[serde(default, rename = "const", skip_serializing_if = "Option::is_none")]
+    pub constant: Option<String>,
 }
 
 impl LimitEntry {
@@ -67,6 +70,9 @@ pub struct Fragment {
     pub error: BTreeMap<String, ErrorEntry>,
     #[serde(default)]
     pub limit: BTreeMap<String, LimitEntry>,
+    /// Ratchets (`corpus.registry.ceiling`): a count, or a table of counts by name.
+    #[serde(default, skip_serializing)]
+    pub ceiling: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Deserialize, Default)]
@@ -178,6 +184,9 @@ pub struct Clause {
     pub why: String,
     pub file: String,
     pub line: usize,
+    /// The `### <group>` heading the item sits under; no segment of the id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     /// Examples from the operation's `#### Scenarios` list: a WHEN/THEN sentence or a fixture path.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub scenarios: Vec<String>,
@@ -204,6 +213,8 @@ pub struct Doc {
     pub clauses: Vec<Clause>,
     /// Each `## <operation>` section's opening paragraph, by operation name.
     pub ledes: BTreeMap<String, String>,
+    /// Each `### <group>` heading's opening paragraph, keyed `<operation>.<group>`.
+    pub groups: BTreeMap<String, String>,
 }
 
 impl Doc {
@@ -275,10 +286,13 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
         }
     }
     let mut fence = false;
-    // the `## ` section in force, and whether a `###`+ heading sits between it and the line
+    // the `## ` section in force, its `### ` group, and whether a `####`+ heading sits
+    // between them and the line
     let mut section: Option<String> = None;
+    let mut group: Option<String> = None;
     let mut sub = false;
     let mut ledes: BTreeMap<String, String> = BTreeMap::new();
+    let mut groups: BTreeMap<String, String> = BTreeMap::new();
     // 0: no lede pending, 1: heading seen, 2: inside the lede paragraph
     let mut lede = 0u8;
     let at_operation = |section: &Option<String>, sub: bool| {
@@ -299,9 +313,14 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
             kinds[i] = LineKind::Heading;
             if let Some(h) = l.strip_prefix("## ") {
                 section = Some(h.trim().to_string());
+                group = None;
                 sub = false;
             } else if l.starts_with("# ") {
                 section = None;
+                group = None;
+                sub = false;
+            } else if let Some(h) = l.strip_prefix("### ").filter(|_| at_operation(&section, false)) {
+                group = Some(h.trim().to_string());
                 sub = false;
             } else {
                 sub = true;
@@ -323,6 +342,7 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
                         why: String::new(),
                         file: rel.to_string(),
                         line: i + 1,
+                        group: group.clone(),
                         scenarios: Vec::new(),
                     });
                 }
@@ -340,12 +360,16 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
         } else {
             kinds[i] = LineKind::Prose;
         }
-        // an operation's lede is the first paragraph after its heading, when prose
+        // an operation's or a group's lede is the first paragraph after its heading, when prose
         lede = match (lede, kinds[i]) {
-            (_, LineKind::Heading) if l.starts_with("## ") && at_operation(&section, sub) => 1,
+            (_, LineKind::Heading) if (l.starts_with("## ") || l.starts_with("### ")) && at_operation(&section, sub) => 1,
             (1, LineKind::Blank) => 1,
             (1 | 2, LineKind::Prose) => {
-                let e = ledes.entry(section.clone().unwrap_or_default()).or_default();
+                let op = section.clone().unwrap_or_default();
+                let e = match &group {
+                    Some(g) => groups.entry(format!("{op}.{g}")).or_default(),
+                    None => ledes.entry(op).or_default(),
+                };
                 if !e.is_empty() {
                     e.push(' ');
                 }
@@ -356,7 +380,9 @@ fn parse(rel: &str, role: Role, text: &str) -> Doc {
         };
         i += 1;
     }
-    Doc { rel: rel.to_string(), role, lines, kinds, contract, owns, clauses, ledes }
+    // a `### ` heading holding no clause item is after-list prose, not a group
+    groups.retain(|key, _| clauses.iter().any(|cl| cl.group.as_ref().is_some_and(|g| *key == format!("{}.{g}", cl.operation))));
+    Doc { rel: rel.to_string(), role, lines, kinds, contract, owns, clauses, ledes, groups }
 }
 
 // ---------------------------------------------------------------- corpus
@@ -499,6 +525,16 @@ impl Corpus {
             .flat_map(|d| {
                 let c = d.contract.clone().unwrap_or_default();
                 d.ledes.iter().map(move |(op, t)| (format!("{c}.{op}"), t.as_str()))
+            })
+            .collect()
+    }
+
+    /// Every group's lede, keyed `<contract>.<operation>.<group>`.
+    pub fn group_ledes(&self) -> BTreeMap<String, &str> {
+        self.contracts()
+            .flat_map(|d| {
+                let c = d.contract.clone().unwrap_or_default();
+                d.groups.iter().map(move |(key, t)| (format!("{c}.{key}"), t.as_str()))
             })
             .collect()
     }

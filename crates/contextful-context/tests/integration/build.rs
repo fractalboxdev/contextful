@@ -694,6 +694,7 @@ fn collection_after_a_build_follows_the_declared_window() {
     assert!(p.dir().join("data/snapshots").join(&first.build_id).is_dir(), "a 30 d window keeps a build 8 days old");
 }
 
+// spec: run.model.build-boundary@942d06ef
 #[test]
 fn a_build_publication_boundary_refusal_preserves_rows_and_watermark() {
     let p = Project::new();

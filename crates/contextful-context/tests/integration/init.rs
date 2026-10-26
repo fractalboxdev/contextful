@@ -22,6 +22,7 @@ fn an_init_writes_the_declaration_and_the_store_root() {
     assert!(dir.path().join(".contextful/context/research").is_dir());
 }
 
+// spec: store.init.store-identity@78e6af95
 #[test]
 fn init_persists_a_distinct_store_uuid_across_repetition_and_recreation() {
     let dir = tempfile::tempdir().unwrap();
@@ -43,6 +44,7 @@ fn init_persists_a_distinct_store_uuid_across_repetition_and_recreation() {
     assert!(valid(&second) && second != first, "recreating the store changes its UUID");
 }
 
+// spec: store.init.identity-invalid@d6569c2b
 #[test]
 fn malformed_store_uuid_and_absent_owner_root_refuse_identity() {
     let dir = tempfile::tempdir().unwrap();

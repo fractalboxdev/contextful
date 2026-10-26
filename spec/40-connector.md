@@ -59,8 +59,6 @@ Connector interfaces: shared types, source and destination worlds, optional inte
 - `batch-encoding` — A batch crosses the boundary as Arrow IPC bytes, and a position as opaque bytes beside a declared cursor kind.
 - `arrow-types` — The host reads Arrow `Binary` or `FixedSizeBinary` columns as bytes of that width and `FixedSizeList` of `Float32` or `Float16` as vectors. Each lands in its {{store.reconcile.binary-and-vector}} type without text conversion.
 - `nested-value` — The connector sends a nested value as `json`; normalization determines its type. The interface defines no recursive type.
-- `guaranteed-type` — A guest declares the type its parser guarantees: `int64` for a count, `float64` for money and a rate. An unreadable spelling lands as null instead of zero.
-  *because a text column pushes a cast into every downstream read*
 - `read-handle` — A source exports its cursor kind, discovery call and open call taking a table and optional position. The handle's `next` yields one batch or exhaustion; `position` reports the current position.
 - `write-handle` — A destination exports `prepare`, `write`, `commit` and `abort`. Source and destination are separate worlds sharing the types interface.
 - `optional-world` — Operator configuration and failure attribution each use an additional world interface. The host probes instances by interface name. A base-world guest instantiates unchanged; neither interface changes the world version.
@@ -74,7 +72,6 @@ Connector interfaces: shared types, source and destination worlds, optional inte
 - `native-extra` — A native source may provide a content fingerprint from stat or HEAD without downloading, plus its connector identity, audit entries and a declared reason for unmetered vendor traffic.
 - `store-blindness` — A source receives credentials, limiter bindings, the run id, the request ledger, the component pin and the incremental position, and no store handle. A store-driven run receives its query set as run parameters.
   *P5*
-- `world-authorship` — The host generates bindings from its template, the input specification and connector name. Connector authors write only method bodies: authentication, paging and the cursor-kind declaration.
 
 A connector failure crosses as a variant of {{run.retry.failure-taxonomy}}. Failure
 attribution narrows a failure the guest saw for one partition, such as a per-resource
@@ -129,7 +126,6 @@ Manifest-declared host access and the probe that checks a bound credential's gra
   *A-connector*
 - `scope-unverified` — A probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII, raises `ConnectorScopeUnverified`.
   *because cannot-verify is not verified*
-- `environment-binding` — A source key binds from the environment as `<key>_from = "env:<NAME>"`. The engine enumerates the bindable keys in one place, each with its value shape: a scalar or a comma-separated list.
 - `binding-unsupported` — A `_from` binding on a key the connector does not read raises `ConnectorBindingUnsupported`.
   *P3*
 - `binding-unbound` — A bound key the environment did not supply, or supplied off its declared shape, raises `ConnectorBindingUnbound` at preflight.
@@ -163,21 +159,9 @@ unsettled: Which manifest keys declare environment names and a shared quota, and
 
 Comparison of a candidate connector manifest with its admitted predecessor, and operator approval of additional host access.
 
-- `comparison` — Reload compares the candidate's complete declared grant with the admitted manifest for the same connector identity before publishing the candidate; validation under {{connector.declare-capability.allowlist-shape}} precedes comparison.
-  *A-connector*
-- `dimensions` — The comparison covers outbound hosts, environment names, expected credential scopes and wall-clock access; names and scopes compare byte for byte, and enabling the clock widens its Boolean grant.
-  *A-connector*
 - `host-inclusion` — Host inclusion succeeds when every candidate entry has a covering predecessor entry under {{connector.declare-capability.host-allowlist}}. Success admits no host the predecessor refuses.
   *A-connector*
 - `host-witness` — Every reported host witness passes the candidate's outbound matcher and fails the predecessor's outbound matcher.
-  *A-connector*
-- `unresolved` — A comparison establishing neither inclusion nor a replayed witness raises `ConnectorWidenUnresolved`, naming the dimension and reason; reload retains the admitted manifest.
-  *A-connector*
-- `approval-required` — Additional access without a matching operator approval raises `ConnectorWidenApprovalRequired`, carrying a witness for each widened dimension; reload retains the admitted manifest.
-  *A-connector*
-- `approval-binding` — An approval records the authenticated operator, connector identity and both complete manifest digests; publication atomically checks the admitted digest and applies only that candidate, preserving {{run.own.admission-pin}}.
-  *A-connector*
-- `narrowing` — A candidate included in the admitted grant needs no widening approval; comparison grants no exemption from other load checks.
   *A-connector*
 
 unsettled: Which operator authorization action and durable approval store serve local reload and control-plane apply? owner: connector affects: connector.widen
@@ -186,8 +170,6 @@ unsettled: Which operator authorization action and durable approval store serve 
 
 - `connector.widen.host-inclusion`: WHEN `*.eu.example.com` replaces `*.example.com`, THEN host inclusion succeeds.
 - `connector.widen.host-witness`: WHEN `*.example.com` replaces `x.example.com`, THEN a host witness differs from the already admitted exact host.
-- `connector.widen.approval-required`: WHEN a candidate adds environment name `REPORT_TOKEN` without operator approval, THEN reload retains the admitted manifest and names that environment access.
-- `connector.widen.approval-binding`: WHEN the admitted digest changes after review, THEN the approval does not match the new comparison.
 
 ## meter
 
@@ -231,11 +213,6 @@ Vendor quota declarations, limiter bindings, pre-send checks, permit reservation
 - `synthesized-throttle` — A denied reservation returns to the guest as a synthesized `429` carrying the retry-after. An unreachable limiter fails the request as a transport failure.
   *because a connector mapping vendor throttles needs no second interface*
 - `replay-reservation` — Replay issues no outbound request and makes no limiter call.
-- `built-in-grant-absent` — A compiled-in source reaching an outside vendor declares its grant in the pipeline's source configuration; the build raises `ConnectorGrantMissing` without it.
-  *A-connector*
-- `grant-unhonorable` — A declared grant on a compiled-in source that bypasses the mediated client raises `ConnectorGrantUnhonorable` at load.
-  *A-connector*
-- `metered-disclosure` — Where the project binds any quota, every compiled-in read records whether it ran metered, the run record states an unmetered read once, and validation warns per pipeline naming the connector.
 - `counting-not-pricing` — The limiter counts requests and prices none.
 
 ```mermaid
@@ -274,11 +251,11 @@ unsettled: Where does an operator declare the pre-send hook a command-line run c
 Model requests: endpoint selection, prompt data markers and output provenance labels.
 
 - `model-endpoint` — Every model call resolves to one operator-configured OpenAI-compatible HTTP endpoint declared as a capability. The host owns the credential, rate limit and span; the component owns the prompt template and response schema.
-  *A-topology*
+  *A-topology#one-egress*
 - `mediated-call` — A model call sends through the mediated client under {{connector.attach.mediation-covers-every-egress}}, its allowlist the configured endpoint host alone, and passes {{connector.meter.pre-send-hook}} like a vendor hop.
   *A-connector*
 - `vendor-sdk` — The workspace rejects a model-vendor SDK in any Rust crate under {{topology.compose.vendor-sdk}}. Changing providers requires only a URL edit.
-  *A-topology*
+  *A-topology#one-egress*
 - `data-fence` — No ingested value reaches a model outside a data boundary: marker pairs whose opening marker carries the value's provenance label, a preamble declaring the blocks data, and a closing line restating the caller's rules.
 - `fence-is-not-a-boundary` — The fence lowers the success rate of injected instructions and bounds nothing. No clause treats the output of a fenced call as trusted.
   *because spotlighting reduces injection and guarantees nothing*
@@ -350,8 +327,6 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `local-unpinned` — With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of the bytes found.
   *A-connector*
 - `manifest-posture` — An adopted manifest carries a digest from the fixed builder platform. A template manifest carries a pin requirement and placeholder. The parser accepts a template; the loader refuses it.
-- `posture-undeclared` — A manifest carrying neither a digest nor both template markers raises `ConnectorPostureUndeclared` at merge.
-  *A-connector*
 - `build-source` — A manifest's `build.source` is its only build input; the fixed builder platform holds image, target, compiler, package manager and command, and a `build.source` leaving the manifest directory refuses under {{connector.package.manifest-keys}}.
   *A-connector*
 - `pin-verb` — `contextful connector pin <manifest>` builds the guest in a digest-pinned container on one fixed platform and writes the artifact and its digest. `--verify` rebuilds and compares without writing.
@@ -384,11 +359,6 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `session-budget` — A session carries a 1 MiB logging budget, dropping and counting messages past it, and holds at most 8 requests outbound at once.
 - `request-body` — A guest's outbound request body carries at most 8 MiB. The host stops reading past it and fails the call as a deterministic refusal before the request reaches the vendor.
   *because the body buffers in host memory, outside the guest's linear-memory cap*
-- `world-compatibility` — Compatibility is semver over the world: a guest built against one minor loads on any host advertising a compatible minor.
-- `world-drain` — On a major world bump no new run admits against the old world, in-flight runs complete or suspend on the world they pinned, and the old world then retires.
-  *A-connector*
-- `live-reresolution` — Re-resolving or reloading a connector while a journaled run holds it raises `ConnectorHotReload`; a new version applies to runs admitted after it.
-  *A-connector*
 - `built-in-registry` — The names resolving to compiled-in sources form one enumerated list. A listed name carries no manifest or artifact, and a feature-gated entry stays listed and answers with a rebuild hint.
 
 A connector striking a declared bound follows {{run.retry.bound-hit-is-transient}}.
@@ -428,6 +398,17 @@ flowchart LR
 
 The declared behavior of each source compiled into the engine.
 
+- `poll-only-increments` — Incremental loading is a scheduled poll. A replication socket held open is not a source read.
+  *because its output is unbounded and has no recorded exchange to replay*
+- `twin-api` — A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. The engine admits a sanctioned, disclosed organization-wide export path.
+  *A-read*
+- `parse-containment` — A compiled-in source decodes behind {{run.land.parse-boundary}}.
+  *A-connector*
+
+### http
+
+The generic HTTP source binds credentials, walks its pages under one pagination shape, and expands rows by follow-up requests.
+
 - `http-headers` — The generic HTTP source binds credentials through a `headers` table whose values are templates in the {{connector.reference.value-template}} grammar, hydrated per read.
   *A-connector*
 - `http-page-pull` — Under page-number, next-cursor or no pagination and without an incremental field, one generic HTTP source pull reads one page and carries the next page's token as its position. The walk's last page carries a position naming the first page.
@@ -440,31 +421,6 @@ The declared behavior of each source compiled into the engine.
 - `http-scope-probe` — The generic HTTP source reads its {{connector.declare-capability.scope-probe}} from a `scope_probe` config table and carries its first reference-bound header as the bound credential.
 - `http-compression` — The generic HTTP source decompresses a body only when `compression` declares `gzip` or `zip`, bounded by {{connector.source.object-expansion}}. The URL extension does not select compression.
   *because a URL path names a route, not how the vendor stored the bytes*
-- `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `json-object`, `jsonl`, `csv`, `feed` or a workbook — for HTTP, file and object sources. HTTP declares formats; file and object sources infer them from extensions compared without case.
-- `json-record-shape` — `json` requires an array of objects; `json-object` requires one object. Both select `records` when declared, otherwise the root; a missing selection or wrong shape is unreadable input under {{run.land.unreadable-input}}.
-- `json-object-record` — `json-object` emits one row even when the selected object or its nested arrays are empty; decoding retains the full parsed body for pagination pointers.
-- `json-body-paths` — `records`, `next_cursor_path` and `next_url_path` read JSON pointers in either JSON mode.
-- `json-object-pagination` — `json-object` admits cursor, next-URL and Link-header pagination; page-number pagination refuses under {{connector.source.format-key-mismatch}} before I/O.
-  *because one object never supplies the empty record array that terminates page-number pagination*
-- `format-key-mismatch` — A JSON record path, a pagination shape, or a decode key declared against a format that does not read it raises `ConnectorFormatKeyRejected` at build.
-  *P1*
-- `delimited-cell` — A delimited source lands every cell as a string and an empty unquoted field as null.
-  *because a dimension file's schema then depends on no data*
-- `declared-encoding` — A non-UTF-8 delimited body decodes through a declared encoding label, and bytes invalid under it raise `ConnectorEncodingInvalid`.
-  *P1*
-- `delimiter` — On `format = "csv"`, `delimiter` names one field delimiter character, defaulting to `,`. Validation accepts a tab and refuses a quote, line break or longer value at build.
-  *because a field delimiter that also opens a quote or ends a record leaves every line two readings*
-- `declared-columns` — `columns` on `format = "csv"` names a headerless body's columns in order. A first record whose field count differs refuses under {{connector.source.configuration-fault}}; a later one is unreadable input under {{run.land.unreadable-input}}, naming its line.
-  *because a headerless body under a short list otherwise lands a shifted cell under the wrong name*
-- `clock-column-spelling` — A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises `ConnectorClockColumnRejected`.
-  *because the watermark compares text*
-- `feed-format` — `format = "feed"` decodes an RSS or Atom document into one row per item or entry carrying `entry_id`, `title`, `link`, `published_at`, `summary`, `author` and `categories`, each null where the entry holds none.
-- `feed-entry-id` — A feed row's `entry_id` is the Atom `id` or the RSS `guid`, else the entry's link; an entry carrying neither is unreadable input under {{run.land.unreadable-input}}.
-  *because a primary key over `entry_id` then collapses every re-fetched entry onto one row*
-- `feed-published-at` — `published_at` is the Atom `published`, else `updated`, or the RSS `pubDate`, folded to an RFC 3339 instant in UTC; a date that is neither RFC 3339 nor RFC 2822 is unreadable input.
-  *because a watermark over `published_at` then orders instants, whatever offset the feed spells*
-- `feed-categories` — `categories` is JSON array text of `domain` and `term` objects in document order: each RSS `category` text and its `domain`, or Atom `term` and `scheme`; an absent domain is null, an empty term skipped.
-  *because a model then selects items by a facet through `json_extract` over one declared column*
 - `conditional-get` — `conditional = true` sends the position's `etag` as `If-None-Match` and `last_modified` as `If-Modified-Since`. A `304` lands no rows and holds the position; a `2xx` commits the validators it serves.
 - `conditional-position` — A conditional pull issues one request, and the validators are its whole position: no page token or watermark rides beside them, and the pull reports no further page.
 - `conditional-rejected` — `conditional` beside a pagination shape or a declared `incremental` raises `ConnectorConditionalRejected` at build.
@@ -503,6 +459,55 @@ The declared behavior of each source compiled into the engine.
   *P1*
 - `target-column-occupied` — A target column any landed index row already carries raises `ConnectorTargetColumnOccupied` ahead of the walk.
   *P1*
+
+### formats
+
+A body's declared `format` selects its decoder: JSON, delimited text, a feed, an office container or a workbook.
+
+- `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `json-object`, `jsonl`, `csv`, `feed` or a workbook — for HTTP, file and object sources. HTTP declares formats; file and object sources infer them from extensions compared without case.
+- `json-record-shape` — `json` requires an array of objects; `json-object` requires one object. Both select `records` when declared, otherwise the root; a missing selection or wrong shape is unreadable input under {{run.land.unreadable-input}}.
+- `json-object-record` — `json-object` emits one row even when the selected object or its nested arrays are empty; decoding retains the full parsed body for pagination pointers.
+- `json-body-paths` — `records`, `next_cursor_path` and `next_url_path` read JSON pointers in either JSON mode.
+- `json-object-pagination` — `json-object` admits cursor, next-URL and Link-header pagination; page-number pagination refuses under {{connector.source.format-key-mismatch}} before I/O.
+  *because one object never supplies the empty record array that terminates page-number pagination*
+- `format-key-mismatch` — A JSON record path, a pagination shape, or a decode key declared against a format that does not read it raises `ConnectorFormatKeyRejected` at build.
+  *P1*
+- `delimited-cell` — A delimited source lands every cell as a string and an empty unquoted field as null.
+  *because a dimension file's schema then depends on no data*
+- `declared-encoding` — A non-UTF-8 delimited body decodes through a declared encoding label, and bytes invalid under it raise `ConnectorEncodingInvalid`.
+  *P1*
+- `delimiter` — On `format = "csv"`, `delimiter` names one field delimiter character, defaulting to `,`. Validation accepts a tab and refuses a quote, line break or longer value at build.
+  *because a field delimiter that also opens a quote or ends a record leaves every line two readings*
+- `declared-columns` — `columns` on `format = "csv"` names a headerless body's columns in order. A first record whose field count differs refuses under {{connector.source.configuration-fault}}; a later one is unreadable input under {{run.land.unreadable-input}}, naming its line.
+  *because a headerless body under a short list otherwise lands a shifted cell under the wrong name*
+- `clock-column-spelling` — A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises `ConnectorClockColumnRejected`.
+  *because the watermark compares text*
+- `feed-format` — `format = "feed"` decodes an RSS or Atom document into one row per item or entry carrying `entry_id`, `title`, `link`, `published_at`, `summary`, `author` and `categories`, each null where the entry holds none.
+- `feed-entry-id` — A feed row's `entry_id` is the Atom `id` or the RSS `guid`, else the entry's link; an entry carrying neither is unreadable input under {{run.land.unreadable-input}}.
+  *because a primary key over `entry_id` then collapses every re-fetched entry onto one row*
+- `feed-published-at` — `published_at` is the Atom `published`, else `updated`, or the RSS `pubDate`, folded to an RFC 3339 instant in UTC; a date that is neither RFC 3339 nor RFC 2822 is unreadable input.
+  *because a watermark over `published_at` then orders instants, whatever offset the feed spells*
+- `feed-categories` — `categories` is JSON array text of `domain` and `term` objects in document order: each RSS `category` text and its `domain`, or Atom `term` and `scheme`; an absent domain is null, an empty term skipped.
+  *because a model then selects items by a facet through `json_extract` over one declared column*
+- `office-part-selection` — The decoder reads an office container by exact part name. The decoder opens no other part and resolves no external entity.
+  *A-connector*
+- `decompression-budget` — A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory's claim and against the bytes that arrive.
+  *A-connector*
+- `worksheet-landing` — One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each shared string and each stored cell, counted as they land — and lands at most 1048576 rows.
+  *because shared-string fan-out turns a small input into an unbounded output*
+- `cell-out-of-range` — A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell holding none widens nothing.
+  *A-connector*
+- `external-reference` — An external-reference declaration, an external-links part, or a relationship marked external raises `ConnectorExternalReference`.
+  *A-connector*
+- `workbook-cell-typing` — The decoder stores a workbook cell as a string and a date cell as its serial number. The decoder stores cached formula values without evaluating formulas.
+  *A-connector*
+- `workbook-incremental` — An incremental position against a workbook raises `ConnectorIncrementalUnsupported`.
+  *because a variable-width serial number advances a lexicographic watermark past unlanded rows*
+
+### objects
+
+The `s3` source and directory walks address, decompress and dead-letter each object they read.
+
 - `walk-boundary` — A directory walk reaches the configured root and nothing outside it, skips dot-entries, and traverses in sorted order. A decode-selecting key narrows nothing.
   *because a sorted walk over an unchanged tree reproduces across hosts*
 - `declined-tally` — A directory walk records on the run record what it declined, tallied by extension, and reports the total as its {{run.record.skipped-count}}.
@@ -536,6 +541,11 @@ The declared behavior of each source compiled into the engine.
 - `object-cleartext` — At build, the host refuses an `s3` source binding a key pair to a cleartext endpoint outside loopback under {{connector.attach.cleartext-endpoint}}.
   *because a presigned URL is a bearer capability for its lifetime*
 - `object-position-owned` — `incremental` beside `skip_unchanged = true` on the `s3` source refuses as {{connector.package.component-position}} at validation.
+
+### documents
+
+The `file` source and the document decoder land one row per page or heading, keyed by slug and ordinal.
+
 - `document-grain` — A document source lands one row per page, or one row per heading past a length threshold. With a base URL, each row links to its own page anchor.
 - `document-identity` — A document row's identity is a slug plus an ordinal, chunked or not.
   *because an identity then survives a document crossing the threshold*
@@ -565,22 +575,11 @@ The declared behavior of each source compiled into the engine.
   *because a row-per-page document past that size is an export, not a note, and one file must not exhaust the read's memory*
 - `file-pdf-absent` — A PDF the walk reaches in a build without the PDF decoder fails the read as a configuration fault naming the feature to rebuild with.
 - `file-position-owned` — `incremental` beside the `file` source refuses as {{connector.package.component-position}} at validation.
-- `parse-containment` — A compiled-in source decodes behind {{run.land.parse-boundary}}.
-  *A-connector*
-- `office-part-selection` — The decoder reads an office container by exact part name. The decoder opens no other part and resolves no external entity.
-  *A-connector*
-- `decompression-budget` — A multi-part office read decompresses at most 64 MiB in total, judged against the archive directory's claim and against the bytes that arrive.
-  *A-connector*
-- `worksheet-landing` — One worksheet read holds at most 64 MiB — resolved cell text and keys, plus 32 B for each shared string and each stored cell, counted as they land — and lands at most 1048576 rows.
-  *because shared-string fan-out turns a small input into an unbounded output*
-- `cell-out-of-range` — A cell holding a value past the header's width raises `ConnectorCellOutOfRange`; a cell holding none widens nothing.
-  *A-connector*
-- `external-reference` — An external-reference declaration, an external-links part, or a relationship marked external raises `ConnectorExternalReference`.
-  *A-connector*
-- `workbook-cell-typing` — The decoder stores a workbook cell as a string and a date cell as its serial number. The decoder stores cached formula values without evaluating formulas.
-  *A-connector*
-- `workbook-incremental` — An incremental position against a workbook raises `ConnectorIncrementalUnsupported`.
-  *because a variable-width serial number advances a lexicographic watermark past unlanded rows*
+
+### reports, images, search and receive
+
+Async vendor reports, images, web search results and pushed `receive` batches each land through their own source.
+
 - `report-id-commit` — An async-report source commits the vendor run id when creation returns. Exhausting the polling budget ends the read successfully. The source recreates an expired vendor run for the same window.
   *P4*
 - `page-drain` — Report paging drains a fixed number of pages per read, one batch per page, each carrying the position after it.
@@ -604,20 +603,19 @@ The declared behavior of each source compiled into the engine.
 - `quotability-marker` — Whatever fills an image body records in a companion column whether the text is verbatim extraction or a model's reading.
 - `marker-body-pairing` — An image body and its quotability marker that are not null together raise `ConnectorQuotabilityMismatch`.
   *A-connector*
-- `search-config` — The search source takes a driver, a query, a freshness window and a result ceiling, landing one row per result. Its cursor kind is snapshot-id, keyed on the result URL.
 - `provider-origin` — Each search call site pins its provider's host. A non-TLS transport or another host raises `ConnectorProviderOriginRejected`, except on loopback.
   *A-connector*
-- `search-degradation` — An absent provider key and a provider `5xx` are transient failures yielding a zero-row outcome, and a replay returns the journaled result set.
-- `poll-only-increments` — Incremental loading is a scheduled poll. A replication socket held open is not a source read.
-  *because its output is unbounded and has no recorded exchange to replay*
 - `receive-form` — A `receive` source declares `format = "jsonl"`, a positive `max_batch_bytes`, a positive `max_queue_depth` and a positive `key_retention_secs`, none defaulted; it serves every declared table and requests nothing from outside.
   *because a ceiling the sender fills must be the operator's choice, not a guess the binary carries*
 - `receive-recorded` — The engine bounds and records a delivered batch before storing its rows. {{connector.source.poll-only-increments}} does not apply to `receive` sources.
 - `receive-unscheduled` — A `receive` pipeline declaring a `schedule` fails validation.
   *because a sender, not the cadence, starts its runs, so a scheduled fire fails on every beat*
 - `receive-body` — A `receive` body holds one JSON object per line, `table` naming a declared table and `row` its row object; another shape fails the whole batch as {{run.land.unreadable-input}}, naming the line.
-- `twin-api` — A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. The engine admits a sanctioned, disclosed organization-wide export path.
-  *A-read*
+
+### drive
+
+The drive source walks selected Drive folders and lands one row per file and one per PDF page.
+
 - `drive-walk` — The drive source walks `folder_id` breadth-first through `files.list`, paging each folder within `drive_id` when declared. The source lists each folder once, sorts children by name and id, and follows no shortcut.
   *because the source keeps a per-file position and mints its token host-side, which a guest holding no credential bytes cannot*
 - `drive-root-set` — Exactly one of `folder_id` or `folder_ids` selects roots; `folder_ids` holds 1 to 16 entries, all distinct, under one required `drive_id`. An empty, oversized, repeated or ambiguous selection raises `ConnectorDriveRootsInvalid` before listing.

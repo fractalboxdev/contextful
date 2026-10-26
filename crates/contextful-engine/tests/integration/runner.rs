@@ -286,6 +286,7 @@ fn retirement_collects_the_executions_journal() {
 
 /// At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced
 /// it before any replay.
+// spec: run.advance.engine-owned@795c0abb
 // spec: run.own.marker-reconciles@a8a124be
 #[test]
 fn a_marker_the_catalog_missed_retires_its_owner_before_replay() {
@@ -1080,6 +1081,7 @@ fn a_component_connector_is_refused_on_a_build_without_a_component_host() {
 
 /// Builds that link a component host run component connectors: the full profile and container or worker deployments
 /// built from that profile.
+// spec: topology.compose.connector-pillar@ec7fb9ad
 // spec: topology.package.component-host@cb1c5d44
 #[test]
 fn a_component_connector_runs_on_an_engine_wiring_its_world() {
@@ -1278,6 +1280,7 @@ fn incompatible_pages() -> Pages {
     Pages::new(vec![vec![json!({"id":"seed","score":0})], vec![json!({"id":"one","score":1})], vec![json!({"id":"two","score":{"invalid":true}})]])
 }
 
+// spec: run.own.source-stage-schema@804e10a2
 #[test]
 fn source_stage_schema_refusal_releases_recorded_pulls_without_advancing_the_committed_cursor() {
     for protected in [false, true] {

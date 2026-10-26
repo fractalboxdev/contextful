@@ -34,7 +34,7 @@ fn the_lede_lands_in_the_lock_and_its_absence_is_an_anatomy_finding() {
     assert!(found.iter().any(|m| m.contains("`fold`") && m.contains("lede")), "{found:?}");
 }
 
-// spec: corpus.anatomy.clause-list@8574bc7c
+// spec: corpus.anatomy.clause-list@b0bca13f
 #[test]
 fn a_clause_list_split_by_prose_is_an_anatomy_finding() {
     let s = Scratch::copy();
@@ -45,7 +45,7 @@ fn a_clause_list_split_by_prose_is_an_anatomy_finding() {
     assert!(found.iter().any(|m| m.contains("`fold`") && m.contains("broken")), "{found:?}");
 }
 
-// spec: corpus.anatomy.bad-anatomy@443124ed
+// spec: corpus.anatomy.bad-anatomy@ed3388c6
 #[test]
 fn an_item_outside_the_clause_shape_is_an_anatomy_finding() {
     let s = Scratch::copy();

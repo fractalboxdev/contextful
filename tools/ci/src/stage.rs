@@ -12,7 +12,7 @@ use std::time::Instant;
 use crate::{refuse, run, tracked, Exited};
 
 /// Gate stages in run order, each runnable alone.
-pub const STAGES: [&str; 13] = [
+pub const STAGES: [&str; 14] = [
     "pins",
     "toolchain",
     "schema",
@@ -25,13 +25,14 @@ pub const STAGES: [&str; 13] = [
     "connectors",
     "surfaces",
     "formal",
+    "unwired",
     "budget",
 ];
 
 /// The stages whose parts form the nightly tier (`assurance.gate.nightly-tier`): `gate --stage`
 /// runs them on demand, and `stages --parts` omits them from the parts a change runs before
 /// merge.
-pub const NIGHTLY: [&str; 3] = ["features", "formal", "budget"];
+pub const NIGHTLY: [&str; 4] = ["features", "formal", "unwired", "budget"];
 
 /// The folded parts that each run several stage parts (`assurance.gate.folded-parts`):
 /// a label and its members in run order. Every other part runs as itself, and each
@@ -632,8 +633,12 @@ fn inventoried(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// The cases the nightly protocol differential generates (`assurance.gate.formal-stage`).
+pub const PROTOCOL_CASES: usize = 10_000;
+
 /// The formal stage's commands (`assurance.gate.formal-stage`): the assumption audit over
-/// each inventoried package, the differential run, and the protocol model's bounded check.
+/// each inventoried package, the differential run, the protocol model's bounded check, and
+/// the protocol differential over both lease paths.
 pub fn formal_commands(root: &Path) -> Result<Vec<(PathBuf, String, Vec<String>)>> {
     let base = ["run", "--locked", "-q", "-p", "contextful-cli", "--bin", "contextful", "--", "formal"];
     let cli = |rest: &[&str]| base.iter().chain(rest).map(|s| s.to_string()).collect::<Vec<_>>();
@@ -648,6 +653,7 @@ pub fn formal_commands(root: &Path) -> Result<Vec<(PathBuf, String, Vec<String>)
         bail!("the formal stage finds no protocol model at formal/protocol");
     }
     out.push((protocol, "lake".to_string(), vec!["exe".into(), "protocol".into(), "check".into()]));
+    out.push((root.to_path_buf(), "cargo".to_string(), cli(&["protocol-differential", "--cases", &PROTOCOL_CASES.to_string()])));
     Ok(out)
 }
 

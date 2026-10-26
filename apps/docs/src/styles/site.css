@@ -194,14 +194,18 @@ li.clause {
   scroll-margin-top: 4rem;
 }
 li.clause:target { background: var(--target); }
-.clause-anchor {
+.clause-margin {
   grid-row: 1 / span 2;
-  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
   padding-top: 0.2em;
   text-align: right;
   line-height: 1.4;
-  color: var(--fg-muted);
+  min-width: 0;
 }
+.clause-anchor { color: var(--fg-muted); }
 .clause-anchor:hover { text-decoration: none; }
 .prose .clause-anchor code {
   padding: 0;
@@ -212,17 +216,78 @@ li.clause:target { background: var(--target); }
 }
 .clause-anchor:hover code,
 li.clause:target .clause-anchor code { color: var(--accent); }
+/* The tests and theorems a clause is pinned to, beneath its id. */
+.clause-pins { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.1rem 0.35rem; }
+.clause-pin { font-size: 0.68rem; letter-spacing: 0.02em; color: var(--fg-muted); }
+a.clause-pin:hover { color: var(--accent); }
 .clause-statement { grid-column: 2; min-width: 0; overflow-wrap: break-word; }
 .clause-why {
-  display: block;
   grid-column: 2;
   margin-top: 0.1rem;
   font-size: 0.85rem;
   line-height: 1.5;
   color: var(--fg-muted);
 }
-.clause-ref code { color: var(--accent); }
+.clause-why > summary {
+  display: inline-block;
+  cursor: pointer;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  list-style: none;
+}
+.clause-why > summary::-webkit-details-marker { display: none; }
+.clause-why > summary::before { content: "▸ "; }
+.clause-why[open] > summary::before { content: "▾ "; }
+.clause-why > summary:hover { color: var(--fg); }
+.clause-why-body { display: block; padding-left: 0.9rem; }
+.prose h3.clause-group { margin-top: 1.5rem; font-family: var(--font-mono); font-size: 0.95rem; color: var(--fg-muted); }
+.prose p.group-lede { font-size: 1rem; }
+
+/* A reference shows the statement it points at on hover and keyboard focus; `title` stays
+   the fallback for assistive technology. */
+.clause-ref, .error-ref { position: relative; }
+.clause-ref code, .error-ref code { color: var(--accent); }
+.clause-preview {
+  display: none;
+  position: absolute;
+  z-index: 15;
+  left: 0;
+  top: calc(100% + 0.3rem);
+  width: max-content;
+  max-width: min(28rem, calc(100vw - 32px));
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+}
+.clause-preview-id {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+.clause-ref:hover > .clause-preview,
+.clause-ref:focus-within > .clause-preview,
+.error-ref:hover > .clause-preview,
+.error-ref:focus-within > .clause-preview { display: block; }
+/* A scrolling table clips an absolute preview, so inside one it docks to the viewport. */
+.table-wrap .clause-preview { position: fixed; left: 16px; right: 16px; top: auto; bottom: 16px; width: auto; max-width: 40rem; margin: 0 auto; }
 .record-ref { font-family: var(--font-mono); font-size: 0.86em; }
+
+.search { --pagefind-ui-scale: 0.85; --pagefind-ui-primary: var(--accent); --pagefind-ui-text: var(--fg); --pagefind-ui-background: var(--bg); --pagefind-ui-border: var(--border); --pagefind-ui-tag: var(--bg-soft); --pagefind-ui-border-width: 1px; --pagefind-ui-border-radius: 6px; --pagefind-ui-font: var(--font-sans); }
+.search .pagefind-ui__result-title { overflow-wrap: anywhere; }
 
 /* Merlion diagrams draw on the page's own background, ink and accent, in both schemes. */
 :root:not([data-theme]) {
@@ -268,5 +333,9 @@ figure.merlion-figure svg { max-width: 100%; height: auto; }
 @media (max-width: 720px) {
   li.clause { display: block; padding: 0.3rem 0; }
   li.clause:target { padding: 0.3rem 0.4rem; }
-  .clause-anchor { margin-right: 0.4rem; padding-top: 0; }
+  .clause-margin { display: inline; margin-right: 0.4rem; padding-top: 0; }
+  .clause-pins { display: inline-flex; margin-left: 0.35rem; }
+  .clause-why-body { padding-left: 0; }
+  /* On a phone the preview docks to the bottom of the viewport rather than beside the link. */
+  .clause-preview { position: fixed; left: 16px; right: 16px; top: auto; bottom: 16px; width: auto; max-width: none; }
 }

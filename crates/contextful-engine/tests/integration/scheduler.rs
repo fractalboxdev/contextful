@@ -167,6 +167,7 @@ fn a_pulled_run_start_in_the_future_defers_nothing() {
 }
 
 /// A beat takes the cadence lease before it dispatches, and a held lease dispatches nothing until it lapses.
+// spec: topology.coordinate.cadence-fallback@9a2d6924
 #[test]
 fn a_held_cadence_lease_dispatches_nothing() {
     let (rig, rec) = rig_with(None);

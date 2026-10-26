@@ -76,7 +76,7 @@ PipelineNodeIdCollision        = { clause = "run.compile.node-id-collision", glo
 PipelineParallelUnjoined       = { clause = "run.compile.unjoined-parallel", gloss = "A `parallel` node no join rejoins, or read around its join." }
 PipelineTransformArity         = { clause = "run.transform.arity", gloss = "A chain operation emitting more rows than it consumed." }
 PipelineTransformColumnMissing = { clause = "run.transform.column-missing", gloss = "A chain operation naming a column the batch lacks." }
-PipelineNormalizeModeUnknown   = { clause = "run.normalize.mode-unknown", gloss = "A normalize mode outside the two." }
+PipelineNormalizeModeUnknown   = { clause = "run.normalize.mode-unknown", gloss = "A normalize mode outside `native` and `relational`." }
 PipelineListIndexMissing       = { clause = "run.normalize.list-index-missing", gloss = "A relational child table without a list index." }
 PipelineUnknownDestination     = { clause = "run.land.unknown-destination", gloss = "A destination other than the local store." }
 PipelineUnreadableInput        = { clause = "run.land.unreadable-input", gloss = "Input a parser cannot read, named by path and position." }
@@ -99,7 +99,6 @@ PublicationIncompatible        = { clause = "run.export.group-incompatible", glo
 PublicationHeaderTooLarge      = { clause = "run.export.group-request-bound", gloss = "A coordinated group header leaving no room for one event under the typed request ceiling." }
 PublicationInputsBusy          = { clause = "run.export.group-quiesce-wait", gloss = "A coordinated export whose publication inputs a running unit or another export still holds past the wait bound." }
 PublicationStorageUnsupported  = { clause = "run.export.group-storage", gloss = "A storage profile lacks the coordinated publication outbox capability." }
-PipelineChunkParallelism       = { clause = "run.backfill.chunk-parallelism", gloss = "A sequential chunk plan beside a parallelism above one." }
 PipelineRewindWindowInvalid    = { clause = "run.backfill.rewind-invalid", gloss = "An inverted, empty or scale-incomparable rewind window." }
 PipelineSeedDeclarationMissing = { clause = "run.seed.declaration-missing", gloss = "A seeded table lacking a key or an event-time ordering." }
 PipelineSeedCompactionMissing  = { clause = "run.seed.compaction-cadence", gloss = "A seeded table no scheduled, enabled fold covers." }
@@ -129,7 +128,7 @@ DeriveUnknownTask              = { clause = "run.bind.unknown-task", gloss = "A 
 DeriveTaskNameTaken            = { clause = "run.bind.host-task", gloss = "A host task registered under a name already taken." }
 DeriveJoinRepeated             = { clause = "run.bind.join-repeated", gloss = "A host task whose joins name one table twice." }
 DeriveDriverMismatch           = { clause = "run.bind.driver-mismatch", gloss = "A driver and task pairing the tier does not serve." }
-DeriveEndpointHostNotBare      = { clause = "run.bind.endpoint-host-bare", gloss = "An engine host carrying more than a host." }
+DeriveEndpointHostNotBare      = { clause = "run.bind.endpoint-host-bare", gloss = "An engine host carrying a path, query, port or scheme." }
 DeriveRemoteUrlUnsupported     = { clause = "run.bind.remote-url-unsupported", gloss = "A remote address handed to an engine that declines them." }
 DeriveMediaUnreadable          = { clause = "run.bind.media-unreadable", gloss = "A media value neither an address nor a readable local file." }
 DeriveMediaOutsideRoot         = { clause = "run.bind.media-root", gloss = "A local media path escaping the binding's media root." }

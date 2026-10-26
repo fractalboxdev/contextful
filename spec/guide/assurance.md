@@ -35,7 +35,7 @@ flowchart LR
   click AUDIT href "/docs/specs/contracts/80-formal/#audit-assumptions" "Purpose: Check the assumptions behind compiled proofs.<br>Checks: Follow theorem dependencies, inspect allowed assumptions and compare statements with the declared inventory.<br>Example: A proof hole fails the audit even when compilation succeeds."
   click DIFF href "/docs/specs/contracts/80-formal/#differential-test" "Purpose: Compare the model and engine on the same generated inputs.<br>On disagreement: Shrink the case, record a reproducible counterexample and replay it before fresh cases.<br>Example: The reference admits a zone that the engine rejects."
   click EVAL href "/docs/specs/contracts/81-engineering/#evaluate" "The quality harness reads test data through the real store and access-control path. It checks forbidden results and the declared retrieval-quality baseline. These measurements supply evidence about search behavior."
-  click GATE href "/docs/specs/contracts/81-engineering/#gate" "The gate combines required checks into a verdict. Required pull-request checks and nightly checks run as separate tiers; each part reports its own result and evidence."
+  click GATE href "/docs/specs/contracts/83-gate/#gate" "The gate combines required checks into a verdict. Required pull-request checks and nightly checks run as separate tiers; each part reports its own result and evidence."
 ```
 
 Models describe the specification's decisions independently of the engine source
@@ -63,9 +63,7 @@ inventory ({{assurance.audit-assumptions.statement-drift}}). Rechecking uses pin
 source without credentials ({{assurance.recheck.credential-free}}).
 
 Claims identify the decisions, specifications and dependencies they trust
-({{assurance.scope-claim.trusted-dependencies}}). The connection between model and code
-covers only decision functions without external reads or writes
-({{assurance.scope-claim.refinement-scope}}).
+({{assurance.scope-claim.trusted-dependencies}}).
 
 ## What the engineering checks cover
 
@@ -84,7 +82,7 @@ Search evaluation loads test data through the real store
 ({{assurance.evaluate.forbidden-row-rate}}), and preserves the required quality baseline
 ({{assurance.baseline.raise-only}}).
 
-Windows checks provide diagnostics ({{assurance.gate.windows-checks}}). Build artifacts
+Build artifacts
 belong to their checkout ({{assurance.build.checkout-artifacts}}). Each gate part has a
 time budget ({{assurance.gate.part-budget}}); short parts share a check
 ({{assurance.gate.folded-parts}}), and nightly checks run separately

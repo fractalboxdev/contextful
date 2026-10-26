@@ -7,6 +7,7 @@ use crate::transfer::each;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::object::{ObjectError, ObjectStore, PartHold, PartSource};
 use contextful_core::store::sync::{confine, BucketManifest, Entry, MANIFEST_KEY};
+use contextful_core::read::ReadError;
 use contextful_core::store::StoreError;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -204,8 +205,8 @@ impl Inner {
             return Err(StoreError::SyncObjectDigestMismatch(format!("`{key}` arrived with a digest other than its entry's; the object is discarded")));
         }
         // A receipt precedes its part so a missing index loses no download's provenance.
-        write(&self.receipts.join(sha256_hex(rel.as_bytes())), rel.as_bytes()).map_err(|e| StoreError::ReadPartUnavailable(format!("`{rel}`: {e}")))?;
-        write(&self.root.join(rel), &bytes).map_err(|e| StoreError::ReadPartUnavailable(format!("`{rel}`: {e}")))?;
+        write(&self.receipts.join(sha256_hex(rel.as_bytes())), rel.as_bytes()).map_err(|e| StoreError::from(ReadError::ReadPartUnavailable(format!("`{rel}`: {e}"))))?;
+        write(&self.root.join(rel), &bytes).map_err(|e| StoreError::from(ReadError::ReadPartUnavailable(format!("`{rel}`: {e}"))))?;
         let mut cache = self.lock();
         let size = bytes.len() as u64;
         let tick = cache.tick;
@@ -260,7 +261,7 @@ impl Inner {
 }
 
 fn unavailable(what: &str, e: &ObjectError) -> StoreError {
-    StoreError::ReadPartUnavailable(format!("`{what}` did not download within {} s: {e}", PART_WAIT.as_secs()))
+    StoreError::from(ReadError::ReadPartUnavailable(format!("`{what}` did not download within {} s: {e}", PART_WAIT.as_secs())))
 }
 
 impl PartSource for LazyParts {
@@ -305,7 +306,7 @@ impl LazyParts {
         let mut holding = Holding { inner: self.0.clone(), files: files.to_vec(), save_on_drop: !missing.is_empty() };
         each(self.0.width, &missing, |rel| self.0.fetch(rel, deadline).map_err(crate::sync::SyncError::Store)).map_err(|e| match e {
             crate::sync::SyncError::Store(s) => s,
-            other => StoreError::ReadPartUnavailable(other.to_string()),
+            other => StoreError::from(ReadError::ReadPartUnavailable(other.to_string())),
         })?;
         if holding.save_on_drop {
             self.0.save(&self.0.lock());

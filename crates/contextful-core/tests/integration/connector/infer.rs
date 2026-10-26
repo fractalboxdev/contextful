@@ -177,6 +177,7 @@ fn provenance_labels_order_by_trust() {
 }
 
 /// `taint` returns the least-trusted label among a call's inputs, whatever their order.
+// spec: connector.infer.fence-is-not-a-boundary@2c5fc2ac
 #[test]
 fn output_carries_the_least_trusted_input_label() {
     assert_eq!(taint([Provenance::Operator, Provenance::ThirdParty]), Provenance::ThirdParty);

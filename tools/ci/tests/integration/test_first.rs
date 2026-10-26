@@ -14,6 +14,7 @@ fn a_change_touching_no_source_passes() {
     assert!(o.status.success(), "{}", stderr(&o));
 }
 
+// spec: assurance.test.test-first@b25e1506
 #[test]
 fn source_change_without_test_is_refused() {
     let r = Repo::init();
@@ -212,6 +213,7 @@ fn validation_runs_beside_selected_package_parts() {
     assert!(!o.status.success() && stderr(&o).contains("source package `demo`"), "{}", stderr(&o));
 }
 
+// spec: assurance.test.refactor-trailer@8003d595
 #[test]
 fn a_refactor_trailer_exempts_the_range() {
     let r = Repo::init();
@@ -414,4 +416,21 @@ fn a_module_filter_selects_that_module_alone() {
     let err = stderr(&o);
     assert!(!o.status.success(), "`redouble::` ran as the change's test: {err}");
     assert!(err.contains("TestNotFirst"), "{err}");
+}
+
+// spec: corpus.state.slice-diff@f46eee8e
+#[test]
+fn the_stage_prints_the_clauses_the_change_reaches_into_the_gate_log() {
+    let r = Repo::init();
+    r.write("spec/spec.lock.json", "{}\n");
+    r.commit("a corpus");
+    let base = r.head();
+    r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() {\n    assert_eq!(demo::double(3), 6);\n}\n");
+    r.commit("a test edit");
+    let cargo = "case \"$*\" in *\"slice --diff\"*) echo \"- \\`demo.double.doubles\\` — called with $*\" ;; *) exit 1 ;; esac\n";
+    let o = r.gate_with_cargo(cargo, &["--stage", "test-first", "--base", &base]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let log = stderr(&o);
+    assert!(log.contains("demo.double.doubles"), "{log}");
+    assert!(log.contains(&format!("slice --diff {base}")), "{log}");
 }

@@ -135,6 +135,7 @@ fn a_stalled_write_raises_within_the_request_bound() {
     assert_eq!(binding.log().len(), 1);
 }
 
+// spec: run.journal.d1-transport@55212483
 #[test]
 fn a_write_never_resends_and_never_rides_a_pooled_connection() {
     let binding = Binding::start(vec![Answer::Ok, Answer::Drop]);
@@ -155,6 +156,7 @@ fn a_blob_request_resends_after_a_dropped_answer() {
     assert_eq!(binding.log().len(), 2);
 }
 
+// spec: run.journal.d1-initialize@5bd64e12
 #[test]
 fn an_initialize_batch_dropped_on_first_touch_resends() {
     let names = [

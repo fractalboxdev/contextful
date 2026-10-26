@@ -35,6 +35,7 @@ workers  = { gloss = "runtime worker threads" }
 percent  = { gloss = "percent", aliases = ["%", "pct"] }
 words    = { gloss = "whitespace-separated words" }
 lines    = { gloss = "text lines" }
+clauses  = { gloss = "clause items in one list" }
 iterations = { gloss = "evaluator fixpoint iterations" }
 values   = { gloss = "distinct input values" }
 lanes    = { gloss = "Argon2id parallelism lanes" }

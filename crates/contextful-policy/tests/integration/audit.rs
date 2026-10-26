@@ -135,7 +135,7 @@ fn a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken() {
     let mut entries = lines(&segment(dir.path(), 1));
     entries[1].attributes = attrs("agent://attacker", 999);
     write_lines(&segment(dir.path(), 1), &entries);
-    assert_eq!(broken_at(verify(dir.path())), 2);
+    assert!(matches!(verify(dir.path()), Err(AuditError::AuditChainBroken { index: 2, .. })));
 
     // A disagreeing entry format: entry 2 claims v0 inside a v1 chain, and the header removed
     // leaves v1 entries a v0 walk refuses at the first.

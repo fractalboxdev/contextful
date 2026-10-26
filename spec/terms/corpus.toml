@@ -21,12 +21,15 @@ SpecTargetCapUnrecorded = { clause = "corpus.targets.cap-unrecorded", gloss = "A
 SpecTargetFunctionProfile = { clause = "corpus.targets.function-profile", gloss = "A function-class target shape listing a profile other than edge." }
 SpecAnatomy            = { clause = "corpus.anatomy.bad-anatomy", gloss = "A contract file out of its section order, lede, clause list, title or size." }
 SpecRegistry           = { clause = "corpus.registry.unregistered", gloss = "A spelling, error or bound out of step with its fragment." }
+SpecRegistryDrift      = { clause = "corpus.registry.drift", gloss = "A defining variant out of step with its registry entry, or a refusal whose code site and pin disagree." }
 SpecDanglingReference  = { clause = "corpus.reference.dangling", gloss = "A pointer to no clause." }
 SpecExternalLink       = { clause = "corpus.reference.no-literature", gloss = "A link out of the spec, or into references/." }
 SpecUnsettled          = { clause = "corpus.rationale.unsettled-line", gloss = "A malformed unknown, or an appendix heading." }
 SpecRecord             = { clause = "corpus.rationale.orphan-record", gloss = "An uncited or missing record, a bad Why, or a record out of anatomy." }
 SpecCoverageRegression = { clause = "corpus.state.coverage-floor", gloss = "Fewer performed pins than the floor." }
 SpecBrokenPin          = { clause = "corpus.state.bad-pin", gloss = "A pin that names no clause, mismatches its kind, does not resolve, or competes with a second test." }
+SpecUnwired            = { clause = "corpus.state.unwired-ceiling", gloss = "More public items only a performed pin's test reaches than the recorded ceiling." }
+SpecProofObligationUnpinned = { clause = "corpus.state.proof-obligation", gloss = "A clause listed as a proof obligation that does not compute proved." }
 SpecStalePin           = { clause = "corpus.state.stale-pin", gloss = "A tag recording a statement revision the clause no longer carries." }
 SpecRoadmap            = { clause = "corpus.state.roadmap", gloss = "A roadmap name resolving to nothing, claimed twice, or a milestone missing its reach or acceptance line." }
 SpecAcceptanceMissing  = { clause = "corpus.state.acceptance-first", gloss = "A milestone with a pinned clause and no acceptance test." }
@@ -50,11 +53,16 @@ SpecDiagramSequence    = { clause = "corpus.diagram.sequence", gloss = "A sequen
 SpecDiagramMessage     = { clause = "corpus.diagram.message", gloss = "A sequence message or note over its word bound." }
 SpecDiagramState       = { clause = "corpus.diagram.state", gloss = "A state diagram without one start, with an unreachable or dead-end state, or a long transition label." }
 SpecGuide              = { clause = "corpus.guide.bad-guide", gloss = "A missing or malformed guide, or one restating a rule." }
+SpecWordCeiling        = { clause = "corpus.anatomy.word-ceilings", gloss = "A contract or contract ADR whose word count differs from its ceiling." }
+SpecClauseUnowned      = { clause = "corpus.state.unowned", gloss = "More unpinned, unscheduled and unquestioned clauses than the ceiling records." }
+SpecWhyUnscoped        = { clause = "corpus.rationale.why-scoped", gloss = "More Why citations naming a contract ADR without a section than the ceiling records." }
 
 [limit]
 corpus-subject-length   = { clause = "corpus.address.subject-segment", value = 40, unit = "chars", basis = "chosen", gloss = "Longest subject slug." }
 corpus-statement-words  = { clause = "corpus.anatomy.statement-words", value = 40, unit = "words", basis = "chosen", gloss = "Longest clause statement." }
 corpus-file-lines       = { clause = "corpus.anatomy.file-length", value = 900, unit = "lines", basis = "chosen", gloss = "Longest contract file." }
+corpus-group-clauses    = { clause = "corpus.anatomy.group-clauses", value = 30, unit = "clauses", basis = "chosen", gloss = "Longest clause list." }
+corpus-operation-clauses = { clause = "corpus.anatomy.long-operation", value = 30, unit = "clauses", basis = "chosen", gloss = "Most clauses in one operation before the grouping advisory." }
 corpus-because-words    = { clause = "corpus.rationale.why-cell", value = 30, unit = "words", basis = "chosen", gloss = "Longest `because` cell." }
 corpus-record-words     = { clause = "corpus.rationale.record-anatomy", value = 400, unit = "words", basis = "chosen", gloss = "Longest principle record." }
 corpus-adr-section-words = { clause = "corpus.rationale.contract-adr", value = 250, unit = "words", basis = "chosen", gloss = "Longest section of a contract ADR." }
@@ -72,3 +80,34 @@ corpus-message-words    = { clause = "corpus.diagram.message", value = 8, unit =
 corpus-note-words       = { clause = "corpus.diagram.message", value = 12, unit = "words", basis = "chosen", gloss = "Longest sequence note." }
 corpus-transition-words = { clause = "corpus.diagram.state", value = 6, unit = "words", basis = "chosen", gloss = "Longest state transition label." }
 corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "words", basis = "chosen", gloss = "Longest guide, diagrams excluded." }
+
+# Ratchets (`corpus.registry.ceiling`): each value is the live count it bounds.
+[ceiling]
+registry-committed-sites = 3
+anatomy-long-lists = 15
+clause-unowned = 98
+why-unscoped = 757
+
+[ceiling.contract-words]
+assurance = 9773
+authority = 7792
+connector = 11054
+corpus = 4197
+disclosure = 5268
+read = 9478
+run = 19110
+store = 10601
+surface = 6422
+topology = 2646
+
+[ceiling.adr-words]
+A-assurance = 5781
+A-authority = 4473
+A-connector = 3600
+A-corpus = 383
+A-disclosure = 4053
+A-read = 5491
+A-run = 8375
+A-store = 6979
+A-surface = 3373
+A-topology = 2460

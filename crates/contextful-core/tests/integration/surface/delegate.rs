@@ -1,5 +1,6 @@
 //! `surface.delegate`: the binding, the envelope, signed answers and the outcome vocabulary.
 
+use contextful_core::job::{parse_jobs, JobError};
 use contextful_core::surface::delegate::{bindings, sign_answer, sign_request, verify_answer, Answer, Binding, BindingError, Envelope, Mode, CALL_TIMEOUT_SECS};
 use contextful_core::surface::worker::{sign_submission, SIGNATURE_HEADER, TIMESTAMP_HEADER};
 use contextful_core::surface::SurfaceError;
@@ -42,6 +43,10 @@ fn a_binding_reads_its_url_mode_and_timeout_and_names_its_body() {
     assert!(matches!(binding("url = \"http://127.0.0.1:1\"\nmode = \"poll\"\n"), Err(BindingError::Invalid(m)) if m.contains("`mode`")));
     assert!(matches!(binding("url = \"http://127.0.0.1:1\"\ntimeout = \"0s\"\n"), Err(BindingError::Invalid(m)) if m.contains("at least 1 s")));
     assert!(matches!(binding("url = \"http://127.0.0.1:1\"\nretries = 3\n"), Err(BindingError::Invalid(m)) if m.contains("`retries`")));
+
+    let job = "[[job]]\nname = \"stage\"\nkind = \"store-driven\"\nbody = { delegate = \"stages\" }\nstatement = \"SELECT 1\"\ntables = [\"out\"]\nmax_in_flight = 2\n";
+    assert!(parse_jobs(job, &|body: &str| body == stages.body_name()).is_ok());
+    assert!(matches!(parse_jobs(job, &|_: &str| false), Err(JobError::JobDelegateUnbound(m)) if m.contains("`stages`")));
 }
 
 /// A delegate `url` is `http` to a loopback host or the `contextful.delegate` virtual host, carrying no

@@ -671,84 +671,8 @@ fn a_claim_verifying_more_than_its_decisions_is_refused() {
     assert!(!String::from_utf8_lossy(&q.check().stderr).contains("ClaimBeyondNamedDecisions"));
 }
 
-const CHAIN: &str = "translated = \"engine/fx/src/lib.rs\"\n\
-                     translation = { lowering = \"rustc 1.85 MIR via charon\", translator = \"aeneas 0.1.0\", \
-                     models = \"formal/translation/External.lean\", build = \"release profile, panic = abort\" }";
-
-/// A theorem claimed over translated code without its translation chain raises `TranslationChainUnstated`.
-// spec: assurance.scope-claim.unstated-chain@4ced56f5
-#[test]
-fn a_translated_theorem_without_its_chain_is_refused() {
-    let p = Pkg::new("leanprover/lean4:v4.0.0");
-    p.amend("Fx.narrows", "translated = \"engine/fx/src/lib.rs\"");
-    let err = refused(&p.check(), "TranslationChainUnstated");
-    assert!(err.contains("Fx.narrows") && err.contains("lowering"), "{err}");
-
-    let q = Pkg::new("leanprover/lean4:v4.0.0");
-    q.amend("Fx.narrows", &CHAIN.replace("build = \"release profile, panic = abort\"", "build = \"\""));
-    let err = refused(&q.check(), "TranslationChainUnstated");
-    assert!(err.contains("`build`"), "{err}");
-
-    // A translator other than Aeneas at one release string leaves the chain unstated.
-    for translator in ["hax 0.2", "aeneas"] {
-        let r = Pkg::new("leanprover/lean4:v4.0.0");
-        r.amend("Fx.narrows", &CHAIN.replace("aeneas 0.1.0", translator));
-        let err = refused(&r.check(), "TranslationChainUnstated");
-        assert!(err.contains(translator), "{err}");
-    }
-}
-
-/// Translation reaching cryptography, a parsing adapter, a database call or concurrency raises `RefinementScopeExceeded`, naming the module.
-// spec: assurance.scope-claim.refinement-exceeded@91881233
-#[test]
-fn translation_reaching_past_a_pure_decision_is_refused() {
-    for (source, kind) in [
-        ("use ed25519_dalek::VerifyingKey;\n", "cryptography"),
-        ("use serde_json::Value;\n", "a parsing adapter"),
-        ("fn q() { let _ = duckdb::Connection::open_in_memory(); }\n", "a database call"),
-        ("fn spawn() { std::thread::spawn(|| ()); }\n", "concurrency"),
-        ("async fn later() {}\n", "concurrency"),
-    ] {
-        let p = Pkg::new("leanprover/lean4:v4.0.0");
-        p.amend("Fx.narrows", CHAIN);
-        let lib = std::fs::read_to_string(p.repo.join("engine/fx/src/lib.rs")).unwrap();
-        p.write_tree("engine/fx/src/lib.rs", &format!("{source}{lib}"));
-        let err = refused(&p.check(), "RefinementScopeExceeded");
-        assert!(err.contains("engine/fx/src/lib.rs") && err.contains(kind), "{source}: {err}");
-    }
-    // A word that merely contains an excluded root reaches nothing.
-    let q = Pkg::new("leanprover/lean4:v4.0.0");
-    q.amend("Fx.narrows", CHAIN);
-    let lib = std::fs::read_to_string(q.repo.join("engine/fx/src/lib.rs")).unwrap();
-    q.write_tree("engine/fx/src/lib.rs", &format!("/// A string, a tomlish ring_buffer.\n{lib}"));
-    assert!(!String::from_utf8_lossy(&q.check().stderr).contains("RefinementScopeExceeded"));
-}
-
-/// Refinement covers the decision functions behind the proof targets, whose inputs are values and whose outputs are decisions.
-// spec: assurance.scope-claim.refinement-scope@99440669
-#[test]
-fn refinement_covers_only_the_decisions_behind_the_targets() {
-    // A translated constant that is no proof target reaches past the scope.
-    let p = Pkg::new("leanprover/lean4:v4.0.0");
-    p.amend("Fx.extensional", CHAIN);
-    let err = refused(&p.check(), "RefinementScopeExceeded");
-    assert!(err.contains("Fx.extensional"), "{err}");
-
-    // So does a target whose translated module is not the one its binding names.
-    let q = Pkg::new("leanprover/lean4:v4.0.0");
-    q.write_tree("engine/fx/src/other.rs", "pub fn other() {}\n");
-    q.amend("Fx.narrows", &CHAIN.replace("translated = \"engine/fx/src/lib.rs\"", "translated = \"engine/fx/src/other.rs\""));
-    let err = refused(&q.check(), "RefinementScopeExceeded");
-    assert!(err.contains("engine/fx/src/other.rs"), "{err}");
-
-    // The target's own pure decision module is within it.
-    let r = Pkg::new("leanprover/lean4:v4.0.0");
-    r.amend("Fx.narrows", CHAIN);
-    assert!(!String::from_utf8_lossy(&r.check().stderr).contains("RefinementScopeExceeded"));
-}
-
-/// The assurance claim reads: these named decisions satisfy these named Lean specifications under these stated translation and runtime assumptions; each list resolves to code paths, constants and components in the tree.
-// spec: assurance.scope-claim.claim-sentence@50e8ee1d
+/// The assurance claim reads: these named decisions satisfy these named Lean specifications under these stated runtime assumptions; each list resolves to code paths, constants and components in the tree.
+// spec: assurance.scope-claim.claim-sentence@dd556b17
 #[test]
 fn check_states_the_claim_sentence() {
     let t = lean_or_skip!();
@@ -758,41 +682,25 @@ fn check_states_the_claim_sentence() {
     assert_eq!(
         sentence,
         "these named decisions (engine/fx/src/lib.rs::narrows) satisfy these named Lean specifications (Fx.narrows) \
-         under these stated translation and runtime assumptions (trusted: delegation-library, translator; translation: none)"
+         under these stated runtime assumptions (trusted: delegation-library)"
     );
     let claim = &p.report()["claim"];
     assert_eq!(claim["decisions"], serde_json::json!(["engine/fx/src/lib.rs::narrows"]));
     assert_eq!(claim["specifications"], serde_json::json!(["Fx.narrows"]));
-    assert_eq!(claim["trusted"], serde_json::json!(["delegation-library", "translator"]));
+    assert_eq!(claim["trusted"], serde_json::json!(["delegation-library"]));
+    assert!(claim.get("translation").is_none(), "{claim}");
     // The specification resolves to a constant of the elaborated environment.
     let row = p.report()["constants"].as_array().unwrap().iter().find(|c| c["name"] == "Fx.narrows").unwrap().clone();
     assert_eq!(row["present"], true);
 }
 
-/// A statement about translated code inherits four links: the compiler's lowering, the translator (Aeneas, named by one release string), hand-written models of external definitions, and the production build configuration.
-// spec: assurance.scope-claim.translation-chain@a7dca82e
+/// The claim names the delegation library, its cryptography and its parser as trusted dependencies, and proves none of them.
+// spec: assurance.scope-claim.trusted-dependencies@7eed69a1
 #[test]
-fn a_translated_target_carries_its_four_links_into_the_claim() {
-    let t = lean_or_skip!();
-    let p = Pkg::new(&t);
-    p.amend("Fx.narrows", CHAIN);
-    let out = passed(&p.check());
-    let chain = "Fx.narrows: lowering: rustc 1.85 MIR via charon; translator: aeneas 0.1.0; \
-                 models: formal/translation/External.lean; build: release profile, panic = abort";
-    assert!(out.contains(chain), "{out}");
-    assert_eq!(p.report()["claim"]["translation"], serde_json::json!([chain]));
-}
-
-/// The claim names the delegation library, its cryptography, its parser and the translator as trusted dependencies, and proves none of them.
-// spec: assurance.scope-claim.trusted-dependencies@22d8b80a
-#[test]
-fn the_claim_trusts_the_delegation_library_and_the_translator() {
+fn the_claim_trusts_the_delegation_library_alone() {
     let inv = repo_inventory("formal");
     let trusted: Vec<&str> = inv["claim"]["trusted"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
-    assert_eq!(
-        trusted,
-        ["delegation-library", "delegation-library-cryptography", "delegation-library-parser", "translator"]
-    );
+    assert_eq!(trusted, ["delegation-library", "delegation-library-cryptography", "delegation-library-parser"]);
     // No required constant is bound into the delegation library: the model defines no
     // credential bytes, signatures or parser.
     for (name, row) in inv["constant"].as_table().unwrap() {
@@ -1049,17 +957,18 @@ fn the_protocol_package_sits_beside_the_policy_package() {
     );
 }
 
-/// {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_below_granted`.
-// spec: assurance.model.protocol-pins@aaeebf1d
+/// {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_after_successor_acquire`.
+// spec: assurance.model.protocol-pins@fb56be7c
 #[test]
 fn the_store_fence_clauses_pin_to_the_protocol_invariant() {
     let text = std::fs::read_to_string(repo().join("formal/protocol/Protocol/Invariants.lean")).unwrap();
-    let at = text.find("theorem no_commit_below_granted").expect("the invariant theorem");
+    let at = text.find("theorem no_commit_after_successor_acquire").expect("the invariant theorem");
     let above: Vec<&str> = text[..at].lines().rev().take_while(|l| l.starts_with("--")).collect();
     for clause in ["store.lease.stale-fence@", "store.lease.pointer-fence@"] {
         assert!(above.iter().any(|l| l.starts_with(&format!("-- spec: {clause}"))), "{clause} above the theorem: {above:?}");
     }
-    assert!(repo_inventory("formal/protocol")["constant"].as_table().unwrap().contains_key("Protocol.no_commit_below_granted"));
+    assert!(repo_inventory("formal/protocol")["constant"].as_table().unwrap().contains_key("Protocol.no_commit_after_successor_acquire"));
+    assert!(!text.contains("no_commit_below_granted"), "the split acquisition breaks the old invariant, which no theorem states");
 }
 
 /// A cold elaboration of the package completes within 60 s and writes at most 2048 KiB of artifacts.
@@ -1246,12 +1155,45 @@ fn the_protocol_invariants_pass_the_same_audit() {
     for invariant in [
         "Protocol.one_holder_per_fence",
         "Protocol.fences_only_increase",
-        "Protocol.no_commit_below_granted",
+        "Protocol.no_commit_after_successor_acquire",
+        "Protocol.no_lost_update",
         "Protocol.release_keeps_lease",
     ] {
         assert!(out.contains(invariant), "{out}");
         let row = report["constants"].as_array().unwrap().iter().find(|r| r["name"] == invariant).unwrap().clone();
         assert_eq!(row["verdict"], "ok", "{row}");
+    }
+}
+
+/// Each theorem the reference package proves over a decision it executes is a required constant in its inventory, audited by {{assurance.audit-assumptions.check-command}} and bound to the differential test running that decision.
+// spec: assurance.differential-test.reference-theorems@1d16888f
+#[test]
+fn the_reference_theorems_pass_the_audit_bound_to_the_differential() {
+    let t = lean_or_skip!();
+    let p = Pkg::new(&t);
+    // The reference package elaborates the policy package's sources beside it.
+    tree_package("formal", &p);
+    let root = tree_package("formal/reference", &p);
+    if std::fs::read_to_string(root.join("lean-toolchain")).unwrap().trim() != t {
+        eprintln!("skipped: the pinned toolchain is not the installed default");
+        return;
+    }
+    let out = passed(&p.command().args(["formal", "check", "--root"]).arg(&root).output().unwrap());
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(root.join(".lake/contextful-report.json")).unwrap()).unwrap();
+    let inv = repo_inventory("formal/reference");
+    let rows = inv["constant"].as_table().unwrap();
+    for name in ["Reference.narrow_ok_iff_includedIn", "Reference.narrow_widens_nearest"] {
+        assert!(out.contains(name), "{out}");
+        let row = report["constants"].as_array().unwrap().iter().find(|r| r["name"] == name).unwrap().clone();
+        assert_eq!(row["verdict"], "ok", "{row}");
+    }
+    for (name, row) in rows {
+        let binding = row["binding"].as_str().unwrap();
+        assert!(
+            binding.contains("test crates/contextful-cli/tests/integration/differential.rs::"),
+            "{name} is bound to no differential test: {binding}"
+        );
     }
 }
 
@@ -1268,12 +1210,13 @@ fn the_bounded_check_covers_three_nodes_and_four_generations() {
     }
     let ok = Command::new("lake").args(["exe", "protocol", "check"]).current_dir(&root).output().unwrap();
     let out = passed(&ok);
-    assert!(out.contains("4 invariants hold") && out.contains("over 3 nodes and 4 lease generations"), "{out}");
+    assert!(out.contains("5 invariants hold") && out.contains("over 3 nodes and 4 lease generations on 2 lease paths"), "{out}");
 
-    // The variant whose grant leaves the guarded fences untouched breaks an invariant, and
-    // the check prints the shortest sequence reaching the break.
+    // The variant whose raise leaves the guarded object's fence untouched breaks an
+    // invariant, and the check prints the path and the shortest sequence reaching the break.
     let broken = Command::new("lake").args(["exe", "protocol", "check", "--unfenced"]).current_dir(&root).output().unwrap();
     let err = refused(&broken, "ProtocolInvariantViolated");
+    assert!(err.contains("no commit after a successor's acquisition") && err.contains("path"), "{err}");
     let steps: Vec<&str> = err.lines().filter(|l| l.starts_with("  ")).collect();
     let claimed: usize = err.split("after ").nth(1).unwrap().split(' ').next().unwrap().parse().unwrap();
     assert!(!steps.is_empty() && steps.len() <= claimed, "{err}");

@@ -35,9 +35,6 @@ VisibilityBudgetUnreachable      = { clause = "disclosure.bound-staleness.budget
 VisibilityFamilyBound            = { clause = "disclosure.declare-fidelity.family-bound", gloss = "A table declared a level its source family does not permit." }
 VisibilityFamilyUndeclared       = { clause = "disclosure.declare-fidelity.family-undeclared", gloss = "A mapping landed a table without naming its family." }
 VisibilityFederatedRegistered    = { clause = "disclosure.declare-fidelity.federated-registered", gloss = "A federated table was registered on a read face." }
-VisibilityFederatedCacheShared   = { clause = "disclosure.declare-fidelity.federated-cache", gloss = "A federated result was retained under a key omitting the subject." }
-VisibilityComputedInputsMirrored = { clause = "disclosure.declare-fidelity.computed-inputs", gloss = "A mapping projected a sharing engine's inputs into the grant table." }
-VisibilityRosterFromPayload      = { clause = "disclosure.declare-fidelity.roster-from-payload", gloss = "A mapping derived grants from a people list inside content." }
 VisibilityMappingAbsent          = { clause = "disclosure.pack.mapping-absent", gloss = "A pack landed a table with neither a mapping nor an exclusion." }
 VisibilityPackAssertsAccess      = { clause = "disclosure.pack.asserts-access", gloss = "A pack carries an access-shaped key the mapping schema lacks." }
 VisibilityAllowlistAnyOf         = { clause = "disclosure.pack.any-of-allowlist", gloss = "A container allowlist is evaluated as any-of." }
@@ -54,8 +51,8 @@ DisclosureDuplicateGrain             = { clause = "disclosure.release.duplicate-
 DisclosureGroupKeyNotPermitted       = { clause = "disclosure.release.group-key", gloss = "A group key is not a subset of the permitted grouping columns." }
 DisclosureContributorKeyAbsent       = { clause = "disclosure.release.contributor-key", gloss = "A governed statement omits the contributor key." }
 DisclosureForbiddenColumnPublished   = { clause = "disclosure.release.forbidden-column", gloss = "A contract declares, or a materialization produces, a forbidden column." }
-DisclosureMinGroupSizeBelowFloor     = { clause = "disclosure.suppress.min-group-size", gloss = "A declared group-size floor is below its minimum." }
-DisclosureShareOutOfRange            = { clause = "disclosure.suppress.contributor-share", gloss = "A declared contributor share lies outside its interval." }
+DisclosureMinGroupSizeBelowFloor     = { clause = "disclosure.suppress.min-group-size", gloss = "A declared `min_group_size` is below the floor." }
+DisclosureShareOutOfRange            = { clause = "disclosure.suppress.contributor-share", gloss = "A declared `max_contributor_share` lies outside `(0, 1]`." }
 DisclosureDominanceUnverifiable      = { clause = "disclosure.suppress.dominance-unverifiable", gloss = "Per-contributor masses are unavailable where a share constraint applies." }
 DisclosurePolicySuppressesNothing    = { clause = "disclosure.suppress.empty-policy", gloss = "A policy sets neither threshold." }
 DisclosureGroupingAllowlistEmpty     = { clause = "disclosure.suppress.grouping-allowlist", gloss = "A grouping allowlist is empty or names a non-column." }
@@ -82,14 +79,12 @@ ErasureTransactionIncomplete = { clause = "disclosure.erase.recovery", gloss = "
 ErasureScopeUnsupported = { clause = "disclosure.erase.unsupported-scope", gloss = "The request has no targets or requires an unsupported narrowed Forget scope." }
 ErasureSubjectUndeclared = { clause = "disclosure.erase.subject-column", gloss = "A subject erasure names a table with no subject column." }
 ErasureCascadeUnbounded  = { clause = "disclosure.erase.cascade-unbounded", gloss = "A provenance chain exceeds the cascade bound; nothing commits." }
-ErasureRestagingRequired = { clause = "disclosure.erase.restaging-gate", gloss = "A fact read arrived while the restaging gate stands." }
 PurgeTenantColumnType    = { clause = "disclosure.erase.tenant-column-type", gloss = "The tenant column is not a string type." }
 PurgeTenantUndeclared    = { clause = "disclosure.erase.tenant-undeclared", gloss = "No model declares an outermost partition key." }
 PurgeRequiresOwner       = { clause = "disclosure.erase.owner-only", gloss = "A purge was presented with a capability token." }
 ReceiptIdentifierLeak    = { clause = "disclosure.receipt.pseudonym", gloss = "A receipt carries a tenant identifier in cleartext." }
 ReceiptClaimWidened      = { clause = "disclosure.receipt.widened-claim", gloss = "A coverage block exceeds its receipt version." }
 ReceiptReplayed          = { clause = "disclosure.receipt.replayed", gloss = "An earlier artifact was returned in place of a fresh signature." }
-ReceiptWithoutRewrite    = { clause = "disclosure.receipt.no-rewrite-engine", gloss = "The rewrite engine is unavailable; nothing is signed." }
 
 [limit]
 visibility-group-depth        = { clause = "disclosure.reach.closure-walk", value = 8, unit = "hops", basis = "chosen", gloss = "Default depth of the group-closure walk." }

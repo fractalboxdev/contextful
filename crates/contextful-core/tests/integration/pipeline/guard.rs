@@ -442,6 +442,8 @@ fn encoded_or_split_credentials_pass_through() {
     assert_eq!(counts.keys().collect::<Vec<_>>(), ["nested"]);
 }
 
+// spec: run.guard-secrets.llm-candidate@54cf14a6
+// spec: run.guard-secrets.llm-admission@7d358783
 #[test]
 fn llm_candidates_preserve_natural_identifiers_and_mask_known_provider_families() {
     for slug in [

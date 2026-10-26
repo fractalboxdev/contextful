@@ -82,17 +82,30 @@ The journal records step values, returns those values on replay and deletes reco
 - `blob-sweep` — A mark-and-sweep pass every 24 h deletes each blob that no journal row or pending awakeable references and that is older than 1 h.
   *because the grace window covers a blob written ahead of the row that names it*
 - `effect-boundary` — A body replays faithfully when every observable side effect passes through a recorded step, a cursor commit or an awakeable; the work between them is pure.
+- `unwired-capability` — Requesting a capability absent from the running profile raises `CapabilityUnwired` at the first request, before any partial work.
+  *A-topology#build-profiles*
+- `machine-state` — The host's own stores hold journal rows, execution owners and awakeables. The derived catalog holds none. A catalog rebuild changes none and reconstructs none from the file tree.
+
+### pulls
+
+A journaled pull records its guarded batch, and a journal hit hands that batch to the land path.
+
 - `recorded-batch` — A journaled pull records its guarded source batch, or its canonically prepared replacement under {{authority.redact.before-the-record}}, ahead of landing.
 - `replay-lands` — A journal hit hands the recorded batch to the land path, so a resumed run lands bytes identical to an uninterrupted one, batch ordinal included.
 - `ledger-settles-first` — The outbound request ledger settles durably before the entry recording its batch commits.
 - `redacting-source` — A journaled source declaring removal without canonical prepared-recording admission raises `JournalRedactionConflict` before its first pull; a boolean removal assertion supplies no admission.
-  *A-authority*
+  *A-authority#prepared-record*
 - `prepared-owner` — Protected recording binds the plan, shape, canonical declarations, normalization and pepper identities into owner pins before source execution; a changed identity follows {{run.own.pinned-plan-changed}}.
-  *A-authority*
+  *A-authority#prepared-record*
 - `prepared-replay` — A protected journal hit admits the recorded rewritten payload against its canonical writer without repeating shaping, normalization or removal and without fetching the source again.
-  *A-authority*
+  *A-authority#prepared-record*
 - `opt-out` — Pull journaling defaults on. A source whose pre-pull cursor cannot name the content it reads opts out through one constant, pinned against each source's declaration by a test. An empty pull is never journaled.
 - `escape-hatch` — Journaling permits only two exceptions: `journal.unsafe(label, effect)` for an idempotent read, and a source declaring no pull journaling. Each exception states its idempotency argument at a searchable call site.
+
+### storage
+
+Journal rows, blobs and awakeables persist through storage ports that SQLite, PostgreSQL and D1 serve.
+
 - `substrate-port` — One execution interface provides: open or resume under a scope and content-hashed plan reference; record step output; commit a cursor; suspend on an awakeable with timeout; attach a retry schedule; describe capabilities.
   *A-run*
 - `storage-ports` — Journal rows, blobs and awakeables persist through a journal store, a blob store and an awakeable store; every `run.journal` and `run.suspend` clause holds for each adapter, the file tree included.
@@ -106,7 +119,7 @@ The journal records step values, returns those values on replay and deletes reco
 - `container-profile` — `CONTEXTFUL_STORAGE_PROFILE=postgres` selects {{run.journal.postgres-stores}} with shared owners, cadence and {{run.export.remote-state}}; corpus objects use a remote S3-compatible bucket with pull-before-run and push-after-run enabled.
   *A-run*
 - `d1-profile` — `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1` selects D1 for catalog, journal, awakeables and export state through a private Worker outbound binding; R2 holds blob content and corpus objects.
-  *A-run*
+  *A-run, A-topology#cloudflare-d1*
 - `d1-blob` — D1 stores each blob digest, whose R2 object key is `blobs/<sha256>`; the R2 write precedes its D1 reference, and a read verifies the content digest.
   *A-run*
 - `d1-transport` — A D1 read, health probe or content-addressed blob request left without an HTTP answer resends, within 3 attempts of at most 15 s each; a writing statement outside {{run.journal.d1-initialize}} goes once over a fresh connection and raises `StorageBindingUnavailable`.
@@ -139,6 +152,11 @@ The journal records step values, returns those values on replay and deletes reco
   *A-run*
 - `guard-callback` — A guarded callback may update run metadata; mutating its admitted owner or lease refuses. Nested callbacks retain only scopes and leases their caller already admits. Local adapters expose cooperative checks without strict execution-guard capability.
   *because nested lock expansion and owner mutation can deadlock the admission that invokes them*
+
+### store-driven input
+
+A store-driven run records its input once and runs its registered body once per input row.
+
 - `plan-pin` — A run resolves the plan reference it started against for its whole life.
 - `store-input` — A store-driven run reads its statement once, through the read face under the job's grant at its `as_of`, and records the resolved snapshot id per table and the ordered input rows as its first step.
   *A-surface*
@@ -156,10 +174,7 @@ The journal records step values, returns those values on replay and deletes reco
 - `row-output` — A batch's emitted rows land after the last input row completes and before the owner retires, one run per declared output table through {{run.land.stage-order}}.
   *because a landing that fails then holds the owner, and its resume replays every paid call instead of paying again*
 - `body-projection` — A registered body's closed effect labels, declared roots, types, transforms and normalization bind its owner before input or effect execution; a caller-supplied projection differing from that registration refuses.
-  *A-authority*
-- `unwired-capability` — Requesting a capability absent from the running profile raises `CapabilityUnwired` at the first request, before any partial work.
-  *A-topology*
-- `machine-state` — The host's own stores hold journal rows, execution owners and awakeables. The derived catalog holds none. A catalog rebuild changes none and reconstructs none from the file tree.
+  *A-authority#body-projection*
 
 ```mermaid
 sequenceDiagram
@@ -442,7 +457,7 @@ An execution owner binds pending work to a scope, connector build and plan ident
 - `stage-discard` — A run that fails removes every part it staged, and a commit failing before its manifest exists removes the parts it copied; a run's crash leaves its staged parts.
   *because a run id names one attempt, so no later commit names a failed run's staged parts*
 - `body-parent` — Prepared body outputs require the unchanged parent execution and current in-flight, unstopped attempt at admission, staging and commit; a stopped parent reaches {{run.cancel.abandoned-work}} independently of the output table's stop policy.
-  *A-authority*
+  *A-authority#body-projection*
 
 ```mermaid
 flowchart LR
@@ -628,7 +643,6 @@ The runner publishes a best-effort live view of run progress to subscribers.
   *A-read*
 - `read-only-socket` — A subscription permits reads only. Stop requests use an authenticated route.
 - `restart-discards` — A restart discards in-memory snapshots; a subscriber recovers history from the durable record.
-- `delegated-progress` — A heavy step delegated to another host reports progress by posting to the awakeable callback route, and the orchestrating run folds it into its own snapshot.
 
 ## sweep
 

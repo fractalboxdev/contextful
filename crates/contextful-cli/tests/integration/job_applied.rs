@@ -13,6 +13,7 @@ fn applied_fire(p: &Path, public: &str, token: &str, version: &str, run: &str, e
     scheduled_host(p, public, token, &["job", "fire", "score-documents", "--project", "research", "--applied", version, "--run-id", run, "--site-id", "site", "--now", "2030-01-01T00:02:00Z"], extra)
 }
 
+// spec: surface.fire.applied-data-contract@f07b5a8f
 #[test]
 fn an_applied_job_keeps_its_output_contract_after_live_edits() {
     let declaration = declaration();
@@ -34,6 +35,7 @@ fn an_applied_job_keeps_its_output_contract_after_live_edits() {
     assert_eq!(select(p, "SELECT DISTINCT typeof(score) FROM scores"), [["BIGINT"]], "the applied output keeps its stored numeric type");
 }
 
+// spec: surface.fire.standalone-snapshot@6d84d2d9
 #[test]
 fn standalone_output_edits_create_versions_and_survive_partial_pipeline_apply() {
     let declaration = declaration();
@@ -75,6 +77,7 @@ fn applied_input_dedup_survives_a_live_primary_key_edit() {
     assert_eq!(select(p, "SELECT score FROM scores WHERE doc_id='d1'"), [["11"]]);
 }
 
+// spec: surface.fire.applied-current-authority@bfda3b20
 #[test]
 fn live_read_authority_drift_refuses_before_any_recorded_call() {
     let declaration = declaration();
@@ -106,6 +109,7 @@ fn an_extensionless_main_declaration_keeps_its_applied_table_contracts() {
     assert_eq!(select(p, "SELECT DISTINCT typeof(score) FROM scores"), [["BIGINT"]]);
 }
 
+// spec: surface.fire.applied-contract-missing@2815cd3e
 #[test]
 fn legacy_snapshot_requires_full_apply_before_job_fire() {
     let (dir, public, token) = project(&declaration());

@@ -74,8 +74,6 @@ The hosted console's two pages, their API routes, identity gates, page grants an
   *because a hidden sidebar with no replacement strands every chat control on a phone*
 - `engine-faces` — Query reaches the governed read face; Admin reaches workflow state and sends edit or apply through a server-held control capability.
   *A-surface*
-- `ungated-route` — An anonymous hosted console route serving page or API content instead of the declared identity gate raises `ConsoleRouteUngated` at deploy probe.
-  *A-surface*
 - `wrong-page` — A page or API request without a verified Access assertion or Cognito session granting that page raises `ConsolePageForbidden` and dispatches nothing.
   *A-surface*
 - `admin-grant` — An Admin edit or apply without a server-held admin capability raises `ConsoleAdminGrantMissing` and reaches no control call.
@@ -92,7 +90,6 @@ The hosted console's two pages, their API routes, identity gates, page grants an
 
 #### Scenarios
 
-- `surface.open-console.ungated-route`: WHEN an anonymous deploy probe receives `/query` or `/admin/api/workflows` content, THEN it raises `ConsoleRouteUngated`.
 - `surface.open-console.wrong-page`: WHEN a Query-only operator requests `/admin/api/workflows`, THEN it raises `ConsolePageForbidden` without dispatching.
 - `surface.open-console.admin-grant`: WHEN an Admin operator applies a document without the server-held admin capability, THEN it raises `ConsoleAdminGrantMissing` without a control call.
 - `surface.open-console.page-grants`: WHEN a verified operator holds only a Query grant, THEN Query admits the session and Admin refuses its page and API requests.
@@ -166,7 +163,6 @@ The Admin page's operational views.
   *because one name labelling two graph nodes leaves the reader to guess which one ran*
 - `operational-record` — Admin's inspector, pack file surface and learnings view present the store-published operational record.
   *A-surface*
-- `listing-page` — One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve.
 
 ## package
 
@@ -175,7 +171,7 @@ The client library, its four deployment shapes and transports, and the credentia
 - `stdio-credential` — The process transport requires a verified capability token; `--owner` selects its signed owner claim. An absent token raises `StdioCredentialMissing` before protocol framing and never resolves to owner context.
   *A-read*
 - `store-selector` — The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
-  *A-topology*
+  *A-topology#public-surfaces*
 - `owner-flag` — A process `--owner` admits the local owner context only with a verified signed claim bound to the selected store and an unrestricted read grant; any other credential raises `OwnerCredentialInvalid` before protocol framing.
   *A-surface*
 

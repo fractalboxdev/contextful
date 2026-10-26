@@ -35,6 +35,7 @@ fn answer() -> Answer {
     }
 }
 
+// spec: assurance.evaluate.entity-metrics@49261ef3
 #[test]
 fn independent_grades_reject_wrong_entities_claims_paths_and_citations() {
     let truth = truth();
@@ -92,6 +93,7 @@ fn contradiction_and_missing_steps_abstain_without_partial_answers() {
     assert!(missing.claims.is_empty());
 }
 
+// spec: assurance.evaluate.entity-eligibility@0260dac3
 #[test]
 fn ineligible_or_unknown_claims_never_satisfy_adjudicated_truth() {
     let truth = truth();

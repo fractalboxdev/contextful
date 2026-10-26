@@ -1,30 +1,20 @@
-import Reference.Coverage
-import Lean.Data.Json
+import Contextful.Authority
+import Reference.Decision
 
 /-!
 # Grant narrowing legality
 
-Rendered from `authority.grant.fields`, `authority.grant.actions`,
-`authority.grant.template-allowlist`, `authority.grant.group-ceiling`,
-`authority.attenuate.narrowing`, `authority.attenuate.widens`,
-`authority.attenuate.tenant-dropped`, and the narrowing table in the authority contract's
-Shapes section. Written from the specification text alone.
-
-A proposed child grant list is legal under a parent grant list when every child grant
-lies within one parent grant on every dimension. Widening is judged across every child
-grant before tenant scope, the order the derivation flowchart gives.
+The decision a narrowing case prints, over `Authority.Grant.widened`,
+`Authority.Grant.includedIn` and the expiry order. Widening is judged across every child
+grant first, then expiry, then tenant scope: the order the derivation flowchart gives.
+A widening names the first dimension of the nearest parent grant.
 -/
 
 namespace Reference
 
-open Lean (JsonNumber)
+open Authority (Action Dimension Grant)
 
-/-- The action vocabulary: `read`, `write`, `execute`, `admin`, `forget`. -/
-inductive Action where
-  | read | write | execute | admin | forget
-  deriving Repr, DecidableEq
-
-def Action.parse : String → Option Action
+def parseAction : String → Option Action
   | "read" => some .read
   | "write" => some .write
   | "execute" => some .execute
@@ -32,124 +22,145 @@ def Action.parse : String → Option Action
   | "forget" => some .forget
   | _ => none
 
-/-- A tenant scope: a table and an opaque byte string, compared byte for byte. -/
-structure Tenant where
-  table : String
-  value : String
-  deriving Repr, DecidableEq
-
-/-- An aggregate grant's constraints. The share stays an exact decimal. -/
-structure Aggregate where
-  minGroupSize : Nat
-  share : JsonNumber
-  functions : List String
-  maxGroups : Nat
-  maxRows : Option Nat
-
-/-- A grant. An absent tenant, aggregate or row ceiling leaves its dimension
-unconstrained; an absent template allowlist confers no template. -/
-structure Grant where
-  actions : List Action
-  tables : List Pattern
-  tenant : Option Tenant
-  templates : Option (List String)
-  aggregate : Option Aggregate
-
-/-- The dimensions `AttenuationWidens` names, in the order the clause lists them. -/
-inductive Dimension where
-  | actions | tables | templates | aggregate
-  deriving Repr, DecidableEq
-
-def Dimension.name : Dimension → String
+def dimensionName : Dimension → String
   | .actions => "actions"
   | .tables => "tables"
   | .templates => "templates"
   | .aggregate => "aggregate"
+  | .horizon => "horizon"
 
-/-- Exact decimal order: `m₁ / 10^e₁ ≤ m₂ / 10^e₂`. -/
-def decLe (a b : JsonNumber) : Bool :=
-  a.mantissa * (10 : Int) ^ b.exponent ≤ b.mantissa * (10 : Int) ^ a.exponent
+/-- The first of the shortest lists: a later list replaces the held one only when strictly
+shorter. -/
+def fewest : List (List Dimension) → Option (List Dimension)
+  | [] => none
+  | w :: ws =>
+    match fewest ws with
+    | some b => if b.length < w.length then some b else some w
+    | none => some w
 
-/-- The groups-per-query ceiling an aggregate grant takes effect with: at least 1. -/
-def groupCeiling (declared : Nat) : Nat := max declared 1
-
-/-- `*` in an allowlist authorizes every declared template. -/
-def allTemplates : String := "*"
-
-/-- A child allowlist names only identifiers its parent named or covered. Absent on the
-child confers no template, so it is narrower than anything; an absent parent allowlist
-confers none, so only an allowlist naming nothing lies within it. -/
-def templatesWithin (c p : Grant) : Bool :=
-  match c.templates, p.templates with
-  | none, _ => true
-  | some cs, none => cs.isEmpty
-  | some cs, some ps => ps.contains allTemplates || cs.all ps.contains
-
-/-- Each aggregate constraint holds or tightens. Absent on the child inherits the
-parent's; absent on the parent is unconstrained. -/
-def aggregateWithin (c p : Grant) : Bool :=
-  match c.aggregate, p.aggregate with
-  | none, _ => true
-  | some _, none => true
-  | some ca, some pa =>
-    ca.minGroupSize ≥ pa.minGroupSize
-      && decLe ca.share pa.share
-      && ca.functions.all pa.functions.contains
-      && groupCeiling ca.maxGroups ≤ groupCeiling pa.maxGroups
-      && match ca.maxRows, pa.maxRows with
-         | some cr, some pr => cr ≤ pr
-         | _, _ => true
-
-/-- The dimensions on which child grant `c` is broader than parent grant `p`. -/
-def widened (c p : Grant) : List Dimension :=
-  (if c.actions.all p.actions.contains then [] else [.actions])
-    ++ (if c.tables.all (fun ct => p.tables.any (fun pt => pt.covers ct)) then [] else [.tables])
-    ++ (if templatesWithin c p then [] else [.templates])
-    ++ (if aggregateWithin c p then [] else [.aggregate])
-
-/-- A parent tenant scope is kept byte for byte; adding a scope to an unscoped parent
-narrows. -/
-def tenantKept (c p : Grant) : Bool :=
-  match p.tenant with
-  | none => true
-  | some t => c.tenant == some t
-
-/-- The dimension a refusal names for a child grant within no parent grant: the first
-dimension, in clause order, of the nearest parent grant — the first one widened on the
-fewest dimensions. With no parent grant at all, the child is broader on every dimension
-and the first, `actions`, is named. -/
+/-- The dimension a widening refusal names for a child grant within no parent grant: the first
+dimension of the nearest parent grant, the first one widened on the fewest dimensions. With no
+parent grant, the child is broader on every dimension and the first, `actions`, is named. -/
 def nearestDimension (c : Grant) (parent : List Grant) : Dimension :=
-  let ws := parent.map (widened c)
-  let best := ws.foldl
-    (fun (acc : Option (List Dimension)) w =>
-      match acc with
-      | none => some w
-      | some b => if w.length < b.length then some w else some b)
-    none
-  match best with
+  match fewest (parent.map c.widened) with
   | some (d :: _) => d
   | _ => .actions
 
-/-- A decision the reference prints: a verdict, an error identifier, a dimension, and
-the zone a placement case resolves. -/
-structure Decision where
-  verdict : String
-  error : Option String := none
-  dimension : Option String := none
-  zone : Option String := none
+/-- Whether child grant `c` lies within no parent grant on the widening dimensions. -/
+def broaderThanAll (parent : List Grant) (c : Grant) : Bool := !parent.any (fun p => (c.widened p).isEmpty)
 
-def Decision.refused (error : String) (dimension : Option String := none) : Decision :=
-  { verdict := "refused", error := some error, dimension }
-
-/-- Narrowing legality of a child grant list under a parent grant list. -/
-def narrow (parent child : List Grant) : Decision :=
-  let within (c p : Grant) : Bool := (widened c p).isEmpty
-  match child.find? (fun c => !(parent.any (within c))) with
-  | some c => .refused "AttenuationWidens" (some (nearestDimension c parent).name)
+/-- Narrowing legality of a child grant list and expiry under a parent grant list and expiry. -/
+def narrow (parent : List Grant) (parentExpiry : Nat) (child : List Grant) (childExpiry : Option Nat) : Decision :=
+  match child.find? (broaderThanAll parent) with
+  | some c => .refused "AttenuationWidens" (some (dimensionName (nearestDimension c parent)))
   | none =>
-    if child.all (fun c => parent.any (fun p => within c p && tenantKept c p)) then
-      { verdict := "admitted" }
-    else
-      .refused "AttenuationTenantDropped"
+    if childExpiry.all (fun e => decide (e ≤ parentExpiry)) then
+      if child.all (fun c => parent.any (fun p => c.includedIn p)) then .admitted
+      else .refused "AttenuationTenantDropped"
+    else .refused "AttenuationExpiryExtended"
+
+/-- A child is admitted exactly when each of its grants lies within one parent grant on every
+dimension, tenant scope included, and its expiry falls no later than its parent's. -/
+theorem narrow_ok_iff_includedIn :
+    ∀ (parent : List Grant) (pe : Nat) (child : List Grant) (ce : Option Nat),
+      (narrow parent pe child ce).verdict = "admitted" ↔
+        (∀ c ∈ child, ∃ p ∈ parent, c.includedIn p = true) ∧ ∀ e, ce = some e → e ≤ pe := by
+  intro parent pe child ce
+  unfold narrow
+  cases hf : child.find? (broaderThanAll parent) with
+  | some c =>
+    simp only [Decision.refused]
+    simp only [String.reduceEq, false_iff, not_and]
+    intro hall
+    have hc := List.find?_some hf
+    obtain ⟨p, hp, hinc⟩ := hall c (List.mem_of_find?_eq_some hf)
+    have hw := ((Bool.and_eq_true _ _).mp hinc).1
+    simp only [broaderThanAll, Bool.not_eq_true', List.any_eq_false] at hc
+    exact absurd hw (by simpa using hc p hp)
+  | none =>
+    have hexp : (ce.all (fun e => decide (e ≤ pe)) = true) ↔ ∀ e, ce = some e → e ≤ pe := by
+      cases ce <;> simp
+    have hinc : (child.all (fun c => parent.any (fun p => c.includedIn p)) = true) ↔
+        ∀ c ∈ child, ∃ p ∈ parent, c.includedIn p = true := by
+      simp [List.all_eq_true, List.any_eq_true]
+    by_cases he : ce.all (fun e => decide (e ≤ pe)) = true
+    · by_cases hi : child.all (fun c => parent.any (fun p => c.includedIn p)) = true
+      · simp only [he, hi, ↓reduceIte, Decision.admitted, true_iff]
+        exact ⟨hinc.mp hi, hexp.mp he⟩
+      · simp only [he, ↓reduceIte, Bool.false_eq_true, hi, Decision.refused, String.reduceEq, false_iff, not_and]
+        exact fun h _ => hi (hinc.mpr h)
+    · simp only [he, ↓reduceIte, Bool.false_eq_true, Decision.refused, String.reduceEq, false_iff, not_and]
+      exact fun _ h => he (hexp.mpr h)
+
+theorem fewest_spec :
+    ∀ ws : List (List Dimension), ws ≠ [] →
+      ∃ w ∈ ws, fewest ws = some w ∧ ∀ v ∈ ws, w.length ≤ v.length := by
+  intro ws hne
+  induction ws with
+  | nil => exact absurd rfl hne
+  | cons w ws ih =>
+    by_cases hws : ws = []
+    · subst hws
+      exact ⟨w, List.mem_singleton_self w, rfl, fun v hv => by rw [List.mem_singleton.mp hv]; exact Nat.le_refl _⟩
+    · obtain ⟨b, hb, hfb, hmin⟩ := ih hws
+      have hf : fewest (w :: ws) = if b.length < w.length then some b else some w := by
+        simp only [fewest, hfb]
+      by_cases hlt : b.length < w.length
+      · refine ⟨b, List.mem_cons_of_mem _ hb, by rw [hf, if_pos hlt], fun v hv => ?_⟩
+        rcases List.mem_cons.mp hv with rfl | hv
+        · exact Nat.le_of_lt hlt
+        · exact hmin v hv
+      · refine ⟨w, List.mem_cons_self, by rw [hf, if_neg hlt], fun v hv => ?_⟩
+        rcases List.mem_cons.mp hv with rfl | hv
+        · exact Nat.le_refl _
+        · exact Nat.le_trans (Nat.le_of_not_lt hlt) (hmin v hv)
+
+/-- Widening refuses first and names its dimension: when some child grant lies within no
+parent grant on the widening dimensions, the decision is `AttenuationWidens` whatever the
+expiry and tenant scope, naming, for the first such child grant, a dimension on which it is
+broader than a nearest parent grant, one it widens on the fewest dimensions. -/
+-- spec: authority.attenuate.widens@e63a5c30
+theorem narrow_widens_nearest :
+    ∀ (parent : List Grant) (pe : Nat) (child : List Grant) (ce : Option Nat),
+      (∃ c ∈ child, ∀ p ∈ parent, (c.widened p).isEmpty = false) →
+        ∃ c ∈ child, narrow parent pe child ce =
+            .refused "AttenuationWidens" (some (dimensionName (nearestDimension c parent))) ∧
+          (parent = [] → nearestDimension c parent = .actions) ∧
+            ∀ q ∈ parent, ∃ p ∈ parent, nearestDimension c parent ∈ c.widened p ∧
+              (c.widened p).length ≤ (c.widened q).length := by
+  intro parent pe child ce ⟨c₀, hc₀, hb₀⟩
+  have hpred : broaderThanAll parent c₀ = true := by
+    simp only [broaderThanAll, Bool.not_eq_true', List.any_eq_false]
+    intro p hp h
+    rw [hb₀ p hp] at h
+    cases h
+  cases hf : child.find? (broaderThanAll parent) with
+  | none => exact absurd hpred (by simpa using List.find?_eq_none.mp hf c₀ hc₀)
+  | some c =>
+    have hc := List.find?_some hf
+    have hm := List.mem_of_find?_eq_some hf
+    simp only [broaderThanAll, Bool.not_eq_true', List.any_eq_false] at hc
+    refine ⟨c, hm, by simp [narrow, hf], fun h => by simp [nearestDimension, h, fewest], fun q hq => ?_⟩
+    obtain ⟨w, hw, hfw, hmin⟩ := fewest_spec (parent.map c.widened) (by simp; exact List.ne_nil_of_mem hq)
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hw
+    have hne : c.widened p ≠ [] := by
+      intro h
+      exact hc p hp (by simp [h])
+    obtain ⟨d, ds, hds⟩ := List.exists_cons_of_ne_nil hne
+    refine ⟨p, hp, ?_, hmin _ (List.mem_map_of_mem hq)⟩
+    simp only [nearestDimension, hfw, hds, List.mem_cons_self]
+
+/-- Narrowing on every dimension, at derivation and along the chain: a child is admitted
+exactly when each of its grants lies within one parent grant on every dimension and its expiry
+within its parent's, and a chain admission checks hop by hop permits no request its root
+grants refuse. -/
+-- spec: authority.attenuate.narrowing@d61d3afa
+theorem narrowing_every_dimension_every_hop :
+    (∀ (parent : List Grant) (pe : Nat) (child : List Grant) (ce : Option Nat),
+        (narrow parent pe child ce).verdict = "admitted" ↔
+          (∀ c ∈ child, ∃ p ∈ parent, c.includedIn p = true) ∧ ∀ e, ce = some e → e ≤ pe) ∧
+      ∀ (hops : List (List Grant)) (root gs : List Grant), Authority.checkChain root hops = some gs →
+        ∀ r : Authority.Request, gs.any (fun g => g.permits r) = true → root.any (fun g => g.permits r) = true :=
+  ⟨narrow_ok_iff_includedIn, Authority.checkChain_permits_root⟩
 
 end Reference

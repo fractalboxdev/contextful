@@ -18,6 +18,9 @@ use std::sync::OnceLock;
 
 const BIN: &str = env!("CARGO_BIN_EXE_contextful");
 
+/// The operations the reference decides and the harness accounts for, as `contextful-reference ops` prints them.
+const OPS: &str = "covers_name\ncovers_pattern\nnarrow\nzone_admits\nsession_zone\nhost_covers\nhost_included\nhost_witness\n";
+
 /// The `decide` example: the decision module alone, built once per test process with no
 /// feature, so it compiles neither the engine nor the SQL engine under whichever feature set
 /// the suite runs. The stand-in references start it once per case.
@@ -164,9 +167,14 @@ impl Scratch {
         self.dir.path().join(rel)
     }
 
+    /// A stand-in answering `ops` with the harness's operations, and every other call with `body`.
     fn script(&self, name: &str, body: &str) -> PathBuf {
+        self.script_listing(name, OPS, body)
+    }
+
+    fn script_listing(&self, name: &str, ops: &str, body: &str) -> PathBuf {
         let path = self.path(name);
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::write(&path, format!("#!/bin/sh\nif [ \"$1\" = ops ]; then printf '%s' '{ops}'; exit 0; fi\n{body}\n")).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path
     }
@@ -382,10 +390,20 @@ fn agreeing_entry(n: usize) -> Value {
     json!({"case": case, "engine": decision, "reference": decision})
 }
 
-/// The reference model is an executable Lean rendering of the decision functions, built to a binary that reads one case on standard input and prints one decision.
-// spec: assurance.differential-test.reference-model@837f2377
+/// The reference model is the policy package's proved decision definitions, compiled with JSON case decoding and decision rendering into a binary that reads one case on standard input and prints one decision.
+// spec: assurance.differential-test.reference-model@7685ff56
 #[test]
 fn the_reference_binary_reads_one_case_and_prints_one_decision() {
+    // The decoding modules declare no grant, pattern or zone type: each decodes into the
+    // policy package's definitions.
+    for module in ["Coverage", "Narrowing", "Placement"] {
+        let path = reference_root().join(format!("Reference/{module}.lean"));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.lines().any(|l| l.starts_with("import Contextful.")), "{module} imports no policy module");
+        let declared: Vec<&str> =
+            text.lines().filter(|l| l.starts_with("inductive ") || l.starts_with("structure ")).collect();
+        assert!(declared.is_empty(), "{module} declares its own types: {declared:?}");
+    }
     let exe = lean_or_skip!();
     let covered = |pattern: &str, name: &str| {
         let d = decide(&exe, &[], &json!({"op": "covers_name", "pattern": pattern, "name": name}));
@@ -419,11 +437,40 @@ fn the_reference_binary_reads_one_case_and_prints_one_decision() {
     assert_eq!(decide(&exe, &[], &json!([1]))["error"], "CaseMalformed");
 }
 
+/// Before any case, the harness reads the reference binary's operation listing; an operation one of the reference and the harness lists and the other lacks raises `ReferenceVocabularyDrift`, printing both lists.
+// spec: assurance.differential-test.reference-vocabulary@7e85bf39
+#[test]
+fn an_operation_the_reference_and_the_harness_do_not_share_raises_vocabulary_drift() {
+    let s = Scratch::new(Vec::new());
+    let decide = decide_exe().display().to_string();
+    for (ops, named) in [(format!("{OPS}host_resolve\n"), "host_resolve"), (OPS.replace("narrow\n", ""), "narrow")] {
+        let reference = s.script_listing("drifted.sh", &ops, &format!("exec '{decide}'"));
+        let out = s.run(&reference, &["--seed", "1", "--cases", "1"]);
+        assert!(!out.status.success(), "{}", stdout(&out));
+        let error = stderr(&out);
+        assert!(error.contains("ReferenceVocabularyDrift") && error.contains(named), "{error}");
+        assert!(!stdout(&out).contains("generated"), "a case ran before the vocabulary check");
+    }
+}
+
+/// The reference binary's operation listing equals the harness's.
+#[test]
+fn the_reference_lists_the_operations_the_harness_accounts_for() {
+    let exe = lean_or_skip!();
+    let out = Command::new(&exe).arg("ops").output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), OPS);
+}
+
 /// The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
 // spec: assurance.differential-test.harness@0f6edc10
+// spec: authority.attenuate.narrowing@d61d3afa
+// spec: authority.attenuate.widens@e63a5c30
+// spec: authority.grant.pattern-forms@8bb6d690
+// spec: authority.grant.template-allowlist@417f09a0
 #[test]
 fn the_engine_and_the_lean_reference_agree_over_generated_cases() {
-    let _ = lean_or_skip!();
+    let exe = lean_or_skip!();
     let s = Scratch::new(wasm_args_or_skip!());
     std::fs::copy(reference_root().join("corpus/counterexamples.jsonl"), s.corpus()).unwrap();
     let out = Command::new(BIN)
@@ -438,6 +485,13 @@ fn the_engine_and_the_lean_reference_agree_over_generated_cases() {
     assert_eq!(line_value(&report, "generated"), "400");
     assert_eq!(line_value(&report, "disagreements"), "0");
     assert!(line_value(&report, "compared fields").contains("verdict, error, dimension"), "{report}");
+    // A child broader on one dimension only: both name it, the refusal the proved decision states.
+    let widen = json!({"op": "narrow",
+        "parent": [{"actions": ["read"], "tables": ["research/*"], "horizon": 10}],
+        "child": [{"actions": ["read"], "tables": ["research/filings"], "horizon": 11}]});
+    let engine_decision = engine(&widen);
+    assert_eq!(engine_decision, json!({"verdict": "refused", "error": "AttenuationWidens", "dimension": "horizon"}));
+    assert_eq!(decide(&exe, &[], &widen), engine_decision);
 }
 
 /// Each run generates malformed inputs, boundary values and well-formed requests, and its report names the classes it drew from.
@@ -853,6 +907,21 @@ fn seeded_generated_narrowing_cases_include_explicit_forget_actions() {
     };
     assert!(cases.iter().any(|case| case["op"] == "narrow" && holds_forget(&case["parent"])), "the fixed seed generates no forget parent");
     assert!(cases.iter().any(|case| case["op"] == "narrow" && holds_forget(&case["child"])), "the fixed seed generates no forget child");
+}
+
+#[test]
+fn seeded_generated_narrowing_cases_cover_horizon_and_child_expiry() {
+    let s = Scratch::new(wasm_args_or_skip!());
+    let log = s.path("generated.jsonl");
+    let report = passed(&s.run(&s.logging(&log), &["--seed", "3", "--cases", "400"]));
+    assert_eq!(line_value(&report, "disagreements"), "0");
+    let narrowing: Vec<Value> = read_jsonl(&log).into_iter().filter(|case| case["op"] == "narrow").collect();
+    let with_horizon = |grants: &Value| grants.as_array().is_some_and(|g| g.iter().any(|g| g.get("horizon").is_some()));
+    assert!(narrowing.iter().any(|c| with_horizon(&c["parent"]) && with_horizon(&c["child"])), "no case narrows a horizon");
+    assert!(narrowing.iter().any(|c| c.get("child_exp").is_some()), "no case proposes a child expiry");
+    let decisions: Vec<Value> = narrowing.iter().map(engine).collect();
+    assert!(decisions.iter().any(|d| d["dimension"] == "horizon"), "no case widens a horizon");
+    assert!(decisions.iter().any(|d| d["error"] == "AttenuationExpiryExtended"), "no case extends an expiry");
 }
 
 /// A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.

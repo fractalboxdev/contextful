@@ -70,6 +70,7 @@ fn prompt_and_completion_are_non_exhaustible_registered_classes() {
     }
 }
 
+// spec: authority.mask.row-class-selector@e5711bec
 #[test]
 fn the_requested_from_selector_shares_one_policy_and_refuses_ambiguous_fields() {
     let requested = policy("text = { class = { from = \"kind\" }, strategies = { prompt = \"drop\", completion = \"hash\" }, fallback = \"drop\" }").unwrap();

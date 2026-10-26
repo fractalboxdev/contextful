@@ -12,10 +12,12 @@ mod registry;
 mod render;
 mod slice;
 mod scaffold;
+mod size;
 mod state;
 mod tags;
 mod targets;
 mod ts_pins;
+mod upkeep;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -26,8 +28,9 @@ pub struct Scratch {
 }
 
 impl Scratch {
-    /// A scratch root holding the corpus and its benchmark ledger with no pins, so
-    /// each suite states every pin it depends on.
+    /// A scratch root holding the corpus and its benchmark ledger with no pins and no
+    /// source, so each suite states every pin it depends on; a ratchet counting source
+    /// sites starts at zero, and one counting unpinned clauses past any live count.
     pub fn copy() -> Scratch {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_path_buf();
@@ -36,6 +39,16 @@ impl Scratch {
         let s = Scratch { _dir: dir, root };
         s.write("evals/ledger.toml", &std::fs::read_to_string(live.join("evals/ledger.toml")).unwrap());
         s.write("spec/pins.toml", "[pin]\n\n[floor]\n");
+        let terms = s.read("spec/terms/corpus.toml");
+        let sourceless: Vec<String> = terms
+            .lines()
+            .map(|l| match l.split_once(" =").map(|(k, _)| k) {
+                Some("registry-committed-sites") => "registry-committed-sites = 0".to_string(),
+                Some("clause-unowned") => "clause-unowned = 1000000".to_string(),
+                _ => l.to_string(),
+            })
+            .collect();
+        s.write("spec/terms/corpus.toml", &(sourceless.join("\n") + "\n"));
         s
     }
 
@@ -80,6 +93,33 @@ impl Scratch {
     pub fn scaffold(&self, target: &str, package: &str) {
         let out = self.cmd(&["scaffold", target, "--package", package]);
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    /// Run `state`, then return `clause`'s pin list under the lock file's `pins`, or `Null`.
+    pub fn pin_row(&self, clause: &str) -> serde_json::Value {
+        let out = self.cmd(&["state"]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let lock: serde_json::Value = serde_json::from_str(&self.read("spec/spec.lock.json")).unwrap();
+        lock["pins"][clause].clone()
+    }
+
+    /// `clause`'s computed verdict from the lock file's `pins`, once `state` has run.
+    pub fn verdict(&self, clause: &str) -> Option<String> {
+        self.pin_row(clause)[0]["verdict"].as_str().map(str::to_string)
+    }
+
+    /// Replace each `todo!(<message>);` line of `rel` with an assertion over the same
+    /// message, so a scaffolded test still names the error or bound it was written for.
+    pub fn implement(&self, rel: &str) {
+        let text: Vec<String> = self
+            .read(rel)
+            .lines()
+            .map(|l| match l.trim_start().strip_prefix("todo!(").and_then(|m| m.strip_suffix(");")) {
+                Some(message) => format!("    assert!(!{message}.is_empty());"),
+                None => l.to_string(),
+            })
+            .collect();
+        self.write(rel, &(text.join("\n") + "\n"));
     }
 
     /// Every clause id of `<contract>.<operation>`, from the lock file.

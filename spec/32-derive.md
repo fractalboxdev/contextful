@@ -61,7 +61,7 @@ The derive source selects eligible parent rows each tick and limits each run's w
 - `incomplete-unit` — If a parent row's key or media column is null, empty or whitespace, the derive source raises `DeriveUnitIncomplete`. The derive source skips the row and counts the row on the run record.
   *P4*
 - `journaled-pull` — A derive pipeline configured to journal its pulls raises `DeriveJournaledPull`.
-  *A-authority*
+  *A-authority#prepared-record*
 - `unmetered-grant` — A derive pipeline declaring a shared-quota grant for any task other than `link_preview` raises `DeriveUnmeteredGrant`.
   *A-connector*
 - `metered-client` — A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger.
@@ -256,7 +256,7 @@ Derive tasks emit content rows and completion markers with status, attempt count
   *A-run*
 - `attempts` — `attempts` is the prior count under the row's key plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total.
 - `unredacted-error` — A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.
-  *A-authority*
+  *A-authority#redaction-no-copy*
 - `primary-key` — A derive output table or host marker table without `primary_key` `["unit_ref", "derivation_key", "cue_seq"]`, or a host content table whose key does not open with `unit_ref` and `derivation_key`, raises `DerivePrimaryKeyMissing`.
   *because a re-derived unit otherwise lands its new passages over the originals, or beside them with no key telling them apart*
 - `derivation-key` — Every passage and marker row carries `derivation_key`: lowercase hex SHA-256 over the engine id, the binding less its bounds and `zone`, the output table's declared columns, and the parent row's id, media value and `derivation_key`.
@@ -285,8 +285,6 @@ Derive tasks emit content rows and completion markers with status, attempt count
   *A-run*
 - `local-content-key` — A local media unit's {{run.emit.derivation-key}} includes a SHA-256 digest of canonical file bytes, so changed bytes under an unchanged path reselect the unit.
   *A-run*
-- `parent-tombstone` — A fold drops derived rows whose parent key is absent or tombstoned in the parent table, then rebuilds their sidecars.
-  *A-run*
 - `derived-id` — Every passage and marker row keyed as {{run.emit.primary-key}} carries `derived_id`, lowercase hex SHA-256 over its `unit_ref`, `derivation_key` and `cue_seq`, and a sidecar over such a table defaults its `id_column` to `derived_id`.
   *because a sidecar re-joins on one column, and a producer column outside the reserved underscore namespace needs no store change*
 
@@ -294,7 +292,6 @@ Derive tasks emit content rows and completion markers with status, attempt count
 
 - `run.emit.output-modality`: WHEN a video parent yields a transcript passage and an advertised picture, THEN their output modalities are `text` and `image`.
 - `run.emit.local-content-key`: WHEN a local file changes bytes under the same path, THEN the next tick selects its unit under another key.
-- `run.emit.parent-tombstone`: WHEN a parent row is tombstoned, THEN the next fold drops its passages and rebuilds the affected sidecars.
 
 ## parse-cues
 

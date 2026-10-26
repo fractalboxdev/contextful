@@ -7,22 +7,11 @@ const MODULE: &str = "crates/x/tests/integration/anatomy.rs";
 /// Scaffold `corpus.anatomy` into `crates/x`, then replace every placeholder body.
 fn implemented(s: &Scratch) {
     s.scaffold("corpus.anatomy", "crates/x");
-    let text: Vec<String> = s
-        .read(MODULE)
-        .lines()
-        .map(|l| if l.trim_start().starts_with("todo!") { "    assert_eq!(1 + 1, 2);".to_string() } else { l.to_string() })
-        .collect();
-    s.write(MODULE, &(text.join("\n") + "\n"));
+    s.implement(MODULE);
 }
 
 fn verdict(s: &Scratch, clause: &str) -> String {
-    assert!(s.cmd(&["state"]).status.success());
-    let status = s.read("spec/status.md");
-    let row = status
-        .lines()
-        .find(|l| l.starts_with(&format!("| `{clause}` |")))
-        .unwrap_or_else(|| panic!("no pin row for {clause} in\n{status}"));
-    row.trim_end_matches(" |").rsplit("| ").next().unwrap().to_string()
+    s.verdict(clause).unwrap_or_else(|| panic!("no pin entry for {clause} in the lock file"))
 }
 
 // spec: corpus.state.tag-pin@9b4060f5
@@ -94,15 +83,47 @@ fn a_tag_naming_no_clause_is_a_broken_pin() {
     assert!(broken[0].contains("corpus.anatomy.no-such-clause"), "{broken:?}");
 }
 
+// spec: corpus.state.several-tests@d4b76042
 #[test]
-fn a_clause_pinned_to_two_different_tests_is_a_broken_pin() {
+fn a_clause_pinned_to_two_tests_performs_when_both_perform() {
     let s = Scratch::copy();
     implemented(&s);
-    s.write("crates/x/src/lib.rs", "#[test]\nfn another_demonstration() {}\n");
+    s.write("crates/x/src/lib.rs", "#[test]\nfn another_demonstration() {\n    assert!(true);\n}\n");
     s.pin("corpus.anatomy.file-length", "test", "x::another_demonstration");
+    assert!(codes(&s.lint("state"), "SpecBrokenPin").is_empty(), "{:?}", s.lint("state"));
+    assert_eq!(verdict(&s, "corpus.anatomy.file-length"), "performed");
+    s.write("crates/x/src/lib.rs", "#[test]\n#[ignore]\nfn another_demonstration() {}\n");
+    assert_eq!(verdict(&s, "corpus.anatomy.file-length"), "broken");
+}
+
+// spec: corpus.state.unexercised@8dcfa6a3
+#[test]
+fn a_refusal_pin_whose_test_names_none_of_its_errors_is_unexercised() {
+    let s = Scratch::copy();
+    implemented(&s);
+    assert_eq!(verdict(&s, "corpus.anatomy.bad-anatomy"), "performed");
+    let text = s.read(MODULE);
+    let named = text.lines().find(|l| l.contains("corpus.anatomy.bad-anatomy: assert SpecAnatomy")).unwrap().to_string();
+    s.write(MODULE, &text.replacen(&named, "    assert_eq!(1 + 1, 2);", 1));
     let broken = codes(&s.lint("state"), "SpecBrokenPin");
     assert_eq!(broken.len(), 1, "{broken:?}");
-    assert!(broken[0].contains("another_demonstration") && broken[0].contains("file_length"), "{broken:?}");
+    assert!(broken[0].contains("corpus.anatomy.bad-anatomy") && broken[0].contains("SpecAnatomy"), "{broken:?}");
+    assert_eq!(verdict(&s, "corpus.anatomy.bad-anatomy"), "broken");
+    s.write(MODULE, &text.replacen(&named, "    assert!(matches!(found, Error::Anatomy));", 1));
+    assert_eq!(verdict(&s, "corpus.anatomy.bad-anatomy"), "broken", "a variant path names the whole id or a prefix-free suffix");
+    s.write(MODULE, &text.replacen(&named, "    assert!(matches!(found, CorpusError::SpecAnatomy));", 1));
+    assert_eq!(verdict(&s, "corpus.anatomy.bad-anatomy"), "performed");
+}
+
+#[test]
+fn a_brace_inside_a_string_char_or_comment_does_not_end_the_test_body() {
+    let s = Scratch::copy();
+    implemented(&s);
+    let text = s.read(MODULE);
+    let named = text.lines().find(|l| l.contains("corpus.anatomy.bad-anatomy: assert SpecAnatomy")).unwrap().to_string();
+    let braces = "    let _ = (\"]}\", r#\"}\"#, '}'); // }\n    /* } */\n";
+    s.write(MODULE, &text.replacen(&named, &format!("{braces}{named}"), 1));
+    assert_eq!(verdict(&s, "corpus.anatomy.bad-anatomy"), "performed");
 }
 
 #[test]
@@ -113,4 +134,25 @@ fn one_test_pinned_both_ways_is_one_pin() {
     let found = s.lint("state");
     assert!(codes(&found, "SpecBrokenPin").is_empty(), "{found:?}");
     assert_eq!(verdict(&s, "corpus.anatomy.file-length"), "performed");
+}
+
+// spec: corpus.state.limit-const@4d63f0d1
+#[test]
+fn a_limit_pin_performs_only_while_non_test_source_uses_its_registered_const() {
+    let s = Scratch::copy();
+    implemented(&s);
+    let clause = "corpus.anatomy.statement-words";
+    assert_eq!(verdict(&s, clause), "performed");
+    let terms = s.read("spec/terms/corpus.toml");
+    let entry = terms.lines().find(|l| l.starts_with("corpus-statement-words ")).unwrap().to_string();
+    s.write("spec/terms/corpus.toml", &terms.replacen(&entry, &entry.replacen(" }", ", const = \"x::MAX_WORDS\" }", 1), 1));
+    s.write("crates/x/src/lib.rs", "pub const MAX_WORDS: usize = 40;\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn bound() {\n        assert_eq!(super::MAX_WORDS, 40);\n    }\n}\n");
+    let broken = codes(&s.lint("state"), "SpecBrokenPin");
+    assert_eq!(broken.len(), 1, "{broken:?}");
+    assert!(broken[0].contains(clause) && broken[0].contains("MAX_WORDS"), "{broken:?}");
+    assert_eq!(verdict(&s, clause), "broken");
+    s.write("crates/x/src/lib.rs", "pub const MAX_WORDS: usize = 40;\n\npub fn admitted(words: usize) -> bool {\n    words <= MAX_WORDS\n}\n");
+    assert_eq!(verdict(&s, clause), "performed");
+    s.write("crates/x/src/lib.rs", "pub const OTHER: usize = 40;\n");
+    assert_eq!(verdict(&s, clause), "broken", "a const path resolving to nothing exercises nothing");
 }

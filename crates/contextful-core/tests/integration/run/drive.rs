@@ -78,6 +78,7 @@ fn recorded_body_effects_bind_closed_labels_types_transforms_and_exact_owner_sco
     }
 }
 
+// spec: run.guard-secrets.recorded-body@9f7a2913
 #[test]
 fn opaque_body_emission_replay_rejects_a_foreign_scope_even_when_an_adapter_accepts_bytes() {
     use contextful_core::run::effect::{EffectAdmission, EffectScope, EmissionSummary, PreparedEmission, RecordedBodyPlan, RecordedEffect};
@@ -146,6 +147,7 @@ fn absent_structural_identity_preserves_the_legacy_plan_reference_and_owner_pins
     assert_eq!(serde_json::to_vec(&input.pins()).unwrap(), serde_json::to_vec(&legacy).unwrap());
 }
 
+// spec: run.journal.host-structure-pin@55e09c9b
 #[test]
 fn structural_identity_binds_the_plan_and_pending_owner_without_changing_input_text() {
     use contextful_core::run::own::OwnerPins;

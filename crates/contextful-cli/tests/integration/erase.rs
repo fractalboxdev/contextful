@@ -279,6 +279,7 @@ fn signed_only_scope_cannot_collect_an_unrelated_unsigned_stage() {
 
 /// `context erase --recover --project <project>` resumes {{disclosure.erase.recovery}} under {{disclosure.erase.privilege}} and {{authority.verify.effect-boundary}} before collection; selectors and signing ports are absent.
 // spec: disclosure.erase.recovery-verb@eb5194d5
+// spec: disclosure.record.audit-key-loss@2c6528b9
 #[test]
 fn signed_frontier_recovery_replays_without_signer_and_preserves_the_key_lifecycle() {
     let directory = tempfile::tempdir().unwrap(); let root = directory.path();
@@ -327,6 +328,7 @@ fn signed_frontier_recovery_replays_without_signer_and_preserves_the_key_lifecyc
     assert_eq!(std::fs::read(store.join("_erasure_frontier.json")).unwrap(), frontier);
 }
 
+// spec: read.reference.call@7554034c
 #[test]
 fn erase_requires_forget_and_explicit_signing_and_preserves_normal_pinned_reads() {
     let directory = tempfile::tempdir().unwrap(); let root = directory.path();

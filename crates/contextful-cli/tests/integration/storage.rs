@@ -51,6 +51,7 @@ fn ordinary_storage_check_reports_its_execution_capabilities_as_json() {
         .contains(&serde_json::json!("journal")));
 }
 
+// spec: run.journal.storage-unsupported@36d4876b
 #[test]
 fn unsupported_storage_profiles_refuse_before_admitting_a_command() {
     let out = command()
@@ -79,6 +80,7 @@ fn cloudflare_postgres_is_not_an_execution_profile() {
     assert!(error.contains("cloudflare-postgres"), "{error}");
 }
 
+// spec: run.journal.storage-incomplete@8c2802d5
 #[test]
 fn d1_profile_requires_a_private_binding_before_project_access() {
     let out = command()
@@ -108,6 +110,9 @@ fn a_postgres_url_cannot_impersonate_the_d1_private_binding() {
     assert!(!error.contains("project `missing`"), "{error}");
 }
 
+// spec: run.journal.corpus-unavailable@5e1619bd
+// spec: run.journal.d1-backup@076183a0
+// spec: run.journal.d1-profile@c06243f4
 #[test]
 #[cfg(all(feature = "d1-catalog", feature = "s3-sync"))]
 fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
@@ -388,6 +393,7 @@ fn a_d1_coordinated_group_keeps_its_outbox_in_d1_across_an_empty_disk() {
 
 /// A writer killed while its D1 publication lease runs blocks an ordinary retry; `--take-over`
 /// delivers at once and fences the killed holder's next write, a producer completion included.
+// spec: run.export.group-d1-takeover@38db3671
 #[test]
 #[cfg(all(feature = "d1-catalog", feature = "s3-sync"))]
 fn a_take_over_retry_delivers_while_a_killed_writers_d1_lease_runs() {

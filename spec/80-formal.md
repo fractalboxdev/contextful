@@ -13,9 +13,9 @@ owns:
 
 Two Lean 4 packages stand beside the engine: one specifying the policy core, and one holding
 an executable state machine of the store's lease, compare-and-swap and fence protocol, its
-invariants stated as theorems. The gate checks both on every change, and one differential
+invariants stated as theorems. The nightly formal stage checks both, and one differential
 harness ties each model to the code it describes: the policy model to both builds of the
-decision module, the protocol model to the Rust store.
+decision module, the protocol model to the store's two lease paths.
 
 The two models, the checks over them, and where each meets the engine:
 
@@ -69,7 +69,7 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `toolchain-drift` — A build whose resolved toolchain string differs from the pinned one raises `ProofToolchainDrift`, printing both strings.
   *A-assurance*
 - `build-cost` — A cold elaboration of the package completes within 60 s and writes at most 2048 KiB of artifacts.
-  *because the check runs on every change*
+  *because the nightly formal stage elaborates it cold on every run*
 - `build-command` — `lake build` at the package root elaborates every declaration and writes the environment the audit reads.
 - `module-layout` — Five modules carry the package — the layer algebra, placement with the floor, the authority mapping, connector host containment and statement execution — and the library root re-exports all five.
 - `layer` — A layer is a total function from a row identifier to `Bool`; `composed` folds a list of layers by conjunction, admitting a row when every member admits it.
@@ -83,14 +83,15 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `out-of-model` — The policy package defines no credential bytes, signature verification, SQL semantics, journal write, process state or attacker observation, and no theorem reaches one.
 - `protocol-package` — The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` target, one `lean_exe` target and no `require` stanza.
   *A-assurance*
-- `protocol-model` — The protocol model is a total, computable step function over lease acquisition, renewal, expiry and release, the fenced compare-and-swap on the catalog row and the cursor object, holder pause, message delay and crash.
+- `protocol-model` — The protocol model is a total, computable step function over two lease paths, the compaction lease guarding a table pointer and the run lease guarding a commit log: grant, raise, renewal, expiry, release, fenced commit, pause, message delay and crash.
   *A-assurance*
-- `protocol-safety` — Four invariants are Lean theorems over every reachable state: one lease holder per fence, fences only increase, no commit lands carrying a fence below the highest granted, and release keeps the lease object and its fence.
+- `protocol-safety` — Five invariants are Lean theorems over every reachable state of both paths: one lease holder per fence, fences only increase, no commit after a successor's acquisition, no lost update, and release keeps the lease object and its fence.
+  *A-assurance#store-protocol-modelled*
 - `protocol-theorems` — Each protocol invariant theorem is a required constant in the protocol package's inventory, audited by {{assurance.audit-assumptions.check-command}} against the same allowlist.
 - `protocol-check` — The gate evaluates every invariant on each state reached by every step sequence over three nodes and four lease generations; a breaking state raises `ProtocolInvariantViolated`, printing the shortest sequence reaching it.
   *P7*
-- `protocol-pins` — {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_below_granted`.
-  *because the model's guarded objects are the catalog row and the cursor object, and a snapshot's sidecars lie outside it*
+- `protocol-pins` — {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_after_successor_acquire`.
+  *because the model's guarded objects are the table pointer and the commit log; the catalog cursor row and a snapshot's sidecars lie outside it*
 - `journal-model` — The protocol package holds a journal model: a total, computable step function in which each journal-store and blob-store port call, each effect, lapse, crash, sweep and retirement is one step, over three callers and two keys.
   *A-assurance*
 - `journal-safety` — Seven journal properties are Lean theorems over every reachable state: recorded values stay, journaled resolutions agree, one record per key, effects under a claim or lapsed lease, takeover from a lapsed holder, no dangling blob, no {{run.journal.missing-blob}}.
@@ -194,26 +195,27 @@ Rebuilding and re-auditing from pinned source in a credential-free environment.
 
 ## scope-claim
 
-The sentence the assurance claim is allowed to be: named decisions, trusted dependencies, translation chain, refinement reach.
+The sentence the assurance claim is allowed to be: named decisions, named specifications and trusted dependencies.
 
-- `claim-sentence` — The assurance claim reads: these named decisions satisfy these named Lean specifications under these stated translation and runtime assumptions; each list resolves to code paths, constants and components in the tree.
+- `claim-sentence` — The assurance claim reads: these named decisions satisfy these named Lean specifications under these stated runtime assumptions; each list resolves to code paths, constants and components in the tree.
 - `beyond-named-decisions` — A claim that the enforcement engine, or any object wider than the named decisions, is verified raises `ClaimBeyondNamedDecisions`.
   *A-assurance*
-- `trusted-dependencies` — The claim names the delegation library, its cryptography, its parser and the translator as trusted dependencies, and proves none of them.
+- `trusted-dependencies` — The claim names the delegation library, its cryptography and its parser as trusted dependencies, and proves none of them.
 - `unnamed-dependency` — A claim resting on a component absent from its trusted-dependency list raises `TrustedDependencyUnnamed`, naming the component.
   *A-assurance*
-- `translation-chain` — A statement about translated code inherits four links: the compiler's lowering, the translator (Aeneas, named by one release string), hand-written models of external definitions, and the production build configuration.
-- `unstated-chain` — A theorem claimed over translated code without its translation chain raises `TranslationChainUnstated`.
-  *A-assurance*
-- `refinement-scope` — Refinement covers the decision functions behind the proof targets, whose inputs are values and whose outputs are decisions.
-- `refinement-exceeded` — Translation reaching cryptography, a parsing adapter, a database call or concurrency raises `RefinementScopeExceeded`, naming the module.
-  *A-assurance*
+
+unsettled: Which translator, external models and refinement scope does a claim name once a theorem reaches the Rust decision functions through translated code? owner: build affects: assurance.scope-claim
 
 ## differential-test
 
 The executable reference models, the case generators, the minimized counterexample corpus and the command running them.
 
-- `reference-model` — The reference model is an executable Lean rendering of the decision functions, built to a binary that reads one case on standard input and prints one decision.
+- `reference-model` — The reference model is the policy package's proved decision definitions, compiled with JSON case decoding and decision rendering into a binary that reads one case on standard input and prints one decision.
+  *A-assurance#executed-reference-proved*
+- `reference-theorems` — Each theorem the reference package proves over a decision it executes is a required constant in its inventory, audited by {{assurance.audit-assumptions.check-command}} and bound to the differential test running that decision.
+  *because a theorem pin performs only beside a differential that drives the code its clause names*
+- `reference-vocabulary` — Before any case, the harness reads the reference binary's operation listing; an operation one of the reference and the harness lists and the other lacks raises `ReferenceVocabularyDrift`, printing both lists.
+  *because the reference's case decoder and the harness spell the operations twice, and an operation one side lacks is never compared*
 - `harness` — The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.
   *A-assurance*
 - `builds` — The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.
@@ -234,11 +236,13 @@ The executable reference models, the case generators, the minimized counterexamp
 - `discarded-counterexample` — A run reporting a disagreement and writing no corpus entry raises `CounterexampleDiscarded`.
   *A-assurance*
 - `seed` — Each run records its generator seed, and re-running with that seed reproduces the same case sequence.
-- `protocol-cases` — Protocol cases are operation sequences and node interleavings a `proptest-state-machine` generator draws over acquire, renew, release, expire, commit, pause, delay and crash steps across three nodes.
-- `protocol-harness` — The harness drives the protocol package's compiled executable and the Rust store through each protocol case, comparing lease holder, fence, pointer ETag and commit outcome after every step.
+- `protocol-cases` — Protocol cases are operation sequences and node interleavings a `proptest-state-machine` generator draws over grant, raise, renew, expire, release, send, deliver, pause, resume and crash steps across three nodes, each replayed on both lease paths.
+- `protocol-harness` — The harness drives the protocol executable and the store's own lease calls, `Syncer` over a scripted bucket and the local catalog with the commit log, through each case, comparing lease, fence, head, write count and node views after every step.
   *A-assurance*
 - `protocol-drift` — A step after which the model's state and the store's projected state differ raises `ProtocolConformanceDrift`, printing the minimized operation sequence and both states.
   *A-assurance*
+- `protocol-vocabulary` — Before any case, the harness reads the protocol executable's step listing; a step kind one of the model and the harness lists and the other lacks raises `ProtocolVocabularyDrift`, printing both lists.
+  *because the step type and the harness enum spell the vocabulary twice, and a step one side lacks is never compared*
 - `journal-harness` — The journal harness runs each caller's `Journal::step` on its own thread over gated memory, file and SQLite adapters, admits one port call per step, and compares rows, blobs and every caller's phase with the journal model.
   *A-assurance*
 - `journal-drift` — A step after which the journal model's state and an adapter's projected state differ raises `JournalConformanceDrift`, printing the adapter, the minimized step sequence and both states.

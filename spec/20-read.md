@@ -65,7 +65,7 @@ Registered relations, query tools, templates, the embedded SQL engine and HTTP t
 - `connection-views` — Each session connection creates or replaces one view per manifest table, scanning {{store.reconcile.explicit-file-list}}. Statements reuse these views under {{read.cache.session-pool}}. No view directory exists on disk.
 - `declaration-set` — The face registers the tables of {{store.declare.declaration-set}}, so a `primary_key` a pipeline file declares reaches {{store.declare.dedup-view}} on the operator verb and the tool server alike.
 - `engine` — Every profile serving reads links an embedded columnar SQL engine that reads Parquet with standard SQL. External processes read the same files without that embedded engine.
-  *A-topology*
+  *A-topology#build-profiles*
 - `quiet-table` — A quiet table registers as {{store.declare.empty-run}}. Reading that table returns an empty result rather than a missing-relation fault.
   *P4*
 - `bare-name` — In caller statements, templates, ranking queries and file previews, a bare table name resolves to the caller's registered relation. That relation carries the caller's restriction.
@@ -288,8 +288,6 @@ Candidate rows for ranked retrieval: query tokens, relevance thresholds, per-tab
 - `ranked-call` — `corpus.retrieve({prefix, tables?, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns ranked rows across item and artifact genres under `prefix` and `tables`, each with a snippet and provenance, composing the query surface and memory recall, storing nothing.
 - `table-list` — Retrieval queries session relations matching both `tables` and `prefix`. Names outside the session raise `RetrieveTableUnavailable`, listing every unavailable name in input order. Absent and ungranted tables receive identical errors under {{authority.filter-rows.default-deny}}.
   *because one identical refusal for an absent and an ungranted table confirms neither exists, and a silently skipped typo answers a different question*
-- `rerank-argument` — The ranked call also takes `query_embedding_model?`, naming the model behind `query_embedding`, and `rerank_with?`, naming the reranker {{read.rank.rerank}} applies.
-  *because a caller-supplied vector and a reranked order are each meaningful only with the model that produced them*
 - `relevance-floor` — A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.
 - `content-tokens` — The tokenizer lowercases query text and splits at non-alphanumeric characters. The tokenizer removes stop tokens, keeps non-ASCII runs of two or more characters, and deduplicates tokens in order.
 - `token-length-floor` — An ASCII run shorter than 2 chars leaves the content-token set.
@@ -372,7 +370,7 @@ unsettled: Does predicate-aware graph traversal replace {{read.retrieve.adaptive
 
 ## rank
 
-Candidate ordering by vector and lexical scores, timeframe, optional reranking and reported confidence.
+Candidate ordering by vector and lexical scores, timeframe and reported confidence.
 
 - `three-legs` — Ranking runs exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two.
 - `fusion` — Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · rrf(bm25)`. Weights are 60 percent and 40 percent. `rrf` maps BM25 rank `r` to `61 / (60 + r)`. Absent documents score zero per leg; identifiers break ties.
@@ -391,28 +389,16 @@ Candidate ordering by vector and lexical scores, timeframe, optional reranking a
 - `absent-block` — Non-ranked statements and builds without a ranker omit the retrieval block. An absent block differs from a block reporting zero matches.
   *P2*
 - `degradation-not-error` — Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the {{read.retrieve.scored-text}}, recency breaking ties. The result differs in order and still answers.
-  *A-topology*
+  *A-topology#build-profiles*
 - `fallback-counts-tokens` — Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.
 - `caller-embedding` — A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.
-  *A-topology*
+  *A-topology#build-profiles*
 - `lexical-index-cache` — The opened full-text sidecar cache holds at most 64 entries in FIFO order, keyed by table, snapshot, path and key-version fingerprint. Repeated reads reuse sidecars; a different snapshot requires opening another.
 - `widened-window-statistics` — Lexical term statistics use the widened candidate window. Accelerated retrieval may therefore order rows differently from the exact scan.
 - `calibration-gate` — A lexical-leg calibration replaces the one {{read.rank.fusion}} names only when the native evaluation scores it at or above that one on every tracked measure.
   *A-read*
-- `reranker-admission` — A reranker joins the declared set only when it meets {{read.rank.calibration-gate}} against fused order.
-  *A-read*
-- `rerank` — With `rerank_with`, reranking takes the first 50 rows admitted by authority in {{read.rank.question-window-is-a-tier}} order and reorders by score within tiers before `limit`. Later rows retain order. The retrieval block names the reranker and build.
-  *A-read*
-- `rerank-input` — A reranker scores each candidate independently using only its masked {{read.retrieve.snippet}}. The reranker reads no raw cells.
-  *because a listwise prompt lets one poisoned candidate promote itself*
-- `rerank-absent` — A `rerank_with` naming no reranker in the set {{read.rank.reranker-admission}} admits raises `ReadRerankerAbsent`.
-  *because a silent fallback to fused order hides a ranking change*
-- `rerank-horizon` — Under a horizon, a reranker declaring a checkpoint family scores with the checkpoint {{read.horizon.embedder-route}} selects, and a remote reranker's call passes {{read.horizon.egress-hook}}.
-  *A-read*
-- `rerank-cutoff` — Under a horizon, a named reranker without a checkpoint whose post-training cutoff precedes that horizon raises `ReadRerankerBeyondHorizon` instead of scoring. Rerankers declaring no checkpoint family have no such checkpoint.
-  *because a trained reranker can order rows by events it learned after the horizon*
 
-Vector and lexical scoring, fallback ranking and optional reranking:
+Vector and lexical scoring and fallback ranking:
 
 ```mermaid
 flowchart LR
@@ -423,13 +409,12 @@ flowchart LR
   B -->|"BM25, weight 0.4"| FU
   FU -->|"fused scores"| ORD["window-first ordering"]
   TF -->|"token scores"| ORD
-  ORD -->|"ordered rows"| RR{"rerank_with named?"}
-  RR -->|"no"| OUT(["token caller"])
-  RR -->|"yes, 50 rows pre-limit"| RER["pointwise reranker"]
-  RER -->|"retrieval block"| OUT
+  ORD -->|"ordered rows"| OUT(["token caller"])
 ```
 
 unsettled: Does a convex combination over min-max-normalized scores, its weight fitted per domain on settled judgments, replace {{read.rank.fusion}}? owner: read-path affects: read.rank
+
+unsettled: Does the read face admit a pointwise reranker, and does one whose every checkpoint postdates the horizon refuse to score under it? owner: read-path affects: read.rank
 
 ## cache
 
@@ -443,8 +428,6 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
   *A-store*
 - `result-key` — Result keys include token id, revocation epoch, grants, subject, session zone and incognito state. Keys also include touched relations and files, bounds, statement, parameter values and applied row ceiling.
   *A-read*
-- `reranker-key` — A reranked result's key adds the reranker's identity and build to {{read.cache.result-key}}.
-  *because a new reranker build orders the same rows differently under an otherwise unchanged key*
 - `cache-is-opt-in` — Results enter the cache only if every touched table declares `result_cache` with a time to live and none declares `private = true`. Entries expire at the shortest declared time to live.
   *A-read*
 - `volatile-bypasses` — Statements execute uncached if they call functions the engine marks inconsistent across queries, including `now()`, `current_timestamp` and `random()`. Macros calling these functions also bypass caching.
@@ -455,7 +438,6 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
   *A-read*
 - `hit-identical` — Cache hits return responses byte-identical to the original miss, including the restriction block. With `internals: true`, diagnostic metadata reports `cache` as `hit` or `miss`.
   *because a reused answer differing from a computed one is a second projection a caller must reconcile*
-- `keep-warm-is-per-deployment` — A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.
 - `session-pool` — `Face` reuses sessions and connections while the key matches: admitted authority, token id, revocation epoch, request zone, bounds, pin map and table set. Each granted table contributes schema digest, pointer, run set and ledger files.
   *A-read*
 - `change-misses` — Committed runs, snapshots, schema edits, new tables, request-ledger files and tokens with different ids or epochs cause pool misses. The next statement reads the changed state through a new connection.
@@ -492,14 +474,12 @@ Embedding implementations, stored model identifiers, query-model checks, build i
 - `default-embedder` — The default embedding implementation deterministically hashes token term frequencies into an L2-normalized vector. This implementation performs no I/O and requires no download, key or network call.
 - `default-embedder-reach` — The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.
 - `model-identifier` — Every stored vector uses a {{store.reconcile.binary-and-vector}} column beside `embedding_model`, which names the producing model. Rows alone determine index identity and provenance.
-- `query-model` — A ranked call whose `query_embedding_model` differs from the `embedding_model` beside the vectors it scores raises `ReadEmbeddingModelMismatch`, naming both models.
-  *because cosine across two models compares unrelated spaces*
 - `build-identity` — The handshake reports linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and interfaces (`http`, `eval`, `otlp`). These names derive from the same feature declarations as version output.
   *P3*
 - `required-face` — Before the first read, the server rejects a client's `require: [...]` with `RequiredFaceAbsent` for any unreported name. An engine reporting no set satisfies no requirement.
-  *A-topology*
+  *A-topology#build-profiles*
 - `absent-read-backend` — Without the embedded SQL engine linked, every read tool raises `ReadBackendAbsent` rather than answering from a narrower path.
-  *A-topology*
+  *A-topology#build-profiles*
 
 ## as-of-join
 
@@ -527,8 +507,6 @@ Reads under {{authority.grant.horizon}}: default time bounds, rejected arguments
   *because a cutoff the agent can widen is advisory, while a valid-time question about a known future effective date stays legitimate*
 - `recall-horizon` — Under a horizon, {{read.recall.keyed}} defaults absent `observed_at` to that horizon and reads claims at the same `available_as_of`. A table without declared availability time raises {{store.available-time.undeclared}}.
   *because a claim lands at its commit instant, and one concluded after the horizon otherwise answers inside it*
-- `traverse-horizon` — Under a horizon, {{read.traverse.call}} defaults an absent `observed_at` to the horizon.
-  *because an edge live at the call's instant otherwise answers a walk the horizon dates earlier*
 - `engine-stamps` — Under a horizon, responses omit `_ingested_at` and `_commit_seq` but retain citation fields `_run_id` and `_row_seq`. `context.describe` computes row count, size, lexicon and example values from the horizon-bounded relation.
   *A-read*
 - `late-columns` — A column's first merge sets `schema.json`'s `first_landed_at` once to the batch's earliest availability instant, otherwise commit instant. Columns with `first_landed_at` after the horizon are absent from registered schemas and describe payloads.

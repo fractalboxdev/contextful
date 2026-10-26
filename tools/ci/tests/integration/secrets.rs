@@ -17,6 +17,7 @@ fn stdout(o: &Output) -> String {
     String::from_utf8_lossy(&o.stdout).to_string()
 }
 
+// spec: assurance.gate.secret-ciphertext@c7e0cb65
 #[test]
 fn a_plaintext_value_in_a_tracked_env_file_is_refused() {
     let r = Repo::init();
@@ -30,6 +31,7 @@ fn a_plaintext_value_in_a_tracked_env_file_is_refused() {
     assert!(!err.contains("hunter2") && !stdout(&o).contains("hunter2"), "the value was printed: {err}");
 }
 
+// spec: assurance.gate.secret-scope@af7d37ec
 #[test]
 fn a_key_with_no_scope_comment_above_it_is_refused() {
     let r = Repo::init();

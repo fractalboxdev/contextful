@@ -116,6 +116,7 @@ impl Cell {
 
 /// The suite exits 1 over a report whose verdict fails; that exit is the verdict, not a crashed
 /// process, so the shipped evidence records each scenario as the suite reported it.
+// spec: assurance.consumer.verdict-exit@18128b98
 #[test]
 fn a_suite_exiting_on_its_failing_verdict_records_no_process_failure() {
     let unsupported = serde_json::json!([{
@@ -148,6 +149,7 @@ fn a_suite_exiting_on_its_failing_verdict_records_no_process_failure() {
 
 /// A native full cell holding no D1 binding runs no `cloudflare-d1` pass and declares the
 /// absence in its D1 report; a supplied binding still runs the pass.
+// spec: assurance.consumer.d1-absent@601be0ea
 #[test]
 fn a_full_cell_without_a_d1_binding_declares_the_d1_pass_absent() {
     let passed = serde_json::json!([{
@@ -196,6 +198,7 @@ fn cell_metadata(profile: &str, target: &str, local: serde_json::Value, d1: Opti
 
 /// The formula step writes release notes stating every cell's local and `cloudflare-d1`
 /// verdict, and refuses a manifest cell that carries none.
+// spec: assurance.consumer.release-notes@9dc152b3
 #[test]
 fn formula_writes_release_notes_stating_every_cells_verdict() {
     let dist = tempfile::tempdir().unwrap();

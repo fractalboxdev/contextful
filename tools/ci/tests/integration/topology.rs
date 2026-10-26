@@ -205,6 +205,7 @@ fn an_outbound_crate_linking_an_http_stack_without_its_transport_feature_is_refu
 
 /// Without `s3-sync`, `contextful-sync` excludes `ureq`, `hyper`, `reqwest`, `rustls` and `curl` from normal
 /// dependencies. A dependency reaching these raises `SyncStackLinked`, naming the dependency path.
+// spec: topology.compose.local-first@2a4b377b
 // spec: topology.package.s3-sync-optional@1bada3c4
 #[test]
 fn a_sync_crate_linking_an_http_stack_without_its_s3_feature_is_refused() {
@@ -267,6 +268,7 @@ fn a_decode_package_linking_the_network_stack_is_refused() {
 /// A model-vendor SDK or second outbound model path raises `VendorSdkLinked` in the dependency audit. The error names
 /// the crate and dependency.
 // spec: topology.compose.vendor-sdk@6d97e7bb
+// spec: connector.infer.vendor-sdk@d5681d57
 #[test]
 fn a_crate_declaring_a_model_vendor_sdk_is_refused() {
     let r = Repo::init();
@@ -664,6 +666,7 @@ fn this_repository_holds_to_the_dependency_rules() {
 
 /// One Cargo workspace compiles execution, storage and query code. These components share one binary, package scope
 /// and release.
+// spec: topology.compose.cli-binary@a68bb081
 // spec: topology.compose.workspace@65b98307
 #[test]
 fn one_workspace_compiles_every_package_and_ships_one_binary() {
@@ -759,6 +762,7 @@ fn this_repository_crate_map_names_every_crate() {
 
 /// The crate-graph stage runs the dependency rules and refuses a run-path crate reaching a
 /// read-path crate outside the shared contracts.
+// spec: topology.compose.three-crossings@c47fccf8
 // spec: assurance.gate.crate-graph@98b70ec8
 #[test]
 fn the_crate_graph_stage_refuses_an_undeclared_crossing() {
@@ -1051,6 +1055,7 @@ fn this_repository_full_profile_links_every_daemon_role() {
 
 /// `contextful-edge` syncs parts and manifests from a bucket and serves read-only SQL queries. This profile links no
 /// scheduler, execution engine, script runtime or component host.
+// spec: topology.compose.run-path-droppable@3c4a236a
 // spec: topology.package.edge-profile@a29ccf69
 #[test]
 fn this_repository_edge_profile_serves_reads_and_links_no_component_host() {
@@ -1332,6 +1337,7 @@ fn each_deployment_shape_reaches_its_catalog_backend_and_the_full_profile_links_
 /// Every function-class shape under `spec/targets/` lists `edge` alone, and the edge build
 /// links neither the run path nor a component host, so a run reaching such a deployment
 /// executes on a worker target and never in place.
+// spec: topology.package.edge-eligibility@a1049d0b
 #[test]
 fn this_repository_function_class_shapes_host_the_edge_profile_and_run_nothing() {
     let mut function_shapes = Vec::new();
