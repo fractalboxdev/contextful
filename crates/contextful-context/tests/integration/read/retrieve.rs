@@ -112,8 +112,9 @@ fn evidence_omitted_projects_null_outside_memory() {
     assert!(omitted.iter().all(|v| v.is_null()), "{omitted:?}");
 }
 
-/// A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
-// spec: store.reserve.optional@acdb41f5
+/// A producer sets any of `_modality`, `_lang`, a BCP-47 tag, `_provenance`, the evidence rows addressed by the source table's key, and
+/// `_prompt_hash`, `sha256:<hex>` over the prompt template rather than the rendered prompt; each surfaces in the provenance envelope.
+// spec: store.reserve.optional@f48d8387
 #[test]
 fn optional_provenance_columns_surface_in_ranked_rows() {
     let r = Reads::new();
@@ -414,9 +415,9 @@ fn sidecar_dirs(r: &Reads, table: &str) -> (std::path::PathBuf, std::path::PathB
     (dir.clone(), dir.join(path))
 }
 
-/// If a query requires a sidecar or partition absent from the replica, the query raises `ReplicaMissingIndex`, naming
-/// the refresh that supplies it.
-// spec: store.replicate.missing-index@2de576ee
+/// A query needing a sidecar or partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh
+/// supplying it.
+// spec: store.replicate.missing-index@0221a56b
 #[test]
 fn a_replica_lacking_a_needed_sidecar_or_part_refuses_naming_the_refresh() {
     use contextful_core::store::StoreError;
@@ -536,9 +537,9 @@ fn the_accelerated_arm_returns_every_exact_row_and_readers_can_differ() {
     assert_eq!(theirs, ["p000"]);
 }
 
-/// A sidecar returns only candidate `id_column` values. Before finalizing top-K, retrieval joins those identifiers on
-/// that column through the relation protected by access controls.
-// spec: store.index.candidate-ids@8f2ca2c8
+/// A sidecar returns only candidate `id_column` values, which retrieval joins on that column through the relation
+/// access controls protect before finalizing top-K.
+// spec: store.index.candidate-ids@e5d5dc43
 // spec: authority.compose.vector-arm@d98fead5
 #[test]
 fn sidecar_candidates_are_identifier_values_rejoined_through_the_relation() {
@@ -970,9 +971,9 @@ fn a_ranked_read_keeps_the_newest_row_per_content_hash() {
     assert_eq!(ids(&grid, "passage_id"), ["r5"]);
 }
 
-/// A table holds connector items or synthesized artifacts. Artifact kinds use an open string without an engine-defined
-/// enumeration. Both items and artifacts append, deduplicate on content and carry a timestamp.
-// spec: store.declare.two-genres@0f3c14cf
+/// A table holds connector items or synthesized artifacts, whose kind is an open string; both append, deduplicate on
+/// content and carry a timestamp.
+// spec: store.declare.two-genres@979ba74a
 #[test]
 fn items_and_artifacts_of_any_kind_append_dedupe_on_content_and_carry_a_timestamp() {
     let genres = "\n[[pipeline.tables]]\nname = \"genre/items\"\ncontent_hash_column = \"digest\"\n\n[[pipeline.tables]]\nname = \"genre/artifacts\"\ncontent_hash_column = \"digest\"\n";

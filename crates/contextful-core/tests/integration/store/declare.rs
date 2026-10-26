@@ -132,8 +132,8 @@ fn a_table_block_declares_its_scored_text_columns() {
     assert!(TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"x\"\nretrieve = { columns = [\"title\"] }\n").is_err());
 }
 
-/// `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.
-// spec: store.declare.order-by-default@141fbb95
+/// `order_by` names the column picking each key's surviving row, default `_ingested_at`.
+// spec: store.declare.order-by-default@7504081d
 #[test]
 fn order_by_defaults_to_ingested_at() {
     assert_eq!(TableDecl::named("t").order_by(), "_ingested_at");
@@ -223,7 +223,7 @@ fn replace_covers_the_newest_complete_run_and_what_follows() {
 }
 
 /// A marked no-part replacing run clears current files while an earlier bound still reaches the displaced run.
-// spec: store.declare.empty-replacement@889afa9e
+// spec: store.declare.empty-replacement@8a800864
 #[test]
 fn a_marked_empty_run_is_a_replacement_frontier() {
     use contextful_core::store::bound_time::Bound;

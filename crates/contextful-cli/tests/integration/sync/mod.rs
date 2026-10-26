@@ -401,7 +401,7 @@ fn a_cold_http_server_pulls_before_it_answers(bucket: &Path) {
 
 /// A replica's `sync pull` reads `replicate = false` from a `pipelines/` file as from the
 /// declaration: a refresh naming the table refuses, and an unscoped one leaves it behind.
-// spec: store.declare.declaration-set@5b567103
+// spec: store.declare.declaration-set@ec2c2b1f
 #[test]
 fn a_pipeline_file_keeps_a_replicate_off_table_off_the_pull() {
     let bucket = tempfile::tempdir().unwrap();

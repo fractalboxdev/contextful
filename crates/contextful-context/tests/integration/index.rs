@@ -99,7 +99,7 @@ fn a_snapshot_carries_each_of_the_five_index_kinds() {
 
 /// A column a table names in `bloom_filter` carries a bloom filter in every part a run or a
 /// fold writes, sized for that part's rows; an unnamed column carries none.
-// spec: store.index.bloom-parts@0ea19c98
+// spec: store.index.bloom-parts@c0f4ed9b
 #[test]
 fn every_part_a_run_or_fold_writes_carries_the_declared_bloom_filter() {
     use parquet::file::reader::{FileReader, SerializedFileReader};
@@ -130,7 +130,7 @@ fn every_part_a_run_or_fold_writes_carries_the_declared_bloom_filter() {
 
 /// A vintage table naming no `bloom_filter` carries a bloom filter on its key in every part
 /// a run or a fold writes; its other columns carry none.
-// spec: store.index.bloom-vintage-key@91ed8bb2
+// spec: store.index.bloom-vintage-key@d2e33b7a
 #[test]
 fn a_vintage_table_carries_a_key_bloom_filter_it_never_declared() {
     use parquet::file::reader::{FileReader, SerializedFileReader};
@@ -198,9 +198,9 @@ fn a_binary_or_vector_partition_column_is_refused() {
 }
 
 #[cfg(feature = "read")]
-/// Landing applies no canonical form to tenant values. Writes and comparisons preserve bytes without trimming, case
-/// folding or Unicode normalization. Percent-escaping changes only the directory-name representation.
-// spec: store.index.tenant-verbatim@a9a3b0ff
+/// Landing applies no canonical form to tenant values: writes and comparisons keep bytes without trimming, case
+/// folding or Unicode normalization, and percent-escaping changes only the directory name.
+// spec: store.index.tenant-verbatim@72c280dd
 #[test]
 fn a_tenant_value_is_kept_byte_for_byte() {
     let f = Fixture::new();
@@ -261,10 +261,9 @@ fn entry(m: &SnapshotManifest) -> VectorEntry {
     }
 }
 
-/// Fold builds each declared vector sidecar from staged rows with non-null identifiers and non-zero vectors. Where
-/// `embedding_model` exists, fold selects only rows from the declared model. Fold records the sidecar in the snapshot
-/// manifest.
-// spec: store.index.vector-by-fold@ba4fbe52
+/// Fold builds each declared vector sidecar from staged rows with non-null identifiers and non-zero vectors, of the
+/// declared model where `embedding_model` exists, and records it in the snapshot manifest.
+// spec: store.index.vector-by-fold@8cad3b7e
 // spec: read.embed.model-identifier@9c31cf09
 #[test]
 fn the_fold_builds_each_declared_sidecar_over_identified_nonzero_vectors_of_its_model() {
@@ -367,9 +366,9 @@ fn passages(f: &Fixture) -> contextful_core::store::declare::TableDecl {
     d
 }
 
-/// If a current sidecar's builder or builder version differs from this build's, a pass rebuilds the sidecar in full.
-/// The pass preserves rows in a separate snapshot. Readers keep the prior snapshot until pointer publication.
-// spec: store.index.rebuild@282d424d
+/// A pass rebuilds in full, into a new snapshot, a current sidecar whose builder or builder version differs from
+/// this build's; readers keep the prior snapshot until pointer publication.
+// spec: store.index.rebuild@dc63a277
 #[test]
 fn a_pass_rebuilds_a_sidecar_another_builder_version_wrote() {
     use contextful_core::store::fold::FoldOutcome;
@@ -397,9 +396,9 @@ fn a_pass_rebuilds_a_sidecar_another_builder_version_wrote() {
     }
 }
 
-/// The vector graph's byte layout has no format compatibility guarantee. A reader opens a sidecar only when builder
-/// and builder version match its own; mismatches follow {{read.retrieve.sidecar-falls-back}}.
-// spec: store.index.graph-format@9a11f770
+/// The vector graph's byte layout carries no compatibility guarantee: a reader opens a sidecar only at its own
+/// builder and builder version, else {{read.retrieve.sidecar-falls-back}}.
+// spec: store.index.graph-format@e47b277f
 #[test]
 fn a_reader_opens_only_its_own_builder_version() {
     use contextful_context::vector::Fallback;
@@ -589,9 +588,9 @@ fn one_staged_row_set_builds_one_byte_identical_graph() {
     }
 }
 
-/// If two staged snapshot rows share an `id_column` value, fold raises `StoreIndexIdNotUnique`, naming the table,
-/// column and value. The fold publishes nothing.
-// spec: store.index.id-unique@b2e1ec38
+/// Two staged snapshot rows sharing an `id_column` value make fold raise `StoreIndexIdNotUnique`, naming the
+/// table, column and value, and publish nothing.
+// spec: store.index.id-unique@1b4e00c9
 #[test]
 fn a_repeated_identifier_refuses_the_pass() {
     let f = Fixture::new();

@@ -109,7 +109,7 @@ fn a_command_without_project_or_declaration_refuses() {
 }
 
 /// A derive pipeline fired from a subdirectory resolves the discovered declaration's `media_root` against the project directory.
-// spec: store.init.declaration-base@d87f1a9f
+// spec: store.init.declaration-base@64e3d57e
 #[test]
 fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
     let dir = tempfile::tempdir().unwrap();
@@ -151,7 +151,7 @@ fn a_derive_pipeline_resolves_declared_paths_against_the_project_directory() {
 
 /// An init declaring its authoring posture yields a project whose first write lands with no manifest edit; an init
 /// declaring none leaves every table write refused until one is declared.
-// spec: store.init.posture@dfd369cb
+// spec: store.init.posture@cc98d8e3
 #[test]
 fn an_init_with_a_posture_lands_its_first_write_unedited() {
     let land = ["context", "land", "filings", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "s", "--now", "2030-01-01T00:00:00Z"];

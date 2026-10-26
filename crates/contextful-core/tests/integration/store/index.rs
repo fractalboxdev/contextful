@@ -100,10 +100,9 @@ fn the_identifier_defaults_to_a_single_key_and_serves_every_table_shape() {
     assert_eq!(lined.id_column().unwrap(), Some("rate_id"));
 }
 
-/// Manifest validation raises `StoreIndexIdColumnUnresolved` for missing `id_column` without a single-column primary
-/// key or with `valid_time`. Naming a valid-time table's single key, or different `id_column` values across sidecars,
-/// raises the same error.
-// spec: store.index.id-column-unresolved@9d6edc49
+/// Manifest validation raises `StoreIndexIdColumnUnresolved` when `id_column` is missing without a single-column
+/// primary key or with `valid_time`, names a valid-time table's single key, or differs across sidecars.
+// spec: store.index.id-column-unresolved@07b59b0a
 #[test]
 fn a_sidecar_without_one_shared_identifier_is_refused() {
     let s = schema(&[("doc", ColumnType::Utf8), ("page", ColumnType::Int64), ("embedding", ColumnType::FixedSizeList(FloatItem::Float32, 4))]);
@@ -135,9 +134,9 @@ fn a_sidecar_without_one_shared_identifier_is_refused() {
     named.validate_indexes(&s).unwrap();
 }
 
-/// If the reconciled schema lacks an index's column or `id_column`, fold raises `StoreIndexColumnAbsent` before
-/// staging anything for that build.
-// spec: store.index.column-absent@61790b93
+/// A reconciled schema lacking an index's column or `id_column` makes fold raise `StoreIndexColumnAbsent`
+/// before staging that build.
+// spec: store.index.column-absent@0e699ea5
 #[test]
 fn an_index_or_identifier_the_schema_lacks_is_refused() {
     let t = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));
@@ -149,10 +148,10 @@ fn an_index_or_identifier_the_schema_lacks_is_refused() {
     assert!(matches!(named.validate_indexes(&whole), Err(StoreError::StoreIndexColumnAbsent(m)) if m.contains("digest")));
 }
 
-/// Invalid types raise `StoreIndexColumnType`: `id_column` other than text or integer; vector-sidecar columns other
-/// than vectors of `dim`; fulltext columns other than text. Checks occur at manifest validation when `columns`
-/// declares types, otherwise before landing rows.
-// spec: store.index.column-type@00b4001c
+/// `StoreIndexColumnType` refuses an `id_column` other than text or integer, a vector-sidecar column other than
+/// vectors of `dim`, and a fulltext column other than text, at manifest validation when `columns` types them,
+/// otherwise before landing rows.
+// spec: store.index.column-type@3ecf1e8d
 #[test]
 fn a_vector_of_another_width_or_an_unreadable_identifier_is_refused() {
     let t = table(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{VECTOR}"));

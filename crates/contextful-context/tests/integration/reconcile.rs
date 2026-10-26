@@ -380,9 +380,9 @@ fn a_typed_batch_lands_bytes_from_base64_and_vectors_from_arrays() {
 }
 
 #[cfg(feature = "read")]
-/// When `schema.json` records a binary, vector or nested type, later undeclared JSON values land in that type. Runs
-/// after the first require no declaration.
-// spec: store.reconcile.stored-type@9fd417b2
+/// Once `schema.json` records a binary, vector or nested type, later undeclared JSON values land in that type
+/// without a declaration.
+// spec: store.reconcile.stored-type@f040057f
 #[test]
 fn a_stored_binary_or_vector_column_types_a_later_undeclared_batch() {
     let f = Fixture::new();

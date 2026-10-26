@@ -153,7 +153,7 @@ fn refuse_next_push(s3: &S3Server) {
 /// takes writes, that next start pushes the marked run before its own opens. The status
 /// names the refusal in its JSON and exits 3 while the mark stands, and exits 0 once clear.
 // spec: store.drain.before-read@94220770
-// spec: store.drain.status@25e130eb
+// spec: store.drain.status@410e1992
 #[test]
 fn a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it() {
     let s3 = S3Server::start("conformance");
@@ -199,7 +199,7 @@ fn a_refused_push_keeps_its_run_marked_until_the_next_start_pushes_it() {
 
 /// A status whose execution database answers no read fails apart from the unpushed
 /// refusal: `runs` null, `error` `SyncStatusUnread`, exit 1.
-// spec: store.drain.status-unread@04caca64
+// spec: store.drain.status-unread@f589e9a2
 #[test]
 fn a_status_reaching_no_execution_database_fails_apart_from_an_unpushed_refusal() {
     let s3 = S3Server::start("conformance");
@@ -378,8 +378,8 @@ fn stop(mut child: Child, rx: std::sync::mpsc::Receiver<String>) -> (bool, Strin
 /// A stopping serve pushes the run its node left unpushed and exits clean; one whose push
 /// waits on a held push guard gives up at its deadline, exits non-zero and leaves the run
 /// marked.
-// spec: store.drain.deadline@03db50c8
-// spec: store.drain.unfinished@6e526c8f
+// spec: store.drain.deadline@a745585a
+// spec: store.drain.unfinished@fa106369
 #[test]
 fn a_stopping_serve_pushes_its_unpushed_run_within_its_deadline() {
     let s3 = S3Server::start("conformance");

@@ -127,7 +127,7 @@ fn old_rows_are_hidden_before_fold_and_inside_an_older_snapshot() {
     );
 }
 
-// spec: store.bound-time.row-age-cutoff@ca768cee
+// spec: store.bound-time.row-age-cutoff@56d17694
 #[cfg(feature = "read")]
 #[test]
 fn a_superseded_snapshot_does_not_restore_a_now_expired_row() {
@@ -281,7 +281,7 @@ fn footer_pruning_uses_the_top_level_timestamp_column() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT sender_day FROM t"), [[s("day")]]);
 }
 
-// spec: store.fold.row-retention-report@6e2f20bd
+// spec: store.fold.row-retention-report@d0d33fb5
 #[test]
 fn collection_names_each_removed_directory() {
     let f = Fixture::new();

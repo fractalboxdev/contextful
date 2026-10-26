@@ -10,8 +10,8 @@ fn schema(names: &[&str]) -> Schema {
     Schema { columns: names.iter().map(|n| Column::new(*n, ColumnType::Utf8, true)).collect() , ..Default::default() }
 }
 
-/// Column names beginning `_` belong to the engine; the injected set and the reserved optional set are its whole content.
-// spec: store.reserve.underscore-namespace@4b90be3f
+/// Column names beginning `_` belong to the engine: the injected set and the reserved optional set.
+// spec: store.reserve.underscore-namespace@bc31a59c
 #[test]
 fn the_underscore_namespace_is_the_injected_and_optional_sets() {
     assert!(INJECTED.iter().chain(OPTIONAL.iter()).all(|c| c.starts_with('_')));
@@ -73,7 +73,7 @@ fn modality_takes_five_values() {
 }
 
 /// `_prompt_hash` is `sha256:<hex>` over the prompt template, not the rendered prompt.
-// spec: store.reserve.prompt-hash@c5ce4660
+// spec: store.reserve.optional@f48d8387
 #[test]
 fn prompt_hash_is_a_prefixed_sha256() {
     let hex = "a".repeat(64);
@@ -82,10 +82,10 @@ fn prompt_hash_is_a_prefixed_sha256() {
     assert!(optional_value_problem("_prompt_hash", "sha256:abc").is_some());
 }
 
-/// The engine reserves three table namespaces. `_runs` holds the durable run record; `_items` holds item records under
-/// {{run.items.outcome-record}}. `_visibility` holds each source's mirrored access tables under
+/// The engine reserves three table namespaces: `_runs`, the durable run record; `_items`, item records under
+/// {{run.items.outcome-record}}; `_visibility`, each source's mirrored access tables under
 /// {{disclosure.mirror.grants-table}}.
-// spec: store.reserve.table-namespaces@251a4e2c
+// spec: store.reserve.table-namespaces@e367d134
 #[test]
 fn the_visibility_namespace_holds_each_sources_access_tables() {
     for bad in ["_visibility", "_visibility/wiki/grants", "_visibility/drive/resources", "_runs", "_items", "_items/archive"] {
@@ -99,9 +99,9 @@ fn the_visibility_namespace_holds_each_sources_access_tables() {
     }
 }
 
-/// When assembling a manifest, the engine raises `StoreReservedTableName` for a pipeline table inside a reserved
-/// namespace, naming the reservation.
-// spec: store.reserve.table-name@a9046ad8
+/// Manifest assembly raises `StoreReservedTableName` for a pipeline table inside a reserved namespace, naming
+/// the reservation.
+// spec: store.reserve.table-name@cff25fc5
 #[test]
 fn a_table_inside_a_reserved_namespace_is_refused() {
     for bad in ["_runs", "_runs/archive", "_visibility/wiki/grants"] {

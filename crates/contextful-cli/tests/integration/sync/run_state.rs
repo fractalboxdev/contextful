@@ -34,7 +34,7 @@ fn fire(dir: &Path, run: &str, now: &str) -> String {
 /// `sync push` and `sync manifest --emit` first write the node's run state to `nodes/<node-id>/run-state.json`:
 /// each pipeline's newest run and each cursor row with its commit marker. A run opening where a pulled run state records a commit marker for its pipeline and table newer than
 /// every local one resumes from that marker's cursor.
-// spec: store.push.run-state@509fec2f
+// spec: store.push.run-state@4d667f36
 // spec: store.pull.run-state-cursor@ef07439d
 #[test]
 fn a_cold_node_resumes_the_cursor_a_push_carried() {
@@ -117,7 +117,7 @@ fn a_cold_node_keeps_the_cadence_another_node_fired() {
 }
 
 /// `sync push` records the default control pointer's applied version beside run history.
-// spec: store.push.control-version@d2870dfb
+// spec: store.push.control-version@d9a944ac
 #[test]
 fn a_push_records_the_default_applied_control_version() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"s1\",\"at\":5}]".into()));

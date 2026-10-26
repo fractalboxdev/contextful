@@ -87,7 +87,7 @@ fn two_nodes_landing_different_columns_both_keep_them() {
 }
 
 /// A pull deletes the local copy of each key a tombstone names and no entry lists.
-// spec: store.pull.tombstone-applied@9891718f
+// spec: store.pull.tombstone-applied@71ca5d94
 #[test]
 fn a_pull_deletes_the_copy_a_tombstone_names() {
     let dir = tempfile::tempdir().unwrap();

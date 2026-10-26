@@ -1243,10 +1243,9 @@ fn apply_fires_nothing_and_a_second_apply_is_a_no_op() {
     assert_eq!(history(dir.path()).len(), 1);
 }
 
-/// A `[node]` block in a manifest, including control-plane snapshots, raises `StoreNodeIdShared` before
-/// {{run.model.top-level-block}}. The error names the file and identifies the store root's `config.toml` as the node
-/// id's home.
-// spec: store.lay-out.node-id-shared@a7be9547
+/// A `[node]` block in a manifest, control-plane snapshots included, raises `StoreNodeIdShared` before
+/// {{run.model.top-level-block}}, naming the file and the store root's `config.toml` as the node id's home.
+// spec: store.lay-out.node-id-shared@e1871881
 #[test]
 fn a_node_id_in_a_control_plane_document_is_refused() {
     let orders = scheduled("orders", "https://api.vendor.example/v1", "every 1h");

@@ -13,11 +13,10 @@ fn available(s: &str) -> Bounds {
     Bounds { available_as_of: Some(Bound::parse(s).unwrap()), ..Bounds::default() }
 }
 
-/// `[pipeline.tables.available_time]` declares {{type:contextful_core::store::declare::AvailableTime}}, absent
-/// from canonical serialization when unset. `column` holds the source availability instant as `timestamptz`,
-/// which landing keeps without substituting an engine timestamp and availability bounds compare alone; `zone`
-/// defaults to UTC.
-// spec: store.available-time.declaration@e9eca557
+/// `[pipeline.tables.available_time]` declares {{type:contextful_core::store::declare::AvailableTime}},
+/// omitted from canonical serialization when unset. `column` holds the source availability instant as
+/// `timestamptz`, which landing keeps and availability bounds compare alone; `zone` defaults to UTC.
+// spec: store.available-time.declaration@ba52d35e
 #[test]
 fn an_available_time_block_declares_its_column_and_zone() {
     let t = TableDecl::parse_pipeline(EARNINGS).unwrap().remove(0);
@@ -32,10 +31,10 @@ fn an_available_time_block_declares_its_column_and_zone() {
     assert!(!rel.contains("\"_ingested_at\" <="), "{rel}");
 }
 
-/// `[pipeline.tables.available_time]` declares {{type:contextful_core::store::declare::AvailableTime}}, absent from canonical
-/// serialization when unset. `column` holds the source availability instant as `timestamptz`, which landing keeps without substituting
-/// an engine timestamp and availability bounds compare alone; `zone` defaults to UTC.
-// spec: store.available-time.declaration@e9eca557
+/// `[pipeline.tables.available_time]` declares {{type:contextful_core::store::declare::AvailableTime}}, omitted from canonical
+/// serialization when unset. `column` holds the source availability instant as `timestamptz`, which landing keeps and availability
+/// bounds compare alone; `zone` defaults to UTC.
+// spec: store.available-time.declaration@ba52d35e
 #[test]
 fn an_unset_available_time_is_absent_from_the_canonical_serialization() {
     let plain = TableDecl::named("prices");
@@ -60,8 +59,8 @@ fn available_as_of_wraps_the_inner_source_beneath_the_key_and_beside_valid_time(
     assert!(rel.contains("\"period_end\" <= TIMESTAMPTZ '2030-03-31T00:00:00.000000000Z'"), "{rel}");
 }
 
-/// A read carrying `available_as_of` adds `available_as_of` to the object {{store.bound-time.echo}} echoes, in the same instant form.
-// spec: store.available-time.bound-echo@7cc95b22
+/// A read carrying `available_as_of` adds it, in the same instant form, to the object {{store.bound-time.echo}} returns.
+// spec: store.available-time.bound-echo@282d5099
 #[test]
 fn an_availability_bound_joins_the_echo() {
     assert_eq!(available("2030-04-15T00:00:00+02:00").echo().unwrap(), serde_json::json!({ "available_as_of": "2030-04-14T22:00:00.000000000Z", "inclusive": true }));
@@ -74,9 +73,9 @@ fn an_availability_bound_joins_the_echo() {
     assert_eq!(both.transaction().echo().unwrap(), serde_json::json!({ "as_of": "2030-06-02T00:00:00.000000000Z", "inclusive": false }));
 }
 
-/// An `available_as_of` read naming a table that declares no `available_time` raises `StoreAvailableTimeUndeclared`, naming the table;
-/// landing a row whose resolved availability instant is null raises `StoreAvailableTimeNull`, naming the table and the run.
-// spec: store.available-time.undeclared@02015bb7
+/// An `available_as_of` read of a table declaring no `available_time` raises `StoreAvailableTimeUndeclared`, naming the table; a
+/// landing row resolving to a null instant raises `StoreAvailableTimeNull`, naming the table and run.
+// spec: store.available-time.undeclared@7d8514e3
 #[test]
 fn available_as_of_on_a_table_declaring_no_availability_time_is_refused() {
     let t = TableDecl::named("prices");

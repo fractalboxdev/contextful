@@ -245,9 +245,9 @@ fn a_key_that_keeps_moving_refuses_and_writes_no_pointer() {
     assert!(!c.root().join("tables/filings/_pointer.json").exists());
 }
 
-/// A pull refused under {{store.pull.unconverged}} preserves verified objects. The next `sync pull` downloads only
-/// keys whose digests still differ. Pull does not exceed its retry attempts.
-// spec: store.pull.unconverged-resume@5551311b
+/// A pull refused under {{store.pull.unconverged}} keeps verified objects, so the next `sync pull` downloads only
+/// keys whose digests still differ.
+// spec: store.pull.unconverged-resume@b31f730c
 #[test]
 fn an_exhausted_pull_keeps_what_it_verified_and_the_next_fetches_only_the_rest() {
     let (_dir, b, a) = pushed();
@@ -289,9 +289,9 @@ fn an_exhausted_pull_keeps_what_it_verified_and_the_next_fetches_only_the_rest()
     assert_eq!(report.pointers, ["research/tables/filings/_pointer.json"]);
 }
 
-/// A replica's pull writes `replica.json` beside `derived.sqlite`. For each table, the file names every locally held
-/// snapshot whose parts and sidecar paths exist on disk. Push excludes this file.
-// spec: store.replicate.descriptor@2c05e409
+/// A replica's pull writes `replica.json` beside `derived.sqlite`, naming per table every held snapshot whose parts
+/// and sidecar paths exist on disk; push excludes the file.
+// spec: store.replicate.descriptor@b98cab28
 #[test]
 fn a_replica_pull_writes_its_descriptor_beside_the_catalog() {
     use contextful_context::replica::{read, DESCRIPTOR_FILE};
@@ -359,9 +359,9 @@ fn a_pointer_is_written_only_once_its_snapshot_is_home() {
     assert_eq!(files(&c), [format!("tables/filings/data/snapshots/{snapshot_id}/part-00000.parquet")]);
 }
 
-/// A pull writes a run's `_manifest.json` only after every other listed object it downloads exists locally. A read
-/// during the pull therefore resolves no run whose parts are absent.
-// spec: store.pull.run-manifest-last@fac9ec40
+/// A pull writes a run's `_manifest.json` only after every other listed object it downloads exists locally, so a
+/// concurrent read resolves no run missing parts.
+// spec: store.pull.run-manifest-last@71ee2e7c
 #[test]
 fn a_run_manifest_is_written_only_once_its_parts_are_home() {
     let (_dir, b, _a) = pushed();
@@ -736,7 +736,7 @@ fn a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot() {
 
 /// A store holding no run state of its own node pulls that node's keys it lacks, so a replacement
 /// host reusing the node id tombstones none of them; a store that pushed keeps its own deletions.
-// spec: store.pull.cold-own-keys@99a09a32
+// spec: store.pull.cold-own-keys@025660b7
 #[test]
 fn a_cold_store_pulls_its_own_node_keys_and_its_push_tombstones_none() {
     let dir = tempfile::tempdir().unwrap();
@@ -781,8 +781,8 @@ fn a_tombstone_for_a_key_never_held_raises_nothing_on_pull() {
 
 /// A run state overwritten in place by a push that never committed is discarded with a warning, the pull
 /// lands every other key, and the node's next push lists its fresh run state.
-// spec: store.pull.run-state-torn@11be58f4
-// spec: store.push.run-state-upload@fd166b5f
+// spec: store.pull.run-state-torn@191e1ccc
+// spec: store.push.run-state-upload@979eaf03
 #[test]
 fn a_run_state_torn_by_an_uncommitted_push_is_discarded_and_the_next_push_heals_it() {
     let dir = tempfile::tempdir().unwrap();
@@ -1035,7 +1035,7 @@ const COLD_PULL_SEED: u64 = 0x5eed_0643;
 
 /// A cold pull over a bucket holding each request for 2 ms keeps 16 fetches in flight and
 /// lands every object; it reads each object once.
-// spec: store.pull.transfer-width@2e1da2f4
+// spec: store.pull.transfer-width@e06154f8
 #[test]
 fn a_cold_pull_keeps_sixteen_fetches_in_flight_and_reads_each_object_once() {
     let dir = tempfile::tempdir().unwrap();
@@ -1083,7 +1083,7 @@ fn a_refused_concurrent_pull_keeps_each_object_it_verified() {
 
 /// A pull reads no local file whose size, modification time, change time and inode match its
 /// digest record, and a rewrite restoring the size and modification time still re-downloads.
-// spec: store.pull.digest-record@5274f961
+// spec: store.pull.digest-record@e8836742
 #[test]
 fn a_pull_takes_a_matching_files_digest_from_its_record() {
     let dir = tempfile::tempdir().unwrap();

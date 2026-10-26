@@ -19,12 +19,12 @@ Transaction-time and valid-time columns, their read parameters and the snapshots
 - `valid-time-declaration` — `[pipeline.tables.valid_time]` declares `from` and an optional `to`; a table declaring `from` alone treats each row as valid from that instant onward.
 - `valid-time-type` — A declared valid-time column whose type is not a timestamp raises `StoreValidTimeNotTimestamp` at declaration.
   *P1*
-- `instant-comparison` — Every bound compares instants as timestamps rather than strings. The code constructing a date-only literal resolves the literal to the start of the next day, exclusive.
-- `as-of` — Inside each table's FROM-source, `as_of` selects the newest reachable snapshot created at or before the bound. The source adds committed runs at or before the bound that the snapshot omits.
+- `instant-comparison` — Every bound compares instants as timestamps, not strings; a date-only literal resolves to the start of the next day, exclusive.
+- `as-of` — Inside each table's FROM-source, `as_of` selects the newest reachable snapshot created at or before the bound plus the committed runs at or before it that the snapshot omits.
   *because filtering current files by ingest stamp returns different rows before and after a fold*
-- `row-age-cutoff` — A statement reading a table with {{store.declare.retain-rows}} excludes rows older than its wall-clock cutoff, including reads of retained older snapshots with `as_of`. The result cache reuses no such statement.
+- `row-age-cutoff` — A read of a table with {{store.declare.retain-rows}} excludes rows older than its wall-clock cutoff, `as_of` reads of retained snapshots included, and the result cache reuses no such statement.
   *because a historical snapshot does not restore a row after its declared age passes*
-- `as-of-unretained` — If retention removed table history and `as_of` precedes the oldest retained snapshot, the read raises `StoreAsOfUnretained`, naming the oldest answerable instant.
+- `as-of-unretained` — An `as_of` before the oldest snapshot retention kept raises `StoreAsOfUnretained`, naming the oldest answerable instant.
   *P4*
 - `valid-as-of` — `valid_as_of` filters the same inner source with `from <= valid_as_of AND (to IS NULL OR to > valid_as_of)` over the declared pair.
 - `valid-time-undeclared` — A `valid_as_of` read against a table declaring no pair raises `StoreValidTimeUndeclared`, naming the table.
@@ -34,24 +34,24 @@ Transaction-time and valid-time columns, their read parameters and the snapshots
 - `beneath-enforcement` — Both bounds apply before the row predicate, column mask and tenant filter. The bounds only narrow the rows access controls admit.
   *P5*
 - `covering-versions` — For an unkeyed table, a valid-time bound returns every version whose interval contains the requested instant.
-- `interval-rows` — A keyed table declaring `valid_time` stores one row per key and valid-time interval. The table deduplicates on its primary key and `from`, so a fold keeps every interval.
+- `interval-rows` — A keyed table declaring `valid_time` stores one row per key and valid-time interval, deduplicating on its primary key and `from`, so a fold keeps every interval.
   *A-store#validity-interval-row*
-- `echo` — A bounded read returns `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`. Each instant uses RFC 3339 UTC with nine fractional digits and a `Z` suffix. An unbounded read omits `contextful.bounds`.
+- `echo` — A bounded read returns `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`, each instant RFC 3339 UTC with nine fractional digits and a `Z`; an unbounded read omits it.
 
 ## available-time
 
 The source availability timestamp, its value at landing and row selection under `available_as_of`.
 
-- `declaration` — `[pipeline.tables.available_time]` declares {{type:contextful_core::store::declare::AvailableTime}}, absent from canonical serialization when unset. `column` holds the source availability instant as `timestamptz`, which landing keeps without substituting an engine timestamp and availability bounds compare alone; `zone` defaults to UTC.
+- `declaration` — `[pipeline.tables.available_time]` declares {{type:contextful_core::store::declare::AvailableTime}}, omitted from canonical serialization when unset. `column` holds the source availability instant as `timestamptz`, which landing keeps and availability bounds compare alone; `zone` defaults to UTC.
   *A-store#availability-declared-column*
 - `lag-fill` — At landing, `available_time.lag` fills a null availability column with valid-time `to`, else `from`, plus the duration `lag.classes` maps the row's `lag.class_column` value to, and injects `_available_imputed` true; a class without an entry leaves the instant null.
   *because a source can publish different record classes after different declared delays*
 - `live-since` — A date-typed availability value resolves at landing to the start of the following day in the declared `zone`. The engine injects `_available_reconstructed` true on each row available before `available_time.live_since`, the instant the source began publishing live.
   *because a date gives no publication time within its day, and history before the live date was rebuilt afterwards*
-- `available-as-of` — `available_as_of` filters the inner source with `<column> <= available_as_of` beneath access controls, under {{store.bound-time.beneath-enforcement}}, and combines with {{store.bound-time.as-of}} and {{store.bound-time.valid-as-of}} when the read supplies those bounds.
+- `available-as-of` — `available_as_of` filters the inner source with `<column> <= available_as_of` under {{store.bound-time.beneath-enforcement}}, combining with {{store.bound-time.as-of}} and {{store.bound-time.valid-as-of}} when the read supplies them.
   *A-store#availability-declared-column, P5*
-- `bound-echo` — A read carrying `available_as_of` adds `available_as_of` to the object {{store.bound-time.echo}} echoes, in the same instant form.
-- `undeclared` — An `available_as_of` read naming a table that declares no `available_time` raises `StoreAvailableTimeUndeclared`, naming the table; landing a row whose resolved availability instant is null raises `StoreAvailableTimeNull`, naming the table and the run.
+- `bound-echo` — A read carrying `available_as_of` adds it, in the same instant form, to the object {{store.bound-time.echo}} returns.
+- `undeclared` — An `available_as_of` read of a table declaring no `available_time` raises `StoreAvailableTimeUndeclared`, naming the table; a landing row resolving to a null instant raises `StoreAvailableTimeNull`, naming the table and run.
   *because a missing availability instant either hides a backfill or leaks it to every bound*
 - `vintage-rows` — A keyed table declaring `available_time` is a vintage table, keeping every vintage per primary key, valid-time `from` and availability instant; a read returns the latest at or before any `available_as_of`, or under `vintage = "first"` the earliest.
   *A-store#restatement-vintage-row, A-store#adjustment-factors-apply, A-read#join-matches-availability*

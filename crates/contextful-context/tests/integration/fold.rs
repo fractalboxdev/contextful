@@ -373,9 +373,9 @@ fn an_idle_table_still_collects_what_retention_allows() {
 }
 
 #[cfg(feature = "read")]
-/// A collection failure reports beside `folded` if the pass published; the snapshot stays published. Otherwise the
-/// pass reports `failed`. Both cases exit non-zero.
-// spec: store.fold.collection-failed@0dc2145e
+/// A collection failure reports beside `folded` when the pass published, the snapshot staying published, and as
+/// `failed` otherwise; both exit non-zero.
+// spec: store.fold.collection-failed@c6394226
 #[test]
 fn a_failed_collection_does_not_unpublish_the_snapshot() {
     let f = Fixture::new();

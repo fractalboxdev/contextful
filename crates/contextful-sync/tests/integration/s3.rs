@@ -77,9 +77,9 @@ fn backend_answers_map_to_failed_conditions_and_refusals() {
     }
 }
 
-/// A `404` naming a code other than `NoSuchKey`, including `NoSuchBucket`, indicates neither an absent object nor a
-/// failed condition. The get, put, delete or list fails as transport and names the code.
-// spec: store.endpoint.missing-bucket@195b4b39
+/// A `404` naming a code other than `NoSuchKey`, `NoSuchBucket` included, is neither an absent object nor a failed
+/// condition: the request fails as transport, naming the code.
+// spec: store.endpoint.missing-bucket@b96fbecb
 #[test]
 fn a_missing_bucket_answers_no_absent_object() {
     let server = S3Server::start(BUCKET);
@@ -356,7 +356,7 @@ mod transport {
         assert_eq!(endpoint.requests().len(), 3);
     }
 
-    // spec: store.endpoint.unavailable@60d38ce3
+    // spec: store.endpoint.unavailable@7f343978
     #[test]
     fn an_unanswered_or_server_failed_request_fails_as_unavailable() {
         let endpoint = Endpoint::start(vec![Answer::Drop; 3]);

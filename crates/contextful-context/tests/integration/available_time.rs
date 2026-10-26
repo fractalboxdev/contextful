@@ -25,10 +25,10 @@ fn first(bounds: Bounds) -> Bounds {
 }
 
 #[cfg(feature = "read")]
-/// `available_as_of` filters the inner source with `<column> <= available_as_of` beneath access controls, under
-/// {{store.bound-time.beneath-enforcement}}, and combines with {{store.bound-time.as-of}} and
-/// {{store.bound-time.valid-as-of}} when the read supplies those bounds.
-// spec: store.available-time.available-as-of@01cafb83
+/// `available_as_of` filters the inner source with `<column> <= available_as_of` under
+/// {{store.bound-time.beneath-enforcement}}, combining with {{store.bound-time.as-of}} and
+/// {{store.bound-time.valid-as-of}} when the read supplies them.
+// spec: store.available-time.available-as-of@c0b32e59
 #[test]
 fn a_row_answers_from_its_availability_instant_onward() {
     use crate::support::s;
@@ -64,10 +64,9 @@ fn a_scan_bounded_by_availability_refuses_an_undeclaring_table() {
     }
 }
 
-/// An `available_as_of` read naming a table that declares no `available_time` raises `StoreAvailableTimeUndeclared`, naming
-/// the table; landing a row whose resolved availability instant is null raises `StoreAvailableTimeNull`, naming the table
-/// and the run.
-// spec: store.available-time.undeclared@02015bb7
+/// An `available_as_of` read of a table declaring no `available_time` raises `StoreAvailableTimeUndeclared`, naming the
+/// table; a landing row resolving to a null instant raises `StoreAvailableTimeNull`, naming the table and run.
+// spec: store.available-time.undeclared@7d8514e3
 #[test]
 fn landing_a_row_without_an_availability_instant_is_refused() {
     let f = Fixture::new();

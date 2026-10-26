@@ -31,9 +31,9 @@ fn a_landing_and_a_fold_write_the_table_directory() {
     assert!(f.store.root().ends_with(".contextful/context/research"));
 }
 
-/// A run commits by conditionally creating `_manifest.json` in its node directory. The file holds a
+/// A run commits by conditionally creating its node directory's `_manifest.json`, a
 /// `lay_out::RunManifest` whose `node_id` equals the directory's node segment.
-// spec: store.lay-out.run-manifest@bcfd7131
+// spec: store.lay-out.run-manifest@8cb33454
 #[test]
 fn a_run_commits_by_creating_its_manifest_once() {
     let f = Fixture::new();
@@ -75,7 +75,7 @@ fn tree(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
 }
 
 /// A landing of an unlogged run already committed on its node, carrying equal rows and position, writes nothing and answers the committed manifest as a replay.
-// spec: store.lay-out.run-replay@f662c92b
+// spec: store.lay-out.run-replay@9a2ae6cf
 #[cfg(feature = "read")]
 #[test]
 fn a_relanded_run_with_equal_rows_answers_the_committed_manifest() {
@@ -193,9 +193,9 @@ fn only_the_pointer_chain_makes_a_snapshot_readable() {
     assert_eq!(files, ["tables/filings/data/runs/run-1/ingest-a/part-00000.parquet"]);
 }
 
-/// If a run manifest or reachable snapshot manifest fails to parse, the store raises `StoreManifestUnreadable`, naming
-/// the table and file. The table refuses reads until the manifest parses.
-// spec: store.lay-out.manifest-unreadable@d66f1454
+/// A run manifest or reachable snapshot manifest failing to parse raises `StoreManifestUnreadable`, naming the table
+/// and file; the table refuses reads until it parses.
+// spec: store.lay-out.manifest-unreadable@2a238006
 #[test]
 fn an_unparseable_manifest_refuses_the_table_until_it_parses() {
     let f = Fixture::new();
@@ -310,9 +310,9 @@ fn a_newer_major_refuses_the_table_naming_the_file_and_both_versions() {
     }
 }
 
-/// A major-`2` reader treats a `1.x` snapshot manifest as holding each part in its own directory, counting rows from
-/// footers. The next pass references those parts under `2.0`, without rewriting any manifest in place.
-// spec: store.lay-out.format-migrate@1d30ef3a
+/// A major-`2` reader reads a `1.x` snapshot manifest as one part per directory, counting rows from footers; the
+/// next pass references those parts under `2.0`, rewriting no manifest in place.
+// spec: store.lay-out.format-migrate@8a09eb9b
 #[test]
 fn a_one_point_x_snapshot_reads_whole_and_its_next_pass_carries_it() {
     let f = Fixture::new();
@@ -397,9 +397,8 @@ fn a_fold_writes_a_new_snapshot_and_edits_nothing_published() {
     assert_eq!(fs::read(&run_part).unwrap(), run_bytes);
 }
 
-/// A table name absent from every `schema.json` in the tree raises `StoreUnknownTable` rather than returning an empty
-/// result.
-// spec: store.lay-out.unknown-table@8bd6cf2b
+/// A table name absent from every `schema.json` raises `StoreUnknownTable` rather than returning an empty result.
+// spec: store.lay-out.unknown-table@3272cbb8
 #[test]
 fn a_table_no_schema_declares_is_unknown() {
     let f = Fixture::new();
@@ -608,9 +607,9 @@ fn a_table_name_colliding_with_the_table_layout_refuses() {
     assert!(f.store.table_dir("a/database").is_ok());
 }
 
-/// A source body landed by reference occupies `blobs/<sha256>` under the store root, named by its bytes' SHA-256. The
-/// store writes the complete file through a rename before the referencing run commits.
-// spec: store.lay-out.landed-blob@0ac30e74
+/// A body landed by reference occupies `blobs/<sha256>` under the store root, named by its bytes' SHA-256 and written
+/// whole through a rename before the referencing run commits.
+// spec: store.lay-out.landed-blob@4dd13f31
 #[test]
 fn a_landed_body_is_one_file_under_blobs_named_by_its_digest() {
     use sha2::Digest;
@@ -632,9 +631,9 @@ fn a_landed_body_is_one_file_under_blobs_named_by_its_digest() {
     assert!(!f.store.blob_path(&wrong).exists());
 }
 
-/// A run id holds at most 128 chars: letters, digits, dot, underscore and hyphen. Landing and request-ledger append
-/// reject other run ids before writing any file.
-// spec: store.lay-out.run-id-shape@ca1019a4
+/// A run id holds at most 128 chars of letters, digits, dot, underscore and hyphen; landing and request-ledger
+/// append reject any other before writing a file.
+// spec: store.lay-out.run-id-shape@64940bac
 #[test]
 fn a_run_id_past_128_chars_lands_nothing() {
     use contextful_context::ledger::append;

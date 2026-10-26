@@ -70,8 +70,8 @@ fn a_model_output_row_carries_the_engine_taint_and_no_other_row_does() {
 }
 
 #[cfg(feature = "read")]
-/// Where an authenticated subject carrying an agent member authorized the write, the engine injects `_authored_agent`, that agent, beside `_authored_by`, replacing any producer value.
-// spec: store.reserve.authored-agent@b1ffb4f9
+/// Where an authenticated subject with an agent member authorized the write, the engine injects that agent as `_authored_agent` beside `_authored_by`, replacing any producer value.
+// spec: store.reserve.authored-agent@ce5f2bea
 #[test]
 fn an_authored_write_carries_its_agent_beside_its_principal() {
     let f = Fixture::new();
@@ -113,7 +113,7 @@ fn a_reserved_producer_column_refuses_before_any_parquet() {
 /// A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
 /// `_lang` carries a BCP-47 tag; `_provenance` carries the evidence rows the row derives from, addressed by the
 /// identity the source table keys on.
-// spec: store.reserve.lang-and-provenance@011eedef
+// spec: store.reserve.optional@f48d8387
 #[test]
 fn a_producer_sets_the_optional_columns_and_modality_is_checked() {
     let f = Fixture::new();
@@ -292,9 +292,9 @@ fn a_landing_writes_its_parts_outside_the_commit_lock_and_publishes_in_sequence_
 }
 
 #[cfg(feature = "read")]
-/// A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot. A
-/// pulled store or store without a counter therefore reuses no value.
-// spec: store.reserve.commit-seq-seed@d0cea012
+/// A commit assigns one above the greatest `commit_seq` in the node's counter, run manifests and current snapshot,
+/// so a pulled or counterless store reuses no value.
+// spec: store.reserve.commit-seq-seed@9c1908c0
 #[test]
 fn a_store_holding_no_counter_continues_above_the_values_its_manifests_record() {
     let f = Fixture::new();

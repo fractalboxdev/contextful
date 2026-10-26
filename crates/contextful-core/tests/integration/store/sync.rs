@@ -348,9 +348,9 @@ fn credential_keys_bind_secret_or_environment_references() {
     assert_eq!(temporary.credential_refs().unwrap().session_token, Some(CredentialRef::Secret(SecretName::parse("sync-session").unwrap())));
 }
 
-/// S3 or R2 raises `SyncCredentialUnbound` when `[sync]` omits `access_key_id` or `secret_access_key`, supplies a non-
-/// reference credential, or names an unset variable. The error names the key.
-// spec: store.endpoint.credential-unbound@3f4efb9d
+/// An S3 or R2 `[sync]` omitting `access_key_id` or `secret_access_key`, supplying a non-reference credential, or
+/// naming an unset variable raises `SyncCredentialUnbound`, naming the key.
+// spec: store.endpoint.credential-unbound@769f258e
 #[test]
 fn an_unbound_or_literal_credential_key_is_refused_naming_the_key() {
     let bound = SyncConfig { access_key_id: Some("env://A".into()), secret_access_key: Some("env://B".into()), ..endpoint("s3://eu-west-1") };

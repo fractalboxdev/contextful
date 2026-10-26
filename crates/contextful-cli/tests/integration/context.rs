@@ -240,9 +240,9 @@ fn scan_reports_the_column_count_and_files_but_no_row_count() {
     assert!(fields.keys().all(|k| !k.contains("row")), "{v}");
 }
 
-/// `derived.sqlite` is a cache. `contextful context rebuild-catalog` reconstructs the cache from pointers, reachable
-/// manifests, every committed run manifest and every `schema.json`. Sync excludes the cache, which commits nothing.
-// spec: store.lay-out.derived-catalog@710435ba
+/// `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from pointers, reachable
+/// manifests, committed run manifests and every `schema.json`, and sync excludes it.
+// spec: store.lay-out.derived-catalog@ac912292
 #[test]
 fn rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree() {
     use contextful_core::store::catalog::{DerivedCatalog, DerivedRows};
