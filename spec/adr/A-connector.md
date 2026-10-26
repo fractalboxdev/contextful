@@ -150,7 +150,7 @@ Declarations carry names, stores carry opaque bytes, connectors carry provider k
 | Reference-only declarations, workload identity default, lease at the head *(chosen)* | — | Material sits in engine memory for a request; a read-only manager cannot run the OAuth refresh loop. |
 | Inline material or environment templates | Plaintext at rest | The committed file or environment becomes the secret. |
 | A broker sidecar as the default | Operability | Every deployment runs a second failure domain. |
-| Lease provider last, first hit wins | Posture | A leftover environment variable wins unnoticed. |
+| Lease provider last, first hit wins | Precedence | A leftover environment variable wins unnoticed. |
 | Provider rotation engines inside the store | Swappability | Every backend reimplements every vendor's exchange. |
 
 Consequences: local development pastes a token only behind an explicit opt-in flag; a bootstrap backend is a second backend to operate.

@@ -167,11 +167,11 @@ Authority enters through one verification and flows as an explicit value, never 
 | --- | --- | --- |
 | One admission path, authority as an argument, per-reader mint *(chosen)* | — | Every load site and effect carries a parameter; every embedding application needs an identity provider; one mint per request sits on the read path. |
 | An opt-in perimeter secret or loopback owner path | Attribution | A subjectless, expiryless owner-equivalent path stands beside the credential. |
-| Infer posture from deployment shape | Silence | A wrong guess mis-attributes rows with no error. |
+| Infer authoring posture from deployment shape | Silence | A wrong guess mis-attributes rows with no error. |
 | Read the environment or a task-local at each effect | Attribution | Two callers through one daemon both take the process's principal. |
 | One application credential plus application-side filtering | Enforcement boundary | A filter bug is a disclosure, not a failed check. |
 
-Consequences: a wrong posture mis-authors silently, so the posture argument is the one review point.
+Consequences: a wrong authoring posture mis-authors silently, so the authoring posture argument is the one review point.
 Revisit: per-request mint latency dominates reads; a face needs a caller class no grant expresses.
 
 ## sender-constrained — Credentials are sender-constrained, with a nonce replay window

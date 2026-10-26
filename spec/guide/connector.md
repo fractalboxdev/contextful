@@ -89,9 +89,12 @@ returns to the step's schedule.
 ## Model calls
 
 Every model call resolves to one operator-configured endpoint
-({{connector.infer.model-endpoint}}). Ingested values travel inside a data fence, which
-lowers the success rate of injected instructions but bounds nothing
-({{connector.infer.fence-is-not-a-boundary}}). Model output carries the least-trusted
+({{connector.infer.model-endpoint}}). Data boundary markers enclose each ingested value
+({{connector.infer.data-fence}}). The markers lower the success rate of injected instructions but
+bound nothing
+({{connector.infer.fence-is-not-a-boundary}}).
+
+Model output carries the least-trusted
 label among its inputs ({{connector.infer.output-taint}}).
 
 ## Built-in sources and Drive

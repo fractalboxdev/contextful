@@ -176,15 +176,15 @@ Criteria: bounded model spend per batch, fixed; then recall of supported claims.
 Consequences: a failed gleaning never dead-letters a batch or holds its cursor.
 Revisit: gleaned claims superseded or contradicted at a rate above first-pass claims.
 
-## extraction-cache-keys — An extraction cache keys responses on fenced bytes, template and model
+## extraction-cache-keys — An extraction cache keys responses on marked bytes, template and model
 
 Context: re-running synthesis over unchanged rows, after a rebuild or an erasure's restaging, repeats model calls whose answer is already known.
-Decision: `read.synthesize` keeps each schema-valid response in an enforced, tenant-scoped table keyed on the fenced batch bytes' digest, the template hash, the model identifier and its cutoffs. Keying on fenced bytes keeps two credentials with different masks apart. A hit copies claims and stamps attribution fresh. The cache is a table, never a side file, under "The store holds nothing a user could not see". It holds model responses and never evidence verdicts, because "Resolve evidence once at write time and cache it" stays rejected.
+Decision: `read.synthesize` keeps each schema-valid response in an enforced, tenant-scoped table keyed on the marked batch bytes' digest, the template hash, the model identifier and its cutoffs. Keying on fenced bytes keeps two credentials with different masks apart. A hit copies claims and stamps attribution fresh. The cache is a table, never a side file, under "The store holds nothing a user could not see". It holds model responses and never evidence verdicts, because "Resolve evidence once at write time and cache it" stays rejected.
 Criteria: no response crosses a mask or tenant, fixed; then repeated model spend.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Enforced table keyed on fenced bytes, template and model *(chosen)* | — | Cached responses occupy store space, and each entry's provenance must name its batch's rows for an erasure to reach it. |
+| Enforced table keyed on marked bytes, template and model *(chosen)* | — | Cached responses occupy store space, and each entry's provenance must name its batch's rows for an erasure to reach it. |
 | Key on source row identity | Containment | Two sessions masking one row differently share a response one of them never saw. |
 | A side file outside the store | Enforcement | Its bytes escape grants, masks, replication rules and erasure. |
 | No cache | Model spend | Every re-run repays every call. |
