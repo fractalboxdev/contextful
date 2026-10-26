@@ -108,3 +108,30 @@ test("a glossary under spec/ routes to its own page and links its pointers", asy
   assert.ok(/<a href="\/docs\/specs\/contracts\/10-store\/#lease"[^>]*class="clause-ref operation-ref"><code>lease<\/code>/.test(html));
   assert.ok(!html.includes('class="clause"'));
 });
+
+test("an ADR section lists the clauses the lock records citing it", async () => {
+  const lock = {
+    ...readLock(),
+    sections: { "A-store#lease": ["store.reserve.commit-wait", "store.fold.partial-snapshot"], "A-store#unused": [] },
+  };
+  const adr = await render(fixture("decision-sections.md"), join(ADR_DIR, "A-store.md"), { lock });
+  const cited = /<h2 id="lease">[^]*?<\/h2>\s*<p class="cited-by">([\s\S]*?)<\/p>/.exec(adr)?.[1];
+  assert.ok(cited, "cited-by follows the section heading");
+  for (const id of ["store.reserve.commit-wait", "store.fold.partial-snapshot"]) {
+    assert.ok(new RegExp(`<a href="/docs/specs/contracts/[^"]+#${id.replaceAll(".", "\\.")}"[^>]*class="clause-ref"><code>${id}</code><span class="clause-preview"`).test(cited), id);
+  }
+  assert.equal(adr.match(/class="cited-by"/g).length, 1);
+});
+
+test("a type pointer renders the type's name linked to its source line from the lock", async () => {
+  const types = {
+    "contextful_demo::shape::Shape": { file: "crates/demo/src/shape.rs", line: 6, kind: "struct", members: [{ name: "name" }], clauses: ["store.fold.shape-keys"] },
+  };
+  const html = await render(fixture("type-pointer.md"), "10-store.md", { lock: { ...readLock(), types } });
+  const link = /<a\b[^>]*class="type-ref"[^>]*><code>Shape<\/code><\/a>/.exec(clauseItem(html, "store.fold.shape-keys"))?.[0];
+  assert.ok(link, html);
+  assert.ok(link.includes('href="https://github.com/fractalboxdev/contextful/blob/main/crates/demo/src/shape.rs#L6"'), link);
+  assert.ok(link.includes('title="contextful_demo::shape::Shape — struct"'), link);
+  // A pointer the lock does not resolve stays as written.
+  assert.ok(clauseItem(html, "store.fold.fill-modes").includes("{{type:contextful_demo::shape::Fill}}"));
+});

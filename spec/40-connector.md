@@ -59,8 +59,6 @@ Connector interfaces: shared types, source and destination worlds, optional inte
 - `batch-encoding` — A batch crosses the boundary as Arrow IPC bytes, and a position as opaque bytes beside a declared cursor kind.
 - `arrow-types` — The host reads Arrow `Binary` or `FixedSizeBinary` columns as bytes of that width and `FixedSizeList` of `Float32` or `Float16` as vectors. Each lands in its {{store.reconcile.binary-and-vector}} type without text conversion.
 - `nested-value` — The connector sends a nested value as `json`; normalization determines its type. The interface defines no recursive type.
-- `guaranteed-type` — A guest declares the type its parser guarantees: `int64` for a count, `float64` for money and a rate. An unreadable spelling lands as null instead of zero.
-  *because a text column pushes a cast into every downstream read*
 - `read-handle` — A source exports its cursor kind, discovery call and open call taking a table and optional position. The handle's `next` yields one batch or exhaustion; `position` reports the current position.
 - `write-handle` — A destination exports `prepare`, `write`, `commit` and `abort`. Source and destination are separate worlds sharing the types interface.
 - `optional-world` — Operator configuration and failure attribution each use an additional world interface. The host probes instances by interface name. A base-world guest instantiates unchanged; neither interface changes the world version.
@@ -74,7 +72,6 @@ Connector interfaces: shared types, source and destination worlds, optional inte
 - `native-extra` — A native source may provide a content fingerprint from stat or HEAD without downloading, plus its connector identity, audit entries and a declared reason for unmetered vendor traffic.
 - `store-blindness` — A source receives credentials, limiter bindings, the run id, the request ledger, the component pin and the incremental position, and no store handle. A store-driven run receives its query set as run parameters.
   *P5*
-- `world-authorship` — The host generates bindings from its template, the input specification and connector name. Connector authors write only method bodies: authentication, paging and the cursor-kind declaration.
 
 A connector failure crosses as a variant of {{run.retry.failure-taxonomy}}. Failure
 attribution narrows a failure the guest saw for one partition, such as a per-resource
@@ -129,7 +126,6 @@ Manifest-declared host access and the probe that checks a bound credential's gra
   *A-connector*
 - `scope-unverified` — A probe response carrying no granted-scopes header, or one naming no scope or holding a byte outside visible ASCII, raises `ConnectorScopeUnverified`.
   *because cannot-verify is not verified*
-- `environment-binding` — A source key binds from the environment as `<key>_from = "env:<NAME>"`. The engine enumerates the bindable keys in one place, each with its value shape: a scalar or a comma-separated list.
 - `binding-unsupported` — A `_from` binding on a key the connector does not read raises `ConnectorBindingUnsupported`.
   *P3*
 - `binding-unbound` — A bound key the environment did not supply, or supplied off its declared shape, raises `ConnectorBindingUnbound` at preflight.
@@ -163,21 +159,9 @@ unsettled: Which manifest keys declare environment names and a shared quota, and
 
 Comparison of a candidate connector manifest with its admitted predecessor, and operator approval of additional host access.
 
-- `comparison` — Reload compares the candidate's complete declared grant with the admitted manifest for the same connector identity before publishing the candidate; validation under {{connector.declare-capability.allowlist-shape}} precedes comparison.
-  *A-connector*
-- `dimensions` — The comparison covers outbound hosts, environment names, expected credential scopes and wall-clock access; names and scopes compare byte for byte, and enabling the clock widens its Boolean grant.
-  *A-connector*
 - `host-inclusion` — Host inclusion succeeds when every candidate entry has a covering predecessor entry under {{connector.declare-capability.host-allowlist}}. Success admits no host the predecessor refuses.
   *A-connector*
 - `host-witness` — Every reported host witness passes the candidate's outbound matcher and fails the predecessor's outbound matcher.
-  *A-connector*
-- `unresolved` — A comparison establishing neither inclusion nor a replayed witness raises `ConnectorWidenUnresolved`, naming the dimension and reason; reload retains the admitted manifest.
-  *A-connector*
-- `approval-required` — Additional access without a matching operator approval raises `ConnectorWidenApprovalRequired`, carrying a witness for each widened dimension; reload retains the admitted manifest.
-  *A-connector*
-- `approval-binding` — An approval records the authenticated operator, connector identity and both complete manifest digests; publication atomically checks the admitted digest and applies only that candidate, preserving {{run.own.admission-pin}}.
-  *A-connector*
-- `narrowing` — A candidate included in the admitted grant needs no widening approval; comparison grants no exemption from other load checks.
   *A-connector*
 
 unsettled: Which operator authorization action and durable approval store serve local reload and control-plane apply? owner: connector affects: connector.widen
@@ -186,8 +170,6 @@ unsettled: Which operator authorization action and durable approval store serve 
 
 - `connector.widen.host-inclusion`: WHEN `*.eu.example.com` replaces `*.example.com`, THEN host inclusion succeeds.
 - `connector.widen.host-witness`: WHEN `*.example.com` replaces `x.example.com`, THEN a host witness differs from the already admitted exact host.
-- `connector.widen.approval-required`: WHEN a candidate adds environment name `REPORT_TOKEN` without operator approval, THEN reload retains the admitted manifest and names that environment access.
-- `connector.widen.approval-binding`: WHEN the admitted digest changes after review, THEN the approval does not match the new comparison.
 
 ## meter
 
@@ -231,11 +213,6 @@ Vendor quota declarations, limiter bindings, pre-send checks, permit reservation
 - `synthesized-throttle` — A denied reservation returns to the guest as a synthesized `429` carrying the retry-after. An unreachable limiter fails the request as a transport failure.
   *because a connector mapping vendor throttles needs no second interface*
 - `replay-reservation` — Replay issues no outbound request and makes no limiter call.
-- `built-in-grant-absent` — A compiled-in source reaching an outside vendor declares its grant in the pipeline's source configuration; the build raises `ConnectorGrantMissing` without it.
-  *A-connector*
-- `grant-unhonorable` — A declared grant on a compiled-in source that bypasses the mediated client raises `ConnectorGrantUnhonorable` at load.
-  *A-connector*
-- `metered-disclosure` — Where the project binds any quota, every compiled-in read records whether it ran metered, the run record states an unmetered read once, and validation warns per pipeline naming the connector.
 - `counting-not-pricing` — The limiter counts requests and prices none.
 
 ```mermaid
@@ -350,8 +327,6 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `local-unpinned` — With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of the bytes found.
   *A-connector*
 - `manifest-posture` — An adopted manifest carries a digest from the fixed builder platform. A template manifest carries a pin requirement and placeholder. The parser accepts a template; the loader refuses it.
-- `posture-undeclared` — A manifest carrying neither a digest nor both template markers raises `ConnectorPostureUndeclared` at merge.
-  *A-connector*
 - `build-source` — A manifest's `build.source` is its only build input; the fixed builder platform holds image, target, compiler, package manager and command, and a `build.source` leaving the manifest directory refuses under {{connector.package.manifest-keys}}.
   *A-connector*
 - `pin-verb` — `contextful connector pin <manifest>` builds the guest in a digest-pinned container on one fixed platform and writes the artifact and its digest. `--verify` rebuilds and compares without writing.
@@ -384,11 +359,6 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `session-budget` — A session carries a 1 MiB logging budget, dropping and counting messages past it, and holds at most 8 requests outbound at once.
 - `request-body` — A guest's outbound request body carries at most 8 MiB. The host stops reading past it and fails the call as a deterministic refusal before the request reaches the vendor.
   *because the body buffers in host memory, outside the guest's linear-memory cap*
-- `world-compatibility` — Compatibility is semver over the world: a guest built against one minor loads on any host advertising a compatible minor.
-- `world-drain` — On a major world bump no new run admits against the old world, in-flight runs complete or suspend on the world they pinned, and the old world then retires.
-  *A-connector*
-- `live-reresolution` — Re-resolving or reloading a connector while a journaled run holds it raises `ConnectorHotReload`; a new version applies to runs admitted after it.
-  *A-connector*
 - `built-in-registry` — The names resolving to compiled-in sources form one enumerated list. A listed name carries no manifest or artifact, and a feature-gated entry stays listed and answers with a rebuild hint.
 
 A connector striking a declared bound follows {{run.retry.bound-hit-is-transient}}.
@@ -633,10 +603,8 @@ Async vendor reports, images, web search results and pushed `receive` batches ea
 - `quotability-marker` — Whatever fills an image body records in a companion column whether the text is verbatim extraction or a model's reading.
 - `marker-body-pairing` — An image body and its quotability marker that are not null together raise `ConnectorQuotabilityMismatch`.
   *A-connector*
-- `search-config` — The search source takes a driver, a query, a freshness window and a result ceiling, landing one row per result. Its cursor kind is snapshot-id, keyed on the result URL.
 - `provider-origin` — Each search call site pins its provider's host. A non-TLS transport or another host raises `ConnectorProviderOriginRejected`, except on loopback.
   *A-connector*
-- `search-degradation` — An absent provider key and a provider `5xx` are transient failures yielding a zero-row outcome, and a replay returns the journaled result set.
 - `receive-form` — A `receive` source declares `format = "jsonl"`, a positive `max_batch_bytes`, a positive `max_queue_depth` and a positive `key_retention_secs`, none defaulted; it serves every declared table and requests nothing from outside.
   *because a ceiling the sender fills must be the operator's choice, not a guess the binary carries*
 - `receive-recorded` — The engine bounds and records a delivered batch before storing its rows. {{connector.source.poll-only-increments}} does not apply to `receive` sources.

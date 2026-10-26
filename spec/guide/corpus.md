@@ -4,84 +4,83 @@ contract: corpus
 
 # Corpus law
 
-## What it is for
+## The problem a corpus solves
 
-The specification is a contract that code is built and tested against, so every
-obligation in it has an address, one home, a reason, and a place in computed build
-state. Corpus law is the grammar that makes that true, and `contextful-spec lint`
-checks all of it; a rule the checker cannot enforce is not written down.
+Code is built and tested against this specification, so a reader needs to find each
+obligation, know why it holds and see whether code meets it. Corpus law is the grammar
+that lets `contextful-spec lint` answer those questions; a rule the checker cannot
+enforce is not written down.
 
-## How to read a contract file
+## One clause, followed through
 
-A contract, such as `store` or `authority`, owns one or more numbered files. Each file
-opens with a paragraph and usually a diagram, then holds one `## ` section per
-operation: a verb such as `fold`, `lease` or `attenuate`. The first paragraph under the
-heading is the operation's lede and says what it covers
-({{corpus.anatomy.lede}}). A list of clauses follows.
+The example adds an error case, a condition returning a named error, to the store's
+compaction operation `fold`.
 
-Each list item is one obligation, in the present tense, as a standing fact. The
-backticked word that opens the item is its subject, and the item's full address is the
-contract, the operation and the subject joined by dots, so `partial-snapshot` under
-`## fold` in the store file is `store.fold.partial-snapshot`
-({{corpus.address.clause-id}}). That address is what tests, proofs and other clauses
-use.
+A contract, such as `store`, owns one or more numbered files. Each file holds one `## `
+section per operation, and a one-paragraph lede opens the section to say what the
+operation covers ({{corpus.anatomy.lede}}). The author writes one list item under
+`## fold`: a backticked subject, `partial-snapshot`, then a statement of at most 40
+words ({{corpus.anatomy.statement-words}}).
 
-An indented italic line under an item is its Why. It is either a short `because`
-stating the deciding criterion, or the id of a record under `spec/adr/`: `P1` to `P8`
-are principles every contract obeys, and `A-store`, `A-run` and so on hold one
-contract's decisions with the options each rejected
-({{corpus.rationale.why-cell}}, {{corpus.rationale.contract-adr}}). Read the record when
-you want to know what else was on the table.
+The item's address joins contract, operation and subject into
+`store.fold.partial-snapshot` ({{corpus.address.clause-id}}). Tests, proofs and other
+clauses use that address, and splitting the file renames nothing.
 
-Nobody labels a clause's kind; the checker computes it. An error case describes when
-an operation returns a named error; the machine export calls this kind `refusal`.
-A clause owning a named number is a limit, and everything else is behavior
-({{corpus.anatomy.kind-is-computed}}). Each error and each number belongs to exactly
-one clause; anywhere else in the corpus reaches it by writing `{{`, the clause id and
-`}}` ({{corpus.registry.one-error-one-clause}}, {{corpus.reference.pointer}}).
+The statement names the error, so the author registers the error in the contract's registry
+fragment, `spec/terms/store.toml`, against this one clause
+({{corpus.registry.fragment}}). A second clause that needs the same condition writes the clause id
+between double braces instead of restating it ({{corpus.reference.pointer}}).
 
-After the list, a section may carry prose, diagrams, `#### Scenarios` (worked WHEN/THEN
-examples attached to a clause) and `unsettled:` lines naming an open question, its
-owner and the operation it affects ({{corpus.anatomy.scenario}},
-{{corpus.rationale.unsettled-line}}). None of that states an obligation.
+An indented italic line under the item carries its Why: a `because` of at most 30 words
+({{corpus.rationale.why-cell}}), or a record id. Records under `spec/adr/` hold the
+principles `P1` to `P8` and one decision file per contract, such as `A-store`, with the
+options each decision rejected.
 
-## What the corpus never says
+Nobody labels the kind of a clause. The statement names a registered error, so the
+checker computes the kind `refusal`. A clause owning a bound is a limit, and every other
+clause is behavior ({{corpus.anatomy.kind-is-computed}}).
 
-No authored file says whether something is built, and none carries a date. Build state
-is computed from qualifying artifacts, including test and theorem pins
-({{corpus.state.status-is-computed}}, {{corpus.state.verdict}}). When a clause carries
-both pins, both must qualify ({{corpus.state.theorem-beside-test}}). Ignored tests,
-unfinished bodies and stale tags compute `broken`
-({{corpus.state.verdict}}, {{corpus.state.unfinished-test}}, {{corpus.state.stale-pin}}). Words that date a
-sentence are refused outright ({{corpus.render.dated-prose}}), and so are the modals
-that describe a path not taken ({{corpus.render.counterfactual}}).
+## When the clause breaks a rule
 
-The spec never cites literature. Sources live under `references/`, which points into
-the spec by operation name ({{corpus.reference.no-literature}}).
+Suppose a second clause also names the error. The checker raises a registry finding,
+because one error belongs to exactly one clause
+({{corpus.registry.one-error-one-clause}}). Suppose the statement carries a calendar
+date. The date fails lint, because no authored file says when or whether something is
+built ({{corpus.render.dated-prose}}).
 
-## Three views of one contract
+## Build state is computed
 
-- **The contract file** is reference: every rule, one per line, for implementing and
-  testing against.
-- **The guide** under `spec/guide/` teaches the flow with a worked example and reaches
-  every rule by pointer, so it is never a second home for one
-  ({{corpus.guide.non-normative}}).
-- **The card** under `spec/cards/` is generated: each operation with its lede, each
-  error case with its trigger, each bound with its value and basis
-  ({{corpus.render.card}}).
+`contextful-spec state` lists the new clause as `committed` and adds the error to the
+generated store card ({{corpus.render.card}}). A test tagged with the clause id and a
+digest of the statement supplies a pin ({{corpus.state.tag-pin}}).
 
-## Worked example
+An ignored test, an unfinished body or a stale tag computes `broken`
+({{corpus.state.verdict}}). A reworded statement leaves the tag stale until someone
+checks the test against the new wording ({{corpus.state.stale-pin}}).
 
-To add an error case to the store's fold: write one item under `## fold`, naming the error
-in the statement; register the error in `spec/terms/store.toml` against that clause
-({{corpus.registry.fragment}}); give the item a Why. Run the checker. It computes the
-kind as `refusal` and writes the clause into the lock file. The next `state` run lists it
-as `committed` and adds the error to the store card. A qualifying test tagged with the
-clause id and its statement digest supplies its test pin ({{corpus.state.tag-pin}});
-the verdict follows {{corpus.state.verdict}} and {{corpus.state.theorem-beside-test}}.
-Reword the statement later and the tag goes stale until
-the test is checked against the new wording.
+## Diagrams, targets and guides
 
-To hand the work to someone, run `contextful-spec slice store.fold`: it packs the
-operation's lede and clauses, every clause they point at, the records they cite, and
-the errors and bounds they own.
+A diagram is a fenced Mermaid block with one shape per kind of thing. Stores are
+cylinders, and a question is a decision with a labelled exit per outcome
+({{corpus.diagram.shape}}). A deployment target file under `spec/targets/` names the
+provider primitive filling each role, and the checker refuses a shape that leaves a role
+unfilled ({{corpus.targets.incomplete}}).
+
+Each contract has three views. The contract file is reference, and the card is
+generated from the fragment. The guide teaches the flow and reaches each rule only by
+pointer, so the guide never becomes a second home for a rule
+({{corpus.guide.non-normative}}).
+
+A guide reaches every operation of its contract ({{corpus.guide.reach}}). Each paragraph
+carries prose between its pointers, so a guide never collapses into an index
+({{corpus.guide.pointer-density}}). A number equal to a bound value travels with that
+bound's pointer ({{corpus.guide.bound}}).
+
+A question that spans contracts gets a topic page under `spec/topics/`: at most 600 words
+that point at the clauses answering it ({{corpus.topic.file}}).
+
+The spec cites no literature; `references/` points into the spec instead
+({{corpus.reference.no-literature}}).
+
+`contextful-spec slice store.fold` packs one operation for an implementer: its lede and
+clauses, the clauses they reach, the cited records, and the errors and bounds they own.

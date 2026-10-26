@@ -274,13 +274,10 @@ static GUIDE_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\]\([^)]*guid
 fn guide(c: &Corpus) -> Vec<Finding> {
     let mut out = Vec::new();
     let g = |file: &str, line: usize, msg: String| f("guide", file, line, "SpecGuide", msg);
-    let cap = c
-        .reg
-        .fragments
-        .get("corpus")
-        .and_then(|fr| fr.limit.get("corpus-guide-words"))
-        .and_then(|l| l.value.as_integer())
-        .unwrap_or(700) as usize;
+    let bound = |name: &str, default: i64| {
+        c.reg.fragments.get("corpus").and_then(|fr| fr.limit.get(name)).and_then(|l| l.value.as_integer()).unwrap_or(default) as usize
+    };
+    let (base, per_operation) = (bound("corpus-guide-words", 400), bound("corpus-guide-operation-words", 20));
     let errors: BTreeSet<&str> = c.reg.fragments.values().flat_map(|fr| fr.error.keys().map(String::as_str)).collect();
     let word = Regex::new(r"[A-Za-z][A-Za-z0-9_]*").unwrap();
     for name in c.reg.contracts.keys() {
@@ -305,6 +302,7 @@ fn guide(c: &Corpus) -> Vec<Finding> {
             ([_], _) => {}
             _ => out.push(g(&d.rel, 1, format!("{} `# ` titles, want 1", titles.len()))),
         }
+        let cap = base + per_operation * c.reg.fragments.get(stem).map_or(0, |fr| fr.operation.len());
         let words = words_of(d.each().filter(|(_, _, k)| !matches!(k, LineKind::Code | LineKind::Fence | LineKind::Front)).map(|(_, l, _)| l));
         if words > cap {
             out.push(g(&d.rel, 1, format!("{words} words exceed {cap}")));
@@ -324,6 +322,9 @@ fn guide(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    for d in c.guides() {
+        guide_pointers(c, d, &mut out);
+    }
     for d in c.contracts() {
         for (n, l, k) in d.each() {
             if k != LineKind::Code && GUIDE_LINK.is_match(l) {
@@ -332,6 +333,103 @@ fn guide(c: &Corpus) -> Vec<Finding> {
         }
     }
     out
+}
+
+static GUIDE_UNIT_START: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:[-*+]|[0-9]+\.)\s").unwrap());
+static SENTENCE_END: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"[.!?]["')]*\s+"#).unwrap());
+static GUIDE_NUMBER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^|[^A-Za-z0-9_.\-/#])([0-9][0-9,_]*(?:\.[0-9]+)?)(?:$|[^0-9\-])").unwrap());
+
+/// A guide's prose units, each `(first line, text)`: a paragraph, a list item, a table row
+/// or a heading. Diagrams and front matter hold none.
+fn guide_units(d: &Doc) -> Vec<(usize, String)> {
+    let mut units: Vec<(usize, String)> = Vec::new();
+    let mut open = false;
+    for (n, l, k) in d.each() {
+        let alone = matches!(k, LineKind::Heading | LineKind::TableRow) || l.trim_start().starts_with('|');
+        if matches!(k, LineKind::Code | LineKind::Fence | LineKind::Front | LineKind::Blank) || l.trim().is_empty() {
+            open = false;
+            continue;
+        }
+        if alone && is_separator(l) {
+            continue;
+        }
+        let text = GUIDE_UNIT_START.replace(l, " ").into_owned();
+        match units.last_mut() {
+            Some((_, t)) if open && !alone && !GUIDE_UNIT_START.is_match(l) => {
+                t.push(' ');
+                t.push_str(&text);
+            }
+            _ => units.push((n, text)),
+        }
+        open = !alone;
+    }
+    units
+}
+
+/// `corpus.guide.reach`, `corpus.guide.pointer-density` and `corpus.guide.bound`.
+fn guide_pointers(c: &Corpus, d: &Doc, out: &mut Vec<Finding>) {
+    let stem = d.rel.trim_start_matches("spec/guide/").trim_end_matches(".md");
+    let Some(fragment) = c.reg.fragments.get(stem) else { return };
+    let bound = |name: &str, default: i64| {
+        c.reg.fragments.get("corpus").and_then(|fr| fr.limit.get(name)).and_then(|l| l.value.as_integer()).unwrap_or(default) as usize
+    };
+    let (most, per_pointer) = (bound("corpus-guide-paragraph-pointers", 3), bound("corpus-guide-pointer-words", 8));
+    let alnum = Regex::new(r"[A-Za-z0-9]").unwrap();
+    let mut reached: BTreeSet<String> = BTreeSet::new();
+    for (n, text) in guide_units(d) {
+        let plain = without_ticks(&text);
+        let all = pointers(&plain);
+        for p in &all {
+            if let Some((contract, rest)) = p.split_once('.') {
+                if contract == stem {
+                    reached.insert(rest.split('.').next().unwrap_or_default().to_string());
+                }
+            }
+        }
+        let clauses = all.iter().filter(|p| p.matches('.').count() == 2).count();
+        let prose = strip_pointers(&plain, " ").split_whitespace().filter(|w| alnum.is_match(w)).count();
+        if clauses > most {
+            out.push(f("guide", &d.rel, n, "SpecGuidePointerDensity", format!("`{stem}` paragraph holds {clauses} clause pointers, over {most}")));
+        } else if clauses > 0 && prose < per_pointer * clauses {
+            out.push(f(
+                "guide",
+                &d.rel,
+                n,
+                "SpecGuidePointerDensity",
+                format!("`{stem}` paragraph holds {prose} words of prose for {clauses} clause pointers, under {per_pointer} per pointer"),
+            ));
+        }
+        let mut rest = text.as_str();
+        while !rest.is_empty() {
+            let (sentence, next) = match SENTENCE_END.find(rest) {
+                Some(m) => (&rest[..m.end()], &rest[m.end()..]),
+                None => (rest, ""),
+            };
+            rest = next;
+            let named = pointers(&without_ticks(sentence));
+            let bare = strip_pointers(&without_ticks(sentence), " ");
+            for cap in GUIDE_NUMBER.captures_iter(&bare) {
+                let num = cap[1].replace([',', '_'], "");
+                let equal: Vec<&LimitEntry> = fragment.limit.values().filter(|l| l.value_text().replace([',', '_'], "") == num).collect();
+                if !equal.is_empty() && !equal.iter().any(|l| named.contains(&l.clause)) {
+                    let owners: Vec<&str> = equal.iter().map(|l| l.clause.as_str()).collect();
+                    out.push(f(
+                        "guide",
+                        &d.rel,
+                        n,
+                        "SpecGuideBound",
+                        format!("`{}` equals a bound of `{}`; point in the sentence at {}", &cap[1], stem, owners.join(" or ")),
+                    ));
+                }
+            }
+        }
+    }
+    for op in fragment.operation.keys() {
+        if !reached.contains(op) {
+            out.push(f("guide", &d.rel, 1, "SpecGuideReach", format!("guide reaches no pointer into `{stem}.{op}`")));
+        }
+    }
 }
 
 // ---------------------------------------------------------------- registry
@@ -473,7 +571,7 @@ fn reference(c: &Corpus) -> Vec<Finding> {
                 continue;
             }
             for p in pointers(&without_ticks(l)) {
-                if !ids.contains(&p) {
+                if !ids.contains(&p) && !(d.role == Role::Guide && is_operation(c, &p)) {
                     out.push(f("reference", &d.rel, n, "SpecDanglingReference", format!("{{{{{p}}}}} names no clause")));
                 }
             }
@@ -482,7 +580,13 @@ fn reference(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    out.extend(crate::types::unresolved(c));
     out
+}
+
+/// `<contract>.<operation>` naming an operation the contract's fragment registers.
+fn is_operation(c: &Corpus, p: &str) -> bool {
+    p.split_once('.').is_some_and(|(contract, op)| c.reg.fragments.get(contract).is_some_and(|fr| fr.operation.contains_key(op)))
 }
 
 // ---------------------------------------------------------------- rationale
@@ -1216,10 +1320,42 @@ pub fn owned_errors<'a>(c: &'a Corpus, cl: &Clause) -> Vec<&'a str> {
     c.reg.fragments.get(&cl.contract).map(|f| f.error.iter().filter(|(_, e)| e.clause == cl.id).map(|(k, _)| k.as_str()).collect()).unwrap_or_default()
 }
 
+/// The `const` paths of the limits a clause owns in its contract's fragment.
+pub fn owned_consts(c: &Corpus, cl: &Clause) -> Vec<String> {
+    c.reg.fragments.get(&cl.contract).map(|f| f.limit.values().filter(|l| l.clause == cl.id).filter_map(|l| l.constant.clone()).collect()).unwrap_or_default()
+}
+
+/// `corpus.state.limit-const`: the const at `path` resolves, and source under
+/// `crates/*/src` or `tools/*/src` names it outside its own definition line and before any
+/// `#[cfg(test)]` item of its file.
+fn used(c: &Corpus, path: &str) -> bool {
+    let Some(site) = crate::pins::locate(c, "item", path, &PIN_ROOTS).into_iter().next() else { return false };
+    let name = path.rsplit("::").next().unwrap_or(path);
+    let word = Regex::new(&format!(r"\b{}\b", regex::escape(name))).unwrap();
+    for root in ["crates", "tools"] {
+        for package in std::fs::read_dir(c.root.join(root)).into_iter().flatten().flatten() {
+            let walk = walkdir::WalkDir::new(package.path().join("src")).into_iter().flatten();
+            for e in walk.filter(|e| e.path().extension().is_some_and(|x| x == "rs")) {
+                let Ok(text) = std::fs::read_to_string(e.path()) else { continue };
+                let rel = e.path().strip_prefix(&c.root).unwrap_or(e.path()).to_string_lossy().replace('\\', "/");
+                let live = text.split("#[cfg(test)]").next().unwrap_or_default();
+                let defined = (rel == site.file).then(|| text[..site.offset].matches('\n').count());
+                if live.lines().enumerate().any(|(n, l)| Some(n) != defined && word.is_match(l)) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// `corpus.state.unexercised`: a test pin of a refusal clause names one of the clause's
 /// errors in its body — the id itself, or a variant path `::<Suffix>` whose suffix keeps
 /// at least two of the id's trailing CamelCase words.
 fn exercises(c: &Corpus, cl: &Clause, pin: &Pin) -> bool {
+    if cl.kind == "limit" {
+        return owned_consts(c, cl).iter().all(|path| used(c, path));
+    }
     let errors = owned_errors(c, cl);
     if cl.kind != "refusal" || errors.is_empty() {
         return true;
@@ -1476,6 +1612,10 @@ fn state(c: &Corpus) -> Vec<Finding> {
                 PinState::Unfinished => format!("pin for `{id}` names a declaration still holding `sorry`"),
                 PinState::Absent => format!("pin for `{id}` does not resolve under crates/, tools/ or formal/"),
                 PinState::Unattached => format!("tag for `{id}` sits above no function"),
+                PinState::Unexercised if cl.kind == "limit" => format!(
+                    "pin for `{id}` demonstrates a bound no non-test source reads: {}",
+                    owned_consts(c, cl).iter().map(|k| format!("`{k}`")).collect::<Vec<_>>().join(", ")
+                ),
                 PinState::Unexercised => format!("pin for `{id}` names a test whose body names none of {}", owned_errors(c, cl).iter().map(|e| format!("`{e}`")).collect::<Vec<_>>().join(", ")),
                 PinState::Stale => {
                     let rev = p.tag.as_ref().map(|t| t.rev.as_str()).unwrap_or("");

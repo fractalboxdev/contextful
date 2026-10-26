@@ -4,15 +4,14 @@ contract: assurance
 
 # Assurance
 
-## What it is for
+## The problem assurance solves
 
-Assurance checks whether **Contextful** follows its specification. Lean, a proof
-checker, verifies properties of models. Tests compare the models' answers with the
-engine's answers. Engineering checks test source changes and search quality. Each
-claim states what it covers and which assumptions it relies on
+A specification is only useful if the engine follows it. Assurance gathers three kinds
+of evidence, and each proves something different. Lean, a proof checker, proves
+properties of a model. A differential test checks that the engine agrees with the model
+on generated cases. Engineering checks test source changes and search quality. The
+assurance claim names what it covers and which assumptions it trusts
 ({{assurance.scope-claim.claim-sentence}}).
-
-## How it works
 
 ```mermaid
 flowchart LR
@@ -29,76 +28,84 @@ flowchart LR
   AUDIT -->|"audit verdict"| GATE["CI gate"]
   DIFF -->|"agreement verdict"| GATE
   EVAL["quality harness"] -->|"retrieval scores"| GATE
-  click SPEC href "/docs/specs/contracts/80-formal/#model" "The specification names the decisions the models describe. A model is written from those rules independently of the engine source."
+  click SPEC href "/docs/specs/contracts/80-formal/#model" "The specification names the decisions the models describe. Each model definition is written from those rules and from no engine source."
   click MODEL href "/docs/specs/contracts/80-formal/#prove" "Purpose: Describe policy and protocol decisions as mathematical models.<br>Evidence: Lean checks the stated properties.<br>Scope: Each proof identifies its assumptions and the behavior it leaves open."
-  click ENGINE href "/docs/specs/contracts/80-formal/#differential-test" "The store engine supplies the implementation answers. The differential harness compares selected decision functions with the independent reference model. External reads and writes lie outside that comparison."
+  click ENGINE href "/docs/specs/contracts/80-formal/#differential-test" "The store engine supplies the implementation answers. The differential harness compares selected decision functions with the reference, which runs the proved model definitions. External reads and writes lie outside that comparison."
   click AUDIT href "/docs/specs/contracts/80-formal/#audit-assumptions" "Purpose: Check the assumptions behind compiled proofs.<br>Checks: Follow theorem dependencies, inspect allowed assumptions and compare statements with the declared inventory.<br>Example: A proof hole fails the audit even when compilation succeeds."
   click DIFF href "/docs/specs/contracts/80-formal/#differential-test" "Purpose: Compare the model and engine on the same generated inputs.<br>On disagreement: Shrink the case, record a reproducible counterexample and replay it before fresh cases.<br>Example: The reference admits a zone that the engine rejects."
   click EVAL href "/docs/specs/contracts/81-engineering/#evaluate" "The quality harness reads test data through the real store and access-control path. It checks forbidden results and the declared retrieval-quality baseline. These measurements supply evidence about search behavior."
   click GATE href "/docs/specs/contracts/81-engineering/#gate" "The gate combines required checks into a verdict. Required pull-request checks and nightly checks run as separate tiers; each part reports its own result and evidence."
 ```
 
-Models describe the specification's decisions independently of the engine source
-({{assurance.model.from-the-spec}}). The policy model uses no external library
-({{assurance.model.declared-dependency}}), fixes its compiler version
-({{assurance.model.toolchain-drift}}), and defines a result for every input
-({{assurance.model.total-definitions}}). The protocol model describes how leases,
-conditional writes and writer fences change state ({{assurance.model.protocol-model}}).
-Proofs check its safety rules ({{assurance.model.protocol-safety}}); a separate check
-explores sequences of steps up to a fixed length ({{assurance.model.protocol-check}}).
+## Models and proofs
 
-The proofs cover combining policy layers ({{assurance.prove.composition-sound}}),
-restricting permissions ({{assurance.prove.narrowing}}) and preserving required evidence
-({{assurance.prove.floor-no-downgrade}}) in the engine's specified order
-({{assurance.prove.order-is-specified}}). Each proof lists what it leaves unproved,
-called its negative space ({{assurance.prove.negative-space}}).
+Each model definition is written from the specification text and from no engine source
+({{assurance.model.from-the-spec}}). Every definition is total, so the model answers
+every input ({{assurance.model.total-definitions}}).
 
-Lean accepts unfinished proofs during a build, so a successful build alone supplies
-insufficient evidence. An assumption audit reads the compiled proofs and the declared
-inventory ({{assurance.audit-assumptions.verdict-input}}), follows their dependencies
-({{assurance.audit-assumptions.transitive-audit}}), and rejects proof holes
-({{assurance.audit-assumptions.hole-assumption}}). It checks assumptions against an
-allowlist ({{assurance.audit-assumptions.allowlist}}) and theorem statements against the
-inventory ({{assurance.audit-assumptions.statement-drift}}). Rechecking uses pinned
-source without credentials ({{assurance.recheck.credential-free}}).
+The policy proofs cover combining enforcement layers. For example, a row the composed
+filter admits is admitted by every member layer ({{assurance.prove.composition-sound}}).
+Each theorem states its negative space: what it leaves open, such as whether execution
+reaches the filter at all ({{assurance.prove.negative-space}}).
 
-Claims identify the decisions, specifications and dependencies they trust
-({{assurance.scope-claim.trusted-dependencies}}). The connection between model and code
-covers only decision functions without external reads or writes
-({{assurance.scope-claim.refinement-scope}}).
+The protocol model describes how leases, fenced commits, pauses and crashes change state
+({{assurance.model.protocol-model}}). A bounded check evaluates every invariant over
+every short step sequence and prints the shortest breaking one
+({{assurance.model.protocol-check}}).
 
-## What the engineering checks cover
+## Why a successful build proves too little
 
-Each capability has one registered implementation
-({{assurance.structure-tree.one-home}}, {{assurance.structure-tree.capability-registry}}).
-Cross-language copies are checked for agreement ({{assurance.structure-tree.cross-language}}).
-Rust source changes carry a test that fails against the base revision
-({{assurance.test.test-first}}); behavior-preserving refactors declare their exemption
-({{assurance.test.refactor-trailer}}). The gate runs checks in order
-({{assurance.gate.stage-sequence}}), and each stage runs locally before merge
-({{assurance.automate.one-path}}).
+Lean compiles a proof that still contains an unfinished step. The assumption audit
+therefore reads the compiled environment, not the build's exit status
+({{assurance.audit-assumptions.verdict-input}}). A proof depending on the hole
+assumption fails the audit ({{assurance.audit-assumptions.hole-assumption}}).
 
-Search evaluation loads test data through the real store
-({{assurance.evaluate.through-the-store}}) with access labels
-({{assurance.evaluate.policy-labels}}), measures forbidden rows in results
-({{assurance.evaluate.forbidden-row-rate}}), and preserves the required quality baseline
-({{assurance.baseline.raise-only}}).
+A theorem whose statement changed without its inventory entry fails too
+({{assurance.audit-assumptions.statement-drift}}). A recheck rebuilds from pinned source
+in an environment holding no credential ({{assurance.recheck.credential-free}}).
 
-Windows checks provide diagnostics ({{assurance.gate.windows-checks}}). Build artifacts
-belong to their checkout ({{assurance.build.checkout-artifacts}}). Each gate part has a
-time budget ({{assurance.gate.part-budget}}); short parts share a check
-({{assurance.gate.folded-parts}}), and nightly checks run separately
-({{assurance.gate.nightly-tier}}).
+## Following one change
 
-The measurement ledger connects each target to a clause ({{assurance.measure.ledger}}).
-Required counts determine whether evaluation passes ({{assurance.measure.count-first}}).
-Timing comparisons describe trends ({{assurance.measure.trend-band}}) against comparable
-reports ({{assurance.measure.trend-baseline}}).
+A contributor changes zone admission so the allow-set entry `on-prem:*` rejects
+`on-prem:lab`, a zone the specification admits ({{authority.place.disjunctive}}).
 
-Backtests separate cases by whether they resolved before the reader model's training
-cutoff ({{assurance.backtest.cutoff-slice}}). Training cases with overlapping outcome
-periods are excluded from a test split ({{assurance.backtest.split}}). Forecast tracks
-keep separate scores ({{assurance.forecast.tracks-separate}}).
+Zone admission is one of the harness's decision cases
+({{assurance.differential-test.decision-cases}}). The harness runs the reference binary,
+built from the model's definitions, and the engine's decision module on each generated
+case ({{assurance.differential-test.harness}}).
+
+The reference admits and the engine rejects. The harness shrinks the case to a minimal
+form and records it ({{assurance.differential-test.minimized}}). Every later run
+replays that case before any fresh one ({{assurance.differential-test.corpus-replay}}).
+
+The full formal stage runs nightly, not on every change ({{assurance.gate.formal-stage}}).
+A change merged between two nightly runs therefore holds no formal verdict until the
+next run.
+
+The claim stays within its evidence. A composition proof offered as a mediation proof
+fails, because composition says nothing about whether every read passes the filter
+({{assurance.prove.mediation-from-composition}}).
+
+## Engineering checks
+
+Enforcement, credential resolution and statement guarding each resolve to one
+implementation ({{assurance.structure-tree.one-home}}). Contributors and the gate run
+the same typed subcommands ({{assurance.automate.one-path}}).
+
+A change to Rust source adds a test that fails against the base commit
+({{assurance.test.test-first}}). The gate runs its stages in a fixed order
+({{assurance.gate.stage-sequence}}). A shared target directory recompiles workspace
+packages per checkout ({{assurance.build.checkout-artifacts}}).
+
+## Search quality
+
+Evaluation loads its corpus through the real store and retriever
+({{assurance.evaluate.through-the-store}}). A row a case forbids holds at zero percent of
+returned rows ({{assurance.evaluate.forbidden-row-rate}}). A baseline update only moves
+entries in the improving direction ({{assurance.baseline.raise-only}}).
+
+A **backtest** replays historical cases. Each case is placed by its resolution instant
+relative to the reader model's training cutoff ({{assurance.backtest.cutoff-slice}}).
 
 ```mermaid
 flowchart LR
@@ -114,42 +121,13 @@ flowchart LR
   FOLD -->|"clear of both"| TRAIN["training fold"]
 ```
 
-## Worked example
+Forecast tracks keep separate scores and never pool into one figure
+({{assurance.forecast.tracks-separate}}). The target ledger ties each measured target to
+its owning clause ({{assurance.measure.ledger}}).
 
-A contributor changes zone admission so an allow-set entry `on-prem:*` rejects
-`on-prem:lab`, a zone it admits under {{authority.place.disjunctive}}.
+## Releases and consumers
 
-The nightly run checks the proofs
-({{assurance.gate.formal-stage}}).
-
-The model follows the specification independently of the engine
-({{assurance.model.from-the-spec}}). A changed theorem statement with an unchanged inventory
-fails the statement check ({{assurance.audit-assumptions.statement-drift}}). A proof
-finished with a hole fails on its footprint
-({{assurance.audit-assumptions.hole-assumption}}).
-
-Zone admission is one of the harness's decision cases
-({{assurance.differential-test.decision-cases}}). When a generated case exercises this
-disagreement, the reference program admits and the implementation rejects
-({{assurance.differential-test.harness}}). The case shrinks to a minimal form
-({{assurance.differential-test.minimized}}), enters the counterexample corpus
-({{assurance.differential-test.discarded-counterexample}}), and replays before fresh cases
-on later runs ({{assurance.differential-test.corpus-replay}}), reproducible from the
-recorded seed ({{assurance.differential-test.seed}}).
-
-The claim stays within what the evidence establishes: a composition proof leaves
-complete enforcement open ({{assurance.prove.mediation-from-composition}}), and changing
-stage order needs its own evidence ({{assurance.prove.commutation-claim}}). A clause
-connects at most one theorem and one test ({{corpus.state.theorem-beside-test}}).
-
-## Where to look
-
-| Question | Operation |
-| --- | --- |
-| What does a theorem leave open? | `assurance.prove` |
-| Why did the proof gate fail? | `assurance.audit-assumptions` |
-| What may the claim say? | `assurance.scope-claim` |
-| Which gate stage runs what? | `assurance.gate` |
-| When does quality go red? | `assurance.evaluate`, `assurance.baseline` |
-| Which targets are measured? | `assurance.measure` |
-| What accompanies releases? | `assurance.release`, `assurance.consumer` |
+`contextful-ci tag` creates a signed tag only after every release check clears; a dirty
+working tree fails first ({{assurance.release.dirty-tree}}). The conformance suite runs
+the released artifact through its public surfaces, outside a source checkout
+({{assurance.consumer.suite}}).

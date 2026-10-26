@@ -200,7 +200,6 @@ fn acquisition_creates_or_replaces_on_the_etag_with_the_next_fence() {
 }
 
 /// A holder renews every 200 s by `If-Match` replace on the ETag it holds.
-// spec: store.lease.renewal@86e363e5
 #[test]
 fn a_holder_renews_every_200_seconds_on_the_etag_it_holds() {
     assert_eq!(RENEWAL_SECS, 200);
@@ -333,6 +332,7 @@ fn plaintext_http_opens_on_loopback_alone() {
 
 /// `[sync] access_key_id`, `secret_access_key` and the optional `session_token` each parse as a `secret://<name>` or
 /// an `env://NAME` reference.
+// spec: connector.reference.whole-value-binding@a5f6354c
 #[test]
 fn credential_keys_bind_secret_or_environment_references() {
     let c = SyncConfig {

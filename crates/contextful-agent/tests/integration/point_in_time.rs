@@ -310,10 +310,10 @@ fn close_of(rows: &Value, i: usize) -> f64 {
     rows[i][2].as_f64().unwrap_or_else(|| rows[i][2].as_str().unwrap().parse().unwrap())
 }
 
-/// `available_time.adjustment = { table = "<name>", factor_column = "<column>", adjust_columns = [...] }` keeps stored
-/// values raw. An `available_as_of` read multiplies each listed numeric column by the product of factor vintages
-/// available by the bound.
-// spec: store.available-time.adjustment-factors@0bf779c0
+/// `available_time.adjustment` keeps stored values raw; an `available_as_of` read multiplies each `adjust_columns`
+/// column by the product of `factor_column` vintages available by the bound, over factor rows sharing its factor-table
+/// `primary_key` values with a later valid-time `from`.
+// spec: store.available-time.adjustment-factors@c44a2c6d
 #[test]
 fn a_bounded_read_applies_only_factors_announced_by_the_bound() {
     let f = prices();
@@ -331,8 +331,9 @@ fn a_bounded_read_applies_only_factors_announced_by_the_bound() {
     assert!((close_of(&later, 0) - 553.13 * 0.5 * 0.25).abs() < 1e-9, "{later}");
 }
 
-/// A factor row applies to each row agreeing on every factor-table `primary_key` column whose valid-time `from` precedes the factor row's valid-time `from`.
-// spec: store.available-time.adjustment-join@a62de940
+/// `available_time.adjustment` keeps stored values raw; an `available_as_of` read multiplies each `adjust_columns` column by the product of `factor_column`
+/// vintages available by the bound, over factor rows sharing its factor-table `primary_key` values with a later valid-time `from`.
+// spec: store.available-time.adjustment-factors@c44a2c6d
 #[test]
 fn a_factor_applies_to_its_own_key_before_its_effective_date() {
     let f = prices();

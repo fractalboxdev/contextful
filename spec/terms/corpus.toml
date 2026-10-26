@@ -25,11 +25,12 @@ SpecRegistry           = { clause = "corpus.registry.unregistered", gloss = "A s
 SpecRegistryDrift      = { clause = "corpus.registry.drift", gloss = "A defining variant out of step with its registry entry, or a refusal whose code site and pin disagree." }
 SpecDanglingReference  = { clause = "corpus.reference.dangling", gloss = "A pointer to no clause." }
 SpecExternalLink       = { clause = "corpus.reference.no-literature", gloss = "A link out of the spec, or into references/." }
+SpecTypeUnresolved     = { clause = "corpus.reference.type-unresolved", gloss = "A type pointer to no struct or enum." }
 SpecUnsettled          = { clause = "corpus.rationale.unsettled-line", gloss = "A malformed unknown, or an appendix heading." }
 SpecRecord             = { clause = "corpus.rationale.orphan-record", gloss = "An uncited or missing record, a bad Why, or a record out of anatomy." }
 SpecCoverageRegression = { clause = "corpus.state.coverage-floor", gloss = "Fewer performed pins than the floor." }
 SpecBrokenPin          = { clause = "corpus.state.bad-pin", gloss = "A pin that names no clause, mismatches its kind, does not resolve, or competes with a second test." }
-SpecUnwired            = { clause = "corpus.state.unwired", gloss = "A public item only a performed pin's test reaches." }
+SpecUnwired            = { clause = "corpus.state.unwired-ceiling", gloss = "More public items only a performed pin's test reaches than the recorded ceiling." }
 SpecProofObligationUnpinned = { clause = "corpus.state.proof-obligation", gloss = "A clause listed as a proof obligation that does not compute proved." }
 SpecStalePin           = { clause = "corpus.state.stale-pin", gloss = "A tag recording a statement revision the clause no longer carries." }
 SpecRoadmap            = { clause = "corpus.state.roadmap", gloss = "A roadmap name resolving to nothing, claimed twice, or a milestone missing its reach or acceptance line." }
@@ -54,6 +55,9 @@ SpecDiagramSequence    = { clause = "corpus.diagram.sequence", gloss = "A sequen
 SpecDiagramMessage     = { clause = "corpus.diagram.message", gloss = "A sequence message or note over its word bound." }
 SpecDiagramState       = { clause = "corpus.diagram.state", gloss = "A state diagram without one start, with an unreachable or dead-end state, or a long transition label." }
 SpecGuide              = { clause = "corpus.guide.bad-guide", gloss = "A missing or malformed guide, or one restating a rule." }
+SpecGuideReach         = { clause = "corpus.guide.reach", gloss = "A registered operation its contract's guide never points into." }
+SpecGuidePointerDensity = { clause = "corpus.guide.pointer-density", gloss = "A guide paragraph with too many clause pointers or too little prose per pointer." }
+SpecGuideBound         = { clause = "corpus.guide.bound", gloss = "A guide sentence restating a bound value without the bound's clause pointer." }
 SpecWordCeiling        = { clause = "corpus.anatomy.word-ceilings", gloss = "A contract or contract ADR whose word count differs from its ceiling." }
 SpecClauseUnowned      = { clause = "corpus.state.unowned", gloss = "More unpinned, unscheduled and unquestioned clauses than the ceiling records." }
 SpecTerm               = { clause = "corpus.registry.bad-term", gloss = "A term registered twice, naming a missing or foreign clause, glossed out of bounds, or avoided as itself a term." }
@@ -87,7 +91,10 @@ corpus-topic-words      = { clause = "corpus.topic.file", value = 600, unit = "w
 corpus-topic-pages      = { clause = "corpus.topic.pages", value = 8, unit = "pages", basis = "chosen", gloss = "Most topic pages." }
 corpus-topic-contract-pointers = { clause = "corpus.topic.contract-pointers", value = 3, unit = "pointers", basis = "chosen", gloss = "Most distinct pointers from one topic page into one contract." }
 corpus-term-gloss-words = { clause = "corpus.registry.term", value = 25, unit = "words", basis = "chosen", gloss = "Longest term gloss." }
-corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "words", basis = "chosen", gloss = "Longest guide, diagrams excluded." }
+corpus-guide-words      = { clause = "corpus.guide.file", value = 400, unit = "words", basis = "chosen", gloss = "Guide length for a contract with no operation, diagrams excluded." }
+corpus-guide-operation-words = { clause = "corpus.guide.file", value = 20, unit = "words", basis = "chosen", gloss = "Guide length added per registered operation." }
+corpus-guide-paragraph-pointers = { clause = "corpus.guide.pointer-density", value = 3, unit = "pointers", basis = "chosen", gloss = "Most clause pointers in one guide paragraph, list item or table row." }
+corpus-guide-pointer-words = { clause = "corpus.guide.pointer-density", value = 8, unit = "words", basis = "chosen", gloss = "Fewest prose words per clause pointer in one guide paragraph." }
 
 # Terms (`corpus.registry.term`): each term's defining clause and gloss.
 [term]
@@ -107,26 +114,26 @@ corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "w
 [ceiling]
 registry-committed-sites = 3
 anatomy-long-lists = 15
-clause-unowned = 249
-why-unscoped = 806
-term-first-use = 32
+clause-unowned = 98
+why-unscoped = 749
+term-first-use = 24
 
 [ceiling.contract-words]
-assurance = 10245
-authority = 7844
-connector = 11660
-corpus = 4658
-disclosure = 5476
-read = 10128
-run = 19201
-store = 10715
-surface = 6502
+assurance = 9773
+authority = 7793
+connector = 11061
+corpus = 5090
+disclosure = 5268
+read = 9479
+run = 19110
+store = 10192
+surface = 6422
 topology = 2647
 
 [ceiling.adr-words]
-A-assurance = 5819
+A-assurance = 5781
 A-authority = 4473
-A-connector = 3602
+A-connector = 3600
 A-corpus = 383
 A-disclosure = 4053
 A-read = 5491

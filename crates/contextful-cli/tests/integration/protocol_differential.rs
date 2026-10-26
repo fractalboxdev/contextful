@@ -23,6 +23,11 @@ fn run(seed: &str) -> std::process::Output {
 }
 
 // spec: assurance.differential-test.protocol-harness@c80473cf
+/// A commit-log create or pointer replacement carrying a fence a later acquisition passed
+/// loses its condition with `LeaseFenced` on both lease paths, as the model's
+/// `no_commit_after_successor_acquire` states, and the generated cases reach that refusal.
+// spec: store.lease.stale-fence@97140f35
+// spec: store.lease.pointer-fence@037c9e49
 #[test]
 fn fixed_seed_replays_protocol_cases_against_the_store() {
     if Command::new("lake").arg("--version").output().is_err() {
@@ -39,6 +44,11 @@ fn fixed_seed_replays_protocol_cases_against_the_store() {
     assert!(report.contains("paths=compaction,run"), "both lease paths replay every case: {report}");
     let replayed: u64 = report.split("regressions=").nth(1).unwrap().split(';').next().unwrap().trim().parse().unwrap();
     assert!(replayed >= 4, "{report}");
+    let fenced = report.split("LeaseFenced=").nth(1).unwrap().trim();
+    for path in ["compaction", "run"] {
+        let refused: u64 = fenced.split(',').find_map(|p| p.strip_prefix(&format!("{path}:"))).unwrap().parse().unwrap();
+        assert!(refused > 0, "no stale commit on the {path} path lost with LeaseFenced: {report}");
+    }
     contextful_eval::record::emit("stale-fence-differential", 0.0, CASES + replayed, 76004);
 }
 

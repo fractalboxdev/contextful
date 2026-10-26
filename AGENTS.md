@@ -121,48 +121,29 @@ The gate measures commits, so commit before running it.
 
 ## The gate
 
-The gate is local. Before merge, the author runs `contextful-ci gate`, or the parts
-the change reaches, records each command and its pass count in the pull request, and
-squash-merges. No remote check runs on a pull request, a tag or a schedule.
+The gate is local. Before merge, the author runs the parts the change reaches, records
+each command and its pass count in the pull request, and squash-merges. No remote check
+runs on a pull request, a tag or a schedule. [`spec/83-gate.md`](./spec/83-gate.md)
+specifies the stages, parts, folds, shards, ceilings, target ledger and release tag;
+`contextful-ci stages` prints the live lists.
 
-`contextful-ci stages --parts` prints the 17 parts a change runs before merge:
-`preflight` (pins, toolchain, schema and `test-first.validate`), `workspace.compile`,
-`workspace.cli-1` to `workspace.cli-8`, one `suite.<group>` per package group running
-its `workspace.<group>` then `evaluate.<group>` part (`suite.cli` pairs
-`workspace.cli-formal` with `evaluate.cli`, `suite.ci` adds `evaluate.probe`),
-`acceptance` and `perimeter` (crate-graph, connectors and surfaces); `--base <rev>`
-adds one `test-first.<package>` part per changed source package, and `--affected`
-narrows the list to the parts the diff from the merge base reaches. A fold pays one
-sandbox setup for its members; `contextful-ci stages --folds` prints each fold's
-members (`assurance.gate.folded-parts`). `--stage <part>` runs one part, a fold label
-or any member by its own name. A selected subset runs in run order and refuses a
-stage whose predecessor's output is absent; `--predecessors` runs those too.
-`contextful-ci`'s suite asserts 17 parts covering 28 stage parts.
+```sh
+cargo run --locked -q -p contextful-ci -- stages --parts                          # parts a change runs before merge
+cargo run --locked -q -p contextful-ci -- stages --parts --base <rev> --affected  # parts the diff reaches, test-first parts included
+cargo run --locked -q -p contextful-ci -- stages --parts --tier nightly           # nightly parts: features, formal, unwired, budget
+cargo run --locked -q -p contextful-ci -- stages --folds                          # each fold's members
+cargo run --locked -q -p contextful-ci -- gate --stage <part>                     # one part, a fold label or a member
+cargo run --locked -q -p contextful-ci -- gate --plan                             # a run's stages, unrun
+```
 
-The nightly tier holds the `features`, `formal` and `budget` stages:
-`contextful-ci stages --parts --tier nightly` prints their 22 parts,
-`features.<package>`, `features.<binary|formal>-<set>`, `formal` and `budget.<profile>`
-(`assurance.gate.nightly-tier`). They run on demand: `contextful-ci gate --stage <part>`
-runs one against the default-branch head, `contextful-ci gate` with no stage runs both
-tiers, and `gate --plan` prints a run's stages without running them.
-`contextful-ci measure --tier all` runs every ledger tier, `measure-report` writes a run
-report with an integer run id, and `measure-publish` appends it to `refs/notes/measures`.
-
-A release runs on the operator's machine: `contextful-ci tag` creates the signed tag
-and the operator pushes it; `contextful-ci release` packages each of the ten cells in
-`contextful-ci release --plan`; `contextful-ci formula` writes the formulae,
-`SHA256SUMS` and `release-notes.md`; `contextful-ci image` assembles the three
-independently tagged container images; the operator publishes the GitHub release with
-`release-notes.md` as its body.
-
-The CLI differential module runs in `workspace.cli-formal` (inside `suite.cli`) and `features.formal-<set>`;
-`workspace.cli-1` to `workspace.cli-8` and `features.binary-<set>` run the remaining CLI tests;
-the eight `workspace.cli-<k>` shards follow the duration-balanced map in
-`tools/ci/cli-shards.toml`; an unmapped test runs with its group, else in the least-loaded
-shard, which also runs the CLI's unit tests and doctests. After adding CLI tests, regenerate
-the map from a four-thread timed run:
+A selected subset runs in run order and refuses a stage whose predecessor's output is
+absent; `--predecessors` runs those too. After adding CLI tests, regenerate the shard map
+from a timed run:
 `RUSTC_BOOTSTRAP=1 cargo test -p contextful-cli --test integration -- --skip differential:: --test-threads 4 -Z unstable-options --format json --report-time > .tmp/cli-times.json`,
 then `contextful-ci cli-shards --report .tmp/cli-times.json --scale 4`.
+
+A release runs on the operator's machine, from the tag `contextful-ci tag` creates
+(`assurance.release.release-run`); `contextful-ci release --plan` lists its cells.
 
 ### Landing
 
@@ -173,28 +154,32 @@ then `contextful-ci cli-shards --report .tmp/cli-times.json --scale 4`.
    `contextful-ci stages --parts --base origin/main --affected` lists.
 3. Record each command and its pass count in the pull request, then squash-merge.
 
-A stage that fails locally blocks the merge. Native Windows checks are diagnostics and
-block nothing (`assurance.gate.windows-checks`). A pull request stacked on another
-rebases with `git rebase --onto origin/main <old base>` after its base squash-merges.
+A stage that fails locally blocks the merge. A pull request stacked on another rebases
+with `git rebase --onto origin/main <old base>` after its base squash-merges.
 
-The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
-under a comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays
-untracked. A deliberate restatement of an engine rule carries `mirrors: <clause id>` at
-its site, and `contextful-ci mirrors` resolves each one. The pull-request template asks
-the four boundary questions.
+The schema stage holds every key in a tracked `.env*` file to dotenvx ciphertext under a
+comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays untracked. A
+deliberate restatement of an engine rule carries `mirrors: <clause id>` at its site, and
+`contextful-ci mirrors` resolves each one. The pull-request template asks the four
+boundary questions.
 
 ## Engineering conventions
 
-[`spec/81-engineering.md`](./spec/81-engineering.md) is the sole home of how we
-build: one home per capability, adapters rather than restatements, typed
-automation, test placement, and the gate's resource budget.
+[`spec/81-engineering.md`](./spec/81-engineering.md) is the sole home of how we build:
+one home per capability, adapters rather than restatements, test placement and build
+targets. [`spec/83-gate.md`](./spec/83-gate.md) is the sole home of how the gate checks a
+change and cuts a release: typed automation, stages and parts, the resource budget, the
+target ledger and the release tag. This file names the commands and points there.
 
 ## Writing
 
 Before writing or revising guides and technical explanations, read the
 [technical writing brief](./references/technical-writing.md). Its reading examples,
-editorial practices and review questions govern explanatory prose; contract clauses
-retain the grammar under `spec/00-corpus.md`.
+editorial practices and review questions inform explanatory prose; contract clauses
+retain the grammar under `spec/00-corpus.md`. Lint enforces the checkable subset in
+guides: operation reach (`corpus.guide.reach`), pointer density
+(`corpus.guide.pointer-density`), restated bounds (`corpus.guide.bound`) and first use
+of a registered term (`SpecTermFirstUse`).
 
 ### Domain neutrality
 

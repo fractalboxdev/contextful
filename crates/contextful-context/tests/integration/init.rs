@@ -10,8 +10,9 @@ fn store_err(e: ContextError) -> StoreError {
     e.store().cloned().unwrap_or_else(|| panic!("expected a store refusal, got {e}"))
 }
 
-/// `contextful init <name>` writes `contextful.toml` in the working directory declaring `[project]` with `name = "<name>"`, and creates the store root beside it.
-// spec: store.init.declaration-file@715513c7
+/// `contextful init <name>` writes `[project]` with `name = "<name>"` into `contextful.toml` in the working directory, appending the table to a file declaring no
+/// `project` key and keeping its bytes, and creates the store root {{store.lay-out.store-root}} beside it.
+// spec: store.init.declaration-file@6926a0e8
 #[test]
 fn an_init_writes_the_declaration_and_the_store_root() {
     let dir = tempfile::tempdir().unwrap();
@@ -62,7 +63,7 @@ fn malformed_store_uuid_and_absent_owner_root_refuse_identity() {
 }
 
 /// A project name that is not path-safe segments raises `StoreProjectNameInvalid` before any file is read or written.
-// spec: store.init.name-shape@403dc5ee
+// spec: store.init.name-conflict@e14109fe
 #[test]
 fn a_traversing_or_unsafe_name_refuses_before_any_write() {
     for bad in ["", "..", "a/../b", "a b", "/abs", "x/", "caf\u{e9}"] {
@@ -95,7 +96,7 @@ fn a_repeated_init_rewrites_nothing() {
 }
 
 /// An init against a `contextful.toml` declaring no `project` key appends the `[project]` table and keeps every existing byte.
-// spec: store.init.adopt@5091180c
+// spec: store.init.declaration-file@6926a0e8
 #[test]
 fn an_init_adopts_an_existing_declaration() {
     let dir = tempfile::tempdir().unwrap();
@@ -112,7 +113,7 @@ fn an_init_adopts_an_existing_declaration() {
 }
 
 /// An init against a `contextful.toml` declaring another name, or no string name, raises `StoreProjectConflict`, naming the declared name when one exists and the init's name, and writes nothing.
-// spec: store.init.name-conflict@39fe9c8b
+// spec: store.init.name-conflict@e14109fe
 #[test]
 fn an_init_naming_another_project_refuses() {
     let cases = [("[project]\nname = \"research\"\n", Some("`research`")), ("[project]\nowner = \"ops\"\n", None), ("project = \"research\"\n", None)];
@@ -135,7 +136,7 @@ fn an_init_naming_another_project_refuses() {
 }
 
 /// A command given no `--project` reads the nearest `contextful.toml` in the working directory or an ancestor and bases every project path on its directory.
-// spec: store.init.discovery@c798bf23
+// spec: store.init.discovery@f9371306
 #[test]
 fn discovery_takes_the_nearest_declaration_upward() {
     let dir = tempfile::tempdir().unwrap();
@@ -176,8 +177,9 @@ fn discovery_without_a_named_declaration_refuses() {
     assert!(matches!(store_err(discover(&inner).unwrap_err()), StoreError::StoreProjectNameInvalid(_)));
 }
 
-/// The project paths are the store root, the run state `.contextful/run/<project>/` and the memory pass state `.contextful/memory/<project>/`.
-// spec: store.init.project-paths@5a23a3db
+/// Without `--project`, a command takes the `[project] name` of the nearest `contextful.toml` in the working directory or an ancestor, and
+/// bases the store root, `.contextful/run/<project>/` and `.contextful/memory/<project>/` on that file's directory.
+// spec: store.init.discovery@f9371306
 #[test]
 fn every_project_path_is_based_on_the_project_directory() {
     let dir = tempfile::tempdir().unwrap();

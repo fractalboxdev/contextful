@@ -9,6 +9,8 @@ fn sh(script: &str) -> Boundary {
     Boundary::new("/bin/sh", &["-c", script])
 }
 
+// spec: run.land.parse-deadline@2a51ddfc
+// spec: run.land.parse-memory@8160aabc
 #[test]
 fn every_decode_child_receives_the_declared_bounds() {
     let worker = sh("cat");

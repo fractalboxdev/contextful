@@ -4,45 +4,71 @@ contract: store
 
 # The store and its sync
 
-## What it is for
+## The problem the store solves
 
-The store holds Parquet, manifests and one pointer per table ({{store.lay-out.components}}). A conditional write keeps every committed batch whole.
+Many writers append rows while readers query and a background pass compacts. A reader
+needs a consistent answer, and a crashed writer must leave nothing half visible. The
+store holds Parquet files, JSON manifests and one pointer object per table
+({{store.lay-out.components}}). Every commit is a conditional write, so a batch is
+either whole or absent.
 
-## How it works
+## Setting up a project
 
-`contextful init` names the project ({{store.init.declaration-file}}), gives its store a synced identity ({{store.init.store-identity}}), and declares its authoring posture ({{store.init.posture}}); commands below it find it ({{store.init.discovery}}).
+`contextful init` writes `contextful.toml` and creates the store root beside it
+({{store.init.declaration-file}}). The store receives an identity that clones keep,
+so two stores never merge by accident ({{store.init.store-identity}}).
 
-Run files and snapshot directories are immutable ({{store.lay-out.immutable-files}}). A write adds a run directory and commits by conditionally creating that run's manifest ({{store.lay-out.run-manifest}}); until the manifest exists, the run's parts join no read ({{store.lay-out.uncommitted-run}}). The pipeline's cursor rides inside the same commit, so rows and position land together ({{store.lay-out.cursor-in-commit}}).
+## One table, from write to read
 
-A read resolves an explicit sorted file list from the pointer and the manifests, never a glob ({{store.reconcile.explicit-file-list}}). An unkeyed table reads as the union of its committed runs ({{store.declare.unkeyed-union}}); a keyed table reads through a view that keeps one survivor per key ({{store.declare.dedup-view}}), picked by `order_by` ({{store.declare.order-by-default}}). Schemas grow additively: a new column joins and older files read it as null ({{store.reconcile.additive}}). The type lattice admits one promotion ({{store.reconcile.lattice}}), and any other clash refuses at the write ({{store.reconcile.incompatible}}). A source with mixed scalar kinds uses {{store.reconcile.variant}}.
+The example table `documents` declares `primary_key = ["document_id", "page"]` and
+`order_by = "revised_at"`. A keyed table reads through a view that keeps one survivor
+per key ({{store.declare.dedup-view}}); an unkeyed table reads as the union of its
+runs ({{store.declare.unkeyed-union}}).
 
-An empty replacement marks a fileless frontier ({{store.declare.empty-replacement}}).
+A run writes parts into its own directory and commits by creating that run's manifest
+conditionally ({{store.lay-out.run-manifest}}). Until the manifest exists, no read
+lists the run's parts ({{store.lay-out.uncommitted-run}}).
 
-Runs accumulate until a fold compacts them. A pass writes Parquet and every sidecar into staging ({{store.fold.pass}}), carrying untouched parts by reference ({{store.fold.carry-by-reference}}), then replaces `_pointer.json` conditioned on its starting ETag ({{store.fold.pointer-commit}}). Readers see a snapshot and its sidecars together or neither ({{store.fold.partial-snapshot}}), and a statement in flight keeps the snapshot it started on ({{store.fold.non-blocking}}).
+The engine injects provenance columns such as `_ingested_at` and `_run_id`, replacing
+any value the producer sent ({{store.reserve.injected}}). It also assigns
+`_commit_seq` above every value the table holds, so later commits sort later
+({{store.reserve.commit-seq}}).
 
-A table's {{store.declare.retain-rows}} declaration gives rows an age limit. Reads enforce the cutoff at the statement ({{store.bound-time.row-age-cutoff}}), and a fold omits expired rows from the next snapshot ({{store.fold.row-retention}}). The pass reports its cutoff, expired rows, dropped partitions and collected directories ({{store.fold.row-retention-report}}).
+Schemas grow additively: an unseen column joins, and older files read it as null
+({{store.reconcile.additive}}). One batch sends `page` as a float. That batch fails
+before any Parquet, because a key column never widens ({{store.reconcile.key-widening}}).
 
-Catalog lifetimes differ: `derived.sqlite` rebuilds from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` keeps machine-local journal, cursors and leases ({{store.lay-out.machine-catalog}}). Both use ports ({{store.lay-out.catalog-ports}}).
+A query with no time bound reads the current snapshot plus the committed runs it omits
+({{store.bound-time.unbounded-latest}}). Every read passes an explicit sorted file
+list, never a glob ({{store.reconcile.explicit-file-list}}).
 
-A bucket mirrors the tree. A push uploads changed files, commits the bucket manifest by compare-and-set, and re-merges a lost race within a bound ({{store.merge.retries}}). A pull checks every digest ({{store.pull.digest-mismatch}}), refuses a different store identity ({{store.pull.identity-conflict}}), and writes no pointer unless it converges ({{store.pull.unconverged}}). Leases keep writers apart, with a fence storage checks on commit ({{store.lease.stale-fence}}). A replica is read-only ({{store.replicate.write-refused}}) and holds a snapshot whole or not at all ({{store.replicate.partial-parquet}}) ({{store.replicate.descriptor}}). Deletions are signed ({{store.merge.tombstone-signed}}).
+## Leases and a paused writer
 
-A pull carries the signed control head ({{store.pull.control-head}}) without changing the applied pointer.
+A **lease** gives one node exclusive ownership of a pipeline or of compaction, and a
+**fence** is the number that rises with each new holder. A paused machine that lost
+its lease later tries to commit. The higher fence wins the condition, and the stale
+run stays unreadable ({{store.lease.stale-fence}}).
 
-## Worked example
+## Compaction
 
-Take the keyed table `documents`, with `primary_key = ["document_id", "page"]` and `order_by = "revised_at"`.
+Runs accumulate until a fold compacts them. A pass stages Parquet and every declared
+sidecar, then commits by replacing the table pointer on the ETag it read
+({{store.fold.pass}}). A reader sees a snapshot and its sidecars together or neither
+({{store.fold.partial-snapshot}}).
 
-- Node `ingest-a` resolves its node id once at start ({{store.lay-out.node-id-order}}), takes the pipeline's lease, and renews it ({{store.lease.renewal}}).
-- A run lands parts under `data/runs/<run-id>/ingest-a/`, and the engine injects `_ingested_at` and `_run_id` ({{store.reserve.injected}}). One batch sends `page` as a float; it refuses before any Parquet, because a key never widens ({{store.reconcile.key-widening}}).
-- The run commits under the lease fence. A paused machine that lost its lease then commits; the higher fence beats it, and its run stays unreadable ({{store.lease.stale-fence}}).
-- A query now gets the current snapshot plus the committed runs it omits, deduped per key ({{store.bound-time.unbounded-latest}}).
-- A fold trigger fires ({{store.fold.triggers}}). The pass holds the compaction lease and stamps its fence into the manifest and the pointer ({{store.fold.compaction-lease}}); the new snapshot's `includes_runs` names the folded runs ({{store.fold.includes-runs}}). The previous snapshot stays reachable to bounded reads ({{store.fold.supersedes}}) until retention collects it ({{store.fold.retention}}).
-- An auditor's read of `documents` as of last week resolves the snapshot then current ({{store.bound-time.as-of}}), so the fold changes no answer. An instant older than retained history refuses and names the oldest answerable instant ({{store.bound-time.as-of-unretained}}).
-- The node pushes, and a laptop replica refreshes. A query needing a sidecar the replica lacks refuses and names the refresh that supplies it ({{store.replicate.missing-index}}).
+A statement already running keeps the snapshot it started on, so a fold blocks no
+reader ({{store.fold.non-blocking}}).
 
-## Clocks
+A **sidecar** is an index file beside a snapshot: a vector graph, a full-text index or a
+key lookup ({{store.index.kinds}}). A sidecar returns candidate ids only, and
+retrieval joins them through the access-controlled relation
+({{store.index.candidate-ids}}).
 
-A backfill keeps the source's availability instant ({{run.backfill.available-instant}}); a revision lands as a vintage ({{store.available-time.vintage-rows}}).
+## Three clocks
+
+Transaction time records when a commit happened, valid time when a fact held, and
+availability time when the source released it. The diagrams follow one quarterly
+measurement through all three.
 
 ```mermaid
 flowchart LR
@@ -62,6 +88,14 @@ flowchart LR
   T -->|"as_of compares"| G
 ```
 
+An auditor reads `documents` as of last week and gets the snapshot current then, so a
+later fold changes no answer ({{store.bound-time.as-of}}). An instant older than
+retained history fails and names the oldest answerable instant
+({{store.bound-time.as-of-unretained}}).
+
+A table declaring `available_time` keeps every revision as a vintage beside the earlier
+value ({{store.available-time.vintage-rows}}).
+
 ```mermaid
 flowchart TD
   P(["source publisher"]) -->|"releases revised figure"| H{"content hash unchanged?"}
@@ -74,11 +108,34 @@ flowchart TD
   B -->|"unbounded"| N["latest vintage"]
 ```
 
-## Where to look
+A document capture commits as one store snapshot that an evaluation case pins by id
+({{store.snapshot.capture}}).
 
-- File layout and visibility: `store.lay-out`.
-- How keys, ordering and write modes shape a read: `store.declare`.
-- How schemas merge: `store.reconcile`.
-- When a snapshot publishes: `store.fold`.
-- Time-bounded reads and vintages: `store.bound-time`, `store.available-time`.
-- Bucket sync and single-writer exclusion: `store.endpoint`, `store.push`, `store.pull`, `store.merge`, `store.lease`.
+When a project binds an encryption key, Parquet files use modular encryption and
+sidecars use authenticated per-file keys ({{store.encrypt.cipher}}).
+
+## Sync to a bucket
+
+A bucket mirrors the store tree. The `[sync] endpoint` scheme selects a filesystem, S3
+or R2 bucket ({{store.endpoint.schemes}}). Before trusting conditional writes, a probe
+writes a sentinel object and tests its conditions ({{store.probe.sentinel}}).
+
+`contextful sync manifest --emit` prints the plan a push commits, without touching the
+bucket ({{store.emit.plan}}). A push uploads files the bucket lacks and commits the
+bucket manifest under `If-Match` ({{store.push.manifest-commit}}).
+
+When two writers race, the push merges manifests and retries within a bound
+({{store.merge.retries}}). Deletions travel as signed tombstones
+({{store.merge.tombstone-signed}}).
+
+A pull checks each downloaded object against its manifest digest
+({{store.pull.digest-mismatch}}). Before downloading anything, a pull refuses a store
+holding a different identity ({{store.pull.identity-conflict}}).
+
+A laptop replica refreshes from the bucket and refuses writes
+({{store.replicate.write-refused}}). A query needing a sidecar the replica lacks fails
+and names the refresh that supplies it ({{store.replicate.missing-index}}).
+
+Under a database profile, each run carries an unpushed mark until a push clears it
+({{store.drain.mark}}). If the push at shutdown fails, the marks stay and name the runs
+still unpushed ({{store.drain.unfinished}}).

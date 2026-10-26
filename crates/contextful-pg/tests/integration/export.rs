@@ -4,6 +4,7 @@ use contextful_core::export::{change_events, change_state, parse_exports, Export
 use contextful_pg::PgExportLedger;
 use serde_json::json;
 
+// spec: run.export.remote-state@4b5bd8f5
 #[test]
 fn replacement_reoffers_identical_event_ids_and_acknowledges_only_its_prefix() {
     let Some(server) = super::server::start() else {

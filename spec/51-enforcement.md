@@ -81,8 +81,6 @@ Removal and transformation inside the writer, ahead of columnar bytes and the ru
   *A-authority#redaction-no-copy*
 - `at-rest-scope` — Stored bytes lack only write-time-removed values. A column protected at query time alone is cleartext in storage and readable with the object-store credential.
   *A-authority#redaction-no-copy*
-- `summarize-only` — A `summarize_only` column stores its text whole; the flag lands at write time and travels with the column, binding every surface through {{authority.mask.verbatim-quote}}.
-  *A-authority#redaction-no-copy*
 - `rules-per-pipeline` — A pipeline carries at most 256 entries in its removal rule set.
   *because a longer rule set is a policy the operator cannot review*
 - `pattern-bytes` — One removal pattern carries at most 4 KiB of source text.
@@ -234,8 +232,6 @@ Column classes, strategies and combines, guardrails over an exhaustible value sp
   *A-authority#exhaustible-digest*
 - `summarize-only` — `summarize_only` is a flag, not a strategy: the value stays legible to grounding and citation.
   *A-authority#exhaustible-digest*
-- `verbatim-quote` — One citation releases at most 280 chars of a `summarize_only` value verbatim, on every surface.
-  *A-authority#exhaustible-digest*
 - `typed-strategy` — A binary column masks by `drop` or by `hash` over its bytes, a vector or nested column by `drop` alone over the whole column; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.
   *A-store*
 - `absent-column` — A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.
@@ -373,8 +369,6 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
 - `excluded-disclosed` — `rows_dropped` counts the rows the zone step removes from the whole relation, every earlier step applied; the caller's statement, filter and requested size never enter it, and no removed value crosses.
   *A-read*
 - `symbolic-inclusion` — Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.
-  *A-authority#placement-breadth*
-- `proxy-boundary` — A proxy replica resolves zones at the proxy boundary.
   *A-authority#placement-breadth*
 - `allow-set-entries` — An allow-set holds at most 32 entries.
   *A-authority#placement-breadth*

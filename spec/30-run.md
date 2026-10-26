@@ -643,7 +643,6 @@ The runner publishes a best-effort live view of run progress to subscribers.
   *A-read*
 - `read-only-socket` — A subscription permits reads only. Stop requests use an authenticated route.
 - `restart-discards` — A restart discards in-memory snapshots; a subscriber recovers history from the durable record.
-- `delegated-progress` — A heavy step delegated to another host reports progress by posting to the awakeable callback route, and the orchestrating run folds it into its own snapshot.
 
 ## sweep
 

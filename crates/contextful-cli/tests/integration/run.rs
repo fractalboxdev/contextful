@@ -169,6 +169,7 @@ fn a_removed_monotonic_field_refuses_before_source_execution_and_an_unprotected_
     }
 }
 
+// spec: authority.redact.pinned-plan@740e274d
 #[test]
 fn a_caller_plan_cannot_claim_writer_rules_without_canonical_authority() {
     let dir = project();

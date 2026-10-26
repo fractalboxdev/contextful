@@ -174,6 +174,7 @@ impl Vendor {
 /// `pipeline run` resolves a component source, admits it against its pin and loads it once per fire, before any
 /// run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
 // spec: connector.package.component-load@43f09e4a
+// spec: connector.import.config-hashing@1a312bfb
 #[test]
 fn pipeline_run_lands_a_pinned_component_and_records_its_digest() {
     let pin = digest(PROBE);

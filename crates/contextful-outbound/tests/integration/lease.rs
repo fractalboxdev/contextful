@@ -2,7 +2,7 @@
 //! bootstrap credential.
 
 use crate::support::{configure_proxy, proxy_env, name, Fixed, Response, Server, SetClock};
-use contextful_core::connector::lease::Scopes;
+use contextful_core::connector::lease::{Scopes, MINT_CALLS_PER_WINDOW};
 use contextful_core::connector::resolve::Provider;
 use contextful_core::run::FailureTag;
 use contextful_outbound::secrets::{assemble, LeaseProvider};
@@ -231,7 +231,7 @@ fn server_and_transport_failures_are_transient_and_tried_once() {
 #[test]
 fn one_mint_per_name_per_window() {
     let _env = proxy_env();
-    assert_eq!(contextful_core::connector::lease::MINT_CALLS_PER_WINDOW, 1);
+    assert_eq!(MINT_CALLS_PER_WINDOW, 1);
     let server = leased(600);
     let clock = SetClock::new();
     let r = Arc::new(resolver(&server, "vendor-token,other-token", &clock));
@@ -241,13 +241,16 @@ fn one_mint_per_name_per_window() {
             s.spawn(move || {
                 for n in ["vendor-token", "other-token"] {
                     r.hydrate(&name(n)).unwrap();
+                    // A whole-value reference to a leased name shares the window too.
+                    assert_eq!(r.resolve(&name(n)).unwrap().reveal(), "leased-value");
                 }
             });
         }
     });
     clock.advance(200);
     r.hydrate(&name("vendor-token")).unwrap();
-    assert_eq!(mints(&server), 2, "one per declared name");
+    r.resolve(&name("vendor-token")).unwrap();
+    assert_eq!(mints(&server), 2 * MINT_CALLS_PER_WINDOW as usize, "one per declared name");
 }
 
 /// The lease provider holds the chain as assembled before it joined, so the mint reference hydrates only through
@@ -338,6 +341,7 @@ fn a_provider_named_localhost_mints_over_loopback() {
 }
 
 /// One mint call answers one scope: two leased names send two calls, each body naming one scope.
+// spec: connector.lease.scope-declaration@51bf16e8
 #[test]
 fn each_leased_name_mints_alone() {
     let _env = proxy_env();

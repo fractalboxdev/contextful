@@ -144,12 +144,18 @@ Where a spelling is registered, the single owner of an error or a bound, the col
 
 ## reference
 
-The one legal way a statement reaches a fact another clause owns, and the ban on restatement and literature.
+The one legal way a statement reaches a fact another clause or a code type owns, and the ban on restatement and literature.
 
 - `pointer` — `{{<clause id>}}` is the one way a statement reaches a fact another clause owns. The lock file records every pointer as an edge.
   *P8*
 - `dangling` — A `{{id}}` naming no clause raises `SpecDanglingReference`.
   *P8*
+- `type-pointer` — `{{type:<crate>::<module>::<Type>}}` names a Rust struct or enum in place of its keys; the lock file records its file, line and each field or variant with its `serde` spelling and doc comment, and the contract's card lists them.
+  *because a key list copied from code drifts from the code, and the type already holds every key with its gloss*
+- `type-unresolved` — A type pointer whose crate and module part names no file defining that struct or enum raises `SpecTypeUnresolved`.
+  *because a pointer to a moved or renamed type shows the reader no keys*
+- `restates-code` — `contextful-spec state` prints a `SpecRestatesCode` advisory naming each clause that backticks three or more keys of one deserialized struct or enum and carries no pointer to it; `spec/status.md` records their count.
+  *because a key list in a clause is a second home for its type, and which list a pointer replaces is a reviewer's judgment*
 - `no-literature` — A spec file carries no hyperlink to an external document and no path under `references/`; either raises `SpecExternalLink`. Literature lives in `references/`, which cites clause ids.
   *because the contract is judged by behavior, and a citation invites arguing from authority*
 
@@ -198,7 +204,7 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale*
 - `theorem-beside-test` — A clause carries at most one theorem pin beside its test pins. A theorem pin alone states a property of a model, and performs once its proof holds no `sorry`.
   *A-assurance*
-- `bound-theorem` — Beside test pins, a theorem pin counts only when the `binding` of its row in a `formal/` inventory names one of those tests; an uncounted theorem leaves the clause's verdict to its tests.
+- `bound-theorem` — Beside test pins, a theorem pin counts only when the `binding` of its row in an `inventory.toml` under `formal/` names one of those tests; an uncounted theorem leaves the clause's verdict to its tests.
   *because a proof of a model the code never drives says nothing about the code the clause names*
 - `proved` — A performed clause computes `proved` when a counted theorem pin and a test pin of it both perform; `spec/status.md` counts proved clauses per contract and each card per operation.
   *because performed and proved are different strengths of evidence, and one count hides which a contract holds*
@@ -210,12 +216,16 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a conjunctive clause takes one test per conjunct, and one passing test of half a clause reads as the whole*
 - `unexercised` — A test pin of a refusal clause computes `broken` unless its function body names one of the clause's errors: the id itself, or a `::` variant path keeping at least two of the id's trailing words.
   *because a test that never observes the error demonstrates some other behavior*
+- `limit-const` — A named-bound entry may record the Rust const holding its bound as `const = "<file>::<NAME>"`; a test pin of its clause computes `broken` while that const resolves to nothing or no non-test source under `crates/*/src` or `tools/*/src` reads it.
+  *because a test of a bound the code never consults demonstrates a number, not a limit*
 - `module-path` — A path pin resolves only where its file or module part points: `<file>.rs::<fn>` to that file, `<crate>::<module>::<fn>` to a file of that package opening that module path, `A.B.<theorem>` to `A/B.lean`.
   *because a pin matching any same-named function elsewhere demonstrates nothing about the named one*
 - `test-pin-is-test` — A `test` pin naming a function that carries no `#[test]` attribute does not resolve.
   *because a helper or production function proves presence, not behavior*
-- `unwired` — `contextful-ci unwired` raises `SpecUnwired` for each public item under `crates/*/src` that a performed pin's test names and no non-test source reaches, unless an `// entry: <clause id>` comment names the clause.
+- `unwired` — `contextful-ci unwired` reports each public item under `crates/*/src` that a performed pin's test names and no non-test source reaches, unless an `// entry: <clause id>` comment names the clause.
   *because a clause performing through its test alone demonstrates code no binary runs*
+- `unwired-ceiling` — `tools/ci/unwired.toml` records a `ceiling` for the unwired count; a count above it raises `SpecUnwired`, and `contextful-ci unwired --lower` sets it to a lower live count, so the ceiling only falls.
+  *because the count starts above zero, and wiring each item belongs to its own contract's change*
 - `unfinished-test` — A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.
   *because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption*
 - `coverage-floor` — `spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.
@@ -261,7 +271,7 @@ The generated files, and the vocabulary no authored file carries.
 
 - `generated` — `contextful-spec state` regenerates `spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json`, and `contextful-spec extract` the lock file alone. A committed copy differing from regeneration raises `SpecStaleRender`.
   *P8*
-- `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pin sites and verdict.
+- `lock-file` — The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry, the pointer graph, and each pinned clause's pins: kind, path, name, line, verdict, proof.
   *P8*
 - `card` — `contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.
   *A-corpus*
@@ -326,10 +336,16 @@ Per-provider deployment target files, the roles each shape fills, and the page r
 
 A non-normative teaching page per contract, and what keeps it from becoming a second home for a rule.
 
-- `file` — Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose of at most 700 words outside diagrams.
+- `file` — Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose outside diagrams of at most 400 words plus 20 words per operation its contract's fragment registers.
   *A-corpus*
-- `non-normative` — A guide holds no clause item and names no registered error; it reaches a rule by `{{id}}`. No contract file links a guide.
+- `non-normative` — A guide holds no clause item and names no registered error. It reaches a rule by `{{<clause id>}}` and an operation by `{{<contract>.<operation>}}`, which resolves against that contract's fragment. No contract file links a guide.
   *because a rule restated in teaching prose is a second home that drifts from the first*
+- `reach` — Each operation a contract's fragment registers appears in the contract's guide as an operation pointer or a pointer to one of its clauses; an operation the guide misses raises `SpecGuideReach`, naming it.
+  *because a guide that skips an operation leaves its reader no route from the flow to that operation's rules*
+- `pointer-density` — A guide paragraph, list item or table row holds at most 3 pointers to clauses and at least 8 words of prose per clause pointer; a denser one raises `SpecGuidePointerDensity`.
+  *because a paragraph of pointers is an index without the reasoning that connects its entries, and the card already is the index*
+- `bound` — A guide sentence holding a number equal to a bound value in its contract's fragment also holds the pointer to a clause owning a bound of that value; a sentence without one raises `SpecGuideBound`.
+  *because a restated number drifts when its bound changes, and the pointer names the one place to change it*
 - `bad-guide` — A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.
   *P8*
 

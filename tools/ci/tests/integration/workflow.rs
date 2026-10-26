@@ -14,7 +14,7 @@ fn listed_in(root: &std::path::Path, args: &[&str]) -> Vec<String> {
 }
 
 fn nightly(part: &str) -> bool {
-    ["features", "formal", "budget"].iter().any(|stage| part == *stage || part.strip_prefix(stage).is_some_and(|rest| rest.starts_with('.')))
+    ["features", "formal", "budget", "unwired"].iter().any(|stage| part == *stage || part.strip_prefix(stage).is_some_and(|rest| rest.starts_with('.')))
 }
 
 #[test]
@@ -97,19 +97,21 @@ fn folded_parts_run_every_stage_part_once_in_run_order() {
     assert_eq!(listed(&["gate", "--plan", "--base", "HEAD", "--stage", "evaluate.probe"]), ["evaluate"]);
 }
 
-/// `contextful-ci stages --parts --tier nightly` prints the features, formal and budget parts in run order; `stages --parts` prints the remaining parts, those a change runs before merge, and `gate --stage` runs a part of either tier.
-// spec: assurance.gate.nightly-tier@7def815d
+/// `contextful-ci stages --parts --tier nightly` prints the features, formal, unwired and budget parts in run order; `stages --parts` prints the remaining parts, those a change runs before merge, and `gate --stage` runs a part of
+/// either tier.
+// spec: assurance.gate.nightly-tier@ec57ade2
 #[test]
-fn the_nightly_tier_holds_the_features_formal_and_budget_parts() {
+fn the_nightly_tier_holds_the_features_formal_unwired_and_budget_parts() {
     let required = listed(&["stages", "--parts"]);
     assert_eq!(required, listed(&["stages", "--parts", "--tier", "pr"]));
     assert!(!required.is_empty() && !required.iter().any(|p| nightly(p)), "a nightly part is a required check: {required:?}");
     let tier = listed(&["stages", "--parts", "--tier", "nightly"]);
-    assert_eq!(tier.len(), 22, "{tier:?}");
+    assert_eq!(tier.len(), 23, "{tier:?}");
+    assert!(tier.iter().any(|p| p == "unwired"), "{tier:?}");
     assert!(tier.iter().all(|p| nightly(p)), "a required part runs nightly: {tier:?}");
     assert!(tier.first().is_some_and(|p| p.starts_with("features.")), "{tier:?}");
     assert!(tier.iter().any(|p| p == "formal") && tier.iter().any(|p| p.starts_with("budget.")), "{tier:?}");
-    let rank = |p: &String| ["features", "formal", "budget"].iter().position(|stage| p.split('.').next() == Some(*stage));
+    let rank = |p: &String| ["features", "formal", "unwired", "budget"].iter().position(|stage| p.split('.').next() == Some(*stage));
     assert!(tier.is_sorted_by_key(rank), "the nightly parts leave run order: {tier:?}");
 
     let bogus = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(["stages", "--parts", "--tier", "weekly"]).current_dir(repo_root()).output().unwrap();

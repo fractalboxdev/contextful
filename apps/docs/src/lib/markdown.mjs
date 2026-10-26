@@ -2,11 +2,12 @@
 import { dirname, resolve } from "node:path";
 import { visit, SKIP } from "unist-util-visit";
 import { existsSync, readFileSync } from "node:fs";
-import { ADR_DIR, corpusIndex, routeFor, SPEC_DIR } from "./corpus.mjs";
+import { ADR_DIR, corpusIndex, recordId, routeFor, SPEC_DIR } from "./corpus.mjs";
 
-// `{{contract.operation.subject}}` and `{{contract.operation}}` pointers, and bare record
-// ids (P4, D07, A-store), a contract ADR optionally naming its section (A-store#lease).
-const INLINE_REF = /\{\{([a-z0-9-]+\.[a-z0-9-]+(?:\.[a-z0-9.-]+)?)\}\}|\b(P[1-9]|D\d{2}|A-[a-z]+)(?:#([a-z0-9-]+))?\b/g;
+// `{{contract.operation.subject}}` and `{{contract.operation}}` pointers, bare record ids
+// (P4, D07, A-store), a contract ADR optionally naming its section (A-store#lease), and
+// `{{type:<rust path>}}` pointers.
+const INLINE_REF = /\{\{([a-z0-9-]+\.[a-z0-9-]+(?:\.[a-z0-9.-]+)?)\}\}|\b(P[1-9]|D\d{2}|A-[a-z]+)(?:#([a-z0-9-]+))?\b|\{\{type:(\w+(?:::\w+)+)\}\}/g;
 
 const sourcePath = (file) => file.path ?? file.history?.[0];
 
@@ -73,6 +74,15 @@ const operationLink = (key, target, shown) => ({
   title: target.lede ? `${key} — ${target.lede}` : key,
   data: hp(["clause-ref", "operation-ref"]),
   children: [shown ?? { type: "inlineCode", value: key.split(".").at(-1) }, preview(key, target.lede)],
+});
+
+/** A link to the source of a pointed type: its name in code, its full path in the tooltip. */
+const typeLink = (path, target) => ({
+  type: "link",
+  url: target.href,
+  title: `${path} — ${target.kind}`,
+  data: hp("type-ref"),
+  children: [{ type: "inlineCode", value: path.split("::").at(-1) }],
 });
 
 // Text that is already a link, a heading, or a preview inside a link takes no further links.
@@ -167,12 +177,25 @@ const addressClauses = (tree, contract, owns, index) => {
   }
 };
 
-/** An ADR section heading `<slug> — <decision>` takes `<slug>` as its anchor, the target of `A-<contract>#<slug>`. */
-const addressDecisions = (tree) => {
-  for (const h of tree.children) {
+/**
+ * An ADR section heading `<slug> — <decision>` takes `<slug>` as its anchor, the target of
+ * `A-<contract>#<slug>`, and is followed by links to the clauses the lock records citing it.
+ */
+const addressDecisions = (tree, record, { clauses, sections }) => {
+  const kids = tree.children;
+  for (let i = 0; i < kids.length; i++) {
+    const h = kids[i];
     if (h.type !== "heading" || h.depth !== 2) continue;
     const m = /^([a-z0-9-]+) — \S/.exec(plain(h));
-    if (m) h.data = { ...h.data, hProperties: { ...h.data?.hProperties, id: m[1] } };
+    if (!m) continue;
+    h.data = { ...h.data, hProperties: { ...h.data?.hProperties, id: m[1] } };
+    const citing = (sections.get(`${record}#${m[1]}`) ?? []).filter((id) => clauses.has(id));
+    if (!citing.length) continue;
+    kids.splice(i + 1, 0, el("citedBy", "p", "cited-by", [
+      el("citedByLabel", "span", "cited-by-label", [text("Cited by")]),
+      ...citing.map((id) => clauseLink(id, clauses.get(id), { type: "inlineCode", value: id })),
+    ]));
+    i++;
   }
 };
 
@@ -183,7 +206,7 @@ const addressDecisions = (tree) => {
 export function remarkCorpus({ lock } = {}) {
   return (tree, file) => {
     const index = corpusIndex(lock);
-    const { clauses, operations, records, errors } = index;
+    const { clauses, operations, records, errors, types } = index;
     const from = sourcePath(file);
     const self = from ? routeFor(from) : undefined;
 
@@ -201,7 +224,7 @@ export function remarkCorpus({ lock } = {}) {
       );
       addressClauses(tree, contract, owns, index);
     }
-    if (from && dirname(from) === ADR_DIR) addressDecisions(tree);
+    if (from && dirname(from) === ADR_DIR) addressDecisions(tree, recordId(from), index);
 
     // `store.fold.partial-snapshot` links to its row, `store.fold` to its section, and
     // `StorePartialSnapshot` to the clause that owns it.
@@ -228,9 +251,11 @@ export function remarkCorpus({ lock } = {}) {
       const out = [];
       let last = 0;
       for (const m of node.value.matchAll(INLINE_REF)) {
-        const [raw, pointer, record, section] = m;
+        const [raw, pointer, record, section, type] = m;
         let link;
-        if (pointer) {
+        if (type) {
+          link = types.has(type) ? typeLink(type, types.get(type)) : undefined;
+        } else if (pointer) {
           const clause = clauses.get(pointer);
           const op = operations.get(pointer);
           link = clause ? clauseLink(pointer, clause) : op ? operationLink(pointer, op) : undefined;

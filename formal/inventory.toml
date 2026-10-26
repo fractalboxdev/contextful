@@ -3,7 +3,7 @@
 
 [claim]
 targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent", "Authority.permits_iff_audience_and_every_block", "Authority.attenuateAll_permits_every_parent_block"]
-trusted  = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser", "translator"]
+trusted  = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser"]
 rests_on = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser"]
 verified = ["crates/contextful-core/src/attenuate.rs::widened", "crates/contextful-core/src/attenuate.rs::attenuate", "crates/contextful-policy/src/verify.rs::permits"]
 

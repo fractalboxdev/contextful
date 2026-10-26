@@ -24,6 +24,7 @@ fn text(out: Output) -> String {
     String::from_utf8(out.stdout).unwrap().trim().to_string()
 }
 
+// spec: assurance.evaluate.entity-command@952bbc1c
 #[test]
 fn native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements() {
     let dir = tempfile::tempdir().unwrap();
@@ -181,6 +182,7 @@ fn native_entity_evidence_runs_both_live_arms_and_emits_versioned_measurements()
     }
 }
 
+// spec: assurance.evaluate.entity-baseline@3f5fcca4
 #[test]
 fn entity_baseline_refuses_a_different_fixture_envelope_before_admission() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");

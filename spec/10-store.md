@@ -140,24 +140,19 @@ unsettled: Does a store re-bind the node id it last derived, so runs landed befo
 
 Project initialization, repeated initialization and project discovery when a command omits `--project`.
 
-- `declaration-file` — `contextful init <name>` writes `contextful.toml` in the working directory declaring `[project]` with `name = "<name>"`, and creates the store root {{store.lay-out.store-root}} beside it.
+- `declaration-file` — `contextful init <name>` writes `[project]` with `name = "<name>"` into `contextful.toml` in the working directory, appending the table to a file declaring no `project` key and keeping its bytes, and creates the store root {{store.lay-out.store-root}} beside it.
 - `store-identity` — An initialized store holds one synced, canonical version-4 UUID in `store-id`; repeated init and clones keep it, while a recreated root receives a new UUID.
   *A-store*
 - `identity-invalid` — A malformed `store-id`, or an owner mint naming no initialized store root, raises `StoreIdentityInvalid`.
   *because an ambiguous or absent UUID cannot bind an owner credential*
-- `name-shape` — Project names use `/`-separated segments of `[A-Za-z0-9._-]`, excluding `.` and `..` segments. Other names raise `StoreProjectNameInvalid` before any file read or write.
-  *because the name is interpolated into every project path, and a traversing segment places a store outside its project*
+- `name-conflict` — A project name other than `/`-separated `[A-Za-z0-9._-]` segments, or holding a `.` or `..` segment, raises `StoreProjectNameInvalid` before any file access. A `contextful.toml` declaring another name or no string `name` raises `StoreProjectConflict` and writes nothing.
+  *because the name enters every project path, so a traversing segment escapes the project, and a rename orphans its store root*
 - `repeat` — If `contextful.toml` declares the same `[project] name`, init succeeds and preserves store content. Init rewrites only the authoring posture under {{store.init.posture}} and a missing {{store.init.store-identity}}.
   *because a repeated init converges on the state the first one wrote, so scripts and onboarding run it unconditionally*
-- `adopt` — An init against a `contextful.toml` declaring no `project` key appends the `[project]` table and keeps every existing byte of the file.
 - `posture` — `contextful init <name> --authoring-posture <posture>` prepends top-level `authoring_posture = "<posture>"` under {{authority.issue.posture-key}} when `contextful.toml` declares none, preserving every other byte. Init preserves a declared authoring posture. Without the flag, init writes none.
   *because the authoring posture decides whether a write without a credential lands, so no default chooses it for the operator*
-- `name-conflict` — If `contextful.toml`'s `project` declares another name or lacks a string `name`, init raises `StoreProjectConflict` and writes nothing. The error names the requested name and the declared name when present.
-  *because renaming a project orphans its store root, which an overwrite hides*
-- `discovery` — Without `--project`, a command reads the nearest `contextful.toml` in the working directory or an ancestor. The command uses that file's `[project] name` and bases every project path on the file's directory.
-- `explicit-project` — A command given `--project` bases every project path on the working directory and runs no discovery.
-- `project-paths` — The project paths are the store root, the run state `.contextful/run/<project>/` and the memory pass state `.contextful/memory/<project>/`.
-- `default-declaration` — A command given no `--declaration` reads the discovered `contextful.toml`, or `contextful.toml` in the working directory under `--project`.
+- `discovery` — Without `--project`, a command takes the `[project] name` of the nearest `contextful.toml` in the working directory or an ancestor, and bases the store root, `.contextful/run/<project>/` and `.contextful/memory/<project>/` on that file's directory.
+- `default-declaration` — Under `--project`, a command bases every project path {{store.init.discovery}} names on the working directory and runs no discovery. A command given no `--declaration` reads the discovered `contextful.toml`, or the working directory's under `--project`.
 - `declaration-base` — For a located project, relative declaration paths resolve against the project's base directory rather than the working directory. These paths include a derive binding's `media_root` and path-form `command[0]`.
   *because one pipeline otherwise reads different media or programs depending on the subdirectory it fires from*
 - `undiscovered` — Without `--project`, a command raises `StoreProjectUndiscovered` when the working directory and ancestors lack `contextful.toml` or the nearest file lacks `[project] name`. The error names the starting directory.
@@ -175,39 +170,27 @@ Project initialization, repeated initialization and project discovery when a com
 
 Table declarations, primary keys, row ordering, write modes and replacement behavior.
 
-- `table-block` — Table keys: `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `bloom_filter`, `retain_runs`, `retain_rows`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries`, `content_hash_column`, `result_cache` and `private`. Canonical serialization omits unset keys.
+- `table-block` — A table block takes {{type:contextful_core::store::declare::TableDecl}}; canonical serialization omits unset keys. A key applies from the next read and rewrites no committed part; `columns` types every landing, pipeline runs included, under {{store.reconcile.typed-landing}}.
+  *because a JSON value alone cannot say it carries bytes or a vector*
 - `erasure-metadata` — An erasure declaration names `erasure_key`, incoming `referenced_by` table/column edges, and `on_erase = "survive"` for retained citing rows; absent fields remain absent in canonical serialization.
   *A-disclosure*
 - `retain-rows` — `retain_rows = { column = "<name>", age = "<n>d" }` accepts `_ingested_at` or a declared Timestamp column. Another column or null value raises `StoreRetentionColumnInvalid` before landing. A malformed age refuses the declaration.
   *because a sender's clock cannot control the injected arrival time, and a nullable retention clock leaves a row with no expiry*
-- `column-types` — `columns` maps column names to type spellings under {{store.reconcile.typed-landing}}. Every landing into the table, including pipeline runs, uses the declared type for that column.
-  *because a JSON value alone cannot say it carries bytes or a vector*
 - `two-genres` — A table holds connector items or synthesized artifacts. Artifact kinds use an open string without an engine-defined enumeration. Both items and artifacts append, deduplicate on content and carry a timestamp.
 - `unkeyed-union` — A table declaring no `primary_key` reads as the byte-identical union of its visible committed runs, selected under {{store.declare.replace-frontier}} when replacing.
 - `dedup-view` — A keyed table reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1`. The source unions the current snapshot, if present, with committed runs omitted by that snapshot.
   *because a keyed table read as a union before its first fold inflates every aggregate silently*
 - `order-by-default` — `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.
-- `order-by-unknown` — An `order_by` naming a column neither declared nor injected raises `StoreOrderByUnknownColumn` at validation, before the first batch.
-  *because an ordering column absent from every file reads as null and picks survivors arbitrarily*
-- `key-unknown` — A `primary_key` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` at validation, before the first batch.
-  *because a key column absent from every file partitions every row into one group and collapses the table to a single row*
-- `nested-key` — A struct, list or map column named by `primary_key`, `order_by`, `cluster_by`, `partition_by` or `valid_time` raises `StoreNestedKeyColumn` at validation, before any Parquet.
-  *A-store*
-- `write-mode` — `write_mode` is `append`, the default, keeping the last write per key and retiring no key, or `replace`.
-- `replace-frontier` — Under `replace`, a read covers the newest run carrying the source's complete state plus every run committed after it.
-- `replace-retains` — A replacing run keeps displaced runs on disk until `retain_runs` expires. The replacing run writes no erasure receipt and traverses no lineage.
+- `key-unknown` — A `primary_key` or `order_by` naming a column neither declared nor injected raises `StoreKeyUnknownColumn` or `StoreOrderByUnknownColumn`, and a struct, list or map column in either role or in `cluster_by`, `partition_by` or `valid_time` raises `StoreNestedKeyColumn`, at validation.
+  *because a key or ordering column absent from every file reads as null, and a nested one has no total order, so rows group or survive arbitrarily*
+- `replace-frontier` — `write_mode` is `append`, the default, retiring no key, or `replace`, where a read covers the newest complete-state run and every later run; displaced runs stay on disk until `retain_runs` expires, with no erasure receipt or lineage traversal.
 - `empty-run` — A run landing zero rows commits a manifest with no parts; without {{store.declare.empty-replacement}} it replaces nothing. A table with no rows registers as a zero-row relation over its declared and injected columns.
-- `empty-replacement` — A complete zero-row `replace` run marks its manifest as a replacement frontier. Current reads exclude earlier files; bounded reads before that commit retain earlier rows within retention.
+- `empty-replacement` — A complete zero-row `replace` run marks its manifest as a replacement frontier, which push, pull and fold preserve without a data row. Current reads exclude earlier files; bounded reads before that commit retain earlier rows within retention.
   *A-store*
-- `empty-frontier-preserved` — Sync push, sync pull and fold preserve an empty replacement frontier without writing a data row.
-  *A-store*
-- `fold-job` — A compaction job covers a table when its `[[job]]` block has kind `fold` and a `schedule`. The job's `enabled` is absent or true; its `target` is absent or names the table's destination name.
-  *A-store*
-- `fold-coverage` — If a table declares `primary_key` without coverage under {{store.declare.fold-job}}, `pipeline validate` warns on stderr and names the table. The warning alone causes no failure.
+- `fold-job` — A `[[job]]` block of kind `fold` with a `schedule`, `enabled` absent or true and `target` absent or naming the table's destination covers the table; `pipeline validate` warns on stderr, failing nothing, for each keyed table no job covers.
   *A-store*
 - `declaration-set` — The project's tables combine its declaration with adjacent `pipelines/*.toml` and `pipelines/*.json`: `[pipeline]` tables as named, specification tables under {{run.declare.table-name}}. Queries and every `sync` verb use this declaration set.
   *because a key or `replicate` declared only where `pipeline run` reads it leaves reads, pulls and folds treating the table as unkeyed and replicated*
-- `read-side-keys` — A declaration key changes what a read returns and rewrites no committed part; a key added after rows land applies from the next read.
 
 unsettled: What retires a key a source stops serving under `append`, given the source-side deletion is invisible in the tree? owner: store affects: store.declare
 
@@ -225,14 +208,10 @@ Reserved column and table names, injected provenance columns, the commit protoco
 - `no-placeholder` — A path with no batch scope or no authenticated subject omits that column instead of writing nulls.
 - `taint` — On each row from model output, the engine injects `_taint` under {{connector.infer.provenance-order}}, replacing any producer value. Rows without model output omit `_taint`.
   *because a label a producer sets is one injected text can forge*
-- `pass` — For each synthesized claim, the engine injects `_pass`: `glean` under {{read.synthesize.gleaning}}, `first` otherwise. Injection replaces any producer value. Rows without synthesis omit `_pass`.
-  *because a reader telling a gleaned claim from a first-pass one must not trust a label the model could emit*
 - `optional` — A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
 - `modality` — `_modality` takes one of text, image, audio, structured or mixed; another value fails validation of its batch.
 - `lang-and-provenance` — `_lang` carries a BCP-47 tag; `_provenance` carries the evidence rows the row derives from, addressed by the identity the source table keys on.
 - `prompt-hash` — `_prompt_hash` is `sha256:<hex>` over the prompt template, not the rendered prompt.
-- `edge-validity` — `memory_edges` rows carry `valid_from`, `valid_to` and `superseded_by`. A producer's `valid_from` stands; an absent value takes declared availability time, else commit time. Only {{read.revise.edge-supersede}} writes `valid_to` and `superseded_by`.
-  *A-read*
 - `column-name` — A producer column inside the `_` namespace and outside the optional set raises `StoreReservedColumnName` at reconciliation, before any Parquet.
   *P1*
 - `table-namespaces` — The engine reserves three table namespaces. `_runs` holds the durable run record; `_items` holds item records under {{run.items.outcome-record}}. `_visibility` holds each source's mirrored access tables under {{disclosure.mirror.grants-table}}.
@@ -458,8 +437,6 @@ At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and
   *A-store*
 - `machine-catalog-sealing` — A bound `machine.sqlite` holds an authenticated SQLite snapshot. Each catalog transaction locks the file, reads the snapshot into process memory and seals committed bytes before releasing the lock.
   *A-store*
-- `password-kdf` — A password-derived project key uses Argon2id with 64 MiB memory, 3 iterations and 4 lanes.
-- `transport-separate` — At-rest encryption covers files and TLS covers bucket transport; a cleartext endpoint carries no encrypted-at-rest claim.
 - `redacted-index` — An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.
   *A-authority#redaction-no-copy*
 - `at-rest-scope` — A stolen bucket credential yields ciphertext Parquet and sidecars, no write-time-redacted content, and no key material.
@@ -743,6 +720,8 @@ stateDiagram-v2
     Held --> Released: holder null, fence kept
     Held --> Expired: no renewal within the grant
 ```
+
+unsettled: Which process carries out `renewal` for a compaction lease held across `sync lease acquire` and `sync compact --held`, and for a pipeline lease? owner: store affects: store.lease
 
 ## Shapes
 

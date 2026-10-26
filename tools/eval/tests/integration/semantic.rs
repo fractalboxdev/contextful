@@ -251,6 +251,8 @@ fn symbolic_links_to_the_manifest_inputs_or_held_out_file_are_refused() {
     }
 }
 
+// spec: assurance.evaluate.semantic-report@37efd663
+// spec: assurance.evaluate.semantic-separate@2ae6baa1
 #[test]
 fn quality_reports_counts_intervals_and_slice_regressions_apart_from_judged_answers() {
     let root = root().join("evals/semantic/v1");
