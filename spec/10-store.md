@@ -721,6 +721,8 @@ stateDiagram-v2
     Held --> Expired: no renewal within the grant
 ```
 
+unsettled: Which process carries out `renewal` for a compaction lease held across `sync lease acquire` and `sync compact --held`, and for a pipeline lease? owner: store affects: store.lease
+
 ## Shapes
 
 Each example names the `contextful_core::store` type it serializes. Each example parses into that type and writes back unchanged.
