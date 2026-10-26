@@ -865,6 +865,21 @@ fn seeded_generated_narrowing_cases_include_explicit_forget_actions() {
     assert!(cases.iter().any(|case| case["op"] == "narrow" && holds_forget(&case["child"])), "the fixed seed generates no forget child");
 }
 
+#[test]
+fn seeded_generated_narrowing_cases_cover_horizon_and_child_expiry() {
+    let s = Scratch::new(wasm_args_or_skip!());
+    let log = s.path("generated.jsonl");
+    let report = passed(&s.run(&s.logging(&log), &["--seed", "3", "--cases", "400"]));
+    assert_eq!(line_value(&report, "disagreements"), "0");
+    let narrowing: Vec<Value> = read_jsonl(&log).into_iter().filter(|case| case["op"] == "narrow").collect();
+    let with_horizon = |grants: &Value| grants.as_array().is_some_and(|g| g.iter().any(|g| g.get("horizon").is_some()));
+    assert!(narrowing.iter().any(|c| with_horizon(&c["parent"]) && with_horizon(&c["child"])), "no case narrows a horizon");
+    assert!(narrowing.iter().any(|c| c.get("child_exp").is_some()), "no case proposes a child expiry");
+    let decisions: Vec<Value> = narrowing.iter().map(engine).collect();
+    assert!(decisions.iter().any(|d| d["dimension"] == "horizon"), "no case widens a horizon");
+    assert!(decisions.iter().any(|d| d["error"] == "AttenuationExpiryExtended"), "no case extends an expiry");
+}
+
 /// A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.
 // spec: assurance.differential-test.credential-cases@ca93477e
 #[test]

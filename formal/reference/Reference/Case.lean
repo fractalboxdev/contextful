@@ -12,7 +12,9 @@ A case is one JSON object naming its operation:
 
 * `{"op":"covers_name","pattern":P,"name":N}` — does pattern `P` cover table name `N`;
 * `{"op":"covers_pattern","pattern":P,"other":Q}` — does `P` cover every name `Q` covers;
-* `{"op":"narrow","parent":[G…],"child":[G…]}` — narrowing legality of the child grant list;
+* `{"op":"narrow","parent":[G…],"child":[G…],"parent_exp":E,"child_exp":F}` — narrowing
+  legality of the child grant list and its optional expiry under the parent's, Unix seconds;
+  an absent parent expiry is 0;
 * `{"op":"zone_admits","zone":Z,"allow":[E…]}` — whether the allow-set of entries `E` admits
   zone string `Z`, the entries parsed in order;
 * `{"op":"session_zone","asserted":A,"signed":S,"incognito":B}` — the session zone from an
@@ -20,14 +22,16 @@ A case is one JSON object naming its operation:
 
 A grant object carries `actions` and `tables` (arrays of strings), and optionally `tenant`
 (`{"table","value"}`), `templates` (array of strings), `aggregate` (`min_group_size`,
-`max_contributor_share`, `functions`, `max_groups`, optional `max_rows`) and `max_rows`.
+`max_contributor_share`, `functions`, `max_groups`, optional `max_rows`), `max_rows` and
+`horizon`, Unix seconds.
 An integer field holds an unsigned 64-bit integer written without fraction. A `null`
 optional field is absent; an unknown key is ignored.
 
 The decision is `{"verdict","error","dimension"}`, and `zone` beside them for a placement
 case, naming the zone it resolved. Decoding fails at the first fault, in
 this order: the case's own shape, then each grant in turn, parent grants before child
-grants — its shape, each action against the vocabulary, each table pattern.
+grants — its shape, each action against the vocabulary, each table pattern — then every
+horizon against the instants a timestamp represents.
 -/
 
 namespace Reference
@@ -96,7 +100,15 @@ def decodeAggregate (j : Json) : Decode Authority.Aggregate := do
   pure { minGroupSize, share := ⟨share.mantissa, share.exponent⟩, functions := functions.map String.toList,
          maxGroups, maxRows }
 
-/-- A grant. A `horizon` key is not decoded: the decision module's narrowing case carries none. -/
+/-- The largest Unix second a timestamp represents: 9999-12-31T23:59:59Z. -/
+def maxUnixSecs : Nat := 253402300799
+
+/-- Unix seconds within the signed 64-bit range. -/
+def seconds (j : Json) : Decode Nat := do
+  let n ← nat64 j
+  if n < (2 : Nat) ^ 63 then pure n else malformed
+
+/-- A grant; its `horizon` is Unix seconds, range-checked once every grant has decoded. -/
 def decodeGrant (j : Json) : Decode Authority.Grant := do
   unless isObject j do malformed
   let actionWords ← strs (← required j "actions")
@@ -105,6 +117,7 @@ def decodeGrant (j : Json) : Decode Authority.Grant := do
   let templates ← optional j "templates" strs
   let aggregate ← optional j "aggregate" decodeAggregate
   let maxRows ← optional j "max_rows" nat64
+  let horizon ← optional j "horizon" nat64
   let actions ← actionWords.mapM fun w =>
     match parseAction w with
     | some a => pure a
@@ -113,8 +126,7 @@ def decodeGrant (j : Json) : Decode Authority.Grant := do
     match parsePattern w with
     | some p => pure p
     | none => throw "GrantPatternMalformed"
-  pure { actions, tables, tenant, templates := templates.map (·.map String.toList), aggregate, maxRows,
-         horizon := none }
+  pure { actions, tables, tenant, templates := templates.map (·.map String.toList), aggregate, maxRows, horizon }
 
 def pattern (s : String) : Decode Authority.Pattern :=
   match parsePattern s with
@@ -189,9 +201,12 @@ def decide (j : Json) : Decode Decision := do
   | "narrow" =>
     let parent ← grantArray (← required j "parent")
     let child ← grantArray (← required j "child")
+    let parentExpiry ← optional j "parent_exp" seconds
+    let childExpiry ← optional j "child_exp" seconds
     let parent ← parent.mapM decodeGrant
     let child ← child.mapM decodeGrant
-    pure (narrow parent 0 child none)
+    if (parent ++ child).any (fun g => g.horizon.any (· > maxUnixSecs)) then throw "TimestampMalformed"
+    pure (narrow parent (parentExpiry.getD 0) child childExpiry)
   | "zone_admits" =>
     let z ← str (← required j "zone")
     let allow ← strs (← required j "allow")
@@ -217,7 +232,7 @@ def Decision.toJson (d : Decision) : Json :=
 
 /-- The refusals a case decodes to or decides, as opposed to a decoding fault. -/
 def refusals : List String :=
-  ["GrantActionUnknown", "GrantPatternMalformed", "EnforceZonePatternUnparsed",
+  ["GrantActionUnknown", "GrantPatternMalformed", "TimestampMalformed", "EnforceZonePatternUnparsed",
    "EnforceZoneAssertionWidens", "EnforceIncognitoWidening"]
 
 /-- The decision for one case text; a text that is not JSON is malformed. -/
