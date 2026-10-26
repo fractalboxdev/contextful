@@ -114,7 +114,7 @@ fn unorderable(a: &Value, b: &Value) -> RunError {
 }
 
 /// A row's clock value under the declared `incremental` field: a column, or the value at
-/// an RFC 6901 pointer when the field opens with `/` (`run.declare.incremental-pointer`).
+/// an RFC 6901 pointer when the field opens with `/` (`run.declare.incremental-field`).
 pub fn clock<'a>(row: &'a serde_json::Map<String, Value>, field: &str) -> Option<&'a Value> {
     if field.starts_with('/') {
         crate::pipeline::transform::row_pointer(row, field)
