@@ -8,6 +8,7 @@ mod diagram;
 mod drift;
 mod native_ts;
 mod ratchet;
+mod size;
 mod slice;
 mod targets;
 mod scaffold;
@@ -79,6 +80,9 @@ fn main() -> Result<()> {
             std::fs::create_dir_all(root.join("spec/cards"))?;
             for (contract, text) in cards::pages(&c) {
                 std::fs::write(root.join(format!("spec/cards/{contract}.md")), text)?;
+            }
+            for advisory in size::advisories(&c) {
+                eprintln!("{advisory}");
             }
             Ok(std::fs::write(root.join("spec/status.md"), status_text(&c))?)
         }
@@ -225,9 +229,7 @@ pub fn status_text(c: &Corpus) -> String {
             let performed: Vec<&&Clause> = cls.iter().filter(|cl| verdicts.get(&cl.id) == Some(&"performed")).collect();
             let perf = performed.len();
             let acc = checks::acceptance_verdict(c, ml.acceptance.as_deref());
-            // `corpus.state.closed`: every named operation holds at least one performed clause.
-            let covered = ops.iter().all(|o| performed.iter().any(|cl| **o == format!("{}.{}", cl.contract, cl.operation)));
-            let closed = if acc == "passing" && !ops.is_empty() && covered { "closed" } else { "open" };
+            let closed = if checks::milestone_closed(c, ml.acceptance.as_deref(), &ops, &verdicts) { "closed" } else { "open" };
             let _ = writeln!(s, "| {m} | {} | {} | {perf} | {acc} | {closed} |", ops.len(), cls.len());
         }
         let unscheduled = c

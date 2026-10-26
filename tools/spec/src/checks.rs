@@ -171,6 +171,7 @@ fn anatomy(c: &Corpus) -> Vec<Finding> {
         }
     }
     out.extend(crate::ratchet::compare(c, &long_lists(c)));
+    out.extend(crate::size::word_findings(c, "anatomy"));
     let ids: BTreeSet<String> = c.clauses().map(|cl| cl.id.clone()).collect();
     for sc in c.scenarios() {
         let own = ids.contains(&sc.clause) && sc.clause.split('.').nth(1) == Some(sc.operation.as_str());
@@ -542,6 +543,7 @@ fn rationale(c: &Corpus) -> Vec<Finding> {
             }
         }
     }
+    out.extend(crate::size::word_findings(c, "rationale"));
     for (id, (file, line)) in &cited {
         if !records.contains(id) {
             out.push(f("rationale", file, *line, "SpecRecord", format!("Why cites missing record {id}")));
@@ -1196,6 +1198,30 @@ pub fn milestone_lines(c: &Corpus) -> Vec<MilestoneLines> {
     out
 }
 
+/// `corpus.state.closed`: a milestone closes when its acceptance test passes and every
+/// operation it names holds a performed clause.
+pub fn milestone_closed(c: &Corpus, acceptance: Option<&str>, ops: &[&String], verdicts: &BTreeMap<&String, &str>) -> bool {
+    let performed = |op: &String| {
+        c.clauses().any(|cl| *op == format!("{}.{}", cl.contract, cl.operation) && verdicts.get(&cl.id) == Some(&"performed"))
+    };
+    acceptance_verdict(c, acceptance) == "passing" && !ops.is_empty() && ops.iter().all(|o| performed(o))
+}
+
+/// Every operation a milestone computing `open` names, as `<contract>.<operation>`.
+pub fn open_operations(c: &Corpus) -> BTreeSet<String> {
+    let all = pins_by_clause(c);
+    let verdicts: BTreeMap<&String, &str> = all.iter().map(|(id, g)| (id, clause_verdict(c, g))).collect();
+    let (claim, _) = expand_roadmap(c);
+    let mut open = BTreeSet::new();
+    for ml in milestone_lines(c) {
+        let ops: Vec<&String> = claim.iter().filter(|(_, h)| **h == ml.heading).map(|(o, _)| o).collect();
+        if !milestone_closed(c, ml.acceptance.as_deref(), &ops, &verdicts) {
+            open.extend(ops.into_iter().cloned());
+        }
+    }
+    open
+}
+
 /// A roadmap milestone: its heading, its line, and each named operation with its line.
 pub type Milestone = (String, usize, Vec<(usize, String)>);
 
@@ -1366,6 +1392,7 @@ fn state(c: &Corpus) -> Vec<Finding> {
             ));
         }
     }
+    out.extend(crate::size::unowned_findings(c));
     out
 }
 

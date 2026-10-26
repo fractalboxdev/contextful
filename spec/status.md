@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `assurance` | 3 | 18 | 347 | 73 | 25 | 3 | 308 | 0 | 308 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 278 | 0 | 278 |
 | `connector` | 3 | 19 | 425 | 96 | 23 | 14 | 318 | 0 | 318 |
-| `corpus` | 1 | 10 | 87 | 38 | 8 | 0 | 87 | 0 | 87 |
+| `corpus` | 1 | 10 | 90 | 40 | 9 | 0 | 90 | 0 | 90 |
 | `disclosure` | 3 | 17 | 193 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 327 | 58 | 30 | 16 | 285 | 0 | 285 |
 | `run` | 3 | 29 | 613 | 129 | 49 | 19 | 581 | 0 | 581 |
 | `store` | 6 | 20 | 343 | 72 | 24 | 12 | 333 | 0 | 333 |
 | `surface` | 2 | 22 | 202 | 71 | 25 | 2 | 176 | 0 | 176 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 89 | 0 | 89 |
-| **total** | 26 | 177 | 2930 | 712 | 236 | 82 | 2620 | 0 | |
+| **total** | 26 | 177 | 2933 | 714 | 237 | 82 | 2623 | 0 | |
 
 Decision records: 18.
 
@@ -977,8 +977,10 @@ Unscheduled operations: 13.
 | `corpus.anatomy.group-clauses` | `tools/spec/tests/integration/anatomy.rs::each_list_over_its_bound_counts_toward_the_long_list_ceiling` | performed |
 | `corpus.anatomy.kind-is-computed` | `tools/spec/tests/integration/anatomy.rs::the_lock_carries_the_kind_the_fragment_assigns` | performed |
 | `corpus.anatomy.lede` | `tools/spec/tests/integration/readable.rs::the_lede_lands_in_the_lock_and_its_absence_is_an_anatomy_finding` | performed |
+| `corpus.anatomy.long-operation` | `tools/spec/tests/integration/size.rs::state_prints_an_advisory_for_each_operation_over_its_clause_bound` | performed |
 | `corpus.anatomy.scenario` | `tools/spec/tests/integration/grammar.rs::a_scenario_attaches_to_its_clause_in_the_lock` | performed |
 | `corpus.anatomy.statement-words` | `tools/spec/tests/integration/anatomy.rs::a_statement_over_forty_words_is_an_anatomy_finding_and_forty_is_admitted` | performed |
+| `corpus.anatomy.word-ceilings` | `tools/spec/tests/integration/size.rs::a_contract_or_an_adr_one_word_over_its_ceiling_fails_lint` | performed |
 | `corpus.diagram.boundary` | `tools/spec/tests/integration/diagram.rs::a_flowchart_node_standing_for_a_contract_or_boundary_is_a_diagram_finding` | performed |
 | `corpus.diagram.branch` | `tools/spec/tests/integration/diagram.rs::a_box_branching_on_a_condition_is_a_branch_finding` | performed |
 | `corpus.diagram.connected` | `tools/spec/tests/integration/diagram.rs::a_node_no_edge_reaches_is_an_orphan` | performed |
@@ -1039,6 +1041,7 @@ Unscheduled operations: 13.
 | `corpus.state.typescript-tag-pin` | `spec/pins.toml` | performed |
 | `corpus.state.typescript-unfinished` | `spec/pins.toml` | performed |
 | `corpus.state.unfinished-test` | `tools/spec/tests/integration/tags.rs::a_tag_on_a_todo_body_is_broken` | performed |
+| `corpus.state.unowned` | `tools/spec/tests/integration/size.rs::an_unpinned_unscheduled_unquestioned_clause_counts_as_unowned` | performed |
 | `corpus.state.verdict` | `spec/pins.toml` | performed |
 | `corpus.targets.cap-unrecorded` | `spec/pins.toml` | performed |
 | `corpus.targets.file` | `tools/spec/tests/integration/targets.rs::each_provider_file_holds_named_shapes_with_one_default` | performed |

@@ -51,12 +51,15 @@ SpecDiagramSequence    = { clause = "corpus.diagram.sequence", gloss = "A sequen
 SpecDiagramMessage     = { clause = "corpus.diagram.message", gloss = "A sequence message or note over its word bound." }
 SpecDiagramState       = { clause = "corpus.diagram.state", gloss = "A state diagram without one start, with an unreachable or dead-end state, or a long transition label." }
 SpecGuide              = { clause = "corpus.guide.bad-guide", gloss = "A missing or malformed guide, or one restating a rule." }
+SpecWordCeiling        = { clause = "corpus.anatomy.word-ceilings", gloss = "A contract or contract ADR whose word count differs from its ceiling." }
+SpecClauseUnowned      = { clause = "corpus.state.unowned", gloss = "More unpinned, unscheduled and unquestioned clauses than the ceiling records." }
 
 [limit]
 corpus-subject-length   = { clause = "corpus.address.subject-segment", value = 40, unit = "chars", basis = "chosen", gloss = "Longest subject slug." }
 corpus-statement-words  = { clause = "corpus.anatomy.statement-words", value = 40, unit = "words", basis = "chosen", gloss = "Longest clause statement." }
 corpus-file-lines       = { clause = "corpus.anatomy.file-length", value = 900, unit = "lines", basis = "chosen", gloss = "Longest contract file." }
 corpus-group-clauses    = { clause = "corpus.anatomy.group-clauses", value = 30, unit = "clauses", basis = "chosen", gloss = "Longest clause list." }
+corpus-operation-clauses = { clause = "corpus.anatomy.long-operation", value = 30, unit = "clauses", basis = "chosen", gloss = "Most clauses in one operation before the grouping advisory." }
 corpus-because-words    = { clause = "corpus.rationale.why-cell", value = 30, unit = "words", basis = "chosen", gloss = "Longest `because` cell." }
 corpus-record-words     = { clause = "corpus.rationale.record-anatomy", value = 400, unit = "words", basis = "chosen", gloss = "Longest principle record." }
 corpus-adr-section-words = { clause = "corpus.rationale.contract-adr", value = 250, unit = "words", basis = "chosen", gloss = "Longest section of a contract ADR." }
@@ -79,3 +82,28 @@ corpus-guide-words      = { clause = "corpus.guide.file", value = 700, unit = "w
 [ceiling]
 registry-committed-sites = 3
 anatomy-long-lists = 15
+clause-unowned = 249
+
+[ceiling.contract-words]
+assurance = 10092
+authority = 7843
+connector = 11653
+corpus = 3361
+disclosure = 5476
+read = 10127
+run = 19200
+store = 10704
+surface = 6502
+topology = 2646
+
+[ceiling.adr-words]
+A-assurance = 5615
+A-authority = 4493
+A-connector = 3619
+A-corpus = 385
+A-disclosure = 4072
+A-read = 5518
+A-run = 8414
+A-store = 7014
+A-surface = 3389
+A-topology = 2472

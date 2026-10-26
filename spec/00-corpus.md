@@ -72,6 +72,10 @@ The section order of a contract file, the lede, clause list and groups of each o
   *because a long operation reads as named parts, and a group renames no clause*
 - `group-clauses` — A clause list, an operation's or a group's, holds at most 30 clauses; each list past it counts toward the `anatomy-long-lists` ceiling.
   *because a reader scanning one list for its rule loses the thread past about thirty items*
+- `word-ceilings` — The `contract-words` ceilings count each contract's statement, Why and lede words, and the `adr-words` ceilings each contract ADR's words outside fences and table rules; a count off its ceiling raises `SpecWordCeiling`.
+  *because the number of clauses, not their length, drives the corpus's size, and a recorded total makes each addition visible in review*
+- `long-operation` — `contextful-spec state` prints an advisory naming each operation holding more than 30 clauses; the advisory refuses nothing.
+  *because a long operation is a grouping candidate, and the grouping is a reader's judgment no checker makes*
 - `after-list` — Prose, diagrams, tables, scenarios and unsettled lines follow the clause list and state no obligation.
   *A-corpus*
 - `scenario` — A `#### Scenarios` list under an operation holds items `` - `<clause id>`: WHEN <trigger>, THEN <outcome> `` or a backticked `tests/fixtures/` path; the lock file attaches each to its clause.
@@ -191,6 +195,8 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because one passing acceptance test drives one path through a milestone, and an operation without a performed clause demonstrates nothing*
 - `acceptance-first` — A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.
   *A-assurance*
+- `unowned` — An unpinned clause outside every operation an open milestone names, and named in backticks by no `unsettled:` line of its operation, is unowned; unowned clauses past the `clause-unowned` ceiling raise `SpecClauseUnowned`.
+  *because a clause no test pins, no milestone schedules and no open question names is a promise nobody keeps*
 - `deferred-depth` — A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.
   *because an unopened milestone fixes what it refuses and bounds, and its behavior is written against the code that opens it*
 
