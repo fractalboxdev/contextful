@@ -98,19 +98,19 @@ Under `queue_enabled`, every task reaches the SQS queue as `CONTEXTFUL_QUEUE_URL
 
 `CONTEXTFUL_CATALOG_URL` is `postgres://contextful:<password>@<host>:5432/contextful?sslmode=require&sslrootcert=/etc/contextful/rds-global-bundle.pem`. Remote PostgreSQL requires verified TLS with hostname checking (`topology.coordinate.postgres-transport`). The RDS server certificate chains to the RDS CA named by `db_ca_cert_identifier`, which WebPKI omits; `sslrootcert` replaces the WebPKI roots for that connection with the bundle's (`topology.coordinate.postgres-ca-bundle`). An unreadable or empty bundle refuses with `DatabaseCaBundleUnreadable` before connecting. `rds_ca_bundle_path` moves the bundle; the `global-bundle.pem` URL in `project.Dockerfile` serves every commercial region.
 
-RDS Proxy is the alternative for a build without `sslrootcert` support (see [`spec/status.md`](../../spec/status.md)). Its endpoint presents an ACM certificate chaining to Amazon Root CA 1, a WebPKI root. Set `catalog_host` to the proxy endpoint and `rds_ca_bundle_path = ""`. The engine takes only transaction-scoped advisory locks, so proxy session pinning costs multiplexing and nothing else.
+RDS Proxy also fronts the catalog. Its endpoint presents an ACM certificate chaining to Amazon Root CA 1, a WebPKI root. Set `catalog_host` to the proxy endpoint and `rds_ca_bundle_path = ""`. The engine takes only transaction-scoped advisory locks, so proxy session pinning costs multiplexing and nothing else.
 
 `random_password` generates the database password, and the catalog URL secret holds it; the OpenTofu state therefore holds both. Keep state in an encrypted backend or under OpenTofu state encryption.
 
 ## Bucket credentials
 
-`sync_credentials = "role"` renders `credentials = "role"` into the store configuration: requests sign with the task role's credentials from the ECS container credential endpoint, refreshed 300 s before expiry (`store.endpoint.role-credentials`). It requires a build that performs that clause; [`spec/status.md`](../../spec/status.md) records which do. An earlier build refuses the `credentials` key at parse.
+`sync_credentials = "role"` renders `credentials = "role"` into the store configuration: requests sign with the task role's credentials from the ECS container credential endpoint, refreshed 300 s before expiry (`store.endpoint.role-credentials`). v0.17.0 and earlier refuse the `credentials` key at parse.
 
-`sync_credentials = "keys"` serves those builds. It creates the `<name>/sync-keys` secret, renders `access_key_id = "env://CONTEXTFUL_SYNC_ACCESS_KEY_ID"` and `secret_access_key = "env://CONTEXTFUL_SYNC_SECRET_ACCESS_KEY"`, and the task definitions inject both from the secret's JSON keys. Write the secret's value as `{"access_key_id": "...", "secret_access_key": "..."}` for a principal holding the `corpus_policy_arn` policy alone. Injected keys do not rotate in a running task; a rotation takes effect at the next task start.
+`sync_credentials = "keys"` signs with a static key pair, for those releases. It creates the `<name>/sync-keys` secret, renders `access_key_id = "env://CONTEXTFUL_SYNC_ACCESS_KEY_ID"` and `secret_access_key = "env://CONTEXTFUL_SYNC_SECRET_ACCESS_KEY"`, and the task definitions inject both from the secret's JSON keys. Write the secret's value as `{"access_key_id": "...", "secret_access_key": "..."}` for a principal holding the `corpus_policy_arn` policy alone. Injected keys do not rotate in a running task; a rotation takes effect at the next task start.
 
 ## Secrets
 
-`secret://<name>` references resolve through the Secrets Manager adapter as secret id `<name>/secrets/<reference>`, signed with the task role (`connector.resolve.aws-secrets-manager`). For a build without that adapter, inject each credential through `secrets` as an environment variable and reference it by `env://NAME`; the execution role reads exactly the ARNs listed there, and the value does not rotate in a running task.
+`secret://<name>` references resolve through the Secrets Manager adapter as secret id `<name>/secrets/<reference>`, signed with the task role (`connector.resolve.aws-secrets-manager`). For v0.17.0 and earlier, which lack that adapter, inject each credential through `secrets` as an environment variable and reference it by `env://NAME`; the execution role reads exactly the ARNs listed there, and the value does not rotate in a running task.
 
 ## Health and warming
 
