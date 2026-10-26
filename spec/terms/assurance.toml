@@ -42,8 +42,6 @@ RecheckEnvironmentCredentialed   = { clause = "assurance.recheck.credential-free
 RecheckReportMismatch            = { clause = "assurance.recheck.report-mismatch", gloss = "The recheck's per-constant statement or assumption set differs from the first phase's." }
 ClaimBeyondNamedDecisions        = { clause = "assurance.scope-claim.beyond-named-decisions", gloss = "The assurance claim asserts an object wider than its named decisions." }
 TrustedDependencyUnnamed         = { clause = "assurance.scope-claim.unnamed-dependency", gloss = "The claim rests on a component absent from its trusted-dependency list." }
-TranslationChainUnstated         = { clause = "assurance.scope-claim.unstated-chain", gloss = "A theorem over translated code claimed without its translation chain." }
-RefinementScopeExceeded          = { clause = "assurance.scope-claim.refinement-exceeded", gloss = "Translation reaches cryptography, a parsing adapter, a database call or concurrency." }
 ReferenceModelDrift              = { clause = "assurance.differential-test.disagreement", gloss = "The reference model and the engine's decision function disagree on a case." }
 CounterexampleDiscarded          = { clause = "assurance.differential-test.discarded-counterexample", gloss = "A run reported a disagreement and wrote no corpus entry." }
 CapabilityDuplicated             = { clause = "assurance.structure-tree.duplicated-capability", gloss = "A second implementation of an engine capability, or a hand-written copy of an engine constant." }

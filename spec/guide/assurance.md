@@ -63,9 +63,7 @@ inventory ({{assurance.audit-assumptions.statement-drift}}). Rechecking uses pin
 source without credentials ({{assurance.recheck.credential-free}}).
 
 Claims identify the decisions, specifications and dependencies they trust
-({{assurance.scope-claim.trusted-dependencies}}). The connection between model and code
-covers only decision functions without external reads or writes
-({{assurance.scope-claim.refinement-scope}}).
+({{assurance.scope-claim.trusted-dependencies}}).
 
 ## What the engineering checks cover
 

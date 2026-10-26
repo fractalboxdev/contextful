@@ -29294,7 +29294,7 @@
       "operation": "scope-claim",
       "subject": "claim-sentence",
       "kind": "behavior",
-      "statement": "The assurance claim reads: these named decisions satisfy these named Lean specifications under these stated translation and runtime assumptions; each list resolves to code paths, constants and components in the tree.",
+      "statement": "The assurance claim reads: these named decisions satisfy these named Lean specifications under these stated runtime assumptions; each list resolves to code paths, constants and components in the tree.",
       "why": "",
       "file": "spec/80-formal.md",
       "line": 189
@@ -29316,7 +29316,7 @@
       "operation": "scope-claim",
       "subject": "trusted-dependencies",
       "kind": "behavior",
-      "statement": "The claim names the delegation library, its cryptography, its parser and the translator as trusted dependencies, and proves none of them.",
+      "statement": "The claim names the delegation library, its cryptography and its parser as trusted dependencies, and proves none of them.",
       "why": "",
       "file": "spec/80-formal.md",
       "line": 192
@@ -29333,50 +29333,6 @@
       "line": 193
     },
     {
-      "id": "assurance.scope-claim.translation-chain",
-      "contract": "assurance",
-      "operation": "scope-claim",
-      "subject": "translation-chain",
-      "kind": "behavior",
-      "statement": "A statement about translated code inherits four links: the compiler's lowering, the translator (Aeneas, named by one release string), hand-written models of external definitions, and the production build configuration.",
-      "why": "",
-      "file": "spec/80-formal.md",
-      "line": 195
-    },
-    {
-      "id": "assurance.scope-claim.unstated-chain",
-      "contract": "assurance",
-      "operation": "scope-claim",
-      "subject": "unstated-chain",
-      "kind": "refusal",
-      "statement": "A theorem claimed over translated code without its translation chain raises `TranslationChainUnstated`.",
-      "why": "A-assurance",
-      "file": "spec/80-formal.md",
-      "line": 196
-    },
-    {
-      "id": "assurance.scope-claim.refinement-scope",
-      "contract": "assurance",
-      "operation": "scope-claim",
-      "subject": "refinement-scope",
-      "kind": "behavior",
-      "statement": "Refinement covers the decision functions behind the proof targets, whose inputs are values and whose outputs are decisions.",
-      "why": "",
-      "file": "spec/80-formal.md",
-      "line": 198
-    },
-    {
-      "id": "assurance.scope-claim.refinement-exceeded",
-      "contract": "assurance",
-      "operation": "scope-claim",
-      "subject": "refinement-exceeded",
-      "kind": "refusal",
-      "statement": "Translation reaching cryptography, a parsing adapter, a database call or concurrency raises `RefinementScopeExceeded`, naming the module.",
-      "why": "A-assurance",
-      "file": "spec/80-formal.md",
-      "line": 199
-    },
-    {
       "id": "assurance.differential-test.reference-model",
       "contract": "assurance",
       "operation": "differential-test",
@@ -29385,7 +29341,7 @@
       "statement": "The reference model is an executable Lean rendering of the decision functions, built to a binary that reads one case on standard input and prints one decision.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 206
+      "line": 202
     },
     {
       "id": "assurance.differential-test.harness",
@@ -29396,7 +29352,7 @@
       "statement": "The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 207
+      "line": 203
     },
     {
       "id": "assurance.differential-test.builds",
@@ -29407,7 +29363,7 @@
       "statement": "The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 209
+      "line": 205
     },
     {
       "id": "assurance.differential-test.decision-cases",
@@ -29418,7 +29374,7 @@
       "statement": "A case names one decision: table-pattern coverage, grant narrowing, zone admission against an allow-set, session-zone resolution, or credential admission; a placement decision also carries the zone it resolved.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 211
+      "line": 207
     },
     {
       "id": "assurance.differential-test.credential-cases",
@@ -29429,7 +29385,7 @@
       "statement": "A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.",
       "why": "because the reference model carries no signature scheme, and a gateway admits the credential before it places the request",
       "file": "spec/80-formal.md",
-      "line": 212
+      "line": 208
     },
     {
       "id": "assurance.differential-test.case-classes",
@@ -29440,7 +29396,7 @@
       "statement": "Each run generates malformed inputs, boundary values and well-formed requests, and its report names the classes it drew from.",
       "why": "because a green run is evidence over the generated classes, not an equivalence proof",
       "file": "spec/80-formal.md",
-      "line": 214
+      "line": 210
     },
     {
       "id": "assurance.differential-test.malformed-bytes",
@@ -29451,7 +29407,7 @@
       "statement": "The malformed class draws case texts carrying invalid UTF-8 or an integer literal outside the unsigned 64-bit range, handed as bytes to every decider, and each decides such a text malformed.",
       "why": "because a 32-bit WebAssembly build and a 64-bit native build part ways first at byte decoding and integer width",
       "file": "spec/80-formal.md",
-      "line": 216
+      "line": 212
     },
     {
       "id": "assurance.differential-test.minimized",
@@ -29462,7 +29418,7 @@
       "statement": "A disagreement is shrunk until no single field removal, string shortening or byte removal keeps any two of the three decisions apart, and the minimized case is recorded.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 218
+      "line": 214
     },
     {
       "id": "assurance.differential-test.corpus-replay",
@@ -29473,7 +29429,7 @@
       "statement": "Every counterexample-corpus case replays before any freshly generated case.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 219
+      "line": 215
     },
     {
       "id": "assurance.differential-test.corpus-entries",
@@ -29484,7 +29440,7 @@
       "statement": "The counterexample corpus retains at most 256 entries, evicting the oldest case a fresh seed reproduces.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 220
+      "line": 216
     },
     {
       "id": "assurance.differential-test.run-budget",
@@ -29495,7 +29451,7 @@
       "statement": "One invocation, corpus replay included, completes within 300 s.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 221
+      "line": 217
     },
     {
       "id": "assurance.differential-test.disagreement",
@@ -29506,7 +29462,7 @@
       "statement": "A case on which any two of the three decisions differ raises `ReferenceModelDrift`, printing the minimized case and every decision.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 222
+      "line": 218
     },
     {
       "id": "assurance.differential-test.discarded-counterexample",
@@ -29517,7 +29473,7 @@
       "statement": "A run reporting a disagreement and writing no corpus entry raises `CounterexampleDiscarded`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 224
+      "line": 220
     },
     {
       "id": "assurance.differential-test.seed",
@@ -29528,7 +29484,7 @@
       "statement": "Each run records its generator seed, and re-running with that seed reproduces the same case sequence.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 226
+      "line": 222
     },
     {
       "id": "assurance.differential-test.protocol-cases",
@@ -29539,7 +29495,7 @@
       "statement": "Protocol cases are operation sequences and node interleavings a `proptest-state-machine` generator draws over acquire, renew, release, expire, commit, pause, delay and crash steps across three nodes.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 227
+      "line": 223
     },
     {
       "id": "assurance.differential-test.protocol-harness",
@@ -29550,7 +29506,7 @@
       "statement": "The harness drives the protocol package's compiled executable and the Rust store through each protocol case, comparing lease holder, fence, pointer ETag and commit outcome after every step.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 228
+      "line": 224
     },
     {
       "id": "assurance.differential-test.protocol-drift",
@@ -29561,7 +29517,7 @@
       "statement": "A step after which the model's state and the store's projected state differ raises `ProtocolConformanceDrift`, printing the minimized operation sequence and both states.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 230
+      "line": 226
     },
     {
       "id": "assurance.differential-test.command",
@@ -29572,7 +29528,7 @@
       "statement": "`contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 232
+      "line": 228
     },
     {
       "id": "assurance.structure-tree.one-home",
@@ -32758,7 +32714,7 @@
     "assurance.prove": "The theorem inventory: layer composition, placement, the evidence floor, the proof targets over the authority mapping, and the mediation relation over statement execution.",
     "assurance.recheck": "Rebuilding and re-auditing from pinned source in a credential-free environment.",
     "assurance.release": "The release tag's version, the refusals guarding it, the signed annotated tag `contextful-ci tag` creates, and the local packaging the operator runs from it.",
-    "assurance.scope-claim": "The sentence the assurance claim is allowed to be: named decisions, trusted dependencies, translation chain, refinement reach.",
+    "assurance.scope-claim": "The sentence the assurance claim is allowed to be: named decisions, named specifications and trusted dependencies.",
     "assurance.structure-tree": "One home per capability, the one enforcement decision module, adapters, mirror annotations and derived-artifact checks.",
     "assurance.test": "Assertion construction, guard validation, suite placement, test-first and acceptance tests, and the connector test kit.",
     "authority.attenuate": "Deriving a narrower child offline, and the narrowing legality of each grant dimension.",
@@ -36533,10 +36489,6 @@
             "clause": "assurance.differential-test.disagreement",
             "gloss": "The reference model and the engine's decision function disagree on a case."
           },
-          "RefinementScopeExceeded": {
-            "clause": "assurance.scope-claim.refinement-exceeded",
-            "gloss": "Translation reaches cryptography, a parsing adapter, a database call or concurrency."
-          },
           "ReleaseTagVersionMismatch": {
             "clause": "assurance.release.release-tag-version",
             "gloss": "A release build over a version tag that differs from the workspace package version."
@@ -36612,10 +36564,6 @@
           "TraceExportOutOfPerimeter": {
             "clause": "assurance.baseline.trace-export",
             "gloss": "A hosted trace endpoint configured for a run touching a deployed store."
-          },
-          "TranslationChainUnstated": {
-            "clause": "assurance.scope-claim.unstated-chain",
-            "gloss": "A theorem over translated code claimed without its translation chain."
           },
           "TrustedDependencyUnnamed": {
             "clause": "assurance.scope-claim.unnamed-dependency",

@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Error cases | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 342 | 72 | 25 | 3 | 306 | 0 | 306 |
+| `assurance` | 3 | 18 | 338 | 70 | 25 | 4 | 302 | 0 | 302 |
 | `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 277 |
 | `connector` | 3 | 19 | 416 | 87 | 23 | 15 | 312 | 0 | 312 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 6 | 20 | 342 | 72 | 24 | 12 | 332 | 0 | 332 |
 | `surface` | 2 | 22 | 201 | 70 | 25 | 2 | 173 | 0 | 173 |
 | `topology` | 1 | 6 | 92 | 26 | 9 | 3 | 88 | 0 | 88 |
-| **total** | 26 | 177 | 2892 | 689 | 235 | 83 | 2597 | 0 | |
+| **total** | 26 | 177 | 2888 | 687 | 235 | 84 | 2593 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 23 | 20 | passing | closed |
-| 1 — The authority core | 14 | 248 | 247 | passing | closed |
+| 1 — The authority core | 14 | 244 | 243 | passing | closed |
 | 2 — The store | 9 | 198 | 189 | passing | closed |
 | 3 — The run path | 12 | 318 | 307 | passing | closed |
 | 4 — Ingest | 25 | 641 | 551 | passing | closed |
@@ -333,12 +333,8 @@ Unscheduled operations: 13.
 | `assurance.release.workspace-version` | `tools/ci/tests/integration/release.rs::a_workspace_version_other_than_the_computed_one_is_refused` | performed |
 | `assurance.scope-claim.beyond-named-decisions` | `crates/contextful-cli/tests/integration/formal.rs::a_claim_verifying_more_than_its_decisions_is_refused` | performed |
 | `assurance.scope-claim.claim-sentence` | `crates/contextful-cli/tests/integration/formal.rs::check_states_the_claim_sentence` | performed |
-| `assurance.scope-claim.refinement-exceeded` | `crates/contextful-cli/tests/integration/formal.rs::translation_reaching_past_a_pure_decision_is_refused` | performed |
-| `assurance.scope-claim.refinement-scope` | `crates/contextful-cli/tests/integration/formal.rs::refinement_covers_only_the_decisions_behind_the_targets` | performed |
-| `assurance.scope-claim.translation-chain` | `crates/contextful-cli/tests/integration/formal.rs::a_translated_target_carries_its_four_links_into_the_claim` | performed |
-| `assurance.scope-claim.trusted-dependencies` | `crates/contextful-cli/tests/integration/formal.rs::the_claim_trusts_the_delegation_library_and_the_translator` | performed |
+| `assurance.scope-claim.trusted-dependencies` | `crates/contextful-cli/tests/integration/formal.rs::the_claim_trusts_the_delegation_library_alone` | performed |
 | `assurance.scope-claim.unnamed-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_claim_resting_on_an_unnamed_component_is_refused` | performed |
-| `assurance.scope-claim.unstated-chain` | `crates/contextful-cli/tests/integration/formal.rs::a_translated_theorem_without_its_chain_is_refused` | performed |
 | `assurance.structure-tree.adapter` | `tools/ci/tests/integration/capability.rs::an_adapter_implementing_an_engine_port_passes_where_a_restatement_is_refused` | performed |
 | `assurance.structure-tree.capability-registry` | `tools/ci/tests/integration/capability.rs::a_registry_resolving_to_no_home_is_refused` | performed |
 | `assurance.structure-tree.cross-language` | `tools/ci/tests/integration/capability.rs::definitions_match_by_folded_name_in_every_scanned_language` | performed |
