@@ -159,6 +159,10 @@ pub enum FormalCmd {
     Differential(crate::differential::DifferentialArgs),
     /// Compare generated lease and fenced write sequences with the executable protocol model.
     ProtocolDifferential(crate::protocol_differential::Args),
+    /// Compare generated interleavings of journaled steps over the memory, file and SQLite
+    /// journal adapters with the executable journal model.
+    #[cfg(feature = "data-plane")]
+    JournalDifferential(crate::journal_differential::Args),
 }
 
 pub fn run(cmd: FormalCmd) -> Result<()> {
@@ -171,6 +175,8 @@ pub fn run(cmd: FormalCmd) -> Result<()> {
         FormalCmd::Recheck { root } => recheck(root),
         FormalCmd::Differential(args) => crate::differential::run(args),
         FormalCmd::ProtocolDifferential(args) => crate::protocol_differential::run(args),
+        #[cfg(feature = "data-plane")]
+        FormalCmd::JournalDifferential(args) => crate::journal_differential::run(args),
     }
 }
 

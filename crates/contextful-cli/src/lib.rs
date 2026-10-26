@@ -37,6 +37,8 @@ mod eval;
 mod export;
 mod formal;
 #[cfg(feature = "data-plane")]
+mod journal_differential;
+#[cfg(feature = "data-plane")]
 mod delegate;
 #[cfg(feature = "data-plane")]
 mod job;

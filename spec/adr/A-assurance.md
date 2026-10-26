@@ -429,3 +429,20 @@ Decision: `assurance.gate.affected-parts` lists the required parts the diff from
 | Every part on every change | Gate wall clock | A spec-only change waits on hours of builds. |
 
 Consequences: a change confined to `spec/`, `references/`, `apps/`, `packages/` or `formal/` runs a fraction of the parts. A part the map omits wrongly stays green until a change under `crates/` or `tools/` runs it.
+
+## The protocol package holds the journal, merge and fold machines
+
+**Status:** accepted
+
+Context: `run.journal`, `store.merge` and `store.fold` carry the engine's concurrency risk, and a proof of each needs a model that a differential ties to the engine. Criteria: one toolchain and one assumption audit, a differential that drives the engine's own code, and a policy package of five modules.
+
+Decision: `assurance.model.journal-model` admits the journal into `formal/protocol` as port-call steps over three callers and two keys. `assurance.differential-test.journal-harness` runs the engine's own `Journal::step` on caller threads over gated memory, file and SQLite adapters, one port call per model step. The merge and fold models join the same package.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Journal, merge and fold machines in `formal/protocol` *(chosen)* | — | One package elaborates every machine, and the bounded checks share the formal stage's wall clock. |
+| A third Lean package per machine | One audit | Three inventories, three toolchain pins and three executables. |
+| Machines in `formal/Contextful` | Scope | The policy package gains IO-shaped state it states no theorem over. |
+| Interleaving tests without a model | Proof | A sampled interleaving shows no property for every state. |
+
+Consequences: `no_dangling_blob` holds under the grace hypothesis, and `--no-grace` reproduces `BlobMissing` on every adapter. The model's three callers and two keys bound the theorems.

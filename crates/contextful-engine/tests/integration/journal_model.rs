@@ -131,7 +131,7 @@ impl<A: Adapter> StateMachineTest for Model<A> {
                     assert_eq!(state.rows[k], Some(ModelRow::Recorded(v)), "caller {c} resolved a value key {k} does not record: {}", case.show());
                 }
                 Phase::Done(_, Resolution::Missing) => panic!("caller {c} read `BlobMissing` under the grace hypothesis: {}", case.show()),
-                // effect_only_under_claim: an effect runs under the caller's claim, after its lease
+                // effect_only_when_claimed: an effect runs under the caller's claim, after its lease
                 // lapsed, or after a lapsed holder recorded.
                 Phase::Claimed(k) => assert!(
                     matches!(state.rows[k], Some(ModelRow::Pending { holder, .. }) if holder == c) || case.lapsed(c) || matches!(state.rows[k], Some(ModelRow::Recorded(_))),

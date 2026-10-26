@@ -40,3 +40,66 @@ assumptions    = ["propext", "Quot.sound"]
 negative  = """
 Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled.
 """
+
+[constant."Protocol.Journal.recorded_stable"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ (s : Protocol.Journal.State) (st : Protocol.Journal.Step) (k : Protocol.Journal.Key) (v : Protocol.Journal.Value), s.rows k = some (Protocol.Journal.Row.recorded v) → (Protocol.Journal.step s st).rows k = some (Protocol.Journal.Row.recorded v) ∨ st = Protocol.Journal.Step.retire k"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Holds for every state, reachable or not; retirement of the key's execution deletes the row.
+"""
+
+[constant."Protocol.Journal.resolutions_agree"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c d : Protocol.Journal.Caller) (k : Protocol.Journal.Key) (v w : Protocol.Journal.Value), (s.callers c).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.replayed v) ∨ (s.callers c).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.recorded v) → (s.callers d).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.replayed w) ∨ (s.callers d).phase = Protocol.Journal.Phase.done k (Protocol.Journal.Resolution.recorded w) → v = w"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Speaks of callers holding a journaled resolution; an unrecorded value and a failed effect resolve to no recorded value.
+"""
+
+[constant."Protocol.Journal.one_record_per_key"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (k : Protocol.Journal.Key), s.records k ≤ 1"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Counts records between two retirements of the key's execution; a retired key records afresh.
+"""
+
+[constant."Protocol.Journal.effect_only_when_claimed"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c : Protocol.Journal.Caller) (k : Protocol.Journal.Key), (s.callers c).phase = Protocol.Journal.Phase.claimed k → (∃ a, s.rows k = some (Protocol.Journal.Row.pending c a)) ∨ (s.callers c).lapsed = true ∨ ∃ v, s.rows k = some (Protocol.Journal.Row.recorded v)"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Admits a lapsed holder's effect: a holder whose lease lapsed runs its effect after a taker claimed the key, and a taker runs its effect after a lapsed holder recorded, so the effect runs twice; the recorded value stays one.
+"""
+
+[constant."Protocol.Journal.takeover_only_from_lapsed"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c h : Protocol.Journal.Caller) (k : Protocol.Journal.Key), (s.callers c).phase = Protocol.Journal.Phase.takingOver k h → (s.callers h).lapsed = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Says nothing of when a takeover happens: a live holder's claim is waited on without bound.
+"""
+
+[constant."Protocol.Journal.no_dangling_blob"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (k : Protocol.Journal.Key) (v : Protocol.Journal.Value), s.rows k = some (Protocol.Journal.Row.recorded v) → v.blob = true → s.blobs v.origin = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Assumes the grace hypothesis: an aged sweep spares the blob of a caller between its put and its record, so that span stays under the grace window. Mark and delete are one step.
+"""
+
+[constant."Protocol.Journal.no_blob_missing"]
+module    = "Protocol.JournalInvariants"
+statement = "∀ {s : Protocol.Journal.State}, Protocol.Journal.Reachable s → ∀ (c : Protocol.Journal.Caller) (k : Protocol.Journal.Key), (s.callers c).phase ≠ Protocol.Journal.Phase.done k Protocol.Journal.Resolution.missing"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-engine/src/journal.rs::step; test crates/contextful-cli/tests/integration/journal_differential.rs::fixed_seed_replays_interleaved_journal_cases_against_every_adapter"
+negative  = """
+Leaves open: that `Journal::step` and each adapter refine the step function, which the journal differential samples over the memory, file and SQLite adapters; the three callers and two keys of the model; clocks, which the model replaces with lapse and sweep steps. Assumes the grace hypothesis of `no_dangling_blob`; without it, `protocol journal check --no-grace` prints the shortest sequence to `BlobMissing`.
+"""

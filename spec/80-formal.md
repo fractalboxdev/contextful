@@ -91,6 +91,13 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
   *P7*
 - `protocol-pins` — {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_below_granted`.
   *because the model's guarded objects are the catalog row and the cursor object, and a snapshot's sidecars lie outside it*
+- `journal-model` — The protocol package holds a journal model: a total, computable step function in which each journal-store and blob-store port call, each effect, lapse, crash, sweep and retirement is one step, over three callers and two keys.
+  *A-assurance*
+- `journal-safety` — Seven journal properties are Lean theorems over every reachable state: recorded values stay, journaled resolutions agree, one record per key, effects under a claim or lapsed lease, takeover from a lapsed holder, no dangling blob, no {{run.journal.missing-blob}}.
+- `journal-grace` — `no_dangling_blob` assumes the grace hypothesis: an aged sweep spares the blob of a caller between its put and its record. `protocol journal check --no-grace` prints the shortest sequence reaching {{run.journal.missing-blob}}.
+  *because a sweep past the grace window deletes a blob written ahead of the row that names it*
+- `journal-check` — `protocol journal check` evaluates every journal property on each state three callers reach on one key; a breaking state raises `JournalInvariantViolated`, printing the shortest sequence reaching it.
+  *P7*
 
 ## prove
 
@@ -229,6 +236,11 @@ The executable reference models, the case generators, the minimized counterexamp
   *A-assurance*
 - `protocol-drift` — A step after which the model's state and the store's projected state differ raises `ProtocolConformanceDrift`, printing the minimized operation sequence and both states.
   *A-assurance*
+- `journal-harness` — The journal harness runs each caller's `Journal::step` on its own thread over gated memory, file and SQLite adapters, admits one port call per step, and compares rows, blobs and every caller's phase with the journal model.
+  *A-assurance*
+- `journal-drift` — A step after which the journal model's state and an adapter's projected state differ raises `JournalConformanceDrift`, printing the adapter, the minimized step sequence and both states.
+  *A-assurance*
+- `journal-command` — `contextful formal journal-differential --seed <n> --cases <n>` replays `formal/protocol/journal-regressions.jsonl`, each entry in its own grace mode, then the generated cases; `--no-grace` replays and saves the model's sequence to {{run.journal.missing-blob}}.
 - `command` — `contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.
 
 One differential run:
@@ -287,8 +299,12 @@ formal/
     Protocol/
       Step.lean            state, steps, the total step function
       Invariants.lean      the four invariant theorems
+      Journal.lean         journal state, port-call steps, the step function
+      JournalInvariants.lean  the seven journal theorems
+      JournalCheck.lean    the journal check and replay
     Main.lean              executable: one step sequence in, one state per step out
     inventory.toml         the invariant theorems and their expected statements
+    journal-regressions.jsonl  saved journal sequences and their grace mode
 ```
 
 One inventory row:

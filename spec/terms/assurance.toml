@@ -28,6 +28,8 @@ ProofToolchainDrift              = { clause = "assurance.model.toolchain-drift",
 UnmodelledConstructor            = { clause = "assurance.model.unmodelled-constructor", gloss = "A placement category the manifest admits has no case in the model's inductive." }
 ProtocolInvariantViolated        = { clause = "assurance.model.protocol-check", gloss = "A state the bounded check reaches breaks a protocol invariant." }
 ProtocolConformanceDrift         = { clause = "assurance.differential-test.protocol-drift", gloss = "The protocol model and the Rust store disagree on the state after a step." }
+JournalInvariantViolated         = { clause = "assurance.model.journal-check", gloss = "A state the journal check reaches breaks a journal property." }
+JournalConformanceDrift          = { clause = "assurance.differential-test.journal-drift", gloss = "The journal model and a journal adapter disagree on the state after a step." }
 CommutationClaimed               = { clause = "assurance.prove.commutation-claim", gloss = "Order-independence asserted over stages whose order the composition theorem fixes." }
 ZoneInclusionSampled             = { clause = "assurance.prove.sampled-inclusion", gloss = "Inclusion decided by evaluating a fixed set of example values." }
 ProofTargetUnbound               = { clause = "assurance.prove.unbound-target", gloss = "A proof target named in the claim with no authenticated query path bound to it." }

@@ -133,11 +133,18 @@ impl Value {
     }
 
     fn of_bytes(bytes: &[u8]) -> Option<Value> {
-        (0..CALLERS).flat_map(|origin| [Value { origin, blob: false }, Value { origin, blob: true }]).find(|v| v.bytes() == bytes)
+        let blob = bytes.len() > INLINE_CUTOFF_BYTES;
+        (0..CALLERS).map(|origin| Value { origin, blob }).find(|v| v.bytes() == bytes)
+    }
+
+    /// The sha256 of caller `origin`'s blob value, hashed once.
+    pub fn sha(origin: usize) -> &'static str {
+        static SHAS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+        &SHAS.get_or_init(|| (0..CALLERS).map(|origin| sha256_hex(&Value { origin, blob: true }.bytes())).collect())[origin]
     }
 
     fn of_sha(sha: &str) -> Option<Value> {
-        (0..CALLERS).map(|origin| Value { origin, blob: true }).find(|v| sha256_hex(&v.bytes()) == sha)
+        (0..CALLERS).find(|origin| Value::sha(*origin) == sha).map(|origin| Value { origin, blob: true })
     }
 
     fn of_stored(stored: &Stored) -> Option<Value> {
@@ -386,8 +393,8 @@ pub struct Interleaving<J: JournalStore + Clone + 'static, B: BlobStore + Clone 
     journal: Journal<Gated<J>, Gated<B>>,
     callers: Vec<Caller>,
     lapsed: Arc<Mutex<[bool; CALLERS]>>,
-    /// Whether a sweep past the grace window waits for every caller between its put and its
-    /// record: the grace hypothesis the model's `no_dangling_blob` assumes.
+    /// Whether a sweep past the grace window spares the blob of every caller between its put
+    /// and its record: the grace hypothesis the model's `no_dangling_blob` assumes.
     grace: bool,
     /// Effects run so far.
     effects: usize,
@@ -431,8 +438,7 @@ impl<J: JournalStore + Clone + 'static, B: BlobStore + Clone + 'static> Interlea
 
     /// Whether the blob of `caller`'s value is stored.
     pub fn blob(&self, caller: usize) -> bool {
-        let sha = sha256_hex(&Value { origin: caller, blob: true }.bytes());
-        self.journal.blob_store().get(&sha).expect("the adapter reads a blob").is_some()
+        self.journal.blob_store().get(Value::sha(caller)).expect("the adapter reads a blob").is_some()
     }
 
     /// Run one step; a step its guard refuses leaves the case unchanged.
@@ -473,12 +479,15 @@ impl<J: JournalStore + Clone + 'static, B: BlobStore + Clone + 'static> Interlea
             },
             Step::Finish { caller } if matches!(self.callers[caller].phase, Phase::Done(..)) => self.finish(caller),
             Step::Sweep { aged } => {
-                let waiting = self.callers.iter().any(|c| matches!(c.phase, Phase::Recording(_, v) if v.blob));
-                if !(aged && self.grace && waiting) {
-                    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
-                    let past = if aged { i64::try_from(BLOB_SWEEP_GRACE_SECS).unwrap_or(i64::MAX) + 60 } else { 0 };
-                    self.journal.sweep(&[], now + past).expect("the adapter sweeps");
-                }
+                // Under the grace hypothesis, a blob between its put and its record is younger
+                // than the window, so an aged pass spares it as the model's `inFlight` does.
+                let in_flight: Vec<String> = (0..CALLERS)
+                    .filter(|c| self.grace && matches!(self.callers[*c].phase, Phase::Recording(_, v) if v.blob && v.origin == *c))
+                    .map(|c| Value::sha(c).to_string())
+                    .collect();
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+                let past = if aged { i64::try_from(BLOB_SWEEP_GRACE_SECS).unwrap_or(i64::MAX) + 60 } else { 0 };
+                self.journal.sweep(&in_flight, now + past).expect("the adapter sweeps");
             }
             Step::Retire { key } if self.callers.iter().all(|c| c.phase.key() != Some(key)) => {
                 self.journal.collect(&entry_key(key).execution_id).expect("the adapter retires an execution");

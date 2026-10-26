@@ -26,6 +26,8 @@ mod derive;
 mod differential;
 mod protocol_differential;
 #[cfg(feature = "data-plane")]
+mod journal_differential;
+#[cfg(feature = "data-plane")]
 mod document;
 #[cfg(feature = "data-plane")]
 mod empty_replace;
