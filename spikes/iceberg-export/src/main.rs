@@ -5,10 +5,14 @@
 //!   types                      print iceberg-rust's verdict and the spike's cast policy per type
 //!   export <rows> [v2|v3]      write <rows> rows and commit one snapshot (overwrite)
 //!   stale <rows> [v2|v3]       commit against metadata loaded before a concurrent commit
+//!   bench-fact <rows> <days> <files_per_day> <payload_chars> <epoch> <parallel>
+//!                              benchmark fact table; files_per_day 0 writes one unpartitioned file
+//!   bench-dim                  the 1k-row dimension table
 //!
 //! Environment: CATALOG_URI, CATALOG_WAREHOUSE, CATALOG_TOKEN (optional), ICEBERG_NS,
 //! ICEBERG_TABLE.
 
+mod bench;
 mod commit;
 mod policy;
 mod source;
@@ -50,7 +54,7 @@ impl Env {
     }
 }
 
-async fn open_catalog(env: &Env) -> Result<impl Catalog> {
+pub async fn open_catalog(env: &Env) -> Result<impl Catalog> {
     let mut props = HashMap::from([("uri".to_string(), env.uri.clone())]);
     if let Some(w) = &env.warehouse {
         props.insert("warehouse".into(), w.clone());
@@ -78,7 +82,20 @@ async fn main() -> Result<()> {
             };
             export(&Env::load(), rows, version, cmd == "stale").await
         }
-        _ => bail!("usage: iceberg-export-spike types | export <rows> [v2|v3] | stale <rows> [v2|v3]"),
+        Some("bench-fact") => {
+            let n = |i: usize| -> Result<i64> { Ok(args.get(i).context("bench-fact <rows> <days> <files_per_day> <payload> <epoch> <parallel>")?.parse()?) };
+            let spec = bench::FactSpec {
+                rows: n(1)?,
+                days: n(2)?,
+                files_per_day: n(3)? as usize,
+                payload: n(4)? as usize,
+                epoch: n(5)?,
+                parallel: n(6)? as usize,
+            };
+            bench::export_fact(&Env::load(), spec).await
+        }
+        Some("bench-dim") => bench::export_dim(&Env::load()).await,
+        _ => bail!("usage: iceberg-export-spike types | export <rows> [v2|v3] | stale <rows> [v2|v3] | bench-fact ... | bench-dim"),
     }
 }
 

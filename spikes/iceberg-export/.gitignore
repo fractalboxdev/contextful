@@ -2,3 +2,4 @@
 /warehouse
 probe-worker/node_modules
 probe-worker/.wrangler
+probe-worker/wrangler.jsonc
